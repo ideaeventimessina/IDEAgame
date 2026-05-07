@@ -13,6 +13,7 @@ export const ADMIN_NAV: { key: string; route: string; labelKey: string; roles: R
   { key: 'users', route: '/admin/users', labelKey: 'admin.users', roles: ['super_admin', 'tenant_owner'] },
   { key: 'translations', route: '/admin/translations', labelKey: 'admin.translations', roles: ['super_admin', 'tenant_owner'] },
   { key: 'settings', route: '/admin/settings', labelKey: 'admin.settings', roles: ['super_admin', 'tenant_owner'] },
+  { key: 'system', route: '/admin/system', labelKey: 'admin.system', roles: ['super_admin', 'tenant_owner', 'game_manager'] },
 ];
 
 interface AuthCtx {

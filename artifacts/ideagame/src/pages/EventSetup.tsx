@@ -1,0 +1,94 @@
+import { useState } from 'react';
+import { useLocation } from 'wouter';
+import { GAMES } from '@/data/mock';
+import { Calendar, MapPin, Users, Image as ImageIcon, Save, ArrowRight } from 'lucide-react';
+
+export default function EventSetup() {
+  const [, navigate] = useLocation();
+  const [name, setName] = useState('Compleanno Sorrento 40');
+  const [venue, setVenue] = useState('Hotel Mediterraneo');
+  const [date, setDate] = useState('2026-05-12T20:30');
+  const [players, setPlayers] = useState(20);
+  const [color, setColor] = useState('#F5B642');
+  const [enabled, setEnabled] = useState<string[]>(GAMES.map(g => g.slug));
+
+  const toggle = (slug: string) =>
+    setEnabled(e => e.includes(slug) ? e.filter(x => x !== slug) : [...e, slug]);
+
+  return (
+    <div className="min-h-screen bg-background px-6 py-10">
+      <div className="mx-auto max-w-5xl">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Setup</div>
+            <div className="mt-2 text-display text-4xl font-black">Nuovo evento</div>
+          </div>
+          <button onClick={() => navigate('/admin')} className="text-sm text-muted-foreground hover:text-foreground">Annulla</button>
+        </div>
+
+        <div className="mt-8 grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+          <div className="space-y-4 rounded-2xl border border-border bg-card p-6">
+            <Field label="Nome evento" icon={<Calendar className="h-4 w-4" />}>
+              <input value={name} onChange={e => setName(e.target.value)} className="w-full bg-transparent text-lg font-bold outline-none" />
+            </Field>
+            <Field label="Venue" icon={<MapPin className="h-4 w-4" />}>
+              <input value={venue} onChange={e => setVenue(e.target.value)} className="w-full bg-transparent outline-none" />
+            </Field>
+            <Field label="Data e ora" icon={<Calendar className="h-4 w-4" />}>
+              <input type="datetime-local" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-transparent outline-none" />
+            </Field>
+            <Field label={`Giocatori previsti: ${players}`} icon={<Users className="h-4 w-4" />}>
+              <input type="range" min={4} max={40} value={players} onChange={e => setPlayers(+e.target.value)} className="w-full accent-primary" />
+            </Field>
+            <Field label="Colore brand" icon={<ImageIcon className="h-4 w-4" />}>
+              <div className="flex items-center gap-3">
+                <input type="color" value={color} onChange={e => setColor(e.target.value)} className="h-10 w-16 cursor-pointer rounded-md border border-border bg-transparent" />
+                <code className="text-sm text-muted-foreground">{color}</code>
+              </div>
+            </Field>
+          </div>
+
+          <div className="rounded-2xl border border-border bg-card p-6">
+            <div className="text-display text-lg font-black">Giochi attivi</div>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              {GAMES.map(g => {
+                const on = enabled.includes(g.slug);
+                return (
+                  <button key={g.id} onClick={() => toggle(g.slug)}
+                    className={`rounded-xl border-2 p-3 text-left transition-all ${on ? 'border-primary bg-primary/10' : 'border-border bg-background/40 opacity-60'}`}
+                    style={on ? { borderColor: g.accentColor, background: `${g.accentColor}15` } : undefined}
+                  >
+                    <div className="text-sm font-bold" style={on ? { color: g.accentColor } : undefined}>{g.name}</div>
+                    <div className="mt-1 text-[11px] text-muted-foreground">{on ? 'Attivo' : 'Disattivo'}</div>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mt-5 text-xs text-muted-foreground">{enabled.length} di {GAMES.length} giochi selezionati</div>
+          </div>
+        </div>
+
+        <div className="mt-8 flex items-center justify-end gap-3">
+          <button className="inline-flex items-center gap-2 rounded-xl border border-border px-5 py-3 text-sm font-bold hover-elevate">
+            <Save className="h-4 w-4" /> Salva bozza
+          </button>
+          <button onClick={() => navigate('/lobby')}
+            className="inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-bold text-primary-foreground shadow-[0_0_30px_rgba(245,182,66,0.35)] hover-elevate">
+            Salva e apri lobby <ArrowRight className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, icon, children }: { label: string; icon: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-border bg-background/40 p-4">
+      <div className="mb-2 flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground">
+        {icon} {label}
+      </div>
+      {children}
+    </div>
+  );
+}

@@ -11,6 +11,14 @@ import GameStage from "@/pages/GameStage";
 import Lobby from "@/pages/Lobby";
 import Scoreboard from "@/pages/Scoreboard";
 import Player from "@/pages/Player";
+import Splash from "@/pages/Splash";
+import LanguageSelect from "@/pages/LanguageSelect";
+import TenantSelect from "@/pages/TenantSelect";
+import LoginPage from "@/pages/Login";
+import EventSetup from "@/pages/EventSetup";
+import LiveControl from "@/pages/LiveControl";
+import Permissions from "@/pages/Permissions";
+import AdminSystem from "@/admin/System";
 import AdminDashboard from "@/admin/Dashboard";
 import AdminGames from "@/admin/Games";
 import AdminQuizzes from "@/admin/Quizzes";
@@ -29,10 +37,17 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Hub} />
+      <Route path="/splash" component={Splash} />
+      <Route path="/language" component={LanguageSelect} />
+      <Route path="/tenant" component={TenantSelect} />
+      <Route path="/login" component={LoginPage} />
+      <Route path="/event-setup" component={EventSetup} />
+      <Route path="/control" component={LiveControl} />
       <Route path="/game/:slug" component={GameStage} />
       <Route path="/lobby" component={Lobby} />
       <Route path="/scoreboard" component={Scoreboard} />
       <Route path="/play" component={Player} />
+      <Route path="/play/permissions" component={Permissions} />
       <Route path="/admin"><Guard route="/admin"><AdminDashboard /></Guard></Route>
       <Route path="/admin/games"><Guard route="/admin/games"><AdminGames /></Guard></Route>
       <Route path="/admin/quizzes"><Guard route="/admin/quizzes"><AdminQuizzes /></Guard></Route>
@@ -43,6 +58,7 @@ function Router() {
       <Route path="/admin/users"><Guard route="/admin/users"><AdminUsers /></Guard></Route>
       <Route path="/admin/translations"><Guard route="/admin/translations"><AdminTranslations /></Guard></Route>
       <Route path="/admin/settings"><Guard route="/admin/settings"><AdminSettings /></Guard></Route>
+      <Route path="/admin/system"><Guard route="/admin/system"><AdminSystem /></Guard></Route>
       <Route component={NotFound} />
     </Switch>
   );
