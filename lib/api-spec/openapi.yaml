@@ -260,6 +260,23 @@ paths:
       responses:
         "204": { description: Deleted }
 
+  /events/by-code/{code}:
+    parameters:
+      - { name: code, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: getEventByCode
+      summary: Public lookup of a live event by join code
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EventWithTeams" }
+        "404":
+          description: Not found
+        "409":
+          description: Event not live
+
   /events/{id}/players:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string } }
@@ -511,6 +528,48 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/GameSession" }
+  /sessions/{id}/rounds:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: listRounds
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Round" } }
+    post:
+      operationId: createRound
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateRoundBody" }
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Round" }
+
+  /rounds/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    patch:
+      operationId: updateRound
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateRoundBody" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Round" }
+
   /sessions/{id}:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string } }
@@ -1016,6 +1075,37 @@ components:
         startedAt: { type: ["string", "null"], format: date-time }
         endedAt: { type: ["string", "null"], format: date-time }
         createdAt: { type: string, format: date-time }
+    EventWithTeams:
+      type: object
+      required: [event, teams]
+      properties:
+        event: { $ref: "#/components/schemas/Event" }
+        teams:
+          type: array
+          items: { $ref: "#/components/schemas/Team" }
+
+    Round:
+      type: object
+      required: [id, gameSessionId, index, status, payload, createdAt]
+      properties:
+        id: { type: string }
+        gameSessionId: { type: string }
+        index: { type: integer }
+        status: { type: string, enum: [pending, running, completed] }
+        payload: { type: object, additionalProperties: true }
+        startedAt: { type: ["string", "null"], format: date-time }
+        endedAt: { type: ["string", "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+    CreateRoundBody:
+      type: object
+      properties:
+        payload: { type: object, additionalProperties: true }
+    UpdateRoundBody:
+      type: object
+      properties:
+        status: { type: string, enum: [pending, running, completed] }
+        payload: { type: object, additionalProperties: true }
+
     CreateGameSessionBody:
       type: object
       required: [gameSlug]

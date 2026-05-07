@@ -4,6 +4,7 @@ import { db, gameSessionsTable, eventsTable } from "@workspace/db";
 import { ListGameSessionsResponse, CreateGameSessionBody, UpdateGameSessionBody } from "@workspace/api-zod";
 import { type AuthedRequest, requireAuth } from "../middlewares/auth";
 import { audit } from "../lib/audit";
+import { emitToEvent } from "../socket";
 
 const router: IRouter = Router();
 
@@ -17,7 +18,9 @@ async function eventOwned(req: AuthedRequest, eventId: string) {
 router.get("/events/:id/sessions", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
   const eventId = String(req.params["id"]);
   if (!(await eventOwned(req, eventId))) { res.status(403).json({ error: "Forbidden" }); return; }
-  const rows = await db.select().from(gameSessionsTable).where(eq(gameSessionsTable.eventId, eventId)).orderBy(desc(gameSessionsTable.createdAt));
+  const rows = await db.select().from(gameSessionsTable)
+    .where(eq(gameSessionsTable.eventId, eventId))
+    .orderBy(desc(gameSessionsTable.createdAt));
   res.json(ListGameSessionsResponse.parse(rows));
 });
 
@@ -39,14 +42,28 @@ router.patch("/sessions/:id", requireAuth, async (req: AuthedRequest, res: Respo
   const id = String(req.params["id"]);
   const parsed = UpdateGameSessionBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+
   const [s] = await db.select().from(gameSessionsTable).where(eq(gameSessionsTable.id, id));
   if (!s) { res.status(404).json({ error: "Not found" }); return; }
   if (!(await eventOwned(req, s.eventId))) { res.status(403).json({ error: "Forbidden" }); return; }
+
   const patch: Record<string, unknown> = { ...parsed.data };
   if (parsed.data.status === "running" && !s.startedAt) patch["startedAt"] = new Date();
   if (parsed.data.status === "ended") patch["endedAt"] = new Date();
+
   const [u] = await db.update(gameSessionsTable).set(patch).where(eq(gameSessionsTable.id, id)).returning();
   await audit(req, "game_session.update", "game_session", id, parsed.data);
+
+  if (parsed.data.status === "running") {
+    emitToEvent(s.eventId, "game:started", { session: u, eventId: s.eventId });
+  } else if (parsed.data.status === "ended") {
+    emitToEvent(s.eventId, "game:ended", { session: u, eventId: s.eventId });
+  } else if (parsed.data.status === "paused") {
+    emitToEvent(s.eventId, "game:paused", { session: u, eventId: s.eventId });
+  } else if (parsed.data.currentRound !== undefined) {
+    emitToEvent(s.eventId, "round:changed", { session: u, eventId: s.eventId });
+  }
+
   res.json(u);
 });
 

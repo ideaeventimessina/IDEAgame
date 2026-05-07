@@ -322,6 +322,39 @@ export const DeleteTeamParams = zod.object({
   id: zod.coerce.string(),
 });
 
+/**
+ * @summary Public lookup of a live event by join code
+ */
+export const GetEventByCodeParams = zod.object({
+  code: zod.coerce.string(),
+});
+
+export const GetEventByCodeResponse = zod.object({
+  event: zod.object({
+    id: zod.string(),
+    tenantId: zod.string(),
+    name: zod.string(),
+    venue: zod.string(),
+    startsAt: zod.coerce.date(),
+    status: zod.enum(["draft", "scheduled", "live", "ended"]),
+    brandColor: zod.string(),
+    expectedPlayers: zod.number(),
+    enabledGames: zod.array(zod.string()),
+    joinCode: zod.string(),
+    createdAt: zod.coerce.date(),
+  }),
+  teams: zod.array(
+    zod.object({
+      id: zod.string(),
+      eventId: zod.string(),
+      name: zod.string(),
+      color: zod.string(),
+      score: zod.number(),
+      createdAt: zod.coerce.date(),
+    }),
+  ),
+});
+
 export const ListPlayersParams = zod.object({
   id: zod.coerce.string(),
 });
@@ -566,6 +599,50 @@ export const CreateGameSessionParams = zod.object({
 export const CreateGameSessionBody = zod.object({
   gameSlug: zod.string(),
   totalRounds: zod.number().optional(),
+});
+
+export const ListRoundsParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const ListRoundsResponseItem = zod.object({
+  id: zod.string(),
+  gameSessionId: zod.string(),
+  index: zod.number(),
+  status: zod.enum(["pending", "running", "completed"]),
+  payload: zod.record(zod.string(), zod.unknown()),
+  startedAt: zod.coerce.date().nullish(),
+  endedAt: zod.coerce.date().nullish(),
+  createdAt: zod.coerce.date(),
+});
+export const ListRoundsResponse = zod.array(ListRoundsResponseItem);
+
+export const CreateRoundParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const CreateRoundBody = zod.object({
+  payload: zod.record(zod.string(), zod.unknown()).optional(),
+});
+
+export const UpdateRoundParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const UpdateRoundBody = zod.object({
+  status: zod.enum(["pending", "running", "completed"]).optional(),
+  payload: zod.record(zod.string(), zod.unknown()).optional(),
+});
+
+export const UpdateRoundResponse = zod.object({
+  id: zod.string(),
+  gameSessionId: zod.string(),
+  index: zod.number(),
+  status: zod.enum(["pending", "running", "completed"]),
+  payload: zod.record(zod.string(), zod.unknown()),
+  startedAt: zod.coerce.date().nullish(),
+  endedAt: zod.coerce.date().nullish(),
+  createdAt: zod.coerce.date(),
 });
 
 export const UpdateGameSessionParams = zod.object({

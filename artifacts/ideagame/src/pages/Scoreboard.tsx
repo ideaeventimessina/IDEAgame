@@ -1,20 +1,41 @@
 import { motion } from 'framer-motion';
+import { useEffect } from 'react';
 import { useLocation } from 'wouter';
-import { ArrowLeft, Crown, TrendingUp, Loader2 } from 'lucide-react';
+import { ArrowLeft, Crown, TrendingUp, Loader2, Wifi, WifiOff } from 'lucide-react';
 import { useT } from '@/i18n';
 import {
   useGetCurrentEvent,
   useGetScoreboard, getGetScoreboardQueryKey,
 } from '@workspace/api-client-react';
+import { useEventSocket } from '@/hooks/useEventSocket';
+import { useQueryClient } from '@tanstack/react-query';
 
 export default function Scoreboard() {
   const t = useT();
   const [, navigate] = useLocation();
+  const qc = useQueryClient();
   const { data: event } = useGetCurrentEvent();
   const eventId = event?.id ?? '';
+
+  const { connected: socketConnected, on } = useEventSocket(eventId || null);
+
   const { data: rows = [], isLoading } = useGetScoreboard(eventId, {
-    query: { queryKey: getGetScoreboardQueryKey(eventId), enabled: !!eventId, refetchInterval: 5000 },
+    query: {
+      queryKey: getGetScoreboardQueryKey(eventId),
+      enabled: !!eventId,
+      refetchInterval: socketConnected ? false : 8000,
+    },
   });
+
+  // Realtime: refetch scoreboard on score/team updates
+  useEffect(() => {
+    if (!eventId) return;
+    const unsubs = [
+      on('score:updated', () => qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(eventId) })),
+      on('team:updated',  () => qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(eventId) })),
+    ];
+    return () => unsubs.forEach(u => u());
+  }, [eventId, on, qc]);
   const max = rows[0]?.total ?? 1;
   const podium = rows.slice(0, 3);
 

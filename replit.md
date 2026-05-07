@@ -34,9 +34,19 @@ Pagine intenzionalmente lasciate mock perché fuori dallo scope del wiring backe
 - `/admin/billing` — listino prezzi statico.
 - `DemoSwitcher` — solo navigazione.
 
+### 🟢 Realtime (Socket.IO — completato)
+
+- Socket.IO v4 integrato sull'API server (porta 8080, path `/socket.io`)
+- Architettura: `createServer()` senza handler → `initSocket(server)` → listener Express solo per non-socket.io. Questo evita la race condition tra la risposta asincrona di socket.io e il 404 sincrono di Express.
+- Stanze per evento: `event:{id}` — emit `player:joined`, `player:left`, `score:updated`, `session:updated`, `team:updated`
+- Hook client: `useEventSocket(eventId)` in `artifacts/ideagame/src/hooks/useEventSocket.ts`
+- Lobby, Scoreboard: socket + polling di fallback
+- LiveControl: sessioni/round reali via API + socket emit per sync proiettore
+- Player (`/play`): flusso reale — fetchEvent per joinCode → POST players → socket state
+
 ### 🔴 Bloccanti / rischi
 
-1. **No realtime layer.** Lobby/Scoreboard usano polling React Query (4-5s). Per uno show vero serve WebSocket (Socket.IO o `ws`) per joins, score updates, transizioni round, control. *Mitigazione attuale:* polling.
+1. **Realtime completato** — Socket.IO attivo. Rimane da integrare flusso Player completo (MockBanner rimosso) e LiveControl completo.
 2. **Upload file mancante.** Media è ancora "incolla URL". Per upload reali serve App Storage (presigned URL). *Mitigazione:* campo URL libero.
 3. **Update non esposti in UI.** `PATCH /tenants/:id`, `/users/:id`, `/events/:id`, `/devices/:id`, `/sessions/:id` esistono ma le tabelle admin offrono solo create + delete. Per ora l'editing è solo via API.
 4. **Error handling debole sulle mutations.** Pagine admin invalidano la cache su success ma molti `mutateAsync` non hanno `try/catch` con toast. EventSetup ora cattura l'errore; le altre pagine no.
@@ -49,7 +59,7 @@ Pagine intenzionalmente lasciate mock perché fuori dallo scope del wiring backe
 
 ### 🚀 Prossimi step suggeriti (in ordine)
 
-1. **Realtime con Socket.IO** sull'API server: stanze per `eventId`, eventi `player:join`, `score:update`, `session:state`. Hook React `useEventSocket(eventId)` consumato da Hub/Lobby/Scoreboard/LiveControl.
+1. **~~Realtime con Socket.IO~~** ✅ Completato.
 2. **Wiring del flusso Player reale**: `/play?e=SORR40` → fetch evento per joinCode (endpoint pubblico nuovo) → `POST /events/:id/players` con nickname + team. Eliminare il `MockBanner` da `Player.tsx`.
 3. **LiveControl reale**: bottoni next round / pause / +punti che chiamano `PATCH /sessions/:id` e `POST /scores`. Eliminare il `MockBanner` da `LiveControl.tsx`.
 4. **Editor di update in admin**: dialog "Modifica" su Tenants/Users/Events/Devices con `PATCH`.

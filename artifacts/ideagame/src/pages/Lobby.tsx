@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
+import { useEffect } from 'react';
 import { useLocation } from 'wouter';
-import { ArrowLeft, Play, Loader2 } from 'lucide-react';
+import { ArrowLeft, Play, Loader2, Wifi, WifiOff } from 'lucide-react';
 import { QrPlaceholder } from '@/components/QrPlaceholder';
 import { useT } from '@/i18n';
 import {
@@ -8,11 +9,13 @@ import {
   useListPlayers, getListPlayersQueryKey,
   useListTeams, getListTeamsQueryKey,
 } from '@workspace/api-client-react';
+import { useEventSocket } from '@/hooks/useEventSocket';
+import { useQueryClient } from '@tanstack/react-query';
 
 export default function Lobby() {
   const t = useT();
   const [, navigate] = useLocation();
-  // Read ?e=<id> from URL (allows previewing a specific event right after creation)
+  const qc = useQueryClient();
   const search = typeof window !== 'undefined' ? window.location.search : '';
   const explicitId = new URLSearchParams(search).get('e') ?? '';
 
@@ -23,9 +26,27 @@ export default function Lobby() {
   const event = explicitEvent ?? currentEvent;
   const eventId = event?.id ?? '';
 
-  const { data: players = [] } = useListPlayers(eventId, { query: { queryKey: getListPlayersQueryKey(eventId), enabled: !!eventId, refetchInterval: 4000 } });
-  const { data: teams = [] } = useListTeams(eventId, { query: { queryKey: getListTeamsQueryKey(eventId), enabled: !!eventId } });
-  const connected = players.filter(p => p.isConnected);
+  // Socket realtime — polling kept as slow fallback (10 s)
+  const { connected: socketConnected, on } = useEventSocket(eventId || null);
+
+  const { data: players = [] } = useListPlayers(eventId, {
+    query: { queryKey: getListPlayersQueryKey(eventId), enabled: !!eventId, refetchInterval: socketConnected ? false : 10000 },
+  });
+  const { data: teams = [] } = useListTeams(eventId, {
+    query: { queryKey: getListTeamsQueryKey(eventId), enabled: !!eventId },
+  });
+
+  // Realtime: invalidate player/team lists on socket events
+  useEffect(() => {
+    if (!eventId) return;
+    const unsubs = [
+      on('player:joined', () => qc.invalidateQueries({ queryKey: getListPlayersQueryKey(eventId) })),
+      on('player:left',   () => qc.invalidateQueries({ queryKey: getListPlayersQueryKey(eventId) })),
+      on('team:updated',  () => qc.invalidateQueries({ queryKey: getListTeamsQueryKey(eventId) })),
+    ];
+    return () => unsubs.forEach(u => u());
+  }, [eventId, on, qc]);
+  const connectedPlayers = players.filter(p => p.isConnected);
   const joinUrl = event ? `${window.location.origin}/play?e=${event.joinCode}` : `${window.location.origin}/play`;
 
   return (
@@ -35,7 +56,15 @@ export default function Lobby() {
           <ArrowLeft className="h-5 w-5" /><span className="font-bold">{t('game.back')}</span>
         </button>
         <div className="text-display text-3xl font-black tracking-tight">{event?.name ?? t('lobby.title')}</div>
-        <div className="text-muted-foreground">{event?.venue ?? t('lobby.subtitle')}</div>
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <span>{event?.venue ?? t('lobby.subtitle')}</span>
+          {eventId && (
+            <div className="flex items-center gap-1 rounded-full border border-border bg-card/60 px-2 py-0.5 text-xs">
+              {socketConnected ? <Wifi className="h-3 w-3 text-green-400" /> : <WifiOff className="h-3 w-3 text-amber-400 animate-pulse" />}
+              <span className={socketConnected ? 'text-green-400' : 'text-amber-400'}>{socketConnected ? 'live' : 'polling'}</span>
+            </div>
+          )}
+        </div>
       </header>
 
       {(!explicitId && evLoading) ? (
@@ -69,7 +98,7 @@ export default function Lobby() {
           <section>
             <div className="mb-6 flex items-end justify-between">
               <div>
-                <div className="text-display text-7xl font-black text-primary">{connected.length}</div>
+                <div className="text-display text-7xl font-black text-primary">{connectedPlayers.length}<span className="text-3xl text-muted-foreground">/20</span></div>
                 <div className="text-xl text-muted-foreground">{t('hub.players_connected')}</div>
               </div>
               <div className="flex flex-wrap gap-3">
@@ -77,7 +106,7 @@ export default function Lobby() {
                   <div key={tm.id} className="rounded-2xl border border-border bg-card/60 px-4 py-3">
                     <div className="flex items-center gap-2"><span className="h-3 w-3 rounded-full" style={{ background: tm.color }} /><span className="font-bold">{tm.name}</span></div>
                     <div className="mt-1 text-mono text-xs text-muted-foreground">
-                      {connected.filter(p => p.teamId === tm.id).length} players
+                      {connectedPlayers.filter(p => p.teamId === tm.id).length} players
                     </div>
                   </div>
                 ))}
@@ -85,12 +114,12 @@ export default function Lobby() {
             </div>
 
             <div className="grid grid-cols-4 gap-4 md:grid-cols-5">
-              {connected.length === 0 && (
+              {connectedPlayers.length === 0 && (
                 <div className="col-span-full rounded-2xl border border-dashed border-border bg-card/40 p-8 text-center text-muted-foreground">
                   In attesa che i giocatori scansionino il QR…
                 </div>
               )}
-              {connected.map((p, i) => (
+              {connectedPlayers.map((p, i) => (
                 <motion.div
                   key={p.id}
                   initial={{ opacity: 0, y: 24, scale: 0.9 }}

@@ -1,10 +1,9 @@
 import { Router, type IRouter, type Response } from "express";
 import { eq, sql } from "drizzle-orm";
 import { db, scoresTable, teamsTable, eventsTable } from "@workspace/db";
-import {
-  ListScoresResponse, RecordScoreBody
-} from "@workspace/api-zod";
+import { ListScoresResponse, RecordScoreBody } from "@workspace/api-zod";
 import { type AuthedRequest, requireAuth } from "../middlewares/auth";
+import { emitToEvent } from "../socket";
 
 const router: IRouter = Router();
 
@@ -35,9 +34,16 @@ router.post("/events/:id/scores", requireAuth, async (req: AuthedRequest, res: R
     points: parsed.data.points,
   }).returning();
 
-  await db.update(teamsTable)
+  // Bump aggregated team score
+  const [team] = await db
+    .update(teamsTable)
     .set({ score: sql`${teamsTable.score} + ${parsed.data.points}` })
-    .where(eq(teamsTable.id, parsed.data.teamId));
+    .where(eq(teamsTable.id, parsed.data.teamId))
+    .returning();
+
+  // Emit realtime events
+  emitToEvent(eventId, "score:updated", { score: s, team });
+  emitToEvent(eventId, "team:updated", team);
 
   res.status(201).json(s);
 });

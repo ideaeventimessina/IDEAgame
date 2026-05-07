@@ -485,6 +485,56 @@ export interface GameSession {
   createdAt: string;
 }
 
+export interface EventWithTeams {
+  event: Event;
+  teams: Team[];
+}
+
+export type RoundStatus = (typeof RoundStatus)[keyof typeof RoundStatus];
+
+export const RoundStatus = {
+  pending: "pending",
+  running: "running",
+  completed: "completed",
+} as const;
+
+export type RoundPayload = { [key: string]: unknown };
+
+export interface Round {
+  id: string;
+  gameSessionId: string;
+  index: number;
+  status: RoundStatus;
+  payload: RoundPayload;
+  /** @nullable */
+  startedAt?: string | null;
+  /** @nullable */
+  endedAt?: string | null;
+  createdAt: string;
+}
+
+export type CreateRoundBodyPayload = { [key: string]: unknown };
+
+export interface CreateRoundBody {
+  payload?: CreateRoundBodyPayload;
+}
+
+export type UpdateRoundBodyStatus =
+  (typeof UpdateRoundBodyStatus)[keyof typeof UpdateRoundBodyStatus];
+
+export const UpdateRoundBodyStatus = {
+  pending: "pending",
+  running: "running",
+  completed: "completed",
+} as const;
+
+export type UpdateRoundBodyPayload = { [key: string]: unknown };
+
+export interface UpdateRoundBody {
+  status?: UpdateRoundBodyStatus;
+  payload?: UpdateRoundBodyPayload;
+}
+
 export interface CreateGameSessionBody {
   gameSlug: string;
   totalRounds?: number;

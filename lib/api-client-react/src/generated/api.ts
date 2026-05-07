@@ -28,6 +28,7 @@ import type {
   CreatePlayerBody,
   CreateQuestionBody,
   CreateQuizCategoryBody,
+  CreateRoundBody,
   CreateScoreBody,
   CreateTeamBody,
   CreateTenantBody,
@@ -35,6 +36,7 @@ import type {
   Device,
   ErrorResponse,
   Event,
+  EventWithTeams,
   Game,
   GameSession,
   HealthStatus,
@@ -45,6 +47,7 @@ import type {
   Player,
   Question,
   QuizCategory,
+  Round,
   Score,
   ScoreboardEntry,
   SystemSetting,
@@ -54,6 +57,7 @@ import type {
   UpdateEventBody,
   UpdateGameSessionBody,
   UpdateQuestionBody,
+  UpdateRoundBody,
   UpdateScoreBody,
   UpdateTeamBody,
   UpdateTenantBody,
@@ -1777,6 +1781,93 @@ export const useDeleteTeam = <
 > => {
   return useMutation(getDeleteTeamMutationOptions(options));
 };
+
+/**
+ * @summary Public lookup of a live event by join code
+ */
+export const getGetEventByCodeUrl = (code: string) => {
+  return `/api/events/by-code/${code}`;
+};
+
+export const getEventByCode = async (
+  code: string,
+  options?: RequestInit,
+): Promise<EventWithTeams> => {
+  return customFetch<EventWithTeams>(getGetEventByCodeUrl(code), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetEventByCodeQueryKey = (code: string) => {
+  return [`/api/events/by-code/${code}`] as const;
+};
+
+export const getGetEventByCodeQueryOptions = <
+  TData = Awaited<ReturnType<typeof getEventByCode>>,
+  TError = ErrorType<void>,
+>(
+  code: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getEventByCode>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetEventByCodeQueryKey(code);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getEventByCode>>> = ({
+    signal,
+  }) => getEventByCode(code, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!code,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getEventByCode>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetEventByCodeQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getEventByCode>>
+>;
+export type GetEventByCodeQueryError = ErrorType<void>;
+
+/**
+ * @summary Public lookup of a live event by join code
+ */
+
+export function useGetEventByCode<
+  TData = Awaited<ReturnType<typeof getEventByCode>>,
+  TError = ErrorType<void>,
+>(
+  code: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getEventByCode>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetEventByCodeQueryOptions(code, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 export const getListPlayersUrl = (id: string) => {
   return `/api/events/${id}/players`;
@@ -3529,6 +3620,248 @@ export const useCreateGameSession = <
   TContext
 > => {
   return useMutation(getCreateGameSessionMutationOptions(options));
+};
+
+export const getListRoundsUrl = (id: string) => {
+  return `/api/sessions/${id}/rounds`;
+};
+
+export const listRounds = async (
+  id: string,
+  options?: RequestInit,
+): Promise<Round[]> => {
+  return customFetch<Round[]>(getListRoundsUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListRoundsQueryKey = (id: string) => {
+  return [`/api/sessions/${id}/rounds`] as const;
+};
+
+export const getListRoundsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listRounds>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listRounds>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListRoundsQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listRounds>>> = ({
+    signal,
+  }) => listRounds(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listRounds>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListRoundsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listRounds>>
+>;
+export type ListRoundsQueryError = ErrorType<unknown>;
+
+export function useListRounds<
+  TData = Awaited<ReturnType<typeof listRounds>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listRounds>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListRoundsQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+export const getCreateRoundUrl = (id: string) => {
+  return `/api/sessions/${id}/rounds`;
+};
+
+export const createRound = async (
+  id: string,
+  createRoundBody?: CreateRoundBody,
+  options?: RequestInit,
+): Promise<Round> => {
+  return customFetch<Round>(getCreateRoundUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createRoundBody),
+  });
+};
+
+export const getCreateRoundMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createRound>>,
+    TError,
+    { id: string; data: BodyType<CreateRoundBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createRound>>,
+  TError,
+  { id: string; data: BodyType<CreateRoundBody> },
+  TContext
+> => {
+  const mutationKey = ["createRound"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createRound>>,
+    { id: string; data: BodyType<CreateRoundBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return createRound(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateRoundMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createRound>>
+>;
+export type CreateRoundMutationBody = BodyType<CreateRoundBody>;
+export type CreateRoundMutationError = ErrorType<unknown>;
+
+export const useCreateRound = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createRound>>,
+    TError,
+    { id: string; data: BodyType<CreateRoundBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createRound>>,
+  TError,
+  { id: string; data: BodyType<CreateRoundBody> },
+  TContext
+> => {
+  return useMutation(getCreateRoundMutationOptions(options));
+};
+
+export const getUpdateRoundUrl = (id: string) => {
+  return `/api/rounds/${id}`;
+};
+
+export const updateRound = async (
+  id: string,
+  updateRoundBody: UpdateRoundBody,
+  options?: RequestInit,
+): Promise<Round> => {
+  return customFetch<Round>(getUpdateRoundUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateRoundBody),
+  });
+};
+
+export const getUpdateRoundMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateRound>>,
+    TError,
+    { id: string; data: BodyType<UpdateRoundBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateRound>>,
+  TError,
+  { id: string; data: BodyType<UpdateRoundBody> },
+  TContext
+> => {
+  const mutationKey = ["updateRound"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateRound>>,
+    { id: string; data: BodyType<UpdateRoundBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateRound(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateRoundMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateRound>>
+>;
+export type UpdateRoundMutationBody = BodyType<UpdateRoundBody>;
+export type UpdateRoundMutationError = ErrorType<unknown>;
+
+export const useUpdateRound = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateRound>>,
+    TError,
+    { id: string; data: BodyType<UpdateRoundBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateRound>>,
+  TError,
+  { id: string; data: BodyType<UpdateRoundBody> },
+  TContext
+> => {
+  return useMutation(getUpdateRoundMutationOptions(options));
 };
 
 export const getUpdateGameSessionUrl = (id: string) => {
