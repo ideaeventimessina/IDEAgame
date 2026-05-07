@@ -31,6 +31,7 @@ import AdminUsers from "@/admin/Users";
 import AdminTranslations from "@/admin/Translations";
 import AdminSettings from "@/admin/Settings";
 import AdminCardSets from "@/admin/CardSets";
+import AdminQuizPacks from "@/admin/QuizPacks";
 import { Guard } from "@/admin/Guard";
 
 const queryClient = new QueryClient();
@@ -63,6 +64,7 @@ function Router() {
       <Route path="/admin/settings"><Guard route="/admin/settings"><AdminSettings /></Guard></Route>
       <Route path="/admin/system"><Guard route="/admin/system"><AdminSystem /></Guard></Route>
       <Route path="/admin/card-sets"><Guard route="/admin/card-sets"><AdminCardSets /></Guard></Route>
+      <Route path="/admin/quiz-packs"><Guard route="/admin/quiz-packs"><AdminQuizPacks /></Guard></Route>
       <Route component={NotFound} />
     </Switch>
   );

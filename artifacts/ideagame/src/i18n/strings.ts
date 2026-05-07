@@ -48,6 +48,7 @@ export const STRINGS: Record<Locale, Record<string, string>> = {
     'admin.settings': 'Impostazioni',
     'admin.system': 'Sistema',
     'admin.card_sets': 'Deck di gioco',
+    'admin.quiz_packs': 'Quiz AI',
     'admin.kpi.tenants': 'Tenant attivi',
     'admin.kpi.sessions': 'Sessioni oggi',
     'admin.kpi.players': 'Giocatori (settimana)',
