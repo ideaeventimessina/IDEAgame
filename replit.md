@@ -17,7 +17,7 @@ real session-based authentication, and a typed React/Vite admin console + projec
 | Scoreboard aggregata | ✅ | `/api/events/:id/scoreboard` | `/scoreboard` (podio + barre, polling 5s) |
 | Devices pairing (proiettore/controller/tablet/telefono) | ✅ tabella `device_connections` | `/api/devices` CRUD | `/admin/system` |
 | System settings (brand color, lingua, projection mode, offline-first) | ✅ tabella `system_settings` (upsert per `tenant_id+key`) | `GET/PUT /api/system-settings` | `/admin/settings` |
-| Game sessions + rounds | ✅ tabelle `game_sessions`, `rounds` | `POST /events/:id/sessions`, `PATCH /sessions/:id` | API only (control room ancora mock) |
+| Game sessions + rounds | ✅ tabelle `game_sessions`, `rounds` | `POST /events/:id/sessions`, `PATCH /sessions/:id`, `POST /sessions/:id/rounds`, `PATCH /rounds/:id` | `/control` (LiveControl reale) |
 | Card sets / Cards | ✅ tabelle `card_sets`, `cards` | `/api/card-sets` CRUD | API only |
 | Quiz categories + responses | ✅ tabelle `quiz_categories`, `quiz_responses` | `/api/quiz-categories` CRUD | API only |
 | Audit log (chi ha fatto cosa) | ✅ tabella `audit_log` + helper `lib/audit.ts` | `GET /api/audit-log`, scritto da `device.create`, `system_settings.upsert` | API only (UI da costruire) |

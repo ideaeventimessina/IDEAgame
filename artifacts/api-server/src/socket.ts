@@ -1,16 +1,21 @@
 import { Server as SocketServer } from "socket.io";
 import type { Server as HttpServer } from "node:http";
+import { db, playersTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 import { logger } from "./lib/logger";
 
 let _io: SocketServer | null = null;
 
 /**
+ * socketId → { playerId, eventId }
+ * Populated via the "player:register" client event.
+ * Used to set isConnected=false and emit player:left on disconnect.
+ */
+const playerSockets = new Map<string, { playerId: string; eventId: string }>();
+
+/**
  * Attach Socket.IO to the raw HTTP server.
- * socket.io registers its own "request" listener on the server (for polling)
- * and its "upgrade" listener (for WebSocket). After this call, io.engine is set.
- *
- * The caller must also add its own "request" listener that passes
- * non-socket.io requests to Express (see index.ts).
+ * After this call io.engine is set and socket.io handles /socket.io requests.
  */
 export function initSocket(server: HttpServer): SocketServer {
   _io = new SocketServer(server, {
@@ -26,18 +31,58 @@ export function initSocket(server: HttpServer): SocketServer {
   _io.on("connection", (socket) => {
     logger.info({ sid: socket.id }, "ws:connect");
 
+    // Join a named event room (used by both staff and players)
     socket.on("join:event", (eventId: string) => {
       if (typeof eventId === "string" && eventId.length > 0) {
-        socket.join(`event:${eventId}`);
+        void socket.join(`event:${eventId}`);
         logger.info({ sid: socket.id, eventId }, "ws:join");
       }
     });
 
     socket.on("leave:event", (eventId: string) => {
-      socket.leave(`event:${eventId}`);
+      void socket.leave(`event:${eventId}`);
+    });
+
+    /**
+     * Players call this after a successful POST /events/:id/players.
+     * Links this socketId to a playerId so we can track connect/disconnect.
+     * Also re-registers on socket reconnect.
+     */
+    socket.on("player:register", (data: unknown) => {
+      if (!data || typeof data !== "object") return;
+      const d = data as Record<string, unknown>;
+      const playerId = d["playerId"];
+      const eventId = d["eventId"];
+      if (typeof playerId !== "string" || typeof eventId !== "string") return;
+
+      playerSockets.set(socket.id, { playerId, eventId });
+      // Ensure in event room (covers reconnect case)
+      void socket.join(`event:${eventId}`);
+
+      db.update(playersTable)
+        .set({ isConnected: true })
+        .where(eq(playersTable.id, playerId))
+        .catch((err) => logger.error({ err }, "player:register db update failed"));
+
+      logger.info({ sid: socket.id, playerId, eventId }, "player:registered");
     });
 
     socket.on("disconnect", (reason) => {
+      const reg = playerSockets.get(socket.id);
+      if (reg) {
+        playerSockets.delete(socket.id);
+        db.update(playersTable)
+          .set({ isConnected: false })
+          .where(eq(playersTable.id, reg.playerId))
+          .then(() => {
+            emitToEvent(reg.eventId, "player:left", {
+              id: reg.playerId,
+              eventId: reg.eventId,
+            });
+            logger.info({ sid: socket.id, playerId: reg.playerId }, "player:disconnected");
+          })
+          .catch((err) => logger.error({ err }, "player disconnect db update failed"));
+      }
       logger.info({ sid: socket.id, reason }, "ws:disconnect");
     });
   });

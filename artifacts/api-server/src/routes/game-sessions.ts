@@ -55,7 +55,9 @@ router.patch("/sessions/:id", requireAuth, async (req: AuthedRequest, res: Respo
   await audit(req, "game_session.update", "game_session", id, parsed.data);
 
   if (parsed.data.status === "running") {
-    emitToEvent(s.eventId, "game:started", { session: u, eventId: s.eventId });
+    // Distinguish initial start (idle→running) from resume (paused→running)
+    const eventName = s.status === "idle" ? "game:started" : "game:resumed";
+    emitToEvent(s.eventId, eventName, { session: u, eventId: s.eventId });
   } else if (parsed.data.status === "ended") {
     emitToEvent(s.eventId, "game:ended", { session: u, eventId: s.eventId });
   } else if (parsed.data.status === "paused") {

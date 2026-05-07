@@ -72,13 +72,15 @@ router.post("/sessions/:id/rounds", requireAuth, async (req: AuthedRequest, res:
     })
     .returning();
 
-  // Advance currentRound on the session
-  await db
+  // Advance currentRound on the session and fetch the updated row for the emit payload
+  const [updatedSession] = await db
     .update(gameSessionsTable)
     .set({ currentRound: index })
-    .where(eq(gameSessionsTable.id, sessionId));
+    .where(eq(gameSessionsTable.id, sessionId))
+    .returning();
 
-  emitToEvent(eventId, "round:changed", { sessionId, round, eventId });
+  // Include full session so clients can update round counters without a separate fetch
+  emitToEvent(eventId, "round:changed", { session: updatedSession, round, eventId });
   res.status(201).json(round);
 });
 
@@ -102,7 +104,13 @@ router.patch("/rounds/:id", requireAuth, async (req: AuthedRequest, res: Respons
     .where(and(eq(roundsTable.id, id)))
     .returning();
 
-  emitToEvent(eventId, "round:changed", { sessionId: existing.gameSessionId, round: updated, eventId });
+  // Fetch current session so the emit carries up-to-date round info
+  const [currentSession] = await db
+    .select()
+    .from(gameSessionsTable)
+    .where(eq(gameSessionsTable.id, existing.gameSessionId));
+
+  emitToEvent(eventId, "round:changed", { session: currentSession, round: updated, eventId });
   res.json(updated);
 });
 

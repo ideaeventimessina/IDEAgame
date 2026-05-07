@@ -35,7 +35,7 @@ export default function Player() {
   const [gameState, setGameState] = useState<GameState>({ sessionId: null, currentRound: 0, totalRounds: 1, status: 'idle', gameSlug: null });
   const [buzzed, setBuzzed] = useState(false);
 
-  const { connected, on } = useEventSocket(event?.id ?? null);
+  const { connected, on, emit } = useEventSocket(event?.id ?? null);
 
   const fetchEvent = useCallback(async (code: string) => {
     setStep('loading'); setError('');
@@ -56,14 +56,27 @@ export default function Player() {
         setGameState({ sessionId: session.id, currentRound: session.currentRound, totalRounds: session.totalRounds, status: 'running', gameSlug: session.gameSlug });
         setBuzzed(false);
       }),
-      on<{ session: { currentRound: number } }>('round:changed', ({ session }) => {
-        setGameState(p => ({ ...p, currentRound: session.currentRound })); setBuzzed(false);
+      // game:resumed fires when paused→running (separate from idle→running "game:started")
+      on<{ session: { id: string; currentRound: number; totalRounds: number; gameSlug: string } }>('game:resumed', ({ session }) => {
+        setGameState(p => ({ ...p, status: 'running', currentRound: session.currentRound, totalRounds: session.totalRounds }));
+      }),
+      on<{ session: { currentRound: number; totalRounds: number } }>('round:changed', ({ session }) => {
+        if (session) {
+          setGameState(p => ({ ...p, currentRound: session.currentRound, totalRounds: session.totalRounds }));
+          setBuzzed(false);
+        }
       }),
       on('game:paused', () => setGameState(p => ({ ...p, status: 'paused' }))),
       on('game:ended', () => setGameState(p => ({ ...p, status: 'ended' }))),
     ];
     return () => unsubs.forEach(u => u());
   }, [event, on]);
+
+  // Emit player:register whenever socket connects (covers initial connect AND reconnect)
+  useEffect(() => {
+    if (!connected || !player || !event) return;
+    emit('player:register', { playerId: player.id, eventId: event.id });
+  }, [connected, player, event, emit]);
 
   const handleJoin = async () => {
     if (!event || !nick.trim()) return;

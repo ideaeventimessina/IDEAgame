@@ -44,7 +44,21 @@ router.post("/events/:id/players", playerJoinLimiter, async (req: AuthedRequest,
     .select()
     .from(playersTable)
     .where(and(eq(playersTable.eventId, eventId), eq(playersTable.nickname, nickname)));
-  if (existing) { res.status(409).json({ error: "Nickname già in uso in questo evento" }); return; }
+  if (existing) {
+    // Allow rejoin when the player disconnected (page refresh, network drop, etc.)
+    if (!existing.isConnected) {
+      const [rejoined] = await db
+        .update(playersTable)
+        .set({ isConnected: true, teamId: parsed.data.teamId ?? existing.teamId })
+        .where(eq(playersTable.id, existing.id))
+        .returning();
+      emitToEvent(eventId, "player:joined", rejoined);
+      res.status(200).json(rejoined!);
+      return;
+    }
+    res.status(409).json({ error: "Nickname già in uso in questo evento" });
+    return;
+  }
 
   // Check max players
   const all = await db.select().from(playersTable).where(eq(playersTable.eventId, eventId));
