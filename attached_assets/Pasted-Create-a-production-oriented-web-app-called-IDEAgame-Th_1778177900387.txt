@@ -1,0 +1,60 @@
+Create a production-oriented web app called IDEAgame.
+
+The app is a local-first and international-ready live party game platform for event entertainers.
+It must be designed primarily for use on a giant projected screen controlled by an entertainer with an air mouse, while up to 20 players can join from their smartphones on the same local network.
+
+Main product vision:
+- A central hexagon-based GameStation home screen with 6 game slots
+- Very large UI, huge buttons, huge text, high contrast, readable from 20 meters away on a 3-meter projection screen
+- Secondary mobile controller experience for players joining by QR code
+- Offline-first architecture: the app must work on a private local network without internet for gameplay
+- Cloud/admin compatibility for later sync, updates, subscription handling, and international scaling
+
+Key roles:
+- Super Admin
+- Tenant Owner / Licensee
+- Admin Game Manager
+- Event Entertainer
+- Player
+
+Primary modules:
+1. Central GameStation
+2. Admin panel
+3. Media library
+4. Quiz database
+5. Team and player management
+6. Live scoring engine
+7. Multi-language support
+8. Subscription and billing support
+9. Tenant management for third-party customers
+
+Games:
+- Game 1: Percorso a Risate
+- Game 2: Gioco delle Coppie
+- Game 3: Quizzone
+- Game 4: SaraMusica
+- Game 5: Adult Only
+- Game 6: Sfida di Ballo
+
+Design direction:
+- Luxury arcade / futuristic event style
+- Main navigation with hexagonal cards
+- Large typography
+- Minimal clutter
+- Full-screen kiosk feeling
+- Smooth transitions and dramatic score reveal moments
+
+Architecture rules:
+- Separate entities for tenants, users, subscriptions, events, sessions, teams, players, games, questions, media assets, translations, and scores
+- Make all game content configurable from admin
+- Build the platform so it can later be licensed to third parties as SaaS
+- Every screen must be optimized for projection readability
+- Every text string must be stored in a translation-ready structure, not hardcoded
+
+Before implementing games, first generate:
+1. complete data model
+2. role/permission system
+3. app navigation map
+4. core admin layout
+5. multi-language framework
+6. subscription-ready billing model
