@@ -3,6 +3,7 @@ import { useLocation } from 'wouter';
 import {
   Pause, Play, SkipForward, Plus, Minus,
   Power, MonitorOff, X, Loader2, Wifi, WifiOff, ExternalLink,
+  Sparkles, Eye, EyeOff, CheckCircle2, Clock, BarChart3,
 } from 'lucide-react';
 import { useEventSocket } from '@/hooks/useEventSocket';
 import {
@@ -26,6 +27,47 @@ async function apiFetch(path: string, opts?: RequestInit) {
   return body;
 }
 
+interface QuizRound {
+  orderIndex: number;
+  type: string;
+  questionText: string;
+  answers: string[];
+  correctAnswer: number;
+  explanation: string;
+  difficulty: string;
+  points: number;
+  timeLimit: number;
+  optionalMediaIds: string[];
+}
+
+interface QuizPack {
+  id: string;
+  title: string;
+  themePrompt: string;
+  language: string;
+  difficulty: string;
+  totalRounds: number;
+  status: string;
+  generatedJson: QuizRound[] | null;
+}
+
+const TYPE_LABELS: Record<string, string> = {
+  multiple_choice: 'Scelta multipla',
+  true_false: 'Vero/Falso',
+  image_compare: 'Confronta',
+  guess_who: 'Indovina chi',
+  fast_answer: 'Risposta rapida',
+  bonus_final: '🏆 Bonus Finale',
+};
+const TYPE_COLORS: Record<string, string> = {
+  multiple_choice: 'text-blue-400 border-blue-400/30 bg-blue-400/10',
+  true_false: 'text-green-400 border-green-400/30 bg-green-400/10',
+  image_compare: 'text-purple-400 border-purple-400/30 bg-purple-400/10',
+  guess_who: 'text-orange-400 border-orange-400/30 bg-orange-400/10',
+  fast_answer: 'text-yellow-400 border-yellow-400/30 bg-yellow-400/10',
+  bonus_final: 'text-pink-400 border-pink-400/30 bg-pink-400/10',
+};
+
 export default function LiveControl() {
   const [, navigate] = useLocation();
   const qc = useQueryClient();
@@ -46,6 +88,13 @@ export default function LiveControl() {
   const [coppieMode, setCoppieMode] = useState('teams');
   const [coppieBusy, setCoppieBusy] = useState(false);
   const [coppieMsg, setCoppieMsg] = useState('');
+
+  // Quizzone AI pack state
+  const [quizPacks, setQuizPacks] = useState<QuizPack[]>([]);
+  const [selectedPackId, setSelectedPackId] = useState('');
+  const [loadingPacks, setLoadingPacks] = useState(false);
+  const [packDetail, setPackDetail] = useState<QuizPack | null>(null);
+  const [revealAnswer, setRevealAnswer] = useState(false);
 
   const { data: cardSets = [] } = useListCardSets();
 
@@ -94,6 +143,30 @@ export default function LiveControl() {
     return () => unsubs.forEach(u => u());
   }, [selectedEventId, on, qc]);
 
+  // Load quiz packs when quizzone session is active
+  useEffect(() => {
+    if (session?.gameSlug !== 'quizzone') return;
+    setLoadingPacks(true);
+    apiFetch('/quiz-packs')
+      .then((data) => {
+        const packs = (data as QuizPack[]).filter(p => p.status === 'approved' || p.status === 'generated');
+        setQuizPacks(packs);
+      })
+      .catch(() => setQuizPacks([]))
+      .finally(() => setLoadingPacks(false));
+  }, [session?.gameSlug]);
+
+  // Load full pack detail when selectedPackId changes
+  useEffect(() => {
+    if (!selectedPackId) { setPackDetail(null); return; }
+    apiFetch(`/quiz-packs/${selectedPackId}`)
+      .then(d => setPackDetail(d as QuizPack))
+      .catch(() => setPackDetail(null));
+  }, [selectedPackId]);
+
+  // Reset reveal when round changes
+  useEffect(() => { setRevealAnswer(false); }, [session?.currentRound]);
+
   const withBusy = useCallback(async (fn: () => Promise<void>) => {
     setBusy(true); setError('');
     try { await fn(); }
@@ -112,7 +185,8 @@ export default function LiveControl() {
     await updateSession.mutateAsync({ id: session.id, data: { status: 'running' } });
     await apiFetch(`/sessions/${session.id}/rounds`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
     qc.invalidateQueries({ queryKey: getListGameSessionsQueryKey(selectedEventId) });
-    setTime(30); setTimerPaused(false);
+    setTime(packDetail?.generatedJson?.[0]?.timeLimit ?? 30);
+    setTimerPaused(false);
   });
 
   const handlePause = () => withBusy(async () => {
@@ -132,7 +206,12 @@ export default function LiveControl() {
     }
     await apiFetch(`/sessions/${session.id}/rounds`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
     qc.invalidateQueries({ queryKey: getListGameSessionsQueryKey(selectedEventId) });
-    setTime(30); setTimerPaused(false);
+    // Auto-set timer from next pack round
+    const nextIdx = session.currentRound; // after POST, currentRound will increment
+    const nextRound = packDetail?.generatedJson?.[nextIdx];
+    setTime(nextRound?.timeLimit ?? 30);
+    setTimerPaused(false);
+    setRevealAnswer(false);
   });
 
   const handleEnd = () => withBusy(async () => {
@@ -147,6 +226,11 @@ export default function LiveControl() {
     await recordScore.mutateAsync({ id: selectedEventId, data: { teamId, gameSlug: session.gameSlug, round: session.currentRound, points: delta } });
     qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) });
   });
+
+  // Current pack round (0-indexed, session.currentRound is 1-indexed)
+  const currentRoundIdx = Math.max(0, (session?.currentRound ?? 1) - 1);
+  const rounds = packDetail?.generatedJson ?? [];
+  const currentRound = rounds[currentRoundIdx] ?? null;
 
   const accentColor = '#8B5CF6';
 
@@ -271,6 +355,125 @@ export default function LiveControl() {
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />} Termina
               </button>
             </div>
+          </div>
+        )}
+
+        {/* ─── Quizzone AI panel ─────────────────────────────────────── */}
+        {session?.gameSlug === 'quizzone' && (
+          <div className="rounded-2xl border border-border bg-card p-5 space-y-4">
+            {/* Header */}
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" />
+              <div className="text-xs uppercase tracking-widest text-muted-foreground">Quiz AI</div>
+              <div className="ml-auto text-xs text-muted-foreground/50">salvato offline</div>
+            </div>
+
+            {/* Pack selector */}
+            <div>
+              <div className="text-xs text-muted-foreground mb-1">Quiz pack</div>
+              {loadingPacks ? (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Caricamento…
+                </div>
+              ) : quizPacks.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground">
+                  Nessun quiz pack approvato. Generane uno in <span className="font-bold text-primary">Admin → Quiz AI</span>.
+                </div>
+              ) : (
+                <select value={selectedPackId} onChange={e => { setSelectedPackId(e.target.value); setRevealAnswer(false); }}
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm">
+                  <option value="">— seleziona pack —</option>
+                  {quizPacks.map(p => (
+                    <option key={p.id} value={p.id}>{p.title} ({p.totalRounds} round, {p.language.toUpperCase()})</option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            {/* Current round card */}
+            {packDetail && session && currentRound && (
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-3">
+                {/* Round meta */}
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <span className={`rounded-full border px-2.5 py-0.5 text-xs font-bold ${TYPE_COLORS[currentRound.type] ?? 'text-muted-foreground border-border bg-card'}`}>
+                    {TYPE_LABELS[currentRound.type] ?? currentRound.type}
+                  </span>
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{currentRound.timeLimit}s</span>
+                    <span className="flex items-center gap-1"><BarChart3 className="h-3 w-3" />{currentRound.points}pt</span>
+                    <span className={currentRound.difficulty === 'easy' ? 'text-green-400' : currentRound.difficulty === 'hard' ? 'text-red-400' : 'text-yellow-400'}>
+                      {currentRound.difficulty}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Question */}
+                <div className="text-sm font-bold leading-snug">{currentRound.questionText}</div>
+
+                {/* Answers */}
+                <div className="space-y-1.5">
+                  {currentRound.answers.map((a, i) => {
+                    const isCorrect = i === currentRound.correctAnswer;
+                    const showCorrect = revealAnswer && isCorrect;
+                    return (
+                      <div key={i}
+                        className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs transition-all ${
+                          showCorrect
+                            ? 'border-green-500/50 bg-green-500/15 font-bold text-green-300'
+                            : revealAnswer && !isCorrect
+                            ? 'border-border/40 opacity-50'
+                            : 'border-border bg-background/50'
+                        }`}>
+                        <span className="font-black w-4 text-center opacity-60">{String.fromCharCode(65 + i)}</span>
+                        <span className="flex-1">{a}</span>
+                        {showCorrect && <CheckCircle2 className="h-3.5 w-3.5 text-green-400 flex-shrink-0" />}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Reveal button */}
+                <button onClick={() => setRevealAnswer(v => !v)}
+                  className={`w-full flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold transition-all ${
+                    revealAnswer
+                      ? 'border border-green-500/40 bg-green-500/10 text-green-400'
+                      : 'bg-primary text-primary-foreground hover:opacity-90'
+                  }`}>
+                  {revealAnswer ? <><EyeOff className="h-4 w-4" /> Nascondi risposta</> : <><Eye className="h-4 w-4" /> Rivela risposta</>}
+                </button>
+
+                {/* Explanation (only when revealed) */}
+                {revealAnswer && currentRound.explanation && (
+                  <div className="rounded-lg border border-border/40 bg-background/50 px-3 py-2 text-xs text-muted-foreground italic">
+                    {currentRound.explanation}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Progress through pack */}
+            {packDetail && rounds.length > 0 && (
+              <div className="space-y-1">
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Avanzamento pack</span>
+                  <span>{currentRoundIdx + 1}/{rounds.length}</span>
+                </div>
+                <div className="h-1.5 w-full rounded-full bg-border overflow-hidden">
+                  <div className="h-full rounded-full bg-primary transition-all"
+                    style={{ width: `${((currentRoundIdx + 1) / rounds.length) * 100}%` }} />
+                </div>
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {rounds.map((r, i) => (
+                    <div key={i}
+                      className={`h-1.5 flex-1 min-w-[6px] rounded-full transition-all ${
+                        i < currentRoundIdx ? 'bg-primary/40' :
+                        i === currentRoundIdx ? 'bg-primary' :
+                        'bg-border'
+                      }`} />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

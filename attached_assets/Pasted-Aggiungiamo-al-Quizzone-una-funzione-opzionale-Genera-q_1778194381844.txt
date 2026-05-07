@@ -1,0 +1,91 @@
+Aggiungiamo al Quizzone una funzione opzionale: "Genera quiz tematico da prompt".
+
+Non deve sostituire il database interno.
+Deve creare un quiz pack salvato nel database, riutilizzabile offline durante l’evento.
+
+Implementa:
+
+1. Admin / LiveControl
+Aggiungi un pulsante:
+"Genera quiz da tema"
+
+Campi:
+- tema
+- pubblico target
+- tono
+- difficoltà
+- lingua
+- numero round, default 20
+- usa immagini dalla media library: sì/no
+
+2. Backend
+Crea entità quiz_pack o quiz_generation:
+- id
+- tenantId
+- eventId opzionale
+- title
+- themePrompt
+- language
+- difficulty
+- targetAudience
+- tone
+- totalRounds
+- status: draft/generated/approved/failed
+- generatedJson
+- createdAt
+- updatedAt
+
+3. Generazione
+Il sistema deve generare 20 round misti:
+- multiple_choice
+- true_false
+- image_compare
+- guess_who
+- fast_answer
+- bonus_final
+
+Ogni round deve avere:
+- type
+- questionText
+- answers
+- correctAnswer
+- explanation breve
+- difficulty
+- points
+- timeLimit
+- optionalMediaIds
+- orderIndex
+
+4. Randomizzazione intelligente
+Dopo la generazione:
+- mescola la sequenza
+- evita due round dello stesso tipo consecutivi se possibile
+- distribuisci difficoltà crescente
+- round finale sempre bonus_final o domanda forte
+
+5. Salvataggio
+Il quiz generato deve essere salvato nel database come quiz pack.
+L’animatore deve poter:
+- revisionare
+- modificare
+- approvare
+- usare nel Quizzone live
+
+6. Sicurezza e qualità
+- non inviare la risposta corretta ai telefoni prima del reveal
+- niente contenuti volgari o inadatti se target è famiglia/bambini
+- se il tema è protetto da copyright, usare domande descrittive e culturali senza generare immagini ufficiali non autorizzate
+- se AI non disponibile, mostra errore chiaro e usa quiz database interno
+
+7. Offline-first
+La generazione può richiedere internet.
+Ma una volta generato e approvato, il quiz deve funzionare completamente offline.
+
+8. Test
+- genera quiz tema "La Bella e la Bestia"
+- verifica 20 round
+- verifica mix tipi domanda
+- verifica salvataggio
+- verifica modifica manuale
+- verifica avvio quiz da pack generato
+- verifica funzionamento offline simulato

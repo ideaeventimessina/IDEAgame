@@ -157,11 +157,41 @@ timeLimit suggerito: true_false=15, fast_answer=10, multiple_choice=30, guess_wh
         optionalMediaIds: [],
       })) as QuizRound[];
 
-      // Ensure last round is bonus_final
-      if (rounds.length > 0) {
-        rounds[rounds.length - 1]!.type = "bonus_final";
-        rounds[rounds.length - 1]!.points = Math.max(rounds[rounds.length - 1]!.points, 500);
+      // ─── Smart shuffle ─────────────────────────────────────────────
+      // 1. Pull out bonus_final candidates (keep at most one for the end)
+      const bonusRounds = rounds.filter(r => r.type === "bonus_final");
+      const mainRounds  = rounds.filter(r => r.type !== "bonus_final");
+
+      // 2. Stable-sort by difficulty: easy → medium → hard
+      const diffOrder: Record<string, number> = { easy: 0, medium: 1, hard: 2 };
+      mainRounds.sort((a, b) => (diffOrder[a.difficulty] ?? 1) - (diffOrder[b.difficulty] ?? 1));
+
+      // 3. Interleave so no two consecutive rounds share the same type
+      function interleaveByType(arr: QuizRound[]): QuizRound[] {
+        const out: QuizRound[] = [];
+        const pool = [...arr];
+        while (pool.length) {
+          const lastType = out.at(-1)?.type;
+          // prefer a round with a different type than the previous
+          const idx = pool.findIndex(r => r.type !== lastType);
+          const chosen = idx >= 0 ? pool.splice(idx, 1)[0]! : pool.splice(0, 1)[0]!;
+          out.push(chosen);
+        }
+        return out;
       }
+
+      const shuffled = interleaveByType(mainRounds);
+
+      // 4. Append the bonus_final (ensure exactly one, with high points)
+      const finalRound: QuizRound = bonusRounds.length > 0
+        ? { ...bonusRounds[0]!, type: "bonus_final", points: Math.max(bonusRounds[0]!.points, 500) }
+        : shuffled.length > 0
+          ? { ...shuffled.at(-1)!, type: "bonus_final", points: 500, timeLimit: 60 }
+          : { orderIndex: 0, type: "bonus_final", questionText: "Domanda bonus finale", answers: ["Risposta libera"], correctAnswer: 0, explanation: "", difficulty: "hard", points: 500, timeLimit: 60, optionalMediaIds: [] };
+
+      // Remove the last shuffled element if it was reused as bonus_final
+      const body = bonusRounds.length > 0 ? shuffled : shuffled.slice(0, -1);
+      rounds = [...body, finalRound].map((r, i) => ({ ...r, orderIndex: i }));
 
       const [updated] = await db
         .update(quizPacksTable)
