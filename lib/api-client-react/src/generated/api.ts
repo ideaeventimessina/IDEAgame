@@ -16,17 +16,27 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
+  AuditEntry,
+  Card,
+  CardSet,
+  CreateCardBody,
+  CreateCardSetBody,
+  CreateDeviceBody,
   CreateEventBody,
+  CreateGameSessionBody,
   CreateMediaBody,
   CreatePlayerBody,
   CreateQuestionBody,
+  CreateQuizCategoryBody,
   CreateScoreBody,
   CreateTeamBody,
   CreateTenantBody,
   CreateUserBody,
+  Device,
   ErrorResponse,
   Event,
   Game,
+  GameSession,
   HealthStatus,
   Kpis,
   LoginBody,
@@ -34,15 +44,21 @@ import type {
   Media,
   Player,
   Question,
+  QuizCategory,
   Score,
+  ScoreboardEntry,
+  SystemSetting,
   Team,
   Tenant,
   Translation,
   UpdateEventBody,
+  UpdateGameSessionBody,
   UpdateQuestionBody,
+  UpdateScoreBody,
   UpdateTeamBody,
   UpdateTenantBody,
   UpdateUserBody,
+  UpsertSystemSettingBody,
   UpsertTranslationBody,
   User,
 } from "./api.schemas";
@@ -2883,6 +2899,1538 @@ export function useGetKpis<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetKpisQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+export const getGetScoreboardUrl = (id: string) => {
+  return `/api/events/${id}/scoreboard`;
+};
+
+export const getScoreboard = async (
+  id: string,
+  options?: RequestInit,
+): Promise<ScoreboardEntry[]> => {
+  return customFetch<ScoreboardEntry[]>(getGetScoreboardUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetScoreboardQueryKey = (id: string) => {
+  return [`/api/events/${id}/scoreboard`] as const;
+};
+
+export const getGetScoreboardQueryOptions = <
+  TData = Awaited<ReturnType<typeof getScoreboard>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getScoreboard>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetScoreboardQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getScoreboard>>> = ({
+    signal,
+  }) => getScoreboard(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getScoreboard>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetScoreboardQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getScoreboard>>
+>;
+export type GetScoreboardQueryError = ErrorType<unknown>;
+
+export function useGetScoreboard<
+  TData = Awaited<ReturnType<typeof getScoreboard>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getScoreboard>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetScoreboardQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+export const getUpdateScoreUrl = (id: string) => {
+  return `/api/scores/${id}`;
+};
+
+export const updateScore = async (
+  id: string,
+  updateScoreBody: UpdateScoreBody,
+  options?: RequestInit,
+): Promise<Score> => {
+  return customFetch<Score>(getUpdateScoreUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateScoreBody),
+  });
+};
+
+export const getUpdateScoreMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateScore>>,
+    TError,
+    { id: string; data: BodyType<UpdateScoreBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateScore>>,
+  TError,
+  { id: string; data: BodyType<UpdateScoreBody> },
+  TContext
+> => {
+  const mutationKey = ["updateScore"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateScore>>,
+    { id: string; data: BodyType<UpdateScoreBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateScore(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateScoreMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateScore>>
+>;
+export type UpdateScoreMutationBody = BodyType<UpdateScoreBody>;
+export type UpdateScoreMutationError = ErrorType<unknown>;
+
+export const useUpdateScore = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateScore>>,
+    TError,
+    { id: string; data: BodyType<UpdateScoreBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateScore>>,
+  TError,
+  { id: string; data: BodyType<UpdateScoreBody> },
+  TContext
+> => {
+  return useMutation(getUpdateScoreMutationOptions(options));
+};
+
+export const getDeleteScoreUrl = (id: string) => {
+  return `/api/scores/${id}`;
+};
+
+export const deleteScore = async (
+  id: string,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteScoreUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteScoreMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteScore>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteScore>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["deleteScore"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteScore>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteScore(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteScoreMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteScore>>
+>;
+
+export type DeleteScoreMutationError = ErrorType<unknown>;
+
+export const useDeleteScore = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteScore>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteScore>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getDeleteScoreMutationOptions(options));
+};
+
+export const getListDevicesUrl = () => {
+  return `/api/devices`;
+};
+
+export const listDevices = async (options?: RequestInit): Promise<Device[]> => {
+  return customFetch<Device[]>(getListDevicesUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListDevicesQueryKey = () => {
+  return [`/api/devices`] as const;
+};
+
+export const getListDevicesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listDevices>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listDevices>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListDevicesQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listDevices>>> = ({
+    signal,
+  }) => listDevices({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listDevices>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListDevicesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listDevices>>
+>;
+export type ListDevicesQueryError = ErrorType<unknown>;
+
+export function useListDevices<
+  TData = Awaited<ReturnType<typeof listDevices>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listDevices>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListDevicesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+export const getCreateDeviceUrl = () => {
+  return `/api/devices`;
+};
+
+export const createDevice = async (
+  createDeviceBody: CreateDeviceBody,
+  options?: RequestInit,
+): Promise<Device> => {
+  return customFetch<Device>(getCreateDeviceUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createDeviceBody),
+  });
+};
+
+export const getCreateDeviceMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createDevice>>,
+    TError,
+    { data: BodyType<CreateDeviceBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createDevice>>,
+  TError,
+  { data: BodyType<CreateDeviceBody> },
+  TContext
+> => {
+  const mutationKey = ["createDevice"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createDevice>>,
+    { data: BodyType<CreateDeviceBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createDevice(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateDeviceMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createDevice>>
+>;
+export type CreateDeviceMutationBody = BodyType<CreateDeviceBody>;
+export type CreateDeviceMutationError = ErrorType<unknown>;
+
+export const useCreateDevice = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createDevice>>,
+    TError,
+    { data: BodyType<CreateDeviceBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createDevice>>,
+  TError,
+  { data: BodyType<CreateDeviceBody> },
+  TContext
+> => {
+  return useMutation(getCreateDeviceMutationOptions(options));
+};
+
+export const getDeleteDeviceUrl = (id: string) => {
+  return `/api/devices/${id}`;
+};
+
+export const deleteDevice = async (
+  id: string,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteDeviceUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteDeviceMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteDevice>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteDevice>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["deleteDevice"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteDevice>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteDevice(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteDeviceMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteDevice>>
+>;
+
+export type DeleteDeviceMutationError = ErrorType<unknown>;
+
+export const useDeleteDevice = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteDevice>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteDevice>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getDeleteDeviceMutationOptions(options));
+};
+
+export const getListGameSessionsUrl = (id: string) => {
+  return `/api/events/${id}/sessions`;
+};
+
+export const listGameSessions = async (
+  id: string,
+  options?: RequestInit,
+): Promise<GameSession[]> => {
+  return customFetch<GameSession[]>(getListGameSessionsUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListGameSessionsQueryKey = (id: string) => {
+  return [`/api/events/${id}/sessions`] as const;
+};
+
+export const getListGameSessionsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listGameSessions>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listGameSessions>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListGameSessionsQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listGameSessions>>
+  > = ({ signal }) => listGameSessions(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listGameSessions>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListGameSessionsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listGameSessions>>
+>;
+export type ListGameSessionsQueryError = ErrorType<unknown>;
+
+export function useListGameSessions<
+  TData = Awaited<ReturnType<typeof listGameSessions>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listGameSessions>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListGameSessionsQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+export const getCreateGameSessionUrl = (id: string) => {
+  return `/api/events/${id}/sessions`;
+};
+
+export const createGameSession = async (
+  id: string,
+  createGameSessionBody: CreateGameSessionBody,
+  options?: RequestInit,
+): Promise<GameSession> => {
+  return customFetch<GameSession>(getCreateGameSessionUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createGameSessionBody),
+  });
+};
+
+export const getCreateGameSessionMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createGameSession>>,
+    TError,
+    { id: string; data: BodyType<CreateGameSessionBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createGameSession>>,
+  TError,
+  { id: string; data: BodyType<CreateGameSessionBody> },
+  TContext
+> => {
+  const mutationKey = ["createGameSession"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createGameSession>>,
+    { id: string; data: BodyType<CreateGameSessionBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return createGameSession(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateGameSessionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createGameSession>>
+>;
+export type CreateGameSessionMutationBody = BodyType<CreateGameSessionBody>;
+export type CreateGameSessionMutationError = ErrorType<unknown>;
+
+export const useCreateGameSession = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createGameSession>>,
+    TError,
+    { id: string; data: BodyType<CreateGameSessionBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createGameSession>>,
+  TError,
+  { id: string; data: BodyType<CreateGameSessionBody> },
+  TContext
+> => {
+  return useMutation(getCreateGameSessionMutationOptions(options));
+};
+
+export const getUpdateGameSessionUrl = (id: string) => {
+  return `/api/sessions/${id}`;
+};
+
+export const updateGameSession = async (
+  id: string,
+  updateGameSessionBody: UpdateGameSessionBody,
+  options?: RequestInit,
+): Promise<GameSession> => {
+  return customFetch<GameSession>(getUpdateGameSessionUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateGameSessionBody),
+  });
+};
+
+export const getUpdateGameSessionMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateGameSession>>,
+    TError,
+    { id: string; data: BodyType<UpdateGameSessionBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateGameSession>>,
+  TError,
+  { id: string; data: BodyType<UpdateGameSessionBody> },
+  TContext
+> => {
+  const mutationKey = ["updateGameSession"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateGameSession>>,
+    { id: string; data: BodyType<UpdateGameSessionBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateGameSession(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateGameSessionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateGameSession>>
+>;
+export type UpdateGameSessionMutationBody = BodyType<UpdateGameSessionBody>;
+export type UpdateGameSessionMutationError = ErrorType<unknown>;
+
+export const useUpdateGameSession = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateGameSession>>,
+    TError,
+    { id: string; data: BodyType<UpdateGameSessionBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateGameSession>>,
+  TError,
+  { id: string; data: BodyType<UpdateGameSessionBody> },
+  TContext
+> => {
+  return useMutation(getUpdateGameSessionMutationOptions(options));
+};
+
+export const getListCardSetsUrl = () => {
+  return `/api/card-sets`;
+};
+
+export const listCardSets = async (
+  options?: RequestInit,
+): Promise<CardSet[]> => {
+  return customFetch<CardSet[]>(getListCardSetsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListCardSetsQueryKey = () => {
+  return [`/api/card-sets`] as const;
+};
+
+export const getListCardSetsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listCardSets>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listCardSets>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListCardSetsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listCardSets>>> = ({
+    signal,
+  }) => listCardSets({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listCardSets>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListCardSetsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listCardSets>>
+>;
+export type ListCardSetsQueryError = ErrorType<unknown>;
+
+export function useListCardSets<
+  TData = Awaited<ReturnType<typeof listCardSets>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listCardSets>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListCardSetsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+export const getCreateCardSetUrl = () => {
+  return `/api/card-sets`;
+};
+
+export const createCardSet = async (
+  createCardSetBody: CreateCardSetBody,
+  options?: RequestInit,
+): Promise<CardSet> => {
+  return customFetch<CardSet>(getCreateCardSetUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createCardSetBody),
+  });
+};
+
+export const getCreateCardSetMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createCardSet>>,
+    TError,
+    { data: BodyType<CreateCardSetBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createCardSet>>,
+  TError,
+  { data: BodyType<CreateCardSetBody> },
+  TContext
+> => {
+  const mutationKey = ["createCardSet"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createCardSet>>,
+    { data: BodyType<CreateCardSetBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createCardSet(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateCardSetMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createCardSet>>
+>;
+export type CreateCardSetMutationBody = BodyType<CreateCardSetBody>;
+export type CreateCardSetMutationError = ErrorType<unknown>;
+
+export const useCreateCardSet = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createCardSet>>,
+    TError,
+    { data: BodyType<CreateCardSetBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createCardSet>>,
+  TError,
+  { data: BodyType<CreateCardSetBody> },
+  TContext
+> => {
+  return useMutation(getCreateCardSetMutationOptions(options));
+};
+
+export const getDeleteCardSetUrl = (id: string) => {
+  return `/api/card-sets/${id}`;
+};
+
+export const deleteCardSet = async (
+  id: string,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteCardSetUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteCardSetMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteCardSet>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteCardSet>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["deleteCardSet"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteCardSet>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteCardSet(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteCardSetMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteCardSet>>
+>;
+
+export type DeleteCardSetMutationError = ErrorType<unknown>;
+
+export const useDeleteCardSet = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteCardSet>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteCardSet>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getDeleteCardSetMutationOptions(options));
+};
+
+export const getListCardsUrl = (id: string) => {
+  return `/api/card-sets/${id}/cards`;
+};
+
+export const listCards = async (
+  id: string,
+  options?: RequestInit,
+): Promise<Card[]> => {
+  return customFetch<Card[]>(getListCardsUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListCardsQueryKey = (id: string) => {
+  return [`/api/card-sets/${id}/cards`] as const;
+};
+
+export const getListCardsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listCards>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCards>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListCardsQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listCards>>> = ({
+    signal,
+  }) => listCards(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<Awaited<ReturnType<typeof listCards>>, TError, TData> & {
+    queryKey: QueryKey;
+  };
+};
+
+export type ListCardsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listCards>>
+>;
+export type ListCardsQueryError = ErrorType<unknown>;
+
+export function useListCards<
+  TData = Awaited<ReturnType<typeof listCards>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCards>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListCardsQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+export const getCreateCardUrl = (id: string) => {
+  return `/api/card-sets/${id}/cards`;
+};
+
+export const createCard = async (
+  id: string,
+  createCardBody: CreateCardBody,
+  options?: RequestInit,
+): Promise<Card> => {
+  return customFetch<Card>(getCreateCardUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createCardBody),
+  });
+};
+
+export const getCreateCardMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createCard>>,
+    TError,
+    { id: string; data: BodyType<CreateCardBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createCard>>,
+  TError,
+  { id: string; data: BodyType<CreateCardBody> },
+  TContext
+> => {
+  const mutationKey = ["createCard"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createCard>>,
+    { id: string; data: BodyType<CreateCardBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return createCard(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateCardMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createCard>>
+>;
+export type CreateCardMutationBody = BodyType<CreateCardBody>;
+export type CreateCardMutationError = ErrorType<unknown>;
+
+export const useCreateCard = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createCard>>,
+    TError,
+    { id: string; data: BodyType<CreateCardBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createCard>>,
+  TError,
+  { id: string; data: BodyType<CreateCardBody> },
+  TContext
+> => {
+  return useMutation(getCreateCardMutationOptions(options));
+};
+
+export const getListQuizCategoriesUrl = () => {
+  return `/api/quiz-categories`;
+};
+
+export const listQuizCategories = async (
+  options?: RequestInit,
+): Promise<QuizCategory[]> => {
+  return customFetch<QuizCategory[]>(getListQuizCategoriesUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListQuizCategoriesQueryKey = () => {
+  return [`/api/quiz-categories`] as const;
+};
+
+export const getListQuizCategoriesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listQuizCategories>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listQuizCategories>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListQuizCategoriesQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listQuizCategories>>
+  > = ({ signal }) => listQuizCategories({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listQuizCategories>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListQuizCategoriesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listQuizCategories>>
+>;
+export type ListQuizCategoriesQueryError = ErrorType<unknown>;
+
+export function useListQuizCategories<
+  TData = Awaited<ReturnType<typeof listQuizCategories>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listQuizCategories>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListQuizCategoriesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+export const getCreateQuizCategoryUrl = () => {
+  return `/api/quiz-categories`;
+};
+
+export const createQuizCategory = async (
+  createQuizCategoryBody: CreateQuizCategoryBody,
+  options?: RequestInit,
+): Promise<QuizCategory> => {
+  return customFetch<QuizCategory>(getCreateQuizCategoryUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createQuizCategoryBody),
+  });
+};
+
+export const getCreateQuizCategoryMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createQuizCategory>>,
+    TError,
+    { data: BodyType<CreateQuizCategoryBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createQuizCategory>>,
+  TError,
+  { data: BodyType<CreateQuizCategoryBody> },
+  TContext
+> => {
+  const mutationKey = ["createQuizCategory"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createQuizCategory>>,
+    { data: BodyType<CreateQuizCategoryBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createQuizCategory(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateQuizCategoryMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createQuizCategory>>
+>;
+export type CreateQuizCategoryMutationBody = BodyType<CreateQuizCategoryBody>;
+export type CreateQuizCategoryMutationError = ErrorType<unknown>;
+
+export const useCreateQuizCategory = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createQuizCategory>>,
+    TError,
+    { data: BodyType<CreateQuizCategoryBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createQuizCategory>>,
+  TError,
+  { data: BodyType<CreateQuizCategoryBody> },
+  TContext
+> => {
+  return useMutation(getCreateQuizCategoryMutationOptions(options));
+};
+
+export const getDeleteQuizCategoryUrl = (id: string) => {
+  return `/api/quiz-categories/${id}`;
+};
+
+export const deleteQuizCategory = async (
+  id: string,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteQuizCategoryUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteQuizCategoryMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteQuizCategory>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteQuizCategory>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["deleteQuizCategory"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteQuizCategory>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteQuizCategory(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteQuizCategoryMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteQuizCategory>>
+>;
+
+export type DeleteQuizCategoryMutationError = ErrorType<unknown>;
+
+export const useDeleteQuizCategory = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteQuizCategory>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteQuizCategory>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getDeleteQuizCategoryMutationOptions(options));
+};
+
+export const getListSystemSettingsUrl = () => {
+  return `/api/system-settings`;
+};
+
+export const listSystemSettings = async (
+  options?: RequestInit,
+): Promise<SystemSetting[]> => {
+  return customFetch<SystemSetting[]>(getListSystemSettingsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListSystemSettingsQueryKey = () => {
+  return [`/api/system-settings`] as const;
+};
+
+export const getListSystemSettingsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listSystemSettings>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listSystemSettings>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListSystemSettingsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listSystemSettings>>
+  > = ({ signal }) => listSystemSettings({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listSystemSettings>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListSystemSettingsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listSystemSettings>>
+>;
+export type ListSystemSettingsQueryError = ErrorType<unknown>;
+
+export function useListSystemSettings<
+  TData = Awaited<ReturnType<typeof listSystemSettings>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listSystemSettings>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListSystemSettingsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+export const getUpsertSystemSettingUrl = () => {
+  return `/api/system-settings`;
+};
+
+export const upsertSystemSetting = async (
+  upsertSystemSettingBody: UpsertSystemSettingBody,
+  options?: RequestInit,
+): Promise<SystemSetting> => {
+  return customFetch<SystemSetting>(getUpsertSystemSettingUrl(), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(upsertSystemSettingBody),
+  });
+};
+
+export const getUpsertSystemSettingMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof upsertSystemSetting>>,
+    TError,
+    { data: BodyType<UpsertSystemSettingBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof upsertSystemSetting>>,
+  TError,
+  { data: BodyType<UpsertSystemSettingBody> },
+  TContext
+> => {
+  const mutationKey = ["upsertSystemSetting"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof upsertSystemSetting>>,
+    { data: BodyType<UpsertSystemSettingBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return upsertSystemSetting(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpsertSystemSettingMutationResult = NonNullable<
+  Awaited<ReturnType<typeof upsertSystemSetting>>
+>;
+export type UpsertSystemSettingMutationBody = BodyType<UpsertSystemSettingBody>;
+export type UpsertSystemSettingMutationError = ErrorType<unknown>;
+
+export const useUpsertSystemSetting = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof upsertSystemSetting>>,
+    TError,
+    { data: BodyType<UpsertSystemSettingBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof upsertSystemSetting>>,
+  TError,
+  { data: BodyType<UpsertSystemSettingBody> },
+  TContext
+> => {
+  return useMutation(getUpsertSystemSettingMutationOptions(options));
+};
+
+export const getListAuditLogUrl = () => {
+  return `/api/audit-log`;
+};
+
+export const listAuditLog = async (
+  options?: RequestInit,
+): Promise<AuditEntry[]> => {
+  return customFetch<AuditEntry[]>(getListAuditLogUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListAuditLogQueryKey = () => {
+  return [`/api/audit-log`] as const;
+};
+
+export const getListAuditLogQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAuditLog>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listAuditLog>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListAuditLogQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listAuditLog>>> = ({
+    signal,
+  }) => listAuditLog({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAuditLog>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListAuditLogQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAuditLog>>
+>;
+export type ListAuditLogQueryError = ErrorType<unknown>;
+
+export function useListAuditLog<
+  TData = Awaited<ReturnType<typeof listAuditLog>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listAuditLog>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListAuditLogQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

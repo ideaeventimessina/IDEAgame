@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
 import { GAMES, TEAMS } from '@/data/mock';
+import { MockBanner } from '@/components/MockBanner';
 import {
   Pause, Play, SkipForward, Eye, Plus, Minus,
   Power, MonitorOff, X
@@ -29,6 +30,7 @@ export default function LiveControl() {
 
   return (
     <div className="min-h-screen bg-background px-4 py-6">
+      <MockBanner note="control room non ancora collegata a /sessions/{id} (PATCH stato)" />
       <div className="mx-auto max-w-md">
         <div className="flex items-center justify-between">
           <button onClick={() => navigate('/')} className="rounded-full border border-border p-2 hover-elevate">

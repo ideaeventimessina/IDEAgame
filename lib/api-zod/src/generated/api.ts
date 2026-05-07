@@ -481,3 +481,214 @@ export const GetKpisResponse = zod.object({
   playersWeek: zod.number(),
   mrr: zod.number(),
 });
+
+export const GetScoreboardParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const GetScoreboardResponseItem = zod.object({
+  teamId: zod.string(),
+  teamName: zod.string(),
+  color: zod.string(),
+  total: zod.number(),
+  byGame: zod.record(zod.string(), zod.number()).optional(),
+});
+export const GetScoreboardResponse = zod.array(GetScoreboardResponseItem);
+
+export const UpdateScoreParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const UpdateScoreBody = zod.object({
+  points: zod.number().optional(),
+  round: zod.number().optional(),
+});
+
+export const UpdateScoreResponse = zod.object({
+  id: zod.string(),
+  eventId: zod.string(),
+  teamId: zod.string(),
+  gameSlug: zod.string(),
+  round: zod.number(),
+  points: zod.number(),
+  createdAt: zod.coerce.date(),
+});
+
+export const DeleteScoreParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const ListDevicesResponseItem = zod.object({
+  id: zod.string(),
+  tenantId: zod.string(),
+  eventId: zod.string().nullish(),
+  kind: zod.enum(["projector", "controller", "player_phone", "host_tablet"]),
+  label: zod.string(),
+  pairCode: zod.string(),
+  status: zod.enum(["pending", "paired", "disconnected"]),
+  pairedAt: zod.coerce.date().nullish(),
+  lastSeenAt: zod.coerce.date(),
+  createdAt: zod.coerce.date(),
+});
+export const ListDevicesResponse = zod.array(ListDevicesResponseItem);
+
+export const CreateDeviceBody = zod.object({
+  kind: zod.enum(["projector", "controller", "player_phone", "host_tablet"]),
+  label: zod.string(),
+  eventId: zod.string().nullish(),
+});
+
+export const DeleteDeviceParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const ListGameSessionsParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const ListGameSessionsResponseItem = zod.object({
+  id: zod.string(),
+  eventId: zod.string(),
+  gameSlug: zod.string(),
+  status: zod.enum(["idle", "running", "paused", "ended"]),
+  currentRound: zod.number(),
+  totalRounds: zod.number(),
+  startedAt: zod.coerce.date().nullish(),
+  endedAt: zod.coerce.date().nullish(),
+  createdAt: zod.coerce.date(),
+});
+export const ListGameSessionsResponse = zod.array(ListGameSessionsResponseItem);
+
+export const CreateGameSessionParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const CreateGameSessionBody = zod.object({
+  gameSlug: zod.string(),
+  totalRounds: zod.number().optional(),
+});
+
+export const UpdateGameSessionParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const UpdateGameSessionBody = zod.object({
+  status: zod.enum(["idle", "running", "paused", "ended"]).optional(),
+  currentRound: zod.number().optional(),
+});
+
+export const UpdateGameSessionResponse = zod.object({
+  id: zod.string(),
+  eventId: zod.string(),
+  gameSlug: zod.string(),
+  status: zod.enum(["idle", "running", "paused", "ended"]),
+  currentRound: zod.number(),
+  totalRounds: zod.number(),
+  startedAt: zod.coerce.date().nullish(),
+  endedAt: zod.coerce.date().nullish(),
+  createdAt: zod.coerce.date(),
+});
+
+export const ListCardSetsResponseItem = zod.object({
+  id: zod.string(),
+  tenantId: zod.string().nullish(),
+  slug: zod.string(),
+  name: zod.string(),
+  description: zod.string(),
+  adultOnly: zod.string(),
+  createdAt: zod.coerce.date(),
+});
+export const ListCardSetsResponse = zod.array(ListCardSetsResponseItem);
+
+export const CreateCardSetBody = zod.object({
+  slug: zod.string(),
+  name: zod.string(),
+  description: zod.string().optional(),
+  adultOnly: zod.string().optional(),
+});
+
+export const DeleteCardSetParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const ListCardsParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const ListCardsResponseItem = zod.object({
+  id: zod.string(),
+  cardSetId: zod.string(),
+  kind: zod.enum(["truth", "dare", "question", "challenge"]),
+  prompts: zod.record(zod.string(), zod.string()),
+  createdAt: zod.coerce.date(),
+});
+export const ListCardsResponse = zod.array(ListCardsResponseItem);
+
+export const CreateCardParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const CreateCardBody = zod.object({
+  kind: zod.enum(["truth", "dare", "question", "challenge"]),
+  prompts: zod.record(zod.string(), zod.string()),
+});
+
+export const ListQuizCategoriesResponseItem = zod.object({
+  id: zod.string(),
+  tenantId: zod.string().nullish(),
+  slug: zod.string(),
+  name: zod.record(zod.string(), zod.string()),
+  color: zod.string(),
+  createdAt: zod.coerce.date(),
+});
+export const ListQuizCategoriesResponse = zod.array(
+  ListQuizCategoriesResponseItem,
+);
+
+export const CreateQuizCategoryBody = zod.object({
+  slug: zod.string(),
+  name: zod.record(zod.string(), zod.string()),
+  color: zod.string().optional(),
+});
+
+export const DeleteQuizCategoryParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const ListSystemSettingsResponseItem = zod.object({
+  id: zod.string(),
+  tenantId: zod.string().nullish(),
+  key: zod.string(),
+  value: zod.unknown(),
+  updatedAt: zod.coerce.date(),
+});
+export const ListSystemSettingsResponse = zod.array(
+  ListSystemSettingsResponseItem,
+);
+
+export const UpsertSystemSettingBody = zod.object({
+  key: zod.string(),
+  value: zod.unknown(),
+});
+
+export const UpsertSystemSettingResponse = zod.object({
+  id: zod.string(),
+  tenantId: zod.string().nullish(),
+  key: zod.string(),
+  value: zod.unknown(),
+  updatedAt: zod.coerce.date(),
+});
+
+export const ListAuditLogResponseItem = zod.object({
+  id: zod.string(),
+  tenantId: zod.string().nullish(),
+  userId: zod.string().nullish(),
+  action: zod.string(),
+  targetType: zod.string(),
+  targetId: zod.string().nullish(),
+  payload: zod.record(zod.string(), zod.unknown()),
+  ip: zod.string().nullish(),
+  userAgent: zod.string().nullish(),
+  createdAt: zod.coerce.date(),
+});
+export const ListAuditLogResponse = zod.array(ListAuditLogResponseItem);

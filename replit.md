@@ -4,6 +4,62 @@ A luxury, hex-themed live party game platform with a real persistent backend
 (tenants, users, events, teams, players, scores, media, quizzes, translations),
 real session-based authentication, and a typed React/Vite admin console + projector hub.
 
+## Stato finale del lavoro (in italiano)
+
+### ✅ Persistente (DB + API + UI)
+
+| Area | DB | API | UI |
+| --- | --- | --- | --- |
+| Tenants / Users / Auth (sessione cookie) | ✅ | `/api/auth/*`, `/api/tenants`, `/api/users` | `/login`, `/admin/tenants`, `/admin/users` |
+| Eventi (create + current + list) | ✅ | `/api/events*` | `/event-setup` (wizard reale), Hub, Lobby |
+| Teams CRUD per evento | ✅ | `/api/events/:id/teams`, `/api/teams/:id` | `/admin/teams` (selettore evento, create, delete) |
+| Players (lista + join) | ✅ | `/api/events/:id/players` | Hub roster, Lobby (polling 4s) |
+| Scoreboard aggregata | ✅ | `/api/events/:id/scoreboard` | `/scoreboard` (podio + barre, polling 5s) |
+| Devices pairing (proiettore/controller/tablet/telefono) | ✅ tabella `device_connections` | `/api/devices` CRUD | `/admin/system` |
+| System settings (brand color, lingua, projection mode, offline-first) | ✅ tabella `system_settings` (upsert per `tenant_id+key`) | `GET/PUT /api/system-settings` | `/admin/settings` |
+| Game sessions + rounds | ✅ tabelle `game_sessions`, `rounds` | `POST /events/:id/sessions`, `PATCH /sessions/:id` | API only (control room ancora mock) |
+| Card sets / Cards | ✅ tabelle `card_sets`, `cards` | `/api/card-sets` CRUD | API only |
+| Quiz categories + responses | ✅ tabelle `quiz_categories`, `quiz_responses` | `/api/quiz-categories` CRUD | API only |
+| Audit log (chi ha fatto cosa) | ✅ tabella `audit_log` + helper `lib/audit.ts` | `GET /api/audit-log`, scritto da `device.create`, `system_settings.upsert` | API only (UI da costruire) |
+| Quizzes / Media / Translations / KPIs | ✅ già esistente | già esistente | `/admin/{quizzes,media,translations}`, Dashboard |
+
+### 🟡 Mock (segnalato in UI con banner ambra `MockBanner`)
+
+Pagine intenzionalmente lasciate mock perché fuori dallo scope del wiring backend, ma marcate visibilmente:
+
+- `/play` (Player) — flusso giocatore (nickname, team, controller). Banner: *"flusso giocatore non ancora collegato a /events/{id}/players"*.
+- `/game/:slug` (GameStage) — animazioni di stage e punteggi locali. Banner: *"punteggi non persistiti su /scores"*.
+- `/control` (LiveControl) — control room. Banner: *"non ancora collegata a /sessions/{id}"*.
+- `/permissions`, `/splash`, `/language`, `/tenant` — onboarding visivo.
+- `/admin/billing` — listino prezzi statico.
+- `DemoSwitcher` — solo navigazione.
+
+### 🔴 Bloccanti / rischi
+
+1. **No realtime layer.** Lobby/Scoreboard usano polling React Query (4-5s). Per uno show vero serve WebSocket (Socket.IO o `ws`) per joins, score updates, transizioni round, control. *Mitigazione attuale:* polling.
+2. **Upload file mancante.** Media è ancora "incolla URL". Per upload reali serve App Storage (presigned URL). *Mitigazione:* campo URL libero.
+3. **Update non esposti in UI.** `PATCH /tenants/:id`, `/users/:id`, `/events/:id`, `/devices/:id`, `/sessions/:id` esistono ma le tabelle admin offrono solo create + delete. Per ora l'editing è solo via API.
+4. **Error handling debole sulle mutations.** Pagine admin invalidano la cache su success ma molti `mutateAsync` non hanno `try/catch` con toast. EventSetup ora cattura l'errore; le altre pagine no.
+5. **`user_sessions` creata fuori migration.** Vedi sezione *Gotchas*. Servirebbe una migration Drizzle reale per produzione.
+6. **No CSRF / no rate limit / no password reset.** Non aprire a reti non fidate prima di averli aggiunti.
+7. **Game settings = `jsonb` libero.** Editor tipato non esiste.
+8. **Hub/Scoreboard richiedono auth.** Tutti i `/api/*` vogliono sessione. Per un proiettore "anonimo" servono endpoint pubblici filtrati per `joinCode`.
+9. **Player join code non consumato.** L'URL `/play?e=XXX` arriva, ma `/play` è ancora mock e non chiama `POST /events/:id/players`.
+10. **Audit log scrive best-effort.** Errori di scrittura sono swallow-ati e loggati con `req.log.error` per non rompere la mutation principale.
+
+### 🚀 Prossimi step suggeriti (in ordine)
+
+1. **Realtime con Socket.IO** sull'API server: stanze per `eventId`, eventi `player:join`, `score:update`, `session:state`. Hook React `useEventSocket(eventId)` consumato da Hub/Lobby/Scoreboard/LiveControl.
+2. **Wiring del flusso Player reale**: `/play?e=SORR40` → fetch evento per joinCode (endpoint pubblico nuovo) → `POST /events/:id/players` con nickname + team. Eliminare il `MockBanner` da `Player.tsx`.
+3. **LiveControl reale**: bottoni next round / pause / +punti che chiamano `PATCH /sessions/:id` e `POST /scores`. Eliminare il `MockBanner` da `LiveControl.tsx`.
+4. **Editor di update in admin**: dialog "Modifica" su Tenants/Users/Events/Devices con `PATCH`.
+5. **Pagina `/admin/audit`** che legge `GET /api/audit-log` (tabella già pronta, helper attivo).
+6. **Object storage per Media** (skill `object-storage`): presigned URL + sostituzione del campo URL con uploader.
+7. **Migration Drizzle ufficiale** per `user_sessions` e per le 9 nuove tabelle (oggi create via SQL out-of-band).
+8. **Hardening sicurezza**: CSRF token, rate-limit su `/auth/login`, password reset/magic link.
+
+
+
 ## Run & Operate
 
 - `pnpm --filter @workspace/api-server run dev` — run the API server (mounted at `/api`, port 8080)

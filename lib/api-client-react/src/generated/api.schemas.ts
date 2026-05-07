@@ -396,3 +396,219 @@ export interface Kpis {
   playersWeek: number;
   mrr: number;
 }
+
+export type ScoreboardEntryByGame = { [key: string]: number };
+
+export interface ScoreboardEntry {
+  teamId: string;
+  teamName: string;
+  color: string;
+  total: number;
+  byGame?: ScoreboardEntryByGame;
+}
+
+export interface UpdateScoreBody {
+  points?: number;
+  round?: number;
+}
+
+export type DeviceKind = (typeof DeviceKind)[keyof typeof DeviceKind];
+
+export const DeviceKind = {
+  projector: "projector",
+  controller: "controller",
+  player_phone: "player_phone",
+  host_tablet: "host_tablet",
+} as const;
+
+export type DeviceStatus = (typeof DeviceStatus)[keyof typeof DeviceStatus];
+
+export const DeviceStatus = {
+  pending: "pending",
+  paired: "paired",
+  disconnected: "disconnected",
+} as const;
+
+export interface Device {
+  id: string;
+  tenantId: string;
+  /** @nullable */
+  eventId?: string | null;
+  kind: DeviceKind;
+  label: string;
+  pairCode: string;
+  status: DeviceStatus;
+  /** @nullable */
+  pairedAt?: string | null;
+  lastSeenAt: string;
+  createdAt: string;
+}
+
+export type CreateDeviceBodyKind =
+  (typeof CreateDeviceBodyKind)[keyof typeof CreateDeviceBodyKind];
+
+export const CreateDeviceBodyKind = {
+  projector: "projector",
+  controller: "controller",
+  player_phone: "player_phone",
+  host_tablet: "host_tablet",
+} as const;
+
+export interface CreateDeviceBody {
+  kind: CreateDeviceBodyKind;
+  label: string;
+  /** @nullable */
+  eventId?: string | null;
+}
+
+export type GameSessionStatus =
+  (typeof GameSessionStatus)[keyof typeof GameSessionStatus];
+
+export const GameSessionStatus = {
+  idle: "idle",
+  running: "running",
+  paused: "paused",
+  ended: "ended",
+} as const;
+
+export interface GameSession {
+  id: string;
+  eventId: string;
+  gameSlug: string;
+  status: GameSessionStatus;
+  currentRound: number;
+  totalRounds: number;
+  /** @nullable */
+  startedAt?: string | null;
+  /** @nullable */
+  endedAt?: string | null;
+  createdAt: string;
+}
+
+export interface CreateGameSessionBody {
+  gameSlug: string;
+  totalRounds?: number;
+}
+
+export type UpdateGameSessionBodyStatus =
+  (typeof UpdateGameSessionBodyStatus)[keyof typeof UpdateGameSessionBodyStatus];
+
+export const UpdateGameSessionBodyStatus = {
+  idle: "idle",
+  running: "running",
+  paused: "paused",
+  ended: "ended",
+} as const;
+
+export interface UpdateGameSessionBody {
+  status?: UpdateGameSessionBodyStatus;
+  currentRound?: number;
+}
+
+export interface CardSet {
+  id: string;
+  /** @nullable */
+  tenantId?: string | null;
+  slug: string;
+  name: string;
+  description: string;
+  adultOnly: string;
+  createdAt: string;
+}
+
+export interface CreateCardSetBody {
+  slug: string;
+  name: string;
+  description?: string;
+  adultOnly?: string;
+}
+
+export type CardKind = (typeof CardKind)[keyof typeof CardKind];
+
+export const CardKind = {
+  truth: "truth",
+  dare: "dare",
+  question: "question",
+  challenge: "challenge",
+} as const;
+
+export type CardPrompts = { [key: string]: string };
+
+export interface Card {
+  id: string;
+  cardSetId: string;
+  kind: CardKind;
+  prompts: CardPrompts;
+  createdAt: string;
+}
+
+export type CreateCardBodyKind =
+  (typeof CreateCardBodyKind)[keyof typeof CreateCardBodyKind];
+
+export const CreateCardBodyKind = {
+  truth: "truth",
+  dare: "dare",
+  question: "question",
+  challenge: "challenge",
+} as const;
+
+export type CreateCardBodyPrompts = { [key: string]: string };
+
+export interface CreateCardBody {
+  kind: CreateCardBodyKind;
+  prompts: CreateCardBodyPrompts;
+}
+
+export type QuizCategoryName = { [key: string]: string };
+
+export interface QuizCategory {
+  id: string;
+  /** @nullable */
+  tenantId?: string | null;
+  slug: string;
+  name: QuizCategoryName;
+  color: string;
+  createdAt: string;
+}
+
+export type CreateQuizCategoryBodyName = { [key: string]: string };
+
+export interface CreateQuizCategoryBody {
+  slug: string;
+  name: CreateQuizCategoryBodyName;
+  color?: string;
+}
+
+export interface SystemSetting {
+  id: string;
+  /** @nullable */
+  tenantId?: string | null;
+  key: string;
+  value: unknown;
+  updatedAt: string;
+}
+
+export interface UpsertSystemSettingBody {
+  key: string;
+  value: unknown;
+}
+
+export type AuditEntryPayload = { [key: string]: unknown };
+
+export interface AuditEntry {
+  id: string;
+  /** @nullable */
+  tenantId?: string | null;
+  /** @nullable */
+  userId?: string | null;
+  action: string;
+  targetType: string;
+  /** @nullable */
+  targetId?: string | null;
+  payload: AuditEntryPayload;
+  /** @nullable */
+  ip?: string | null;
+  /** @nullable */
+  userAgent?: string | null;
+  createdAt: string;
+}

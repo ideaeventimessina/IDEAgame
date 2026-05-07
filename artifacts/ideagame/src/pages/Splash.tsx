@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
 import { motion } from 'framer-motion';
+import { MockBanner } from '@/components/MockBanner';
 import { useT } from '@/i18n';
 
 export default function Splash() {
@@ -16,6 +17,7 @@ export default function Splash() {
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background">
+      <MockBanner note="splash di onboarding visivo" />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(245,182,66,0.12),_transparent_60%)]" />
       <div className="relative flex flex-col items-center">
         <motion.div

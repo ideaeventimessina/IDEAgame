@@ -424,6 +424,227 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Kpis" }
 
+  /events/{id}/scoreboard:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: getScoreboard
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/ScoreboardEntry" } }
+
+  /scores/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    patch:
+      operationId: updateScore
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateScoreBody" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Score" }
+    delete:
+      operationId: deleteScore
+      responses:
+        "204": { description: Deleted }
+
+  /devices:
+    get:
+      operationId: listDevices
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Device" } }
+    post:
+      operationId: createDevice
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateDeviceBody" }
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Device" }
+  /devices/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    delete:
+      operationId: deleteDevice
+      responses:
+        "204": { description: Deleted }
+
+  /events/{id}/sessions:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: listGameSessions
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/GameSession" } }
+    post:
+      operationId: createGameSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateGameSessionBody" }
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameSession" }
+  /sessions/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    patch:
+      operationId: updateGameSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateGameSessionBody" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameSession" }
+
+  /card-sets:
+    get:
+      operationId: listCardSets
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/CardSet" } }
+    post:
+      operationId: createCardSet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateCardSetBody" }
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CardSet" }
+  /card-sets/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    delete:
+      operationId: deleteCardSet
+      responses:
+        "204": { description: Deleted }
+  /card-sets/{id}/cards:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: listCards
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Card" } }
+    post:
+      operationId: createCard
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateCardBody" }
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Card" }
+
+  /quiz-categories:
+    get:
+      operationId: listQuizCategories
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/QuizCategory" } }
+    post:
+      operationId: createQuizCategory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateQuizCategoryBody" }
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuizCategory" }
+  /quiz-categories/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    delete:
+      operationId: deleteQuizCategory
+      responses:
+        "204": { description: Deleted }
+
+  /system-settings:
+    get:
+      operationId: listSystemSettings
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/SystemSetting" } }
+    put:
+      operationId: upsertSystemSetting
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpsertSystemSettingBody" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SystemSetting" }
+
+  /audit-log:
+    get:
+      operationId: listAuditLog
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/AuditEntry" } }
+
 components:
   schemas:
     HealthStatus:
@@ -742,3 +963,159 @@ components:
         sessionsToday: { type: integer }
         playersWeek: { type: integer }
         mrr: { type: integer }
+
+    ScoreboardEntry:
+      type: object
+      required: [teamId, teamName, color, total]
+      properties:
+        teamId: { type: string }
+        teamName: { type: string }
+        color: { type: string }
+        total: { type: integer }
+        byGame:
+          type: object
+          additionalProperties: { type: integer }
+    UpdateScoreBody:
+      type: object
+      properties:
+        points: { type: integer }
+        round: { type: integer }
+
+    Device:
+      type: object
+      required: [id, tenantId, kind, label, pairCode, status, lastSeenAt, createdAt]
+      properties:
+        id: { type: string }
+        tenantId: { type: string }
+        eventId: { type: ["string", "null"] }
+        kind: { type: string, enum: [projector, controller, player_phone, host_tablet] }
+        label: { type: string }
+        pairCode: { type: string }
+        status: { type: string, enum: [pending, paired, disconnected] }
+        pairedAt: { type: ["string", "null"], format: date-time }
+        lastSeenAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+    CreateDeviceBody:
+      type: object
+      required: [kind, label]
+      properties:
+        kind: { type: string, enum: [projector, controller, player_phone, host_tablet] }
+        label: { type: string }
+        eventId: { type: ["string", "null"] }
+
+    GameSession:
+      type: object
+      required: [id, eventId, gameSlug, status, currentRound, totalRounds, createdAt]
+      properties:
+        id: { type: string }
+        eventId: { type: string }
+        gameSlug: { type: string }
+        status: { type: string, enum: [idle, running, paused, ended] }
+        currentRound: { type: integer }
+        totalRounds: { type: integer }
+        startedAt: { type: ["string", "null"], format: date-time }
+        endedAt: { type: ["string", "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+    CreateGameSessionBody:
+      type: object
+      required: [gameSlug]
+      properties:
+        gameSlug: { type: string }
+        totalRounds: { type: integer }
+    UpdateGameSessionBody:
+      type: object
+      properties:
+        status: { type: string, enum: [idle, running, paused, ended] }
+        currentRound: { type: integer }
+
+    CardSet:
+      type: object
+      required: [id, slug, name, description, adultOnly, createdAt]
+      properties:
+        id: { type: string }
+        tenantId: { type: ["string", "null"] }
+        slug: { type: string }
+        name: { type: string }
+        description: { type: string }
+        adultOnly: { type: string }
+        createdAt: { type: string, format: date-time }
+    CreateCardSetBody:
+      type: object
+      required: [slug, name]
+      properties:
+        slug: { type: string }
+        name: { type: string }
+        description: { type: string }
+        adultOnly: { type: string }
+    Card:
+      type: object
+      required: [id, cardSetId, kind, prompts, createdAt]
+      properties:
+        id: { type: string }
+        cardSetId: { type: string }
+        kind: { type: string, enum: [truth, dare, question, challenge] }
+        prompts:
+          type: object
+          additionalProperties: { type: string }
+        createdAt: { type: string, format: date-time }
+    CreateCardBody:
+      type: object
+      required: [kind, prompts]
+      properties:
+        kind: { type: string, enum: [truth, dare, question, challenge] }
+        prompts:
+          type: object
+          additionalProperties: { type: string }
+
+    QuizCategory:
+      type: object
+      required: [id, slug, name, color, createdAt]
+      properties:
+        id: { type: string }
+        tenantId: { type: ["string", "null"] }
+        slug: { type: string }
+        name:
+          type: object
+          additionalProperties: { type: string }
+        color: { type: string }
+        createdAt: { type: string, format: date-time }
+    CreateQuizCategoryBody:
+      type: object
+      required: [slug, name]
+      properties:
+        slug: { type: string }
+        name:
+          type: object
+          additionalProperties: { type: string }
+        color: { type: string }
+
+    SystemSetting:
+      type: object
+      required: [id, key, value, updatedAt]
+      properties:
+        id: { type: string }
+        tenantId: { type: ["string", "null"] }
+        key: { type: string }
+        value: {}
+        updatedAt: { type: string, format: date-time }
+    UpsertSystemSettingBody:
+      type: object
+      required: [key, value]
+      properties:
+        key: { type: string }
+        value: {}
+
+    AuditEntry:
+      type: object
+      required: [id, action, targetType, payload, createdAt]
+      properties:
+        id: { type: string }
+        tenantId: { type: ["string", "null"] }
+        userId: { type: ["string", "null"] }
+        action: { type: string }
+        targetType: { type: string }
+        targetId: { type: ["string", "null"] }
+        payload: { type: object, additionalProperties: true }
+        ip: { type: ["string", "null"] }
+        userAgent: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }

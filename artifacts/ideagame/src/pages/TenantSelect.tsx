@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
 import { TENANTS } from '@/data/mock';
+import { MockBanner } from '@/components/MockBanner';
 import { Building2, Search, WifiOff, ChevronRight } from 'lucide-react';
 
 export default function TenantSelect() {
@@ -21,6 +22,7 @@ export default function TenantSelect() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center px-6">
+      <MockBanner note="selezione tenant da mock — usa /login per autenticazione reale" />
       <div className="text-center">
         <div className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Step 2 of 3</div>
         <div className="mt-3 text-display text-5xl font-black">Identifica il locale</div>

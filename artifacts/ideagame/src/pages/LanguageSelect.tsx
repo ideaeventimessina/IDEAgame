@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useLocation } from 'wouter';
 import { useI18n, LOCALES } from '@/i18n';
+import { MockBanner } from '@/components/MockBanner';
 import { Hexagon } from '@/components/Hexagon';
 import { Check } from 'lucide-react';
 
@@ -18,6 +19,7 @@ export default function LanguageSelect() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center px-6">
+      <MockBanner note="onboarding lingua — non persistito su user.locale" />
       <div className="text-center">
         <div className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Step 1 of 3</div>
         <div className="mt-3 text-display text-5xl font-black">Scegli la lingua / Choose your language</div>

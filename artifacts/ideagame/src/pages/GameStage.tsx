@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useRoute, useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
+import { MockBanner } from '@/components/MockBanner';
 import { ArrowLeft, Play, Sparkles } from 'lucide-react';
 import { GAMES, TEAMS, QUESTIONS, getGame } from '@/data/mock';
 import { GameIcon } from '@/components/GameIcon';
@@ -163,6 +164,7 @@ export default function GameStage() {
 
   return (
     <div className="relative min-h-screen w-full overflow-hidden stage-vignette" style={{ background: `radial-gradient(ellipse at 50% 0%, ${accent}25, transparent 60%), hsl(var(--background))` }}>
+      <MockBanner note="stage di gioco animato — punteggi non persistiti su /scores" />
       {/* Adult gate */}
       <AnimatePresence>
         {!adultOk && (

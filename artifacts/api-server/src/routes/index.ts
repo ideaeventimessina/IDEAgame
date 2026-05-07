@@ -9,10 +9,17 @@ import eventsRouter from "./events";
 import teamsRouter from "./teams";
 import playersRouter from "./players";
 import scoresRouter from "./scores";
+import scoreboardRouter from "./scoreboard";
 import mediaRouter from "./media";
 import questionsRouter from "./questions";
 import translationsRouter from "./translations";
 import kpisRouter from "./kpis";
+import devicesRouter from "./devices";
+import gameSessionsRouter from "./game-sessions";
+import cardSetsRouter from "./card-sets";
+import quizCategoriesRouter from "./quiz-categories";
+import systemSettingsRouter from "./system-settings";
+import auditLogRouter from "./audit-log";
 
 const router: IRouter = Router();
 
@@ -26,9 +33,16 @@ router.use(eventsRouter);
 router.use(teamsRouter);
 router.use(playersRouter);
 router.use(scoresRouter);
+router.use(scoreboardRouter);
 router.use(mediaRouter);
 router.use(questionsRouter);
 router.use(translationsRouter);
 router.use(kpisRouter);
+router.use(devicesRouter);
+router.use(gameSessionsRouter);
+router.use(cardSetsRouter);
+router.use(quizCategoriesRouter);
+router.use(systemSettingsRouter);
+router.use(auditLogRouter);
 
 export default router;

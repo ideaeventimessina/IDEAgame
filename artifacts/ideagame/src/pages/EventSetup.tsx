@@ -1,19 +1,65 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
-import { GAMES } from '@/data/mock';
-import { Calendar, MapPin, Users, Image as ImageIcon, Save, ArrowRight } from 'lucide-react';
+import { Calendar, MapPin, Users, Image as ImageIcon, Save, ArrowRight, Loader2 } from 'lucide-react';
+import {
+  useListGames,
+  useCreateEvent,
+  useUpdateEvent,
+  getListEventsQueryKey,
+  getGetCurrentEventQueryKey,
+} from '@workspace/api-client-react';
+import { useQueryClient } from '@tanstack/react-query';
 
 export default function EventSetup() {
   const [, navigate] = useLocation();
+  const qc = useQueryClient();
+  const { data: games = [] } = useListGames();
+  const createEvent = useCreateEvent();
+  const updateEvent = useUpdateEvent();
+
   const [name, setName] = useState('Compleanno Sorrento 40');
   const [venue, setVenue] = useState('Hotel Mediterraneo');
-  const [date, setDate] = useState('2026-05-12T20:30');
+  const [date, setDate] = useState(() => new Date(Date.now() + 24 * 3600 * 1000).toISOString().slice(0, 16));
   const [players, setPlayers] = useState(20);
   const [color, setColor] = useState('#F5B642');
-  const [enabled, setEnabled] = useState<string[]>(GAMES.map(g => g.slug));
+  const [enabled, setEnabled] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const initRef = useRef(false);
+
+  useEffect(() => {
+    if (!initRef.current && games.length > 0) {
+      initRef.current = true;
+      setEnabled(games.map(g => g.slug));
+    }
+  }, [games]);
 
   const toggle = (slug: string) =>
     setEnabled(e => e.includes(slug) ? e.filter(x => x !== slug) : [...e, slug]);
+
+  const onSave = async (then: 'admin' | 'lobby') => {
+    setError(null);
+    try {
+      const created = await createEvent.mutateAsync({
+        data: {
+          name,
+          venue,
+          startsAt: new Date(date).toISOString(),
+          brandColor: color,
+          expectedPlayers: players,
+          enabledGames: enabled,
+        },
+      });
+      const id = (created as { id: string }).id;
+      if (then === 'lobby') {
+        await updateEvent.mutateAsync({ id, data: { status: 'live' } });
+      }
+      await qc.invalidateQueries({ queryKey: getListEventsQueryKey() });
+      await qc.invalidateQueries({ queryKey: getGetCurrentEventQueryKey() });
+      navigate(then === 'lobby' ? `/lobby?e=${id}` : '/admin');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Errore salvataggio');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background px-6 py-10">
@@ -51,7 +97,7 @@ export default function EventSetup() {
           <div className="rounded-2xl border border-border bg-card p-6">
             <div className="text-display text-lg font-black">Giochi attivi</div>
             <div className="mt-4 grid grid-cols-2 gap-3">
-              {GAMES.map(g => {
+              {games.map(g => {
                 const on = enabled.includes(g.slug);
                 return (
                   <button key={g.id} onClick={() => toggle(g.slug)}
@@ -64,17 +110,27 @@ export default function EventSetup() {
                 );
               })}
             </div>
-            <div className="mt-5 text-xs text-muted-foreground">{enabled.length} di {GAMES.length} giochi selezionati</div>
+            <div className="mt-5 text-xs text-muted-foreground">{enabled.length} di {games.length} giochi selezionati</div>
           </div>
         </div>
 
+        {error && <div className="mt-4 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>}
+
         <div className="mt-8 flex items-center justify-end gap-3">
-          <button className="inline-flex items-center gap-2 rounded-xl border border-border px-5 py-3 text-sm font-bold hover-elevate">
+          <button
+            disabled={createEvent.isPending}
+            onClick={() => onSave('admin')}
+            className="inline-flex items-center gap-2 rounded-xl border border-border px-5 py-3 text-sm font-bold hover-elevate disabled:opacity-50"
+          >
             <Save className="h-4 w-4" /> Salva bozza
           </button>
-          <button onClick={() => navigate('/lobby')}
-            className="inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-bold text-primary-foreground shadow-[0_0_30px_rgba(245,182,66,0.35)] hover-elevate">
-            Salva e apri lobby <ArrowRight className="h-4 w-4" />
+          <button
+            disabled={createEvent.isPending}
+            onClick={() => onSave('lobby')}
+            className="inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-bold text-primary-foreground shadow-[0_0_30px_rgba(245,182,66,0.35)] hover-elevate disabled:opacity-50"
+          >
+            {createEvent.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+            Salva e apri lobby
           </button>
         </div>
       </div>

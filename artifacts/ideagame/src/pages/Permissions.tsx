@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useLocation } from 'wouter';
 import { Mic, MoveDiagonal, Camera, Check, X } from 'lucide-react';
+import { MockBanner } from '@/components/MockBanner';
 
 type Status = 'pending' | 'granted' | 'denied';
 
@@ -39,6 +40,7 @@ export default function Permissions() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6">
+      <MockBanner note="schermata di onboarding — i permessi non sono richiesti realmente" />
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2">
           {ITEMS.map((it, i) => (

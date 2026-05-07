@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Zap, Check } from 'lucide-react';
+import { MockBanner } from '@/components/MockBanner';
 import { TEAMS, QUESTIONS } from '@/data/mock';
 import { useT, useI18n, LOCALES } from '@/i18n';
 
@@ -20,6 +21,7 @@ export default function Player() {
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-md flex-col px-5 py-6"
          style={{ background: 'radial-gradient(ellipse at top, hsl(248 70% 12%), hsl(248 70% 4%))' }}>
+      <MockBanner note="flusso giocatore non ancora collegato a /events/{id}/players" />
       <header className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground text-display font-black">I</div>
