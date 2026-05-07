@@ -1,12 +1,11 @@
 import { Link, useLocation } from 'wouter';
 import {
   LayoutDashboard, Gamepad2, BookOpen, Image as ImageIcon, Users2,
-  Building2, CreditCard, ShieldCheck, Languages, Settings as SettingsIcon, Search
+  Building2, CreditCard, ShieldCheck, Languages, Settings as SettingsIcon, Search, LogOut
 } from 'lucide-react';
 import { useT } from '@/i18n';
 import { LocaleSwitcher } from '@/components/LocaleSwitcher';
 import { ADMIN_NAV, useAuth, canSee } from '@/auth/roles';
-import type { Role } from '@/data/types';
 import type { ReactNode } from 'react';
 
 const ICONS: Record<string, typeof LayoutDashboard> = {
@@ -15,12 +14,10 @@ const ICONS: Record<string, typeof LayoutDashboard> = {
   translations: Languages, settings: SettingsIcon,
 };
 
-const ALL_ROLES: Role[] = ['super_admin', 'tenant_owner', 'game_manager', 'entertainer'];
-
 export function AdminLayout({ children, title }: { children: ReactNode; title: string }) {
   const t = useT();
-  const [location] = useLocation();
-  const { role, setRole } = useAuth();
+  const [location, navigate] = useLocation();
+  const { role, user, logout } = useAuth();
 
   return (
     <div className="grid min-h-screen w-full grid-cols-[280px_1fr]">
@@ -53,18 +50,23 @@ export function AdminLayout({ children, title }: { children: ReactNode; title: s
         </nav>
 
         <div className="border-t border-sidebar-border p-4">
-          <div className="rounded-xl bg-sidebar-accent/40 p-3">
-            <div className="text-xs uppercase tracking-widest text-muted-foreground">Role</div>
-            <select
-              value={role}
-              onChange={e => setRole(e.target.value as Role)}
-              className="mt-1 w-full rounded-md border border-border bg-card px-2 py-1.5 text-sm font-bold"
-            >
-              {ALL_ROLES.map(r => (
-                <option key={r} value={r}>{t(`admin.role.${r}`)}</option>
-              ))}
-            </select>
-          </div>
+          {user ? (
+            <div className="rounded-xl bg-sidebar-accent/40 p-3">
+              <div className="text-xs uppercase tracking-widest text-muted-foreground">{t(`admin.role.${role}`)}</div>
+              <div className="mt-1 truncate text-sm font-bold">{user.name}</div>
+              <div className="truncate text-xs text-muted-foreground">{user.tenantName ?? '—'}</div>
+              <button
+                onClick={async () => { await logout(); navigate('/login'); }}
+                className="mt-2 flex w-full items-center justify-center gap-2 rounded-md border border-border bg-card px-2 py-1.5 text-xs font-bold hover-elevate"
+              >
+                <LogOut className="h-3 w-3" /> Logout
+              </button>
+            </div>
+          ) : (
+            <button onClick={() => navigate('/login')} className="w-full rounded-xl bg-primary px-3 py-2 text-sm font-bold text-primary-foreground">
+              Login
+            </button>
+          )}
         </div>
       </aside>
 

@@ -2,23 +2,30 @@ import { useState } from 'react';
 import { useLocation } from 'wouter';
 import { useAuth } from '@/auth/roles';
 import { useI18n, LOCALES } from '@/i18n';
-import { USERS } from '@/data/mock';
-import { Lock, Mail, Sparkles } from 'lucide-react';
+import { Lock, Mail } from 'lucide-react';
 
 export default function Login() {
   const [, navigate] = useLocation();
-  const { setRole, setCurrentUserId } = useAuth();
+  const { login } = useAuth();
   const { locale, setLocale } = useI18n();
-  const [email, setEmail] = useState('entertainer@mango.events');
-  const [password, setPassword] = useState('demo');
+  const [email, setEmail] = useState('admin@ideagame.app');
+  const [password, setPassword] = useState('ideagame');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const u = USERS.find(u => u.email === email) ?? USERS[0]!;
-    setCurrentUserId(u.id);
-    setRole(u.role);
-    if (u.role === 'entertainer' || u.role === 'game_manager') navigate('/');
-    else navigate('/admin');
+    setError(null);
+    setBusy(true);
+    try {
+      const u = await login(email, password);
+      if (u.role === 'entertainer' || u.role === 'game_manager') navigate('/');
+      else navigate('/admin');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Login failed');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -37,22 +44,28 @@ export default function Login() {
             <div className="mb-1 text-xs uppercase tracking-widest text-muted-foreground">Email</div>
             <div className="flex items-center gap-2 rounded-xl border border-border bg-background/50 px-3 py-3">
               <Mail className="h-4 w-4 text-muted-foreground" />
-              <input value={email} onChange={e => setEmail(e.target.value)} type="email" className="w-full bg-transparent outline-none" />
+              <input value={email} onChange={e => setEmail(e.target.value)} type="email" className="w-full bg-transparent outline-none" autoComplete="email" />
             </div>
           </label>
           <label className="block">
             <div className="mb-1 text-xs uppercase tracking-widest text-muted-foreground">Password</div>
             <div className="flex items-center gap-2 rounded-xl border border-border bg-background/50 px-3 py-3">
               <Lock className="h-4 w-4 text-muted-foreground" />
-              <input value={password} onChange={e => setPassword(e.target.value)} type="password" className="w-full bg-transparent outline-none" />
+              <input value={password} onChange={e => setPassword(e.target.value)} type="password" className="w-full bg-transparent outline-none" autoComplete="current-password" />
             </div>
           </label>
-          <button type="submit" className="w-full rounded-xl bg-primary py-3 font-bold text-primary-foreground hover-elevate">Accedi</button>
-          <button type="button" className="flex w-full items-center justify-center gap-2 rounded-xl border border-border py-3 text-sm font-semibold hover-elevate">
-            <Sparkles className="h-4 w-4" /> Invia magic link
+          {error && <div className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
+          <button type="submit" disabled={busy} className="w-full rounded-xl bg-primary py-3 font-bold text-primary-foreground hover-elevate disabled:opacity-50">
+            {busy ? 'Accesso…' : 'Accedi'}
           </button>
-          <div className="text-center text-xs text-muted-foreground">
-            Demo: usa una qualsiasi email da <code className="text-primary">USERS</code>, password <code className="text-primary">demo</code>
+          <div className="rounded-lg bg-muted/30 p-3 text-center text-xs text-muted-foreground">
+            <div className="font-semibold text-foreground">Account di test (password: <code className="text-primary">ideagame</code>)</div>
+            <div className="mt-1 grid gap-0.5">
+              <div>admin@ideagame.app — super admin</div>
+              <div>owner@mango.events — tenant owner</div>
+              <div>manager@mango.events — game manager</div>
+              <div>host@mango.events — entertainer</div>
+            </div>
           </div>
         </form>
 

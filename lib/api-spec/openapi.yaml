@@ -1,36 +1,744 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
 servers:
   - url: /api
-    description: Base API path
-tags:
-  - name: health
-    description: Health operations
 paths:
   /healthz:
     get:
       operationId: healthCheck
-      tags: [health]
-      summary: Health check
-      description: Returns server health status
       responses:
         "200":
-          description: Healthy
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthStatus" }
+
+  /auth/login:
+    post:
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginBody" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Me" }
+        "401":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /auth/logout:
+    post:
+      operationId: logout
+      responses:
+        "204": { description: Logged out }
+
+  /auth/me:
+    get:
+      operationId: getMe
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Me" }
+        "401":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /tenants:
+    get:
+      operationId: listTenants
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Tenant" } }
+    post:
+      operationId: createTenant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateTenantBody" }
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Tenant" }
+  /tenants/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    patch:
+      operationId: updateTenant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateTenantBody" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Tenant" }
+    delete:
+      operationId: deleteTenant
+      responses:
+        "204": { description: Deleted }
+
+  /users:
+    get:
+      operationId: listUsers
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/User" } }
+    post:
+      operationId: createUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateUserBody" }
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+  /users/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    patch:
+      operationId: updateUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateUserBody" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+    delete:
+      operationId: deleteUser
+      responses:
+        "204": { description: Deleted }
+
+  /games:
+    get:
+      operationId: listGames
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Game" } }
+
+  /events:
+    get:
+      operationId: listEvents
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Event" } }
+    post:
+      operationId: createEvent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateEventBody" }
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Event" }
+  /events/current:
+    get:
+      operationId: getCurrentEvent
+      responses:
+        "200":
+          description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/HealthStatus"
+                oneOf:
+                  - { $ref: "#/components/schemas/Event" }
+                  - { type: "null" }
+  /events/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: getEvent
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Event" }
+    patch:
+      operationId: updateEvent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateEventBody" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Event" }
+    delete:
+      operationId: deleteEvent
+      responses:
+        "204": { description: Deleted }
+
+  /events/{id}/teams:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: listTeams
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Team" } }
+    post:
+      operationId: createTeam
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateTeamBody" }
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Team" }
+  /teams/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    patch:
+      operationId: updateTeam
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateTeamBody" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Team" }
+    delete:
+      operationId: deleteTeam
+      responses:
+        "204": { description: Deleted }
+
+  /events/{id}/players:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: listPlayers
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Player" } }
+    post:
+      operationId: joinPlayer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreatePlayerBody" }
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Player" }
+
+  /players/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    delete:
+      operationId: deletePlayer
+      responses:
+        "204": { description: Deleted }
+
+  /events/{id}/scores:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: listScores
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Score" } }
+    post:
+      operationId: recordScore
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateScoreBody" }
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Score" }
+
+  /media:
+    get:
+      operationId: listMedia
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Media" } }
+    post:
+      operationId: createMedia
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateMediaBody" }
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Media" }
+  /media/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    delete:
+      operationId: deleteMedia
+      responses:
+        "204": { description: Deleted }
+
+  /questions:
+    get:
+      operationId: listQuestions
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Question" } }
+    post:
+      operationId: createQuestion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateQuestionBody" }
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Question" }
+  /questions/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    patch:
+      operationId: updateQuestion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateQuestionBody" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Question" }
+    delete:
+      operationId: deleteQuestion
+      responses:
+        "204": { description: Deleted }
+
+  /translations:
+    get:
+      operationId: listTranslations
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Translation" } }
+    put:
+      operationId: upsertTranslation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpsertTranslationBody" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Translation" }
+
+  /kpis:
+    get:
+      operationId: getKpis
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Kpis" }
+
 components:
   schemas:
     HealthStatus:
       type: object
+      required: [status]
       properties:
-        status:
-          type: string
-      required:
-        - status
+        status: { type: string }
 
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+    LoginBody:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string }
+        password: { type: string }
+
+    Me:
+      type: object
+      required: [id, email, name, role, locale]
+      properties:
+        id: { type: string }
+        email: { type: string }
+        name: { type: string }
+        role:
+          type: string
+          enum: [super_admin, tenant_owner, game_manager, entertainer, player]
+        locale: { type: string }
+        tenantId: { type: ["string", "null"] }
+        tenantName: { type: ["string", "null"] }
+
+    Tenant:
+      type: object
+      required: [id, slug, name, plan, status, brandColor, locale, mrr, createdAt]
+      properties:
+        id: { type: string }
+        slug: { type: string }
+        name: { type: string }
+        plan: { type: string }
+        status: { type: string, enum: [active, suspended, trial] }
+        brandColor: { type: string }
+        locale: { type: string }
+        mrr: { type: integer }
+        createdAt: { type: string, format: date-time }
+    CreateTenantBody:
+      type: object
+      required: [slug, name]
+      properties:
+        slug: { type: string }
+        name: { type: string }
+        plan: { type: string }
+        brandColor: { type: string }
+        locale: { type: string }
+    UpdateTenantBody:
+      type: object
+      properties:
+        name: { type: string }
+        plan: { type: string }
+        status: { type: string, enum: [active, suspended, trial] }
+        brandColor: { type: string }
+        locale: { type: string }
+        mrr: { type: integer }
+
+    User:
+      type: object
+      required: [id, email, name, role, locale, createdAt]
+      properties:
+        id: { type: string }
+        email: { type: string }
+        name: { type: string }
+        role:
+          type: string
+          enum: [super_admin, tenant_owner, game_manager, entertainer, player]
+        locale: { type: string }
+        tenantId: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+    CreateUserBody:
+      type: object
+      required: [email, name, password, role]
+      properties:
+        email: { type: string }
+        name: { type: string }
+        password: { type: string }
+        role:
+          type: string
+          enum: [super_admin, tenant_owner, game_manager, entertainer, player]
+        locale: { type: string }
+        tenantId: { type: ["string", "null"] }
+    UpdateUserBody:
+      type: object
+      properties:
+        name: { type: string }
+        role:
+          type: string
+          enum: [super_admin, tenant_owner, game_manager, entertainer, player]
+        locale: { type: string }
+        password: { type: string }
+
+    Game:
+      type: object
+      required: [id, slug, name, tagline, accentColor, icon, enabled, adultOnly, settings]
+      properties:
+        id: { type: string }
+        slug: { type: string }
+        name: { type: string }
+        tagline: { type: string }
+        accentColor: { type: string }
+        icon: { type: string }
+        enabled: { type: boolean }
+        adultOnly: { type: boolean }
+        settings:
+          type: object
+          required: [rounds, timeLimit, scoringWeight]
+          properties:
+            rounds: { type: integer }
+            timeLimit: { type: integer }
+            scoringWeight: { type: number }
+
+    Event:
+      type: object
+      required: [id, tenantId, name, venue, startsAt, status, brandColor, expectedPlayers, enabledGames, joinCode, createdAt]
+      properties:
+        id: { type: string }
+        tenantId: { type: string }
+        name: { type: string }
+        venue: { type: string }
+        startsAt: { type: string, format: date-time }
+        status: { type: string, enum: [draft, scheduled, live, ended] }
+        brandColor: { type: string }
+        expectedPlayers: { type: integer }
+        enabledGames: { type: array, items: { type: string } }
+        joinCode: { type: string }
+        createdAt: { type: string, format: date-time }
+    CreateEventBody:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        venue: { type: string }
+        startsAt: { type: string, format: date-time }
+        brandColor: { type: string }
+        expectedPlayers: { type: integer }
+        enabledGames: { type: array, items: { type: string } }
+    UpdateEventBody:
+      type: object
+      properties:
+        name: { type: string }
+        venue: { type: string }
+        startsAt: { type: string, format: date-time }
+        status: { type: string, enum: [draft, scheduled, live, ended] }
+        brandColor: { type: string }
+        expectedPlayers: { type: integer }
+        enabledGames: { type: array, items: { type: string } }
+
+    Team:
+      type: object
+      required: [id, eventId, name, color, score, createdAt]
+      properties:
+        id: { type: string }
+        eventId: { type: string }
+        name: { type: string }
+        color: { type: string }
+        score: { type: integer }
+        createdAt: { type: string, format: date-time }
+    CreateTeamBody:
+      type: object
+      required: [name, color]
+      properties:
+        name: { type: string }
+        color: { type: string }
+    UpdateTeamBody:
+      type: object
+      properties:
+        name: { type: string }
+        color: { type: string }
+        score: { type: integer }
+
+    Player:
+      type: object
+      required: [id, eventId, nickname, avatarColor, isConnected, createdAt]
+      properties:
+        id: { type: string }
+        eventId: { type: string }
+        teamId: { type: ["string", "null"] }
+        nickname: { type: string }
+        avatarColor: { type: string }
+        isConnected: { type: boolean }
+        createdAt: { type: string, format: date-time }
+    CreatePlayerBody:
+      type: object
+      required: [nickname]
+      properties:
+        nickname: { type: string }
+        avatarColor: { type: string }
+        teamId: { type: ["string", "null"] }
+
+    Score:
+      type: object
+      required: [id, eventId, teamId, gameSlug, round, points, createdAt]
+      properties:
+        id: { type: string }
+        eventId: { type: string }
+        teamId: { type: string }
+        gameSlug: { type: string }
+        round: { type: integer }
+        points: { type: integer }
+        createdAt: { type: string, format: date-time }
+    CreateScoreBody:
+      type: object
+      required: [teamId, gameSlug, points]
+      properties:
+        teamId: { type: string }
+        gameSlug: { type: string }
+        round: { type: integer }
+        points: { type: integer }
+
+    Media:
+      type: object
+      required: [id, tenantId, name, kind, url, sizeBytes, tags, createdAt]
+      properties:
+        id: { type: string }
+        tenantId: { type: string }
+        name: { type: string }
+        kind: { type: string, enum: [image, audio, video] }
+        url: { type: string }
+        sizeBytes: { type: integer }
+        tags: { type: array, items: { type: string } }
+        createdAt: { type: string, format: date-time }
+    CreateMediaBody:
+      type: object
+      required: [name, kind, url]
+      properties:
+        name: { type: string }
+        kind: { type: string, enum: [image, audio, video] }
+        url: { type: string }
+        sizeBytes: { type: integer }
+        tags: { type: array, items: { type: string } }
+
+    Question:
+      type: object
+      required: [id, category, difficulty, timeLimit, prompts, options, correctIndex, createdAt]
+      properties:
+        id: { type: string }
+        tenantId: { type: ["string", "null"] }
+        category: { type: string }
+        difficulty: { type: string, enum: [easy, medium, hard] }
+        timeLimit: { type: integer }
+        prompts:
+          type: object
+          additionalProperties: { type: string }
+        options:
+          type: array
+          items:
+            type: object
+            additionalProperties: { type: string }
+        correctIndex: { type: integer }
+        createdAt: { type: string, format: date-time }
+    CreateQuestionBody:
+      type: object
+      required: [category, prompts, options, correctIndex]
+      properties:
+        category: { type: string }
+        difficulty: { type: string, enum: [easy, medium, hard] }
+        timeLimit: { type: integer }
+        prompts:
+          type: object
+          additionalProperties: { type: string }
+        options:
+          type: array
+          items:
+            type: object
+            additionalProperties: { type: string }
+        correctIndex: { type: integer }
+    UpdateQuestionBody:
+      type: object
+      properties:
+        category: { type: string }
+        difficulty: { type: string, enum: [easy, medium, hard] }
+        timeLimit: { type: integer }
+        prompts:
+          type: object
+          additionalProperties: { type: string }
+        options:
+          type: array
+          items:
+            type: object
+            additionalProperties: { type: string }
+        correctIndex: { type: integer }
+
+    Translation:
+      type: object
+      required: [id, key, locale, value, updatedAt]
+      properties:
+        id: { type: string }
+        key: { type: string }
+        locale: { type: string }
+        value: { type: string }
+        updatedAt: { type: string, format: date-time }
+    UpsertTranslationBody:
+      type: object
+      required: [key, locale, value]
+      properties:
+        key: { type: string }
+        locale: { type: string }
+        value: { type: string }
+
+    Kpis:
+      type: object
+      required: [tenants, sessionsToday, playersWeek, mrr]
+      properties:
+        tenants: { type: integer }
+        sessionsToday: { type: integer }
+        playersWeek: { type: integer }
+        mrr: { type: integer }
