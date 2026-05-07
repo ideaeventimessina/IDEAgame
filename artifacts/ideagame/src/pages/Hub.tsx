@@ -11,6 +11,9 @@ import { useListGames, useGetCurrentEvent, useListPlayers, getListPlayersQueryKe
 
 type IconName = Parameters<typeof GameIcon>[0]['name'];
 
+// Slugs that are fully playable (green PRONTO badge)
+const READY_SLUGS = new Set(['quizzone', 'gioco-coppie', 'gioco-delle-coppie']);
+
 // Orbital positions — max |x|=1.5 ensures hexes stay inside canvas at all sizes
 const POSITIONS = [
   { x: -1,   y: -1 },
@@ -32,6 +35,22 @@ const D_OY  = 156;   // orbit radius y
 const T_HEX = 106;
 const T_OX  =  94;
 const T_OY  = 106;
+
+function StatusBadge({ slug, size = 'sm' }: { slug: string; size?: 'xs' | 'sm' }) {
+  const ready = READY_SLUGS.has(slug);
+  const cls = size === 'xs'
+    ? 'px-1.5 py-0.5 text-[8px]'
+    : 'px-2 py-0.5 text-[9px]';
+  return ready ? (
+    <div className={`rounded-full border border-green-500/60 bg-green-500/15 font-black uppercase tracking-widest text-green-400 ${cls}`}>
+      PRONTO
+    </div>
+  ) : (
+    <div className={`rounded-full border border-amber-500/60 bg-amber-500/10 font-black uppercase tracking-widest text-amber-400 ${cls}`}>
+      DEMO
+    </div>
+  );
+}
 
 export default function Hub() {
   const t = useT();
@@ -85,14 +104,16 @@ export default function Hub() {
                 top:  ch / 2 + pos.y * oy - hex * 1.06 / 2,
               }}>
               <Hexagon color={g.accentColor} size={hex} delay={0.05 + i * 0.07} onClick={() => navigate(`/game/${g.slug}`)}>
-                <div className="mb-2 flex items-center justify-center rounded-xl"
+                <div className="mb-1.5 flex items-center justify-center rounded-xl"
                   style={{ width: hex * 0.38, height: hex * 0.38, background: `${g.accentColor}22`, color: g.accentColor }}>
                   <GameIcon name={g.icon as IconName} style={{ width: hex * 0.24, height: hex * 0.24 }} />
                 </div>
                 <div className="text-display font-black leading-tight text-center line-clamp-2" style={{ fontSize: Math.max(11, hex * 0.10), color: g.accentColor }}>{g.name}</div>
-                <div className="mt-1 text-center text-muted-foreground line-clamp-2" style={{ fontSize: Math.max(9, hex * 0.075) }}>{g.tagline}</div>
+                <div className="mt-0.5 flex justify-center">
+                  <StatusBadge slug={g.slug} size="xs" />
+                </div>
                 {g.adultOnly && (
-                  <div className="mt-2 rounded-full border border-destructive/60 bg-destructive/10 px-2 py-0.5 text-destructive font-bold uppercase tracking-widest" style={{ fontSize: hex * 0.07 }}>18+</div>
+                  <div className="mt-1 rounded-full border border-destructive/60 bg-destructive/10 px-2 py-0.5 text-destructive font-bold uppercase tracking-widest" style={{ fontSize: hex * 0.07 }}>18+</div>
                 )}
               </Hexagon>
             </div>
@@ -171,6 +192,9 @@ export default function Hub() {
           <GameIcon name={g.icon as IconName} className="h-7 w-7" />
         </div>
         <div className="relative z-10 text-display text-sm font-black leading-tight" style={{ color: g.accentColor }}>{g.name}</div>
+        <div className="relative z-10">
+          <StatusBadge slug={g.slug} size="xs" />
+        </div>
         <div className="relative z-10 text-xs text-muted-foreground line-clamp-2">{g.tagline}</div>
         {g.adultOnly && (
           <div className="relative z-10 rounded-full border border-destructive/60 bg-destructive/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-destructive">18+</div>

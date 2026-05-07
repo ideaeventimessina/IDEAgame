@@ -1,5 +1,5 @@
-import { Router, type IRouter, type Response } from "express";
-import { eq, desc } from "drizzle-orm";
+import { Router, type IRouter, type Response, type Request } from "express";
+import { eq, desc, ne, and } from "drizzle-orm";
 import { db, gameSessionsTable, eventsTable } from "@workspace/db";
 import { ListGameSessionsResponse, CreateGameSessionBody, UpdateGameSessionBody } from "@workspace/api-zod";
 import { type AuthedRequest, requireAuth } from "../middlewares/auth";
@@ -14,6 +14,20 @@ async function eventOwned(req: AuthedRequest, eventId: string) {
   if (req.user!.role !== "super_admin" && e.tenantId !== req.user!.tenantId) return null;
   return e;
 }
+
+// ── Public: current non-ended session for a given event (used by player phones) ─
+router.get("/events/:id/active-session", async (req: Request, res): Promise<void> => {
+  const eventId = String(req.params["id"]);
+  const rows = await db
+    .select()
+    .from(gameSessionsTable)
+    .where(and(eq(gameSessionsTable.eventId, eventId), ne(gameSessionsTable.status, "ended")))
+    .orderBy(desc(gameSessionsTable.createdAt))
+    .limit(1);
+  const s = rows[0];
+  if (!s) { res.json(null); return; }
+  res.json({ id: s.id, status: s.status, gameSlug: s.gameSlug, currentRound: s.currentRound, totalRounds: s.totalRounds });
+});
 
 router.get("/events/:id/sessions", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
   const eventId = String(req.params["id"]);

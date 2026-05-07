@@ -14,8 +14,16 @@ export default function Scoreboard() {
   const t = useT();
   const [, navigate] = useLocation();
   const qc = useQueryClient();
-  const { data: event } = useGetCurrentEvent();
-  const eventId = event?.id ?? '';
+
+  // Accept ?e=eventId from URL (e.g. when navigated from LiveControl)
+  const urlParams = new URLSearchParams(
+    typeof window !== 'undefined' ? window.location.search : ''
+  );
+  const eventIdFromUrl = urlParams.get('e') ?? '';
+
+  const { data: currentEvent } = useGetCurrentEvent();
+  const eventId = eventIdFromUrl || currentEvent?.id || '';
+  const eventName = currentEvent?.name ?? (eventIdFromUrl ? 'Evento' : '');
 
   const { connected: socketConnected, on } = useEventSocket(eventId || null);
 
@@ -27,7 +35,6 @@ export default function Scoreboard() {
     },
   });
 
-  // Realtime: refetch scoreboard on score/team updates
   useEffect(() => {
     if (!eventId) return;
     const unsubs = [
@@ -36,6 +43,7 @@ export default function Scoreboard() {
     ];
     return () => unsubs.forEach(u => u());
   }, [eventId, on, qc]);
+
   const max = rows[0]?.total ?? 1;
   const podium = rows.slice(0, 3);
 
@@ -45,11 +53,20 @@ export default function Scoreboard() {
         <button onClick={() => navigate('/')} className="flex items-center gap-3 rounded-2xl border border-border bg-card/60 px-5 py-3 hover-elevate">
           <ArrowLeft className="h-5 w-5" /><span className="font-bold">{t('game.back')}</span>
         </button>
-        <div className="text-display text-5xl font-black uppercase tracking-tight">{t('scoreboard.title')}</div>
-        <div className="text-sm text-muted-foreground">{event?.name}</div>
+        <div className="flex items-center gap-4">
+          <div className="text-display text-5xl font-black uppercase tracking-tight">{t('scoreboard.title')}</div>
+          {socketConnected
+            ? <Wifi className="h-5 w-5 text-green-400" />
+            : <WifiOff className="h-5 w-5 text-amber-400 animate-pulse" />}
+        </div>
+        <div className="text-sm text-muted-foreground">{eventName}</div>
       </header>
 
-      {isLoading || !event ? (
+      {!eventId ? (
+        <div className="mx-auto mt-16 max-w-xl rounded-2xl border border-border bg-card/60 p-10 text-center text-muted-foreground">
+          Nessun evento selezionato.
+        </div>
+      ) : isLoading ? (
         <div className="grid place-items-center py-32"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>
       ) : rows.length === 0 ? (
         <div className="mx-auto mt-16 max-w-xl rounded-2xl border border-border bg-card/60 p-10 text-center text-muted-foreground">

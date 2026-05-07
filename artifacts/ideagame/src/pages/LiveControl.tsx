@@ -4,7 +4,7 @@ import {
   Pause, Play, SkipForward, Plus, Minus,
   Power, MonitorOff, X, Loader2, Wifi, WifiOff, ExternalLink,
   Sparkles, Eye, EyeOff, CheckCircle2, Clock, BarChart3, Users,
-  ChevronRight, Zap,
+  ChevronRight, Zap, AlertTriangle, PlusCircle, Trophy,
 } from 'lucide-react';
 import { useEventSocket } from '@/hooks/useEventSocket';
 import {
@@ -52,6 +52,14 @@ interface QuizPack {
   generatedJson: QuizRound[] | null;
 }
 
+interface ConfirmDialog {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  danger?: boolean;
+  onConfirm: () => void;
+}
+
 const TYPE_LABELS: Record<string, string> = {
   multiple_choice: 'Scelta multipla',
   true_false: 'Vero/Falso',
@@ -75,6 +83,7 @@ export default function LiveControl() {
 
   const [selectedEventId, setSelectedEventId] = useState('');
   const [selectedSessionId, setSelectedSessionId] = useState('');
+  const [showNewSession, setShowNewSession] = useState(false);
   const [gameSlug, setGameSlug] = useState('quizzone');
   const [totalRounds, setTotalRounds] = useState(5);
   const [black, setBlack] = useState(false);
@@ -82,6 +91,7 @@ export default function LiveControl() {
   const [busy, setBusy] = useState(false);
   const [time, setTime] = useState(30);
   const [timerPaused, setTimerPaused] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialog | null>(null);
 
   // Coppie init state
   const [coppieCardSetId, setCoppieCardSetId] = useState('');
@@ -101,7 +111,7 @@ export default function LiveControl() {
   const [quizzoneResponseCount, setQuizzoneResponseCount] = useState(0);
   const [quizzoneBusy, setQuizzoneBusy] = useState(false);
   const [quizzoneMsg, setQuizzoneMsg] = useState('');
-  const [revealAnswer, setRevealAnswer] = useState(false); // local preview only
+  const [revealAnswer, setRevealAnswer] = useState(false);
   const pollResponseRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const { data: cardSets = [] } = useListCardSets();
@@ -196,7 +206,7 @@ export default function LiveControl() {
     return () => { if (pollResponseRef.current) clearInterval(pollResponseRef.current); };
   }, [session?.id, quizzoneActive, quizzoneRevealed]);
 
-  // Reset quizzone state when session changes or a new question starts
+  // Reset quizzone state when session changes
   useEffect(() => {
     setQuizzoneRoundIdx(0);
     setQuizzoneRevealed(false);
@@ -213,10 +223,13 @@ export default function LiveControl() {
     finally { setBusy(false); }
   }, []);
 
+  const confirm = (dialog: ConfirmDialog) => setConfirmDialog(dialog);
+
   const handleCreateSession = () => withBusy(async () => {
     const s = await createSession.mutateAsync({ id: selectedEventId, data: { gameSlug, totalRounds } }) as { id: string };
     qc.invalidateQueries({ queryKey: getListGameSessionsQueryKey(selectedEventId) });
     setSelectedSessionId(s.id);
+    setShowNewSession(false);
   });
 
   const handleStart = () => withBusy(async () => {
@@ -253,12 +266,20 @@ export default function LiveControl() {
     setRevealAnswer(false);
   });
 
-  const handleEnd = () => withBusy(async () => {
-    if (!session) return;
-    await updateSession.mutateAsync({ id: session.id, data: { status: 'ended' } });
-    qc.invalidateQueries({ queryKey: getListGameSessionsQueryKey(selectedEventId) });
-    navigate('/scoreboard');
-  });
+  const handleEnd = () => {
+    confirm({
+      title: 'Termina gioco',
+      message: 'Vuoi terminare questa sessione di gioco? I punteggi verranno salvati e potrai vedere il podio.',
+      confirmLabel: 'Termina e vai al podio',
+      danger: true,
+      onConfirm: () => withBusy(async () => {
+        if (!session) return;
+        await updateSession.mutateAsync({ id: session.id, data: { status: 'ended' } });
+        qc.invalidateQueries({ queryKey: getListGameSessionsQueryKey(selectedEventId) });
+        navigate(`/scoreboard?e=${selectedEventId}`);
+      }),
+    });
+  };
 
   const handleScore = (teamId: string, delta: number) => withBusy(async () => {
     if (!session) return;
@@ -305,17 +326,25 @@ export default function LiveControl() {
     } finally { setQuizzoneBusy(false); }
   };
 
-  const handleQuizzoneEnd = async () => {
-    if (!session || quizzoneBusy) return;
-    setQuizzoneBusy(true); setError('');
-    try {
-      await apiFetch(`/quizzone/sessions/${session.id}/end`, { method: 'POST' });
-      qc.invalidateQueries({ queryKey: getListGameSessionsQueryKey(selectedEventId) });
-      setQuizzoneActive(false);
-      navigate('/scoreboard');
-    } catch (e) {
-      setError((e as Error).message);
-    } finally { setQuizzoneBusy(false); }
+  const handleQuizzoneEnd = () => {
+    confirm({
+      title: 'Fine Quizzone',
+      message: 'Vuoi terminare il quiz e andare al podio? I punteggi sono già salvati.',
+      confirmLabel: 'Fine quiz → Podio',
+      danger: false,
+      onConfirm: async () => {
+        if (!session || quizzoneBusy) return;
+        setQuizzoneBusy(true); setError('');
+        try {
+          await apiFetch(`/quizzone/sessions/${session.id}/end`, { method: 'POST' });
+          qc.invalidateQueries({ queryKey: getListGameSessionsQueryKey(selectedEventId) });
+          setQuizzoneActive(false);
+          navigate(`/scoreboard?e=${selectedEventId}`);
+        } catch (e) {
+          setError((e as Error).message);
+        } finally { setQuizzoneBusy(false); }
+      },
+    });
   };
 
   // Current pack round data
@@ -326,7 +355,33 @@ export default function LiveControl() {
 
   return (
     <div className="min-h-screen bg-background px-4 py-6">
+      {/* Blackout overlay */}
       {black && <div className="fixed inset-0 z-50 bg-black" onClick={() => setBlack(false)} />}
+
+      {/* ── Confirm dialog ───────────────────────────────────────────────── */}
+      {confirmDialog && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+          <div className="w-full max-w-sm rounded-3xl border border-border bg-card p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className={`h-5 w-5 ${confirmDialog.danger ? 'text-destructive' : 'text-amber-400'}`} />
+              <div className="text-display font-black">{confirmDialog.title}</div>
+            </div>
+            <div className="text-sm text-muted-foreground">{confirmDialog.message}</div>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmDialog(null)}
+                className="flex-1 rounded-xl border border-border py-2.5 text-sm font-bold hover:bg-secondary/30">
+                Annulla
+              </button>
+              <button
+                onClick={() => { setConfirmDialog(null); confirmDialog.onConfirm(); }}
+                className={`flex-1 rounded-xl py-2.5 text-sm font-black ${confirmDialog.danger ? 'bg-destructive text-destructive-foreground' : 'bg-primary text-primary-foreground'}`}>
+                {confirmDialog.confirmLabel}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="mx-auto max-w-md space-y-4">
 
         {/* Header */}
@@ -336,10 +391,19 @@ export default function LiveControl() {
             <div className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Cockpit animatore</div>
             {socketConnected ? <Wifi className="h-3 w-3 text-green-400" /> : <WifiOff className="h-3 w-3 text-amber-400 animate-pulse" />}
           </div>
-          <button onClick={() => setBlack(b => !b)}
-            className={`rounded-full border p-2 ${black ? 'border-destructive bg-destructive text-destructive-foreground' : 'border-border hover-elevate'}`}>
-            <MonitorOff className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate(`/scoreboard?e=${selectedEventId}`)}
+              disabled={!selectedEventId}
+              title="Vai al podio"
+              className="rounded-full border border-border p-2 hover-elevate disabled:opacity-40">
+              <Trophy className="h-4 w-4" />
+            </button>
+            <button onClick={() => setBlack(b => !b)}
+              className={`rounded-full border p-2 ${black ? 'border-destructive bg-destructive text-destructive-foreground' : 'border-border hover-elevate'}`}>
+              <MonitorOff className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         {error && <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>}
@@ -348,7 +412,7 @@ export default function LiveControl() {
         <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
           <div>
             <div className="text-xs uppercase tracking-widest text-muted-foreground mb-1">Evento</div>
-            <select value={selectedEventId} onChange={e => { setSelectedEventId(e.target.value); setSelectedSessionId(''); }}
+            <select value={selectedEventId} onChange={e => { setSelectedEventId(e.target.value); setSelectedSessionId(''); setShowNewSession(false); }}
               className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm">
               <option value="">— seleziona evento —</option>
               {events.map(ev => <option key={ev.id} value={ev.id}>{ev.name} ({ev.joinCode})</option>)}
@@ -357,15 +421,25 @@ export default function LiveControl() {
 
           {selectedEventId && (
             <div>
-              <div className="text-xs uppercase tracking-widest text-muted-foreground mb-1">Sessione di gioco</div>
-              {sessions.length === 0 ? (
+              <div className="flex items-center justify-between mb-1">
+                <div className="text-xs uppercase tracking-widest text-muted-foreground">Sessione di gioco</div>
+                {sessions.length > 0 && (
+                  <button onClick={() => setShowNewSession(s => !s)}
+                    className="flex items-center gap-1 text-xs text-primary hover:underline">
+                    <PlusCircle className="h-3 w-3" /> Nuova sessione
+                  </button>
+                )}
+              </div>
+
+              {/* New session form */}
+              {(sessions.length === 0 || showNewSession) && (
                 <div className="space-y-2">
                   <div className="grid grid-cols-2 gap-2">
                     <select value={gameSlug} onChange={e => setGameSlug(e.target.value)}
                       className="rounded-xl border border-border bg-background px-3 py-2 text-sm">
                       <option value="quizzone">Quizzone</option>
-                      <option value="percorso-a-risate">Percorso a risate</option>
                       <option value="gioco-coppie">Gioco delle coppie</option>
+                      <option value="percorso-a-risate">Percorso a risate</option>
                       <option value="hot-or-not">Hot or Not</option>
                       <option value="indovina-titolo">Indovina il titolo</option>
                       <option value="festa-segreti">Festa dei segreti</option>
@@ -376,12 +450,22 @@ export default function LiveControl() {
                       <button onClick={() => setTotalRounds(r => r + 1)} className="rounded-lg border border-border p-2 hover-elevate"><Plus className="h-3 w-3" /></button>
                     </div>
                   </div>
-                  <button onClick={handleCreateSession} disabled={busy}
-                    className="w-full rounded-xl bg-primary py-3 text-sm font-bold text-primary-foreground disabled:opacity-40 flex items-center justify-center gap-2">
-                    {busy && <Loader2 className="h-4 w-4 animate-spin" />} Crea sessione
-                  </button>
+                  <div className="flex gap-2">
+                    <button onClick={handleCreateSession} disabled={busy}
+                      className="flex-1 rounded-xl bg-primary py-3 text-sm font-bold text-primary-foreground disabled:opacity-40 flex items-center justify-center gap-2">
+                      {busy && <Loader2 className="h-4 w-4 animate-spin" />} Crea sessione
+                    </button>
+                    {showNewSession && (
+                      <button onClick={() => setShowNewSession(false)} className="rounded-xl border border-border px-4 py-3 text-sm hover:bg-secondary/30">
+                        Annulla
+                      </button>
+                    )}
+                  </div>
                 </div>
-              ) : (
+              )}
+
+              {/* Session selector */}
+              {sessions.length > 0 && !showNewSession && (
                 <select value={selectedSessionId} onChange={e => setSelectedSessionId(e.target.value)}
                   className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm">
                   {sessions.map(s => <option key={s.id} value={s.id}>{s.gameSlug} — {s.status} ({s.currentRound}/{s.totalRounds})</option>)}
@@ -503,7 +587,6 @@ export default function LiveControl() {
                       In attesa…
                     </span>
                   )}
-                  {/* Response count */}
                   {quizzoneActive && !quizzoneRevealed && (
                     <span className="flex items-center gap-1 text-muted-foreground">
                       <Users className="h-3 w-3" />
@@ -520,7 +603,6 @@ export default function LiveControl() {
                 {/* Current round card */}
                 {currentRound && (
                   <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-3">
-                    {/* Round meta */}
                     <div className="flex items-center justify-between flex-wrap gap-2">
                       <span className={`rounded-full border px-2.5 py-0.5 text-xs font-bold ${TYPE_COLORS[currentRound.type] ?? 'text-muted-foreground border-border bg-card'}`}>
                         {TYPE_LABELS[currentRound.type] ?? currentRound.type}
@@ -535,10 +617,8 @@ export default function LiveControl() {
                       </div>
                     </div>
 
-                    {/* Question */}
                     <div className="text-sm font-bold leading-snug">{currentRound.questionText}</div>
 
-                    {/* Answers with reveal */}
                     <div className="space-y-1.5">
                       {currentRound.answers.map((a, i) => {
                         const isCorrect = i === currentRound.correctAnswer;
@@ -560,7 +640,6 @@ export default function LiveControl() {
                       })}
                     </div>
 
-                    {/* Local preview toggle (doesn't affect players) */}
                     <button onClick={() => setRevealAnswer(v => !v)}
                       className={`w-full flex items-center justify-center gap-2 rounded-xl py-2 text-xs font-bold transition-all ${
                         revealAnswer
@@ -570,7 +649,6 @@ export default function LiveControl() {
                       {revealAnswer ? <><EyeOff className="h-3.5 w-3.5" /> Nascondi anteprima</> : <><Eye className="h-3.5 w-3.5" /> Anteprima risposta</>}
                     </button>
 
-                    {/* Explanation */}
                     {revealAnswer && currentRound.explanation && (
                       <div className="rounded-lg border border-border/40 bg-background/50 px-3 py-2 text-xs text-muted-foreground italic">
                         {currentRound.explanation}
@@ -579,9 +657,8 @@ export default function LiveControl() {
                   </div>
                 )}
 
-                {/* ─── Main action buttons ───────────────────────────────── */}
+                {/* ─── Main action buttons ───────────────────────────── */}
                 <div className="space-y-2">
-                  {/* Start question */}
                   {(!quizzoneActive || quizzoneRevealed) && (
                     <button
                       disabled={!selectedPackId || quizzoneBusy || session.status === 'ended' || quizzoneRoundIdx >= totalPackRounds}
@@ -599,7 +676,6 @@ export default function LiveControl() {
                     </button>
                   )}
 
-                  {/* Reveal answer */}
                   {quizzoneActive && !quizzoneRevealed && (
                     <button
                       disabled={quizzoneBusy}
@@ -610,7 +686,6 @@ export default function LiveControl() {
                     </button>
                   )}
 
-                  {/* Next question shortcut (when revealed) */}
                   {quizzoneRevealed && quizzoneRoundIdx + 1 < totalPackRounds && (
                     <button
                       disabled={quizzoneBusy}
@@ -621,11 +696,10 @@ export default function LiveControl() {
                     </button>
                   )}
 
-                  {/* End quiz */}
                   {(quizzoneRevealed || quizzoneActive) && (
                     <button
                       disabled={quizzoneBusy}
-                      onClick={() => void handleQuizzoneEnd()}
+                      onClick={() => handleQuizzoneEnd()}
                       className="w-full flex items-center justify-center gap-2 rounded-xl border border-destructive/50 bg-destructive/10 py-2.5 text-sm font-bold text-destructive disabled:opacity-40">
                       {quizzoneBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
                       Fine quiz → Podio
