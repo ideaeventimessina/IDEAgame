@@ -17,6 +17,7 @@ import TenantSelect from "@/pages/TenantSelect";
 import LoginPage from "@/pages/Login";
 import EventSetup from "@/pages/EventSetup";
 import LiveControl from "@/pages/LiveControl";
+import GameCoppie from "@/pages/GameCoppie";
 import Permissions from "@/pages/Permissions";
 import AdminSystem from "@/admin/System";
 import AdminDashboard from "@/admin/Dashboard";
@@ -29,6 +30,7 @@ import AdminBilling from "@/admin/Billing";
 import AdminUsers from "@/admin/Users";
 import AdminTranslations from "@/admin/Translations";
 import AdminSettings from "@/admin/Settings";
+import AdminCardSets from "@/admin/CardSets";
 import { Guard } from "@/admin/Guard";
 
 const queryClient = new QueryClient();
@@ -43,6 +45,7 @@ function Router() {
       <Route path="/login" component={LoginPage} />
       <Route path="/event-setup" component={EventSetup} />
       <Route path="/control" component={LiveControl} />
+      <Route path="/coppie" component={GameCoppie} />
       <Route path="/game/:slug" component={GameStage} />
       <Route path="/lobby" component={Lobby} />
       <Route path="/scoreboard" component={Scoreboard} />
@@ -59,6 +62,7 @@ function Router() {
       <Route path="/admin/translations"><Guard route="/admin/translations"><AdminTranslations /></Guard></Route>
       <Route path="/admin/settings"><Guard route="/admin/settings"><AdminSettings /></Guard></Route>
       <Route path="/admin/system"><Guard route="/admin/system"><AdminSystem /></Guard></Route>
+      <Route path="/admin/card-sets"><Guard route="/admin/card-sets"><AdminCardSets /></Guard></Route>
       <Route component={NotFound} />
     </Switch>
   );

@@ -589,6 +589,10 @@ export interface Card {
   cardSetId: string;
   kind: CardKind;
   prompts: CardPrompts;
+  /** @nullable */
+  imageUrl?: string | null;
+  /** @nullable */
+  pairId?: string | null;
   createdAt: string;
 }
 
@@ -606,7 +610,9 @@ export type CreateCardBodyPrompts = { [key: string]: string };
 
 export interface CreateCardBody {
   kind: CreateCardBodyKind;
-  prompts: CreateCardBodyPrompts;
+  prompts?: CreateCardBodyPrompts;
+  imageUrl?: string;
+  pairId?: string;
 }
 
 export type QuizCategoryName = { [key: string]: string };
@@ -661,4 +667,49 @@ export interface AuditEntry {
   /** @nullable */
   userAgent?: string | null;
   createdAt: string;
+}
+
+export interface CoppieCard {
+  pos: number;
+  cardId: string;
+  pairId: string;
+  imageUrl: string;
+  label: string;
+  flipped: boolean;
+  matched: boolean;
+  /** @nullable */
+  matchedBy: string | null;
+}
+
+export interface CoppieTeam {
+  id: string;
+  name: string;
+  color: string;
+  score: number;
+}
+
+export interface CoppieBoard {
+  cards: CoppieCard[];
+  teams: CoppieTeam[];
+  mode: string;
+  currentTeamIdx: number;
+  flipping: number[];
+  locked: boolean;
+  status: string;
+  /** @nullable */
+  winner: string | null;
+  matchCount: number;
+  totalPairs: number;
+}
+
+export interface CoppieInitBody {
+  cardSetId: string;
+  difficulty: string;
+  mode: string;
+  teamIds: string[];
+}
+
+export interface CoppieFlipBody {
+  pos: number;
+  teamId: string;
 }

@@ -20,7 +20,9 @@ export const cardsTable = pgTable("cards", {
   id: uuid("id").primaryKey().defaultRandom(),
   cardSetId: uuid("card_set_id").notNull().references(() => cardSetsTable.id, { onDelete: "cascade" }),
   kind: cardKind("kind").notNull().default("question"),
-  prompts: jsonb("prompts").$type<LocalizedText>().notNull(),
+  prompts: jsonb("prompts").$type<LocalizedText>().notNull().default({}),
+  imageUrl: text("image_url"),
+  pairId: text("pair_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

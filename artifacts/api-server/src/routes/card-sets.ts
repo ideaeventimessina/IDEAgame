@@ -60,9 +60,23 @@ router.post("/card-sets/:id/cards", requireAuth, async (req: AuthedRequest, res:
   const [c] = await db.insert(cardsTable).values({
     cardSetId: id,
     kind: parsed.data.kind,
-    prompts: parsed.data.prompts,
+    prompts: parsed.data.prompts ?? {},
+    imageUrl: (parsed.data as Record<string, unknown>)["imageUrl"] as string | undefined,
+    pairId: (parsed.data as Record<string, unknown>)["pairId"] as string | undefined,
   }).returning();
   res.status(201).json(c);
+});
+
+router.delete("/cards/:id", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  const [c] = await db.select().from(cardsTable).where(eq(cardsTable.id, id));
+  if (!c) { res.status(404).json({ error: "Not found" }); return; }
+  const [s] = await db.select().from(cardSetsTable).where(eq(cardSetsTable.id, c.cardSetId));
+  if (req.user!.role !== "super_admin" && s?.tenantId && s.tenantId !== req.user!.tenantId) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+  await db.delete(cardsTable).where(eq(cardsTable.id, id));
+  res.sendStatus(204);
 });
 
 export default router;

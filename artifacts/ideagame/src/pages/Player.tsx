@@ -8,6 +8,14 @@ interface EventInfo { id: string; name: string; joinCode: string; brandColor: st
 interface TeamInfo { id: string; name: string; color: string }
 interface PlayerInfo { id: string; nickname: string; avatarColor: string; teamId: string | null; eventId: string }
 interface GameState { sessionId: string | null; currentRound: number; totalRounds: number; status: 'idle' | 'running' | 'paused' | 'ended'; gameSlug: string | null }
+interface CoppieCard { pos: number; cardId: string; pairId: string; imageUrl: string; label: string; flipped: boolean; matched: boolean; matchedBy: string | null; }
+interface CoppieTeamState { id: string; name: string; color: string; score: number; }
+interface CoppieBoardState {
+  cards: CoppieCard[]; teams: CoppieTeamState[];
+  mode: string; currentTeamIdx: number; flipping: number[];
+  locked: boolean; status: string; winner: string | null;
+  matchCount: number; totalPairs: number;
+}
 type Step = 'loading' | 'join' | 'joining' | 'play' | 'error';
 
 const BASE = (import.meta.env.BASE_URL as string) ?? '/';
@@ -34,6 +42,7 @@ export default function Player() {
   const [selectedTeam, setSelectedTeam] = useState('');
   const [gameState, setGameState] = useState<GameState>({ sessionId: null, currentRound: 0, totalRounds: 1, status: 'idle', gameSlug: null });
   const [buzzed, setBuzzed] = useState(false);
+  const [coppieBoard, setCoppieBoard] = useState<CoppieBoardState | null>(null);
 
   const { connected, on, emit } = useEventSocket(event?.id ?? null);
 
@@ -51,12 +60,14 @@ export default function Player() {
 
   useEffect(() => {
     if (!event) return;
+    const extractBoard = (data: unknown): CoppieBoardState =>
+      ((data as { board?: CoppieBoardState }).board ?? data) as CoppieBoardState;
+
     const unsubs = [
       on<{ session: { id: string; currentRound: number; totalRounds: number; status: string; gameSlug: string } }>('game:started', ({ session }) => {
         setGameState({ sessionId: session.id, currentRound: session.currentRound, totalRounds: session.totalRounds, status: 'running', gameSlug: session.gameSlug });
         setBuzzed(false);
       }),
-      // game:resumed fires when paused→running (separate from idle→running "game:started")
       on<{ session: { id: string; currentRound: number; totalRounds: number; gameSlug: string } }>('game:resumed', ({ session }) => {
         setGameState(p => ({ ...p, status: 'running', currentRound: session.currentRound, totalRounds: session.totalRounds }));
       }),
@@ -68,11 +79,15 @@ export default function Player() {
       }),
       on('game:paused', () => setGameState(p => ({ ...p, status: 'paused' }))),
       on('game:ended', () => setGameState(p => ({ ...p, status: 'ended' }))),
+      on('coppie:state',   (d) => setCoppieBoard(extractBoard(d))),
+      on('coppie:flip',    (d) => setCoppieBoard(extractBoard(d))),
+      on('coppie:match',   (d) => setCoppieBoard(extractBoard(d))),
+      on('coppie:mismatch',(d) => setCoppieBoard(extractBoard(d))),
+      on('coppie:end',     (d) => setCoppieBoard(extractBoard(d))),
     ];
     return () => unsubs.forEach(u => u());
   }, [event, on]);
 
-  // Emit player:register whenever socket connects (covers initial connect AND reconnect)
   useEffect(() => {
     if (!connected || !player || !event) return;
     emit('player:register', { playerId: player.id, eventId: event.id });
@@ -218,24 +233,181 @@ export default function Player() {
                   <span className="text-muted-foreground capitalize">{gameState.gameSlug?.replace(/-/g, ' ') ?? '—'}</span>
                   <span className="font-bold">Round {gameState.currentRound}/{gameState.totalRounds}</span>
                 </div>
-                <motion.button onClick={() => setBuzzed(true)} animate={buzzed ? { scale: [1, 0.92, 1] } : {}} disabled={buzzed}
-                  className="mt-6 flex aspect-square w-full items-center justify-center rounded-full text-display text-5xl font-black text-background shadow-2xl disabled:opacity-60"
-                  style={{ background: `radial-gradient(circle at 35% 30%, ${myTeam?.color ?? '#8B5CF6'}, #1a1535 95%)`, boxShadow: `0 20px 60px ${myTeam?.color ?? '#8B5CF6'}66` }}>
-                  <Zap className="mr-3 h-12 w-12" />
-                  {buzzed ? 'Inviato!' : t('play.buzzer')}
-                </motion.button>
-                {buzzed && (
-                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                    className="mt-4 flex items-center gap-2 rounded-2xl border border-primary/40 bg-primary/10 px-4 py-3 text-primary">
-                    <Check className="h-5 w-5" /> {t('play.waiting')}
-                    <button onClick={() => setBuzzed(false)} className="ml-auto text-xs text-muted-foreground underline">reset</button>
-                  </motion.div>
+
+                {gameState.gameSlug === 'gioco-coppie' ? (
+                  <CoppiePhoneController
+                    board={coppieBoard}
+                    sessionId={gameState.sessionId}
+                    teamId={player.teamId}
+                    teamColor={myTeam?.color ?? '#8B5CF6'}
+                    onBoardUpdate={setCoppieBoard}
+                  />
+                ) : (
+                  <>
+                    <motion.button onClick={() => setBuzzed(true)} animate={buzzed ? { scale: [1, 0.92, 1] } : {}} disabled={buzzed}
+                      className="mt-6 flex aspect-square w-full items-center justify-center rounded-full text-display text-5xl font-black text-background shadow-2xl disabled:opacity-60"
+                      style={{ background: `radial-gradient(circle at 35% 30%, ${myTeam?.color ?? '#8B5CF6'}, #1a1535 95%)`, boxShadow: `0 20px 60px ${myTeam?.color ?? '#8B5CF6'}66` }}>
+                      <Zap className="mr-3 h-12 w-12" />
+                      {buzzed ? 'Inviato!' : t('play.buzzer')}
+                    </motion.button>
+                    {buzzed && (
+                      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                        className="mt-4 flex items-center gap-2 rounded-2xl border border-primary/40 bg-primary/10 px-4 py-3 text-primary">
+                        <Check className="h-5 w-5" /> {t('play.waiting')}
+                        <button onClick={() => setBuzzed(false)} className="ml-auto text-xs text-muted-foreground underline">reset</button>
+                      </motion.div>
+                    )}
+                  </>
                 )}
               </>
             )}
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+function CoppiePhoneController({ board, sessionId, teamId, teamColor, onBoardUpdate }: {
+  board: CoppieBoardState | null;
+  sessionId: string | null;
+  teamId: string | null;
+  teamColor: string;
+  onBoardUpdate: (b: CoppieBoardState) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  if (!board) {
+    return (
+      <div className="mt-8 flex flex-col items-center gap-4 text-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <div className="text-sm text-muted-foreground">Attendi che l'animatore inizializzi il gioco…</div>
+      </div>
+    );
+  }
+
+  if (board.status === 'ended') {
+    const winner = board.winner ? board.teams.find(t => t.id === board.winner) : null;
+    return (
+      <div className="mt-6 rounded-2xl border border-primary/40 bg-primary/10 px-6 py-5 text-center">
+        <div className="text-display text-2xl font-black text-primary">
+          🏆 {winner ? `Vince ${winner.name}!` : 'Pareggio!'}
+        </div>
+        <div className="mt-3 flex justify-center gap-4">
+          {board.teams.map(t => (
+            <div key={t.id} className="text-center">
+              <div className="text-display text-2xl font-black" style={{ color: t.color }}>{t.score}</div>
+              <div className="text-xs text-muted-foreground">{t.name}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const currentTeam = board.teams[board.currentTeamIdx];
+  const isMyTurn = board.mode === 'teams' ? currentTeam?.id === teamId : true;
+
+  async function flip(pos: number) {
+    if (!sessionId || !teamId || busy || board?.locked) return;
+    setBusy(true);
+    try {
+      const url = `${BASE}api/coppie/sessions/${sessionId}/flip`.replace(/\/\//g, '/');
+      const r = await fetch(url, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pos, teamId }),
+      });
+      if (r.ok) {
+        const newBoard = await r.json() as CoppieBoardState;
+        onBoardUpdate(newBoard);
+        if (newBoard.locked && newBoard.flipping.length === 2) {
+          setTimeout(async () => {
+            const u = `${BASE}api/coppie/sessions/${sessionId}/unflip`.replace(/\/\//g, '/');
+            const ur = await fetch(u, { method: 'POST', credentials: 'include' });
+            if (ur.ok) onBoardUpdate(await ur.json() as CoppieBoardState);
+          }, 1500);
+        }
+      }
+    } catch { /* silent */ }
+    finally { setBusy(false); }
+  }
+
+  const cols = board.cards.length <= 12 ? 4 : board.cards.length <= 20 ? 5 : 6;
+
+  return (
+    <div className="mt-4 flex flex-col gap-3">
+      {/* Turn indicator */}
+      <div className={`flex items-center gap-2 rounded-xl px-4 py-3 transition-all ${
+        isMyTurn ? 'border border-green-500/40 bg-green-500/10' : 'border border-border bg-card/60'
+      }`}>
+        {isMyTurn ? (
+          <>
+            <motion.div animate={{ scale: [1, 1.3, 1] }} transition={{ duration: 1, repeat: Infinity }}
+              className="h-2.5 w-2.5 rounded-full bg-green-400" />
+            <span className="font-bold text-green-400 text-sm">
+              {board.locked ? 'Attendi…' : 'È il tuo turno! Scegli una carta.'}
+            </span>
+          </>
+        ) : (
+          <>
+            <div className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ background: currentTeam?.color }} />
+            <span className="text-sm text-muted-foreground">
+              Turno di <span className="font-bold" style={{ color: currentTeam?.color }}>{currentTeam?.name}</span>
+            </span>
+          </>
+        )}
+        <div className="ml-auto text-xs text-muted-foreground">{board.matchCount}/{board.totalPairs}</div>
+      </div>
+
+      {/* Mini card grid */}
+      <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
+        {board.cards.map(card => {
+          const isFlipped = card.flipped || card.matched;
+          const matchedTeam = card.matchedBy ? board.teams.find(t => t.id === card.matchedBy) : null;
+          const tappable = isMyTurn && !board.locked && !card.matched && !card.flipped && !busy;
+          return (
+            <button
+              key={card.pos}
+              disabled={!tappable}
+              onClick={() => flip(card.pos)}
+              className={`relative aspect-square rounded-lg border overflow-hidden flex items-center justify-center transition-all select-none ${
+                tappable ? 'active:scale-90 cursor-pointer' : 'cursor-default'
+              }`}
+              style={{
+                borderColor: matchedTeam ? matchedTeam.color : board.flipping.includes(card.pos) ? teamColor : 'rgba(255,255,255,0.1)',
+                background: isFlipped
+                  ? (matchedTeam ? `${matchedTeam.color}22` : `${teamColor}22`)
+                  : tappable ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.02)',
+              }}
+            >
+              {isFlipped && card.imageUrl ? (
+                <img src={card.imageUrl} alt={card.label} className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-[10px] font-black text-muted-foreground/40">{card.pos + 1}</span>
+              )}
+              {card.matched && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                  <span className="text-base">✓</span>
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Score bar */}
+      <div className="flex gap-2">
+        {board.teams.map(t => (
+          <div key={t.id} className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 flex-1 justify-center transition-all ${
+            t.id === currentTeam?.id && board.status === 'playing' ? 'border-white/20 bg-white/5' : 'border-border/20 bg-card/30'
+          }`}>
+            <div className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: t.color }} />
+            <span className="text-xs font-bold truncate max-w-[60px]">{t.name}</span>
+            <span className="text-display font-black text-sm ml-auto" style={{ color: t.color }}>{t.score}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

@@ -641,6 +641,72 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Card" }
 
+  /cards/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    delete:
+      operationId: deleteCard
+      responses:
+        "204": { description: Deleted }
+
+  /coppie/sessions/{id}/board:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: getCoppieBoard
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CoppieBoard" }
+
+  /coppie/sessions/{id}/init:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      operationId: initCoppieBoard
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CoppieInitBody" }
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CoppieBoard" }
+
+  /coppie/sessions/{id}/flip:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      operationId: flipCoppieCard
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CoppieFlipBody" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CoppieBoard" }
+
+  /coppie/sessions/{id}/unflip:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      operationId: unflipCoppieCards
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CoppieBoard" }
+
   /quiz-categories:
     get:
       operationId: listQuizCategories
@@ -1147,15 +1213,19 @@ components:
         prompts:
           type: object
           additionalProperties: { type: string }
+        imageUrl: { type: ["string", "null"] }
+        pairId: { type: ["string", "null"] }
         createdAt: { type: string, format: date-time }
     CreateCardBody:
       type: object
-      required: [kind, prompts]
+      required: [kind]
       properties:
         kind: { type: string, enum: [truth, dare, question, challenge] }
         prompts:
           type: object
           additionalProperties: { type: string }
+        imageUrl: { type: string }
+        pairId: { type: string }
 
     QuizCategory:
       type: object
@@ -1209,3 +1279,56 @@ components:
         ip: { type: ["string", "null"] }
         userAgent: { type: ["string", "null"] }
         createdAt: { type: string, format: date-time }
+
+    CoppieCard:
+      type: object
+      required: [pos, cardId, pairId, imageUrl, label, flipped, matched, matchedBy]
+      properties:
+        pos: { type: integer }
+        cardId: { type: string }
+        pairId: { type: string }
+        imageUrl: { type: string }
+        label: { type: string }
+        flipped: { type: boolean }
+        matched: { type: boolean }
+        matchedBy: { type: ["string", "null"] }
+
+    CoppieTeam:
+      type: object
+      required: [id, name, color, score]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        color: { type: string }
+        score: { type: integer }
+
+    CoppieBoard:
+      type: object
+      required: [cards, teams, mode, currentTeamIdx, flipping, locked, status, winner, matchCount, totalPairs]
+      properties:
+        cards: { type: array, items: { $ref: "#/components/schemas/CoppieCard" } }
+        teams: { type: array, items: { $ref: "#/components/schemas/CoppieTeam" } }
+        mode: { type: string }
+        currentTeamIdx: { type: integer }
+        flipping: { type: array, items: { type: integer } }
+        locked: { type: boolean }
+        status: { type: string }
+        winner: { type: ["string", "null"] }
+        matchCount: { type: integer }
+        totalPairs: { type: integer }
+
+    CoppieInitBody:
+      type: object
+      required: [cardSetId, difficulty, mode, teamIds]
+      properties:
+        cardSetId: { type: string }
+        difficulty: { type: string }
+        mode: { type: string }
+        teamIds: { type: array, items: { type: string } }
+
+    CoppieFlipBody:
+      type: object
+      required: [pos, teamId]
+      properties:
+        pos: { type: integer }
+        teamId: { type: string }

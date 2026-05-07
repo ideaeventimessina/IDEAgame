@@ -60,13 +60,32 @@ Pagine intenzionalmente lasciate mock perché fuori dallo scope del wiring backe
 ### 🚀 Prossimi step suggeriti (in ordine)
 
 1. **~~Realtime con Socket.IO~~** ✅ Completato.
-2. **Wiring del flusso Player reale**: `/play?e=SORR40` → fetch evento per joinCode (endpoint pubblico nuovo) → `POST /events/:id/players` con nickname + team. Eliminare il `MockBanner` da `Player.tsx`.
-3. **LiveControl reale**: bottoni next round / pause / +punti che chiamano `PATCH /sessions/:id` e `POST /scores`. Eliminare il `MockBanner` da `LiveControl.tsx`.
+2. **~~Gioco delle Coppie (memory game)~~** ✅ Completato — vedi sezione sotto.
+3. **LiveControl reale completo**: bottoni next round / pause / +punti che chiamano `PATCH /sessions/:id` e `POST /scores`. (L'init coppie è già cablato in LiveControl.)
 4. **Editor di update in admin**: dialog "Modifica" su Tenants/Users/Events/Devices con `PATCH`.
 5. **Pagina `/admin/audit`** che legge `GET /api/audit-log` (tabella già pronta, helper attivo).
 6. **Object storage per Media** (skill `object-storage`): presigned URL + sostituzione del campo URL con uploader.
-7. **Migration Drizzle ufficiale** per `user_sessions` e per le 9 nuove tabelle (oggi create via SQL out-of-band).
+7. **Migration Drizzle ufficiale** per `user_sessions` e per le 9+ nuove tabelle (oggi create via SQL out-of-band).
 8. **Hardening sicurezza**: CSRF token, rate-limit su `/auth/login`, password reset/magic link.
+
+### 🎮 Gioco delle Coppie — architettura (completato)
+
+| Componente | Dove | Note |
+|---|---|---|
+| DB `coppie_boards` | `lib/db/src/schema/coppie-boards.ts` | sessionId, cardSetId, difficulty, mode, board JSONB |
+| DB `cards.image_url/pair_id` | `lib/db/src/schema/card-sets.ts` | aggiunte colonne + default prompts `{}` |
+| API route `/coppie/sessions/:id/*` | `artifacts/api-server/src/routes/coppie.ts` | GET board (pubblica), POST init (auth), POST flip (pubblica), POST unflip (pubblica) |
+| Admin deck `/admin/card-sets` | `artifacts/ideagame/src/admin/CardSets.tsx` | crea deck, aggiungi coppie (label + 2 URL immagine), elimina carte/deck |
+| Projection board `/coppie?s=SID&e=EID` | `artifacts/ideagame/src/pages/GameCoppie.tsx` | card flip 3D, socket-driven, team scores, win overlay |
+| Player phone controller | `artifacts/ideagame/src/pages/Player.tsx` (CoppiePhoneController) | mini-grid tappabile, turn indicator, mismatch timer |
+| LiveControl init panel | `artifacts/ideagame/src/pages/LiveControl.tsx` | selettore deck/difficoltà/modalità, pulsante "Inizializza", link diretto al board |
+
+**Flusso di gioco**:
+1. Animatore crea deck in `/admin/card-sets` (aggiunge coppie immagine)
+2. In LiveControl: crea sessione `gioco-coppie` → avvia → pannello coppie appare → seleziona deck → "Inizializza"
+3. Board disponibile a `/coppie?s=SESSION_ID&e=EVENT_ID` (proiettore)
+4. Giocatori su `/play?e=JOINCODE` vedono controller coppie con mini-grid tappabile
+5. Match/mismatch aggiornati via Socket.IO in real-time su tutti i device
 
 
 

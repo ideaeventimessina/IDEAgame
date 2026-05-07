@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useLocation } from 'wouter';
 import {
   Pause, Play, SkipForward, Plus, Minus,
-  Power, MonitorOff, X, Loader2, Wifi, WifiOff,
+  Power, MonitorOff, X, Loader2, Wifi, WifiOff, ExternalLink,
 } from 'lucide-react';
 import { useEventSocket } from '@/hooks/useEventSocket';
 import {
@@ -11,6 +11,7 @@ import {
   useCreateGameSession,
   useUpdateGameSession,
   useListTeams, getListTeamsQueryKey,
+  useListCardSets,
   useRecordScore,
   useGetScoreboard, getGetScoreboardQueryKey,
 } from '@workspace/api-client-react';
@@ -38,6 +39,15 @@ export default function LiveControl() {
   const [busy, setBusy] = useState(false);
   const [time, setTime] = useState(30);
   const [timerPaused, setTimerPaused] = useState(false);
+
+  // Coppie init state
+  const [coppieCardSetId, setCoppieCardSetId] = useState('');
+  const [coppieDifficulty, setCoppieDifficulty] = useState('medium');
+  const [coppieMode, setCoppieMode] = useState('teams');
+  const [coppieBusy, setCoppieBusy] = useState(false);
+  const [coppieMsg, setCoppieMsg] = useState('');
+
+  const { data: cardSets = [] } = useListCardSets();
 
   const { connected: socketConnected, on } = useEventSocket(selectedEventId || null);
 
@@ -284,6 +294,74 @@ export default function LiveControl() {
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {/* Coppie init panel */}
+        {session?.gameSlug === 'gioco-coppie' && (
+          <div className="rounded-2xl border border-border bg-card p-5 space-y-3">
+            <div className="text-xs uppercase tracking-widest text-muted-foreground">Inizializza Board Coppie</div>
+            {coppieMsg && (
+              <div className={`rounded-xl px-4 py-2 text-sm ${coppieMsg.startsWith('✓') ? 'border border-green-500/40 bg-green-500/10 text-green-400' : 'border border-destructive/40 bg-destructive/10 text-destructive'}`}>
+                {coppieMsg}
+              </div>
+            )}
+            <div>
+              <div className="text-xs text-muted-foreground mb-1">Deck di carte</div>
+              <select value={coppieCardSetId} onChange={e => setCoppieCardSetId(e.target.value)}
+                className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm">
+                <option value="">— seleziona deck —</option>
+                {cardSets.map(cs => <option key={cs.id} value={cs.id}>{cs.name}</option>)}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">Difficoltà</div>
+                <select value={coppieDifficulty} onChange={e => setCoppieDifficulty(e.target.value)}
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm">
+                  <option value="easy">Facile (6 coppie)</option>
+                  <option value="medium">Medio (10 coppie)</option>
+                  <option value="hard">Difficile (15 coppie)</option>
+                </select>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">Modalità</div>
+                <select value={coppieMode} onChange={e => setCoppieMode(e.target.value)}
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm">
+                  <option value="teams">Squadre</option>
+                  <option value="individual">Individuale</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                disabled={!coppieCardSetId || coppieBusy}
+                onClick={async () => {
+                  setCoppieBusy(true); setCoppieMsg('');
+                  try {
+                    await apiFetch(`/coppie/sessions/${session.id}/init`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ cardSetId: coppieCardSetId, difficulty: coppieDifficulty, mode: coppieMode, teamIds: [] }),
+                    });
+                    setCoppieMsg('✓ Board inizializzata!');
+                  } catch (e) { setCoppieMsg((e as Error).message); }
+                  finally { setCoppieBusy(false); }
+                }}
+                className="flex-1 rounded-xl bg-primary py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-40 flex items-center justify-center gap-2"
+              >
+                {coppieBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {coppieMsg.startsWith('✓') ? 'Ricomincia' : 'Inizializza'}
+              </button>
+              <a
+                href={`${BASE}coppie?s=${session.id}&e=${selectedEventId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 rounded-xl border border-border px-4 py-2.5 text-sm font-bold hover:bg-secondary/30"
+              >
+                <ExternalLink className="h-4 w-4" /> Board
+              </a>
             </div>
           </div>
         )}

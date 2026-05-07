@@ -19,6 +19,9 @@ import type {
   AuditEntry,
   Card,
   CardSet,
+  CoppieBoard,
+  CoppieFlipBody,
+  CoppieInitBody,
   CreateCardBody,
   CreateCardSetBody,
   CreateDeviceBody,
@@ -4328,6 +4331,404 @@ export const useCreateCard = <
   TContext
 > => {
   return useMutation(getCreateCardMutationOptions(options));
+};
+
+export const getDeleteCardUrl = (id: string) => {
+  return `/api/cards/${id}`;
+};
+
+export const deleteCard = async (
+  id: string,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteCardUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteCardMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteCard>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteCard>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["deleteCard"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteCard>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteCard(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteCardMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteCard>>
+>;
+
+export type DeleteCardMutationError = ErrorType<unknown>;
+
+export const useDeleteCard = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteCard>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteCard>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getDeleteCardMutationOptions(options));
+};
+
+export const getGetCoppieBoardUrl = (id: string) => {
+  return `/api/coppie/sessions/${id}/board`;
+};
+
+export const getCoppieBoard = async (
+  id: string,
+  options?: RequestInit,
+): Promise<CoppieBoard> => {
+  return customFetch<CoppieBoard>(getGetCoppieBoardUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetCoppieBoardQueryKey = (id: string) => {
+  return [`/api/coppie/sessions/${id}/board`] as const;
+};
+
+export const getGetCoppieBoardQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCoppieBoard>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCoppieBoard>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetCoppieBoardQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getCoppieBoard>>> = ({
+    signal,
+  }) => getCoppieBoard(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCoppieBoard>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCoppieBoardQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCoppieBoard>>
+>;
+export type GetCoppieBoardQueryError = ErrorType<unknown>;
+
+export function useGetCoppieBoard<
+  TData = Awaited<ReturnType<typeof getCoppieBoard>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCoppieBoard>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCoppieBoardQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+export const getInitCoppieBoardUrl = (id: string) => {
+  return `/api/coppie/sessions/${id}/init`;
+};
+
+export const initCoppieBoard = async (
+  id: string,
+  coppieInitBody: CoppieInitBody,
+  options?: RequestInit,
+): Promise<CoppieBoard> => {
+  return customFetch<CoppieBoard>(getInitCoppieBoardUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(coppieInitBody),
+  });
+};
+
+export const getInitCoppieBoardMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof initCoppieBoard>>,
+    TError,
+    { id: string; data: BodyType<CoppieInitBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof initCoppieBoard>>,
+  TError,
+  { id: string; data: BodyType<CoppieInitBody> },
+  TContext
+> => {
+  const mutationKey = ["initCoppieBoard"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof initCoppieBoard>>,
+    { id: string; data: BodyType<CoppieInitBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return initCoppieBoard(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type InitCoppieBoardMutationResult = NonNullable<
+  Awaited<ReturnType<typeof initCoppieBoard>>
+>;
+export type InitCoppieBoardMutationBody = BodyType<CoppieInitBody>;
+export type InitCoppieBoardMutationError = ErrorType<unknown>;
+
+export const useInitCoppieBoard = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof initCoppieBoard>>,
+    TError,
+    { id: string; data: BodyType<CoppieInitBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof initCoppieBoard>>,
+  TError,
+  { id: string; data: BodyType<CoppieInitBody> },
+  TContext
+> => {
+  return useMutation(getInitCoppieBoardMutationOptions(options));
+};
+
+export const getFlipCoppieCardUrl = (id: string) => {
+  return `/api/coppie/sessions/${id}/flip`;
+};
+
+export const flipCoppieCard = async (
+  id: string,
+  coppieFlipBody: CoppieFlipBody,
+  options?: RequestInit,
+): Promise<CoppieBoard> => {
+  return customFetch<CoppieBoard>(getFlipCoppieCardUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(coppieFlipBody),
+  });
+};
+
+export const getFlipCoppieCardMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof flipCoppieCard>>,
+    TError,
+    { id: string; data: BodyType<CoppieFlipBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof flipCoppieCard>>,
+  TError,
+  { id: string; data: BodyType<CoppieFlipBody> },
+  TContext
+> => {
+  const mutationKey = ["flipCoppieCard"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof flipCoppieCard>>,
+    { id: string; data: BodyType<CoppieFlipBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return flipCoppieCard(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type FlipCoppieCardMutationResult = NonNullable<
+  Awaited<ReturnType<typeof flipCoppieCard>>
+>;
+export type FlipCoppieCardMutationBody = BodyType<CoppieFlipBody>;
+export type FlipCoppieCardMutationError = ErrorType<unknown>;
+
+export const useFlipCoppieCard = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof flipCoppieCard>>,
+    TError,
+    { id: string; data: BodyType<CoppieFlipBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof flipCoppieCard>>,
+  TError,
+  { id: string; data: BodyType<CoppieFlipBody> },
+  TContext
+> => {
+  return useMutation(getFlipCoppieCardMutationOptions(options));
+};
+
+export const getUnflipCoppieCardsUrl = (id: string) => {
+  return `/api/coppie/sessions/${id}/unflip`;
+};
+
+export const unflipCoppieCards = async (
+  id: string,
+  options?: RequestInit,
+): Promise<CoppieBoard> => {
+  return customFetch<CoppieBoard>(getUnflipCoppieCardsUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getUnflipCoppieCardsMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof unflipCoppieCards>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof unflipCoppieCards>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["unflipCoppieCards"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof unflipCoppieCards>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return unflipCoppieCards(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UnflipCoppieCardsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof unflipCoppieCards>>
+>;
+
+export type UnflipCoppieCardsMutationError = ErrorType<unknown>;
+
+export const useUnflipCoppieCards = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof unflipCoppieCards>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof unflipCoppieCards>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getUnflipCoppieCardsMutationOptions(options));
 };
 
 export const getListQuizCategoriesUrl = () => {

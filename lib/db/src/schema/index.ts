@@ -14,3 +14,4 @@ export * from "./card-sets";
 export * from "./quiz-categories";
 export * from "./audit-log";
 export * from "./system-settings";
+export * from "./coppie-boards";

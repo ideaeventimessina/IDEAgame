@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'wouter';
 import {
   LayoutDashboard, Gamepad2, BookOpen, Image as ImageIcon, Users2,
-  Building2, CreditCard, ShieldCheck, Languages, Settings as SettingsIcon, Search, LogOut
+  Building2, CreditCard, ShieldCheck, Languages, Settings as SettingsIcon, Search, LogOut, Layers
 } from 'lucide-react';
 import { useT } from '@/i18n';
 import { LocaleSwitcher } from '@/components/LocaleSwitcher';
@@ -9,7 +9,7 @@ import { ADMIN_NAV, useAuth, canSee } from '@/auth/roles';
 import type { ReactNode } from 'react';
 
 const ICONS: Record<string, typeof LayoutDashboard> = {
-  dashboard: LayoutDashboard, games: Gamepad2, quizzes: BookOpen, media: ImageIcon,
+  dashboard: LayoutDashboard, games: Gamepad2, 'card-sets': Layers, quizzes: BookOpen, media: ImageIcon,
   teams: Users2, tenants: Building2, billing: CreditCard, users: ShieldCheck,
   translations: Languages, settings: SettingsIcon,
 };

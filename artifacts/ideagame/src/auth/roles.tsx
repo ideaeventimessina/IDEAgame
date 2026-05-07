@@ -7,6 +7,7 @@ export type Role = 'super_admin' | 'tenant_owner' | 'game_manager' | 'entertaine
 export const ADMIN_NAV: { key: string; route: string; labelKey: string; roles: Role[] }[] = [
   { key: 'dashboard', route: '/admin', labelKey: 'admin.dashboard', roles: ['super_admin', 'tenant_owner', 'game_manager', 'entertainer'] },
   { key: 'games', route: '/admin/games', labelKey: 'admin.games', roles: ['super_admin', 'tenant_owner', 'game_manager'] },
+  { key: 'card-sets', route: '/admin/card-sets', labelKey: 'admin.card_sets', roles: ['super_admin', 'tenant_owner', 'game_manager'] },
   { key: 'quizzes', route: '/admin/quizzes', labelKey: 'admin.quizzes', roles: ['super_admin', 'tenant_owner', 'game_manager'] },
   { key: 'media', route: '/admin/media', labelKey: 'admin.media', roles: ['super_admin', 'tenant_owner', 'game_manager'] },
   { key: 'teams', route: '/admin/teams', labelKey: 'admin.teams', roles: ['super_admin', 'tenant_owner', 'game_manager', 'entertainer'] },

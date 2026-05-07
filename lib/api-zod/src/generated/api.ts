@@ -697,6 +697,8 @@ export const ListCardsResponseItem = zod.object({
   cardSetId: zod.string(),
   kind: zod.enum(["truth", "dare", "question", "challenge"]),
   prompts: zod.record(zod.string(), zod.string()),
+  imageUrl: zod.string().nullish(),
+  pairId: zod.string().nullish(),
   createdAt: zod.coerce.date(),
 });
 export const ListCardsResponse = zod.array(ListCardsResponseItem);
@@ -707,7 +709,134 @@ export const CreateCardParams = zod.object({
 
 export const CreateCardBody = zod.object({
   kind: zod.enum(["truth", "dare", "question", "challenge"]),
-  prompts: zod.record(zod.string(), zod.string()),
+  prompts: zod.record(zod.string(), zod.string()).optional(),
+  imageUrl: zod.string().optional(),
+  pairId: zod.string().optional(),
+});
+
+export const DeleteCardParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const GetCoppieBoardParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const GetCoppieBoardResponse = zod.object({
+  cards: zod.array(
+    zod.object({
+      pos: zod.number(),
+      cardId: zod.string(),
+      pairId: zod.string(),
+      imageUrl: zod.string(),
+      label: zod.string(),
+      flipped: zod.boolean(),
+      matched: zod.boolean(),
+      matchedBy: zod.string().nullable(),
+    }),
+  ),
+  teams: zod.array(
+    zod.object({
+      id: zod.string(),
+      name: zod.string(),
+      color: zod.string(),
+      score: zod.number(),
+    }),
+  ),
+  mode: zod.string(),
+  currentTeamIdx: zod.number(),
+  flipping: zod.array(zod.number()),
+  locked: zod.boolean(),
+  status: zod.string(),
+  winner: zod.string().nullable(),
+  matchCount: zod.number(),
+  totalPairs: zod.number(),
+});
+
+export const InitCoppieBoardParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const InitCoppieBoardBody = zod.object({
+  cardSetId: zod.string(),
+  difficulty: zod.string(),
+  mode: zod.string(),
+  teamIds: zod.array(zod.string()),
+});
+
+export const FlipCoppieCardParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const FlipCoppieCardBody = zod.object({
+  pos: zod.number(),
+  teamId: zod.string(),
+});
+
+export const FlipCoppieCardResponse = zod.object({
+  cards: zod.array(
+    zod.object({
+      pos: zod.number(),
+      cardId: zod.string(),
+      pairId: zod.string(),
+      imageUrl: zod.string(),
+      label: zod.string(),
+      flipped: zod.boolean(),
+      matched: zod.boolean(),
+      matchedBy: zod.string().nullable(),
+    }),
+  ),
+  teams: zod.array(
+    zod.object({
+      id: zod.string(),
+      name: zod.string(),
+      color: zod.string(),
+      score: zod.number(),
+    }),
+  ),
+  mode: zod.string(),
+  currentTeamIdx: zod.number(),
+  flipping: zod.array(zod.number()),
+  locked: zod.boolean(),
+  status: zod.string(),
+  winner: zod.string().nullable(),
+  matchCount: zod.number(),
+  totalPairs: zod.number(),
+});
+
+export const UnflipCoppieCardsParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const UnflipCoppieCardsResponse = zod.object({
+  cards: zod.array(
+    zod.object({
+      pos: zod.number(),
+      cardId: zod.string(),
+      pairId: zod.string(),
+      imageUrl: zod.string(),
+      label: zod.string(),
+      flipped: zod.boolean(),
+      matched: zod.boolean(),
+      matchedBy: zod.string().nullable(),
+    }),
+  ),
+  teams: zod.array(
+    zod.object({
+      id: zod.string(),
+      name: zod.string(),
+      color: zod.string(),
+      score: zod.number(),
+    }),
+  ),
+  mode: zod.string(),
+  currentTeamIdx: zod.number(),
+  flipping: zod.array(zod.number()),
+  locked: zod.boolean(),
+  status: zod.string(),
+  winner: zod.string().nullable(),
+  matchCount: zod.number(),
+  totalPairs: zod.number(),
 });
 
 export const ListQuizCategoriesResponseItem = zod.object({
