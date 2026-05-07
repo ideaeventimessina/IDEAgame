@@ -1,0 +1,88 @@
+Perfetto. Confermo la generazione Quiz AI come modulo pre-serata.
+
+Adesso collega il quiz pack approvato al gameplay reale del Quizzone.
+
+Obiettivo:
+il Quizzone deve funzionare end-to-end con:
+- pack generato da AI o creato manualmente
+- domanda su proiettore
+- risposte sui telefoni
+- invio risposta player/team
+- reveal controllato dall’animatore
+- punteggio automatico
+- classifica realtime
+- podio finale
+
+Implementa:
+
+1. Game projector /quizzone
+- legge gameSessionId + eventId
+- carica quiz pack approvato
+- mostra domanda corrente gigante
+- mostra tipo round
+- mostra timer
+- mostra risposte solo quando serve
+- prima del reveal non mostra risposta corretta
+- dopo reveal evidenzia risposta corretta
+- tra una domanda e l’altra mostra classifica parziale
+
+2. Player controller /play
+Quando gameSlug === "quizzone":
+- mostra domanda corrente
+- mostra 4 risposte grandi per multiple_choice
+- mostra vero/falso per true_false
+- mostra UI coerente per guess_who / image_compare / fast_answer
+- invia risposta
+- blocca doppio invio
+- mostra “Risposta inviata”
+- dopo reveal mostra corretto/errato senza mostrare dati prima del reveal
+
+3. Backend
+- salva ogni risposta in quiz_responses
+- valida player appartiene all’evento
+- valida round corrente
+- una sola risposta per player/team per round
+- fuori tempo = non valida o zero punti
+- al reveal calcola punti
+- scrive score_entries
+- emette score_updated
+
+4. LiveControl
+- seleziona quiz pack
+- start question
+- reveal answer
+- next question
+- end quiz
+- mostra quante risposte sono arrivate
+- mostra timer e stato round
+
+5. Realtime events
+- quiz:started
+- quiz:question
+- quiz:answer_received
+- quiz:reveal
+- quiz:score_updated
+- quiz:ended
+
+6. Test E2E
+- crea evento
+- crea 2 team
+- crea 2 player
+- usa pack "La Bella e la Bestia"
+- start quiz
+- domanda 1
+- player 1 risponde corretto
+- player 2 risponde errato
+- blocco doppia risposta
+- reveal
+- verifica punti
+- next question
+- classifica aggiornata
+- end quiz
+- podio finale
+
+Alla fine report:
+- cosa funziona davvero
+- cosa resta mock
+- test passati
+- rischi

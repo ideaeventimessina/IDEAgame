@@ -18,6 +18,7 @@ import LoginPage from "@/pages/Login";
 import EventSetup from "@/pages/EventSetup";
 import LiveControl from "@/pages/LiveControl";
 import GameCoppie from "@/pages/GameCoppie";
+import GameQuizzone from "@/pages/GameQuizzone";
 import Permissions from "@/pages/Permissions";
 import AdminSystem from "@/admin/System";
 import AdminDashboard from "@/admin/Dashboard";
@@ -47,6 +48,7 @@ function Router() {
       <Route path="/event-setup" component={EventSetup} />
       <Route path="/control" component={LiveControl} />
       <Route path="/coppie" component={GameCoppie} />
+      <Route path="/quizzone" component={GameQuizzone} />
       <Route path="/game/:slug" component={GameStage} />
       <Route path="/lobby" component={Lobby} />
       <Route path="/scoreboard" component={Scoreboard} />

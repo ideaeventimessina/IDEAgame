@@ -23,6 +23,7 @@ import cardSetsRouter from "./card-sets";
 import coppieRouter from "./coppie";
 import quizPacksRouter from "./quiz-packs";
 import quizCategoriesRouter from "./quiz-categories";
+import quizzoneRouter from "./quizzone";
 import systemSettingsRouter from "./system-settings";
 import auditLogRouter from "./audit-log";
 
@@ -54,6 +55,7 @@ router.use(cardSetsRouter);
 router.use(coppieRouter);
 router.use(quizPacksRouter);
 router.use(quizCategoriesRouter);
+router.use(quizzoneRouter);
 router.use(systemSettingsRouter);
 router.use(auditLogRouter);
 

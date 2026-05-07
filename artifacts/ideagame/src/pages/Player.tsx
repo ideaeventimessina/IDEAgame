@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Zap, Check, Wifi, WifiOff, Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Zap, Check, Wifi, WifiOff, Loader2, AlertTriangle, RefreshCw, Clock } from 'lucide-react';
 import { useT, useI18n, LOCALES } from '@/i18n';
 import { useEventSocket } from '@/hooks/useEventSocket';
 
@@ -16,6 +16,25 @@ interface CoppieBoardState {
   locked: boolean; status: string; winner: string | null;
   matchCount: number; totalPairs: number;
 }
+interface QuizzoneQuestion {
+  sessionId: string;
+  roundIndex: number;
+  type: string;
+  questionText: string;
+  answers: string[];
+  timeLimit: number;
+  points: number;
+  difficulty: string;
+  questionStartedAt: string;
+  totalRounds: number;
+}
+interface QuizzoneReveal {
+  roundIndex: number;
+  correctAnswer: number;
+  explanation: string;
+  scores: { teamId: string; name: string; color: string; roundPoints: number; total: number }[];
+}
+
 type Step = 'loading' | 'join' | 'joining' | 'play' | 'error';
 
 const BASE = (import.meta.env.BASE_URL as string) ?? '/';
@@ -43,6 +62,8 @@ export default function Player() {
   const [gameState, setGameState] = useState<GameState>({ sessionId: null, currentRound: 0, totalRounds: 1, status: 'idle', gameSlug: null });
   const [buzzed, setBuzzed] = useState(false);
   const [coppieBoard, setCoppieBoard] = useState<CoppieBoardState | null>(null);
+  const [quizzoneQuestion, setQuizzoneQuestion] = useState<QuizzoneQuestion | null>(null);
+  const [quizzoneReveal, setQuizzoneReveal] = useState<QuizzoneReveal | null>(null);
 
   const { connected, on, emit } = useEventSocket(event?.id ?? null);
 
@@ -67,6 +88,8 @@ export default function Player() {
       on<{ session: { id: string; currentRound: number; totalRounds: number; status: string; gameSlug: string } }>('game:started', ({ session }) => {
         setGameState({ sessionId: session.id, currentRound: session.currentRound, totalRounds: session.totalRounds, status: 'running', gameSlug: session.gameSlug });
         setBuzzed(false);
+        setQuizzoneQuestion(null);
+        setQuizzoneReveal(null);
       }),
       on<{ session: { id: string; currentRound: number; totalRounds: number; gameSlug: string } }>('game:resumed', ({ session }) => {
         setGameState(p => ({ ...p, status: 'running', currentRound: session.currentRound, totalRounds: session.totalRounds }));
@@ -84,6 +107,18 @@ export default function Player() {
       on('coppie:match',   (d) => setCoppieBoard(extractBoard(d))),
       on('coppie:mismatch',(d) => setCoppieBoard(extractBoard(d))),
       on('coppie:end',     (d) => setCoppieBoard(extractBoard(d))),
+      on<QuizzoneQuestion>('quiz:question', (data) => {
+        setQuizzoneQuestion(data);
+        setQuizzoneReveal(null);
+        setBuzzed(false);
+        setGameState(p => ({ ...p, status: 'running', sessionId: data.sessionId }));
+      }),
+      on<QuizzoneReveal & { sessionId: string }>('quiz:reveal', (data) => {
+        setQuizzoneReveal(data);
+      }),
+      on<{ sessionId: string }>('quiz:ended', () => {
+        setGameState(p => ({ ...p, status: 'ended' }));
+      }),
     ];
     return () => unsubs.forEach(u => u());
   }, [event, on]);
@@ -92,6 +127,30 @@ export default function Player() {
     if (!connected || !player || !event) return;
     emit('player:register', { playerId: player.id, eventId: event.id });
   }, [connected, player, event, emit]);
+
+  // On join: fetch current quizzone state if session already running
+  useEffect(() => {
+    if (!player || !gameState.sessionId || gameState.gameSlug !== 'quizzone') return;
+    apiFetch(`/quizzone/sessions/${gameState.sessionId}/state`)
+      .then((s: unknown) => {
+        const state = s as { hasQuestion: boolean; questionText?: string; answers?: string[]; type?: string; timeLimit?: number; points?: number; difficulty?: string; questionStartedAt?: string; roundIndex?: number; totalRounds?: number; sessionId?: string; revealed?: boolean; correctAnswer?: number; explanation?: string; scores?: QuizzoneReveal['scores'] };
+        if (state.hasQuestion && state.questionText) {
+          setQuizzoneQuestion({
+            sessionId: state.sessionId ?? gameState.sessionId!,
+            roundIndex: state.roundIndex ?? 0,
+            type: state.type ?? 'multiple_choice',
+            questionText: state.questionText,
+            answers: state.answers ?? [],
+            timeLimit: state.timeLimit ?? 30,
+            points: state.points ?? 100,
+            difficulty: state.difficulty ?? 'medium',
+            questionStartedAt: state.questionStartedAt ?? new Date().toISOString(),
+            totalRounds: state.totalRounds ?? 1,
+          });
+        }
+      })
+      .catch(() => {});
+  }, [player, gameState.sessionId, gameState.gameSlug]);
 
   const handleJoin = async () => {
     if (!event || !nick.trim()) return;
@@ -242,6 +301,14 @@ export default function Player() {
                     teamColor={myTeam?.color ?? '#8B5CF6'}
                     onBoardUpdate={setCoppieBoard}
                   />
+                ) : gameState.gameSlug === 'quizzone' ? (
+                  <QuizzonePhoneController
+                    question={quizzoneQuestion}
+                    reveal={quizzoneReveal}
+                    sessionId={gameState.sessionId}
+                    playerId={player.id}
+                    teamColor={myTeam?.color ?? '#8B5CF6'}
+                  />
                 ) : (
                   <>
                     <motion.button onClick={() => setBuzzed(true)} animate={buzzed ? { scale: [1, 0.92, 1] } : {}} disabled={buzzed}
@@ -268,6 +335,219 @@ export default function Player() {
   );
 }
 
+// ─── Quizzone Phone Controller ─────────────────────────────────────────────────
+
+const LETTER = ['A', 'B', 'C', 'D', 'E'];
+const TYPE_LABELS: Record<string, string> = {
+  multiple_choice: 'Scelta multipla',
+  true_false: 'Vero/Falso',
+  image_compare: 'Confronto',
+  guess_who: 'Indovina chi',
+  fast_answer: 'Risposta rapida',
+  bonus_final: '🏆 Bonus Finale',
+};
+
+function QuizzonePhoneController({ question, reveal, sessionId, playerId, teamColor }: {
+  question: QuizzoneQuestion | null;
+  reveal: QuizzoneReveal | null;
+  sessionId: string | null;
+  playerId: string;
+  teamColor: string;
+}) {
+  const [myAnswer, setMyAnswer] = useState<number | null>(null);
+  const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [timeLeft, setTimeLeft] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Reset when new question arrives
+  useEffect(() => {
+    if (!question) return;
+    setMyAnswer(null);
+    setSubmitted(false);
+    setSubmitError('');
+
+    // Countdown
+    if (timerRef.current) clearInterval(timerRef.current);
+    const update = () => {
+      const elapsed = (Date.now() - new Date(question.questionStartedAt).getTime()) / 1000;
+      const left = Math.max(0, question.timeLimit - elapsed);
+      setTimeLeft(left);
+      if (left <= 0 && timerRef.current) clearInterval(timerRef.current);
+    };
+    update();
+    timerRef.current = setInterval(update, 500);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [question?.roundIndex, question?.questionStartedAt, question?.timeLimit]);
+
+  const submitAnswer = async (answerIdx: number) => {
+    if (!sessionId || submitted || submitting || !question) return;
+    if (timeLeft <= 0) { setSubmitError('Tempo scaduto!'); return; }
+    setSubmitting(true);
+    setMyAnswer(answerIdx);
+    try {
+      await apiFetch(`/quizzone/sessions/${sessionId}/answer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId, selectedAnswer: answerIdx }),
+      });
+      setSubmitted(true);
+      setSubmitError('');
+    } catch (e) {
+      const msg = (e as Error).message;
+      if (msg.includes('già risposto') || msg.includes('alreadyAnswered')) {
+        setSubmitted(true);
+      } else if (msg.includes('tempo') || msg.includes('rivelata')) {
+        setSubmitError('Troppo tardi!');
+        setMyAnswer(null);
+      } else {
+        setSubmitError(msg);
+        setMyAnswer(null);
+      }
+    } finally { setSubmitting(false); }
+  };
+
+  if (!question) {
+    return (
+      <div className="mt-8 flex flex-col items-center gap-4 text-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <div className="text-sm text-muted-foreground">Attendi la prossima domanda…</div>
+      </div>
+    );
+  }
+
+  const timerPct = question.timeLimit > 0 ? (timeLeft / question.timeLimit) * 100 : 0;
+  const timerColor = timerPct > 50 ? '#22c55e' : timerPct > 25 ? '#eab308' : '#ef4444';
+  const isRevealed = reveal !== null && reveal.roundIndex === question.roundIndex;
+  const amICorrect = isRevealed && myAnswer !== null && myAnswer === reveal!.correctAnswer;
+  const amIWrong = isRevealed && myAnswer !== null && myAnswer !== reveal!.correctAnswer;
+  const didntAnswer = isRevealed && myAnswer === null && !submitted;
+
+  return (
+    <div className="mt-4 flex flex-col gap-3">
+      {/* Type badge + timer */}
+      <div className="flex items-center justify-between rounded-xl border border-border bg-card/60 px-3 py-2">
+        <span className="text-xs font-bold text-primary">{TYPE_LABELS[question.type] ?? question.type}</span>
+        <div className="flex items-center gap-1.5">
+          <Clock className="h-3.5 w-3.5" style={{ color: timerColor }} />
+          <span className="text-display font-black tabular-nums text-sm" style={{ color: timerColor }}>
+            {Math.ceil(timeLeft)}s
+          </span>
+        </div>
+        <span className="text-xs text-muted-foreground">{question.roundIndex + 1}/{question.totalRounds}</span>
+      </div>
+
+      {/* Timer bar */}
+      <div className="h-1.5 w-full rounded-full bg-border/50 overflow-hidden">
+        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${timerPct}%`, background: timerColor }} />
+      </div>
+
+      {/* Question text */}
+      <div className="rounded-2xl border border-border bg-card/40 px-4 py-4">
+        <div className="text-display text-lg font-black leading-snug">{question.questionText}</div>
+        <div className="mt-1 text-xs text-muted-foreground">{question.points} pt • {question.difficulty}</div>
+      </div>
+
+      {/* Reveal result banner */}
+      <AnimatePresence>
+        {isRevealed && (
+          <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+            className={`rounded-2xl border px-5 py-4 text-center font-black text-lg ${
+              amICorrect
+                ? 'border-green-500/50 bg-green-500/15 text-green-400'
+                : amIWrong
+                ? 'border-red-500/50 bg-red-500/15 text-red-400'
+                : didntAnswer
+                ? 'border-border bg-card/60 text-muted-foreground'
+                : 'border-border bg-card/60 text-muted-foreground'
+            }`}>
+            {amICorrect ? '✅ Esatto! +' + question.points : amIWrong ? '❌ Sbagliato' : '⏱ Non hai risposto'}
+            {isRevealed && reveal!.explanation && (
+              <div className="mt-2 text-xs font-normal text-muted-foreground italic">{reveal!.explanation}</div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Answer buttons */}
+      {question.type === 'fast_answer' ? (
+        <div className="rounded-2xl border-2 border-yellow-400/30 bg-yellow-400/5 px-5 py-6 text-center">
+          <div className="text-display text-xl font-bold text-yellow-400">Risposta vocale!</div>
+          <div className="mt-1 text-sm text-muted-foreground">Alzati e rispondi ad alta voce</div>
+        </div>
+      ) : (
+        <div className={`grid gap-3 ${question.answers.length <= 2 ? 'grid-cols-1' : 'grid-cols-1'}`}>
+          {question.answers.map((ans, i) => {
+            const isCorrectAnswer = isRevealed && i === reveal!.correctAnswer;
+            const isMyWrongAnswer = isRevealed && myAnswer === i && i !== reveal!.correctAnswer;
+            const isSelected = myAnswer === i && !isRevealed;
+
+            let bg = 'border-white/15 bg-white/5';
+            if (isCorrectAnswer) bg = 'border-green-400 bg-green-400/20';
+            else if (isMyWrongAnswer) bg = 'border-red-400/50 bg-red-400/10';
+            else if (isSelected) bg = 'border-primary/70 bg-primary/15';
+            else if (isRevealed) bg = 'border-border/30 bg-white/2 opacity-40';
+
+            const disabled = submitted || submitting || timeLeft <= 0 || isRevealed;
+
+            return (
+              <motion.button key={i}
+                initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }}
+                disabled={disabled}
+                onClick={() => submitAnswer(i)}
+                className={`flex items-center gap-4 rounded-2xl border-2 px-5 py-4 text-left transition-all active:scale-97 disabled:cursor-default ${bg}`}>
+                <span className="text-display text-xl font-black text-white/60 w-6 flex-shrink-0">{LETTER[i]}</span>
+                <span className="text-display text-lg font-bold text-white leading-snug flex-1">{ans}</span>
+                {isCorrectAnswer && <span className="text-xl flex-shrink-0">✅</span>}
+                {isMyWrongAnswer && <span className="text-xl flex-shrink-0">❌</span>}
+                {isSelected && submitting && <Loader2 className="h-4 w-4 animate-spin text-primary flex-shrink-0" />}
+                {isSelected && !submitting && !isRevealed && <Check className="h-4 w-4 text-primary flex-shrink-0" />}
+              </motion.button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Submitted / error */}
+      <AnimatePresence>
+        {submitted && !isRevealed && (
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+            className="flex items-center gap-2 rounded-2xl border border-primary/40 bg-primary/10 px-4 py-3 text-primary text-sm font-bold">
+            <Check className="h-4 w-4" /> Risposta inviata! Attendi il reveal…
+          </motion.div>
+        )}
+        {submitError && (
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+            className="rounded-2xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-destructive text-sm font-bold">
+            {submitError}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Scores after reveal */}
+      {isRevealed && reveal!.scores.length > 0 && (
+        <div className="rounded-2xl border border-white/10 bg-white/3 px-5 py-4">
+          <div className="text-xs uppercase tracking-widest text-muted-foreground mb-3">Classifica parziale</div>
+          <div className="space-y-1.5">
+            {[...reveal!.scores].sort((a, b) => b.total - a.total).map((s, rank) => (
+              <div key={s.teamId} className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground w-4">{rank + 1}.</span>
+                <div className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ background: s.color }} />
+                <span className="text-sm font-bold flex-1 truncate">{s.name}</span>
+                {s.roundPoints > 0 && <span className="text-xs text-green-400 font-bold">+{s.roundPoints}</span>}
+                <span className="text-display font-black text-sm" style={{ color: s.color }}>{s.total}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Coppie Phone Controller (unchanged) ──────────────────────────────────────
+
 function CoppiePhoneController({ board, sessionId, teamId, teamColor, onBoardUpdate }: {
   board: CoppieBoardState | null;
   sessionId: string | null;
@@ -278,7 +558,6 @@ function CoppiePhoneController({ board, sessionId, teamId, teamColor, onBoardUpd
   const [busy, setBusy] = useState(false);
   const [actionMsg, setActionMsg] = useState<{ text: string; type: 'match' | 'mismatch' } | null>(null);
 
-  // Fetch board on mount if sessionId is available (handles page refresh)
   useEffect(() => {
     if (!sessionId || board) return;
     const url = `${BASE}api/coppie/sessions/${sessionId}/board`.replace(/\/\//g, '/');
@@ -292,7 +571,7 @@ function CoppiePhoneController({ board, sessionId, teamId, teamColor, onBoardUpd
     return (
       <div className="mt-8 flex flex-col items-center gap-4 text-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <div className="text-sm text-muted-foreground">Attendi che l'animatore inizializzi il gioco…</div>
+        <div className="text-sm text-muted-foreground">Attendi che l&apos;animatore inizializzi il gioco…</div>
       </div>
     );
   }
@@ -359,7 +638,6 @@ function CoppiePhoneController({ board, sessionId, teamId, teamColor, onBoardUpd
 
   return (
     <div className="mt-4 flex flex-col gap-3">
-      {/* Turn indicator */}
       <div className={`flex items-center gap-2 rounded-xl px-4 py-3 transition-all ${
         isMyTurn ? 'border border-green-500/40 bg-green-500/10' : 'border border-border bg-card/60'
       }`}>
@@ -382,7 +660,6 @@ function CoppiePhoneController({ board, sessionId, teamId, teamColor, onBoardUpd
         <div className="ml-auto text-xs text-muted-foreground">{board.matchCount}/{board.totalPairs}</div>
       </div>
 
-      {/* Mini card grid */}
       <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
         {board.cards.map(card => {
           const isFlipped = card.flipped || card.matched;
@@ -418,26 +695,19 @@ function CoppiePhoneController({ board, sessionId, teamId, teamColor, onBoardUpd
         })}
       </div>
 
-      {/* Action feedback */}
       <AnimatePresence>
         {actionMsg && (
-          <motion.div
-            key="action"
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
+          <motion.div key="action" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
             className={`rounded-2xl px-4 py-3 text-center text-sm font-black ${
               actionMsg.type === 'match'
                 ? 'border border-green-500/40 bg-green-500/10 text-green-400'
                 : 'border border-amber-400/40 bg-amber-400/10 text-amber-400'
-            }`}
-          >
+            }`}>
             {actionMsg.text}
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Score bar */}
       <div className="flex gap-2">
         {board.teams.map(t => (
           <div key={t.id} className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 flex-1 justify-center transition-all ${
