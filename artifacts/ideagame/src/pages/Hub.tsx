@@ -1,6 +1,7 @@
 import { useLocation } from 'wouter';
 import { motion } from 'framer-motion';
-import { Wifi, Users, Radio, Loader2 } from 'lucide-react';
+import { Wifi, Users, Radio, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import { useState } from 'react';
 import { Hexagon } from '@/components/Hexagon';
 import { GameIcon } from '@/components/GameIcon';
 import { QrPlaceholder } from '@/components/QrPlaceholder';
@@ -10,143 +11,306 @@ import { useListGames, useGetCurrentEvent, useListPlayers, getListPlayersQueryKe
 
 type IconName = Parameters<typeof GameIcon>[0]['name'];
 
+// Orbital positions — max |x|=1.5 ensures hexes stay inside canvas at all sizes
 const POSITIONS = [
-  { x: -1, y: -1 }, { x: 1, y: -1 },
-  { x: -1.6, y: 0 }, { x: 1.6, y: 0 },
-  { x: -1, y: 1 }, { x: 1, y: 1 },
+  { x: -1,   y: -1 },
+  { x:  1,   y: -1 },
+  { x: -1.5, y:  0 },
+  { x:  1.5, y:  0 },
+  { x: -1,   y:  1 },
+  { x:  1,   y:  1 },
 ];
+
+// Desktop: 3-col max-w-[1320px] — middle col ≈ 656px, so canvas must stay ≤ 620px wide
+// canvas_w = 2*(1.5*OX + HEX/2) = 2*(1.5*135 + 78) = 2*280.5 = 561px ✓
+const D_HEX = 156;   // hex size (px)
+const D_OX  = 135;   // orbit radius x
+const D_OY  = 156;   // orbit radius y
+
+// Tablet 2-col: left 280px + gap 24px + 48px padding = 352px used → right ≈ 416px
+// canvas_w = 2*(1.5*94 + 53) = 2*(141 + 53) = 388px ✓
+const T_HEX = 106;
+const T_OX  =  94;
+const T_OY  = 106;
 
 export default function Hub() {
   const t = useT();
   const [, navigate] = useLocation();
+  const [rosterOpen, setRosterOpen] = useState(false);
+
   const { data: games = [], isLoading: gamesLoading } = useListGames();
   const { data: liveEvent } = useGetCurrentEvent();
-  const { data: players = [] } = useListPlayers(liveEvent?.id ?? '', { query: { queryKey: getListPlayersQueryKey(liveEvent?.id ?? ''), enabled: !!liveEvent?.id } });
-
-  const HEX_SIZE = 280;
-  const ORBIT_X = 290;
-  const ORBIT_Y = 290;
+  const { data: players = [] } = useListPlayers(
+    liveEvent?.id ?? '',
+    { query: { queryKey: getListPlayersQueryKey(liveEvent?.id ?? ''), enabled: !!liveEvent?.id } },
+  );
 
   const visibleGames = liveEvent && Array.isArray(liveEvent.enabledGames) && liveEvent.enabledGames.length > 0
     ? games.filter(g => (liveEvent.enabledGames as string[]).includes(g.slug)).slice(0, 6)
     : games.slice(0, 6);
 
-  return (
-    <div className="relative min-h-screen w-full overflow-hidden">
-      <header className="relative z-20 flex items-center justify-between px-10 py-8">
-        <div className="flex items-center gap-5">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/40">
-            <span className="text-display text-3xl font-black">I</span>
-          </div>
-          <div>
-            <div className="text-display text-3xl font-black tracking-tight">{t('app.title')}</div>
-            <div className="text-sm text-muted-foreground">{t('app.tagline')}</div>
-          </div>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 rounded-full border border-border bg-card/60 px-4 py-2 text-sm">
-            <Wifi className="h-4 w-4 text-primary" />
-            <span className="text-muted-foreground">{t('hub.network_local')}</span>
-          </div>
-          <LocaleSwitcher />
-        </div>
-      </header>
+  const joinUrl = `${window.location.origin}/play${liveEvent ? `?e=${liveEvent.joinCode}` : ''}`;
 
-      <div className="relative z-10 px-10">
-        {liveEvent ? (
-          <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-3">
-            <span className="flex items-center gap-2 rounded-full bg-destructive px-3 py-1 text-xs font-bold uppercase tracking-widest text-destructive-foreground">
-              <span className="h-2 w-2 animate-pulse rounded-full bg-white" />{t('common.live')}
-            </span>
-            <span className="text-muted-foreground">{t('hub.live_event')}:</span>
-            <span className="text-display text-xl font-bold">{liveEvent.name}</span>
-            {liveEvent.venue && <span className="text-muted-foreground">— {liveEvent.venue}</span>}
-          </motion.div>
-        ) : (
-          <div className="text-sm text-muted-foreground">No live event yet.</div>
-        )}
+  function HexGrid({ hex, ox, oy }: { hex: number; ox: number; oy: number }) {
+    const cw = Math.ceil(2 * (1.5 * ox + hex / 2)) + 10;
+    const ch = Math.ceil(2 * (oy + hex * 1.06 / 2)) + 10;
+    return (
+      <div className="relative mx-auto" style={{ width: cw, height: ch }}>
+        {/* Centre badge */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.7 }} animate={{ opacity: 1, scale: 1 }}
+          transition={{ type: 'spring', stiffness: 100 }}
+          className="absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2"
+        >
+          <div className="relative flex items-center justify-center" style={{ width: hex * 0.7, height: hex * 0.74 }}>
+            <div className="absolute inset-0 hex-clip bg-gradient-to-br from-primary via-accent to-primary opacity-90" />
+            <div className="absolute inset-1 hex-clip bg-background" />
+            <div className="relative z-10 text-center">
+              <div className="text-display font-black text-primary leading-none" style={{ fontSize: hex * 0.22 }}>IDEA</div>
+              <div className="text-display font-black text-foreground/90 tracking-widest leading-none" style={{ fontSize: hex * 0.11 }}>GAME</div>
+            </div>
+          </div>
+        </motion.div>
+
+        {gamesLoading ? (
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : visibleGames.map((g, i) => {
+          const pos = POSITIONS[i] ?? POSITIONS[0]!;
+          return (
+            <div key={g.id} className="absolute"
+              style={{
+                left: cw / 2 + pos.x * ox - hex / 2,
+                top:  ch / 2 + pos.y * oy - hex * 1.06 / 2,
+              }}>
+              <Hexagon color={g.accentColor} size={hex} delay={0.05 + i * 0.07} onClick={() => navigate(`/game/${g.slug}`)}>
+                <div className="mb-2 flex items-center justify-center rounded-xl"
+                  style={{ width: hex * 0.38, height: hex * 0.38, background: `${g.accentColor}22`, color: g.accentColor }}>
+                  <GameIcon name={g.icon as IconName} style={{ width: hex * 0.24, height: hex * 0.24 }} />
+                </div>
+                <div className="text-display font-black leading-tight text-center line-clamp-2" style={{ fontSize: Math.max(11, hex * 0.10), color: g.accentColor }}>{g.name}</div>
+                <div className="mt-1 text-center text-muted-foreground line-clamp-2" style={{ fontSize: Math.max(9, hex * 0.075) }}>{g.tagline}</div>
+                {g.adultOnly && (
+                  <div className="mt-2 rounded-full border border-destructive/60 bg-destructive/10 px-2 py-0.5 text-destructive font-bold uppercase tracking-widest" style={{ fontSize: hex * 0.07 }}>18+</div>
+                )}
+              </Hexagon>
+            </div>
+          );
+        })}
       </div>
+    );
+  }
 
-      <main className="relative mx-auto mt-12 grid max-w-[1500px] grid-cols-[420px_1fr_420px] items-center gap-10 px-10">
-        <motion.aside initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}
-                      className="flex flex-col items-center rounded-3xl border border-border bg-card/70 p-8 backdrop-blur-md">
-          <div className="mb-4 text-sm uppercase tracking-widest text-muted-foreground">{t('hub.scan_to_join')}</div>
-          <QrPlaceholder text={`${window.location.origin}/play${liveEvent ? `?e=${liveEvent.joinCode}` : ''}`} size={260} />
-          <div className="mt-5 text-center">
-            <div className="text-xs text-muted-foreground">{t('hub.local_url')}</div>
-            <div className="text-mono text-lg font-bold text-primary">{liveEvent?.joinCode ?? '—'}</div>
-          </div>
+  function QrPanel({ compact = false }: { compact?: boolean }) {
+    const qrSize = compact ? 140 : 220;
+    return (
+      <div className={`flex flex-col items-center rounded-3xl border border-border bg-card/70 backdrop-blur-md ${compact ? 'p-4' : 'p-8'}`}>
+        <div className={`uppercase tracking-widest text-muted-foreground ${compact ? 'mb-3 text-xs' : 'mb-4 text-sm'}`}>
+          {t('hub.scan_to_join')}
+        </div>
+        <QrPlaceholder text={joinUrl} size={qrSize} />
+        <div className="mt-4 text-center">
+          <div className="text-xs text-muted-foreground">{t('hub.local_url')}</div>
+          <div className="text-mono text-lg font-bold text-primary">{liveEvent?.joinCode ?? '—'}</div>
+        </div>
+        {!compact && (
           <div className="mt-6 flex w-full items-center justify-between border-t border-border pt-5">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Users className="h-4 w-4" /> {t('hub.players_connected')}
             </div>
             <div className="text-display text-3xl font-black text-primary">{players.length}</div>
           </div>
-        </motion.aside>
+        )}
+      </div>
+    );
+  }
 
-        <div className="relative mx-auto" style={{ height: 760, width: 760 }}>
-          <motion.div initial={{ opacity: 0, scale: 0.7 }} animate={{ opacity: 1, scale: 1 }}
-                      transition={{ type: 'spring', stiffness: 100 }}
-                      className="absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2">
-            <div className="relative flex h-[200px] w-[180px] items-center justify-center">
-              <div className="absolute inset-0 hex-clip bg-gradient-to-br from-primary via-accent to-primary opacity-90" />
-              <div className="absolute inset-1.5 hex-clip bg-background" />
-              <div className="relative z-10 text-center">
-                <div className="text-display text-5xl font-black text-primary">IDEA</div>
-                <div className="text-display text-2xl font-black tracking-widest text-foreground/90">GAME</div>
-              </div>
-            </div>
+  function RosterPanel() {
+    return (
+      <div className="rounded-3xl border border-border bg-card/70 p-6 backdrop-blur-md">
+        <div className="mb-4 flex items-center gap-2 text-sm uppercase tracking-widest text-muted-foreground">
+          <Radio className="h-4 w-4 text-accent" /> Live
+          <span className="ml-auto text-display text-xl font-black text-primary">{players.length}</span>
+        </div>
+        <div className="space-y-2.5">
+          {players.length === 0 && <div className="text-sm text-muted-foreground">Waiting for players to join…</div>}
+          {players.slice(0, 9).map((p, idx) => (
+            <motion.div key={p.id} initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: idx * 0.05 }} className="flex items-center gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold text-background"
+                style={{ background: p.avatarColor }}>{p.nickname[0]}</div>
+              <div className="text-display text-sm font-bold truncate">{p.nickname}</div>
+              <div className="ml-auto text-xs text-muted-foreground shrink-0">joined</div>
+            </motion.div>
+          ))}
+        </div>
+        <button onClick={() => navigate('/lobby')}
+          className="mt-5 w-full rounded-2xl border border-primary/40 bg-primary/10 py-2.5 text-sm font-bold text-primary hover-elevate">
+          Open lobby
+        </button>
+      </div>
+    );
+  }
+
+  // Mobile card for game (instead of hex)
+  function GameCard({ g, i }: { g: typeof visibleGames[0]; i: number }) {
+    return (
+      <motion.button
+        type="button"
+        onClick={() => navigate(`/game/${g.slug}`)}
+        initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.05 + i * 0.06, type: 'spring', stiffness: 120 }}
+        whileTap={{ scale: 0.97 }}
+        className="relative flex flex-col items-center gap-2 rounded-2xl border border-border bg-card/60 p-4 text-center backdrop-blur-sm hover-elevate"
+        style={{ borderColor: `${g.accentColor}44` }}
+      >
+        <div className="absolute inset-0 rounded-2xl opacity-10" style={{ background: `radial-gradient(ellipse at top, ${g.accentColor} 0%, transparent 70%)` }} />
+        <div className="relative z-10 flex h-12 w-12 items-center justify-center rounded-xl"
+          style={{ background: `${g.accentColor}22`, color: g.accentColor }}>
+          <GameIcon name={g.icon as IconName} className="h-7 w-7" />
+        </div>
+        <div className="relative z-10 text-display text-sm font-black leading-tight" style={{ color: g.accentColor }}>{g.name}</div>
+        <div className="relative z-10 text-xs text-muted-foreground line-clamp-2">{g.tagline}</div>
+        {g.adultOnly && (
+          <div className="relative z-10 rounded-full border border-destructive/60 bg-destructive/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-destructive">18+</div>
+        )}
+      </motion.button>
+    );
+  }
+
+  return (
+    <div className="relative min-h-screen w-full overflow-x-hidden">
+
+      {/* ── Header ─────────────────────────────────────────────── */}
+      <header className="relative z-20 flex items-center justify-between px-4 py-4 sm:px-8 sm:py-6 lg:px-10 lg:py-8">
+        <div className="flex items-center gap-3 sm:gap-5 min-w-0">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/40 sm:h-14 sm:w-14 sm:rounded-2xl">
+            <span className="text-display text-xl font-black sm:text-3xl">I</span>
+          </div>
+          <div className="min-w-0">
+            <div className="text-display text-xl font-black tracking-tight sm:text-3xl">{t('app.title')}</div>
+            <div className="hidden text-xs text-muted-foreground sm:block sm:text-sm">{t('app.tagline')}</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 sm:gap-4">
+          <div className="hidden items-center gap-2 rounded-full border border-border bg-card/60 px-3 py-1.5 text-xs sm:flex sm:px-4 sm:py-2 sm:text-sm">
+            <Wifi className="h-3.5 w-3.5 text-primary sm:h-4 sm:w-4" />
+            <span className="text-muted-foreground">{t('hub.network_local')}</span>
+          </div>
+          <LocaleSwitcher />
+        </div>
+      </header>
+
+      {/* ── Live event banner ───────────────────────────────────── */}
+      <div className="relative z-10 px-4 sm:px-8 lg:px-10">
+        {liveEvent ? (
+          <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <span className="flex items-center gap-1.5 rounded-full bg-destructive px-2.5 py-0.5 text-xs font-bold uppercase tracking-widest text-destructive-foreground sm:px-3 sm:py-1">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />{t('common.live')}
+            </span>
+            <span className="hidden text-muted-foreground sm:block">{t('hub.live_event')}:</span>
+            <span className="text-display text-base font-bold sm:text-xl">{liveEvent.name}</span>
+            {liveEvent.venue && <span className="hidden text-muted-foreground lg:block">— {liveEvent.venue}</span>}
           </motion.div>
+        ) : (
+          <div className="text-sm text-muted-foreground">No live event yet.</div>
+        )}
+      </div>
 
-          {gamesLoading ? (
-            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
-          ) : visibleGames.map((g, i) => {
-            const pos = POSITIONS[i] ?? POSITIONS[0]!;
-            return (
-              <div key={g.id} className="absolute"
-                   style={{ left: `calc(50% + ${pos.x * ORBIT_X}px - ${HEX_SIZE / 2}px)`,
-                            top: `calc(50% + ${pos.y * ORBIT_Y}px - ${HEX_SIZE * 1.06 / 2}px)` }}>
-                <Hexagon color={g.accentColor} size={HEX_SIZE} delay={0.05 + i * 0.07} onClick={() => navigate(`/game/${g.slug}`)}>
-                  <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-2xl"
-                       style={{ background: `${g.accentColor}22`, color: g.accentColor }}>
-                    <GameIcon name={g.icon as IconName} className="h-9 w-9" />
-                  </div>
-                  <div className="text-display text-2xl font-black leading-tight" style={{ color: g.accentColor }}>{g.name}</div>
-                  <div className="mt-2 text-xs text-muted-foreground line-clamp-2">{g.tagline}</div>
-                  {g.adultOnly && (
-                    <div className="mt-3 rounded-full border border-destructive/60 bg-destructive/10 px-3 py-0.5 text-[10px] font-bold uppercase tracking-widest text-destructive">18+</div>
-                  )}
-                </Hexagon>
-              </div>
-            );
-          })}
+      {/* ══════════════════════════════════════════════════════════
+          MOBILE layout  (<768px): stacked
+          ══════════════════════════════════════════════════════════ */}
+      <div className="md:hidden mt-5 px-4 space-y-5 pb-32">
+        {/* QR compact + count */}
+        <div className="flex items-center gap-4 rounded-2xl border border-border bg-card/70 p-4 backdrop-blur-md">
+          <QrPlaceholder text={joinUrl} size={110} />
+          <div className="flex-1 min-w-0">
+            <div className="text-xs uppercase tracking-widest text-muted-foreground mb-1">{t('hub.scan_to_join')}</div>
+            <div className="text-mono text-2xl font-black text-primary">{liveEvent?.joinCode ?? '—'}</div>
+            <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+              <Users className="h-4 w-4" />
+              <span className="text-display text-xl font-black text-primary">{players.length}</span>
+              <span>{t('hub.players_connected')}</span>
+            </div>
+          </div>
         </div>
 
-        <motion.aside initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
-                      className="rounded-3xl border border-border bg-card/70 p-8 backdrop-blur-md">
-          <div className="mb-5 flex items-center gap-2 text-sm uppercase tracking-widest text-muted-foreground">
-            <Radio className="h-4 w-4 text-accent" /> Live
-          </div>
-          <div className="space-y-3">
-            {players.length === 0 && <div className="text-sm text-muted-foreground">Waiting for players to join…</div>}
-            {players.slice(0, 9).map((p, idx) => (
-              <motion.div key={p.id} initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: idx * 0.05 }} className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-background"
-                     style={{ background: p.avatarColor }}>{p.nickname[0]}</div>
-                <div className="text-display text-base font-bold">{p.nickname}</div>
-                <div className="ml-auto text-xs text-muted-foreground">joined</div>
-              </motion.div>
-            ))}
-          </div>
-          <button onClick={() => navigate('/lobby')} className="mt-6 w-full rounded-2xl border border-primary/40 bg-primary/10 py-3 text-sm font-bold text-primary hover-elevate">
-            Open lobby
-          </button>
-        </motion.aside>
-      </main>
+        {/* Game cards 2-col */}
+        <div>
+          <div className="mb-3 text-sm uppercase tracking-[0.25em] text-muted-foreground">{t('hub.choose_game')}</div>
+          {gamesLoading ? (
+            <div className="flex justify-center py-10"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              {visibleGames.map((g, i) => <GameCard key={g.id} g={g} i={i} />)}
+            </div>
+          )}
+        </div>
 
-      <div className="mt-10 pb-32 text-center">
-        <div className="text-display text-2xl uppercase tracking-[0.3em] text-muted-foreground">{t('hub.choose_game')}</div>
+        {/* Player roster collapsible */}
+        <div className="rounded-2xl border border-border bg-card/70 overflow-hidden">
+          <button
+            className="flex w-full items-center justify-between px-4 py-3 text-sm font-bold text-muted-foreground"
+            onClick={() => setRosterOpen(o => !o)}
+          >
+            <span className="flex items-center gap-2"><Radio className="h-4 w-4 text-accent" /> Live roster ({players.length})</span>
+            {rosterOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
+          {rosterOpen && (
+            <div className="border-t border-border px-4 pb-4 pt-3 space-y-2.5">
+              {players.length === 0 && <div className="text-sm text-muted-foreground">Nessun giocatore ancora.</div>}
+              {players.slice(0, 12).map((p, idx) => (
+                <div key={p.id} className="flex items-center gap-3">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-background"
+                    style={{ background: p.avatarColor }}>{p.nickname[0]}</div>
+                  <div className="text-display text-sm font-bold truncate">{p.nickname}</div>
+                </div>
+              ))}
+              <button onClick={() => navigate('/lobby')} className="mt-2 w-full rounded-xl border border-primary/40 bg-primary/10 py-2 text-sm font-bold text-primary">
+                Open lobby
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ══════════════════════════════════════════════════════════
+          TABLET layout  (768px – 1023px): QR left | hex right
+          ══════════════════════════════════════════════════════════ */}
+      <div className="hidden md:grid lg:hidden mt-8 grid-cols-[280px_1fr] gap-6 px-6 pb-36 items-start">
+        <div className="space-y-4 sticky top-4">
+          <QrPanel />
+          <RosterPanel />
+        </div>
+        <div className="flex flex-col items-center justify-center pt-4">
+          {gamesLoading
+            ? <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            : <HexGrid hex={T_HEX} ox={T_OX} oy={T_OY} />
+          }
+          <div className="mt-8 text-display text-xl uppercase tracking-[0.3em] text-muted-foreground">{t('hub.choose_game')}</div>
+        </div>
+      </div>
+
+      {/* ══════════════════════════════════════════════════════════
+          DESKTOP layout  (≥1024px): 3-col QR | hex | roster
+          ══════════════════════════════════════════════════════════ */}
+      <div className="hidden lg:grid mt-10 mx-auto w-full max-w-[1320px] grid-cols-[300px_1fr_300px] items-center gap-8 px-8 pb-44">
+        <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
+          <QrPanel />
+        </motion.div>
+
+        <div className="flex flex-col items-center">
+          {gamesLoading
+            ? <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            : <HexGrid hex={D_HEX} ox={D_OX} oy={D_OY} />
+          }
+          <div className="mt-10 text-display text-2xl uppercase tracking-[0.3em] text-muted-foreground">{t('hub.choose_game')}</div>
+        </div>
+
+        <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}>
+          <RosterPanel />
+        </motion.div>
       </div>
     </div>
   );
