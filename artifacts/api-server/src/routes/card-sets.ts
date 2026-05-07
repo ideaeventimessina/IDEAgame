@@ -16,7 +16,14 @@ router.get("/card-sets", requireAuth, async (req: AuthedRequest, res): Promise<v
 });
 
 router.post("/card-sets", requireAuth, async (req: AuthedRequest, res: Response): Promise<void> => {
-  const parsed = CreateCardSetBody.safeParse(req.body);
+  const body = req.body as Record<string, unknown>;
+  const name = typeof body["name"] === "string" ? body["name"].trim() : "";
+  if (!name) { res.status(400).json({ error: "name is required" }); return; }
+  const slugBase = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40);
+  const slug = typeof body["slug"] === "string" && body["slug"].trim()
+    ? body["slug"].trim()
+    : `${slugBase}-${crypto.randomUUID().slice(0, 6)}`;
+  const parsed = CreateCardSetBody.safeParse({ ...body, slug, name });
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const me = req.user!;
   const [s] = await db.insert(cardSetsTable).values({
@@ -50,7 +57,9 @@ router.get("/card-sets/:id/cards", requireAuth, async (req: AuthedRequest, res):
 
 router.post("/card-sets/:id/cards", requireAuth, async (req: AuthedRequest, res: Response): Promise<void> => {
   const id = String(req.params["id"]);
-  const parsed = CreateCardBody.safeParse(req.body);
+  // Default kind to 'question' for coppie/image cards that don't supply a legacy kind
+  const bodyWithDefaults = { kind: "question", ...((req.body as object) ?? {}) };
+  const parsed = CreateCardBody.safeParse(bodyWithDefaults);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const [s] = await db.select().from(cardSetsTable).where(eq(cardSetsTable.id, id));
   if (!s) { res.status(404).json({ error: "Not found" }); return; }

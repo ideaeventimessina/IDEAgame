@@ -363,6 +363,26 @@ export default function LiveControl() {
                 <ExternalLink className="h-4 w-4" /> Board
               </a>
             </div>
+            {coppieMsg.startsWith('✓') && (
+              <button
+                disabled={!coppieCardSetId || coppieBusy}
+                onClick={async () => {
+                  setCoppieBusy(true); setCoppieMsg('');
+                  try {
+                    await apiFetch(`/coppie/sessions/${session.id}/init`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ cardSetId: coppieCardSetId, difficulty: coppieDifficulty, mode: coppieMode, teamIds: [] }),
+                    });
+                    setCoppieMsg('✓ Board resettata!');
+                  } catch (e) { setCoppieMsg((e as Error).message); }
+                  finally { setCoppieBusy(false); }
+                }}
+                className="w-full rounded-xl border border-destructive/40 py-2 text-xs font-bold text-destructive hover:bg-destructive/10 disabled:opacity-40 flex items-center justify-center gap-2"
+              >
+                ↺ Reset board (nuova partita)
+              </button>
+            )}
           </div>
         )}
 

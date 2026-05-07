@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearch } from 'wouter';
+import { useSearch, useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trophy } from 'lucide-react';
+import { Trophy, Home, Wifi, WifiOff, RotateCcw } from 'lucide-react';
 import { useEventSocket } from '@/hooks/useEventSocket';
 
 interface CoppieCard {
@@ -15,6 +15,7 @@ interface CoppieBoard {
   locked: boolean; status: 'playing' | 'ended'; winner: string | null;
   matchCount: number; totalPairs: number;
 }
+interface FlashMsg { text: string; color: string; icon?: string }
 
 const BASE = (import.meta.env.BASE_URL as string) ?? '/';
 async function apiFetch(path: string, opts?: RequestInit) {
@@ -33,6 +34,7 @@ function gridCols(n: number) {
 
 export default function GameCoppie() {
   const search = useSearch();
+  const [, navigate] = useLocation();
   const params = new URLSearchParams(search);
   const sessionId = params.get('s') ?? '';
   const eventIdParam = params.get('e') ?? '';
@@ -40,10 +42,36 @@ export default function GameCoppie() {
   const [board, setBoard] = useState<CoppieBoard | null>(null);
   const [eventId, setEventId] = useState(eventIdParam);
   const [loading, setLoading] = useState(!!sessionId);
+  const [flash, setFlash] = useState<FlashMsg | null>(null);
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const unflipRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const { connected, on } = useEventSocket(eventId || null);
 
+  const showFlash = useCallback((msg: FlashMsg, durationMs = 2200) => {
+    if (flashTimer.current) clearTimeout(flashTimer.current);
+    setFlash(msg);
+    flashTimer.current = setTimeout(() => setFlash(null), durationMs);
+  }, []);
+
+  const fetchBoard = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      const b = await apiFetch(`/coppie/sessions/${sessionId}/board`);
+      setBoard(b as CoppieBoard);
+    } catch { /* silent */ }
+  }, [sessionId]);
+
+  const callUnflip = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      const b = await apiFetch(`/coppie/sessions/${sessionId}/unflip`, { method: 'POST' });
+      setBoard(b as CoppieBoard);
+    } catch { /* ignore */ }
+  }, [sessionId]);
+
+  // Initial board load
   useEffect(() => {
     if (!sessionId) { setLoading(false); return; }
     apiFetch(`/coppie/sessions/${sessionId}/board`)
@@ -56,14 +84,27 @@ export default function GameCoppie() {
     }
   }, [sessionId, eventIdParam]);
 
-  const callUnflip = useCallback(async () => {
+  // Polling fallback when socket is disconnected
+  useEffect(() => {
     if (!sessionId) return;
-    try {
-      const b = await apiFetch(`/coppie/sessions/${sessionId}/unflip`, { method: 'POST' });
-      setBoard(b as CoppieBoard);
-    } catch { /* ignore */ }
-  }, [sessionId]);
+    if (connected) {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    } else {
+      pollRef.current = setInterval(fetchBoard, 5000);
+    }
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [connected, sessionId, fetchBoard]);
 
+  // Re-fetch board on socket reconnect
+  const prevConnected = useRef(connected);
+  useEffect(() => {
+    if (!prevConnected.current && connected && sessionId) {
+      fetchBoard();
+    }
+    prevConnected.current = connected;
+  }, [connected, sessionId, fetchBoard]);
+
+  // Socket event listeners
   useEffect(() => {
     if (!eventId) return;
     const extractBoard = (data: unknown) =>
@@ -72,16 +113,29 @@ export default function GameCoppie() {
     const unsubs = [
       on('coppie:state', d => setBoard(extractBoard(d))),
       on('coppie:flip',  d => setBoard(extractBoard(d))),
-      on('coppie:match', d => setBoard(extractBoard(d))),
+      on('coppie:match', d => {
+        const b = extractBoard(d);
+        setBoard(b);
+        const name = (d as { matchedTeamName?: string }).matchedTeamName;
+        showFlash({ text: name ? `🎉 Coppia! ${name}` : '🎉 Coppia trovata!', color: '#22c55e' });
+      }),
       on('coppie:mismatch', d => {
         setBoard(extractBoard(d));
+        const next = (d as { nextTeamName?: string }).nextTeamName;
+        showFlash({ text: next ? `❌ Mismatch → ${next}` : '❌ Cambio turno', color: '#f59e0b' });
         if (unflipRef.current) clearTimeout(unflipRef.current);
         unflipRef.current = setTimeout(callUnflip, 1600);
       }),
-      on('coppie:end', d => setBoard(extractBoard(d))),
+      on('coppie:end', d => {
+        setBoard(extractBoard(d));
+        showFlash({ text: '🏆 Partita conclusa!', color: '#8B5CF6' }, 4000);
+      }),
     ];
-    return () => { unsubs.forEach(u => u()); if (unflipRef.current) clearTimeout(unflipRef.current); };
-  }, [eventId, on, callUnflip]);
+    return () => {
+      unsubs.forEach(u => u());
+      if (unflipRef.current) clearTimeout(unflipRef.current);
+    };
+  }, [eventId, on, callUnflip, showFlash]);
 
   if (!sessionId) {
     return (
@@ -108,7 +162,15 @@ export default function GameCoppie() {
     return (
       <div className="flex h-screen items-center justify-center"
            style={{ background: 'radial-gradient(ellipse at top, hsl(248 70% 8%), hsl(248 70% 2%))' }}>
-        <div className="text-center text-muted-foreground">Board non ancora inizializzata — usa il pannello di controllo per cominciare.</div>
+        <div className="text-center space-y-4">
+          <div className="text-muted-foreground">Board non ancora inizializzata — usa il pannello di controllo per cominciare.</div>
+          <button onClick={fetchBoard} className="flex items-center gap-2 mx-auto text-xs text-muted-foreground/60 hover:text-muted-foreground border border-border/30 rounded-lg px-3 py-2">
+            <RotateCcw className="h-3 w-3" /> Riprova
+          </button>
+          <button onClick={() => navigate('/')} className="flex items-center gap-2 mx-auto text-xs text-muted-foreground/40 hover:text-muted-foreground/60">
+            <Home className="h-3 w-3" /> Torna al GameStation
+          </button>
+        </div>
       </div>
     );
   }
@@ -124,7 +186,10 @@ export default function GameCoppie() {
       {/* Header */}
       <header className="flex items-center justify-between px-8 py-3 border-b border-white/5 flex-shrink-0 bg-black/20 backdrop-blur">
         <div className="flex items-center gap-4">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground text-display font-black text-lg">I</div>
+          <button onClick={() => navigate('/')} title="GameStation"
+            className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground text-display font-black text-lg hover:opacity-80 transition-opacity">
+            <Home className="h-4 w-4" />
+          </button>
           <div>
             <div className="text-display text-lg font-black leading-none">Gioco delle Coppie</div>
             <div className="text-xs text-muted-foreground mt-0.5">{board.matchCount}/{board.totalPairs} coppie • {board.cards.length} carte</div>
@@ -150,7 +215,8 @@ export default function GameCoppie() {
               <span className="text-display text-2xl font-black tabular-nums ml-1" style={{ color: t.color }}>{t.score}</span>
             </motion.div>
           ))}
-          <div className={`h-2 w-2 rounded-full ${connected ? 'bg-green-400' : 'bg-amber-400 animate-pulse'}`} />
+          <div className={`h-2 w-2 rounded-full ${connected ? 'bg-green-400' : 'bg-amber-400 animate-pulse'}`}
+               title={connected ? 'Connesso' : 'Offline – polling attivo'} />
         </div>
       </header>
 
@@ -171,8 +237,9 @@ export default function GameCoppie() {
                 className="h-2 w-2 rounded-full"
                 style={{ background: currentTeam.color }}
               />
-              Turno di <span className="font-black" style={{ color: currentTeam.color }}>{currentTeam.name}</span>
-              {board.locked && <span className="ml-2 text-amber-400 text-xs">— attendi…</span>}
+              Tocca una carta —&nbsp;
+              <span className="font-black" style={{ color: currentTeam.color }}>{currentTeam.name}</span>
+              {board.locked && <span className="ml-2 text-amber-400 text-xs animate-pulse">— attendi…</span>}
             </div>
           </motion.div>
         )}
@@ -195,14 +262,40 @@ export default function GameCoppie() {
         </div>
       </div>
 
+      {/* Flash message overlay */}
+      <AnimatePresence>
+        {flash && (
+          <motion.div
+            key="flash"
+            initial={{ opacity: 0, scale: 0.85 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 1.05 }}
+            transition={{ duration: 0.2 }}
+            className="absolute inset-x-0 top-1/3 z-40 flex justify-center pointer-events-none"
+          >
+            <div
+              className="rounded-3xl px-12 py-6 text-5xl font-black text-white shadow-2xl"
+              style={{
+                background: `${flash.color}22`,
+                border: `2px solid ${flash.color}66`,
+                boxShadow: `0 0 60px ${flash.color}44`,
+                backdropFilter: 'blur(12px)',
+              }}
+            >
+              {flash.text}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Win overlay */}
       <AnimatePresence>
         {board.status === 'ended' && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="absolute inset-0 z-50 flex items-center justify-center"
-            style={{ background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(8px)' }}
+            className="absolute inset-0 z-50 flex flex-col items-center justify-center"
+            style={{ background: 'rgba(0,0,0,0.82)', backdropFilter: 'blur(8px)' }}
           >
             <motion.div
               initial={{ scale: 0.7, opacity: 0 }}
@@ -231,10 +324,21 @@ export default function GameCoppie() {
                   </div>
                 ))}
               </div>
+              <button onClick={() => navigate('/')}
+                className="mt-8 flex items-center gap-2 mx-auto rounded-xl border border-border px-6 py-3 text-sm font-bold hover:bg-secondary/30">
+                <Home className="h-4 w-4" /> Torna al GameStation
+              </button>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Connection status badge */}
+      {!connected && (
+        <div className="absolute bottom-3 right-3 flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1.5 text-xs text-amber-400">
+          <WifiOff className="h-3 w-3" /> Offline — polling 5s
+        </div>
+      )}
     </div>
   );
 }

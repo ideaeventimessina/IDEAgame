@@ -21,6 +21,12 @@ const DIFFICULTY_PAIRS: Record<string, number> = {
   hard: 15,
 };
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isValidUUID(s: string): boolean {
+  return UUID_RE.test(s);
+}
+
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -33,6 +39,7 @@ function shuffle<T>(arr: T[]): T[] {
 async function getSessionMeta(
   sessionId: string,
 ): Promise<{ eventId: string } | null> {
+  if (!isValidUUID(sessionId)) return null;
   const [session] = await db
     .select()
     .from(gameSessionsTable)
@@ -62,6 +69,10 @@ router.get(
   "/coppie/sessions/:id/board",
   async (req: Request, res): Promise<void> => {
     const sessionId = String(req.params["id"]);
+    if (!isValidUUID(sessionId)) {
+      res.status(400).json({ error: "sessionId non valido" });
+      return;
+    }
     const [row] = await db
       .select()
       .from(coppieBoardsTable)
@@ -80,6 +91,10 @@ router.post(
   requireAuth,
   async (req: AuthedRequest, res: Response): Promise<void> => {
     const sessionId = String(req.params["id"]);
+    if (!isValidUUID(sessionId)) {
+      res.status(400).json({ error: "sessionId non valido" });
+      return;
+    }
     const eventId = await guardSession(req, sessionId);
     if (!eventId) {
       res.status(403).json({ error: "Forbidden" });
@@ -228,6 +243,11 @@ router.post(
   "/coppie/sessions/:id/flip",
   async (req: Request, res: Response): Promise<void> => {
     const sessionId = String(req.params["id"]);
+    if (!isValidUUID(sessionId)) {
+      res.status(400).json({ error: "sessionId non valido" });
+      return;
+    }
+
     const body = req.body as Record<string, unknown>;
     const pos = body["pos"];
     const teamId = body["teamId"];
@@ -258,6 +278,13 @@ router.post(
     const board: CoppieBoard = JSON.parse(
       JSON.stringify(row.board),
     ) as CoppieBoard;
+
+    // Validate teamId belongs to this board
+    const validTeamIds = new Set(board.teams.map((t) => t.id));
+    if (!validTeamIds.has(teamId)) {
+      res.status(403).json({ error: "Squadra non appartenente a questo evento" });
+      return;
+    }
 
     if (board.locked || board.status !== "playing") {
       res.status(409).json({ error: "Board bloccata, attendi" });
@@ -293,6 +320,7 @@ router.post(
       const c2 = board.cards[p2]!;
 
       if (c1.pairId === c2.pairId) {
+        // MATCH
         c1.matched = true;
         c2.matched = true;
         c1.matchedBy = teamId;
@@ -327,26 +355,34 @@ router.post(
           .update(coppieBoardsTable)
           .set({ board })
           .where(eq(coppieBoardsTable.sessionId, sessionId));
-        emitToEvent(eventId, "coppie:match", { p1, p2, teamId, board });
+
+        const matchedTeam = board.teams.find((t) => t.id === teamId);
+        emitToEvent(eventId, "coppie:match", { p1, p2, teamId, matchedTeamName: matchedTeam?.name ?? '', board });
         if (board.status === "ended")
           emitToEvent(eventId, "coppie:end", { board });
         else emitToEvent(eventId, "coppie:state", board);
         res.json(board);
       } else {
+        // MISMATCH
         board.locked = true;
         await db
           .update(coppieBoardsTable)
           .set({ board })
           .where(eq(coppieBoardsTable.sessionId, sessionId));
+
+        const nextIdx = (board.currentTeamIdx + 1) % Math.max(board.teams.length, 1);
+        const nextTeam = board.teams[nextIdx];
         emitToEvent(eventId, "coppie:mismatch", {
           p1,
           p2,
           teamId,
+          nextTeamName: nextTeam?.name ?? '',
           board,
         });
         res.json(board);
       }
     } else {
+      // First card flipped
       await db
         .update(coppieBoardsTable)
         .set({ board })
@@ -357,11 +393,15 @@ router.post(
   },
 );
 
-/* ─── POST unflip (client calls after 1.5s mismatch delay) ───────────── */
+/* ─── POST unflip (client calls after mismatch delay) ────────────────── */
 router.post(
   "/coppie/sessions/:id/unflip",
   async (req: Request, res: Response): Promise<void> => {
     const sessionId = String(req.params["id"]);
+    if (!isValidUUID(sessionId)) {
+      res.status(400).json({ error: "sessionId non valido" });
+      return;
+    }
 
     const [row] = await db
       .select()
@@ -383,6 +423,7 @@ router.post(
       JSON.stringify(row.board),
     ) as CoppieBoard;
 
+    // Idempotent: if not locked just return current state
     if (!board.locked || board.flipping.length !== 2) {
       res.json(board);
       return;

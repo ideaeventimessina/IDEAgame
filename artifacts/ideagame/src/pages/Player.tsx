@@ -276,6 +276,17 @@ function CoppiePhoneController({ board, sessionId, teamId, teamColor, onBoardUpd
   onBoardUpdate: (b: CoppieBoardState) => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [actionMsg, setActionMsg] = useState<{ text: string; type: 'match' | 'mismatch' } | null>(null);
+
+  // Fetch board on mount if sessionId is available (handles page refresh)
+  useEffect(() => {
+    if (!sessionId || board) return;
+    const url = `${BASE}api/coppie/sessions/${sessionId}/board`.replace(/\/\//g, '/');
+    fetch(url, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(b => { if (b) onBoardUpdate(b as CoppieBoardState); })
+      .catch(() => {});
+  }, [sessionId, board, onBoardUpdate]);
 
   if (!board) {
     return (
@@ -310,6 +321,7 @@ function CoppiePhoneController({ board, sessionId, teamId, teamColor, onBoardUpd
 
   async function flip(pos: number) {
     if (!sessionId || !teamId || busy || board?.locked) return;
+    if (!isMyTurn) { setActionMsg({ text: 'Non è il tuo turno', type: 'mismatch' }); setTimeout(() => setActionMsg(null), 1500); return; }
     setBusy(true);
     try {
       const url = `${BASE}api/coppie/sessions/${sessionId}/flip`.replace(/\/\//g, '/');
@@ -322,12 +334,22 @@ function CoppiePhoneController({ board, sessionId, teamId, teamColor, onBoardUpd
         const newBoard = await r.json() as CoppieBoardState;
         onBoardUpdate(newBoard);
         if (newBoard.locked && newBoard.flipping.length === 2) {
+          setActionMsg({ text: 'Coppia sbagliata…', type: 'mismatch' });
+          setTimeout(() => setActionMsg(null), 1400);
           setTimeout(async () => {
             const u = `${BASE}api/coppie/sessions/${sessionId}/unflip`.replace(/\/\//g, '/');
             const ur = await fetch(u, { method: 'POST', credentials: 'include' });
             if (ur.ok) onBoardUpdate(await ur.json() as CoppieBoardState);
           }, 1500);
+        } else if (newBoard.flipping.length === 0 && newBoard.matchCount > (board?.matchCount ?? 0)) {
+          setActionMsg({ text: '🎉 Coppia trovata!', type: 'match' });
+          setTimeout(() => setActionMsg(null), 1800);
         }
+      } else {
+        const body = await r.json().catch(() => ({})) as { error?: string };
+        if (body.error?.includes('turno')) setActionMsg({ text: 'Non è il tuo turno', type: 'mismatch' });
+        else setActionMsg({ text: body.error ?? 'Errore', type: 'mismatch' });
+        setTimeout(() => setActionMsg(null), 1500);
       }
     } catch { /* silent */ }
     finally { setBusy(false); }
@@ -395,6 +417,25 @@ function CoppiePhoneController({ board, sessionId, teamId, teamColor, onBoardUpd
           );
         })}
       </div>
+
+      {/* Action feedback */}
+      <AnimatePresence>
+        {actionMsg && (
+          <motion.div
+            key="action"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className={`rounded-2xl px-4 py-3 text-center text-sm font-black ${
+              actionMsg.type === 'match'
+                ? 'border border-green-500/40 bg-green-500/10 text-green-400'
+                : 'border border-amber-400/40 bg-amber-400/10 text-amber-400'
+            }`}
+          >
+            {actionMsg.text}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Score bar */}
       <div className="flex gap-2">
