@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "XgJSbedSAlI0m_mnD6OiA"
+uri = "file://artifacts/ideagame/SCENES.md"
+type = "text"
+title = "IDEAgame — 20-Scene Navigation Spec"
