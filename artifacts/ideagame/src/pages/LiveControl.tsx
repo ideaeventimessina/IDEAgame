@@ -877,7 +877,7 @@ export default function LiveControl() {
                       className="flex items-center justify-center gap-2 rounded-xl border border-primary/40 bg-primary/10 py-2.5 text-sm font-bold text-primary">
                       <Trophy className="h-4 w-4" /> Podio globale
                     </button>
-                    <button onClick={() => void handleEveningInit()} disabled={eveningBusy}
+                    <button onClick={() => void handleEveningReset()} disabled={eveningBusy}
                       className="flex items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-sm font-bold disabled:opacity-40">
                       {eveningBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : '↺'} Ricomincia
                     </button>
