@@ -183,7 +183,7 @@ export default function GameQuizzone() {
               <motion.div key={team.teamId}
                 initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: (displayIdx) * 0.2 + 0.3 }}
                 style={{ order: podiumOrder[i] }}
-                className={`flex flex-col items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-10 pt-6 ${heights[i]}`}>
+                className={`flex flex-col items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 pt-4 sm:px-10 sm:pt-6 ${heights[i]}`}>
                 <div className="text-4xl">{medals[i]}</div>
                 <div className="text-display text-2xl font-black" style={{ color: team.color }}>{team.name}</div>
                 <div className="text-display text-4xl font-black text-white">{team.total}</div>
@@ -268,7 +268,7 @@ export default function GameQuizzone() {
       </div>
 
       {/* ─── Question ──────────────────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col items-center justify-center gap-8 px-12 pb-8">
+      <div className="flex-1 flex flex-col items-center justify-center gap-5 px-4 pb-8 sm:gap-8 sm:px-12">
         <AnimatePresence mode="wait">
           <motion.div key={`q-${roundIndex}`}
             initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
@@ -310,7 +310,7 @@ export default function GameQuizzone() {
         )}
 
         {type === 'fast_answer' && (
-          <div className="rounded-2xl border-2 border-yellow-400/30 bg-yellow-400/5 px-12 py-6 text-center">
+          <div className="rounded-2xl border-2 border-yellow-400/30 bg-yellow-400/5 px-5 py-5 text-center sm:px-12 sm:py-6">
             <div className="text-display text-2xl font-bold text-yellow-400">Risposta libera — microfono!</div>
           </div>
         )}

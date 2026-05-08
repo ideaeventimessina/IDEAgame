@@ -359,7 +359,7 @@ export default function Player() {
                 ) : (
                   <>
                     <motion.button onClick={() => setBuzzed(true)} animate={buzzed ? { scale: [1, 0.92, 1] } : {}} disabled={buzzed}
-                      className="mt-6 flex aspect-square w-full items-center justify-center rounded-full text-display text-5xl font-black text-background shadow-2xl disabled:opacity-60"
+                      className="mx-auto mt-6 flex aspect-square w-full max-w-[260px] items-center justify-center rounded-full text-display text-5xl font-black text-background shadow-2xl disabled:opacity-60"
                       style={{ background: `radial-gradient(circle at 35% 30%, ${myTeam?.color ?? '#8B5CF6'}, #1a1535 95%)`, boxShadow: `0 20px 60px ${myTeam?.color ?? '#8B5CF6'}66` }}>
                       <Zap className="mr-3 h-12 w-12" />
                       {buzzed ? 'Inviato!' : t('play.buzzer')}
