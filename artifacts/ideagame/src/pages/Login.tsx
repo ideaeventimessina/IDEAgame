@@ -32,10 +32,10 @@ export default function Login() {
     <div className="flex min-h-screen items-center justify-center bg-background px-6">
       <div className="w-full max-w-md">
         <div className="text-center">
-          <div className="hex-logo mx-auto grid h-16 w-16 place-items-center bg-gradient-to-br from-primary to-accent">
-            <span className="text-display text-2xl font-black text-primary-foreground">I</span>
+          <div className="mx-auto flex items-center justify-center rounded-2xl bg-white px-5 py-3 shadow-lg shadow-black/20" style={{ width: 176 }}>
+            <img src="/logo.png" alt="IDEA Games" className="h-16 w-auto object-contain" />
           </div>
-          <div className="mt-4 text-display text-3xl font-black">Bentornato</div>
+          <div className="mt-5 text-display text-3xl font-black">Bentornato</div>
           <div className="mt-1 text-sm text-muted-foreground">Accedi per gestire il tuo evento</div>
         </div>
 

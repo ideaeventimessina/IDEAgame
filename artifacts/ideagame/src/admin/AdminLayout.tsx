@@ -80,9 +80,10 @@ export function AdminLayout({ children, title }: { children: ReactNode; title: s
       <aside className={`fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col border-r border-border bg-sidebar text-sidebar-foreground transition-transform duration-200 md:hidden ${drawerOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex items-center justify-between px-6 py-5">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground text-display text-xl font-black">I</div>
+            <div className="flex items-center justify-center rounded-xl bg-white px-2 py-1">
+              <img src="/logo.png" alt="IDEA Games" className="h-8 w-auto object-contain" />
+            </div>
             <div>
-              <div className="text-display text-lg font-black">{t('app.title')}</div>
               <div className="text-xs text-muted-foreground">Admin Console</div>
             </div>
           </div>
@@ -95,10 +96,11 @@ export function AdminLayout({ children, title }: { children: ReactNode; title: s
 
       {/* ── Desktop sidebar ───────────────────────────────────────── */}
       <aside className="fixed inset-y-0 left-0 hidden w-[280px] flex-col border-r border-border bg-sidebar text-sidebar-foreground md:flex">
-        <div className="flex items-center gap-3 px-6 py-7">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground text-display text-2xl font-black">I</div>
+        <div className="flex items-center gap-3 px-6 py-5">
+          <div className="flex items-center justify-center rounded-xl bg-white px-2.5 py-1.5">
+            <img src="/logo.png" alt="IDEA Games" className="h-9 w-auto object-contain" />
+          </div>
           <div>
-            <div className="text-display text-xl font-black">{t('app.title')}</div>
             <div className="text-xs text-muted-foreground">Admin Console</div>
           </div>
         </div>

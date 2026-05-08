@@ -83,10 +83,9 @@ export default function Hub() {
         >
           <div className="relative flex items-center justify-center" style={{ width: hex * 0.7, height: hex * 0.74 }}>
             <div className="absolute inset-0 hex-clip bg-gradient-to-br from-primary via-accent to-primary opacity-90" />
-            <div className="absolute inset-1 hex-clip bg-background" />
-            <div className="relative z-10 text-center">
-              <div className="text-display font-black text-primary leading-none" style={{ fontSize: hex * 0.22 }}>IDEA</div>
-              <div className="text-display font-black text-foreground/90 tracking-widest leading-none" style={{ fontSize: hex * 0.11 }}>GAME</div>
+            <div className="absolute inset-1 hex-clip bg-white" />
+            <div className="relative z-10 flex items-center justify-center" style={{ width: hex * 0.52, height: hex * 0.56 }}>
+              <img src="/logo.png" alt="IDEA Games" className="w-full h-full object-contain" style={{ padding: hex * 0.04 }} />
             </div>
           </div>
         </motion.div>
@@ -209,11 +208,10 @@ export default function Hub() {
       {/* ── Header ─────────────────────────────────────────────── */}
       <header className="relative z-20 flex shrink-0 items-center justify-between px-4 py-3 sm:px-8 sm:py-4 lg:px-10 lg:py-5">
         <div className="flex items-center gap-3 sm:gap-5 min-w-0">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/40 sm:h-14 sm:w-14 sm:rounded-2xl">
-            <span className="text-display text-xl font-black sm:text-3xl">I</span>
+          <div className="flex shrink-0 items-center justify-center rounded-xl bg-white px-2 py-1 shadow-md sm:rounded-2xl sm:px-3 sm:py-1.5">
+            <img src="/logo.png" alt="IDEA Games" className="h-8 w-auto object-contain sm:h-11" />
           </div>
           <div className="min-w-0">
-            <div className="text-display text-xl font-black tracking-tight sm:text-3xl">{t('app.title')}</div>
             <div className="hidden text-xs text-muted-foreground sm:block sm:text-sm">{t('app.tagline')}</div>
           </div>
         </div>
