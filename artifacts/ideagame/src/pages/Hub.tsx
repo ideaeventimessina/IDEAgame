@@ -12,29 +12,30 @@ import { useListGames, useGetCurrentEvent, useListPlayers, getListPlayersQueryKe
 type IconName = Parameters<typeof GameIcon>[0]['name'];
 
 // Slugs that are fully playable (green PRONTO badge)
-const READY_SLUGS = new Set(['quizzone', 'gioco-coppie', 'gioco-delle-coppie', 'percorso-a-risate', 'adult-only', 'sfida-ballo', 'parola-alle-spalle']);
+const READY_SLUGS = new Set(['quizzone', 'gioco-coppie', 'gioco-delle-coppie', 'percorso-a-risate', 'adult-only', 'sfida-ballo', 'parola-alle-spalle', 'karaoke-battle']);
 
-// Orbital positions — max |x|=1.5 ensures hexes stay inside canvas at all sizes
+// Octagon orbital positions — 3-2-3 layout around center logo
+// Top row: 3 · Middle: 2 sides · Bottom row: 3
 const POSITIONS = [
-  { x: -1,   y: -1 },
-  { x:  1,   y: -1 },
-  { x: -1.5, y:  0 },
-  { x:  1.5, y:  0 },
-  { x: -1,   y:  1 },
-  { x:  1,   y:  1 },
+  { x: -1,   y: -1.15 },  // top-left
+  { x:  0,   y: -1.15 },  // top-center
+  { x:  1,   y: -1.15 },  // top-right
+  { x: -1.5, y:  0    },  // mid-left
+  { x:  1.5, y:  0    },  // mid-right
+  { x: -1,   y:  1.15 },  // bot-left
+  { x:  0,   y:  1.15 },  // bot-center
+  { x:  1,   y:  1.15 },  // bot-right
 ];
 
-// Desktop: 3-col max-w-[1320px] — middle col ≈ 656px, so canvas must stay ≤ 620px wide
-// canvas_w = 2*(1.5*OX + HEX/2) = 2*(1.5*135 + 78) = 2*280.5 = 561px ✓
-const D_HEX = 156;   // hex size (px)
-const D_OX  = 135;   // orbit radius x
-const D_OY  = 156;   // orbit radius y
+// Desktop: canvas_w = 2*(1.5*OX + HEX/2) = 561px ✓  canvas_h = 2*(1.15*OY + HEX*1.06/2)
+const D_HEX = 148;   // hex size (px) — slightly smaller to fit 8 games
+const D_OX  = 128;   // orbit radius x
+const D_OY  = 148;   // orbit radius y
 
-// Tablet 2-col: left 280px + gap 24px + 48px padding = 352px used → right ≈ 416px
-// canvas_w = 2*(1.5*94 + 53) = 2*(141 + 53) = 388px ✓
-const T_HEX = 106;
-const T_OX  =  94;
-const T_OY  = 106;
+// Tablet 2-col: canvas_w = 2*(1.5*88 + 50) = 364px ✓
+const T_HEX = 100;
+const T_OX  =  88;
+const T_OY  = 100;
 
 function StatusBadge({ slug, size = 'sm' }: { slug: string; size?: 'xs' | 'sm' }) {
   const ready = READY_SLUGS.has(slug);
@@ -70,14 +71,14 @@ export default function Hub() {
     return aReady - bReady;
   });
   const visibleGames = liveEvent && Array.isArray(liveEvent.enabledGames) && liveEvent.enabledGames.length > 0
-    ? sortedGames.filter(g => (liveEvent.enabledGames as string[]).includes(g.slug)).slice(0, 6)
-    : sortedGames.slice(0, 6);
+    ? sortedGames.filter(g => (liveEvent.enabledGames as string[]).includes(g.slug)).slice(0, 8)
+    : sortedGames.slice(0, 8);
 
   const joinUrl = `${window.location.origin}/play${liveEvent ? `?e=${liveEvent.joinCode}` : ''}`;
 
   function HexGrid({ hex, ox, oy }: { hex: number; ox: number; oy: number }) {
     const cw = Math.ceil(2 * (1.5 * ox + hex / 2)) + 10;
-    const ch = Math.ceil(2 * (oy + hex * 1.06 / 2)) + 10;
+    const ch = Math.ceil(2 * (1.15 * oy + hex * 1.06 / 2)) + 10;
     return (
       <div className="relative mx-auto" style={{ width: cw, height: ch }}>
         {/* Centre badge */}

@@ -31,6 +31,7 @@ import eveningRouter from "./evening";
 import adultOnlyRouter from "./adult-only";
 import balloRouter from "./ballo";
 import wordBackRouter from "./wordback";
+import karaokeRouter from "./karaoke";
 
 const router: IRouter = Router();
 
@@ -68,5 +69,6 @@ router.use(eveningRouter);
 router.use(adultOnlyRouter);
 router.use(balloRouter);
 router.use(wordBackRouter);
+router.use(karaokeRouter);
 
 export default router;

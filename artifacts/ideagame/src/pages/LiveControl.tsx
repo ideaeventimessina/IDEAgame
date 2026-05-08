@@ -133,6 +133,21 @@ interface WordBackStateLC {
   timerStartedAt: string | null; usedCardIds: string[];
 }
 
+interface KaraokeSetLC { id: string; title: string; }
+interface KaraokeBookingLC {
+  id: string; playerId: string; nickname: string; teamId: string;
+  teamName: string; teamColor: string;
+  status: 'waiting' | 'active' | 'completed' | 'skipped'; orderIndex: number;
+}
+interface KaraokeStateLC {
+  setId: string; setName: string;
+  currentTrack: { id: string; title: string; artist: string; lyricSnippet: string; durationSeconds: number; points: number; category: string; difficulty: string } | null;
+  bookings: KaraokeBookingLC[];
+  teams: { id: string; name: string; color: string; score: number }[];
+  status: 'idle' | 'singing' | 'ended';
+  trackStartedAt: string | null; usedTrackIds: string[];
+}
+
 interface EveningGame {
   slug: string; label: string; emoji: string;
   sessionId: string | null; status: 'pending' | 'running' | 'done';
@@ -191,6 +206,13 @@ export default function LiveControl() {
   const [wordBackState, setWordBackState] = useState<WordBackStateLC | null>(null);
   const [wordBackBusy, setWordBackBusy] = useState(false);
   const [wordBackMsg, setWordBackMsg] = useState('');
+
+  // Karaoke Battle state
+  const [karaokeSets, setKaraokeSets] = useState<KaraokeSetLC[]>([]);
+  const [selectedKaraokeSetId, setSelectedKaraokeSetId] = useState('');
+  const [karaokeState, setKaraokeState] = useState<KaraokeStateLC | null>(null);
+  const [karaokeBusy, setKaraokeBusy] = useState(false);
+  const [karaokeMsg, setKaraokeMsg] = useState('');
 
   // Evening mode state
   const [eveningMode, setEveningMode] = useState<EveningMode | null>(null);
@@ -289,6 +311,13 @@ export default function LiveControl() {
       on<{ state: WordBackStateLC }>('wordback:timer_stopped',        ({ state: s }) => setWordBackState(s)),
       on<{ state: WordBackStateLC }>('wordback:score_updated',        ({ state: s }) => { setWordBackState(s); qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) }); }),
       on<{ state: WordBackStateLC }>('wordback:ended',                ({ state: s }) => { setWordBackState(s); qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) }); }),
+      on<{ state: KaraokeStateLC }>('karaoke:started',               ({ state: s }) => { setKaraokeState(s); qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) }); }),
+      on<{ state: KaraokeStateLC }>('karaoke:track_changed',          ({ state: s }) => setKaraokeState(s)),
+      on<{ state: KaraokeStateLC }>('karaoke:booking_added',          ({ state: s }) => setKaraokeState(s)),
+      on<{ state: KaraokeStateLC }>('karaoke:booking_removed',        ({ state: s }) => setKaraokeState(s)),
+      on<{ state: KaraokeStateLC }>('karaoke:active_singer_changed',  ({ state: s }) => setKaraokeState(s)),
+      on<{ state: KaraokeStateLC }>('karaoke:score_updated',          ({ state: s }) => { setKaraokeState(s); qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) }); }),
+      on<{ state: KaraokeStateLC }>('karaoke:ended',                  ({ state: s }) => { setKaraokeState(s); qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) }); }),
     ];
     return () => unsubs.forEach(u => u());
   }, [selectedEventId, on, qc]);
@@ -378,6 +407,22 @@ export default function LiveControl() {
       .catch(() => setWordBackState(null));
   }, [session?.gameSlug, session?.id]);
 
+  // Load karaoke sets when karaoke-battle session is active
+  useEffect(() => {
+    if (session?.gameSlug !== 'karaoke-battle') return;
+    apiFetch('/karaoke/sets')
+      .then(d => setKaraokeSets(d as KaraokeSetLC[]))
+      .catch(() => setKaraokeSets([]));
+  }, [session?.gameSlug, session?.id]);
+
+  // Sync karaoke state from API when session is active
+  useEffect(() => {
+    if (session?.gameSlug !== 'karaoke-battle' || !session?.id) return;
+    apiFetch(`/karaoke/sessions/${session.id}/state`)
+      .then(d => setKaraokeState(d as KaraokeStateLC))
+      .catch(() => setKaraokeState(null));
+  }, [session?.gameSlug, session?.id]);
+
   // Load evening mode when event changes
   useEffect(() => {
     if (!selectedEventId) { setEveningMode(null); return; }
@@ -439,6 +484,13 @@ export default function LiveControl() {
     setSelectedWordBackSetId('');
     setWordBackState(null);
     setWordBackMsg('');
+  }, [session?.id]);
+
+  // Reset karaoke state when session changes
+  useEffect(() => {
+    setSelectedKaraokeSetId('');
+    setKaraokeState(null);
+    setKaraokeMsg('');
   }, [session?.id]);
 
   // Reset evening state when event changes (load handles the fetch, just clear busy)
@@ -834,6 +886,98 @@ export default function LiveControl() {
           navigate(`/scoreboard?e=${selectedEventId}`);
         } catch (e) { setWordBackMsg((e as Error).message); }
         finally { setWordBackBusy(false); }
+      },
+    });
+  };
+
+  // ─── Karaoke Battle handlers ────────────────────────────────────────────────
+
+  const handleKaraokeInit = async () => {
+    if (!session || !selectedKaraokeSetId || karaokeBusy) return;
+    setKaraokeBusy(true); setKaraokeMsg('');
+    try {
+      const s = await apiFetch(`/karaoke/sessions/${session.id}/init`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ setId: selectedKaraokeSetId }),
+      }) as KaraokeStateLC;
+      setKaraokeState(s); setKaraokeMsg('✓ Karaoke inizializzato!');
+    } catch (e) { setKaraokeMsg((e as Error).message); }
+    finally { setKaraokeBusy(false); }
+  };
+
+  const handleKaraokeNextTrack = async () => {
+    if (!session || karaokeBusy) return;
+    setKaraokeBusy(true); setKaraokeMsg('');
+    try {
+      const s = await apiFetch(`/karaoke/sessions/${session.id}/next-track`, { method: 'POST' }) as KaraokeStateLC;
+      setKaraokeState(s);
+    } catch (e) { setKaraokeMsg((e as Error).message); }
+    finally { setKaraokeBusy(false); }
+  };
+
+  const handleKaraokeStartTrack = async () => {
+    if (!session || karaokeBusy) return;
+    setKaraokeBusy(true);
+    try {
+      const s = await apiFetch(`/karaoke/sessions/${session.id}/start-track`, { method: 'POST' }) as KaraokeStateLC;
+      setKaraokeState(s);
+    } catch (e) { setKaraokeMsg((e as Error).message); }
+    finally { setKaraokeBusy(false); }
+  };
+
+  const handleKaraokeSetSinger = async (bookingId: string) => {
+    if (!session || karaokeBusy) return;
+    setKaraokeBusy(true);
+    try {
+      const s = await apiFetch(`/karaoke/sessions/${session.id}/set-singer`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId }),
+      }) as KaraokeStateLC;
+      setKaraokeState(s);
+    } catch (e) { setKaraokeMsg((e as Error).message); }
+    finally { setKaraokeBusy(false); }
+  };
+
+  const handleKaraokeCancelBooking = async (bookingId: string) => {
+    if (!session) return;
+    try {
+      const s = await apiFetch(`/karaoke/sessions/${session.id}/cancel-booking`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId }),
+      }) as KaraokeStateLC;
+      setKaraokeState(s);
+    } catch (e) { setKaraokeMsg((e as Error).message); }
+  };
+
+  const handleKaraokeScore = async (teamId: string, points: number) => {
+    if (!session || karaokeBusy) return;
+    setKaraokeBusy(true);
+    try {
+      const s = await apiFetch(`/karaoke/sessions/${session.id}/score`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamId, points }),
+      }) as KaraokeStateLC;
+      setKaraokeState(s);
+      qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) });
+    } catch (e) { setKaraokeMsg((e as Error).message); }
+    finally { setKaraokeBusy(false); }
+  };
+
+  const handleKaraokeEnd = () => {
+    confirm({
+      title: 'Fine Karaoke Battle',
+      message: 'Terminare il gioco e salvare i punteggi?',
+      confirmLabel: 'Termina → Podio',
+      danger: true,
+      onConfirm: async () => {
+        if (!session || karaokeBusy) return;
+        setKaraokeBusy(true); setKaraokeMsg('');
+        try {
+          await apiFetch(`/karaoke/sessions/${session.id}/end`, { method: 'POST' });
+          setKaraokeState(s => s ? { ...s, status: 'ended' } : null);
+          navigate(`/scoreboard?e=${selectedEventId}`);
+        } catch (e) { setKaraokeMsg((e as Error).message); }
+        finally { setKaraokeBusy(false); }
       },
     });
   };
@@ -2103,6 +2247,170 @@ export default function LiveControl() {
             {wordBackState?.status === 'ended' && (
               <div className="rounded-xl border border-border bg-background/50 px-4 py-3 text-center text-sm text-muted-foreground">
                 🏁 Gioco terminato
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ─── Karaoke Battle panel ────────────────────────────────── */}
+        {session?.gameSlug === 'karaoke-battle' && (
+          <div className="rounded-2xl border border-pink-500/30 bg-card p-5 space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">🎤</span>
+              <div className="text-xs uppercase tracking-widest text-muted-foreground">Karaoke Battle</div>
+              {karaokeState && (
+                <a href={`${BASE}karaoke-battle?s=${session.id}&e=${selectedEventId}`} target="_blank" rel="noopener noreferrer"
+                  className="ml-auto flex items-center gap-1 text-xs text-pink-400 hover:underline">
+                  <ExternalLink className="h-3 w-3" /> Proiettore
+                </a>
+              )}
+            </div>
+
+            {karaokeMsg && (
+              <div className={`rounded-xl px-4 py-2 text-sm ${karaokeMsg.startsWith('✓') ? 'border border-green-500/40 bg-green-500/10 text-green-400' : 'border border-destructive/40 bg-destructive/10 text-destructive'}`}>
+                {karaokeMsg}
+              </div>
+            )}
+
+            {/* Status bar */}
+            {karaokeState && (
+              <div className="flex items-center gap-2 text-xs flex-wrap">
+                <span className={`rounded-full border px-2.5 py-1 font-bold ${
+                  karaokeState.status === 'singing' ? 'border-pink-500/40 bg-pink-500/10 text-pink-400' :
+                  karaokeState.status === 'ended' ? 'border-destructive/40 bg-destructive/10 text-destructive' :
+                  'border-border text-muted-foreground'
+                }`}>
+                  {karaokeState.status === 'singing' ? '🎤 In canto' : karaokeState.status === 'ended' ? '🏁 Terminato' : '⏳ Attesa'}
+                </span>
+                <span className="text-muted-foreground font-bold">{karaokeState.setName}</span>
+                {karaokeState.currentTrack && (
+                  <span className="text-muted-foreground truncate max-w-[120px]">{karaokeState.currentTrack.title}</span>
+                )}
+              </div>
+            )}
+
+            {/* Init: set selector */}
+            {!karaokeState && (
+              <>
+                <div>
+                  <div className="text-xs text-muted-foreground mb-1">Playlist</div>
+                  <select value={selectedKaraokeSetId} onChange={e => setSelectedKaraokeSetId(e.target.value)}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm">
+                    <option value="">— seleziona playlist —</option>
+                    {karaokeSets.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+                  </select>
+                  {karaokeSets.length === 0 && (
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      Nessuna playlist — creane una in <a href={`${BASE}admin/karaoke-battle`} className="underline text-pink-400">Admin → Karaoke</a>
+                    </div>
+                  )}
+                </div>
+                <button disabled={!selectedKaraokeSetId || karaokeBusy} onClick={() => void handleKaraokeInit()}
+                  className="w-full rounded-xl bg-pink-600 py-2.5 text-sm font-bold text-white disabled:opacity-40 flex items-center justify-center gap-2">
+                  {karaokeBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  Inizializza Karaoke
+                </button>
+              </>
+            )}
+
+            {/* Running panel */}
+            {karaokeState && karaokeState.status !== 'ended' && (
+              <>
+                {/* Current track */}
+                {karaokeState.currentTrack && (
+                  <div className="rounded-xl border border-pink-500/20 bg-pink-500/5 p-3 space-y-1">
+                    <div className="text-display text-lg font-black text-pink-300">{karaokeState.currentTrack.title}</div>
+                    <div className="text-sm text-muted-foreground">{karaokeState.currentTrack.artist}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {karaokeState.currentTrack.category} · {karaokeState.currentTrack.difficulty} · +{karaokeState.currentTrack.points}pt · {karaokeState.currentTrack.durationSeconds}s
+                    </div>
+                  </div>
+                )}
+
+                {/* Track controls */}
+                <div className="flex gap-2 flex-wrap">
+                  <button onClick={() => void handleKaraokeStartTrack()} disabled={karaokeBusy || karaokeState.status === 'singing'}
+                    className="flex items-center gap-1.5 rounded-xl bg-green-600/80 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">
+                    <Play className="h-3.5 w-3.5" /> Avvia brano
+                  </button>
+                  <button onClick={() => void handleKaraokeNextTrack()} disabled={karaokeBusy}
+                    className="flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-bold hover:bg-secondary/30 disabled:opacity-40">
+                    <SkipForward className="h-3.5 w-3.5" /> Prossimo brano
+                  </button>
+                </div>
+
+                {/* Active singer */}
+                {karaokeState.bookings.find(b => b.status === 'active') && (() => {
+                  const active = karaokeState.bookings.find(b => b.status === 'active')!;
+                  return (
+                    <div className="flex items-center gap-2 rounded-xl border border-pink-500/30 bg-pink-500/10 px-3 py-2">
+                      <div className="h-5 w-5 rounded-full shrink-0" style={{ background: active.teamColor }} />
+                      <div className="flex-1 text-sm font-bold text-pink-300">{active.nickname}</div>
+                      <div className="text-xs text-muted-foreground">{active.teamName}</div>
+                      <button onClick={() => void handleKaraokeCancelBooking(active.id)}
+                        className="rounded-lg border border-destructive/40 p-1 text-destructive hover:bg-destructive/10">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  );
+                })()}
+
+                {/* Score buttons */}
+                <div className="space-y-2">
+                  <div className="text-xs text-muted-foreground uppercase tracking-widest">Assegna punti esibizione</div>
+                  {karaokeState.teams.map(tm => (
+                    <div key={tm.id} className="flex items-center gap-2">
+                      <span className="h-3 w-3 rounded-full shrink-0" style={{ background: tm.color }} />
+                      <span className="flex-1 truncate text-sm font-bold">{tm.name}</span>
+                      <span className="text-display text-base font-black tabular-nums w-12 text-right" style={{ color: tm.color }}>{tm.score}</span>
+                      {[100, 150, 200, 300].map(pts => (
+                        <button key={pts} onClick={() => void handleKaraokeScore(tm.id, pts)} disabled={karaokeBusy}
+                          className="rounded-lg border border-border px-2 py-1.5 text-xs font-bold hover-elevate disabled:opacity-40">
+                          +{pts}
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Booking queue */}
+                {karaokeState.bookings.filter(b => b.status === 'waiting').length > 0 && (
+                  <div className="space-y-1">
+                    <div className="text-xs text-muted-foreground uppercase tracking-widest">Coda cantanti</div>
+                    {karaokeState.bookings
+                      .filter(b => b.status === 'waiting')
+                      .sort((a, b) => a.orderIndex - b.orderIndex)
+                      .map((booking, idx) => (
+                        <div key={booking.id} className="flex items-center gap-2 rounded-xl border border-border bg-background/50 px-3 py-2">
+                          <span className="text-xs text-muted-foreground w-4">{idx + 1}</span>
+                          <span className="h-3 w-3 rounded-full shrink-0" style={{ background: booking.teamColor }} />
+                          <span className="flex-1 text-sm font-bold">{booking.nickname}</span>
+                          <span className="text-xs text-muted-foreground">{booking.teamName}</span>
+                          <button onClick={() => void handleKaraokeSetSinger(booking.id)} disabled={karaokeBusy}
+                            className="rounded-lg border border-pink-500/40 bg-pink-500/10 px-2 py-1 text-xs font-bold text-pink-400 disabled:opacity-40">
+                            🎤 Canta
+                          </button>
+                          <button onClick={() => void handleKaraokeCancelBooking(booking.id)}
+                            className="rounded-lg border border-destructive/40 p-1 text-destructive hover:bg-destructive/10">
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))
+                    }
+                  </div>
+                )}
+
+                <button onClick={handleKaraokeEnd} disabled={karaokeBusy}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl border border-destructive/50 bg-destructive/10 py-2.5 text-sm font-bold text-destructive disabled:opacity-40">
+                  {karaokeBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
+                  Fine gioco → Podio
+                </button>
+              </>
+            )}
+
+            {karaokeState?.status === 'ended' && (
+              <div className="rounded-xl border border-border bg-background/50 px-4 py-3 text-center text-sm text-muted-foreground">
+                🏁 Karaoke terminato
               </div>
             )}
           </div>

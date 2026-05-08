@@ -64,6 +64,20 @@ interface DanceStateP {
   startedAt: string | null;
 }
 
+interface KaraokeBookingP {
+  id: string; playerId: string; nickname: string; teamId: string;
+  teamName: string; teamColor: string;
+  status: 'waiting' | 'active' | 'completed' | 'skipped'; orderIndex: number;
+}
+interface KaraokeStateP {
+  setId: string; setName: string;
+  currentTrack: { id: string; title: string; artist: string; lyricSnippet: string; durationSeconds: number; points: number; category: string; difficulty: string } | null;
+  bookings: KaraokeBookingP[];
+  teams: { id: string; name: string; color: string; score: number }[];
+  status: 'idle' | 'singing' | 'ended';
+  trackStartedAt: string | null; usedTrackIds: string[];
+}
+
 interface WordBackBookingP {
   id: string; playerId: string; nickname: string; teamId: string;
   teamName: string; teamColor: string;
@@ -112,6 +126,7 @@ export default function Player() {
   const [danceStateP, setDanceStateP] = useState<DanceStateP | null>(null);
   const danceMagnitudesRef = useRef<number[]>([]);
   const [wordBackStateP, setWordBackStateP] = useState<WordBackStateP | null>(null);
+  const [karaokeStateP, setKaraokeStateP] = useState<KaraokeStateP | null>(null);
 
   const { connected, on, emit } = useEventSocket(event?.id ?? null);
 
@@ -166,6 +181,11 @@ export default function Player() {
       if (session.gameSlug === 'parola-alle-spalle') {
         const ws = await apiFetch(`/word-back/sessions/${session.id}/state`).catch(() => null) as WordBackStateP | null;
         if (ws) setWordBackStateP(ws);
+      }
+      // If karaoke-battle is running, fetch current state
+      if (session.gameSlug === 'karaoke-battle') {
+        const ks = await apiFetch(`/karaoke/sessions/${session.id}/state`).catch(() => null) as KaraokeStateP | null;
+        if (ks) setKaraokeStateP(ks);
       }
       // If quizzone is running, fetch current state
       if (session.gameSlug === 'quizzone') {
@@ -299,6 +319,19 @@ export default function Player() {
       on<{ state: WordBackStateP }>('wordback:score_updated',         ({ state }) => setWordBackStateP(state)),
       on<{ state: WordBackStateP }>('wordback:ended', ({ state }) => {
         setWordBackStateP(state);
+        setGameState(p => ({ ...p, status: 'ended' }));
+      }),
+      on<{ state: KaraokeStateP }>('karaoke:started', ({ state }) => {
+        setKaraokeStateP(state);
+        setGameState(p => ({ ...p, status: 'running' }));
+      }),
+      on<{ state: KaraokeStateP }>('karaoke:track_changed',         ({ state }) => setKaraokeStateP(state)),
+      on<{ state: KaraokeStateP }>('karaoke:booking_added',         ({ state }) => setKaraokeStateP(state)),
+      on<{ state: KaraokeStateP }>('karaoke:booking_removed',       ({ state }) => setKaraokeStateP(state)),
+      on<{ state: KaraokeStateP }>('karaoke:active_singer_changed', ({ state }) => setKaraokeStateP(state)),
+      on<{ state: KaraokeStateP }>('karaoke:score_updated',         ({ state }) => setKaraokeStateP(state)),
+      on<{ state: KaraokeStateP }>('karaoke:ended', ({ state }) => {
+        setKaraokeStateP(state);
         setGameState(p => ({ ...p, status: 'ended' }));
       }),
     ];
@@ -513,6 +546,13 @@ export default function Player() {
                     sessionId={gameState.sessionId}
                     playerId={player.id}
                     teamColor={myTeam?.color ?? '#8B5CF6'}
+                  />
+                ) : gameState.gameSlug === 'karaoke-battle' ? (
+                  <KaraokePhoneController
+                    state={karaokeStateP}
+                    sessionId={gameState.sessionId}
+                    playerId={player.id}
+                    teamColor={myTeam?.color ?? '#ec4899'}
                   />
                 ) : gameState.gameSlug === 'quizzone' ? (
                   <QuizzonePhoneController
@@ -1374,6 +1414,182 @@ function DancePhoneController({ state, sessionId, teamId, teamColor, magnitudesR
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ─── Karaoke Battle Phone Controller ────────────────────────────────────────
+
+function KaraokePhoneController({ state, sessionId, playerId, teamColor }: {
+  state: KaraokeStateP | null;
+  sessionId: string | null;
+  playerId: string;
+  teamColor: string;
+}) {
+  const [booking, setBooking] = useState<KaraokeBookingP | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  useEffect(() => {
+    if (!state) return;
+    const b = state.bookings.find(b => b.playerId === playerId) ?? null;
+    setBooking(b);
+  }, [state, playerId]);
+
+  const handleBook = async () => {
+    if (!sessionId || loading) return;
+    setLoading(true); setMsg('');
+    try {
+      await apiFetch(`/karaoke/sessions/${sessionId}/book`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId }),
+      });
+      setMsg('✓ Prenotato!');
+    } catch (e) { setMsg((e as Error).message); }
+    finally { setLoading(false); }
+  };
+
+  const handleCancel = async () => {
+    if (!sessionId || loading || !booking) return;
+    setLoading(true); setMsg('');
+    try {
+      await apiFetch(`/karaoke/sessions/${sessionId}/cancel-booking`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId: booking.id }),
+      });
+      setMsg('');
+    } catch (e) { setMsg((e as Error).message); }
+    finally { setLoading(false); }
+  };
+
+  if (!state) {
+    return (
+      <div className="mt-8 flex flex-col items-center gap-4 text-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <div className="text-sm text-muted-foreground">In attesa del karaoke…</div>
+      </div>
+    );
+  }
+
+  if (state.status === 'ended') {
+    return (
+      <div className="mt-6 rounded-2xl border border-primary/40 bg-primary/10 px-6 py-5 text-center">
+        <div className="text-display text-xl font-black text-primary">🏆 Karaoke terminato!</div>
+        <div className="mt-2 text-sm text-muted-foreground">Controlla il proiettore per la classifica</div>
+      </div>
+    );
+  }
+
+  const isActive = booking?.status === 'active';
+  const isWaiting = booking?.status === 'waiting';
+  const queuePos = isWaiting
+    ? state.bookings.filter(b => b.status === 'waiting').sort((a, b) => a.orderIndex - b.orderIndex).findIndex(b => b.playerId === playerId) + 1
+    : 0;
+
+  return (
+    <div className="mt-4 flex flex-col gap-4">
+      {/* Current track */}
+      {state.currentTrack && (
+        <div className="rounded-2xl border border-pink-500/30 bg-pink-500/10 px-4 py-4 text-center">
+          <div className="text-xs uppercase tracking-widest text-pink-400 mb-1">Brano attuale</div>
+          <div className="text-display text-xl font-black text-white">{state.currentTrack.title}</div>
+          <div className="text-sm text-muted-foreground">{state.currentTrack.artist}</div>
+          {state.currentTrack.lyricSnippet && (
+            <div className="mt-3 text-sm italic text-white/60">"{state.currentTrack.lyricSnippet}"</div>
+          )}
+        </div>
+      )}
+
+      {msg && (
+        <div className="rounded-xl border border-primary/40 bg-primary/10 px-4 py-2 text-center text-sm font-bold text-primary">
+          {msg}
+        </div>
+      )}
+
+      {/* Active: it's your turn */}
+      {isActive && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+          className="rounded-2xl border-2 px-6 py-6 text-center"
+          style={{ borderColor: teamColor, background: `${teamColor}15` }}
+        >
+          <div className="text-5xl mb-3">🎤</div>
+          <div className="text-display text-2xl font-black" style={{ color: teamColor }}>
+            Tocca a te cantare!
+          </div>
+          <div className="mt-2 text-sm text-muted-foreground">
+            Sali sul palco e dai il massimo!
+          </div>
+          <motion.div animate={{ scale: [1, 1.05, 1] }} transition={{ repeat: Infinity, duration: 1.5 }}
+            className="mt-4 rounded-xl bg-white/10 px-4 py-3 text-lg font-black text-white">
+            🌟 Buona fortuna!
+          </motion.div>
+        </motion.div>
+      )}
+
+      {/* Waiting in queue */}
+      {isWaiting && (
+        <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 px-6 py-5 text-center">
+          <div className="text-2xl mb-2">⏳</div>
+          <div className="text-display text-xl font-black text-amber-400">Sei in coda</div>
+          <div className="mt-1 text-3xl font-black text-amber-300">#{queuePos}</div>
+          <div className="mt-2 text-sm text-muted-foreground">Attendi il tuo turno sul palco!</div>
+          <button onClick={() => void handleCancel()} disabled={loading}
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-destructive/50 bg-destructive/10 py-3 text-sm font-bold text-destructive disabled:opacity-40">
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            Rinuncio
+          </button>
+        </div>
+      )}
+
+      {/* Book button */}
+      {!booking && (
+        <motion.button
+          onClick={() => void handleBook()}
+          disabled={loading}
+          whileTap={{ scale: 0.96 }}
+          className="mx-auto flex flex-col items-center justify-center gap-3 w-full max-w-[280px] rounded-3xl py-8 text-background font-black text-display shadow-2xl disabled:opacity-40"
+          style={{ background: `radial-gradient(circle at 35% 30%, ${teamColor}, #1a1535 95%)`, boxShadow: `0 20px 60px ${teamColor}55` }}
+        >
+          {loading
+            ? <Loader2 className="h-10 w-10 animate-spin" />
+            : <span className="text-5xl">🎤</span>
+          }
+          <span className="text-2xl">Voglio cantare!</span>
+          <span className="text-xs font-normal opacity-70">Prenota il tuo posto sul palco</span>
+        </motion.button>
+      )}
+
+      {/* Team scores */}
+      <div className="grid grid-cols-2 gap-1.5">
+        {[...state.teams].sort((a, b) => b.score - a.score).map((tm, i) => (
+          <div key={tm.id} className={`rounded-xl border px-3 py-2 text-center ${tm.id === (booking?.teamId ?? '') ? '' : 'opacity-60'}`}
+            style={{ borderColor: tm.id === (booking?.teamId ?? '') ? tm.color : undefined }}>
+            <div className="text-[10px] text-muted-foreground truncate">{i === 0 ? '👑 ' : ''}{tm.name}</div>
+            <div className="text-display text-base font-black tabular-nums" style={{ color: tm.color }}>{tm.score}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Booking queue preview */}
+      {state.bookings.filter(b => b.status === 'waiting').length > 0 && !isActive && (
+        <div className="rounded-xl border border-border bg-card/40 px-4 py-3 space-y-1">
+          <div className="text-xs text-muted-foreground uppercase tracking-widest mb-2">Prossimi cantanti</div>
+          {state.bookings
+            .filter(b => b.status === 'waiting')
+            .sort((a, b) => a.orderIndex - b.orderIndex)
+            .slice(0, 4)
+            .map((b, i) => (
+              <div key={b.id} className="flex items-center gap-2 text-sm">
+                <span className="text-xs text-muted-foreground w-4">{i + 1}</span>
+                <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: b.teamColor }} />
+                <span className={`font-bold ${b.playerId === playerId ? 'text-pink-400' : ''}`}>{b.nickname}</span>
+              </div>
+            ))}
+        </div>
+      )}
     </div>
   );
 }

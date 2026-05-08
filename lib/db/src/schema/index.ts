@@ -22,3 +22,4 @@ export * from "./evening";
 export * from "./adult-only";
 export * from "./ballo";
 export * from "./wordback";
+export * from "./karaoke";
