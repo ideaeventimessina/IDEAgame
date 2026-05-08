@@ -64,6 +64,20 @@ interface DanceStateP {
   startedAt: string | null;
 }
 
+interface WordBackBookingP {
+  id: string; playerId: string; nickname: string; teamId: string;
+  teamName: string; teamColor: string;
+  status: 'waiting' | 'active' | 'completed' | 'skipped'; orderIndex: number;
+}
+interface WordBackStateP {
+  setId: string; setName: string;
+  currentCard: { id: string; word: string; hint: string | null; category: string; difficulty: string; points: number; timeLimit: number } | null;
+  bookings: WordBackBookingP[];
+  teams: { id: string; name: string; color: string; score: number }[];
+  status: 'idle' | 'running' | 'revealed' | 'ended';
+  timerStartedAt: string | null; usedCardIds: string[];
+}
+
 type Step = 'loading' | 'join' | 'joining' | 'play' | 'error';
 
 const BASE = (import.meta.env.BASE_URL as string) ?? '/';
@@ -97,6 +111,7 @@ export default function Player() {
   const [adultOnlyStateP, setAdultOnlyStateP] = useState<AdultOnlyStateP | null>(null);
   const [danceStateP, setDanceStateP] = useState<DanceStateP | null>(null);
   const danceMagnitudesRef = useRef<number[]>([]);
+  const [wordBackStateP, setWordBackStateP] = useState<WordBackStateP | null>(null);
 
   const { connected, on, emit } = useEventSocket(event?.id ?? null);
 
@@ -146,6 +161,11 @@ export default function Player() {
       if (session.gameSlug === 'sfida-ballo') {
         const ds = await apiFetch(`/dance/sessions/${session.id}/state`).catch(() => null) as DanceStateP | null;
         if (ds) setDanceStateP(ds);
+      }
+      // If parola-alle-spalle is running, fetch current state
+      if (session.gameSlug === 'parola-alle-spalle') {
+        const ws = await apiFetch(`/word-back/sessions/${session.id}/state`).catch(() => null) as WordBackStateP | null;
+        if (ws) setWordBackStateP(ws);
       }
       // If quizzone is running, fetch current state
       if (session.gameSlug === 'quizzone') {
@@ -264,6 +284,21 @@ export default function Player() {
       on<{ state: DanceStateP }>('dance:score_updated', ({ state }) => setDanceStateP(state)),
       on<{ state: DanceStateP }>('dance:ended', ({ state }) => {
         setDanceStateP(state);
+        setGameState(p => ({ ...p, status: 'ended' }));
+      }),
+      on<{ state: WordBackStateP }>('wordback:started', ({ state }) => {
+        setWordBackStateP(state);
+        setGameState(p => ({ ...p, status: 'running' }));
+      }),
+      on<{ state: WordBackStateP }>('wordback:card_changed',          ({ state }) => setWordBackStateP(state)),
+      on<{ state: WordBackStateP }>('wordback:booking_added',         ({ state }) => setWordBackStateP(state)),
+      on<{ state: WordBackStateP }>('wordback:booking_removed',       ({ state }) => setWordBackStateP(state)),
+      on<{ state: WordBackStateP }>('wordback:active_player_changed', ({ state }) => setWordBackStateP(state)),
+      on<{ state: WordBackStateP }>('wordback:timer_started',         ({ state }) => setWordBackStateP(state)),
+      on<{ state: WordBackStateP }>('wordback:timer_stopped',         ({ state }) => setWordBackStateP(state)),
+      on<{ state: WordBackStateP }>('wordback:score_updated',         ({ state }) => setWordBackStateP(state)),
+      on<{ state: WordBackStateP }>('wordback:ended', ({ state }) => {
+        setWordBackStateP(state);
         setGameState(p => ({ ...p, status: 'ended' }));
       }),
     ];
@@ -471,6 +506,13 @@ export default function Player() {
                     teamId={player.teamId ?? ''}
                     teamColor={myTeam?.color ?? '#8B5CF6'}
                     magnitudesRef={danceMagnitudesRef}
+                  />
+                ) : gameState.gameSlug === 'parola-alle-spalle' ? (
+                  <WordBackPhoneController
+                    state={wordBackStateP}
+                    sessionId={gameState.sessionId}
+                    playerId={player.id}
+                    teamColor={myTeam?.color ?? '#8B5CF6'}
                   />
                 ) : gameState.gameSlug === 'quizzone' ? (
                   <QuizzonePhoneController
@@ -1332,6 +1374,171 @@ function DancePhoneController({ state, sessionId, teamId, teamColor, magnitudesR
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ─── Parola alle Spalle Phone Controller ────────────────────────────────────
+
+function WordBackPhoneController({ state, sessionId, playerId, teamColor }: {
+  state: WordBackStateP | null;
+  sessionId: string | null;
+  playerId: string;
+  teamColor: string;
+}) {
+  const [booking, setBooking] = useState<WordBackBookingP | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  // Sync booking from state
+  useEffect(() => {
+    if (!state) return;
+    const b = state.bookings.find(b => b.playerId === playerId) ?? null;
+    setBooking(b);
+  }, [state, playerId]);
+
+  const handleBook = async () => {
+    if (!sessionId || loading) return;
+    setLoading(true); setMsg('');
+    try {
+      await apiFetch(`/word-back/sessions/${sessionId}/book`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId }),
+      });
+      setMsg('✓ Prenotato!');
+    } catch (e) { setMsg((e as Error).message); }
+    finally { setLoading(false); }
+  };
+
+  const handleCancel = async () => {
+    if (!sessionId || loading || !booking) return;
+    setLoading(true); setMsg('');
+    try {
+      await apiFetch(`/word-back/sessions/${sessionId}/cancel-booking`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId: booking.id }),
+      });
+      setMsg('');
+    } catch (e) { setMsg((e as Error).message); }
+    finally { setLoading(false); }
+  };
+
+  if (!state) {
+    return (
+      <div className="mt-8 flex flex-col items-center gap-4 text-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <div className="text-sm text-muted-foreground">In attesa del gioco…</div>
+      </div>
+    );
+  }
+
+  if (state.status === 'ended') {
+    return (
+      <div className="mt-6 rounded-2xl border border-primary/40 bg-primary/10 px-6 py-5 text-center">
+        <div className="text-display text-xl font-black text-primary">🏆 Gioco terminato!</div>
+        <div className="mt-2 text-sm text-muted-foreground">Controlla il proiettore per la classifica</div>
+      </div>
+    );
+  }
+
+  const isActive = booking?.status === 'active';
+  const isWaiting = booking?.status === 'waiting';
+  const queuePos = isWaiting
+    ? state.bookings.filter(b => b.status === 'waiting').sort((a, b) => a.orderIndex - b.orderIndex).findIndex(b => b.playerId === playerId) + 1
+    : 0;
+
+  return (
+    <div className="mt-4 flex flex-col gap-4">
+      {/* Status message */}
+      {msg && (
+        <div className="rounded-xl border border-primary/40 bg-primary/10 px-4 py-2 text-center text-sm font-bold text-primary">
+          {msg}
+        </div>
+      )}
+
+      {/* Active player */}
+      {isActive && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+          className="rounded-2xl border-2 border-primary bg-primary/10 px-6 py-5 text-center"
+          style={{ borderColor: teamColor, background: `${teamColor}15` }}
+        >
+          <div className="text-3xl mb-2">🎭</div>
+          <div className="text-display text-2xl font-black" style={{ color: teamColor }}>
+            È il tuo turno!
+          </div>
+          <div className="mt-2 text-sm text-muted-foreground">
+            Girati di spalle al proiettore — gli altri ti faranno indovinare la parola!
+          </div>
+          <div className="mt-4 rounded-xl border border-white/20 bg-black/20 px-4 py-3 text-sm font-bold text-white/70">
+            🔇 NON guardare lo schermo
+          </div>
+        </motion.div>
+      )}
+
+      {/* Waiting in queue */}
+      {isWaiting && (
+        <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 px-6 py-5 text-center">
+          <div className="text-2xl mb-2">⏳</div>
+          <div className="text-display text-xl font-black text-amber-400">Sei in coda</div>
+          <div className="mt-1 text-lg font-bold text-amber-300">#{queuePos}</div>
+          <div className="mt-2 text-sm text-muted-foreground">Attendi il tuo turno!</div>
+          <button onClick={() => void handleCancel()} disabled={loading}
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-destructive/50 bg-destructive/10 py-3 text-sm font-bold text-destructive disabled:opacity-40">
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            Rinuncio
+          </button>
+        </div>
+      )}
+
+      {/* Book button */}
+      {!booking && (
+        <motion.button
+          onClick={() => void handleBook()}
+          disabled={loading}
+          whileTap={{ scale: 0.96 }}
+          className="mx-auto flex flex-col items-center justify-center gap-3 w-full max-w-[280px] rounded-3xl py-8 text-background font-black text-display shadow-2xl disabled:opacity-40"
+          style={{ background: `radial-gradient(circle at 35% 30%, ${teamColor}, #1a1535 95%)`, boxShadow: `0 20px 60px ${teamColor}55` }}
+        >
+          {loading
+            ? <Loader2 className="h-10 w-10 animate-spin" />
+            : <span className="text-5xl">✋</span>
+          }
+          <span className="text-2xl">Mi prenoto!</span>
+          <span className="text-xs font-normal opacity-70">Voglio fare il mimo</span>
+        </motion.button>
+      )}
+
+      {/* Team scores */}
+      <div className="grid grid-cols-2 gap-1.5">
+        {[...state.teams].sort((a, b) => b.score - a.score).map((tm, i) => (
+          <div key={tm.id} className={`rounded-xl border px-3 py-2 text-center ${tm.id === (booking?.teamId ?? '') ? '' : 'opacity-60'}`}
+            style={{ borderColor: tm.id === (booking?.teamId ?? '') ? tm.color : undefined }}>
+            <div className="text-[10px] text-muted-foreground truncate">{i === 0 ? '👑 ' : ''}{tm.name}</div>
+            <div className="text-display text-base font-black tabular-nums" style={{ color: tm.color }}>{tm.score}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Booking queue preview */}
+      {state.bookings.filter(b => b.status === 'waiting').length > 0 && !isActive && (
+        <div className="rounded-xl border border-border bg-card/40 px-4 py-3 space-y-1">
+          <div className="text-xs text-muted-foreground uppercase tracking-widest mb-2">Prossimi mimi</div>
+          {state.bookings
+            .filter(b => b.status === 'waiting')
+            .sort((a, b) => a.orderIndex - b.orderIndex)
+            .slice(0, 4)
+            .map((b, i) => (
+              <div key={b.id} className="flex items-center gap-2 text-sm">
+                <span className="text-xs text-muted-foreground w-4">{i + 1}</span>
+                <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: b.teamColor }} />
+                <span className={`font-bold ${b.playerId === playerId ? 'text-primary' : ''}`}>{b.nickname}</span>
+              </div>
+            ))}
+        </div>
+      )}
     </div>
   );
 }

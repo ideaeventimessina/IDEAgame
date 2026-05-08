@@ -27,6 +27,8 @@ import AdminAdultOnly from "@/admin/AdultOnly";
 import GameAdultOnly from "@/pages/GameAdultOnly";
 import AdminBallo from "@/admin/Ballo";
 import GameBallo from "@/pages/GameBallo";
+import AdminWordBack from "@/admin/WordBack";
+import GameWordBack from "@/pages/GameWordBack";
 import Permissions from "@/pages/Permissions";
 import AdminSystem from "@/admin/System";
 import AdminDashboard from "@/admin/Dashboard";
@@ -62,6 +64,7 @@ function Router() {
       <Route path="/serata-completa" component={SerataCompleta} />
       <Route path="/adult-only" component={GameAdultOnly} />
       <Route path="/sfida-ballo" component={GameBallo} />
+      <Route path="/parola-alle-spalle" component={GameWordBack} />
       <Route path="/game/:slug" component={GameStage} />
       <Route path="/lobby" component={Lobby} />
       <Route path="/scoreboard" component={Scoreboard} />
@@ -83,6 +86,7 @@ function Router() {
       <Route path="/admin/percorso-risate"><Guard route="/admin/percorso-risate"><AdminPercorsoRisate /></Guard></Route>
       <Route path="/admin/adult-only"><Guard route="/admin/adult-only"><AdminAdultOnly /></Guard></Route>
       <Route path="/admin/sfida-ballo"><Guard route="/admin/sfida-ballo"><AdminBallo /></Guard></Route>
+      <Route path="/admin/parola-alle-spalle"><Guard route="/admin/parola-alle-spalle"><AdminWordBack /></Guard></Route>
       <Route component={NotFound} />
     </Switch>
   );

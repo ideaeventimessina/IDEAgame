@@ -1,0 +1,246 @@
+Aggiungiamo un nuovo gioco reale a IDEAgame: “Parola alle Spalle”.
+
+Concept:
+Sul maxi schermo appare una parola/frase che il protagonista NON deve vedere, perché sarà girato di spalle rispetto allo schermo.
+Gli ospiti vedono la parola e devono mimarla/farla indovinare.
+Gli ospiti possono prenotarsi dal telefono.
+Quando un ospite si prenota, il suo nome appare in lista.
+L’admin/animatore dalla console operativa può validare il risultato e assegnare punti.
+
+Obiettivo:
+creare un gioco live stabile, con doppia interfaccia:
+1. Proiettore: mostra ciò che serve al pubblico
+2. Console admin/animatore: controlla parole, prenotazioni, punteggi, timer e avanzamento
+
+Nome tecnico slug:
+parola-alle-spalle
+
+Implementa:
+
+1. Database
+Crea tabelle:
+- word_back_sets
+- word_back_cards
+- word_back_sessions
+- word_back_bookings
+
+word_back_sets:
+- id
+- tenantId
+- title
+- description
+- language
+- isActive
+- createdAt
+- updatedAt
+
+word_back_cards:
+- id
+- setId
+- word
+- hint optional
+- category
+- difficulty: easy / medium / hard
+- points
+- timeLimit
+- orderIndex
+- isActive
+
+word_back_sessions:
+- id
+- eventId
+- gameSessionId
+- setId
+- currentCardId
+- currentPlayerId optional
+- status: idle / running / revealed / ended
+- currentRound
+- totalRounds
+- timerStartedAt
+- createdAt
+- updatedAt
+
+word_back_bookings:
+- id
+- sessionId
+- playerId
+- teamId
+- status: waiting / active / completed / skipped
+- orderIndex
+- createdAt
+
+2. Admin
+Crea pagina:
+/admin/parola-alle-spalle
+
+Funzioni:
+- crea mazzo parole
+- aggiungi/modifica/elimina parole
+- categoria
+- difficoltà
+- punti
+- timer
+- attiva/disattiva parola
+- crea almeno un mazzo demo con 40 parole semplici e divertenti
+
+Categorie esempio:
+- animali
+- oggetti
+- film
+- personaggi
+- azioni
+- mestieri
+- eventi
+- parole assurde
+
+3. LiveControl / Console operativa
+Nel LiveControl aggiungi pannello per “Parola alle Spalle”.
+
+La console deve mostrare:
+- set selezionato
+- parola corrente
+- categoria
+- difficoltà
+- punti
+- timer
+- prenotazioni in tempo reale
+- player attivo
+- squadra del player
+- classifica live
+- bottoni grandi:
+  - inizializza gioco
+  - prossima parola
+  - rivela parola
+  - avvia timer
+  - stop timer
+  - punto assegnato
+  - risposta sbagliata
+  - salta parola
+  - prossimo prenotato
+  - termina gioco
+
+Regole console:
+- l’admin deve poter cambiare velocemente parola se non va bene
+- l’admin deve poter assegnare punti manualmente
+- l’admin deve poter cancellare una prenotazione
+- l’admin deve poter forzare il turno di un giocatore
+- tutto deve essere rapido, senza schermate complicate
+
+4. Proiettore
+Crea pagina:
+/parola-alle-spalle?s=SESSION_ID&e=EVENT_ID
+
+Layout maxi schermo:
+- parola enorme al centro
+- categoria sopra
+- timer grande
+- player/protagonista attivo visibile
+- lista “prossimi mimi” laterale
+- punteggi squadre in basso
+- messaggi scenici:
+  - “Chi vuole mimare?”
+  - “Tocca il telefono per prenotarti”
+  - “È il turno di [Nome]”
+  - “Parola indovinata!”
+  - “Tempo scaduto!”
+  - “Prossima parola…”
+
+Importante:
+- la parola deve essere leggibile da lontano
+- pochissimo testo
+- niente elementi piccoli
+- animazioni sceniche ma pulite
+
+5. Player / telefono
+Quando gameSlug === "parola-alle-spalle":
+
+Mostra:
+- stato del gioco
+- parola NON mostrata al telefono del protagonista se è player attivo
+- bottone grande “Mi prenoto per mimare”
+- stato prenotazione:
+  - prenotato
+  - sei il prossimo
+  - è il tuo turno
+  - completato
+- pulsante “Sono pronto”
+- pulsante “Rinuncio” se prenotato
+
+Regole:
+- un player può prenotarsi una sola volta per round/coda
+- se è già in coda, non può duplicarsi
+- se l’admin lo rimuove, può prenotarsi di nuovo
+- il telefono non deve mostrare la parola al protagonista attivo
+
+6. Realtime Socket.IO
+Aggiungi eventi:
+- wordback:started
+- wordback:card_changed
+- wordback:booking_added
+- wordback:booking_removed
+- wordback:active_player_changed
+- wordback:timer_started
+- wordback:timer_stopped
+- wordback:score_updated
+- wordback:ended
+
+7. Backend API
+Crea route:
+/api/word-back/*
+
+Endpoint:
+- GET /sets
+- POST /sets
+- PATCH /sets/:id
+- DELETE /sets/:id
+- POST /sets/:id/cards
+- PATCH /cards/:id
+- DELETE /cards/:id
+- POST /sessions/:gameSessionId/init
+- GET /sessions/:gameSessionId/state
+- POST /sessions/:gameSessionId/book
+- POST /sessions/:gameSessionId/cancel-booking
+- POST /sessions/:gameSessionId/set-active-player
+- POST /sessions/:gameSessionId/next-card
+- POST /sessions/:gameSessionId/reveal
+- POST /sessions/:gameSessionId/score
+- POST /sessions/:gameSessionId/skip
+- POST /sessions/:gameSessionId/end
+
+8. Sicurezza
+- solo admin/entertainer può inizializzare, cambiare parola, assegnare punti, terminare
+- player può solo prenotarsi/rinunciare
+- player deve appartenere all’evento
+- niente doppie prenotazioni
+- tenant scoping su admin e set
+- proiettore può leggere lo stato ma non modificare
+
+9. Hub
+Aggiungi il gioco all’Hub:
+- nome: Parola alle Spalle
+- badge: PRONTO quando completato
+- colore coerente ma distinto
+- descrizione breve: “Mima la parola. Falla indovinare. Vinci punti.”
+
+10. Scoreboard globale
+Integra i punti nel punteggio evento globale.
+Non inserirlo per ora automaticamente in Serata Completa.
+Lascia opzione manuale da LiveControl.
+
+11. Test
+Esegui test E2E:
+- crea set demo
+- crea evento con 2 team e 2 player
+- avvia sessione parola-alle-spalle
+- player 1 si prenota
+- player 2 si prenota
+- verifica coda
+- admin attiva player 1
+- admin assegna punto
+- cambia parola
+- rimuove player 2 dalla coda
+- termina gioco
+- verifica scoreboard globale
+
+Non toccare i giochi già funzionanti.
+Mantieni tutto mobile-first per i telefoni e projector-first per il maxi schermo.

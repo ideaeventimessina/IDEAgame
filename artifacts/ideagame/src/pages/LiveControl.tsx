@@ -115,6 +115,24 @@ interface DanceStateLC {
   startedAt: string | null;
 }
 
+interface WordBackSetLC { id: string; title: string; }
+interface WordBackBookingLC {
+  id: string; playerId: string; nickname: string; teamId: string;
+  teamName: string; teamColor: string;
+  status: 'waiting' | 'active' | 'completed' | 'skipped'; orderIndex: number;
+}
+interface WordBackCardLC {
+  id: string; word: string; hint: string | null; category: string;
+  difficulty: string; points: number; timeLimit: number;
+}
+interface WordBackStateLC {
+  setId: string; setName: string; currentCard: WordBackCardLC | null;
+  bookings: WordBackBookingLC[];
+  teams: { id: string; name: string; color: string; score: number }[];
+  status: 'idle' | 'running' | 'revealed' | 'ended';
+  timerStartedAt: string | null; usedCardIds: string[];
+}
+
 interface EveningGame {
   slug: string; label: string; emoji: string;
   sessionId: string | null; status: 'pending' | 'running' | 'done';
@@ -166,6 +184,13 @@ export default function LiveControl() {
   const [danceState, setDanceState] = useState<DanceStateLC | null>(null);
   const [danceBusy, setDanceBusy] = useState(false);
   const [danceMsg, setDanceMsg] = useState('');
+
+  // Parola alle Spalle state
+  const [wordBackSets, setWordBackSets] = useState<WordBackSetLC[]>([]);
+  const [selectedWordBackSetId, setSelectedWordBackSetId] = useState('');
+  const [wordBackState, setWordBackState] = useState<WordBackStateLC | null>(null);
+  const [wordBackBusy, setWordBackBusy] = useState(false);
+  const [wordBackMsg, setWordBackMsg] = useState('');
 
   // Evening mode state
   const [eveningMode, setEveningMode] = useState<EveningMode | null>(null);
@@ -255,6 +280,15 @@ export default function LiveControl() {
       on<{ state: DanceStateLC }>('dance:motion',        ({ state: s }) => setDanceState(s)),
       on<{ state: DanceStateLC }>('dance:score_updated', ({ state: s }) => { setDanceState(s); qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) }); }),
       on<{ state: DanceStateLC }>('dance:ended',         ({ state: s }) => { setDanceState(s); qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) }); }),
+      on<{ state: WordBackStateLC }>('wordback:started',              ({ state: s }) => { setWordBackState(s); qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) }); }),
+      on<{ state: WordBackStateLC }>('wordback:card_changed',         ({ state: s }) => setWordBackState(s)),
+      on<{ state: WordBackStateLC }>('wordback:booking_added',        ({ state: s }) => setWordBackState(s)),
+      on<{ state: WordBackStateLC }>('wordback:booking_removed',      ({ state: s }) => setWordBackState(s)),
+      on<{ state: WordBackStateLC }>('wordback:active_player_changed',({ state: s }) => setWordBackState(s)),
+      on<{ state: WordBackStateLC }>('wordback:timer_started',        ({ state: s }) => setWordBackState(s)),
+      on<{ state: WordBackStateLC }>('wordback:timer_stopped',        ({ state: s }) => setWordBackState(s)),
+      on<{ state: WordBackStateLC }>('wordback:score_updated',        ({ state: s }) => { setWordBackState(s); qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) }); }),
+      on<{ state: WordBackStateLC }>('wordback:ended',                ({ state: s }) => { setWordBackState(s); qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) }); }),
     ];
     return () => unsubs.forEach(u => u());
   }, [selectedEventId, on, qc]);
@@ -328,6 +362,22 @@ export default function LiveControl() {
       .catch(() => setDanceState(null));
   }, [session?.gameSlug, session?.id]);
 
+  // Load word-back sets when parola-alle-spalle session is active
+  useEffect(() => {
+    if (session?.gameSlug !== 'parola-alle-spalle') return;
+    apiFetch('/word-back/sets')
+      .then(d => setWordBackSets(d as WordBackSetLC[]))
+      .catch(() => setWordBackSets([]));
+  }, [session?.gameSlug, session?.id]);
+
+  // Sync word-back state from API when session is active
+  useEffect(() => {
+    if (session?.gameSlug !== 'parola-alle-spalle' || !session?.id) return;
+    apiFetch(`/word-back/sessions/${session.id}/state`)
+      .then(d => setWordBackState(d as WordBackStateLC))
+      .catch(() => setWordBackState(null));
+  }, [session?.gameSlug, session?.id]);
+
   // Load evening mode when event changes
   useEffect(() => {
     if (!selectedEventId) { setEveningMode(null); return; }
@@ -382,6 +432,13 @@ export default function LiveControl() {
     setSelectedDanceChallengeId('');
     setDanceState(null);
     setDanceMsg('');
+  }, [session?.id]);
+
+  // Reset word-back state when session changes
+  useEffect(() => {
+    setSelectedWordBackSetId('');
+    setWordBackState(null);
+    setWordBackMsg('');
   }, [session?.id]);
 
   // Reset evening state when event changes (load handles the fetch, just clear busy)
@@ -659,6 +716,124 @@ export default function LiveControl() {
           navigate(`/scoreboard?e=${selectedEventId}`);
         } catch (e) { setDanceMsg((e as Error).message); }
         finally { setDanceBusy(false); }
+      },
+    });
+  };
+
+  // ─── Parola alle Spalle handlers ───────────────────────────────────────────
+
+  const handleWordBackInit = async () => {
+    if (!session || !selectedWordBackSetId || wordBackBusy) return;
+    setWordBackBusy(true); setWordBackMsg('');
+    try {
+      const s = await apiFetch(`/word-back/sessions/${session.id}/init`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ setId: selectedWordBackSetId }),
+      }) as WordBackStateLC;
+      setWordBackState(s); setWordBackMsg('✓ Gioco inizializzato!');
+    } catch (e) { setWordBackMsg((e as Error).message); }
+    finally { setWordBackBusy(false); }
+  };
+
+  const handleWordBackNextCard = async () => {
+    if (!session || wordBackBusy) return;
+    setWordBackBusy(true); setWordBackMsg('');
+    try {
+      const s = await apiFetch(`/word-back/sessions/${session.id}/next-card`, { method: 'POST' }) as WordBackStateLC;
+      setWordBackState(s);
+    } catch (e) { setWordBackMsg((e as Error).message); }
+    finally { setWordBackBusy(false); }
+  };
+
+  const handleWordBackReveal = async () => {
+    if (!session || wordBackBusy) return;
+    setWordBackBusy(true);
+    try {
+      const s = await apiFetch(`/word-back/sessions/${session.id}/reveal`, { method: 'POST' }) as WordBackStateLC;
+      setWordBackState(s);
+    } catch (e) { setWordBackMsg((e as Error).message); }
+    finally { setWordBackBusy(false); }
+  };
+
+  const handleWordBackTimerStart = async () => {
+    if (!session) return;
+    try {
+      const s = await apiFetch(`/word-back/sessions/${session.id}/timer-start`, { method: 'POST' }) as WordBackStateLC;
+      setWordBackState(s);
+    } catch (e) { setWordBackMsg((e as Error).message); }
+  };
+
+  const handleWordBackTimerStop = async () => {
+    if (!session) return;
+    try {
+      const s = await apiFetch(`/word-back/sessions/${session.id}/timer-stop`, { method: 'POST' }) as WordBackStateLC;
+      setWordBackState(s);
+    } catch (e) { setWordBackMsg((e as Error).message); }
+  };
+
+  const handleWordBackScore = async (teamId: string, points: number) => {
+    if (!session || wordBackBusy) return;
+    setWordBackBusy(true);
+    try {
+      const s = await apiFetch(`/word-back/sessions/${session.id}/score`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamId, points }),
+      }) as WordBackStateLC;
+      setWordBackState(s);
+      qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) });
+    } catch (e) { setWordBackMsg((e as Error).message); }
+    finally { setWordBackBusy(false); }
+  };
+
+  const handleWordBackSkip = async () => {
+    if (!session || wordBackBusy) return;
+    setWordBackBusy(true); setWordBackMsg('');
+    try {
+      const s = await apiFetch(`/word-back/sessions/${session.id}/skip`, { method: 'POST' }) as WordBackStateLC;
+      setWordBackState(s);
+    } catch (e) { setWordBackMsg((e as Error).message); }
+    finally { setWordBackBusy(false); }
+  };
+
+  const handleWordBackSetActivePlayer = async (bookingId: string) => {
+    if (!session || wordBackBusy) return;
+    setWordBackBusy(true);
+    try {
+      const s = await apiFetch(`/word-back/sessions/${session.id}/set-active-player`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId }),
+      }) as WordBackStateLC;
+      setWordBackState(s);
+    } catch (e) { setWordBackMsg((e as Error).message); }
+    finally { setWordBackBusy(false); }
+  };
+
+  const handleWordBackCancelBooking = async (bookingId: string) => {
+    if (!session) return;
+    try {
+      const s = await apiFetch(`/word-back/sessions/${session.id}/cancel-booking`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId }),
+      }) as WordBackStateLC;
+      setWordBackState(s);
+    } catch (e) { setWordBackMsg((e as Error).message); }
+  };
+
+  const handleWordBackEnd = () => {
+    confirm({
+      title: 'Fine Parola alle Spalle',
+      message: 'Terminare il gioco e salvare i punteggi?',
+      confirmLabel: 'Termina → Podio',
+      danger: true,
+      onConfirm: async () => {
+        if (!session || wordBackBusy) return;
+        setWordBackBusy(true); setWordBackMsg('');
+        try {
+          await apiFetch(`/word-back/sessions/${session.id}/end`, { method: 'POST' });
+          setWordBackState(s => s ? { ...s, status: 'ended' } : null);
+          navigate(`/scoreboard?e=${selectedEventId}`);
+        } catch (e) { setWordBackMsg((e as Error).message); }
+        finally { setWordBackBusy(false); }
       },
     });
   };
@@ -1745,6 +1920,189 @@ export default function LiveControl() {
             {danceState?.status === 'ended' && (
               <div className="rounded-xl border border-border bg-background/50 px-4 py-3 text-center text-sm text-muted-foreground">
                 🏁 Sfida terminata
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ─── Parola alle Spalle panel ───────────────────────────── */}
+        {session?.gameSlug === 'parola-alle-spalle' && (
+          <div className="rounded-2xl border border-cyan-500/30 bg-card p-5 space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">🎭</span>
+              <div className="text-xs uppercase tracking-widest text-muted-foreground">Parola alle Spalle</div>
+              {wordBackState && (
+                <a href={`${BASE}parola-alle-spalle?s=${session.id}&e=${selectedEventId}`} target="_blank" rel="noopener noreferrer"
+                  className="ml-auto flex items-center gap-1 text-xs text-cyan-400 hover:underline">
+                  <ExternalLink className="h-3 w-3" /> Proiettore
+                </a>
+              )}
+            </div>
+
+            {wordBackMsg && (
+              <div className={`rounded-xl px-4 py-2 text-sm ${wordBackMsg.startsWith('✓') ? 'border border-green-500/40 bg-green-500/10 text-green-400' : 'border border-destructive/40 bg-destructive/10 text-destructive'}`}>
+                {wordBackMsg}
+              </div>
+            )}
+
+            {/* Status + set name */}
+            {wordBackState && (
+              <div className="flex items-center gap-2 text-xs flex-wrap">
+                <span className={`rounded-full border px-2.5 py-1 font-bold ${
+                  wordBackState.status === 'running'  ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-400' :
+                  wordBackState.status === 'revealed' ? 'border-primary/40 bg-primary/10 text-primary' :
+                  wordBackState.status === 'ended'    ? 'border-destructive/40 bg-destructive/10 text-destructive' :
+                  'border-border text-muted-foreground'
+                }`}>
+                  {wordBackState.status === 'running' ? '🎭 In corso' : wordBackState.status === 'revealed' ? '👁 Rivelata' : wordBackState.status === 'ended' ? '🏁 Terminato' : '⏳ Attesa'}
+                </span>
+                <span className="text-muted-foreground font-bold">{wordBackState.setName}</span>
+                {wordBackState.currentCard && (
+                  <span className="text-muted-foreground">{wordBackState.currentCard.category} · {wordBackState.currentCard.points}pt</span>
+                )}
+              </div>
+            )}
+
+            {/* Init: no state yet — set selector */}
+            {!wordBackState && (
+              <>
+                <div>
+                  <div className="text-xs text-muted-foreground mb-1">Mazzo parole</div>
+                  <select value={selectedWordBackSetId} onChange={e => setSelectedWordBackSetId(e.target.value)}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm">
+                    <option value="">— seleziona mazzo —</option>
+                    {wordBackSets.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+                  </select>
+                  {wordBackSets.length === 0 && (
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      Nessun mazzo — creane uno in <a href={`${BASE}admin/parola-alle-spalle`} className="underline text-cyan-400">Admin → Parola alle Spalle</a>
+                    </div>
+                  )}
+                </div>
+                <button disabled={!selectedWordBackSetId || wordBackBusy} onClick={() => void handleWordBackInit()}
+                  className="w-full rounded-xl bg-cyan-600 py-2.5 text-sm font-bold text-white disabled:opacity-40 flex items-center justify-center gap-2">
+                  {wordBackBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  Inizializza gioco
+                </button>
+              </>
+            )}
+
+            {/* Running / Revealed */}
+            {wordBackState && wordBackState.status !== 'ended' && (
+              <>
+                {/* Current card */}
+                {wordBackState.currentCard && (
+                  <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3 space-y-1">
+                    <div className="text-display text-2xl font-black text-cyan-300">{wordBackState.currentCard.word}</div>
+                    {wordBackState.currentCard.hint && (
+                      <div className="text-xs text-muted-foreground italic">💡 {wordBackState.currentCard.hint}</div>
+                    )}
+                    <div className="text-xs text-muted-foreground">
+                      {wordBackState.currentCard.category} · {wordBackState.currentCard.difficulty} · {wordBackState.currentCard.points}pt · {wordBackState.currentCard.timeLimit}s
+                    </div>
+                  </div>
+                )}
+
+                {/* Timer controls */}
+                <div className="flex gap-2">
+                  <button onClick={() => void handleWordBackTimerStart()} disabled={!!wordBackState.timerStartedAt || wordBackBusy}
+                    className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-green-600/80 py-2 text-xs font-bold text-white disabled:opacity-40">
+                    <Play className="h-3.5 w-3.5" /> Avvia timer
+                  </button>
+                  <button onClick={() => void handleWordBackTimerStop()} disabled={!wordBackState.timerStartedAt || wordBackBusy}
+                    className="flex-1 flex items-center justify-center gap-1.5 rounded-xl border border-border py-2 text-xs font-bold disabled:opacity-40">
+                    <Pause className="h-3.5 w-3.5" /> Stop timer
+                  </button>
+                </div>
+
+                {/* Action row */}
+                <div className="flex gap-2 flex-wrap">
+                  <button onClick={() => void handleWordBackNextCard()} disabled={wordBackBusy}
+                    className="flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-bold hover:bg-secondary/30 disabled:opacity-40">
+                    <SkipForward className="h-3.5 w-3.5" /> Prossima parola
+                  </button>
+                  <button onClick={() => void handleWordBackReveal()} disabled={wordBackBusy || wordBackState.status === 'revealed'}
+                    className="flex items-center gap-1.5 rounded-xl border border-primary/40 bg-primary/10 px-3 py-2 text-xs font-bold text-primary disabled:opacity-40">
+                    <Eye className="h-3.5 w-3.5" /> Rivela parola
+                  </button>
+                  <button onClick={() => void handleWordBackSkip()} disabled={wordBackBusy}
+                    className="flex items-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-400 disabled:opacity-40">
+                    <SkipForward className="h-3.5 w-3.5" /> Salta
+                  </button>
+                </div>
+
+                {/* Active player */}
+                {wordBackState.bookings.find(b => b.status === 'active') && (() => {
+                  const active = wordBackState.bookings.find(b => b.status === 'active')!;
+                  return (
+                    <div className="flex items-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-2">
+                      <div className="h-5 w-5 rounded-full shrink-0" style={{ background: active.teamColor }} />
+                      <div className="flex-1 text-sm font-bold text-cyan-300">{active.nickname}</div>
+                      <div className="text-xs text-muted-foreground">{active.teamName}</div>
+                      <button onClick={() => void handleWordBackCancelBooking(active.id)}
+                        className="rounded-lg border border-destructive/40 p-1 text-destructive hover:bg-destructive/10">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  );
+                })()}
+
+                {/* Score buttons */}
+                <div className="space-y-2">
+                  <div className="text-xs text-muted-foreground uppercase tracking-widest">Parola indovinata — assegna punti</div>
+                  {wordBackState.teams.map(tm => (
+                    <div key={tm.id} className="flex items-center gap-2">
+                      <span className="h-3 w-3 rounded-full shrink-0" style={{ background: tm.color }} />
+                      <span className="flex-1 truncate text-sm font-bold">{tm.name}</span>
+                      <span className="text-display text-base font-black tabular-nums w-12 text-right" style={{ color: tm.color }}>{tm.score}</span>
+                      {[100, 150, 200, 300].map(pts => (
+                        <button key={pts} onClick={() => void handleWordBackScore(tm.id, pts)} disabled={wordBackBusy}
+                          className="rounded-lg border border-border px-2 py-1.5 text-xs font-bold hover-elevate disabled:opacity-40">
+                          +{pts}
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Booking queue */}
+                {wordBackState.bookings.filter(b => b.status === 'waiting').length > 0 && (
+                  <div className="space-y-1">
+                    <div className="text-xs text-muted-foreground uppercase tracking-widest">Coda prenotazioni</div>
+                    {wordBackState.bookings
+                      .filter(b => b.status === 'waiting')
+                      .sort((a, b) => a.orderIndex - b.orderIndex)
+                      .map((booking, idx) => (
+                        <div key={booking.id} className="flex items-center gap-2 rounded-xl border border-border bg-background/50 px-3 py-2">
+                          <span className="text-xs text-muted-foreground w-4">{idx + 1}</span>
+                          <span className="h-3 w-3 rounded-full shrink-0" style={{ background: booking.teamColor }} />
+                          <span className="flex-1 text-sm font-bold">{booking.nickname}</span>
+                          <span className="text-xs text-muted-foreground">{booking.teamName}</span>
+                          <button onClick={() => void handleWordBackSetActivePlayer(booking.id)} disabled={wordBackBusy}
+                            className="rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-2 py-1 text-xs font-bold text-cyan-400 disabled:opacity-40">
+                            ▶ Attiva
+                          </button>
+                          <button onClick={() => void handleWordBackCancelBooking(booking.id)}
+                            className="rounded-lg border border-destructive/40 p-1 text-destructive hover:bg-destructive/10">
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))
+                    }
+                  </div>
+                )}
+
+                <button onClick={handleWordBackEnd} disabled={wordBackBusy}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl border border-destructive/50 bg-destructive/10 py-2.5 text-sm font-bold text-destructive disabled:opacity-40">
+                  {wordBackBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
+                  Fine gioco → Podio
+                </button>
+              </>
+            )}
+
+            {wordBackState?.status === 'ended' && (
+              <div className="rounded-xl border border-border bg-background/50 px-4 py-3 text-center text-sm text-muted-foreground">
+                🏁 Gioco terminato
               </div>
             )}
           </div>
