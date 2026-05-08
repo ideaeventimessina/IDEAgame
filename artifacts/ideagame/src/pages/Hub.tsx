@@ -1,6 +1,6 @@
 import { useLocation } from 'wouter';
 import { motion } from 'framer-motion';
-import { Wifi, Users, Radio, Loader2, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
+import { Wifi, Users, Radio, Loader2, ChevronDown, ChevronUp, Sparkles, SlidersHorizontal } from 'lucide-react';
 import { useState } from 'react';
 import { Hexagon } from '@/components/Hexagon';
 import { GameIcon } from '@/components/GameIcon';
@@ -364,6 +364,21 @@ export default function Hub() {
           </button>
         </motion.div>
       </div>
+
+      {/* ── Cockpit flottante ── sempre visibile in ogni layout ── */}
+      <motion.button
+        type="button"
+        onClick={() => navigate('/control')}
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ delay: 0.5, type: 'spring', stiffness: 200 }}
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        className="fixed bottom-6 right-6 z-30 flex items-center gap-2.5 rounded-2xl bg-primary px-5 py-3.5 text-sm font-black text-primary-foreground shadow-2xl shadow-primary/30"
+      >
+        <SlidersHorizontal className="h-4 w-4" />
+        Cockpit Animatore
+      </motion.button>
     </div>
   );
 }
