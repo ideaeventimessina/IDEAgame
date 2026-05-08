@@ -238,10 +238,10 @@ export default function Player() {
   const myTeam = player?.teamId ? teams.find(t => t.id === player.teamId) : teams.find(t => t.id === selectedTeam) ?? teams[0];
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-md flex-col overflow-x-hidden px-5 pt-6"
+    <div className="mx-auto flex h-screen w-full max-w-md flex-col overflow-hidden px-5 pt-6"
          style={{
            background: 'radial-gradient(ellipse at top, hsl(248 70% 12%), hsl(248 70% 4%))',
-           paddingBottom: 'calc(6.5rem + env(safe-area-inset-bottom))',
+           paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))',
          }}>
       <header className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-2">

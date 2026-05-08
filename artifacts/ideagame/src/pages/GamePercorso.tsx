@@ -158,7 +158,7 @@ export default function GamePercorso() {
   );
 
   return (
-    <div className="relative flex min-h-screen flex-col overflow-hidden bg-background"
+    <div className="relative flex h-screen flex-col overflow-hidden bg-background"
          style={{ background: 'radial-gradient(ellipse at top, hsl(248 70% 8%), hsl(248 70% 2%))' }}>
 
       {/* ── Flash overlay ─────────────────────────────────────────────── */}

@@ -204,3 +204,19 @@
   .border.active-elevate-2:not(.no-active-interaction-elevate)::after,
   .border.hover-elevate:not(.no-hover-interaction-elevate)::after { inset: -1px; }
 }
+
+/* ── Zero-scroll lock ──────────────────────────────────────────────────────
+   No browser scrollbar ever appears. Pages are viewport-locked.
+   Individual panels that need internal scroll use overflow-y: auto.
+   ───────────────────────────────────────────────────────────────────────── */
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+#root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}

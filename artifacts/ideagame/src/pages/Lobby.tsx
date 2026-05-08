@@ -49,7 +49,7 @@ export default function Lobby() {
   const joinUrl = event ? `${window.location.origin}/play?e=${event.joinCode}` : `${window.location.origin}/play`;
 
   return (
-    <div className="relative min-h-screen w-full overflow-x-hidden">
+    <div className="relative h-screen w-full overflow-hidden flex flex-col">
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-4 sm:px-10 sm:py-8">
         <button onClick={() => navigate('/')} className="flex items-center gap-2 rounded-2xl border border-border bg-card/60 px-3 py-2 sm:gap-3 sm:px-5 sm:py-3 hover-elevate">

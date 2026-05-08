@@ -220,7 +220,7 @@ export default function GameQuizzone() {
           points = 100, difficulty = 'medium', roundIndex = 0, totalRounds = 20 } = state;
 
   return (
-    <div className="min-h-screen flex flex-col overflow-hidden"
+    <div className="h-screen flex flex-col overflow-hidden"
          style={{ background: 'radial-gradient(ellipse at top, hsl(248 70% 10%), hsl(248 70% 3%))' }}>
 
       {/* ─── Timer bar ─────────────────────────────────────────────────────── */}

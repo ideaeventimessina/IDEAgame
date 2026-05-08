@@ -57,9 +57,9 @@ export default function SerataCompleta() {
   const doneCount = gameProg.filter(g => g.status === 'done').length;
 
   return (
-    <div className="min-h-screen w-full px-4 py-6 sm:px-8"
+    <div className="h-screen w-full overflow-y-auto px-4 py-6 sm:px-8"
       style={{ background: 'radial-gradient(ellipse at top, hsl(248 70% 10%), hsl(248 70% 4%))' }}>
-      <div className="mx-auto max-w-3xl space-y-5">
+      <div className="mx-auto max-w-3xl space-y-5 pb-6">
 
         {/* Header */}
         <div className="flex items-center justify-between">

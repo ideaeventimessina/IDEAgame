@@ -204,10 +204,10 @@ export default function Hub() {
   }
 
   return (
-    <div className="relative min-h-screen w-full overflow-x-hidden">
+    <div className="relative h-screen w-full flex flex-col overflow-hidden">
 
       {/* ── Header ─────────────────────────────────────────────── */}
-      <header className="relative z-20 flex items-center justify-between px-4 py-4 sm:px-8 sm:py-6 lg:px-10 lg:py-8">
+      <header className="relative z-20 flex shrink-0 items-center justify-between px-4 py-3 sm:px-8 sm:py-4 lg:px-10 lg:py-5">
         <div className="flex items-center gap-3 sm:gap-5 min-w-0">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/40 sm:h-14 sm:w-14 sm:rounded-2xl">
             <span className="text-display text-xl font-black sm:text-3xl">I</span>
@@ -227,7 +227,7 @@ export default function Hub() {
       </header>
 
       {/* ── Live event banner ───────────────────────────────────── */}
-      <div className="relative z-10 px-4 sm:px-8 lg:px-10">
+      <div className="relative z-10 shrink-0 px-4 sm:px-8 lg:px-10">
         {liveEvent ? (
           <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="flex flex-wrap items-center gap-2 sm:gap-3">
             <span className="flex items-center gap-1.5 rounded-full bg-destructive px-2.5 py-0.5 text-xs font-bold uppercase tracking-widest text-destructive-foreground sm:px-3 sm:py-1">
@@ -243,16 +243,16 @@ export default function Hub() {
       </div>
 
       {/* ══════════════════════════════════════════════════════════
-          MOBILE layout  (<768px): stacked
+          MOBILE layout  (<768px): stacked, zero-scroll
           ══════════════════════════════════════════════════════════ */}
-      <div className="md:hidden mt-5 px-4 space-y-5 pb-32">
+      <div className="md:hidden flex-1 flex flex-col overflow-hidden px-4 pt-3 gap-3 pb-20">
         {/* QR compact + count */}
-        <div className="flex items-center gap-4 rounded-2xl border border-border bg-card/70 p-4 backdrop-blur-md">
-          <QrPlaceholder text={joinUrl} size={110} />
+        <div className="shrink-0 flex items-center gap-4 rounded-2xl border border-border bg-card/70 p-3 backdrop-blur-md">
+          <QrPlaceholder text={joinUrl} size={90} />
           <div className="flex-1 min-w-0">
             <div className="text-xs uppercase tracking-widest text-muted-foreground mb-1">{t('hub.scan_to_join')}</div>
             <div className="text-mono text-2xl font-black text-primary">{liveEvent?.joinCode ?? '—'}</div>
-            <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
               <Users className="h-4 w-4" />
               <span className="text-display text-xl font-black text-primary">{players.length}</span>
               <span>{t('hub.players_connected')}</span>
@@ -260,13 +260,13 @@ export default function Hub() {
           </div>
         </div>
 
-        {/* Game cards 2-col */}
-        <div>
-          <div className="mb-3 text-sm uppercase tracking-[0.25em] text-muted-foreground">{t('hub.choose_game')}</div>
+        {/* Game cards 2-col — scrollable internally if content overflows */}
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          <div className="shrink-0 mb-2 text-xs uppercase tracking-[0.25em] text-muted-foreground">{t('hub.choose_game')}</div>
           {gamesLoading ? (
-            <div className="flex justify-center py-10"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+            <div className="flex justify-center py-6"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
           ) : (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="flex-1 overflow-y-auto grid grid-cols-2 gap-2.5 content-start pb-2">
               {visibleGames.map((g, i) => <GameCard key={g.id} g={g} i={i} />)}
             </div>
           )}
@@ -278,10 +278,10 @@ export default function Hub() {
           onClick={() => navigate('/control')}
           initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
           whileTap={{ scale: 0.97 }}
-          className="w-full flex items-center gap-3 rounded-2xl border border-primary/40 bg-primary/10 px-4 py-3 text-left hover-elevate"
+          className="shrink-0 w-full flex items-center gap-3 rounded-2xl border border-primary/40 bg-primary/10 px-4 py-2.5 text-left hover-elevate"
         >
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/20">
-            <Sparkles className="h-5 w-5 text-primary" />
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/20">
+            <Sparkles className="h-4 w-4 text-primary" />
           </div>
           <div>
             <div className="text-display text-sm font-black text-primary">✨ Serata Completa</div>
@@ -290,66 +290,63 @@ export default function Hub() {
         </motion.button>
 
         {/* Player roster collapsible */}
-        <div className="rounded-2xl border border-border bg-card/70 overflow-hidden">
+        <div className="shrink-0 rounded-2xl border border-border bg-card/70 overflow-hidden">
           <button
-            className="flex w-full items-center justify-between px-4 py-3 text-sm font-bold text-muted-foreground"
+            className="flex w-full items-center justify-between px-4 py-2.5 text-sm font-bold text-muted-foreground"
             onClick={() => setRosterOpen(o => !o)}
           >
             <span className="flex items-center gap-2"><Radio className="h-4 w-4 text-accent" /> Live roster ({players.length})</span>
             {rosterOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </button>
           {rosterOpen && (
-            <div className="border-t border-border px-4 pb-4 pt-3 space-y-2.5">
+            <div className="border-t border-border px-4 pb-3 pt-2.5 space-y-2">
               {players.length === 0 && <div className="text-sm text-muted-foreground">Nessun giocatore ancora.</div>}
-              {players.slice(0, 12).map((p, idx) => (
+              {players.slice(0, 8).map((p, idx) => (
                 <div key={p.id} className="flex items-center gap-3">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-background"
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold text-background"
                     style={{ background: p.avatarColor }}>{p.nickname[0]}</div>
                   <div className="text-display text-sm font-bold truncate">{p.nickname}</div>
                 </div>
               ))}
-              <button onClick={() => navigate('/lobby')} className="mt-2 w-full rounded-xl border border-primary/40 bg-primary/10 py-2 text-sm font-bold text-primary">
-                Open lobby
-              </button>
             </div>
           )}
         </div>
       </div>
 
       {/* ══════════════════════════════════════════════════════════
-          TABLET layout  (768px – 1023px): QR left | hex right
+          TABLET layout  (768px – 1023px): QR left | hex right, zero-scroll
           ══════════════════════════════════════════════════════════ */}
-      <div className="hidden md:grid lg:hidden mt-8 grid-cols-[280px_1fr] gap-6 px-6 pb-36 items-start">
-        <div className="space-y-4 sticky top-4">
+      <div className="hidden md:grid lg:hidden flex-1 min-h-0 grid-cols-[260px_1fr] gap-6 px-6 py-4 overflow-hidden">
+        <div className="flex flex-col gap-4 overflow-y-auto pb-2">
           <QrPanel />
           <RosterPanel />
         </div>
-        <div className="flex flex-col items-center justify-center pt-4">
+        <div className="flex flex-col items-center justify-center overflow-hidden">
           {gamesLoading
             ? <Loader2 className="h-8 w-8 animate-spin text-primary" />
             : <HexGrid hex={T_HEX} ox={T_OX} oy={T_OY} />
           }
-          <div className="mt-8 text-display text-xl uppercase tracking-[0.3em] text-muted-foreground">{t('hub.choose_game')}</div>
+          <div className="mt-6 text-display text-xl uppercase tracking-[0.3em] text-muted-foreground">{t('hub.choose_game')}</div>
         </div>
       </div>
 
       {/* ══════════════════════════════════════════════════════════
-          DESKTOP layout  (≥1024px): 3-col QR | hex | roster
+          DESKTOP layout  (≥1024px): 3-col QR | hex | roster, zero-scroll
           ══════════════════════════════════════════════════════════ */}
-      <div className="hidden lg:grid mt-10 mx-auto w-full max-w-[1320px] grid-cols-[300px_1fr_300px] items-center gap-8 px-8 pb-44">
-        <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
+      <div className="hidden lg:grid flex-1 min-h-0 mx-auto w-full max-w-[1320px] grid-cols-[300px_1fr_300px] items-center gap-8 px-8 py-4 overflow-hidden">
+        <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="overflow-y-auto">
           <QrPanel />
         </motion.div>
 
-        <div className="flex flex-col items-center">
+        <div className="flex flex-col items-center justify-center overflow-hidden">
           {gamesLoading
             ? <Loader2 className="h-8 w-8 animate-spin text-primary" />
             : <HexGrid hex={D_HEX} ox={D_OX} oy={D_OY} />
           }
-          <div className="mt-10 text-display text-2xl uppercase tracking-[0.3em] text-muted-foreground">{t('hub.choose_game')}</div>
+          <div className="mt-6 text-display text-2xl uppercase tracking-[0.3em] text-muted-foreground">{t('hub.choose_game')}</div>
         </div>
 
-        <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-4">
+        <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="flex flex-col gap-4 overflow-y-auto pb-2">
           <RosterPanel />
           <button
             onClick={() => navigate('/control')}

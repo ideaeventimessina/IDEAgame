@@ -47,9 +47,9 @@ export default function Scoreboard() {
   const podium = rows.slice(0, 3);
 
   return (
-    <div className="min-h-screen w-full overflow-x-hidden pb-28">
+    <div className="h-screen w-full overflow-hidden flex flex-col">
       {/* Header */}
-      <header className="flex items-center justify-between px-4 py-4 sm:px-10 sm:py-8">
+      <header className="shrink-0 flex items-center justify-between px-4 py-3 sm:px-10 sm:py-5">
         <button onClick={() => navigate('/')} className="flex items-center gap-2 rounded-2xl border border-border bg-card/60 px-3 py-2 sm:gap-3 sm:px-5 sm:py-3 hover-elevate">
           <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5" />
           <span className="font-bold text-sm sm:text-base">{t('game.back')}</span>
@@ -63,6 +63,7 @@ export default function Scoreboard() {
         <div className="hidden text-sm text-muted-foreground sm:block">{eventName}</div>
       </header>
 
+      <div className="flex-1 overflow-y-auto pb-4">
       {!eventId ? (
         <div className="mx-4 mt-8 rounded-2xl border border-border bg-card/60 p-8 text-center text-muted-foreground sm:mx-auto sm:mt-16 sm:max-w-xl">
           Nessun evento selezionato.
@@ -137,6 +138,7 @@ export default function Scoreboard() {
           </section>
         </>
       )}
+      </div>
     </div>
   );
 }

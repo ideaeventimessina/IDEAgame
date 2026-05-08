@@ -545,7 +545,7 @@ export default function LiveControl() {
   const accentColor = '#8B5CF6';
 
   return (
-    <div className="min-h-screen bg-background px-4 py-6">
+    <div className="h-screen overflow-y-auto bg-background px-4 py-6 pb-10">
       {/* Blackout overlay */}
       {black && <div className="fixed inset-0 z-50 bg-black" onClick={() => setBlack(false)} />}
 

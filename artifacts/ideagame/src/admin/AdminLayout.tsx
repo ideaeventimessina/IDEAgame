@@ -66,7 +66,7 @@ export function AdminLayout({ children, title }: { children: ReactNode; title: s
   );
 
   return (
-    <div className="min-h-screen w-full">
+    <div className="h-screen w-full overflow-hidden">
 
       {/* ── Mobile drawer overlay ──────────────────────────────────── */}
       {drawerOpen && (
@@ -106,8 +106,8 @@ export function AdminLayout({ children, title }: { children: ReactNode; title: s
       </aside>
 
       {/* ── Main content ──────────────────────────────────────────── */}
-      <div className="md:pl-[280px]">
-        <header className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-background/80 px-4 py-3 backdrop-blur-md sm:px-6 sm:py-4">
+      <div className="md:pl-[280px] h-full flex flex-col overflow-hidden">
+        <header className="shrink-0 z-30 flex items-center justify-between border-b border-border bg-background/80 px-4 py-3 backdrop-blur-md sm:px-6 sm:py-4">
           <div className="flex items-center gap-3 min-w-0">
             {/* Hamburger — mobile only */}
             <button
@@ -125,7 +125,7 @@ export function AdminLayout({ children, title }: { children: ReactNode; title: s
             <LocaleSwitcher size="sm" />
           </div>
         </header>
-        <div className="flex-1 px-4 py-4 pb-28 sm:px-6 sm:py-6 lg:px-8">{children}</div>
+        <div className="flex-1 overflow-y-auto px-4 py-4 pb-6 sm:px-6 sm:py-6 lg:px-8">{children}</div>
       </div>
     </div>
   );
