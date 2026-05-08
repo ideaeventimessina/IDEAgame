@@ -44,6 +44,18 @@ interface PercorsoStateP {
   lastFlash: { text: string; type: string } | null; timerStartedAt: string | null;
 }
 
+interface AdultOnlyCardP {
+  id: string; title: string; body: string; category: string;
+  points: number; timeLimit: number; level: string; orderIndex: number;
+}
+interface AdultOnlyTeamP { id: string; name: string; color: string; score: number; }
+interface AdultOnlyStateP {
+  deckId: string; deckName: string; cards: AdultOnlyCardP[];
+  currentCardIdx: number; teams: AdultOnlyTeamP[];
+  status: 'idle' | 'running' | 'ended';
+  timerStartedAt: string | null; skipped: number[];
+}
+
 type Step = 'loading' | 'join' | 'joining' | 'play' | 'error';
 
 const BASE = (import.meta.env.BASE_URL as string) ?? '/';
@@ -74,6 +86,7 @@ export default function Player() {
   const [quizzoneQuestion, setQuizzoneQuestion] = useState<QuizzoneQuestion | null>(null);
   const [quizzoneReveal, setQuizzoneReveal] = useState<QuizzoneReveal | null>(null);
   const [percorsoStateP, setPercorsoStateP] = useState<PercorsoStateP | null>(null);
+  const [adultOnlyStateP, setAdultOnlyStateP] = useState<AdultOnlyStateP | null>(null);
 
   const { connected, on, emit } = useEventSocket(event?.id ?? null);
 
@@ -113,6 +126,11 @@ export default function Player() {
       if (session.gameSlug === 'percorso-a-risate') {
         const ps = await apiFetch(`/percorso/sessions/${session.id}/state`).catch(() => null) as PercorsoStateP | null;
         if (ps) setPercorsoStateP(ps);
+      }
+      // If adult-only is running, fetch current state
+      if (session.gameSlug === 'adult-only') {
+        const as_ = await apiFetch(`/adult-only/sessions/${session.id}/state`).catch(() => null) as AdultOnlyStateP | null;
+        if (as_) setAdultOnlyStateP(as_);
       }
       // If quizzone is running, fetch current state
       if (session.gameSlug === 'quizzone') {
@@ -211,6 +229,16 @@ export default function Player() {
       on<{ state: PercorsoStateP }>('path:score_updated', ({ state }) => setPercorsoStateP(state)),
       on<{ state: PercorsoStateP }>('path:ended', ({ state }) => {
         setPercorsoStateP(state);
+        setGameState(p => ({ ...p, status: 'ended' }));
+      }),
+      on<{ state: AdultOnlyStateP }>('adult:started', ({ state }) => {
+        setAdultOnlyStateP(state);
+        setGameState(p => ({ ...p, status: 'running' }));
+      }),
+      on<{ state: AdultOnlyStateP }>('adult:card_changed', ({ state }) => setAdultOnlyStateP(state)),
+      on<{ state: AdultOnlyStateP }>('adult:score_updated', ({ state }) => setAdultOnlyStateP(state)),
+      on<{ state: AdultOnlyStateP }>('adult:ended', ({ state }) => {
+        setAdultOnlyStateP(state);
         setGameState(p => ({ ...p, status: 'ended' }));
       }),
     ];
@@ -402,6 +430,12 @@ export default function Player() {
                 ) : gameState.gameSlug === 'percorso-a-risate' ? (
                   <PercorsoPhoneController
                     state={percorsoStateP}
+                    teamId={player.teamId}
+                    teamColor={myTeam?.color ?? '#8B5CF6'}
+                  />
+                ) : gameState.gameSlug === 'adult-only' ? (
+                  <AdultOnlyPhoneController
+                    state={adultOnlyStateP}
                     teamId={player.teamId}
                     teamColor={myTeam?.color ?? '#8B5CF6'}
                   />
@@ -907,6 +941,129 @@ function CoppiePhoneController({ board, sessionId, teamId, teamColor, onBoardUpd
           {flipError}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Adult Only Phone Controller ─────────────────────────────────────────────
+
+const LEVEL_LABEL: Record<string, string> = { soft: '😊 Soft', spicy: '🌶 Spicy', extreme: '🔥 Extreme' };
+const LEVEL_COLOR: Record<string, string> = { soft: '#10b981', spicy: '#f59e0b', extreme: '#ef4444' };
+
+function AdultOnlyPhoneController({
+  state, teamId, teamColor,
+}: {
+  state: AdultOnlyStateP | null;
+  teamId: string;
+  teamColor: string;
+}) {
+  const [ageOk, setAgeOk] = useState(() => sessionStorage.getItem('adult-only-age-ok') === '1');
+
+  if (!ageOk) {
+    return (
+      <div className="mt-4 flex flex-col items-center gap-4 rounded-2xl border border-pink-500/30 bg-card p-6 text-center">
+        <div className="text-4xl">🔞</div>
+        <div className="text-lg font-black">Contenuto per adulti</div>
+        <div className="text-sm text-muted-foreground">
+          Questo gioco contiene domande e sfide dedicate a un pubblico maggiorenne.<br />
+          Confermando dichiari di avere 18+ anni.
+        </div>
+        <button
+          onClick={() => { sessionStorage.setItem('adult-only-age-ok', '1'); setAgeOk(true); }}
+          className="w-full rounded-2xl py-3 font-black text-white"
+          style={{ background: `linear-gradient(135deg, #be185d, #9d174d)` }}
+        >
+          Ho 18+ anni — Entra
+        </button>
+      </div>
+    );
+  }
+
+  if (!state || state.status === 'idle') {
+    return (
+      <div className="mt-4 rounded-2xl border border-pink-500/20 bg-card p-6 text-center">
+        <div className="text-3xl mb-2">🔞</div>
+        <div className="font-black text-lg">Adult Only</div>
+        <div className="text-sm text-muted-foreground mt-1">In attesa dell'animatore…</div>
+      </div>
+    );
+  }
+
+  if (state.status === 'ended') {
+    return (
+      <div className="mt-4 rounded-2xl border border-border bg-card p-6 text-center space-y-2">
+        <div className="text-2xl">🏁</div>
+        <div className="font-black">Gioco terminato!</div>
+        <div className="text-sm text-muted-foreground">Controlla il proiettore per la classifica</div>
+        <div className="mt-3 space-y-1">
+          {[...state.teams].sort((a, b) => b.score - a.score).map((tm, i) => (
+            <div key={tm.id} className="flex justify-between text-sm rounded-lg px-3 py-1.5 border border-border">
+              <span style={{ color: tm.color }}>{i === 0 ? '👑 ' : ''}{tm.name}</span>
+              <span className="font-black tabular-nums" style={{ color: tm.color }}>{tm.score}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const card = state.cards[state.currentCardIdx];
+  const myTeamData = state.teams.find(t => t.id === teamId);
+
+  return (
+    <div className="mt-4 space-y-3">
+      {/* Card display */}
+      {card ? (
+        <motion.div
+          key={card.id}
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="rounded-2xl border border-pink-500/30 bg-card p-5 space-y-3"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold capitalize text-pink-400">
+              {card.category.replace(/-/g, ' ')}
+            </span>
+            <span className="text-xs rounded-full px-2 py-0.5 border font-bold"
+              style={{ color: LEVEL_COLOR[card.level] ?? '#8B5CF6', borderColor: `${LEVEL_COLOR[card.level] ?? '#8B5CF6'}44` }}>
+              {LEVEL_LABEL[card.level] ?? card.level}
+            </span>
+          </div>
+          <div className="text-base font-black leading-snug">{card.title}</div>
+          <div className="text-sm text-muted-foreground leading-relaxed">{card.body}</div>
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>⏱ {card.timeLimit}s</span>
+            <span>🏆 {card.points} pt</span>
+            <span className="text-muted-foreground">Carta {state.currentCardIdx + 1}/{state.cards.length}</span>
+          </div>
+        </motion.div>
+      ) : (
+        <div className="rounded-2xl border border-dashed border-border bg-card/40 p-6 text-center text-sm text-muted-foreground">
+          In attesa della prossima carta…
+        </div>
+      )}
+
+      {/* My team score */}
+      {myTeamData && (
+        <div className="rounded-xl border px-4 py-2 flex items-center gap-2"
+          style={{ borderColor: `${teamColor}44`, background: `${teamColor}11` }}>
+          <span className="h-3 w-3 rounded-full" style={{ background: teamColor }} />
+          <span className="text-sm font-bold flex-1">{myTeamData.name}</span>
+          <span className="text-display text-xl font-black tabular-nums" style={{ color: teamColor }}>{myTeamData.score}</span>
+        </div>
+      )}
+
+      {/* All teams mini scoreboard */}
+      <div className="grid grid-cols-2 gap-1.5">
+        {[...state.teams].sort((a, b) => b.score - a.score).map((tm, i) => (
+          <div key={tm.id} className={`rounded-xl border px-3 py-2 text-center transition-all ${
+            tm.id === teamId ? 'border-opacity-80' : 'border-border opacity-60'
+          }`} style={{ borderColor: tm.id === teamId ? tm.color : undefined }}>
+            <div className="text-[10px] text-muted-foreground truncate">{i === 0 ? '👑 ' : ''}{tm.name}</div>
+            <div className="text-display text-lg font-black tabular-nums" style={{ color: tm.color }}>{tm.score}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

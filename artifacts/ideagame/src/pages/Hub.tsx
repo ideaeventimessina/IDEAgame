@@ -12,7 +12,7 @@ import { useListGames, useGetCurrentEvent, useListPlayers, getListPlayersQueryKe
 type IconName = Parameters<typeof GameIcon>[0]['name'];
 
 // Slugs that are fully playable (green PRONTO badge)
-const READY_SLUGS = new Set(['quizzone', 'gioco-coppie', 'gioco-delle-coppie', 'percorso-a-risate']);
+const READY_SLUGS = new Set(['quizzone', 'gioco-coppie', 'gioco-delle-coppie', 'percorso-a-risate', 'adult-only']);
 
 // Orbital positions — max |x|=1.5 ensures hexes stay inside canvas at all sizes
 const POSITIONS = [

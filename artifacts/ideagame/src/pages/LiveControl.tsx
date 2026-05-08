@@ -94,6 +94,18 @@ interface PercorsoStateLC {
   lastFlash: { text: string; type: string } | null; timerStartedAt: string | null;
 }
 
+interface AdultOnlyDeckLC { id: string; name: string; description: string; }
+interface AdultOnlyCardLC {
+  id: string; title: string; body: string; category: string;
+  points: number; timeLimit: number; level: string; orderIndex: number;
+}
+interface AdultOnlyStateLC {
+  deckId: string; deckName: string; cards: AdultOnlyCardLC[];
+  currentCardIdx: number; teams: { id: string; name: string; color: string; score: number }[];
+  status: 'idle' | 'running' | 'ended';
+  timerStartedAt: string | null; skipped: number[];
+}
+
 interface EveningGame {
   slug: string; label: string; emoji: string;
   sessionId: string | null; status: 'pending' | 'running' | 'done';
@@ -131,6 +143,13 @@ export default function LiveControl() {
   const [percorsoState, setPercorsoState] = useState<PercorsoStateLC | null>(null);
   const [percorsoBusy, setPercorsoBusy] = useState(false);
   const [percorsoMsg, setPercorsoMsg] = useState('');
+
+  // Adult Only state
+  const [adultOnlyDecks, setAdultOnlyDecks] = useState<AdultOnlyDeckLC[]>([]);
+  const [selectedAdultOnlyDeckId, setSelectedAdultOnlyDeckId] = useState('');
+  const [adultOnlyState, setAdultOnlyState] = useState<AdultOnlyStateLC | null>(null);
+  const [adultOnlyBusy, setAdultOnlyBusy] = useState(false);
+  const [adultOnlyMsg, setAdultOnlyMsg] = useState('');
 
   // Evening mode state
   const [eveningMode, setEveningMode] = useState<EveningMode | null>(null);
@@ -208,6 +227,13 @@ export default function LiveControl() {
       }),
       on<{ state: PercorsoStateLC }>('path:ended', ({ state }) => setPercorsoState(state)),
       on<{ evening: EveningMode; session: { id: string } | null }>('evening:updated', ({ evening: ev }) => setEveningMode(ev)),
+      on<{ state: AdultOnlyStateLC }>('adult:started', ({ state: s }) => setAdultOnlyState(s)),
+      on<{ state: AdultOnlyStateLC }>('adult:card_changed', ({ state: s }) => setAdultOnlyState(s)),
+      on<{ state: AdultOnlyStateLC }>('adult:score_updated', ({ state: s }) => {
+        setAdultOnlyState(s);
+        qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) });
+      }),
+      on<{ state: AdultOnlyStateLC }>('adult:ended', ({ state: s }) => setAdultOnlyState(s)),
     ];
     return () => unsubs.forEach(u => u());
   }, [selectedEventId, on, qc]);
@@ -247,6 +273,22 @@ export default function LiveControl() {
     apiFetch(`/percorso/sessions/${session.id}/state`)
       .then(d => setPercorsoState(d as PercorsoStateLC))
       .catch(() => setPercorsoState(null));
+  }, [session?.gameSlug, session?.id]);
+
+  // Load adult-only decks when adult-only session is active
+  useEffect(() => {
+    if (session?.gameSlug !== 'adult-only') return;
+    apiFetch('/adult-only/decks')
+      .then(d => setAdultOnlyDecks(d as AdultOnlyDeckLC[]))
+      .catch(() => setAdultOnlyDecks([]));
+  }, [session?.gameSlug, session?.id]);
+
+  // Sync adult-only state from API when session is active
+  useEffect(() => {
+    if (session?.gameSlug !== 'adult-only' || !session?.id) return;
+    apiFetch(`/adult-only/sessions/${session.id}/state`)
+      .then(d => setAdultOnlyState(d as AdultOnlyStateLC))
+      .catch(() => setAdultOnlyState(null));
   }, [session?.gameSlug, session?.id]);
 
   // Load evening mode when event changes
@@ -289,6 +331,13 @@ export default function LiveControl() {
     setSelectedPercorsoSetId('');
     setPercorsoState(null);
     setPercorsoMsg('');
+  }, [session?.id]);
+
+  // Reset adult-only state when session changes
+  useEffect(() => {
+    setSelectedAdultOnlyDeckId('');
+    setAdultOnlyState(null);
+    setAdultOnlyMsg('');
   }, [session?.id]);
 
   // Reset evening state when event changes (load handles the fetch, just clear busy)
@@ -434,6 +483,77 @@ export default function LiveControl() {
           navigate(`/scoreboard?e=${selectedEventId}`);
         } catch (e) { setPercorsoMsg((e as Error).message); }
         finally { setPercorsoBusy(false); }
+      },
+    });
+  };
+
+  // ─── Adult Only handlers ────────────────────────────────────────────────────
+
+  const handleAdultOnlyInit = async () => {
+    if (!session || !selectedAdultOnlyDeckId || adultOnlyBusy) return;
+    setAdultOnlyBusy(true); setAdultOnlyMsg('');
+    try {
+      const s = await apiFetch(`/adult-only/sessions/${session.id}/init`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deckId: selectedAdultOnlyDeckId }),
+      }) as AdultOnlyStateLC;
+      setAdultOnlyState(s);
+      setAdultOnlyMsg('✓ Sessione inizializzata!');
+    } catch (e) { setAdultOnlyMsg((e as Error).message); }
+    finally { setAdultOnlyBusy(false); }
+  };
+
+  const handleAdultOnlyNext = async () => {
+    if (!session || adultOnlyBusy) return;
+    setAdultOnlyBusy(true); setAdultOnlyMsg('');
+    try {
+      const s = await apiFetch(`/adult-only/sessions/${session.id}/next`, { method: 'POST' }) as AdultOnlyStateLC;
+      setAdultOnlyState(s);
+    } catch (e) { setAdultOnlyMsg((e as Error).message); }
+    finally { setAdultOnlyBusy(false); }
+  };
+
+  const handleAdultOnlySkip = async () => {
+    if (!session || adultOnlyBusy) return;
+    setAdultOnlyBusy(true); setAdultOnlyMsg('');
+    try {
+      const s = await apiFetch(`/adult-only/sessions/${session.id}/skip`, { method: 'POST' }) as AdultOnlyStateLC;
+      setAdultOnlyState(s);
+    } catch (e) { setAdultOnlyMsg((e as Error).message); }
+    finally { setAdultOnlyBusy(false); }
+  };
+
+  const handleAdultOnlyScore = async (teamId: string, delta: number) => {
+    if (!session || adultOnlyBusy) return;
+    setAdultOnlyBusy(true);
+    try {
+      const s = await apiFetch(`/adult-only/sessions/${session.id}/score`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamId, delta }),
+      }) as AdultOnlyStateLC;
+      setAdultOnlyState(s);
+      qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) });
+    } catch (e) { setAdultOnlyMsg((e as Error).message); }
+    finally { setAdultOnlyBusy(false); }
+  };
+
+  const handleAdultOnlyEnd = () => {
+    confirm({
+      title: 'Fine Adult Only',
+      message: 'Terminare il gioco Adult Only?',
+      confirmLabel: 'Termina → Podio',
+      danger: true,
+      onConfirm: async () => {
+        if (!session || adultOnlyBusy) return;
+        setAdultOnlyBusy(true); setAdultOnlyMsg('');
+        try {
+          await apiFetch(`/adult-only/sessions/${session.id}/end`, { method: 'POST' });
+          setAdultOnlyState(s => s ? { ...s, status: 'ended' } : null);
+          navigate(`/scoreboard?e=${selectedEventId}`);
+        } catch (e) { setAdultOnlyMsg((e as Error).message); }
+        finally { setAdultOnlyBusy(false); }
       },
     });
   };
@@ -1234,6 +1354,141 @@ export default function LiveControl() {
             {percorsoState?.status === 'ended' && (
               <div className="rounded-xl border border-border bg-background/50 px-4 py-3 text-center text-sm text-muted-foreground">
                 🏁 Percorso terminato
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ─── Adult Only panel ──────────────────────────────────── */}
+        {session?.gameSlug === 'adult-only' && (
+          <div className="rounded-2xl border border-pink-500/30 bg-card p-5 space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">🔞</span>
+              <div className="text-xs uppercase tracking-widest text-muted-foreground">Adult Only</div>
+              <a href={`${BASE}adult-only?s=${session.id}&e=${selectedEventId}`} target="_blank" rel="noopener noreferrer"
+                className="ml-auto flex items-center gap-1 text-xs text-pink-400 hover:underline">
+                <ExternalLink className="h-3 w-3" /> Proiettore
+              </a>
+            </div>
+
+            {adultOnlyMsg && (
+              <div className={`rounded-xl px-4 py-2 text-sm ${adultOnlyMsg.startsWith('✓') ? 'border border-green-500/40 bg-green-500/10 text-green-400' : 'border border-destructive/40 bg-destructive/10 text-destructive'}`}>
+                {adultOnlyMsg}
+              </div>
+            )}
+
+            {/* Status badge */}
+            {adultOnlyState && (
+              <div className="flex items-center gap-2 text-xs">
+                <span className={`rounded-full border px-2.5 py-1 font-bold ${
+                  adultOnlyState.status === 'running' ? 'border-green-500/40 bg-green-500/10 text-green-400' :
+                  adultOnlyState.status === 'ended' ? 'border-destructive/40 bg-destructive/10 text-destructive' :
+                  'border-border text-muted-foreground'
+                }`}>
+                  {adultOnlyState.status === 'idle' ? 'In attesa' : adultOnlyState.status === 'running' ? '🔞 In corso' : '🏁 Terminato'}
+                </span>
+                {adultOnlyState.status !== 'idle' && adultOnlyState.currentCardIdx >= 0 && (
+                  <span className="text-muted-foreground">
+                    Carta {adultOnlyState.currentCardIdx + 1}/{adultOnlyState.cards.length}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Current card preview */}
+            {adultOnlyState?.status === 'running' && adultOnlyState.currentCardIdx >= 0 && (() => {
+              const card = adultOnlyState.cards[adultOnlyState.currentCardIdx];
+              if (!card) return null;
+              return (
+                <div className="rounded-xl border border-pink-500/20 bg-pink-500/5 p-3 space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-pink-400 capitalize">{card.category.replace(/-/g, ' ')}</span>
+                    <span className="ml-auto text-xs text-muted-foreground">{card.points} pt · {card.timeLimit}s</span>
+                  </div>
+                  <div className="text-sm font-bold leading-snug">{card.title}</div>
+                  <div className="text-xs text-muted-foreground">{card.body}</div>
+                </div>
+              );
+            })()}
+
+            {/* Init: no state yet */}
+            {!adultOnlyState && (
+              <>
+                <div>
+                  <div className="text-xs text-muted-foreground mb-1">Mazzo</div>
+                  <select value={selectedAdultOnlyDeckId} onChange={e => setSelectedAdultOnlyDeckId(e.target.value)}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm">
+                    <option value="">— seleziona mazzo —</option>
+                    {adultOnlyDecks.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                </div>
+                <button disabled={!selectedAdultOnlyDeckId || adultOnlyBusy}
+                  onClick={() => void handleAdultOnlyInit()}
+                  className="w-full rounded-xl bg-pink-600 py-2.5 text-sm font-bold text-white disabled:opacity-40 flex items-center justify-center gap-2">
+                  {adultOnlyBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  Inizializza
+                </button>
+              </>
+            )}
+
+            {/* Idle: ready */}
+            {adultOnlyState?.status === 'idle' && (
+              <>
+                <div className="rounded-xl border border-border bg-background/50 px-3 py-2 text-xs text-muted-foreground">
+                  Mazzo: <span className="font-bold text-foreground">{adultOnlyState.deckName}</span> — {adultOnlyState.cards.length} carte
+                </div>
+                <button onClick={() => void handleAdultOnlyNext()} disabled={adultOnlyBusy}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl bg-pink-600 py-3 text-sm font-black text-white disabled:opacity-40">
+                  {adultOnlyBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                  Prima carta!
+                </button>
+              </>
+            )}
+
+            {/* Running controls */}
+            {adultOnlyState?.status === 'running' && (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => void handleAdultOnlyNext()} disabled={adultOnlyBusy}
+                    className="flex items-center justify-center gap-2 rounded-xl bg-pink-600 py-2.5 text-sm font-bold text-white disabled:opacity-40">
+                    {adultOnlyBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <SkipForward className="h-4 w-4" />}
+                    Prossima
+                  </button>
+                  <button onClick={() => void handleAdultOnlySkip()} disabled={adultOnlyBusy}
+                    className="flex items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-sm font-bold disabled:opacity-40">
+                    ⏭ Salta
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="text-xs text-muted-foreground uppercase tracking-widest">Assegna punti</div>
+                  {adultOnlyState.teams.map(tm => (
+                    <div key={tm.id} className="flex items-center gap-2">
+                      <span className="h-3 w-3 rounded-full shrink-0" style={{ background: tm.color }} />
+                      <span className="flex-1 truncate text-sm font-bold">{tm.name}</span>
+                      <span className="text-display text-base font-black tabular-nums w-12 text-right" style={{ color: tm.color }}>{tm.score}</span>
+                      {[100, 150, 200].map(pts => (
+                        <button key={pts} onClick={() => void handleAdultOnlyScore(tm.id, pts)} disabled={adultOnlyBusy}
+                          className="rounded-lg border border-border px-2 py-1.5 text-xs font-bold hover-elevate disabled:opacity-40">
+                          +{pts}
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+
+                <button onClick={handleAdultOnlyEnd} disabled={adultOnlyBusy}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl border border-destructive/50 bg-destructive/10 py-2.5 text-sm font-bold text-destructive disabled:opacity-40">
+                  {adultOnlyBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
+                  Fine Adult Only → Podio
+                </button>
+              </>
+            )}
+
+            {/* Ended */}
+            {adultOnlyState?.status === 'ended' && (
+              <div className="rounded-xl border border-border bg-background/50 px-4 py-3 text-center text-sm text-muted-foreground">
+                🏁 Gioco terminato
               </div>
             )}
           </div>

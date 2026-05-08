@@ -23,6 +23,8 @@ import GameQuizzone from "@/pages/GameQuizzone";
 import GamePercorso from "@/pages/GamePercorso";
 import SerataCompleta from "@/pages/SerataCompleta";
 import AdminPercorsoRisate from "@/admin/PercorsoRisate";
+import AdminAdultOnly from "@/admin/AdultOnly";
+import GameAdultOnly from "@/pages/GameAdultOnly";
 import Permissions from "@/pages/Permissions";
 import AdminSystem from "@/admin/System";
 import AdminDashboard from "@/admin/Dashboard";
@@ -56,6 +58,7 @@ function Router() {
       <Route path="/quizzone" component={GameQuizzone} />
       <Route path="/percorso-risate" component={GamePercorso} />
       <Route path="/serata-completa" component={SerataCompleta} />
+      <Route path="/adult-only" component={GameAdultOnly} />
       <Route path="/game/:slug" component={GameStage} />
       <Route path="/lobby" component={Lobby} />
       <Route path="/scoreboard" component={Scoreboard} />
@@ -75,6 +78,7 @@ function Router() {
       <Route path="/admin/card-sets"><Guard route="/admin/card-sets"><AdminCardSets /></Guard></Route>
       <Route path="/admin/quiz-packs"><Guard route="/admin/quiz-packs"><AdminQuizPacks /></Guard></Route>
       <Route path="/admin/percorso-risate"><Guard route="/admin/percorso-risate"><AdminPercorsoRisate /></Guard></Route>
+      <Route path="/admin/adult-only"><Guard route="/admin/adult-only"><AdminAdultOnly /></Guard></Route>
       <Route component={NotFound} />
     </Switch>
   );
