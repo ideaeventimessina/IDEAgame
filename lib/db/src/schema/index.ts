@@ -24,3 +24,4 @@ export * from "./ballo";
 export * from "./wordback";
 export * from "./karaoke";
 export * from "./freestyle";
+export * from "./saramusica";

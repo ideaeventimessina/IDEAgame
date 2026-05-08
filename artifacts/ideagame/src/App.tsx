@@ -34,6 +34,8 @@ import AdminEvents from "@/admin/Events";
 import GameKaraoke from "@/pages/GameKaraoke";
 import AdminFreestyle from "@/admin/FreestyleBattle";
 import GameFreestyle from "@/pages/GameFreestyle";
+import AdminSaraMusica from "@/admin/SaraMusica";
+import GameSaraMusica from "@/pages/GameSaraMusica";
 import Permissions from "@/pages/Permissions";
 import AdminSystem from "@/admin/System";
 import AdminDashboard from "@/admin/Dashboard";
@@ -72,6 +74,7 @@ function Router() {
       <Route path="/parola-alle-spalle" component={GameWordBack} />
       <Route path="/karaoke-battle" component={GameKaraoke} />
       <Route path="/freestyle-battle" component={GameFreestyle} />
+      <Route path="/saramusica" component={GameSaraMusica} />
       <Route path="/game/:slug" component={GameStage} />
       <Route path="/lobby" component={Lobby} />
       <Route path="/scoreboard" component={Scoreboard} />
@@ -97,6 +100,7 @@ function Router() {
       <Route path="/admin/events"><Guard route="/admin/events"><AdminEvents /></Guard></Route>
       <Route path="/admin/karaoke-battle"><Guard route="/admin/karaoke-battle"><AdminKaraoke /></Guard></Route>
       <Route path="/admin/freestyle-battle"><Guard route="/admin/freestyle-battle"><AdminFreestyle /></Guard></Route>
+      <Route path="/admin/saramusica"><Guard route="/admin/saramusica"><AdminSaraMusica /></Guard></Route>
       <Route component={NotFound} />
     </Switch>
   );

@@ -168,6 +168,23 @@ interface FreestyleStateLC {
   roundIndex: number;
 }
 
+interface SaraMusicaTrackLC {
+  id: string; title: string; artist: string;
+  challengeType: 'indovina' | 'canta' | 'rumore';
+  snippetHint: string; audioUrl: string | null;
+  durationSeconds: number; points: number;
+}
+interface SaraMusicaStateLC {
+  setId: string; setName: string;
+  currentTrack: SaraMusicaTrackLC | null;
+  activeTeamId: string | null;
+  teams: { id: string; name: string; color: string; score: number }[];
+  status: 'idle' | 'playing' | 'ended';
+  trackStartedAt: string | null;
+  noiseLevel: number;
+  usedTrackIds: string[];
+}
+
 interface EveningGame {
   slug: string; label: string; emoji: string;
   sessionId: string | null; status: 'pending' | 'running' | 'done';
@@ -246,6 +263,13 @@ export default function LiveControl() {
   const [freestyleState, setFreestyleState] = useState<FreestyleStateLC | null>(null);
   const [freestyleBusy, setFreestyleBusy] = useState(false);
   const [freestyleMsg, setFreestyleMsg] = useState('');
+
+  // SaraMusica state
+  const [saraMusicaSets, setSaraMusicaSets] = useState<{ id: string; title: string }[]>([]);
+  const [selectedSaraMusicaSetId, setSelectedSaraMusicaSetId] = useState('');
+  const [saraMusicaState, setSaraMusicaState] = useState<SaraMusicaStateLC | null>(null);
+  const [saraMusicaBusy, setSaraMusicaBusy] = useState(false);
+  const [saraMusicaMsg, setSaraMusicaMsg] = useState('');
 
   // Evening mode state
   const [eveningMode, setEveningMode] = useState<EveningMode | null>(null);
@@ -363,6 +387,11 @@ export default function LiveControl() {
       on<{ state: FreestyleStateLC }>('freestyle:score_updated', ({ state: s }) => { setFreestyleState(s); qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) }); }),
       on<{ state: FreestyleStateLC }>('freestyle:next_round',    ({ state: s }) => setFreestyleState(s)),
       on<{ state: FreestyleStateLC }>('freestyle:ended',         ({ state: s }) => { setFreestyleState(s); qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) }); }),
+      on<{ state: SaraMusicaStateLC }>('saramusica:started',       ({ state: s }) => setSaraMusicaState(s)),
+      on<{ state: SaraMusicaStateLC }>('saramusica:track_changed', ({ state: s }) => setSaraMusicaState(s)),
+      on<{ state: SaraMusicaStateLC }>('saramusica:noise',         ({ state: s }) => setSaraMusicaState(s)),
+      on<{ state: SaraMusicaStateLC }>('saramusica:score_updated', ({ state: s }) => { setSaraMusicaState(s); qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) }); }),
+      on<{ state: SaraMusicaStateLC }>('saramusica:ended',         ({ state: s }) => { setSaraMusicaState(s); qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) }); }),
     ];
     return () => unsubs.forEach(u => u());
   }, [selectedEventId, on, qc]);
@@ -482,6 +511,22 @@ export default function LiveControl() {
     apiFetch(`/freestyle/sessions/${session.id}/state`)
       .then(d => setFreestyleState(d as FreestyleStateLC))
       .catch(() => setFreestyleState(null));
+  }, [session?.gameSlug, session?.id]);
+
+  // Load SaraMusica sets when saramusica session is active
+  useEffect(() => {
+    if (session?.gameSlug !== 'saramusica') return;
+    apiFetch('/saramusica/sets')
+      .then(d => setSaraMusicaSets(d as { id: string; title: string }[]))
+      .catch(() => setSaraMusicaSets([]));
+  }, [session?.gameSlug, session?.id]);
+
+  // Sync SaraMusica state from API when session is active
+  useEffect(() => {
+    if (session?.gameSlug !== 'saramusica' || !session?.id) return;
+    apiFetch(`/saramusica/sessions/${session.id}/state`)
+      .then(d => setSaraMusicaState(d as SaraMusicaStateLC))
+      .catch(() => setSaraMusicaState(null));
   }, [session?.gameSlug, session?.id]);
 
   // Load evening mode when event changes
@@ -1178,6 +1223,84 @@ export default function LiveControl() {
           navigate(`/scoreboard?e=${selectedEventId}`);
         } catch (e) { setFreestyleMsg((e as Error).message); }
         finally { setFreestyleBusy(false); }
+      },
+    });
+  };
+
+  // ─── SaraMusica handlers ────────────────────────────────────────────────────
+  const handleSaraMusicaInit = async () => {
+    if (!session || !selectedSaraMusicaSetId || saraMusicaBusy) return;
+    setSaraMusicaBusy(true); setSaraMusicaMsg('');
+    try {
+      const s = await apiFetch(`/saramusica/sessions/${session.id}/init`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ setId: selectedSaraMusicaSetId }),
+      }) as SaraMusicaStateLC;
+      setSaraMusicaState(s); setSaraMusicaMsg('✓ SaraMusica inizializzato!');
+    } catch (e) { setSaraMusicaMsg((e as Error).message); }
+    finally { setSaraMusicaBusy(false); }
+  };
+
+  const handleSaraMusicaStartTrack = async () => {
+    if (!session || saraMusicaBusy) return;
+    setSaraMusicaBusy(true);
+    try {
+      const s = await apiFetch(`/saramusica/sessions/${session.id}/start-track`, { method: 'POST' }) as SaraMusicaStateLC;
+      setSaraMusicaState(s);
+    } catch (e) { setSaraMusicaMsg((e as Error).message); }
+    finally { setSaraMusicaBusy(false); }
+  };
+
+  const handleSaraMusicaNextTrack = async () => {
+    if (!session || saraMusicaBusy) return;
+    setSaraMusicaBusy(true);
+    try {
+      const s = await apiFetch(`/saramusica/sessions/${session.id}/next-track`, { method: 'POST' }) as SaraMusicaStateLC;
+      setSaraMusicaState(s); setSaraMusicaMsg('');
+    } catch (e) { setSaraMusicaMsg((e as Error).message); }
+    finally { setSaraMusicaBusy(false); }
+  };
+
+  const handleSaraMusicaSetTeam = async (teamId: string) => {
+    if (!session || saraMusicaBusy) return;
+    try {
+      const s = await apiFetch(`/saramusica/sessions/${session.id}/set-team`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamId }),
+      }) as SaraMusicaStateLC;
+      setSaraMusicaState(s);
+    } catch (e) { setSaraMusicaMsg((e as Error).message); }
+  };
+
+  const handleSaraMusicaScore = async (teamId: string, points: number) => {
+    if (!session || saraMusicaBusy) return;
+    setSaraMusicaBusy(true);
+    try {
+      const s = await apiFetch(`/saramusica/sessions/${session.id}/score`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamId, points }),
+      }) as SaraMusicaStateLC;
+      setSaraMusicaState(s);
+      qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) });
+    } catch (e) { setSaraMusicaMsg((e as Error).message); }
+    finally { setSaraMusicaBusy(false); }
+  };
+
+  const handleSaraMusicaEnd = () => {
+    confirm({
+      title: 'Fine SaraMusica',
+      message: 'Terminare il gioco e salvare i punteggi?',
+      confirmLabel: 'Termina → Podio',
+      danger: true,
+      onConfirm: async () => {
+        if (!session || saraMusicaBusy) return;
+        setSaraMusicaBusy(true); setSaraMusicaMsg('');
+        try {
+          await apiFetch(`/saramusica/sessions/${session.id}/end`, { method: 'POST' });
+          setSaraMusicaState(s => s ? { ...s, status: 'ended' } : null);
+          navigate(`/scoreboard?e=${selectedEventId}`);
+        } catch (e) { setSaraMusicaMsg((e as Error).message); }
+        finally { setSaraMusicaBusy(false); }
       },
     });
   };
@@ -2906,6 +3029,154 @@ export default function LiveControl() {
             {freestyleState?.phase === 'ended' && (
               <div className="rounded-xl border border-border bg-background/50 px-4 py-3 text-center text-sm text-muted-foreground">
                 🏁 Freestyle terminato
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ─── SaraMusica panel ────────────────────────────────────── */}
+        {session?.gameSlug === 'saramusica' && (
+          <div className="rounded-2xl border border-purple-500/30 bg-card p-5 space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">🎵</span>
+              <div className="text-xs uppercase tracking-widest text-muted-foreground">SaraMusica</div>
+              {saraMusicaState && (
+                <a href={`${BASE}saramusica?s=${session.id}&e=${selectedEventId}`} target="_blank" rel="noopener noreferrer"
+                  className="ml-auto flex items-center gap-1 text-xs text-purple-400 hover:underline">
+                  <ExternalLink className="h-3 w-3" /> Proiettore
+                </a>
+              )}
+            </div>
+
+            {saraMusicaMsg && (
+              <div className={`rounded-xl px-4 py-2 text-sm ${saraMusicaMsg.startsWith('✓') ? 'border border-green-500/40 bg-green-500/10 text-green-400' : 'border border-destructive/40 bg-destructive/10 text-destructive'}`}>
+                {saraMusicaMsg}
+              </div>
+            )}
+
+            {/* Status bar */}
+            {saraMusicaState && (
+              <div className="flex items-center gap-2 text-xs flex-wrap">
+                <span className={`rounded-full border px-2.5 py-1 font-bold ${
+                  saraMusicaState.status === 'playing' ? 'border-purple-500/40 bg-purple-500/10 text-purple-400' :
+                  saraMusicaState.status === 'ended' ? 'border-destructive/40 bg-destructive/10 text-destructive' :
+                  'border-border text-muted-foreground'
+                }`}>
+                  {saraMusicaState.status === 'playing' ? '🎵 In gioco' : saraMusicaState.status === 'ended' ? '🏁 Terminato' : '⏳ Attesa'}
+                </span>
+                <span className="text-muted-foreground font-bold">{saraMusicaState.setName}</span>
+                <span className="text-muted-foreground">{saraMusicaState.usedTrackIds.length} brani usati</span>
+              </div>
+            )}
+
+            {/* Init: set selector */}
+            {!saraMusicaState && (
+              <>
+                <div>
+                  <div className="text-xs text-muted-foreground mb-1">Set musicale</div>
+                  <select value={selectedSaraMusicaSetId} onChange={e => setSelectedSaraMusicaSetId(e.target.value)}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm">
+                    <option value="">— seleziona set —</option>
+                    {saraMusicaSets.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+                  </select>
+                  {saraMusicaSets.length === 0 && (
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      Nessun set — creane uno in <a href={`${BASE}admin/saramusica`} className="underline text-purple-400">Admin → SaraMusica</a>
+                    </div>
+                  )}
+                </div>
+                <button disabled={!selectedSaraMusicaSetId || saraMusicaBusy} onClick={() => void handleSaraMusicaInit()}
+                  className="w-full rounded-xl bg-purple-600 py-2.5 text-sm font-bold text-white disabled:opacity-40 flex items-center justify-center gap-2">
+                  {saraMusicaBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  Inizializza SaraMusica
+                </button>
+              </>
+            )}
+
+            {/* Running panel */}
+            {saraMusicaState && saraMusicaState.status !== 'ended' && (
+              <>
+                {/* Current track */}
+                {saraMusicaState.currentTrack && (
+                  <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-3 space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs rounded-full border border-purple-500/40 px-2 py-0.5 text-purple-400 font-bold">
+                        {saraMusicaState.currentTrack.challengeType === 'indovina' ? '🎵 Indovina' :
+                         saraMusicaState.currentTrack.challengeType === 'canta' ? '🎤 Canta' : '📣 Rumore'}
+                      </span>
+                      <span className="text-xs text-muted-foreground">+{saraMusicaState.currentTrack.points}pt · {saraMusicaState.currentTrack.durationSeconds}s</span>
+                    </div>
+                    <div className="text-display text-lg font-black text-purple-300">
+                      {saraMusicaState.currentTrack.challengeType === 'indovina' ? '❓ ???' : saraMusicaState.currentTrack.title}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {saraMusicaState.currentTrack.challengeType === 'indovina' ? saraMusicaState.currentTrack.artist : saraMusicaState.currentTrack.artist}
+                    </div>
+                    {saraMusicaState.currentTrack.snippetHint && (
+                      <div className="text-xs italic text-muted-foreground">"{saraMusicaState.currentTrack.snippetHint}"</div>
+                    )}
+                  </div>
+                )}
+
+                {/* Active team selector */}
+                <div>
+                  <div className="text-xs text-muted-foreground mb-1">Squadra di turno</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {saraMusicaState.teams.map(tm => (
+                      <button key={tm.id} onClick={() => void handleSaraMusicaSetTeam(tm.id)}
+                        className="rounded-xl border px-3 py-1.5 text-xs font-bold transition-all"
+                        style={{
+                          borderColor: tm.id === saraMusicaState.activeTeamId ? tm.color : `${tm.color}44`,
+                          background: tm.id === saraMusicaState.activeTeamId ? `${tm.color}25` : 'transparent',
+                          color: tm.id === saraMusicaState.activeTeamId ? tm.color : undefined,
+                        }}>
+                        {tm.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Track controls */}
+                <div className="flex gap-2 flex-wrap">
+                  <button onClick={() => void handleSaraMusicaStartTrack()} disabled={saraMusicaBusy || saraMusicaState.status === 'playing'}
+                    className="flex items-center gap-1.5 rounded-xl bg-green-600/80 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">
+                    <Play className="h-3.5 w-3.5" /> Avvia brano
+                  </button>
+                  <button onClick={() => void handleSaraMusicaNextTrack()} disabled={saraMusicaBusy}
+                    className="flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-bold hover:bg-secondary/30 disabled:opacity-40">
+                    <SkipForward className="h-3.5 w-3.5" /> Prossimo brano
+                  </button>
+                </div>
+
+                {/* Score buttons */}
+                <div className="space-y-2">
+                  <div className="text-xs text-muted-foreground uppercase tracking-widest">Assegna punti</div>
+                  {saraMusicaState.teams.map(tm => (
+                    <div key={tm.id} className="flex items-center gap-2">
+                      <span className="h-3 w-3 rounded-full shrink-0" style={{ background: tm.color }} />
+                      <span className="flex-1 truncate text-sm font-bold">{tm.name}</span>
+                      <span className="text-display text-base font-black tabular-nums w-12 text-right" style={{ color: tm.color }}>{tm.score}</span>
+                      {[50, 100, 150, 200].map(pts => (
+                        <button key={pts} onClick={() => void handleSaraMusicaScore(tm.id, pts)} disabled={saraMusicaBusy}
+                          className="rounded-lg border border-border px-2 py-1.5 text-xs font-bold hover-elevate disabled:opacity-40">
+                          +{pts}
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+
+                <button onClick={handleSaraMusicaEnd} disabled={saraMusicaBusy}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl border border-destructive/50 bg-destructive/10 py-2.5 text-sm font-bold text-destructive disabled:opacity-40">
+                  {saraMusicaBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
+                  Fine gioco → Podio
+                </button>
+              </>
+            )}
+
+            {saraMusicaState?.status === 'ended' && (
+              <div className="rounded-xl border border-border bg-background/50 px-4 py-3 text-center text-sm text-muted-foreground">
+                🏁 SaraMusica terminato
               </div>
             )}
           </div>

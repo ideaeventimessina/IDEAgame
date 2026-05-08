@@ -111,6 +111,23 @@ interface WordBackStateP {
   timerStartedAt: string | null; usedCardIds: string[];
 }
 
+interface SaraMusicaTrackP {
+  id: string; title: string; artist: string;
+  challengeType: 'indovina' | 'canta' | 'rumore';
+  snippetHint: string; audioUrl: string | null;
+  durationSeconds: number; points: number;
+}
+interface SaraMusicaStateP {
+  setId: string; setName: string;
+  currentTrack: SaraMusicaTrackP | null;
+  activeTeamId: string | null;
+  teams: { id: string; name: string; color: string; score: number }[];
+  status: 'idle' | 'playing' | 'ended';
+  trackStartedAt: string | null;
+  noiseLevel: number;
+  usedTrackIds: string[];
+}
+
 type Step = 'loading' | 'join' | 'joining' | 'play' | 'error';
 
 const BASE = (import.meta.env.BASE_URL as string) ?? '/';
@@ -147,6 +164,7 @@ export default function Player() {
   const [wordBackStateP, setWordBackStateP] = useState<WordBackStateP | null>(null);
   const [karaokeStateP, setKaraokeStateP] = useState<KaraokeStateP | null>(null);
   const [freestyleStateP, setFreestyleStateP] = useState<FreestyleStateP | null>(null);
+  const [saraMusicaStateP, setSaraMusicaStateP] = useState<SaraMusicaStateP | null>(null);
 
   const { connected, on, emit } = useEventSocket(event?.id ?? null);
 
@@ -211,6 +229,11 @@ export default function Player() {
       if (session.gameSlug === 'freestyle-battle') {
         const fs = await apiFetch(`/freestyle/sessions/${session.id}/state`).catch(() => null) as FreestyleStateP | null;
         if (fs) setFreestyleStateP(fs);
+      }
+      // If saramusica is running, fetch current state
+      if (session.gameSlug === 'saramusica') {
+        const sm = await apiFetch(`/saramusica/sessions/${session.id}/state`).catch(() => null) as SaraMusicaStateP | null;
+        if (sm) setSaraMusicaStateP(sm);
       }
       // If quizzone is running, fetch current state
       if (session.gameSlug === 'quizzone') {
@@ -372,6 +395,14 @@ export default function Player() {
       on<{ state: FreestyleStateP }>('freestyle:next_round',     ({ state }) => setFreestyleStateP(state)),
       on<{ state: FreestyleStateP }>('freestyle:ended', ({ state }) => {
         setFreestyleStateP(state);
+        setGameState(p => ({ ...p, status: 'ended' }));
+      }),
+      on<{ state: SaraMusicaStateP }>('saramusica:started',       ({ state }) => { setSaraMusicaStateP(state); setGameState(p => ({ ...p, status: 'running' })); }),
+      on<{ state: SaraMusicaStateP }>('saramusica:track_changed', ({ state }) => setSaraMusicaStateP(state)),
+      on<{ state: SaraMusicaStateP }>('saramusica:noise',         ({ state }) => setSaraMusicaStateP(state)),
+      on<{ state: SaraMusicaStateP }>('saramusica:score_updated', ({ state }) => setSaraMusicaStateP(state)),
+      on<{ state: SaraMusicaStateP }>('saramusica:ended', ({ state }) => {
+        setSaraMusicaStateP(state);
         setGameState(p => ({ ...p, status: 'ended' }));
       }),
     ];
@@ -600,6 +631,12 @@ export default function Player() {
                     sessionId={gameState.sessionId}
                     playerId={player.id}
                     teamColor={myTeam?.color ?? '#f97316'}
+                  />
+                ) : gameState.gameSlug === 'saramusica' ? (
+                  <SaraMusicaPhoneController
+                    state={saraMusicaStateP}
+                    sessionId={gameState.sessionId}
+                    teamColor={myTeam?.color ?? '#8b5cf6'}
                   />
                 ) : gameState.gameSlug === 'quizzone' ? (
                   <QuizzonePhoneController
@@ -2077,6 +2114,164 @@ function FreestylePhoneController({ state, sessionId, playerId, teamColor }: {
         {[...state.teams].sort((a, b) => b.score - a.score).map((tm, i) => (
           <div key={tm.id} className={`rounded-xl border px-3 py-2 text-center ${tm.id === (booking?.teamId ?? '') ? '' : 'opacity-60'}`}
             style={{ borderColor: tm.id === (booking?.teamId ?? '') ? tm.color : undefined }}>
+            <div className="text-[10px] text-muted-foreground truncate">{i === 0 ? '👑 ' : ''}{tm.name}</div>
+            <div className="text-display text-base font-black tabular-nums" style={{ color: tm.color }}>{tm.score}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ─── SaraMusica phone controller ─────────────────────────────────────────── */
+function SaraMusicaPhoneController({ state, sessionId, teamColor }: {
+  state: SaraMusicaStateP | null;
+  sessionId: string | null;
+  teamColor: string;
+}) {
+  const [noiseLevel, setNoiseLevel] = useState(0);
+  const [micActive, setMicActive] = useState(false);
+  const micRef = useRef<MediaStream | null>(null);
+  const analyzerRef = useRef<AnalyserNode | null>(null);
+  const rafRef = useRef<number | null>(null);
+
+  const sendNoise = useCallback(async (level: number) => {
+    if (!sessionId) return;
+    try {
+      const url = `${BASE}api/saramusica/sessions/${sessionId}/noise`.replace(/\/\//g, '/');
+      await fetch(url, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ level }),
+      });
+    } catch { /* silent */ }
+  }, [sessionId]);
+
+  const startMic = useCallback(async () => {
+    if (micActive) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const ctx = new AudioContext();
+      const src = ctx.createMediaStreamSource(stream);
+      const analyzer = ctx.createAnalyser();
+      analyzer.fftSize = 256;
+      src.connect(analyzer);
+      micRef.current = stream;
+      analyzerRef.current = analyzer;
+      setMicActive(true);
+
+      const buf = new Uint8Array(analyzer.frequencyBinCount);
+      let lastSend = 0;
+      const tick = () => {
+        analyzer.getByteFrequencyData(buf);
+        const avg = buf.reduce((a, b) => a + b, 0) / buf.length;
+        const pct = Math.round((avg / 255) * 100);
+        setNoiseLevel(pct);
+        if (Date.now() - lastSend > 500) {
+          lastSend = Date.now();
+          void sendNoise(pct);
+        }
+        rafRef.current = requestAnimationFrame(tick);
+      };
+      rafRef.current = requestAnimationFrame(tick);
+    } catch { /* no mic permission */ }
+  }, [micActive, sendNoise]);
+
+  const stopMic = useCallback(() => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    micRef.current?.getTracks().forEach(t => t.stop());
+    micRef.current = null; analyzerRef.current = null;
+    setMicActive(false); setNoiseLevel(0);
+  }, []);
+
+  useEffect(() => () => stopMic(), [stopMic]);
+
+  if (!state) {
+    return (
+      <div className="mt-8 flex flex-col items-center gap-4 text-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <div className="text-sm text-muted-foreground">In attesa di SaraMusica…</div>
+      </div>
+    );
+  }
+
+  if (state.status === 'ended') {
+    return (
+      <div className="mt-6 rounded-2xl border border-primary/40 bg-primary/10 px-6 py-5 text-center">
+        <div className="text-display text-xl font-black text-primary">🏆 SaraMusica terminato!</div>
+        <div className="mt-2 text-sm text-muted-foreground">Controlla il proiettore per la classifica</div>
+      </div>
+    );
+  }
+
+  const track = state.currentTrack;
+  const isActive = state.activeTeamId === state.teams.find(t => t.color === teamColor)?.id;
+
+  return (
+    <div className="mt-4 flex flex-col gap-4">
+      {/* Challenge type indicator */}
+      {track && (
+        <div className="rounded-2xl border px-4 py-4 text-center"
+          style={{ borderColor: `${teamColor}44`, background: `${teamColor}10` }}>
+          <div className="text-3xl mb-2">
+            {track.challengeType === 'indovina' ? '🎵' : track.challengeType === 'canta' ? '🎤' : '📣'}
+          </div>
+          <div className="text-display text-lg font-black" style={{ color: teamColor }}>
+            {track.challengeType === 'indovina' ? 'Indovina il brano!' :
+             track.challengeType === 'canta' ? 'Cantate!' : 'Fate più rumore!'}
+          </div>
+          {track.challengeType !== 'indovina' && (
+            <div className="mt-2 text-sm text-muted-foreground">{track.title} — {track.artist}</div>
+          )}
+          {track.challengeType === 'indovina' && track.snippetHint && (
+            <div className="mt-2 text-sm italic text-white/60">"{track.snippetHint}"</div>
+          )}
+          <div className="mt-2 text-xs text-muted-foreground">+{track.points} punti · {track.durationSeconds}s</div>
+        </div>
+      )}
+
+      {/* Mic noise meter (for canta/rumore) */}
+      {track && (track.challengeType === 'canta' || track.challengeType === 'rumore') && (
+        <div className="space-y-3">
+          <div className="relative h-10 rounded-full overflow-hidden bg-white/10">
+            <motion.div className="absolute inset-y-0 left-0 rounded-full"
+              animate={{ width: `${noiseLevel}%` }} transition={{ duration: 0.1 }}
+              style={{ background: noiseLevel > 70 ? '#22c55e' : noiseLevel > 35 ? '#eab308' : '#f97316' }} />
+            <div className="absolute inset-0 flex items-center justify-center text-sm font-black">
+              {noiseLevel}%
+            </div>
+          </div>
+          {!micActive ? (
+            <motion.button whileTap={{ scale: 0.95 }} onClick={() => void startMic()}
+              className="w-full rounded-2xl py-4 text-lg font-black text-white flex items-center justify-center gap-3"
+              style={{ background: `radial-gradient(circle at 35% 30%, ${teamColor}, #1a1535 95%)`, boxShadow: `0 16px 40px ${teamColor}55` }}>
+              🎙️ Attiva microfono
+            </motion.button>
+          ) : (
+            <button onClick={stopMic}
+              className="w-full rounded-2xl border border-destructive/50 bg-destructive/10 py-3 text-sm font-bold text-destructive">
+              ⬛ Ferma microfono
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Turn indicator */}
+      {isActive && state.status === 'playing' && (
+        <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+          className="rounded-2xl border-2 px-5 py-4 text-center"
+          style={{ borderColor: teamColor, background: `${teamColor}15` }}>
+          <div className="text-display text-xl font-black" style={{ color: teamColor }}>
+            🎯 Tocca a voi!
+          </div>
+        </motion.div>
+      )}
+
+      {/* Scores */}
+      <div className="grid grid-cols-2 gap-1.5">
+        {[...state.teams].sort((a, b) => b.score - a.score).map((tm, i) => (
+          <div key={tm.id} className="rounded-xl border px-3 py-2 text-center"
+            style={{ borderColor: tm.id === state.activeTeamId ? tm.color : `${tm.color}33` }}>
             <div className="text-[10px] text-muted-foreground truncate">{i === 0 ? '👑 ' : ''}{tm.name}</div>
             <div className="text-display text-base font-black tabular-nums" style={{ color: tm.color }}>{tm.score}</div>
           </div>

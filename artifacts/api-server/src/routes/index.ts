@@ -33,6 +33,7 @@ import balloRouter from "./ballo";
 import wordBackRouter from "./wordback";
 import karaokeRouter from "./karaoke";
 import freestyleRouter from "./freestyle";
+import saraMusicaRouter from "./saramusica";
 
 const router: IRouter = Router();
 
@@ -72,5 +73,6 @@ router.use(balloRouter);
 router.use(wordBackRouter);
 router.use(karaokeRouter);
 router.use(freestyleRouter);
+router.use(saraMusicaRouter);
 
 export default router;
