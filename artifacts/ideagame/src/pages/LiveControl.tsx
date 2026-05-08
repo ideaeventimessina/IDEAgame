@@ -191,6 +191,12 @@ export default function LiveControl() {
   const [time, setTime] = useState(30);
   const [timerPaused, setTimerPaused] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialog | null>(null);
+  const [winnerOverlay, setWinnerOverlay] = useState<{
+    winners: { teamId: string; teamName: string; color: string; total: number }[];
+    allZero: boolean;
+    allTied: boolean;
+    sessionId: string;
+  } | null>(null);
 
   // Coppie init state
   const [coppieCardSetId, setCoppieCardSetId] = useState('');
@@ -623,6 +629,26 @@ export default function LiveControl() {
         navigate(`/scoreboard?e=${selectedEventId}`);
       }),
     });
+  };
+
+  const handleEarlyEnd = () => {
+    if (!session) return;
+    const rows = [...scoreboardRows].sort((a, b) => b.total - a.total);
+    const maxScore = rows.length > 0 ? (rows[0]?.total ?? 0) : 0;
+    const allZero = maxScore === 0;
+    const allTied = !allZero && rows.length > 1 && rows.every(r => r.total === maxScore);
+    const winners = allZero ? [] : rows.filter(r => r.total === maxScore);
+    setWinnerOverlay({ winners, allZero, allTied, sessionId: session.id });
+  };
+
+  const handleWinnerClose = async (goToScoreboard: boolean) => {
+    if (!winnerOverlay) return;
+    try {
+      await updateSession.mutateAsync({ id: winnerOverlay.sessionId, data: { status: 'ended' } });
+      qc.invalidateQueries({ queryKey: getListGameSessionsQueryKey(selectedEventId) });
+    } catch { /* ignore */ }
+    setWinnerOverlay(null);
+    if (goToScoreboard) navigate(`/scoreboard?e=${selectedEventId}`);
   };
 
   const handleScore = (teamId: string, delta: number) => withBusy(async () => {
@@ -1289,6 +1315,102 @@ export default function LiveControl() {
       {/* Blackout overlay */}
       {black && <div className="fixed inset-0 z-50 bg-black" onClick={() => setBlack(false)} />}
 
+      {/* ── Winner overlay ───────────────────────────────────────────────── */}
+      {winnerOverlay && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md px-4">
+          <div className="w-full max-w-md rounded-3xl border border-border bg-card p-8 space-y-6 text-center shadow-2xl">
+            {winnerOverlay.allZero ? (
+              <>
+                <div className="text-5xl">😶</div>
+                <div className="text-display text-2xl font-black">Nessun vincitore</div>
+                <div className="text-muted-foreground text-sm">Tutti i team hanno zero punti.<br/>La partita finisce senza cerimonia.</div>
+                <div className="flex gap-3 pt-2">
+                  <button onClick={() => setWinnerOverlay(null)}
+                    className="flex-1 rounded-xl border border-border py-3 font-bold hover-elevate">
+                    ← Torna al controllo
+                  </button>
+                  <button onClick={() => handleWinnerClose(false)}
+                    className="flex-1 rounded-xl bg-destructive py-3 font-bold text-destructive-foreground hover-elevate">
+                    Termina sessione
+                  </button>
+                </div>
+              </>
+            ) : winnerOverlay.allTied ? (
+              <>
+                <div className="text-5xl">🎊</div>
+                <div className="text-display text-2xl font-black">Pareggio!</div>
+                <div className="text-muted-foreground text-sm mb-2">Tutti i team hanno lo stesso punteggio — vincono tutti!</div>
+                <div className="flex flex-wrap justify-center gap-2">
+                  {winnerOverlay.winners.map(w => (
+                    <div key={w.teamId} className="flex items-center gap-2 rounded-full px-4 py-2 font-bold text-sm"
+                         style={{ background: `${w.color}30`, border: `2px solid ${w.color}`, color: w.color }}>
+                      🏅 {w.teamName} — {w.total} pt
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button onClick={() => setWinnerOverlay(null)}
+                    className="flex-1 rounded-xl border border-border py-3 font-bold hover-elevate">
+                    ← Torna al controllo
+                  </button>
+                  <button onClick={() => handleWinnerClose(true)}
+                    className="flex-1 rounded-xl bg-primary py-3 font-bold text-primary-foreground hover-elevate">
+                    Termina → Podio
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="text-5xl">🏆</div>
+                {winnerOverlay.winners.length === 1 ? (
+                  <>
+                    <div className="text-display text-xl font-black text-muted-foreground uppercase tracking-widest">Vince</div>
+                    <div className="rounded-2xl px-6 py-5 text-display text-3xl font-black"
+                         style={{ background: `${winnerOverlay.winners[0]!.color}25`, border: `3px solid ${winnerOverlay.winners[0]!.color}`, color: winnerOverlay.winners[0]!.color }}>
+                      {winnerOverlay.winners[0]!.teamName}
+                      <div className="mt-1 text-lg opacity-80">{winnerOverlay.winners[0]!.total} punti</div>
+                    </div>
+                    {/* altri team in classifica */}
+                    {winnerOverlay.winners.length < scoreboardRows.length && (
+                      <div className="space-y-1 text-left text-sm text-muted-foreground">
+                        {[...scoreboardRows].sort((a,b) => b.total - a.total).filter(r => r.teamId !== winnerOverlay.winners[0]!.teamId).map((r, i) => (
+                          <div key={r.teamId} className="flex items-center justify-between rounded-lg px-3 py-1.5 bg-secondary/30">
+                            <span>{i + 2}° {r.teamName}</span>
+                            <span className="font-mono font-bold">{r.total} pt</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="text-display text-xl font-black">Più vincitori a pari merito!</div>
+                    <div className="flex flex-wrap justify-center gap-2">
+                      {winnerOverlay.winners.map(w => (
+                        <div key={w.teamId} className="rounded-full px-4 py-2 font-bold text-sm"
+                             style={{ background: `${w.color}30`, border: `2px solid ${w.color}`, color: w.color }}>
+                          🥇 {w.teamName} — {w.total} pt
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+                <div className="flex gap-3 pt-2">
+                  <button onClick={() => setWinnerOverlay(null)}
+                    className="flex-1 rounded-xl border border-border py-3 font-bold hover-elevate">
+                    ← Torna al controllo
+                  </button>
+                  <button onClick={() => handleWinnerClose(true)}
+                    className="flex-1 rounded-xl bg-primary py-3 font-bold text-primary-foreground hover-elevate">
+                    Termina → Podio
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ── Confirm dialog ───────────────────────────────────────────────── */}
       {confirmDialog && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
@@ -1561,6 +1683,10 @@ export default function LiveControl() {
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />} Termina
               </button>
             </div>
+            <button onClick={handleEarlyEnd} disabled={busy || session.status === 'ended'}
+              className="w-full rounded-xl bg-amber-500/20 border border-amber-500/40 py-3 text-sm font-bold text-amber-300 hover-elevate inline-flex items-center justify-center gap-2 disabled:opacity-40">
+              <Trophy className="h-4 w-4" /> Termina e premia il vincitore
+            </button>
           </div>
         )}
 
