@@ -1,6 +1,6 @@
 import { useLocation } from 'wouter';
 import { motion } from 'framer-motion';
-import { Wifi, Users, Radio, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Wifi, Users, Radio, Loader2, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import { Hexagon } from '@/components/Hexagon';
 import { GameIcon } from '@/components/GameIcon';
@@ -12,7 +12,7 @@ import { useListGames, useGetCurrentEvent, useListPlayers, getListPlayersQueryKe
 type IconName = Parameters<typeof GameIcon>[0]['name'];
 
 // Slugs that are fully playable (green PRONTO badge)
-const READY_SLUGS = new Set(['quizzone', 'gioco-coppie', 'gioco-delle-coppie']);
+const READY_SLUGS = new Set(['quizzone', 'gioco-coppie', 'gioco-delle-coppie', 'percorso-a-risate']);
 
 // Orbital positions — max |x|=1.5 ensures hexes stay inside canvas at all sizes
 const POSITIONS = [
@@ -272,6 +272,23 @@ export default function Hub() {
           )}
         </div>
 
+        {/* Serata Completa CTA */}
+        <motion.button
+          type="button"
+          onClick={() => navigate('/control')}
+          initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
+          whileTap={{ scale: 0.97 }}
+          className="w-full flex items-center gap-3 rounded-2xl border border-primary/40 bg-primary/10 px-4 py-3 text-left hover-elevate"
+        >
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/20">
+            <Sparkles className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <div className="text-display text-sm font-black text-primary">✨ Serata Completa</div>
+            <div className="text-xs text-muted-foreground">Percorso · Coppie · Quizzone in sequenza</div>
+          </div>
+        </motion.button>
+
         {/* Player roster collapsible */}
         <div className="rounded-2xl border border-border bg-card/70 overflow-hidden">
           <button
@@ -332,8 +349,18 @@ export default function Hub() {
           <div className="mt-10 text-display text-2xl uppercase tracking-[0.3em] text-muted-foreground">{t('hub.choose_game')}</div>
         </div>
 
-        <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}>
+        <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-4">
           <RosterPanel />
+          <button
+            onClick={() => navigate('/control')}
+            className="w-full flex items-center gap-3 rounded-2xl border border-primary/40 bg-primary/10 px-5 py-4 text-left hover-elevate"
+          >
+            <Sparkles className="h-5 w-5 shrink-0 text-primary" />
+            <div>
+              <div className="text-display text-sm font-black text-primary">✨ Serata Completa</div>
+              <div className="text-xs text-muted-foreground">Percorso · Coppie · Quizzone</div>
+            </div>
+          </button>
         </motion.div>
       </div>
     </div>

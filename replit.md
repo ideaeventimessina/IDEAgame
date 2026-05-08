@@ -68,6 +68,28 @@ Pagine intenzionalmente lasciate mock perché fuori dallo scope del wiring backe
 7. **Migration Drizzle ufficiale** per `user_sessions` e per le 9+ nuove tabelle (oggi create via SQL out-of-band).
 8. **Hardening sicurezza**: CSRF token, rate-limit su `/auth/login`, password reset/magic link.
 
+### 🌟 Serata Completa — architettura (completato)
+
+| Componente | Dove | Note |
+|---|---|---|
+| DB `evening_modes` | `lib/db/src/schema/evening.ts` | event_id UNIQUE, playlist JSONB (`EveningGame[]`), status idle/running/ended |
+| API routes `/events/:id/evening/*` | `artifacts/api-server/src/routes/evening.ts` | GET, POST /init, POST /advance (crea sessione + auto-select), DELETE, GET /scoreboard |
+| LiveControl pannello | `artifacts/ideagame/src/pages/LiveControl.tsx` | Card "✨ Serata Completa" sopra il session selector: playlist mini 3 giochi, stato badge, pulsante "Prossimo →" che crea sessione e auto-seleziona, Podio globale, ↺ Ricomincia |
+| Scoreboard globale `/serata-completa` | `artifacts/ideagame/src/pages/SerataCompleta.tsx` | Scaletta giochi con status, tabella per-team/per-gioco, podio finale, socket-driven |
+| Hub | `artifacts/ideagame/src/pages/Hub.tsx` | READY_SLUGS + percorso-a-risate, pulsante "✨ Serata Completa → /control" |
+
+**Flusso di gioco**:
+1. In LiveControl: seleziona evento → vedi pannello "✨ Serata Completa" → "Inizia serata completa"
+2. Sistema crea sessione percorso-a-risate e la auto-seleziona → il pannello percorso appare sotto
+3. Animatore completa percorso → torna al pannello serata → "Prossimo: Gioco delle Coppie →"
+4. Sistema crea sessione gioco-coppie → il pannello coppie appare sotto
+5. Stesso per Quizzone → alla fine → "Fine serata →" naviga a `/serata-completa?e=...`
+6. `/serata-completa?e=EVENT_ID` mostra scaletta, classifica per gioco, podio finale — aggiornamento socket in realtime
+
+**Socket event**: `evening:updated` emette `{ evening, session }` — LiveControl e SerataCompleta si aggiornano live
+
+**Dati**: `evening_modes` creata via SQL; nessun seed necessario (init dal LiveControl)
+
 ### 🎮 Percorso a Risate — architettura (completato)
 
 | Componente | Dove | Note |

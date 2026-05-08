@@ -94,6 +94,14 @@ interface PercorsoStateLC {
   lastFlash: { text: string; type: string } | null; timerStartedAt: string | null;
 }
 
+interface EveningGame {
+  slug: string; label: string; emoji: string;
+  sessionId: string | null; status: 'pending' | 'running' | 'done';
+}
+interface EveningMode {
+  id: string; eventId: string; playlist: EveningGame[]; status: string;
+}
+
 export default function LiveControl() {
   const [, navigate] = useLocation();
   const qc = useQueryClient();
@@ -123,6 +131,10 @@ export default function LiveControl() {
   const [percorsoState, setPercorsoState] = useState<PercorsoStateLC | null>(null);
   const [percorsoBusy, setPercorsoBusy] = useState(false);
   const [percorsoMsg, setPercorsoMsg] = useState('');
+
+  // Evening mode state
+  const [eveningMode, setEveningMode] = useState<EveningMode | null>(null);
+  const [eveningBusy, setEveningBusy] = useState(false);
 
   // Quizzone control state
   const [quizPacks, setQuizPacks] = useState<QuizPack[]>([]);
@@ -195,6 +207,7 @@ export default function LiveControl() {
         qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) });
       }),
       on<{ state: PercorsoStateLC }>('path:ended', ({ state }) => setPercorsoState(state)),
+      on<{ evening: EveningMode; session: { id: string } | null }>('evening:updated', ({ evening: ev }) => setEveningMode(ev)),
     ];
     return () => unsubs.forEach(u => u());
   }, [selectedEventId, on, qc]);
@@ -236,6 +249,14 @@ export default function LiveControl() {
       .catch(() => setPercorsoState(null));
   }, [session?.gameSlug, session?.id]);
 
+  // Load evening mode when event changes
+  useEffect(() => {
+    if (!selectedEventId) { setEveningMode(null); return; }
+    apiFetch(`/events/${selectedEventId}/evening`)
+      .then(d => setEveningMode(d as EveningMode | null))
+      .catch(() => setEveningMode(null));
+  }, [selectedEventId]);
+
   // Poll response count when question is active and not revealed
   useEffect(() => {
     if (!session?.id || !quizzoneActive || quizzoneRevealed) {
@@ -269,6 +290,11 @@ export default function LiveControl() {
     setPercorsoState(null);
     setPercorsoMsg('');
   }, [session?.id]);
+
+  // Reset evening state when event changes (load handles the fetch, just clear busy)
+  useEffect(() => {
+    setEveningBusy(false);
+  }, [selectedEventId]);
 
   const withBusy = useCallback(async (fn: () => Promise<void>) => {
     setBusy(true); setError('');
@@ -410,6 +436,46 @@ export default function LiveControl() {
         finally { setPercorsoBusy(false); }
       },
     });
+  };
+
+  // ─── Evening mode handlers ─────────────────────────────────────────────────
+
+  const handleEveningInit = async () => {
+    if (!selectedEventId || eveningBusy) return;
+    setEveningBusy(true); setError('');
+    try {
+      await apiFetch(`/events/${selectedEventId}/evening/init`, { method: 'POST' });
+      const res = await apiFetch(`/events/${selectedEventId}/evening/advance`, {
+        method: 'POST',
+      }) as { evening: EveningMode; session: { id: string } | null };
+      setEveningMode(res.evening);
+      if (res.session) { setSelectedSessionId(res.session.id); setShowNewSession(false); }
+    } catch (e) { setError((e as Error).message); }
+    finally { setEveningBusy(false); }
+  };
+
+  const handleEveningAdvance = async () => {
+    if (!selectedEventId || eveningBusy) return;
+    setEveningBusy(true); setError('');
+    try {
+      const res = await apiFetch(`/events/${selectedEventId}/evening/advance`, {
+        method: 'POST',
+      }) as { evening: EveningMode; session: { id: string } | null };
+      setEveningMode(res.evening);
+      if (res.session) { setSelectedSessionId(res.session.id); setShowNewSession(false); }
+      else if (res.evening.status === 'ended') navigate(`/serata-completa?e=${selectedEventId}`);
+    } catch (e) { setError((e as Error).message); }
+    finally { setEveningBusy(false); }
+  };
+
+  const handleEveningReset = async () => {
+    if (!selectedEventId || eveningBusy) return;
+    setEveningBusy(true); setError('');
+    try {
+      await apiFetch(`/events/${selectedEventId}/evening`, { method: 'DELETE' });
+      setEveningMode(null);
+    } catch (e) { setError((e as Error).message); }
+    finally { setEveningBusy(false); }
   };
 
   // ─── Quizzone control handlers ─────────────────────────────────────────────
@@ -599,6 +665,93 @@ export default function LiveControl() {
             </div>
           )}
         </div>
+
+        {/* ─── Serata Completa panel ─── */}
+        {selectedEventId && (
+          <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-base">✨</span>
+              <div className="text-xs uppercase tracking-widest text-muted-foreground flex-1">Serata Completa</div>
+              {eveningMode && (
+                <a href={`${BASE}serata-completa?e=${selectedEventId}`} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-xs text-primary hover:underline">
+                  <ExternalLink className="h-3 w-3" /> Scoreboard
+                </a>
+              )}
+            </div>
+
+            {eveningMode && (
+              <>
+                {/* Status */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`rounded-full border px-2.5 py-0.5 text-xs font-bold ${
+                    eveningMode.status === 'running' ? 'border-green-500/40 bg-green-500/10 text-green-400' :
+                    eveningMode.status === 'ended'   ? 'border-primary/40 bg-primary/10 text-primary' :
+                    'border-border text-muted-foreground'
+                  }`}>
+                    {eveningMode.status === 'idle'    ? '⏳ In attesa' :
+                     eveningMode.status === 'running' ? '⚡ In corso' : '🏁 Terminata'}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {eveningMode.playlist.filter(g => g.status === 'done').length}/3 completati
+                  </span>
+                  <button onClick={() => void handleEveningReset()} disabled={eveningBusy}
+                    className="ml-auto text-xs text-muted-foreground hover:text-destructive disabled:opacity-40">↺</button>
+                </div>
+
+                {/* Playlist mini */}
+                <div className="flex gap-2">
+                  {eveningMode.playlist.map((g) => (
+                    <div key={g.slug} className={`flex-1 flex flex-col items-center gap-1 rounded-xl border py-2 text-center ${
+                      g.status === 'running' ? 'border-green-500/40 bg-green-500/10' :
+                      g.status === 'done'    ? 'border-border/30 opacity-50'         :
+                      'border-border/20 opacity-30'
+                    }`}>
+                      <span className="text-lg">{g.emoji}</span>
+                      <span className={`text-[9px] font-black uppercase tracking-widest ${
+                        g.status === 'running' ? 'text-green-400' :
+                        g.status === 'done'    ? 'text-muted-foreground' : 'text-muted-foreground/40'
+                      }`}>
+                        {g.status === 'running' ? '⚡' : g.status === 'done' ? '✓' : '·'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Action */}
+                {eveningMode.status !== 'ended' && (
+                  <button onClick={() => void handleEveningAdvance()} disabled={eveningBusy}
+                    className="w-full flex items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-black text-primary-foreground disabled:opacity-40">
+                    {eveningBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
+                    {eveningMode.playlist.findIndex(g => g.status === 'pending') >= 0
+                      ? `Prossimo: ${eveningMode.playlist.find(g => g.status === 'pending')?.label ?? ''}`
+                      : 'Fine serata →'}
+                  </button>
+                )}
+                {eveningMode.status === 'ended' && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button onClick={() => navigate(`/serata-completa?e=${selectedEventId}`)}
+                      className="flex items-center justify-center gap-2 rounded-xl border border-primary/40 bg-primary/10 py-2.5 text-sm font-bold text-primary">
+                      <Trophy className="h-4 w-4" /> Podio globale
+                    </button>
+                    <button onClick={() => void handleEveningInit()} disabled={eveningBusy}
+                      className="flex items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-sm font-bold disabled:opacity-40">
+                      {eveningBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : '↺'} Ricomincia
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+
+            {!eveningMode && (
+              <button onClick={() => void handleEveningInit()} disabled={eveningBusy}
+                className="w-full flex items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-black text-primary-foreground disabled:opacity-40">
+                {eveningBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                Inizia serata completa
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Game controls */}
         {session && (

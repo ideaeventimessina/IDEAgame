@@ -21,6 +21,7 @@ import Demo from "@/pages/Demo";
 import GameCoppie from "@/pages/GameCoppie";
 import GameQuizzone from "@/pages/GameQuizzone";
 import GamePercorso from "@/pages/GamePercorso";
+import SerataCompleta from "@/pages/SerataCompleta";
 import AdminPercorsoRisate from "@/admin/PercorsoRisate";
 import Permissions from "@/pages/Permissions";
 import AdminSystem from "@/admin/System";
@@ -54,6 +55,7 @@ function Router() {
       <Route path="/coppie" component={GameCoppie} />
       <Route path="/quizzone" component={GameQuizzone} />
       <Route path="/percorso-risate" component={GamePercorso} />
+      <Route path="/serata-completa" component={SerataCompleta} />
       <Route path="/game/:slug" component={GameStage} />
       <Route path="/lobby" component={Lobby} />
       <Route path="/scoreboard" component={Scoreboard} />

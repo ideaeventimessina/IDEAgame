@@ -27,6 +27,7 @@ import quizzoneRouter from "./quizzone";
 import systemSettingsRouter from "./system-settings";
 import auditLogRouter from "./audit-log";
 import percorsoRouter from "./percorso";
+import eveningRouter from "./evening";
 
 const router: IRouter = Router();
 
@@ -60,5 +61,6 @@ router.use(quizzoneRouter);
 router.use(systemSettingsRouter);
 router.use(auditLogRouter);
 router.use(percorsoRouter);
+router.use(eveningRouter);
 
 export default router;
