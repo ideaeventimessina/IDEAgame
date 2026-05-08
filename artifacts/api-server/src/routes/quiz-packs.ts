@@ -128,7 +128,7 @@ timeLimit suggerito: true_false=15, fast_answer=10, multiple_choice=30, guess_wh
 
     try {
       const completion = await openai.chat.completions.create({
-        model: "gpt-5",
+        model: "gpt-4o",
         max_completion_tokens: 8192,
         messages: [
           { role: "system", content: systemPrompt },

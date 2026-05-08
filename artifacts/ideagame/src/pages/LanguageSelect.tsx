@@ -22,20 +22,20 @@ export default function LanguageSelect() {
       <MockBanner note="onboarding lingua — non persistito su user.locale" />
       <div className="text-center">
         <div className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Step 1 of 3</div>
-        <div className="mt-3 text-display text-5xl font-black">Scegli la lingua / Choose your language</div>
+        <div className="mt-3 text-display text-2xl font-black sm:text-4xl lg:text-5xl">Scegli la lingua / Choose your language</div>
       </div>
 
-      <div className="mt-14 grid grid-cols-2 gap-8 md:grid-cols-4">
+      <div className="mt-10 grid grid-cols-2 gap-4 md:grid-cols-4 md:gap-8">
         {LOCALES.map(({ code }) => {
           const active = locale === code;
           return (
             <Hexagon
               key={code}
-              size={180}
+              size={130}
               color={active ? '#F5B642' : '#2a2444'}
               glow={active}
               onClick={() => setLocale(code)}
-              className="transition-transform hover:scale-105"
+              className="transition-transform hover:scale-105 md:!w-[180px] md:!h-[180px]"
             >
               <div className="flex flex-col items-center gap-1">
                 <div className="text-display text-2xl font-black uppercase">{code}</div>

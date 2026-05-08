@@ -184,19 +184,19 @@ export default function GameCoppie() {
          style={{ background: 'radial-gradient(ellipse at top, hsl(248 70% 8%), hsl(248 70% 2%))' }}>
 
       {/* Header */}
-      <header className="flex items-center justify-between px-8 py-3 border-b border-white/5 flex-shrink-0 bg-black/20 backdrop-blur">
-        <div className="flex items-center gap-4">
+      <header className="flex items-center justify-between gap-2 px-3 py-2 sm:px-8 sm:py-3 border-b border-white/5 flex-shrink-0 bg-black/20 backdrop-blur">
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
           <button onClick={() => navigate('/')} title="GameStation"
-            className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground text-display font-black text-lg hover:opacity-80 transition-opacity">
+            className="flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground hover:opacity-80 transition-opacity">
             <Home className="h-4 w-4" />
           </button>
-          <div>
+          <div className="min-w-0 hidden sm:block">
             <div className="text-display text-lg font-black leading-none">Gioco delle Coppie</div>
             <div className="text-xs text-muted-foreground mt-0.5">{board.matchCount}/{board.totalPairs} coppie • {board.cards.length} carte</div>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-3">
           {board.teams.map((t, i) => (
             <motion.div
               key={t.id}
@@ -204,18 +204,18 @@ export default function GameCoppie() {
                 ? { boxShadow: [`0 0 0 0 ${t.color}44`, `0 0 0 8px ${t.color}00`] }
                 : { boxShadow: '0 0 0 0 transparent' }}
               transition={{ duration: 1.2, repeat: Infinity }}
-              className={`flex items-center gap-2 rounded-xl px-4 py-2 border transition-all ${
+              className={`flex items-center gap-1.5 rounded-xl px-2 py-1.5 sm:px-4 sm:py-2 border transition-all ${
                 i === board.currentTeamIdx && board.status === 'playing'
                   ? 'border-white/20 bg-white/10'
                   : 'border-white/5 bg-white/5'
               }`}
             >
-              <div className="h-3 w-3 rounded-full flex-shrink-0" style={{ background: t.color }} />
-              <span className="font-bold text-sm">{t.name}</span>
-              <span className="text-display text-2xl font-black tabular-nums ml-1" style={{ color: t.color }}>{t.score}</span>
+              <div className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ background: t.color }} />
+              <span className="font-bold text-xs sm:text-sm truncate max-w-[60px] sm:max-w-none">{t.name}</span>
+              <span className="text-display text-lg sm:text-2xl font-black tabular-nums" style={{ color: t.color }}>{t.score}</span>
             </motion.div>
           ))}
-          <div className={`h-2 w-2 rounded-full ${connected ? 'bg-green-400' : 'bg-amber-400 animate-pulse'}`}
+          <div className={`h-2 w-2 rounded-full shrink-0 ${connected ? 'bg-green-400' : 'bg-amber-400 animate-pulse'}`}
                title={connected ? 'Connesso' : 'Offline – polling attivo'} />
         </div>
       </header>
@@ -274,7 +274,7 @@ export default function GameCoppie() {
             className="absolute inset-x-0 top-1/3 z-40 flex justify-center pointer-events-none"
           >
             <div
-              className="rounded-3xl px-12 py-6 text-5xl font-black text-white shadow-2xl"
+              className="rounded-3xl px-6 py-4 text-2xl font-black text-white shadow-2xl sm:px-12 sm:py-6 sm:text-5xl"
               style={{
                 background: `${flash.color}22`,
                 border: `2px solid ${flash.color}66`,
@@ -301,11 +301,11 @@ export default function GameCoppie() {
               initial={{ scale: 0.7, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               transition={{ delay: 0.15, type: 'spring', stiffness: 180 }}
-              className="rounded-3xl border border-primary/30 bg-card p-14 text-center shadow-2xl"
+              className="w-[calc(100vw-2rem)] max-w-lg rounded-3xl border border-primary/30 bg-card p-6 text-center shadow-2xl sm:p-14"
               style={{ boxShadow: `0 0 80px ${winnerTeam?.color ?? '#8B5CF6'}44` }}
             >
-              <Trophy className="mx-auto h-20 w-20 text-yellow-400" />
-              <div className="mt-5 text-display text-6xl font-black">
+              <Trophy className="mx-auto h-12 w-12 text-yellow-400 sm:h-20 sm:w-20" />
+              <div className="mt-4 text-display text-3xl font-black sm:mt-5 sm:text-6xl">
                 {winnerTeam ? winnerTeam.name : 'Pareggio!'}
               </div>
               {winnerTeam && (
@@ -316,11 +316,11 @@ export default function GameCoppie() {
                   </span>!
                 </div>
               )}
-              <div className="mt-8 flex justify-center gap-8">
+              <div className="mt-6 flex flex-wrap justify-center gap-4 sm:mt-8 sm:gap-8">
                 {board.teams.map(t => (
                   <div key={t.id} className="text-center">
-                    <div className="text-display text-4xl font-black" style={{ color: t.color }}>{t.score}</div>
-                    <div className="text-sm text-muted-foreground mt-1">{t.name}</div>
+                    <div className="text-display text-2xl font-black sm:text-4xl" style={{ color: t.color }}>{t.score}</div>
+                    <div className="text-xs text-muted-foreground mt-1 sm:text-sm">{t.name}</div>
                   </div>
                 ))}
               </div>

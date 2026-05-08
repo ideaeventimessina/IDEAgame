@@ -32,7 +32,7 @@ export default function Splash() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
-          className="mt-8 text-display text-6xl font-black tracking-tight"
+          className="mt-8 text-display text-4xl font-black tracking-tight sm:text-6xl"
         >
           {t('app.title')}
         </motion.div>

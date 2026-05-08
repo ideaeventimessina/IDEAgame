@@ -168,15 +168,15 @@ export default function QuizPacks() {
         )}
       </AnimatePresence>
 
-      <div className="grid grid-cols-[320px_1fr] gap-6 h-[calc(100vh-10rem)]">
+      <div className="flex flex-col gap-6 lg:grid lg:grid-cols-[320px_1fr] lg:h-[calc(100vh-10rem)]">
         {/* LEFT: pack list */}
-        <div className="flex flex-col gap-3 overflow-hidden">
+        <div className="flex flex-col gap-3 lg:overflow-hidden">
           <button onClick={() => { setShowGenDialog(true); setError(''); }}
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-bold text-primary-foreground hover:opacity-90">
             <Sparkles className="h-4 w-4" /> Genera quiz da tema
           </button>
 
-          <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+          <div className="lg:flex-1 lg:overflow-y-auto space-y-2 pr-1">
             {loading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -227,7 +227,7 @@ export default function QuizPacks() {
         </div>
 
         {/* RIGHT: pack detail */}
-        <div className="overflow-y-auto rounded-xl border border-border bg-card">
+        <div className="min-h-[60vh] lg:overflow-y-auto rounded-xl border border-border bg-card">
           {!selectedPack ? (
             <div className="flex h-full flex-col items-center justify-center text-center p-12">
               <BarChart3 className="h-12 w-12 text-muted-foreground/20 mb-4" />

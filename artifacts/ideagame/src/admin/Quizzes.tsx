@@ -43,7 +43,8 @@ export default function Quizzes() {
         <div className="flex h-40 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
       ) : (
         <div className="overflow-hidden rounded-2xl border border-border bg-card">
-          <table className="w-full">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[600px]">
             <thead className="border-b border-border bg-secondary/40 text-left text-xs uppercase tracking-widest text-muted-foreground">
               <tr>
                 <th className="px-5 py-3">{t('quiz.prompt_it')}</th>
@@ -82,6 +83,7 @@ export default function Quizzes() {
               {filtered.length === 0 && <tr><td colSpan={5} className="px-5 py-10 text-center text-sm text-muted-foreground">No questions.</td></tr>}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

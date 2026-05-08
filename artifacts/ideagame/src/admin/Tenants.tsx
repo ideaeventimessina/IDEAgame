@@ -31,7 +31,8 @@ export default function Tenants() {
         <div className="flex h-40 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
       ) : (
         <div className="overflow-hidden rounded-2xl border border-border bg-card">
-          <table className="w-full">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[580px]">
             <thead className="border-b border-border bg-secondary/40 text-left text-xs uppercase tracking-widest text-muted-foreground">
               <tr>
                 <th className="px-5 py-3">Tenant</th>
@@ -69,6 +70,7 @@ export default function Tenants() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

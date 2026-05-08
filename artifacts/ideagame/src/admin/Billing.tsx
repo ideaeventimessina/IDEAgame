@@ -53,7 +53,8 @@ export default function Billing() {
       <div className="mt-8 grid gap-6 lg:grid-cols-[2fr_1fr]">
         <div className="rounded-2xl border border-border bg-card p-6">
           <div className="text-display text-xl font-black">{t('billing.invoices')}</div>
-          <table className="mt-4 w-full">
+          <div className="overflow-x-auto">
+          <table className="mt-4 w-full min-w-[340px]">
             <thead className="text-left text-xs uppercase tracking-widest text-muted-foreground">
               <tr><th className="py-2">ID</th><th>Date</th><th>Amount</th><th>Status</th></tr>
             </thead>
@@ -68,6 +69,7 @@ export default function Billing() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
         <div className="rounded-2xl border border-border bg-card p-6">
           <div className="text-display text-xl font-black">{t('billing.payment_method')}</div>
