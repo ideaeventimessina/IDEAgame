@@ -164,6 +164,7 @@ Pagine intenzionalmente lasciate mock perché fuori dallo scope del wiring backe
 
 ## Test accounts (password: `ideagame`)
 
+- `ideaeventime@gmail.com` — super_admin (no tenant) ← account principale
 - `admin@ideagame.app` — super_admin (no tenant)
 - `owner@mango.events` — tenant_owner (Mango Events)
 - `manager@mango.events` — game_manager
