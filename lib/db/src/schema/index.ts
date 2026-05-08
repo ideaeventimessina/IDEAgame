@@ -23,3 +23,4 @@ export * from "./adult-only";
 export * from "./ballo";
 export * from "./wordback";
 export * from "./karaoke";
+export * from "./freestyle";

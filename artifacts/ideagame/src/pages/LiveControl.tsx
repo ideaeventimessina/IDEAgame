@@ -148,6 +148,26 @@ interface KaraokeStateLC {
   trackStartedAt: string | null; usedTrackIds: string[];
 }
 
+interface FreestyleWordLC { id: string; word: string; orderIndex: number; recognized: boolean; }
+interface FreestyleBookingLC {
+  id: string; playerId: string; nickname: string; teamId: string;
+  teamName: string; teamColor: string;
+  status: 'waiting' | 'active' | 'performing' | 'done' | 'skipped';
+  orderIndex: number; wordsRecognized: string[];
+}
+interface FreestyleStateLC {
+  setId: string; setName: string; beatUrl: string | null;
+  words: FreestyleWordLC[];
+  revealedCount: number;
+  revealStartedAt: string | null;
+  thinkingStartedAt: string | null;
+  thinkingSeconds: number;
+  bookings: FreestyleBookingLC[];
+  teams: { id: string; name: string; color: string; score: number }[];
+  phase: 'idle' | 'revealing' | 'thinking' | 'booking' | 'performing' | 'ended';
+  roundIndex: number;
+}
+
 interface EveningGame {
   slug: string; label: string; emoji: string;
   sessionId: string | null; status: 'pending' | 'running' | 'done';
@@ -213,6 +233,13 @@ export default function LiveControl() {
   const [karaokeState, setKaraokeState] = useState<KaraokeStateLC | null>(null);
   const [karaokeBusy, setKaraokeBusy] = useState(false);
   const [karaokeMsg, setKaraokeMsg] = useState('');
+
+  // Freestyle Battle state
+  const [freestyleSets, setFreestyleSets] = useState<{ id: string; title: string; beatUrl: string | null }[]>([]);
+  const [selectedFreestyleSetId, setSelectedFreestyleSetId] = useState('');
+  const [freestyleState, setFreestyleState] = useState<FreestyleStateLC | null>(null);
+  const [freestyleBusy, setFreestyleBusy] = useState(false);
+  const [freestyleMsg, setFreestyleMsg] = useState('');
 
   // Evening mode state
   const [eveningMode, setEveningMode] = useState<EveningMode | null>(null);
@@ -318,6 +345,18 @@ export default function LiveControl() {
       on<{ state: KaraokeStateLC }>('karaoke:active_singer_changed',  ({ state: s }) => setKaraokeState(s)),
       on<{ state: KaraokeStateLC }>('karaoke:score_updated',          ({ state: s }) => { setKaraokeState(s); qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) }); }),
       on<{ state: KaraokeStateLC }>('karaoke:ended',                  ({ state: s }) => { setKaraokeState(s); qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) }); }),
+      on<{ state: FreestyleStateLC }>('freestyle:started',       ({ state: s }) => { setFreestyleState(s); }),
+      on<{ state: FreestyleStateLC }>('freestyle:reveal_started',({ state: s }) => setFreestyleState(s)),
+      on<{ state: FreestyleStateLC }>('freestyle:word_revealed', ({ state: s }) => setFreestyleState(s)),
+      on<{ state: FreestyleStateLC }>('freestyle:thinking',      ({ state: s }) => setFreestyleState(s)),
+      on<{ state: FreestyleStateLC }>('freestyle:bookings_open', ({ state: s }) => setFreestyleState(s)),
+      on<{ state: FreestyleStateLC }>('freestyle:booking_added', ({ state: s }) => setFreestyleState(s)),
+      on<{ state: FreestyleStateLC }>('freestyle:booking_removed',({ state: s }) => setFreestyleState(s)),
+      on<{ state: FreestyleStateLC }>('freestyle:performer_set', ({ state: s }) => setFreestyleState(s)),
+      on<{ state: FreestyleStateLC }>('freestyle:word_recognized',({ state: s }) => setFreestyleState(s)),
+      on<{ state: FreestyleStateLC }>('freestyle:score_updated', ({ state: s }) => { setFreestyleState(s); qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) }); }),
+      on<{ state: FreestyleStateLC }>('freestyle:next_round',    ({ state: s }) => setFreestyleState(s)),
+      on<{ state: FreestyleStateLC }>('freestyle:ended',         ({ state: s }) => { setFreestyleState(s); qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) }); }),
     ];
     return () => unsubs.forEach(u => u());
   }, [selectedEventId, on, qc]);
@@ -423,6 +462,22 @@ export default function LiveControl() {
       .catch(() => setKaraokeState(null));
   }, [session?.gameSlug, session?.id]);
 
+  // Load freestyle sets when freestyle-battle session is active
+  useEffect(() => {
+    if (session?.gameSlug !== 'freestyle-battle') return;
+    apiFetch('/freestyle/sets')
+      .then(d => setFreestyleSets(d as { id: string; title: string; beatUrl: string | null }[]))
+      .catch(() => setFreestyleSets([]));
+  }, [session?.gameSlug, session?.id]);
+
+  // Sync freestyle state from API when session is active
+  useEffect(() => {
+    if (session?.gameSlug !== 'freestyle-battle' || !session?.id) return;
+    apiFetch(`/freestyle/sessions/${session.id}/state`)
+      .then(d => setFreestyleState(d as FreestyleStateLC))
+      .catch(() => setFreestyleState(null));
+  }, [session?.gameSlug, session?.id]);
+
   // Load evening mode when event changes
   useEffect(() => {
     if (!selectedEventId) { setEveningMode(null); return; }
@@ -491,6 +546,13 @@ export default function LiveControl() {
     setSelectedKaraokeSetId('');
     setKaraokeState(null);
     setKaraokeMsg('');
+  }, [session?.id]);
+
+  // Reset freestyle state when session changes
+  useEffect(() => {
+    setSelectedFreestyleSetId('');
+    setFreestyleState(null);
+    setFreestyleMsg('');
   }, [session?.id]);
 
   // Reset evening state when event changes (load handles the fetch, just clear busy)
@@ -978,6 +1040,118 @@ export default function LiveControl() {
           navigate(`/scoreboard?e=${selectedEventId}`);
         } catch (e) { setKaraokeMsg((e as Error).message); }
         finally { setKaraokeBusy(false); }
+      },
+    });
+  };
+
+  // ─── Freestyle Battle handlers ─────────────────────────────────────────────
+
+  const handleFreestyleInit = async () => {
+    if (!session || !selectedFreestyleSetId || freestyleBusy) return;
+    setFreestyleBusy(true); setFreestyleMsg('');
+    try {
+      const s = await apiFetch(`/freestyle/sessions/${session.id}/init`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ setId: selectedFreestyleSetId }),
+      }) as FreestyleStateLC;
+      setFreestyleState(s); setFreestyleMsg('✓ Freestyle inizializzato!');
+    } catch (e) { setFreestyleMsg((e as Error).message); }
+    finally { setFreestyleBusy(false); }
+  };
+
+  const handleFreestyleStartReveal = async () => {
+    if (!session || freestyleBusy) return;
+    setFreestyleBusy(true);
+    try {
+      const s = await apiFetch(`/freestyle/sessions/${session.id}/start-reveal`, { method: 'POST' }) as FreestyleStateLC;
+      setFreestyleState(s);
+    } catch (e) { setFreestyleMsg((e as Error).message); }
+    finally { setFreestyleBusy(false); }
+  };
+
+  const handleFreestyleRevealWord = async () => {
+    if (!session || freestyleBusy) return;
+    setFreestyleBusy(true);
+    try {
+      const s = await apiFetch(`/freestyle/sessions/${session.id}/reveal-word`, { method: 'POST' }) as FreestyleStateLC;
+      setFreestyleState(s);
+    } catch (e) { setFreestyleMsg((e as Error).message); }
+    finally { setFreestyleBusy(false); }
+  };
+
+  const handleFreestyleOpenBookings = async () => {
+    if (!session || freestyleBusy) return;
+    setFreestyleBusy(true);
+    try {
+      const s = await apiFetch(`/freestyle/sessions/${session.id}/open-bookings`, { method: 'POST' }) as FreestyleStateLC;
+      setFreestyleState(s);
+    } catch (e) { setFreestyleMsg((e as Error).message); }
+    finally { setFreestyleBusy(false); }
+  };
+
+  const handleFreestyleSetPerformer = async (bookingId: string) => {
+    if (!session || freestyleBusy) return;
+    setFreestyleBusy(true);
+    try {
+      const s = await apiFetch(`/freestyle/sessions/${session.id}/set-performer`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId }),
+      }) as FreestyleStateLC;
+      setFreestyleState(s);
+    } catch (e) { setFreestyleMsg((e as Error).message); }
+    finally { setFreestyleBusy(false); }
+  };
+
+  const handleFreestyleCancelBooking = async (bookingId: string) => {
+    if (!session) return;
+    try {
+      const s = await apiFetch(`/freestyle/sessions/${session.id}/cancel-booking`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId }),
+      }) as FreestyleStateLC;
+      setFreestyleState(s);
+    } catch (e) { setFreestyleMsg((e as Error).message); }
+  };
+
+  const handleFreestyleScore = async (teamId: string, points: number) => {
+    if (!session || freestyleBusy) return;
+    setFreestyleBusy(true);
+    try {
+      const s = await apiFetch(`/freestyle/sessions/${session.id}/score`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamId, points }),
+      }) as FreestyleStateLC;
+      setFreestyleState(s);
+      qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) });
+    } catch (e) { setFreestyleMsg((e as Error).message); }
+    finally { setFreestyleBusy(false); }
+  };
+
+  const handleFreestyleNextRound = async () => {
+    if (!session || freestyleBusy) return;
+    setFreestyleBusy(true); setFreestyleMsg('');
+    try {
+      const s = await apiFetch(`/freestyle/sessions/${session.id}/next-round`, { method: 'POST' }) as FreestyleStateLC;
+      setFreestyleState(s); setFreestyleMsg('✓ Nuovo round pronto');
+    } catch (e) { setFreestyleMsg((e as Error).message); }
+    finally { setFreestyleBusy(false); }
+  };
+
+  const handleFreestyleEnd = () => {
+    confirm({
+      title: 'Fine Freestyle Battle',
+      message: 'Terminare il gioco e salvare i punteggi?',
+      confirmLabel: 'Termina → Podio',
+      danger: true,
+      onConfirm: async () => {
+        if (!session || freestyleBusy) return;
+        setFreestyleBusy(true); setFreestyleMsg('');
+        try {
+          await apiFetch(`/freestyle/sessions/${session.id}/end`, { method: 'POST' });
+          setFreestyleState(s => s ? { ...s, phase: 'ended' } : null);
+          navigate(`/scoreboard?e=${selectedEventId}`);
+        } catch (e) { setFreestyleMsg((e as Error).message); }
+        finally { setFreestyleBusy(false); }
       },
     });
   };
@@ -2411,6 +2585,201 @@ export default function LiveControl() {
             {karaokeState?.status === 'ended' && (
               <div className="rounded-xl border border-border bg-background/50 px-4 py-3 text-center text-sm text-muted-foreground">
                 🏁 Karaoke terminato
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ─── Freestyle Battle panel ──────────────────────────────── */}
+        {session?.gameSlug === 'freestyle-battle' && (
+          <div className="rounded-2xl border border-orange-500/30 bg-card p-5 space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">🎤</span>
+              <div className="text-xs uppercase tracking-widest text-muted-foreground">Freestyle Battle</div>
+              {freestyleState && (
+                <a href={`${BASE}freestyle-battle?s=${session.id}&e=${selectedEventId}`} target="_blank" rel="noopener noreferrer"
+                  className="ml-auto flex items-center gap-1 text-xs text-orange-400 hover:underline">
+                  <ExternalLink className="h-3 w-3" /> Proiettore
+                </a>
+              )}
+            </div>
+
+            {freestyleMsg && (
+              <div className={`rounded-xl px-4 py-2 text-sm ${freestyleMsg.startsWith('✓') ? 'border border-green-500/40 bg-green-500/10 text-green-400' : 'border border-destructive/40 bg-destructive/10 text-destructive'}`}>
+                {freestyleMsg}
+              </div>
+            )}
+
+            {/* Status badge */}
+            {freestyleState && (
+              <div className="flex items-center gap-2 text-xs flex-wrap">
+                <span className={`rounded-full border px-2.5 py-1 font-bold ${
+                  freestyleState.phase === 'performing' ? 'border-orange-500/40 bg-orange-500/10 text-orange-400' :
+                  freestyleState.phase === 'ended' ? 'border-destructive/40 bg-destructive/10 text-destructive' :
+                  freestyleState.phase === 'revealing' ? 'border-blue-500/40 bg-blue-500/10 text-blue-400' :
+                  freestyleState.phase === 'thinking' ? 'border-yellow-500/40 bg-yellow-500/10 text-yellow-400' :
+                  'border-border text-muted-foreground'
+                }`}>
+                  {freestyleState.phase === 'idle' ? '⏳ Pronto' :
+                   freestyleState.phase === 'revealing' ? '🎲 Rivelazione' :
+                   freestyleState.phase === 'thinking' ? '🧠 Pensando…' :
+                   freestyleState.phase === 'booking' ? '✋ Prenotazioni' :
+                   freestyleState.phase === 'performing' ? '🎤 Esibizione' : '🏁 Terminato'}
+                </span>
+                <span className="text-muted-foreground font-bold">{freestyleState.setName}</span>
+                <span className="text-muted-foreground">Round {(freestyleState.roundIndex ?? 0) + 1}</span>
+              </div>
+            )}
+
+            {/* Init: set selector */}
+            {!freestyleState && (
+              <>
+                <div>
+                  <div className="text-xs text-muted-foreground mb-1">Set di parole</div>
+                  <select value={selectedFreestyleSetId} onChange={e => setSelectedFreestyleSetId(e.target.value)}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm">
+                    <option value="">— seleziona set —</option>
+                    {freestyleSets.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+                  </select>
+                  {freestyleSets.length === 0 && (
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      Nessun set — creane uno in <a href={`${BASE}admin/freestyle-battle`} className="underline text-orange-400">Admin → Freestyle</a>
+                    </div>
+                  )}
+                </div>
+                <button disabled={!selectedFreestyleSetId || freestyleBusy} onClick={() => void handleFreestyleInit()}
+                  className="w-full rounded-xl bg-orange-600 py-2.5 text-sm font-bold text-white disabled:opacity-40 flex items-center justify-center gap-2">
+                  {freestyleBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  Inizializza Freestyle
+                </button>
+              </>
+            )}
+
+            {/* Running panel */}
+            {freestyleState && freestyleState.phase !== 'ended' && (
+              <>
+                {/* Word count status */}
+                <div className="flex flex-wrap gap-1">
+                  {freestyleState.words.map((w, i) => (
+                    <span key={w.id} className={`rounded-lg px-1.5 py-0.5 text-[10px] font-bold transition-all ${
+                      i >= freestyleState.revealedCount ? 'opacity-20 bg-white/5 text-white/30' :
+                      w.recognized ? 'bg-green-500/30 text-green-300 border border-green-500/50' :
+                      'bg-orange-500/20 text-orange-300'
+                    }`}>{w.word}</span>
+                  ))}
+                </div>
+
+                {/* Reveal controls */}
+                {(freestyleState.phase === 'idle' || freestyleState.phase === 'revealing') && (
+                  <div className="flex gap-2 flex-wrap">
+                    {freestyleState.phase === 'idle' && (
+                      <button onClick={() => void handleFreestyleStartReveal()} disabled={freestyleBusy}
+                        className="flex items-center gap-1.5 rounded-xl bg-blue-600/80 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">
+                        <Play className="h-3.5 w-3.5" /> Avvia rivelazione
+                      </button>
+                    )}
+                    {freestyleState.phase === 'revealing' && (
+                      <button onClick={() => void handleFreestyleRevealWord()} disabled={freestyleBusy}
+                        className="flex items-center gap-1.5 rounded-xl bg-orange-600/80 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">
+                        <ChevronRight className="h-3.5 w-3.5" /> Prossima parola ({freestyleState.revealedCount}/{freestyleState.words.length})
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Open bookings (after thinking) */}
+                {freestyleState.phase === 'thinking' && (
+                  <button onClick={() => void handleFreestyleOpenBookings()} disabled={freestyleBusy}
+                    className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-green-600/80 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">
+                    <Users className="h-3.5 w-3.5" /> Apri prenotazioni
+                  </button>
+                )}
+
+                {/* Active performer */}
+                {freestyleState.bookings.find(b => b.status === 'active' || b.status === 'performing') && (() => {
+                  const active = freestyleState.bookings.find(b => b.status === 'active' || b.status === 'performing')!;
+                  return (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 rounded-xl border border-orange-500/30 bg-orange-500/10 px-3 py-2">
+                        <div className="h-5 w-5 rounded-full shrink-0" style={{ background: active.teamColor }} />
+                        <div className="flex-1 text-sm font-bold text-orange-300">🎤 {active.nickname}</div>
+                        <div className="text-xs text-muted-foreground">{active.teamName}</div>
+                        <button onClick={() => void handleFreestyleCancelBooking(active.id)}
+                          className="rounded-lg border border-destructive/40 p-1 text-destructive hover:bg-destructive/10">
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                      {/* Words recognized count */}
+                      <div className="text-xs text-muted-foreground text-center">
+                        {freestyleState.words.filter(w => w.recognized).length} / {freestyleState.words.length} parole riconosciute via microfono
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Score buttons */}
+                <div className="space-y-2">
+                  <div className="text-xs text-muted-foreground uppercase tracking-widest">Assegna punti freestyle</div>
+                  {freestyleState.teams.map(tm => (
+                    <div key={tm.id} className="flex items-center gap-2">
+                      <span className="h-3 w-3 rounded-full shrink-0" style={{ background: tm.color }} />
+                      <span className="flex-1 truncate text-sm font-bold">{tm.name}</span>
+                      <span className="text-display text-base font-black tabular-nums w-12 text-right" style={{ color: tm.color }}>{tm.score}</span>
+                      {[50, 100, 150, 200].map(pts => (
+                        <button key={pts} onClick={() => void handleFreestyleScore(tm.id, pts)} disabled={freestyleBusy}
+                          className="rounded-lg border border-border px-2 py-1.5 text-xs font-bold hover-elevate disabled:opacity-40">
+                          +{pts}
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Booking queue */}
+                {freestyleState.bookings.filter(b => b.status === 'waiting').length > 0 && (
+                  <div className="space-y-1">
+                    <div className="text-xs text-muted-foreground uppercase tracking-widest">Coda performer</div>
+                    {freestyleState.bookings
+                      .filter(b => b.status === 'waiting')
+                      .sort((a, b) => a.orderIndex - b.orderIndex)
+                      .map((booking, idx) => (
+                        <div key={booking.id} className="flex items-center gap-2 rounded-xl border border-border bg-background/50 px-3 py-2">
+                          <span className="text-xs text-muted-foreground w-4">{idx + 1}</span>
+                          <span className="h-3 w-3 rounded-full shrink-0" style={{ background: booking.teamColor }} />
+                          <span className="flex-1 text-sm font-bold">{booking.nickname}</span>
+                          <span className="text-xs text-muted-foreground">{booking.teamName}</span>
+                          <button onClick={() => void handleFreestyleSetPerformer(booking.id)} disabled={freestyleBusy}
+                            className="rounded-lg border border-orange-500/40 bg-orange-500/10 px-2 py-1 text-xs font-bold text-orange-400 disabled:opacity-40">
+                            🎤 Vai
+                          </button>
+                          <button onClick={() => void handleFreestyleCancelBooking(booking.id)}
+                            className="rounded-lg border border-destructive/40 p-1 text-destructive hover:bg-destructive/10">
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))
+                    }
+                  </div>
+                )}
+
+                {/* Next round / End */}
+                <div className="flex gap-2">
+                  <button onClick={() => void handleFreestyleNextRound()} disabled={freestyleBusy}
+                    className="flex-1 flex items-center justify-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-bold hover:bg-secondary/30 disabled:opacity-40">
+                    <SkipForward className="h-3.5 w-3.5" /> Nuovo round
+                  </button>
+                  <button onClick={handleFreestyleEnd} disabled={freestyleBusy}
+                    className="flex items-center gap-1.5 rounded-xl border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs font-bold text-destructive disabled:opacity-40">
+                    {freestyleBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Power className="h-3.5 w-3.5" />}
+                    Fine
+                  </button>
+                </div>
+              </>
+            )}
+
+            {freestyleState?.phase === 'ended' && (
+              <div className="rounded-xl border border-border bg-background/50 px-4 py-3 text-center text-sm text-muted-foreground">
+                🏁 Freestyle terminato
               </div>
             )}
           </div>

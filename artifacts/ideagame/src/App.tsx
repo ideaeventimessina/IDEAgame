@@ -31,6 +31,8 @@ import AdminWordBack from "@/admin/WordBack";
 import GameWordBack from "@/pages/GameWordBack";
 import AdminKaraoke from "@/admin/KaraokeBattle";
 import GameKaraoke from "@/pages/GameKaraoke";
+import AdminFreestyle from "@/admin/FreestyleBattle";
+import GameFreestyle from "@/pages/GameFreestyle";
 import Permissions from "@/pages/Permissions";
 import AdminSystem from "@/admin/System";
 import AdminDashboard from "@/admin/Dashboard";
@@ -68,6 +70,7 @@ function Router() {
       <Route path="/sfida-ballo" component={GameBallo} />
       <Route path="/parola-alle-spalle" component={GameWordBack} />
       <Route path="/karaoke-battle" component={GameKaraoke} />
+      <Route path="/freestyle-battle" component={GameFreestyle} />
       <Route path="/game/:slug" component={GameStage} />
       <Route path="/lobby" component={Lobby} />
       <Route path="/scoreboard" component={Scoreboard} />
@@ -91,6 +94,7 @@ function Router() {
       <Route path="/admin/sfida-ballo"><Guard route="/admin/sfida-ballo"><AdminBallo /></Guard></Route>
       <Route path="/admin/parola-alle-spalle"><Guard route="/admin/parola-alle-spalle"><AdminWordBack /></Guard></Route>
       <Route path="/admin/karaoke-battle"><Guard route="/admin/karaoke-battle"><AdminKaraoke /></Guard></Route>
+      <Route path="/admin/freestyle-battle"><Guard route="/admin/freestyle-battle"><AdminFreestyle /></Guard></Route>
       <Route component={NotFound} />
     </Switch>
   );

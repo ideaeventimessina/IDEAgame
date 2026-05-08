@@ -64,6 +64,25 @@ interface DanceStateP {
   startedAt: string | null;
 }
 
+interface FreestyleWordP { id: string; word: string; orderIndex: number; recognized: boolean; }
+interface FreestyleBookingP {
+  id: string; playerId: string; nickname: string; teamId: string;
+  teamName: string; teamColor: string;
+  status: 'waiting' | 'active' | 'performing' | 'done' | 'skipped';
+  orderIndex: number; wordsRecognized: string[];
+}
+interface FreestyleStateP {
+  setId: string; setName: string; beatUrl: string | null;
+  words: FreestyleWordP[];
+  revealedCount: number;
+  thinkingStartedAt: string | null;
+  thinkingSeconds: number;
+  bookings: FreestyleBookingP[];
+  teams: { id: string; name: string; color: string; score: number }[];
+  phase: 'idle' | 'revealing' | 'thinking' | 'booking' | 'performing' | 'ended';
+  roundIndex: number;
+}
+
 interface KaraokeBookingP {
   id: string; playerId: string; nickname: string; teamId: string;
   teamName: string; teamColor: string;
@@ -127,6 +146,7 @@ export default function Player() {
   const danceMagnitudesRef = useRef<number[]>([]);
   const [wordBackStateP, setWordBackStateP] = useState<WordBackStateP | null>(null);
   const [karaokeStateP, setKaraokeStateP] = useState<KaraokeStateP | null>(null);
+  const [freestyleStateP, setFreestyleStateP] = useState<FreestyleStateP | null>(null);
 
   const { connected, on, emit } = useEventSocket(event?.id ?? null);
 
@@ -186,6 +206,11 @@ export default function Player() {
       if (session.gameSlug === 'karaoke-battle') {
         const ks = await apiFetch(`/karaoke/sessions/${session.id}/state`).catch(() => null) as KaraokeStateP | null;
         if (ks) setKaraokeStateP(ks);
+      }
+      // If freestyle-battle is running, fetch current state
+      if (session.gameSlug === 'freestyle-battle') {
+        const fs = await apiFetch(`/freestyle/sessions/${session.id}/state`).catch(() => null) as FreestyleStateP | null;
+        if (fs) setFreestyleStateP(fs);
       }
       // If quizzone is running, fetch current state
       if (session.gameSlug === 'quizzone') {
@@ -332,6 +357,21 @@ export default function Player() {
       on<{ state: KaraokeStateP }>('karaoke:score_updated',         ({ state }) => setKaraokeStateP(state)),
       on<{ state: KaraokeStateP }>('karaoke:ended', ({ state }) => {
         setKaraokeStateP(state);
+        setGameState(p => ({ ...p, status: 'ended' }));
+      }),
+      on<{ state: FreestyleStateP }>('freestyle:started',        ({ state }) => { setFreestyleStateP(state); setGameState(p => ({ ...p, status: 'running' })); }),
+      on<{ state: FreestyleStateP }>('freestyle:reveal_started', ({ state }) => setFreestyleStateP(state)),
+      on<{ state: FreestyleStateP }>('freestyle:word_revealed',  ({ state }) => setFreestyleStateP(state)),
+      on<{ state: FreestyleStateP }>('freestyle:thinking',       ({ state }) => setFreestyleStateP(state)),
+      on<{ state: FreestyleStateP }>('freestyle:bookings_open',  ({ state }) => setFreestyleStateP(state)),
+      on<{ state: FreestyleStateP }>('freestyle:booking_added',  ({ state }) => setFreestyleStateP(state)),
+      on<{ state: FreestyleStateP }>('freestyle:booking_removed',({ state }) => setFreestyleStateP(state)),
+      on<{ state: FreestyleStateP }>('freestyle:performer_set',  ({ state }) => setFreestyleStateP(state)),
+      on<{ state: FreestyleStateP }>('freestyle:word_recognized',({ state }) => setFreestyleStateP(state)),
+      on<{ state: FreestyleStateP }>('freestyle:score_updated',  ({ state }) => setFreestyleStateP(state)),
+      on<{ state: FreestyleStateP }>('freestyle:next_round',     ({ state }) => setFreestyleStateP(state)),
+      on<{ state: FreestyleStateP }>('freestyle:ended', ({ state }) => {
+        setFreestyleStateP(state);
         setGameState(p => ({ ...p, status: 'ended' }));
       }),
     ];
@@ -553,6 +593,13 @@ export default function Player() {
                     sessionId={gameState.sessionId}
                     playerId={player.id}
                     teamColor={myTeam?.color ?? '#ec4899'}
+                  />
+                ) : gameState.gameSlug === 'freestyle-battle' ? (
+                  <FreestylePhoneController
+                    state={freestyleStateP}
+                    sessionId={gameState.sessionId}
+                    playerId={player.id}
+                    teamColor={myTeam?.color ?? '#f97316'}
                   />
                 ) : gameState.gameSlug === 'quizzone' ? (
                   <QuizzonePhoneController
@@ -1755,6 +1802,286 @@ function WordBackPhoneController({ state, sessionId, playerId, teamColor }: {
             ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Freestyle Battle Phone Controller ──────────────────────────────────────
+
+function FreestylePhoneController({ state, sessionId, playerId, teamColor }: {
+  state: FreestyleStateP | null;
+  sessionId: string | null;
+  playerId: string;
+  teamColor: string;
+}) {
+  const [booking, setBooking] = useState<FreestyleBookingP | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [listening, setListening] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (!state) return;
+    const b = state.bookings.find(b => b.playerId === playerId) ?? null;
+    setBooking(b);
+  }, [state, playerId]);
+
+  const handleBook = async () => {
+    if (!sessionId || loading) return;
+    setLoading(true); setMsg('');
+    try {
+      await apiFetch(`/freestyle/sessions/${sessionId}/book`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId }),
+      });
+      setMsg('✓ Prenotato!');
+    } catch (e) { setMsg((e as Error).message); }
+    finally { setLoading(false); }
+  };
+
+  const handleCancel = async () => {
+    if (!sessionId || loading || !booking) return;
+    setLoading(true); setMsg('');
+    try {
+      await apiFetch(`/freestyle/sessions/${sessionId}/cancel-booking`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId: booking.id }),
+      });
+      setMsg('');
+    } catch (e) { setMsg((e as Error).message); }
+    finally { setLoading(false); }
+  };
+
+  // ─── Web Speech API recognition ────────────────────────────────────────────
+  const startListening = useCallback(() => {
+    if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+      setMsg('Il tuo browser non supporta il microfono');
+      return;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any;
+    const SR = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+    if (!SR) return;
+    const recognition = new SR();
+    recognition.lang = 'it-IT';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    recognition.onresult = (event: { resultIndex: number; results: { transcript: string; isFinal: boolean }[][] }) => {
+      if (!state) return;
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = (event.results[i]![0]?.transcript ?? '').toLowerCase();
+        state.words.forEach(wrd => {
+          if (!wrd.recognized && transcript.includes(wrd.word.toLowerCase())) {
+            void apiFetch(`/freestyle/sessions/${sessionId}/word-recognized`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ wordId: wrd.id, bookingId: booking?.id }),
+            }).catch(() => {});
+          }
+        });
+      }
+    };
+
+    recognition.onend = () => {
+      if (listening) {
+        try { recognition.start(); } catch { setListening(false); }
+      }
+    };
+
+    recognition.onerror = (event: { error: string }) => {
+      if (event.error !== 'aborted' && event.error !== 'no-speech') {
+        setMsg(`Errore microfono: ${event.error}`);
+        setListening(false);
+      }
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    setListening(true);
+  }, [state, sessionId, booking?.id, listening]);
+
+  const stopListening = useCallback(() => {
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    setListening(false);
+  }, []);
+
+  // Auto start recognition when it's the performer's turn
+  useEffect(() => {
+    if (!state || !booking) return;
+    const isPerforming = booking.status === 'active' || booking.status === 'performing';
+    if (isPerforming && !listening && state.phase === 'performing') {
+      startListening();
+    } else if (!isPerforming && listening) {
+      stopListening();
+    }
+  }, [booking?.status, state?.phase]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cleanup on unmount
+  useEffect(() => () => { recognitionRef.current?.stop(); }, []);
+
+  if (!state) {
+    return (
+      <div className="mt-8 flex flex-col items-center gap-4 text-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <div className="text-sm text-muted-foreground">In attesa del freestyle…</div>
+      </div>
+    );
+  }
+
+  if (state.phase === 'ended') {
+    return (
+      <div className="mt-6 rounded-2xl border border-orange-500/40 bg-orange-500/10 px-6 py-5 text-center">
+        <div className="text-display text-xl font-black text-orange-300">🏆 Freestyle terminato!</div>
+        <div className="mt-2 text-sm text-muted-foreground">Controlla il proiettore per la classifica</div>
+      </div>
+    );
+  }
+
+  const isActive = booking?.status === 'active' || booking?.status === 'performing';
+  const isWaiting = booking?.status === 'waiting';
+  const queuePos = isWaiting
+    ? state.bookings.filter(b => b.status === 'waiting').sort((a, b) => a.orderIndex - b.orderIndex).findIndex(b => b.playerId === playerId) + 1
+    : 0;
+
+  // Revealed words display (on phone during performing phase)
+  const revealedWords = state.words.slice(0, state.revealedCount);
+
+  return (
+    <div className="mt-4 flex flex-col gap-4">
+
+      {/* Phase info */}
+      {state.phase === 'idle' && (
+        <div className="rounded-2xl border border-border bg-card/40 px-5 py-4 text-center">
+          <div className="text-2xl mb-1">⏳</div>
+          <div className="font-bold">In attesa dell'animatore</div>
+          <div className="text-xs text-muted-foreground mt-1">Presto arriveranno le parole!</div>
+        </div>
+      )}
+
+      {(state.phase === 'revealing' || state.phase === 'thinking') && revealedWords.length > 0 && (
+        <div className="rounded-2xl border border-orange-500/30 bg-orange-500/5 p-4 space-y-2">
+          <div className="text-xs uppercase tracking-widest text-orange-400 text-center">
+            {state.phase === 'thinking' ? '🧠 Componi il tuo rap!' : '🎲 Parole in arrivo…'}
+          </div>
+          <div className="flex flex-wrap gap-1.5 justify-center">
+            {revealedWords.map(w => (
+              <span key={w.id} className="rounded-xl border border-orange-500/40 bg-orange-500/10 px-2.5 py-1 text-sm font-bold text-orange-200">
+                {w.word}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {msg && (
+        <div className="rounded-xl border border-primary/40 bg-primary/10 px-4 py-2 text-center text-sm font-bold text-primary">
+          {msg}
+        </div>
+      )}
+
+      {/* Active: it's your turn — show word grid + mic */}
+      {isActive && state.phase === 'performing' && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+          className="rounded-2xl border-2 px-4 py-5 text-center space-y-3"
+          style={{ borderColor: teamColor, background: `${teamColor}15` }}
+        >
+          <div className="text-display text-xl font-black" style={{ color: teamColor }}>
+            🎤 Tocca a te!
+          </div>
+          <div className="text-xs text-muted-foreground">Usa le parole qui sotto nel tuo freestyle</div>
+
+          {/* Word grid with recognition highlights */}
+          <div className="flex flex-wrap gap-1.5 justify-center">
+            {state.words.map(w => (
+              <span key={w.id} className={`rounded-xl px-2.5 py-1 text-sm font-bold border transition-all duration-300 ${
+                w.recognized
+                  ? 'border-green-500/60 bg-green-500/20 text-green-300'
+                  : 'border-orange-500/40 bg-orange-500/10 text-orange-200'
+              }`}>
+                {w.word}
+                {w.recognized && ' ✓'}
+              </span>
+            ))}
+          </div>
+
+          {/* Mic button */}
+          <motion.button
+            onClick={listening ? stopListening : startListening}
+            animate={listening ? { scale: [1, 1.05, 1] } : {}}
+            transition={{ repeat: Infinity, duration: 1 }}
+            className={`mx-auto flex flex-col items-center justify-center gap-2 w-28 h-28 rounded-full text-white font-bold shadow-xl transition-all ${
+              listening ? 'bg-red-500 shadow-red-500/40' : 'shadow-orange-500/40'
+            }`}
+            style={!listening ? { background: `radial-gradient(circle at 35% 30%, ${teamColor}, #1a1535 95%)` } : undefined}
+          >
+            <span className="text-3xl">{listening ? '⏹' : '🎙️'}</span>
+            <span className="text-xs">{listening ? 'Stop' : 'Ascolta'}</span>
+          </motion.button>
+
+          <div className="text-xs text-muted-foreground">
+            {listening ? '🔴 Il microfono sta riconoscendo le parole…' : 'Premi per attivare il riconoscimento vocale'}
+          </div>
+          <div className="text-xs font-bold" style={{ color: teamColor }}>
+            {state.words.filter(w => w.recognized).length} / {state.words.length} parole riconosciute
+          </div>
+        </motion.div>
+      )}
+
+      {/* Waiting in queue */}
+      {isWaiting && (
+        <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 px-6 py-5 text-center">
+          <div className="text-2xl mb-2">⏳</div>
+          <div className="text-display text-xl font-black text-amber-400">Sei in coda</div>
+          <div className="mt-1 text-3xl font-black text-amber-300">#{queuePos}</div>
+          <div className="mt-2 text-sm text-muted-foreground">Attendi il tuo turno sul palco!</div>
+          <button onClick={() => void handleCancel()} disabled={loading}
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-destructive/50 bg-destructive/10 py-3 text-sm font-bold text-destructive disabled:opacity-40">
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            Rinuncio
+          </button>
+        </div>
+      )}
+
+      {/* Book button (booking phase only) */}
+      {!booking && state.phase === 'booking' && (
+        <motion.button
+          onClick={() => void handleBook()}
+          disabled={loading}
+          whileTap={{ scale: 0.96 }}
+          className="mx-auto flex flex-col items-center justify-center gap-3 w-full max-w-[280px] rounded-3xl py-8 text-background font-black text-display shadow-2xl disabled:opacity-40"
+          style={{ background: `radial-gradient(circle at 35% 30%, ${teamColor}, #1a1535 95%)`, boxShadow: `0 20px 60px ${teamColor}55` }}
+        >
+          {loading
+            ? <Loader2 className="h-10 w-10 animate-spin" />
+            : <span className="text-5xl">🎤</span>
+          }
+          <span className="text-2xl">Voglio rappare!</span>
+          <span className="text-xs font-normal opacity-70">Prenota il tuo posto sul palco</span>
+        </motion.button>
+      )}
+
+      {!booking && (state.phase === 'revealing' || state.phase === 'thinking' || state.phase === 'idle') && (
+        <div className="rounded-2xl border border-dashed border-border bg-card/30 px-5 py-4 text-center text-sm text-muted-foreground">
+          Le prenotazioni apriranno al termine della fase di pensiero
+        </div>
+      )}
+
+      {/* Team scores */}
+      <div className="grid grid-cols-2 gap-1.5">
+        {[...state.teams].sort((a, b) => b.score - a.score).map((tm, i) => (
+          <div key={tm.id} className={`rounded-xl border px-3 py-2 text-center ${tm.id === (booking?.teamId ?? '') ? '' : 'opacity-60'}`}
+            style={{ borderColor: tm.id === (booking?.teamId ?? '') ? tm.color : undefined }}>
+            <div className="text-[10px] text-muted-foreground truncate">{i === 0 ? '👑 ' : ''}{tm.name}</div>
+            <div className="text-display text-base font-black tabular-nums" style={{ color: tm.color }}>{tm.score}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

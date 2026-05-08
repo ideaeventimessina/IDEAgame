@@ -32,6 +32,7 @@ import adultOnlyRouter from "./adult-only";
 import balloRouter from "./ballo";
 import wordBackRouter from "./wordback";
 import karaokeRouter from "./karaoke";
+import freestyleRouter from "./freestyle";
 
 const router: IRouter = Router();
 
@@ -70,5 +71,6 @@ router.use(adultOnlyRouter);
 router.use(balloRouter);
 router.use(wordBackRouter);
 router.use(karaokeRouter);
+router.use(freestyleRouter);
 
 export default router;
