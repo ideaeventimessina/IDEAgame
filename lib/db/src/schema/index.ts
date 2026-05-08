@@ -20,3 +20,4 @@ export * from "./quizzone-responses";
 export * from "./percorso";
 export * from "./evening";
 export * from "./adult-only";
+export * from "./ballo";

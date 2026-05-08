@@ -106,6 +106,15 @@ interface AdultOnlyStateLC {
   timerStartedAt: string | null; skipped: number[];
 }
 
+interface DanceChallengeLC { id: string; name: string; description: string; duration: number; difficulty: string; musicHint: string; }
+interface DanceTeamLC { id: string; name: string; color: string; score: number; energy: number; }
+interface DanceStateLC {
+  challengeId: string; challengeName: string; duration: number; musicHint: string; difficulty: string;
+  teams: DanceTeamLC[];
+  status: 'idle' | 'running' | 'ended';
+  startedAt: string | null;
+}
+
 interface EveningGame {
   slug: string; label: string; emoji: string;
   sessionId: string | null; status: 'pending' | 'running' | 'done';
@@ -150,6 +159,13 @@ export default function LiveControl() {
   const [adultOnlyState, setAdultOnlyState] = useState<AdultOnlyStateLC | null>(null);
   const [adultOnlyBusy, setAdultOnlyBusy] = useState(false);
   const [adultOnlyMsg, setAdultOnlyMsg] = useState('');
+
+  // Dance / Sfida di Ballo state
+  const [danceChallengeCatalog, setDanceChallengeCatalog] = useState<DanceChallengeLC[]>([]);
+  const [selectedDanceChallengeId, setSelectedDanceChallengeId] = useState('');
+  const [danceState, setDanceState] = useState<DanceStateLC | null>(null);
+  const [danceBusy, setDanceBusy] = useState(false);
+  const [danceMsg, setDanceMsg] = useState('');
 
   // Evening mode state
   const [eveningMode, setEveningMode] = useState<EveningMode | null>(null);
@@ -235,6 +251,10 @@ export default function LiveControl() {
         qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) });
       }),
       on<{ state: AdultOnlyStateLC }>('adult:ended', ({ state: s }) => setAdultOnlyState(s)),
+      on<{ state: DanceStateLC }>('dance:started',       ({ state: s }) => { setDanceState(s); qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) }); }),
+      on<{ state: DanceStateLC }>('dance:motion',        ({ state: s }) => setDanceState(s)),
+      on<{ state: DanceStateLC }>('dance:score_updated', ({ state: s }) => { setDanceState(s); qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) }); }),
+      on<{ state: DanceStateLC }>('dance:ended',         ({ state: s }) => { setDanceState(s); qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) }); }),
     ];
     return () => unsubs.forEach(u => u());
   }, [selectedEventId, on, qc]);
@@ -292,6 +312,22 @@ export default function LiveControl() {
       .catch(() => setAdultOnlyState(null));
   }, [session?.gameSlug, session?.id]);
 
+  // Load dance challenges when sfida-ballo session is active
+  useEffect(() => {
+    if (session?.gameSlug !== 'sfida-ballo') return;
+    apiFetch('/dance-challenges')
+      .then(d => setDanceChallengeCatalog(d as DanceChallengeLC[]))
+      .catch(() => setDanceChallengeCatalog([]));
+  }, [session?.gameSlug, session?.id]);
+
+  // Sync dance state from API when session is active
+  useEffect(() => {
+    if (session?.gameSlug !== 'sfida-ballo' || !session?.id) return;
+    apiFetch(`/dance/sessions/${session.id}/state`)
+      .then(d => setDanceState(d as DanceStateLC))
+      .catch(() => setDanceState(null));
+  }, [session?.gameSlug, session?.id]);
+
   // Load evening mode when event changes
   useEffect(() => {
     if (!selectedEventId) { setEveningMode(null); return; }
@@ -339,6 +375,13 @@ export default function LiveControl() {
     setSelectedAdultOnlyDeckId('');
     setAdultOnlyState(null);
     setAdultOnlyMsg('');
+  }, [session?.id]);
+
+  // Reset dance state when session changes
+  useEffect(() => {
+    setSelectedDanceChallengeId('');
+    setDanceState(null);
+    setDanceMsg('');
   }, [session?.id]);
 
   // Reset evening state when event changes (load handles the fetch, just clear busy)
@@ -555,6 +598,67 @@ export default function LiveControl() {
           navigate(`/scoreboard?e=${selectedEventId}`);
         } catch (e) { setAdultOnlyMsg((e as Error).message); }
         finally { setAdultOnlyBusy(false); }
+      },
+    });
+  };
+
+  // ─── Dance / Sfida di Ballo handlers ────────────────────────────────────────
+
+  const handleDanceInit = async () => {
+    if (!session || !selectedDanceChallengeId || danceBusy) return;
+    setDanceBusy(true); setDanceMsg('');
+    try {
+      const s = await apiFetch(`/dance/sessions/${session.id}/init`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challengeId: selectedDanceChallengeId }),
+      }) as DanceStateLC;
+      setDanceState(s);
+      setDanceMsg('✓ Sfida inizializzata!');
+    } catch (e) { setDanceMsg((e as Error).message); }
+    finally { setDanceBusy(false); }
+  };
+
+  const handleDanceStart = async () => {
+    if (!session || danceBusy) return;
+    setDanceBusy(true); setDanceMsg('');
+    try {
+      const s = await apiFetch(`/dance/sessions/${session.id}/start`, { method: 'POST' }) as DanceStateLC;
+      setDanceState(s);
+    } catch (e) { setDanceMsg((e as Error).message); }
+    finally { setDanceBusy(false); }
+  };
+
+  const handleDanceBonus = async (teamId: string, points: number) => {
+    if (!session || danceBusy) return;
+    setDanceBusy(true);
+    try {
+      const s = await apiFetch(`/dance/sessions/${session.id}/bonus`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamId, points }),
+      }) as DanceStateLC;
+      setDanceState(s);
+      qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) });
+    } catch (e) { setDanceMsg((e as Error).message); }
+    finally { setDanceBusy(false); }
+  };
+
+  const handleDanceEnd = () => {
+    confirm({
+      title: 'Fine Sfida di Ballo',
+      message: 'Terminare la sfida e salvare i punteggi?',
+      confirmLabel: 'Termina → Podio',
+      danger: true,
+      onConfirm: async () => {
+        if (!session || danceBusy) return;
+        setDanceBusy(true); setDanceMsg('');
+        try {
+          await apiFetch(`/dance/sessions/${session.id}/end`, { method: 'POST' });
+          setDanceState(s => s ? { ...s, status: 'ended' } : null);
+          navigate(`/scoreboard?e=${selectedEventId}`);
+        } catch (e) { setDanceMsg((e as Error).message); }
+        finally { setDanceBusy(false); }
       },
     });
   };
@@ -1526,6 +1630,121 @@ export default function LiveControl() {
             {adultOnlyState?.status === 'ended' && (
               <div className="rounded-xl border border-border bg-background/50 px-4 py-3 text-center text-sm text-muted-foreground">
                 🏁 Gioco terminato
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ─── Sfida di Ballo panel ──────────────────────────────── */}
+        {session?.gameSlug === 'sfida-ballo' && (
+          <div className="rounded-2xl border border-purple-500/30 bg-card p-5 space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">💃</span>
+              <div className="text-xs uppercase tracking-widest text-muted-foreground">Sfida di Ballo</div>
+              {danceState && (
+                <a href={`${BASE}sfida-ballo?s=${session.id}&e=${selectedEventId}`} target="_blank" rel="noopener noreferrer"
+                  className="ml-auto flex items-center gap-1 text-xs text-purple-400 hover:underline">
+                  <ExternalLink className="h-3 w-3" /> Proiettore
+                </a>
+              )}
+            </div>
+
+            {danceMsg && (
+              <div className={`rounded-xl px-4 py-2 text-sm ${danceMsg.startsWith('✓') ? 'border border-green-500/40 bg-green-500/10 text-green-400' : 'border border-destructive/40 bg-destructive/10 text-destructive'}`}>
+                {danceMsg}
+              </div>
+            )}
+
+            {/* Status badge */}
+            {danceState && (
+              <div className="flex items-center gap-2 text-xs flex-wrap">
+                <span className={`rounded-full border px-2.5 py-1 font-bold ${
+                  danceState.status === 'running' ? 'border-purple-500/40 bg-purple-500/10 text-purple-400' :
+                  danceState.status === 'ended'   ? 'border-destructive/40 bg-destructive/10 text-destructive' :
+                  'border-border text-muted-foreground'
+                }`}>
+                  {danceState.status === 'idle' ? '⏳ In attesa' : danceState.status === 'running' ? '💃 In corso' : '🏁 Terminato'}
+                </span>
+                <span className="text-muted-foreground font-bold">{danceState.challengeName}</span>
+                <span className="text-muted-foreground">{danceState.duration}s</span>
+              </div>
+            )}
+
+            {/* Init: no state yet — challenge selector */}
+            {!danceState && (
+              <>
+                <div>
+                  <div className="text-xs text-muted-foreground mb-1">Sfida dal catalogo</div>
+                  <select value={selectedDanceChallengeId} onChange={e => setSelectedDanceChallengeId(e.target.value)}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm">
+                    <option value="">— seleziona sfida —</option>
+                    {danceChallengeCatalog.map(c => (
+                      <option key={c.id} value={c.id}>{c.name} ({c.duration}s — {c.difficulty})</option>
+                    ))}
+                  </select>
+                  {danceChallengeCatalog.length === 0 && (
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      Nessuna sfida ancora — creane una in <a href={`${BASE}admin/sfida-ballo`} className="underline text-purple-400">Admin → Sfida di Ballo</a>
+                    </div>
+                  )}
+                </div>
+                <button disabled={!selectedDanceChallengeId || danceBusy} onClick={() => void handleDanceInit()}
+                  className="w-full rounded-xl bg-purple-600 py-2.5 text-sm font-bold text-white disabled:opacity-40 flex items-center justify-center gap-2">
+                  {danceBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  Inizializza
+                </button>
+              </>
+            )}
+
+            {/* Idle: ready to start */}
+            {danceState?.status === 'idle' && (
+              <button onClick={() => void handleDanceStart()} disabled={danceBusy}
+                className="w-full flex items-center justify-center gap-2 rounded-xl bg-green-500 py-3 text-sm font-black text-background disabled:opacity-40">
+                {danceBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                Avvia la sfida! 💃
+              </button>
+            )}
+
+            {/* Running: team energy + bonus + end */}
+            {danceState?.status === 'running' && (
+              <>
+                <div className="space-y-2">
+                  <div className="text-xs text-muted-foreground uppercase tracking-widest">Squadre — energia live + bonus</div>
+                  {danceState.teams.map(tm => (
+                    <div key={tm.id} className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="h-3 w-3 rounded-full shrink-0" style={{ background: tm.color }} />
+                        <span className="flex-1 truncate text-sm font-bold">{tm.name}</span>
+                        <span className="text-xs text-muted-foreground">⚡{tm.energy}%</span>
+                        <span className="text-display text-base font-black tabular-nums w-12 text-right" style={{ color: tm.color }}>{tm.score}</span>
+                        {[50, 100, 200].map(pts => (
+                          <button key={pts} onClick={() => void handleDanceBonus(tm.id, pts)} disabled={danceBusy}
+                            className="rounded-lg border border-border px-2 py-1.5 text-xs font-bold hover-elevate disabled:opacity-40">
+                            +{pts}
+                          </button>
+                        ))}
+                      </div>
+                      {/* Energy bar */}
+                      <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden ml-5">
+                        <div className="h-full rounded-full transition-all duration-300"
+                          style={{ width: `${tm.energy}%`, background: tm.color }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <button onClick={handleDanceEnd} disabled={danceBusy}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl border border-destructive/50 bg-destructive/10 py-2.5 text-sm font-bold text-destructive disabled:opacity-40">
+                  {danceBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
+                  Fine sfida → Podio
+                </button>
+              </>
+            )}
+
+            {/* Ended */}
+            {danceState?.status === 'ended' && (
+              <div className="rounded-xl border border-border bg-background/50 px-4 py-3 text-center text-sm text-muted-foreground">
+                🏁 Sfida terminata
               </div>
             )}
           </div>

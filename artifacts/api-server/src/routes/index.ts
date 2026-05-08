@@ -29,6 +29,7 @@ import auditLogRouter from "./audit-log";
 import percorsoRouter from "./percorso";
 import eveningRouter from "./evening";
 import adultOnlyRouter from "./adult-only";
+import balloRouter from "./ballo";
 
 const router: IRouter = Router();
 
@@ -64,5 +65,6 @@ router.use(auditLogRouter);
 router.use(percorsoRouter);
 router.use(eveningRouter);
 router.use(adultOnlyRouter);
+router.use(balloRouter);
 
 export default router;

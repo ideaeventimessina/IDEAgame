@@ -19,6 +19,7 @@ real session-based authentication, and a typed React/Vite admin console + projec
 | System settings (brand color, lingua, projection mode, offline-first) | ✅ tabella `system_settings` (upsert per `tenant_id+key`) | `GET/PUT /api/system-settings` | `/admin/settings` |
 | Game sessions + rounds | ✅ tabelle `game_sessions`, `rounds` | `POST /events/:id/sessions`, `PATCH /sessions/:id`, `POST /sessions/:id/rounds`, `PATCH /rounds/:id` | `/control` (LiveControl reale) |
 | Card sets / Cards | ✅ tabelle `card_sets`, `cards` | `/api/card-sets` CRUD | API only |
+| Sfida di Ballo (accelerometro) | ✅ tabelle `dance_challenges`, `dance_sessions` | `/api/dance-challenges` CRUD, `/api/dance/sessions/:id/{init,start,motion,bonus,end}` | `/admin/sfida-ballo`, `/sfida-ballo`, LiveControl panel, Player controller |
 | Quiz categories + responses | ✅ tabelle `quiz_categories`, `quiz_responses` | `/api/quiz-categories` CRUD | API only |
 | Audit log (chi ha fatto cosa) | ✅ tabella `audit_log` + helper `lib/audit.ts` | `GET /api/audit-log`, scritto da `device.create`, `system_settings.upsert` | API only (UI da costruire) |
 | Quizzes / Media / Translations / KPIs | ✅ già esistente | già esistente | `/admin/{quizzes,media,translations}`, Dashboard |

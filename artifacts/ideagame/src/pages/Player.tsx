@@ -56,6 +56,14 @@ interface AdultOnlyStateP {
   timerStartedAt: string | null; skipped: number[];
 }
 
+interface DanceTeamP { id: string; name: string; color: string; score: number; energy: number; }
+interface DanceStateP {
+  challengeId: string; challengeName: string; duration: number; musicHint: string; difficulty: string;
+  teams: DanceTeamP[];
+  status: 'idle' | 'running' | 'ended';
+  startedAt: string | null;
+}
+
 type Step = 'loading' | 'join' | 'joining' | 'play' | 'error';
 
 const BASE = (import.meta.env.BASE_URL as string) ?? '/';
@@ -87,6 +95,8 @@ export default function Player() {
   const [quizzoneReveal, setQuizzoneReveal] = useState<QuizzoneReveal | null>(null);
   const [percorsoStateP, setPercorsoStateP] = useState<PercorsoStateP | null>(null);
   const [adultOnlyStateP, setAdultOnlyStateP] = useState<AdultOnlyStateP | null>(null);
+  const [danceStateP, setDanceStateP] = useState<DanceStateP | null>(null);
+  const danceMagnitudesRef = useRef<number[]>([]);
 
   const { connected, on, emit } = useEventSocket(event?.id ?? null);
 
@@ -131,6 +141,11 @@ export default function Player() {
       if (session.gameSlug === 'adult-only') {
         const as_ = await apiFetch(`/adult-only/sessions/${session.id}/state`).catch(() => null) as AdultOnlyStateP | null;
         if (as_) setAdultOnlyStateP(as_);
+      }
+      // If sfida-ballo is running, fetch current state
+      if (session.gameSlug === 'sfida-ballo') {
+        const ds = await apiFetch(`/dance/sessions/${session.id}/state`).catch(() => null) as DanceStateP | null;
+        if (ds) setDanceStateP(ds);
       }
       // If quizzone is running, fetch current state
       if (session.gameSlug === 'quizzone') {
@@ -239,6 +254,16 @@ export default function Player() {
       on<{ state: AdultOnlyStateP }>('adult:score_updated', ({ state }) => setAdultOnlyStateP(state)),
       on<{ state: AdultOnlyStateP }>('adult:ended', ({ state }) => {
         setAdultOnlyStateP(state);
+        setGameState(p => ({ ...p, status: 'ended' }));
+      }),
+      on<{ state: DanceStateP }>('dance:started', ({ state }) => {
+        setDanceStateP(state);
+        setGameState(p => ({ ...p, status: 'running' }));
+      }),
+      on<{ state: DanceStateP }>('dance:motion', ({ state }) => setDanceStateP(state)),
+      on<{ state: DanceStateP }>('dance:score_updated', ({ state }) => setDanceStateP(state)),
+      on<{ state: DanceStateP }>('dance:ended', ({ state }) => {
+        setDanceStateP(state);
         setGameState(p => ({ ...p, status: 'ended' }));
       }),
     ];
@@ -438,6 +463,14 @@ export default function Player() {
                     state={adultOnlyStateP}
                     teamId={player.teamId ?? ''}
                     teamColor={myTeam?.color ?? '#8B5CF6'}
+                  />
+                ) : gameState.gameSlug === 'sfida-ballo' ? (
+                  <DancePhoneController
+                    state={danceStateP}
+                    sessionId={gameState.sessionId}
+                    teamId={player.teamId ?? ''}
+                    teamColor={myTeam?.color ?? '#8B5CF6'}
+                    magnitudesRef={danceMagnitudesRef}
                   />
                 ) : gameState.gameSlug === 'quizzone' ? (
                   <QuizzonePhoneController
@@ -1061,6 +1094,241 @@ function AdultOnlyPhoneController({
           }`} style={{ borderColor: tm.id === teamId ? tm.color : undefined }}>
             <div className="text-[10px] text-muted-foreground truncate">{i === 0 ? '👑 ' : ''}{tm.name}</div>
             <div className="text-display text-lg font-black tabular-nums" style={{ color: tm.color }}>{tm.score}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Dance Phone Controller ────────────────────────────────────────────────────
+
+type MotionPermission = 'unknown' | 'granted' | 'denied' | 'unsupported';
+
+function DancePhoneController({ state, sessionId, teamId, teamColor, magnitudesRef }: {
+  state: DanceStateP | null;
+  sessionId: string | null;
+  teamId: string;
+  teamColor: string;
+  magnitudesRef: React.RefObject<number[]>;
+}) {
+  const [motionPermission, setMotionPermission] = useState<MotionPermission>('unknown');
+  const [localEnergy, setLocalEnergy] = useState(0);
+  const [manualActive, setManualActive] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(state?.duration ?? 60);
+
+  // Countdown timer
+  useEffect(() => {
+    if (!state?.startedAt || state.status !== 'running') {
+      setTimeLeft(state?.duration ?? 60);
+      return;
+    }
+    const update = () => {
+      const elapsed = (Date.now() - new Date(state.startedAt!).getTime()) / 1000;
+      setTimeLeft(Math.max(0, state.duration - elapsed));
+    };
+    update();
+    const i = setInterval(update, 500);
+    return () => clearInterval(i);
+  }, [state?.startedAt, state?.status, state?.duration]);
+
+  // Determine motion permission on mount
+  useEffect(() => {
+    if (typeof DeviceMotionEvent === 'undefined') {
+      setMotionPermission('unsupported');
+      return;
+    }
+    const dme = DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> };
+    if (typeof dme.requestPermission !== 'function') {
+      // Android / desktop — auto-granted
+      setMotionPermission('granted');
+    }
+    // iOS 13+: stays 'unknown' until user taps the request button
+  }, []);
+
+  const requestPermission = async () => {
+    const dme = DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> };
+    if (typeof dme.requestPermission === 'function') {
+      try {
+        const result = await dme.requestPermission();
+        setMotionPermission(result === 'granted' ? 'granted' : 'denied');
+      } catch { setMotionPermission('denied'); }
+    } else {
+      setMotionPermission('granted');
+    }
+  };
+
+  // Device motion listener + periodic send
+  useEffect(() => {
+    if (motionPermission !== 'granted' || state?.status !== 'running' || !sessionId || !teamId) return;
+    const mags = magnitudesRef.current!;
+
+    const handleMotion = (e: DeviceMotionEvent) => {
+      const acc = e.accelerationIncludingGravity;
+      if (!acc) return;
+      const mag = Math.sqrt((acc.x ?? 0) ** 2 + (acc.y ?? 0) ** 2 + (acc.z ?? 0) ** 2);
+      mags.push(Math.min(100, Math.abs(mag - 9.81) * 8));
+    };
+    window.addEventListener('devicemotion', handleMotion);
+
+    const interval = setInterval(async () => {
+      if (mags.length === 0) return;
+      const avg = mags.reduce((a, b) => a + b, 0) / mags.length;
+      mags.length = 0;
+      const energy = Math.min(100, Math.round(avg));
+      setLocalEnergy(energy);
+      try {
+        await apiFetch(`/dance/sessions/${sessionId}/motion`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ teamId, energy }),
+        });
+      } catch { /* silent */ }
+    }, 600);
+
+    return () => {
+      window.removeEventListener('devicemotion', handleMotion);
+      clearInterval(interval);
+    };
+  }, [motionPermission, state?.status, sessionId, teamId, magnitudesRef]);
+
+  // Manual fallback interval (hold button)
+  useEffect(() => {
+    if (!manualActive || state?.status !== 'running' || !sessionId || !teamId) return;
+    const interval = setInterval(async () => {
+      const energy = 40 + Math.round(Math.random() * 30);
+      setLocalEnergy(energy);
+      try {
+        await apiFetch(`/dance/sessions/${sessionId}/motion`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ teamId, energy }),
+        });
+      } catch { /* silent */ }
+    }, 700);
+    return () => clearInterval(interval);
+  }, [manualActive, state?.status, sessionId, teamId]);
+
+  const myTeamData = state?.teams.find(t => t.id === teamId);
+
+  if (!state || state.status === 'idle') {
+    return (
+      <div className="mt-4 rounded-2xl border border-purple-500/20 bg-card p-6 text-center">
+        <div className="text-4xl mb-2">💃</div>
+        <div className="font-black text-lg">Sfida di Ballo</div>
+        <div className="text-sm text-muted-foreground mt-1">In attesa dell'animatore…</div>
+      </div>
+    );
+  }
+
+  if (state.status === 'ended') {
+    const sorted = [...state.teams].sort((a, b) => b.score - a.score);
+    return (
+      <div className="mt-4 rounded-2xl border border-border bg-card p-5 text-center space-y-3">
+        <div className="text-2xl">🏁</div>
+        <div className="font-black">Sfida terminata!</div>
+        <div className="space-y-1">
+          {sorted.map((tm, i) => (
+            <div key={tm.id} className="flex justify-between text-sm rounded-lg px-3 py-1.5 border border-border">
+              <span style={{ color: tm.color }}>{i === 0 ? '👑 ' : ''}{tm.name}</span>
+              <span className="font-black tabular-nums" style={{ color: tm.color }}>{tm.score}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const useMotion = motionPermission === 'granted';
+  const needsPermission = motionPermission === 'unknown';
+  const noMotion = motionPermission === 'denied' || motionPermission === 'unsupported';
+
+  return (
+    <div className="mt-4 space-y-3">
+      {/* Challenge info + timer */}
+      <div className="rounded-2xl border border-purple-500/30 bg-card p-4 text-center">
+        <div className="text-2xl mb-1">💃</div>
+        <div className="text-display font-black text-lg">{state.challengeName}</div>
+        {state.musicHint && <div className="text-xs text-muted-foreground mt-0.5">🎵 {state.musicHint}</div>}
+        <div className="mt-2 text-display text-3xl font-black" style={{ color: teamColor }}>
+          {Math.ceil(timeLeft)}s
+        </div>
+      </div>
+
+      {/* iOS permission request */}
+      {needsPermission && (
+        <button onClick={requestPermission}
+          className="w-full rounded-2xl py-4 text-lg font-black text-white"
+          style={{ background: `linear-gradient(135deg, ${teamColor}, ${teamColor}88)` }}>
+          📱 Attiva sensore movimento
+        </button>
+      )}
+
+      {/* Accelerometer mode */}
+      {useMotion && (
+        <div className="rounded-2xl border border-purple-500/20 bg-card p-4 text-center space-y-2">
+          <div className="text-sm text-muted-foreground">Muoviti e balla! Il telefono rileva i tuoi movimenti 🕺</div>
+          <div className="h-5 w-full rounded-full bg-muted overflow-hidden">
+            <motion.div className="h-full rounded-full"
+              style={{ background: `linear-gradient(90deg, ${teamColor}88, ${teamColor})` }}
+              animate={{ width: `${localEnergy}%` }}
+              transition={{ duration: 0.3 }} />
+          </div>
+          <div className="text-xs text-muted-foreground font-bold">
+            {localEnergy > 70 ? '🔥 Stai distruggendo!' : localEnergy > 40 ? '💃 Bene! Continua!' : '⚡ Danza di più!'}
+          </div>
+        </div>
+      )}
+
+      {/* Manual fallback */}
+      {noMotion && (
+        <div className="space-y-2">
+          <div className="text-xs text-center text-muted-foreground">Sensore non disponibile — tieni premuto il pulsante</div>
+          <button
+            onPointerDown={() => setManualActive(true)}
+            onPointerUp={() => { setManualActive(false); setLocalEnergy(0); }}
+            onPointerLeave={() => { setManualActive(false); setLocalEnergy(0); }}
+            className="w-full rounded-2xl py-8 text-xl font-black text-white select-none"
+            style={{
+              background: manualActive
+                ? `linear-gradient(135deg, ${teamColor}, ${teamColor}aa)`
+                : 'linear-gradient(135deg, #6d28d9, #4c1d95)',
+              boxShadow: manualActive ? `0 0 40px ${teamColor}88` : 'none',
+              transform: manualActive ? 'scale(0.96)' : 'scale(1)',
+              transition: 'all 0.1s',
+            }}
+          >
+            {manualActive ? '🔥 Sto ballando!' : '💃 Tieni premuto — Balla!'}
+          </button>
+          {localEnergy > 0 && (
+            <div className="h-3 w-full rounded-full bg-muted overflow-hidden">
+              <div className="h-full rounded-full transition-all duration-300"
+                style={{ width: `${localEnergy}%`, background: teamColor }} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* My team score */}
+      {myTeamData && (
+        <div className="rounded-xl border px-4 py-2 flex items-center gap-2"
+          style={{ borderColor: `${teamColor}44`, background: `${teamColor}11` }}>
+          <span className="h-3 w-3 rounded-full" style={{ background: teamColor }} />
+          <span className="text-sm font-bold flex-1">{myTeamData.name}</span>
+          <span className="text-display text-xl font-black tabular-nums" style={{ color: teamColor }}>{myTeamData.score}</span>
+        </div>
+      )}
+
+      {/* All teams energy */}
+      <div className="grid grid-cols-2 gap-1.5">
+        {[...state.teams].sort((a, b) => b.score - a.score).map((tm, i) => (
+          <div key={tm.id} className={`rounded-xl border px-3 py-2 text-center ${tm.id === teamId ? '' : 'opacity-60'}`}
+            style={{ borderColor: tm.id === teamId ? tm.color : undefined }}>
+            <div className="text-[10px] text-muted-foreground truncate">{i === 0 ? '👑 ' : ''}{tm.name}</div>
+            <div className="text-display text-base font-black tabular-nums" style={{ color: tm.color }}>{tm.score}</div>
+            <div className="mt-1 h-1 w-full rounded-full bg-muted overflow-hidden">
+              <div className="h-full rounded-full transition-all duration-300" style={{ width: `${tm.energy}%`, background: tm.color }} />
+            </div>
           </div>
         ))}
       </div>
