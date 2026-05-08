@@ -180,7 +180,7 @@ export default function LiveControl() {
   const [, navigate] = useLocation();
   const qc = useQueryClient();
 
-  const [selectedEventId, setSelectedEventId] = useState('');
+  const [selectedEventId, setSelectedEventId] = useState(() => new URLSearchParams(window.location.search).get('e') ?? '');
   const [selectedSessionId, setSelectedSessionId] = useState('');
   const [showNewSession, setShowNewSession] = useState(false);
   const [gameSlug, setGameSlug] = useState('quizzone');

@@ -34,7 +34,7 @@ export default function Events() {
   const handleCreate = async () => {
     if (!form.name.trim()) return;
     try {
-      await create.mutateAsync({ data: {
+      const newEvent = await create.mutateAsync({ data: {
         name: form.name,
         venue: form.venue,
         brandColor: form.brandColor,
@@ -44,6 +44,7 @@ export default function Events() {
       setOpen(false);
       setForm({ name: '', venue: '', brandColor: '#F5B642', expectedPlayers: 20, tenantId: '' });
       refresh();
+      if (newEvent?.id) navigate(`/control?e=${newEvent.id}`);
     } catch { /* errors shown via disabled state */ }
   };
 
