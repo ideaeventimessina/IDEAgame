@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Response } from "express";
 import { eq, and } from "drizzle-orm";
-import { db, playersTable, eventsTable } from "@workspace/db";
+import { db, playersTable, eventsTable, teamsTable } from "@workspace/db";
 import { ListPlayersResponse, JoinPlayerBody } from "@workspace/api-zod";
 import { type AuthedRequest, requireAuth } from "../middlewares/auth";
 import { emitToEvent } from "../socket";
@@ -67,12 +67,23 @@ router.post("/events/:id/players", playerJoinLimiter, async (req: AuthedRequest,
     return;
   }
 
-  const COLORS = ["#F5B642", "#E84A8E", "#5BC0EB", "#9B5DE5", "#00F5A0", "#FF1F6D"];
+  const COLORS = ["#F5B642", "#E84A8E", "#5BC0EB", "#9B5DE5", "#00F5A0", "#FF1F6D", "#FF6B35", "#C44DFF"];
   const avatarColor = parsed.data.avatarColor ?? COLORS[all.length % COLORS.length] ?? "#F5B642";
+
+  // Modalità individuale: se non viene fornito un teamId, crea un team personale
+  let resolvedTeamId = parsed.data.teamId ?? null;
+  if (!resolvedTeamId) {
+    const [personalTeam] = await db
+      .insert(teamsTable)
+      .values({ eventId, name: nickname, color: avatarColor })
+      .returning();
+    resolvedTeamId = personalTeam!.id;
+    emitToEvent(eventId, "team:updated", personalTeam);
+  }
 
   const [p] = await db
     .insert(playersTable)
-    .values({ eventId, nickname, avatarColor, teamId: parsed.data.teamId ?? null })
+    .values({ eventId, nickname, avatarColor, teamId: resolvedTeamId })
     .returning();
 
   // Emit realtime event

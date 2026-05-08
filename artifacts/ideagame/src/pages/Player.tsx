@@ -229,7 +229,7 @@ export default function Player() {
       const p = await apiFetch(`/events/${event.id}/players`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nickname: nick.trim(), teamId: selectedTeam || null }),
+        body: JSON.stringify({ nickname: nick.trim(), teamId: null }),
       }) as PlayerInfo;
       setPlayer(p); setStep('play');
     } catch (e) { setError((e as Error).message); setStep('join'); }
@@ -334,24 +334,7 @@ export default function Player() {
                 placeholder="Marco" maxLength={24}
                 className="mt-2 w-full rounded-2xl border border-border bg-card px-5 py-4 text-2xl font-bold text-foreground outline-none focus:border-primary" />
 
-              {teams.length > 0 && (
-                <>
-                  <div className="mt-8 text-sm font-bold uppercase tracking-widest text-muted-foreground">{t('play.team')}</div>
-                  <div className="mt-3 grid grid-cols-2 gap-3 pb-4">
-                    {teams.map(tm => (
-                      <button key={tm.id} onClick={() => setSelectedTeam(tm.id)}
-                        className="rounded-2xl border-2 px-4 py-5 text-left transition-all"
-                        style={{ borderColor: tm.color, background: selectedTeam === tm.id ? `${tm.color}22` : 'transparent',
-                                 opacity: selectedTeam === tm.id ? 1 : 0.7, transform: selectedTeam === tm.id ? 'scale(1.02)' : 'scale(1)' }}>
-                        <div className="flex items-center gap-2">
-                          <div className="h-4 w-4 rounded-full" style={{ background: tm.color }} />
-                          <div className="text-display text-lg font-bold">{tm.name}</div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
+              {/* Modalità individuale: nessuna selezione squadra */}
             </div>
 
             {/* Sticky CTA — sempre visibile sopra il DemoSwitcher */}
