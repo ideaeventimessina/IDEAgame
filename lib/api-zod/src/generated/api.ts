@@ -202,6 +202,7 @@ export const ListEventsResponse = zod.array(ListEventsResponseItem);
 
 export const CreateEventBody = zod.object({
   name: zod.string(),
+  tenantId: zod.string().optional(),
   venue: zod.string().optional(),
   startsAt: zod.coerce.date().optional(),
   brandColor: zod.string().optional(),

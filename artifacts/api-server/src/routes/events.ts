@@ -50,10 +50,11 @@ router.post("/events", requireAuth, async (req: AuthedRequest, res: Response): P
   const parsed = CreateEventBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const me = req.user!;
-  if (!me.tenantId) { res.status(400).json({ error: "User has no tenant" }); return; }
+  const tenantId = me.role === "super_admin" ? (parsed.data.tenantId ?? me.tenantId) : me.tenantId;
+  if (!tenantId) { res.status(400).json({ error: "Seleziona un tenant per l'evento" }); return; }
   const joinCode = Math.random().toString(36).slice(2, 8).toUpperCase();
   const [e] = await db.insert(eventsTable).values({
-    tenantId: me.tenantId,
+    tenantId,
     name: parsed.data.name,
     venue: parsed.data.venue ?? "",
     startsAt: parsed.data.startsAt ?? new Date(),

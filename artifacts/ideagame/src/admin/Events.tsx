@@ -3,10 +3,12 @@ import { AdminLayout } from './AdminLayout';
 import { Plus, Trash2, Loader2, ExternalLink, Calendar } from 'lucide-react';
 import {
   useListEvents, useCreateEvent, useDeleteEvent,
-  getListEventsQueryKey,
+  useListTenants,
+  getListEventsQueryKey, getListTenantsQueryKey,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'wouter';
+import { useAuth } from '@/auth/roles';
 
 const STATUS_COLORS: Record<string, string> = {
   live: 'bg-destructive text-destructive-foreground',
@@ -18,20 +20,29 @@ const STATUS_COLORS: Record<string, string> = {
 export default function Events() {
   const qc = useQueryClient();
   const [, navigate] = useLocation();
+  const { role } = useAuth();
+  const isSuperAdmin = role === 'super_admin';
   const { data: events = [], isLoading } = useListEvents();
+  const { data: tenants = [] } = useListTenants({ query: { queryKey: getListTenantsQueryKey(), enabled: isSuperAdmin } });
   const create = useCreateEvent();
   const del = useDeleteEvent();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ name: '', venue: '', brandColor: '#F5B642', expectedPlayers: 20 });
+  const [form, setForm] = useState({ name: '', venue: '', brandColor: '#F5B642', expectedPlayers: 20, tenantId: '' });
 
   const refresh = () => qc.invalidateQueries({ queryKey: getListEventsQueryKey() });
 
   const handleCreate = async () => {
     if (!form.name.trim()) return;
     try {
-      await create.mutateAsync({ data: { name: form.name, venue: form.venue, brandColor: form.brandColor, expectedPlayers: form.expectedPlayers } });
+      await create.mutateAsync({ data: {
+        name: form.name,
+        venue: form.venue,
+        brandColor: form.brandColor,
+        expectedPlayers: form.expectedPlayers,
+        ...(isSuperAdmin && form.tenantId ? { tenantId: form.tenantId } : {}),
+      }});
       setOpen(false);
-      setForm({ name: '', venue: '', brandColor: '#F5B642', expectedPlayers: 20 });
+      setForm({ name: '', venue: '', brandColor: '#F5B642', expectedPlayers: 20, tenantId: '' });
       refresh();
     } catch { /* errors shown via disabled state */ }
   };
@@ -124,6 +135,21 @@ export default function Events() {
             <div className="space-y-3">
               <Field label="Nome evento *" value={form.name} onChange={v => setForm({ ...form, name: v })} placeholder="Compleanno Anna, Matrimonio Rossi…" />
               <Field label="Venue" value={form.venue} onChange={v => setForm({ ...form, venue: v })} placeholder="Villa Romana, Milano" />
+              {isSuperAdmin && (
+                <label className="block">
+                  <div className="mb-1 text-xs uppercase tracking-widest text-muted-foreground">Tenant *</div>
+                  <select
+                    value={form.tenantId}
+                    onChange={e => setForm({ ...form, tenantId: e.target.value })}
+                    className="w-full rounded-lg border border-border bg-background/40 px-3 py-2 outline-none focus:border-primary"
+                  >
+                    <option value="">— seleziona tenant —</option>
+                    {tenants.map(t => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <div className="flex gap-3">
                 <div className="flex-1">
                   <label className="block">
@@ -151,7 +177,7 @@ export default function Events() {
             <div className="mt-5 flex justify-end gap-3">
               <button onClick={() => setOpen(false)} className="rounded-xl border border-border px-4 py-2 hover-elevate">Annulla</button>
               <button
-                disabled={create.isPending || !form.name.trim()}
+                disabled={create.isPending || !form.name.trim() || (isSuperAdmin && !form.tenantId)}
                 onClick={handleCreate}
                 className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 font-bold text-primary-foreground disabled:opacity-50"
               >
