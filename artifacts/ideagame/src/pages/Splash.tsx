@@ -16,10 +16,11 @@ export default function Splash() {
   }, [navigate]);
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background">
+    <div className="relative flex min-h-screen flex-col overflow-hidden bg-background">
       <MockBanner note="splash di onboarding visivo" />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(245,182,66,0.12),_transparent_60%)]" />
-      <div className="relative flex flex-col items-center">
+      <div className="relative flex flex-1 items-center justify-center">
+      <div className="flex flex-col items-center">
         <motion.div
           initial={{ scale: 0.6, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
@@ -48,6 +49,7 @@ export default function Splash() {
           <div className="h-full bg-gradient-to-r from-primary to-accent transition-all" style={{ width: `${progress}%` }} />
         </div>
         <div className="mt-4 text-xs text-muted-foreground">v0.1.0 · offline ready</div>
+      </div>
       </div>
     </div>
   );

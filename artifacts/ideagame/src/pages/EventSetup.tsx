@@ -62,7 +62,7 @@ export default function EventSetup() {
   };
 
   return (
-    <div className="min-h-screen bg-background px-6 py-10">
+    <div className="min-h-screen bg-background px-6 py-10 pb-28">
       <div className="mx-auto max-w-5xl">
         <div className="flex items-center justify-between">
           <div>

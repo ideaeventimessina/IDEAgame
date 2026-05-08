@@ -259,6 +259,34 @@ export default function Player() {
           </motion.div>
         )}
 
+        {(step === 'join' || step === 'joining') && !event && (
+          <motion.div key="enter-code" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+            className="flex flex-1 flex-col items-center justify-center gap-6">
+            <div className="text-center">
+              <div className="text-display text-3xl font-black">Unisciti all'evento</div>
+              <div className="mt-2 text-sm text-muted-foreground">Inserisci il codice ricevuto dall'animatore</div>
+            </div>
+            <div className="w-full">
+              <input
+                value={nick}
+                onChange={e => setNick(e.target.value.toUpperCase())}
+                onKeyDown={e => { if (e.key === 'Enter' && nick.trim()) { const c = nick.trim(); setNick(''); fetchEvent(c); } }}
+                placeholder="ES. SORR40"
+                maxLength={10}
+                className="w-full rounded-2xl border border-border bg-card px-5 py-5 text-center text-3xl font-black tracking-[0.3em] text-foreground outline-none focus:border-primary"
+              />
+            </div>
+            {error && <div className="w-full rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-center text-sm text-destructive">{error}</div>}
+            <button
+              onClick={() => { const c = nick.trim(); if (c) { setNick(''); fetchEvent(c); } }}
+              disabled={!nick.trim()}
+              className="w-full rounded-2xl bg-primary py-4 text-lg font-black text-primary-foreground shadow-[0_0_30px_rgba(245,182,66,0.35)] disabled:opacity-40 hover:opacity-90"
+            >
+              Entra
+            </button>
+          </motion.div>
+        )}
+
         {(step === 'join' || step === 'joining') && event && (
           <motion.div key="join" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
             className="flex flex-1 flex-col">
