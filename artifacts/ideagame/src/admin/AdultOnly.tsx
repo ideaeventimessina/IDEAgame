@@ -162,7 +162,7 @@ export default function AdminAdultOnly() {
   const activeCount = cards.filter(c => c.isActive).length;
 
   return (
-    <AdminLayout>
+    <AdminLayout title="Adult Only 🔞">
       <div className="flex h-full flex-col min-h-0">
         {/* Header */}
         <div className="flex items-center gap-3 border-b border-border px-6 py-5 shrink-0">

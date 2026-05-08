@@ -154,6 +154,7 @@ export default function LiveControl() {
   // Evening mode state
   const [eveningMode, setEveningMode] = useState<EveningMode | null>(null);
   const [eveningBusy, setEveningBusy] = useState(false);
+  const [eveningIncludeAdult, setEveningIncludeAdult] = useState(false);
 
   // Quizzone control state
   const [quizPacks, setQuizPacks] = useState<QuizPack[]>([]);
@@ -564,7 +565,11 @@ export default function LiveControl() {
     if (!selectedEventId || eveningBusy) return;
     setEveningBusy(true); setError('');
     try {
-      await apiFetch(`/events/${selectedEventId}/evening/init`, { method: 'POST' });
+      await apiFetch(`/events/${selectedEventId}/evening/init`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ includeAdultOnly: eveningIncludeAdult }),
+      });
       const res = await apiFetch(`/events/${selectedEventId}/evening/advance`, {
         method: 'POST',
       }) as { evening: EveningMode; session: { id: string } | null };
@@ -574,7 +579,25 @@ export default function LiveControl() {
     finally { setEveningBusy(false); }
   };
 
-  const handleEveningAdvance = async () => {
+  const handleEveningAdvance = () => {
+    if (!selectedEventId || eveningBusy || !eveningMode) return;
+    // Find the next pending game
+    const nextPending = eveningMode.playlist.find(g => g.status === 'pending');
+    // If next game is Adult Only, require 18+ confirmation from the animator
+    if (nextPending?.slug === 'adult-only') {
+      confirm({
+        title: '🔞 Conferma Adult Only',
+        message: 'Stai per avviare il gioco Adult Only. Confermando dichiari che tutti i partecipanti hanno 18+ anni e che il contesto della serata è adatto.',
+        confirmLabel: 'Confermo — tutti 18+',
+        danger: false,
+        onConfirm: () => void doEveningAdvance(),
+      });
+    } else {
+      void doEveningAdvance();
+    }
+  };
+
+  const doEveningAdvance = async () => {
     if (!selectedEventId || eveningBusy) return;
     setEveningBusy(true); setError('');
     try {
@@ -813,7 +836,7 @@ export default function LiveControl() {
                      eveningMode.status === 'running' ? '⚡ In corso' : '🏁 Terminata'}
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    {eveningMode.playlist.filter(g => g.status === 'done').length}/3 completati
+                    {eveningMode.playlist.filter(g => g.status === 'done').length}/{eveningMode.playlist.length} completati
                   </span>
                   <button onClick={() => void handleEveningReset()} disabled={eveningBusy}
                     className="ml-auto text-xs text-muted-foreground hover:text-destructive disabled:opacity-40">↺</button>
@@ -864,11 +887,25 @@ export default function LiveControl() {
             )}
 
             {!eveningMode && (
-              <button onClick={() => void handleEveningInit()} disabled={eveningBusy}
-                className="w-full flex items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-black text-primary-foreground disabled:opacity-40">
-                {eveningBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                Inizia serata completa
-              </button>
+              <div className="space-y-3">
+                {/* Adult Only toggle */}
+                <div className="flex items-center gap-3 rounded-xl border border-border bg-background/40 px-4 py-3">
+                  <button
+                    onClick={() => setEveningIncludeAdult(v => !v)}
+                    className={`relative h-6 w-11 shrink-0 rounded-full border-2 transition-colors ${eveningIncludeAdult ? 'border-pink-500 bg-pink-500' : 'border-border bg-muted/30'}`}>
+                    <span className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${eveningIncludeAdult ? 'translate-x-5' : 'translate-x-0'}`} />
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-bold">Includi Adult Only 🔞</div>
+                    <div className="text-[10px] text-muted-foreground">Sequenza: Percorso → Coppie → Quizzone → Adult Only</div>
+                  </div>
+                </div>
+                <button onClick={() => void handleEveningInit()} disabled={eveningBusy}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-black text-primary-foreground disabled:opacity-40">
+                  {eveningBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  Inizia serata completa
+                </button>
+              </div>
             )}
           </div>
         )}

@@ -14,9 +14,24 @@ interface EveningGame { slug: string; label: string; emoji: string; sessionId: s
 interface EveningMode { id: string; eventId: string; playlist: EveningGame[]; status: string; }
 interface TeamScore { id: string; name: string; color: string; byGame: Record<string, number>; total: number; }
 
-const SLUGS = ['percorso-a-risate', 'gioco-coppie', 'quizzone'];
-const GAME_LABELS: Record<string, string> = { 'percorso-a-risate': 'Percorso', 'gioco-coppie': 'Coppie', 'quizzone': 'Quizzone' };
-const GAME_EMOJIS: Record<string, string> = { 'percorso-a-risate': '🎭', 'gioco-coppie': '🃏', 'quizzone': '❓' };
+const GAME_LABELS: Record<string, string> = {
+  'percorso-a-risate': 'Percorso',
+  'gioco-coppie': 'Coppie',
+  'quizzone': 'Quizzone',
+  'adult-only': 'Adult Only',
+};
+const GAME_EMOJIS: Record<string, string> = {
+  'percorso-a-risate': '🎭',
+  'gioco-coppie': '🃏',
+  'quizzone': '❓',
+  'adult-only': '🔞',
+};
+
+// Map slug to projector path
+function projectorPath(slug: string): string {
+  if (slug === 'percorso-a-risate') return 'percorso-risate';
+  return slug;
+}
 
 export default function SerataCompleta() {
   const [, navigate] = useLocation();
@@ -54,7 +69,10 @@ export default function SerataCompleta() {
   }, [eventId, on]);
 
   const gameProg = evening?.playlist ?? [];
+  const totalGames = gameProg.length;
   const doneCount = gameProg.filter(g => g.status === 'done').length;
+  // Derive slugs from the actual playlist order
+  const slugs = gameProg.map(g => g.slug);
 
   return (
     <div className="h-screen w-full overflow-y-auto px-4 py-6 sm:px-8"
@@ -74,7 +92,7 @@ export default function SerataCompleta() {
             }`}>
               {!evening && '—'}
               {evening?.status === 'idle'   && '⏳ In attesa'}
-              {evening?.status === 'running' && `⚡ In corso · ${doneCount}/3 completati`}
+              {evening?.status === 'running' && `⚡ In corso · ${doneCount}/${totalGames} completati`}
               {evening?.status === 'ended'   && '🏁 Serata terminata'}
             </div>
           </div>
@@ -99,18 +117,31 @@ export default function SerataCompleta() {
           <>
             {/* Game sequence */}
             <div className="rounded-2xl border border-border bg-card p-5 space-y-3">
-              <div className="text-xs uppercase tracking-widest text-muted-foreground">Scaletta</div>
+              <div className="flex items-center gap-2">
+                <div className="text-xs uppercase tracking-widest text-muted-foreground flex-1">Scaletta</div>
+                {gameProg.some(g => g.slug === 'adult-only') && (
+                  <span className="rounded-full border border-pink-500/40 bg-pink-500/10 px-2 py-0.5 text-[10px] font-bold text-pink-400">
+                    🔞 Adult Only incluso
+                  </span>
+                )}
+              </div>
               <div className="space-y-2">
                 {gameProg.map((g, i) => (
                   <motion.div key={g.slug}
                     initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.06 }}
                     className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${
-                      g.status === 'running' ? 'border-green-500/40 bg-green-500/10' :
-                      g.status === 'done'    ? 'border-border/40 bg-background/30 opacity-60' :
-                      'border-border/20 bg-background/10 opacity-40'
+                      g.slug === 'adult-only'
+                        ? g.status === 'running' ? 'border-pink-500/40 bg-pink-500/10' :
+                          g.status === 'done' ? 'border-pink-500/20 opacity-60' : 'border-pink-500/20 opacity-40'
+                        : g.status === 'running' ? 'border-green-500/40 bg-green-500/10' :
+                          g.status === 'done'    ? 'border-border/40 bg-background/30 opacity-60' :
+                          'border-border/20 bg-background/10 opacity-40'
                     }`}>
                     <span className="text-xl">{g.emoji}</span>
                     <span className="flex-1 font-bold">{g.label}</span>
+                    {g.slug === 'adult-only' && g.status === 'pending' && (
+                      <span className="text-[10px] font-bold text-pink-400 border border-pink-500/30 rounded-full px-2 py-0.5">18+</span>
+                    )}
                     <span className={`rounded-full border px-2.5 py-0.5 text-[10px] font-black uppercase tracking-widest ${
                       g.status === 'running' ? 'border-green-500/60 bg-green-500/15 text-green-400' :
                       g.status === 'done'    ? 'border-border text-muted-foreground'             :
@@ -120,7 +151,7 @@ export default function SerataCompleta() {
                     </span>
                     {g.sessionId && (
                       <a
-                        href={`${BASE}${g.slug === 'percorso-a-risate' ? 'percorso-risate' : g.slug}?s=${g.sessionId}&e=${eventId}`}
+                        href={`${BASE}${projectorPath(g.slug)}?s=${g.sessionId}&e=${eventId}`}
                         target="_blank" rel="noopener noreferrer"
                         className="text-primary hover:underline">
                         <ChevronRight className="h-4 w-4" />
@@ -132,7 +163,7 @@ export default function SerataCompleta() {
             </div>
 
             {/* Scoreboard table */}
-            {scores.length > 0 && (
+            {scores.length > 0 && slugs.length > 0 && (
               <div className="rounded-2xl border border-border bg-card p-5 space-y-3">
                 <div className="flex items-center gap-2">
                   <Trophy className="h-4 w-4 text-primary" />
@@ -143,9 +174,9 @@ export default function SerataCompleta() {
                     <thead>
                       <tr className="border-b border-border">
                         <th className="pb-2 text-left text-xs text-muted-foreground font-normal">Squadra</th>
-                        {SLUGS.map(s => (
-                          <th key={s} className="pb-2 px-2 text-center text-xs text-muted-foreground font-normal whitespace-nowrap">
-                            {GAME_EMOJIS[s]} {GAME_LABELS[s]}
+                        {slugs.map(s => (
+                          <th key={s} className={`pb-2 px-2 text-center text-xs font-normal whitespace-nowrap ${s === 'adult-only' ? 'text-pink-400/70' : 'text-muted-foreground'}`}>
+                            {GAME_EMOJIS[s] ?? '🎮'} {GAME_LABELS[s] ?? s}
                           </th>
                         ))}
                         <th className="pb-2 text-right text-xs font-black text-primary">TOT</th>
@@ -162,7 +193,7 @@ export default function SerataCompleta() {
                               <span className="font-bold truncate max-w-[100px]" style={{ color: t.color }}>{t.name}</span>
                             </div>
                           </td>
-                          {SLUGS.map(s => (
+                          {slugs.map(s => (
                             <td key={s} className="py-2.5 px-2 text-center tabular-nums text-muted-foreground">
                               {t.byGame[s] ?? 0}
                             </td>

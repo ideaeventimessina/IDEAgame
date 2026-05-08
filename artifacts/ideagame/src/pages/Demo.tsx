@@ -779,6 +779,7 @@ export default function Demo() {
                     { page: 'Lobby attesa giocatori', url: '/lobby', status: '🟡 Mock', note: 'Giocatori da polling real-time' },
                     { page: 'Gioco delle Coppie', url: coppieUrl || '/coppie?s=SESSION_ID&e=EVENT_ID', status: '✅ Reale', note: 'Fully real, socket-driven' },
                     { page: 'Quizzone (board)', url: quizzoneUrl || '/quizzone?s=SESSION_ID&e=EVENT_ID', status: '✅ Reale', note: 'Domande da pack DB' },
+                    { page: 'Adult Only 🔞', url: '/adult-only?s=SESSION_ID&e=EVENT_ID', status: '✅ Reale', note: 'Opzionale — abilitato da toggle in Serata Completa. Solo per adulti 18+.' },
                     { page: 'Scoreboard / Podio', url: scoreUrl || '/scoreboard?e=EVENT_ID', status: '✅ Reale', note: 'Socket + polling 8s' },
                     { page: 'GameStage /game/:slug', url: '/game/percorso-a-risate', status: '🟡 Demo', note: 'Animazioni locali, nessun DB' },
                   ].map(r => (

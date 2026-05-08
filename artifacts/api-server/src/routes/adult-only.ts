@@ -516,22 +516,13 @@ router.post(
     team.score = Math.max(0, team.score + Number(delta));
 
     // Persist score to scores table
-    const currentCard =
-      state.currentCardIdx >= 0
-        ? state.cards[state.currentCardIdx]
-        : null;
     if (delta > 0) {
       await db.insert(scoresTable).values({
         eventId,
         teamId,
-        sessionId,
-        roundIndex: state.currentCardIdx,
-        value: Number(delta),
-        metadata: {
-          gameSlug: "adult-only",
-          cardId: currentCard?.id ?? null,
-          cardTitle: currentCard?.title ?? null,
-        },
+        gameSlug: "adult-only",
+        round: Math.max(1, state.currentCardIdx + 1),
+        points: Number(delta),
       });
     }
 

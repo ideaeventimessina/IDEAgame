@@ -436,7 +436,7 @@ export default function Player() {
                 ) : gameState.gameSlug === 'adult-only' ? (
                   <AdultOnlyPhoneController
                     state={adultOnlyStateP}
-                    teamId={player.teamId}
+                    teamId={player.teamId ?? ''}
                     teamColor={myTeam?.color ?? '#8B5CF6'}
                   />
                 ) : gameState.gameSlug === 'quizzone' ? (
