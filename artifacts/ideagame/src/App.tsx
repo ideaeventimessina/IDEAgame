@@ -17,6 +17,7 @@ import TenantSelect from "@/pages/TenantSelect";
 import LoginPage from "@/pages/Login";
 import EventSetup from "@/pages/EventSetup";
 import LiveControl from "@/pages/LiveControl";
+import Demo from "@/pages/Demo";
 import GameCoppie from "@/pages/GameCoppie";
 import GameQuizzone from "@/pages/GameQuizzone";
 import Permissions from "@/pages/Permissions";
@@ -47,6 +48,7 @@ function Router() {
       <Route path="/login" component={LoginPage} />
       <Route path="/event-setup" component={EventSetup} />
       <Route path="/control" component={LiveControl} />
+      <Route path="/demo" component={Demo} />
       <Route path="/coppie" component={GameCoppie} />
       <Route path="/quizzone" component={GameQuizzone} />
       <Route path="/game/:slug" component={GameStage} />

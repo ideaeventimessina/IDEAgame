@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useLocation } from 'wouter';
-import { Tv, Smartphone, ShieldCheck } from 'lucide-react';
+import { Tv, Smartphone, ShieldCheck, Rocket } from 'lucide-react';
 import { useT } from '@/i18n';
 
 export function DemoSwitcher() {
@@ -8,7 +8,8 @@ export function DemoSwitcher() {
   const t = useT();
   const isAdmin = location.startsWith('/admin');
   const isPlay = location.startsWith('/play');
-  const isStage = !isAdmin && !isPlay;
+  const isDemo = location.startsWith('/demo');
+  const isStage = !isAdmin && !isPlay && !isDemo;
 
   const item = (active: boolean, icon: ReactNode, label: string, to: string) => (
     <button
@@ -26,8 +27,9 @@ export function DemoSwitcher() {
       <div className="flex items-center gap-1 rounded-full border border-border bg-card/85 p-1 shadow-2xl backdrop-blur-md">
         <span className="px-3 text-xs uppercase tracking-widest text-muted-foreground">{t('demo.switcher')}</span>
         {item(isStage, <Tv className="h-4 w-4" />, t('demo.stage'), '/')}
-        {item(isPlay, <Smartphone className="h-4 w-4" />, t('demo.player'), '/play')}
+        {item(isPlay,  <Smartphone className="h-4 w-4" />, t('demo.player'), '/play')}
         {item(isAdmin, <ShieldCheck className="h-4 w-4" />, t('demo.admin'), '/admin')}
+        {item(isDemo,  <Rocket className="h-4 w-4" />, 'Demo', '/demo')}
       </div>
     </div>
   );
