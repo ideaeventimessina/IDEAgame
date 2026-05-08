@@ -12,7 +12,7 @@ import { useListGames, useGetCurrentEvent, useListPlayers, getListPlayersQueryKe
 type IconName = Parameters<typeof GameIcon>[0]['name'];
 
 // Slugs that are fully playable (green PRONTO badge)
-const READY_SLUGS = new Set(['quizzone', 'gioco-coppie', 'gioco-delle-coppie', 'percorso-a-risate', 'adult-only', 'sfida-ballo', 'parola-alle-spalle', 'karaoke-battle', 'saramusica']);
+const READY_SLUGS = new Set(['quizzone', 'gioco-coppie', 'gioco-delle-coppie', 'percorso-a-risate', 'adult-only', 'sfida-ballo', 'sfida-di-ballo', 'parola-alle-spalle', 'karaoke-battle', 'saramusica']);
 
 // Octagon orbital positions — 3-2-3 layout around center logo
 // Top row: 3 · Middle: 2 sides · Bottom row: 3
