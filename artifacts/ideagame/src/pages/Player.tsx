@@ -35,6 +35,14 @@ interface QuizzoneReveal {
   scores: { teamId: string; name: string; color: string; roundPoints: number; total: number }[];
 }
 interface ActiveSession { id: string; status: string; gameSlug: string; currentRound: number; totalRounds: number }
+interface PercorsoStepInfo { id: string; title: string; description: string; challengeType: string; points: number; timeLimit: number; optionalMediaUrl: string | null; }
+interface PercorsoTeamInfo { id: string; name: string; color: string; score: number; }
+interface PercorsoStateP {
+  setId: string; setName: string; steps: PercorsoStepInfo[];
+  currentStepIdx: number; teams: PercorsoTeamInfo[];
+  status: 'idle' | 'running' | 'ended';
+  lastFlash: { text: string; type: string } | null; timerStartedAt: string | null;
+}
 
 type Step = 'loading' | 'join' | 'joining' | 'play' | 'error';
 
@@ -65,6 +73,7 @@ export default function Player() {
   const [coppieBoard, setCoppieBoard] = useState<CoppieBoardState | null>(null);
   const [quizzoneQuestion, setQuizzoneQuestion] = useState<QuizzoneQuestion | null>(null);
   const [quizzoneReveal, setQuizzoneReveal] = useState<QuizzoneReveal | null>(null);
+  const [percorsoStateP, setPercorsoStateP] = useState<PercorsoStateP | null>(null);
 
   const { connected, on, emit } = useEventSocket(event?.id ?? null);
 
@@ -99,6 +108,11 @@ export default function Player() {
           const board = (boardData as { board?: CoppieBoardState }).board ?? boardData as CoppieBoardState;
           setCoppieBoard(board);
         }
+      }
+      // If percorso is running, fetch current state
+      if (session.gameSlug === 'percorso-a-risate') {
+        const ps = await apiFetch(`/percorso/sessions/${session.id}/state`).catch(() => null) as PercorsoStateP | null;
+        if (ps) setPercorsoStateP(ps);
       }
       // If quizzone is running, fetch current state
       if (session.gameSlug === 'quizzone') {
@@ -187,6 +201,16 @@ export default function Player() {
         setQuizzoneReveal(data);
       }),
       on<{ sessionId: string }>('quiz:ended', () => {
+        setGameState(p => ({ ...p, status: 'ended' }));
+      }),
+      on<{ state: PercorsoStateP }>('path:started', ({ state }) => {
+        setPercorsoStateP(state);
+        setGameState(p => ({ ...p, status: 'running' }));
+      }),
+      on<{ state: PercorsoStateP }>('path:step_changed', ({ state }) => setPercorsoStateP(state)),
+      on<{ state: PercorsoStateP }>('path:score_updated', ({ state }) => setPercorsoStateP(state)),
+      on<{ state: PercorsoStateP }>('path:ended', ({ state }) => {
+        setPercorsoStateP(state);
         setGameState(p => ({ ...p, status: 'ended' }));
       }),
     ];
@@ -375,6 +399,12 @@ export default function Player() {
                     teamId={player.teamId}
                     teamColor={myTeam?.color ?? '#8B5CF6'}
                     onBoardUpdate={setCoppieBoard}
+                  />
+                ) : gameState.gameSlug === 'percorso-a-risate' ? (
+                  <PercorsoPhoneController
+                    state={percorsoStateP}
+                    teamId={player.teamId}
+                    teamColor={myTeam?.color ?? '#8B5CF6'}
                   />
                 ) : gameState.gameSlug === 'quizzone' ? (
                   <QuizzonePhoneController
@@ -598,6 +628,138 @@ function QuizzonePhoneController({ question, reveal, sessionId, playerId, teamCo
           className="rounded-2xl border border-primary/40 bg-primary/10 px-4 py-3 text-center text-sm font-bold text-primary">
           ✓ Risposta inviata — attendi la rivelazione
         </motion.div>
+      )}
+    </div>
+  );
+}
+
+// ─── Percorso Phone Controller ──────────────────────────────────────────────────
+
+const PERCORSO_EMOJIS: Record<string, string> = {
+  sfida: '⚡', domanda: '❓', mimo: '🎭', ballo: '💃',
+  veloce: '🏃', coppia: '👫', reazione: '😱', fantasia: '🌟',
+};
+
+function PercorsoPhoneController({ state, teamId, teamColor }: {
+  state: PercorsoStateP | null;
+  teamId: string | null;
+  teamColor: string;
+}) {
+  if (!state) {
+    return (
+      <div className="mt-8 flex flex-col items-center gap-4 text-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <div className="text-sm text-muted-foreground">In attesa del percorso…</div>
+      </div>
+    );
+  }
+
+  const myTeam = state.teams.find(t => t.id === teamId);
+  const currentStep = state.currentStepIdx >= 0 ? state.steps[state.currentStepIdx] ?? null : null;
+  const emoji = currentStep ? (PERCORSO_EMOJIS[currentStep.challengeType] ?? '🎯') : null;
+  const sortedTeams = [...state.teams].sort((a, b) => b.score - a.score);
+
+  // Timer countdown
+  const [timeLeft, setTimeLeft] = useState(currentStep?.timeLimit ?? 30);
+  useEffect(() => {
+    if (!state.timerStartedAt || !currentStep) { setTimeLeft(currentStep?.timeLimit ?? 30); return; }
+    const update = () => {
+      const elapsed = (Date.now() - new Date(state.timerStartedAt!).getTime()) / 1000;
+      setTimeLeft(Math.max(0, currentStep.timeLimit - elapsed));
+    };
+    update();
+    const i = setInterval(update, 500);
+    return () => clearInterval(i);
+  }, [state.timerStartedAt, state.currentStepIdx, currentStep?.timeLimit]);
+
+  return (
+    <div className="mt-4 flex flex-col gap-3">
+      {/* Status bar */}
+      <div className="flex items-center justify-between rounded-xl border border-border bg-card/60 px-3 py-2 text-xs">
+        <span className="font-bold" style={{ color: myTeam?.color ?? teamColor }}>{myTeam?.name ?? '—'}</span>
+        <span className="font-bold tabular-nums" style={{ color: myTeam?.color ?? teamColor }}>{myTeam?.score ?? 0} pt</span>
+        <span className={`font-bold ${state.status === 'running' ? 'text-green-400' : state.status === 'ended' ? 'text-primary' : 'text-muted-foreground'}`}>
+          {state.status === 'idle' ? '⏳ Attesa' : state.status === 'running' ? '⚡ In corso' : '🏁 Fine'}
+        </span>
+      </div>
+
+      {/* Idle */}
+      {state.status === 'idle' && (
+        <div className="mt-4 rounded-2xl border border-border bg-card/40 px-6 py-6 text-center">
+          <div className="text-4xl mb-3">🎭</div>
+          <div className="text-display text-xl font-black">{state.setName}</div>
+          <div className="mt-2 text-sm text-muted-foreground">
+            L'animatore sta per iniziare il percorso…
+          </div>
+        </div>
+      )}
+
+      {/* Running — current challenge */}
+      {state.status === 'running' && currentStep && (
+        <>
+          {/* Step counter */}
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>Sfida {state.currentStepIdx + 1}/{state.steps.length}</span>
+            <span className="tabular-nums">{Math.ceil(timeLeft)}s</span>
+          </div>
+
+          {/* Timer bar */}
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-border/40">
+            <div className="h-full rounded-full transition-all duration-300"
+              style={{
+                width: `${currentStep.timeLimit > 0 ? (timeLeft / currentStep.timeLimit) * 100 : 0}%`,
+                background: timeLeft / currentStep.timeLimit > 0.5 ? '#22c55e' : timeLeft / currentStep.timeLimit > 0.25 ? '#eab308' : '#ef4444',
+              }} />
+          </div>
+
+          {/* Challenge card */}
+          <motion.div
+            key={state.currentStepIdx}
+            initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+            className="rounded-2xl border border-primary/30 bg-primary/10 px-5 py-5 text-center">
+            <div className="text-4xl mb-2">{emoji}</div>
+            <div className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: teamColor }}>
+              {currentStep.challengeType} • {currentStep.points} pt
+            </div>
+            <div className="text-display text-xl font-black leading-snug">{currentStep.title}</div>
+            {currentStep.description && (
+              <div className="mt-2 text-sm text-muted-foreground">{currentStep.description}</div>
+            )}
+          </motion.div>
+
+          {/* Optional media */}
+          {currentStep.optionalMediaUrl && (
+            <img src={currentStep.optionalMediaUrl} alt="" className="w-full max-h-40 rounded-xl object-contain border border-border" />
+          )}
+        </>
+      )}
+
+      {/* Ended */}
+      {state.status === 'ended' && (
+        <div className="rounded-2xl border border-primary/40 bg-primary/10 px-5 py-5 text-center">
+          <div className="text-display text-xl font-black text-primary">🏆 Fine percorso!</div>
+          <div className="mt-3 space-y-1.5">
+            {sortedTeams.map((tm, i) => (
+              <div key={tm.id} className="flex items-center justify-between text-sm">
+                <span style={{ color: tm.color }}>{i === 0 ? '👑 ' : `${i + 1}. `}{tm.name}</span>
+                <span className="font-black tabular-nums" style={{ color: tm.color }}>{tm.score}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Team scores */}
+      {state.teams.length > 0 && (
+        <div className="flex gap-2">
+          {sortedTeams.map(tm => (
+            <div key={tm.id} className={`flex-1 rounded-xl border px-3 py-2 text-center ${tm.id === teamId ? 'border-opacity-80' : 'border-border opacity-60'}`}
+              style={{ borderColor: tm.id === teamId ? tm.color : undefined }}>
+              <div className="text-[10px] text-muted-foreground truncate">{tm.name}</div>
+              <div className="text-display text-lg font-black tabular-nums" style={{ color: tm.color }}>{tm.score}</div>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

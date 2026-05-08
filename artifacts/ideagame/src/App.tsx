@@ -20,6 +20,8 @@ import LiveControl from "@/pages/LiveControl";
 import Demo from "@/pages/Demo";
 import GameCoppie from "@/pages/GameCoppie";
 import GameQuizzone from "@/pages/GameQuizzone";
+import GamePercorso from "@/pages/GamePercorso";
+import AdminPercorsoRisate from "@/admin/PercorsoRisate";
 import Permissions from "@/pages/Permissions";
 import AdminSystem from "@/admin/System";
 import AdminDashboard from "@/admin/Dashboard";
@@ -51,6 +53,7 @@ function Router() {
       <Route path="/demo" component={Demo} />
       <Route path="/coppie" component={GameCoppie} />
       <Route path="/quizzone" component={GameQuizzone} />
+      <Route path="/percorso-risate" component={GamePercorso} />
       <Route path="/game/:slug" component={GameStage} />
       <Route path="/lobby" component={Lobby} />
       <Route path="/scoreboard" component={Scoreboard} />
@@ -69,6 +72,7 @@ function Router() {
       <Route path="/admin/system"><Guard route="/admin/system"><AdminSystem /></Guard></Route>
       <Route path="/admin/card-sets"><Guard route="/admin/card-sets"><AdminCardSets /></Guard></Route>
       <Route path="/admin/quiz-packs"><Guard route="/admin/quiz-packs"><AdminQuizPacks /></Guard></Route>
+      <Route path="/admin/percorso-risate"><Guard route="/admin/percorso-risate"><AdminPercorsoRisate /></Guard></Route>
       <Route component={NotFound} />
     </Switch>
   );

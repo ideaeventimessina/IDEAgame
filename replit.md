@@ -68,6 +68,28 @@ Pagine intenzionalmente lasciate mock perché fuori dallo scope del wiring backe
 7. **Migration Drizzle ufficiale** per `user_sessions` e per le 9+ nuove tabelle (oggi create via SQL out-of-band).
 8. **Hardening sicurezza**: CSRF token, rate-limit su `/auth/login`, password reset/magic link.
 
+### 🎮 Percorso a Risate — architettura (completato)
+
+| Componente | Dove | Note |
+|---|---|---|
+| DB `laughing_path_sets` / `laughing_path_steps` / `laughing_path_sessions` | `lib/db/src/schema/percorso.ts` | sets + steps con challenge_type, points, time_limit; sessions con state JSONB |
+| API route `/percorso/*` | `artifacts/api-server/src/routes/percorso.ts` | CRUD sets/steps + init/next/skip/score/end di sessione |
+| Admin deck `/admin/percorso-risate` | `artifacts/ideagame/src/admin/PercorsoRisate.tsx` | crea set, aggiungi/ordina/attiva/rimuovi sfide per tipo |
+| Projection board `/percorso-risate?s=SID&e=EID` | `artifacts/ideagame/src/pages/GamePercorso.tsx` | sfida gigante, badge tipo+punti, timer, punteggi squadra in basso, podio a fine |
+| Player phone controller | `artifacts/ideagame/src/pages/Player.tsx` (PercorsoPhoneController) | sfida attiva su schermo, timer countdown, classifica live |
+| LiveControl panel | `artifacts/ideagame/src/pages/LiveControl.tsx` | selettore set, init, avanti/salta, assegna punti per squadra, fine→podio |
+
+**Tipi di sfida supportati**: sfida⚡, domanda❓, mimo🎭, ballo💃, veloce🏃, coppia👫, reazione😱, fantasia🌟
+
+**Flusso di gioco**:
+1. Animatore crea set in `/admin/percorso-risate` (aggiunge sfide per tipo)
+2. In LiveControl: crea sessione `percorso-a-risate` → avvia → pannello percorso appare → seleziona set → "Inizializza"
+3. Board disponibile a `/percorso-risate?s=SESSION_ID&e=EVENT_ID` (proiettore)
+4. Giocatori su `/play?e=JOINCODE` vedono la sfida attiva sul telefono con timer
+5. Match/avanzamento aggiornati via Socket.IO in real-time su tutti i device
+
+**Dati demo**: 1 set "Serata Classica" con 10 sfide (tenant Mango)
+
 ### 🎮 Gioco delle Coppie — architettura (completato)
 
 | Componente | Dove | Note |

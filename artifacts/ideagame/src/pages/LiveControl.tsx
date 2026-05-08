@@ -77,6 +77,23 @@ const TYPE_COLORS: Record<string, string> = {
   bonus_final: 'text-pink-400 border-pink-400/30 bg-pink-400/10',
 };
 
+const PERCORSO_CHALLENGE_EMOJIS: Record<string, string> = {
+  sfida: '⚡', domanda: '❓', mimo: '🎭', ballo: '💃',
+  veloce: '🏃', coppia: '👫', reazione: '😱', fantasia: '🌟',
+};
+
+interface PercorsoPathSet { id: string; name: string; description: string; }
+interface PercorsoStepState {
+  id: string; title: string; description: string; challengeType: string;
+  points: number; timeLimit: number; optionalMediaUrl: string | null;
+}
+interface PercorsoStateLC {
+  setId: string; setName: string; steps: PercorsoStepState[];
+  currentStepIdx: number; teams: { id: string; name: string; color: string; score: number }[];
+  status: 'idle' | 'running' | 'ended';
+  lastFlash: { text: string; type: string } | null; timerStartedAt: string | null;
+}
+
 export default function LiveControl() {
   const [, navigate] = useLocation();
   const qc = useQueryClient();
@@ -99,6 +116,13 @@ export default function LiveControl() {
   const [coppieMode, setCoppieMode] = useState('teams');
   const [coppieBusy, setCoppieBusy] = useState(false);
   const [coppieMsg, setCoppieMsg] = useState('');
+
+  // Percorso a Risate state
+  const [percorsoSets, setPercorsoSets] = useState<PercorsoPathSet[]>([]);
+  const [selectedPercorsoSetId, setSelectedPercorsoSetId] = useState('');
+  const [percorsoState, setPercorsoState] = useState<PercorsoStateLC | null>(null);
+  const [percorsoBusy, setPercorsoBusy] = useState(false);
+  const [percorsoMsg, setPercorsoMsg] = useState('');
 
   // Quizzone control state
   const [quizPacks, setQuizPacks] = useState<QuizPack[]>([]);
@@ -164,6 +188,13 @@ export default function LiveControl() {
         setQuizzoneRevealed(true);
         qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) });
       }),
+      on<{ state: PercorsoStateLC }>('path:started', ({ state }) => setPercorsoState(state)),
+      on<{ state: PercorsoStateLC }>('path:step_changed', ({ state }) => setPercorsoState(state)),
+      on<{ state: PercorsoStateLC }>('path:score_updated', ({ state }) => {
+        setPercorsoState(state);
+        qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) });
+      }),
+      on<{ state: PercorsoStateLC }>('path:ended', ({ state }) => setPercorsoState(state)),
     ];
     return () => unsubs.forEach(u => u());
   }, [selectedEventId, on, qc]);
@@ -188,6 +219,22 @@ export default function LiveControl() {
       .then(d => setPackDetail(d as QuizPack))
       .catch(() => setPackDetail(null));
   }, [selectedPackId]);
+
+  // Load percorso sets when percorso session is active
+  useEffect(() => {
+    if (session?.gameSlug !== 'percorso-a-risate') return;
+    apiFetch('/percorso/sets')
+      .then(d => setPercorsoSets(d as PercorsoPathSet[]))
+      .catch(() => setPercorsoSets([]));
+  }, [session?.gameSlug, session?.id]);
+
+  // Sync percorso state from API when session is active
+  useEffect(() => {
+    if (session?.gameSlug !== 'percorso-a-risate' || !session?.id) return;
+    apiFetch(`/percorso/sessions/${session.id}/state`)
+      .then(d => setPercorsoState(d as PercorsoStateLC))
+      .catch(() => setPercorsoState(null));
+  }, [session?.gameSlug, session?.id]);
 
   // Poll response count when question is active and not revealed
   useEffect(() => {
@@ -214,6 +261,13 @@ export default function LiveControl() {
     setQuizzoneResponseCount(0);
     setRevealAnswer(false);
     setQuizzoneMsg('');
+  }, [session?.id]);
+
+  // Reset percorso state when session changes
+  useEffect(() => {
+    setSelectedPercorsoSetId('');
+    setPercorsoState(null);
+    setPercorsoMsg('');
   }, [session?.id]);
 
   const withBusy = useCallback(async (fn: () => Promise<void>) => {
@@ -286,6 +340,77 @@ export default function LiveControl() {
     await recordScore.mutateAsync({ id: selectedEventId, data: { teamId, gameSlug: session.gameSlug, round: session.currentRound, points: delta } });
     qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) });
   });
+
+  // ─── Percorso handlers ─────────────────────────────────────────────────────
+
+  const handlePercorsoInit = async () => {
+    if (!session || !selectedPercorsoSetId || percorsoBusy) return;
+    setPercorsoBusy(true); setPercorsoMsg('');
+    try {
+      const s = await apiFetch(`/percorso/sessions/${session.id}/init`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ setId: selectedPercorsoSetId }),
+      }) as PercorsoStateLC;
+      setPercorsoState(s);
+      setPercorsoMsg('✓ Percorso inizializzato!');
+    } catch (e) { setPercorsoMsg((e as Error).message); }
+    finally { setPercorsoBusy(false); }
+  };
+
+  const handlePercorsoNext = async () => {
+    if (!session || percorsoBusy) return;
+    setPercorsoBusy(true); setPercorsoMsg('');
+    try {
+      const s = await apiFetch(`/percorso/sessions/${session.id}/next`, { method: 'POST' }) as PercorsoStateLC;
+      setPercorsoState(s);
+    } catch (e) { setPercorsoMsg((e as Error).message); }
+    finally { setPercorsoBusy(false); }
+  };
+
+  const handlePercorsoSkip = async () => {
+    if (!session || percorsoBusy) return;
+    setPercorsoBusy(true); setPercorsoMsg('');
+    try {
+      const s = await apiFetch(`/percorso/sessions/${session.id}/skip`, { method: 'POST' }) as PercorsoStateLC;
+      setPercorsoState(s);
+    } catch (e) { setPercorsoMsg((e as Error).message); }
+    finally { setPercorsoBusy(false); }
+  };
+
+  const handlePercorsoScore = async (teamId: string, points: number) => {
+    if (!session || percorsoBusy) return;
+    setPercorsoBusy(true);
+    try {
+      const s = await apiFetch(`/percorso/sessions/${session.id}/score`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamId, points }),
+      }) as PercorsoStateLC;
+      setPercorsoState(s);
+      qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) });
+    } catch (e) { setPercorsoMsg((e as Error).message); }
+    finally { setPercorsoBusy(false); }
+  };
+
+  const handlePercorsoEnd = () => {
+    confirm({
+      title: 'Fine Percorso',
+      message: 'Vuoi terminare il percorso e andare al podio?',
+      confirmLabel: 'Fine → Podio',
+      danger: false,
+      onConfirm: async () => {
+        if (!session || percorsoBusy) return;
+        setPercorsoBusy(true); setPercorsoMsg('');
+        try {
+          await apiFetch(`/percorso/sessions/${session.id}/end`, { method: 'POST' });
+          setPercorsoState(s => s ? { ...s, status: 'ended' } : null);
+          navigate(`/scoreboard?e=${selectedEventId}`);
+        } catch (e) { setPercorsoMsg((e as Error).message); }
+        finally { setPercorsoBusy(false); }
+      },
+    });
+  };
 
   // ─── Quizzone control handlers ─────────────────────────────────────────────
 
@@ -820,6 +945,144 @@ export default function LiveControl() {
                 <ExternalLink className="h-4 w-4" /> Board
               </a>
             </div>
+          </div>
+        )}
+
+        {/* ─── Percorso a Risate panel ───────────────────────────────── */}
+        {session?.gameSlug === 'percorso-a-risate' && (
+          <div className="rounded-2xl border border-border bg-card p-5 space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">🎭</span>
+              <div className="text-xs uppercase tracking-widest text-muted-foreground">Percorso a Risate</div>
+              <a href={`${BASE}percorso-risate?s=${session.id}&e=${selectedEventId}`} target="_blank" rel="noopener noreferrer"
+                className="ml-auto flex items-center gap-1 text-xs text-primary hover:underline">
+                <ExternalLink className="h-3 w-3" /> Proiettore
+              </a>
+            </div>
+
+            {percorsoMsg && (
+              <div className={`rounded-xl px-4 py-2 text-sm ${percorsoMsg.startsWith('✓') ? 'border border-green-500/40 bg-green-500/10 text-green-400' : 'border border-destructive/40 bg-destructive/10 text-destructive'}`}>
+                {percorsoMsg}
+              </div>
+            )}
+
+            {/* Status */}
+            {percorsoState && (
+              <div className="flex items-center gap-2 text-xs">
+                <span className={`rounded-full border px-2.5 py-1 font-bold ${
+                  percorsoState.status === 'running' ? 'border-green-500/40 bg-green-500/10 text-green-400' :
+                  percorsoState.status === 'ended' ? 'border-destructive/40 bg-destructive/10 text-destructive' :
+                  'border-border text-muted-foreground'
+                }`}>
+                  {percorsoState.status === 'idle' ? 'In attesa' : percorsoState.status === 'running' ? '⚡ In corso' : '🏁 Terminato'}
+                </span>
+                {percorsoState.status !== 'idle' && (
+                  <span className="text-muted-foreground">
+                    Sfida {Math.max(0, percorsoState.currentStepIdx + 1)}/{percorsoState.steps.length}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Current step preview */}
+            {percorsoState?.status === 'running' && percorsoState.currentStepIdx >= 0 && (() => {
+              const step = percorsoState.steps[percorsoState.currentStepIdx];
+              if (!step) return null;
+              return (
+                <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">{PERCORSO_CHALLENGE_EMOJIS[step.challengeType] ?? '🎯'}</span>
+                    <span className="text-xs font-bold text-primary capitalize">{step.challengeType}</span>
+                    <span className="ml-auto text-xs text-muted-foreground">{step.points} pt</span>
+                  </div>
+                  <div className="text-sm font-bold leading-snug">{step.title}</div>
+                  {step.description && <div className="text-xs text-muted-foreground">{step.description}</div>}
+                </div>
+              );
+            })()}
+
+            {/* Init: no state yet */}
+            {!percorsoState && (
+              <>
+                <div>
+                  <div className="text-xs text-muted-foreground mb-1">Set sfide</div>
+                  <select value={selectedPercorsoSetId} onChange={e => setSelectedPercorsoSetId(e.target.value)}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm">
+                    <option value="">— seleziona set —</option>
+                    {percorsoSets.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </div>
+                <button disabled={!selectedPercorsoSetId || percorsoBusy}
+                  onClick={() => void handlePercorsoInit()}
+                  className="w-full rounded-xl bg-primary py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-40 flex items-center justify-center gap-2">
+                  {percorsoBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  Inizializza
+                </button>
+              </>
+            )}
+
+            {/* Idle: ready to start */}
+            {percorsoState?.status === 'idle' && (
+              <>
+                <div className="rounded-xl border border-border bg-background/50 px-3 py-2 text-xs text-muted-foreground">
+                  Set: <span className="font-bold text-foreground">{percorsoState.setName}</span> — {percorsoState.steps.length} sfide
+                </div>
+                <button onClick={() => void handlePercorsoNext()} disabled={percorsoBusy}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl bg-green-500 py-3 text-sm font-black text-background disabled:opacity-40">
+                  {percorsoBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                  Inizia il percorso!
+                </button>
+              </>
+            )}
+
+            {/* Running controls */}
+            {percorsoState?.status === 'running' && (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => void handlePercorsoNext()}
+                    disabled={percorsoBusy || percorsoState.currentStepIdx >= percorsoState.steps.length - 1}
+                    className="flex items-center justify-center gap-2 rounded-xl bg-primary py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-40">
+                    {percorsoBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <SkipForward className="h-4 w-4" />}
+                    Avanti
+                  </button>
+                  <button onClick={() => void handlePercorsoSkip()}
+                    disabled={percorsoBusy || percorsoState.currentStepIdx >= percorsoState.steps.length - 1}
+                    className="flex items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-sm font-bold disabled:opacity-40">
+                    ⏭ Salta
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="text-xs text-muted-foreground uppercase tracking-widest">Assegna punti</div>
+                  {percorsoState.teams.map(tm => (
+                    <div key={tm.id} className="flex items-center gap-2">
+                      <span className="h-3 w-3 rounded-full shrink-0" style={{ background: tm.color }} />
+                      <span className="flex-1 truncate text-sm font-bold">{tm.name}</span>
+                      <span className="text-display text-base font-black tabular-nums w-12 text-right" style={{ color: tm.color }}>{tm.score}</span>
+                      {[100, 150, 200].map(pts => (
+                        <button key={pts} onClick={() => void handlePercorsoScore(tm.id, pts)} disabled={percorsoBusy}
+                          className="rounded-lg border border-border px-2 py-1.5 text-xs font-bold hover-elevate disabled:opacity-40">
+                          +{pts}
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+
+                <button onClick={handlePercorsoEnd} disabled={percorsoBusy}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl border border-destructive/50 bg-destructive/10 py-2.5 text-sm font-bold text-destructive disabled:opacity-40">
+                  {percorsoBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
+                  Fine percorso → Podio
+                </button>
+              </>
+            )}
+
+            {/* Ended */}
+            {percorsoState?.status === 'ended' && (
+              <div className="rounded-xl border border-border bg-background/50 px-4 py-3 text-center text-sm text-muted-foreground">
+                🏁 Percorso terminato
+              </div>
+            )}
           </div>
         )}
 
