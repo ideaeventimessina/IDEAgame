@@ -178,10 +178,10 @@ export const ListGamesResponseItem = zod.object({
   enabled: zod.boolean(),
   adultOnly: zod.boolean(),
   settings: zod.object({
-    rounds: zod.number(),
-    timeLimit: zod.number(),
-    scoringWeight: zod.number(),
-  }),
+    rounds: zod.number().optional(),
+    timeLimit: zod.number().optional(),
+    scoringWeight: zod.number().optional(),
+  }).nullable().optional(),
 });
 export const ListGamesResponse = zod.array(ListGamesResponseItem);
 
