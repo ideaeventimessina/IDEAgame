@@ -64,9 +64,14 @@ export default function Hub() {
     { query: { queryKey: getListPlayersQueryKey(liveEvent?.id ?? ''), enabled: !!liveEvent?.id } },
   );
 
+  const sortedGames = [...games].sort((a, b) => {
+    const aReady = READY_SLUGS.has(a.slug) ? 0 : 1;
+    const bReady = READY_SLUGS.has(b.slug) ? 0 : 1;
+    return aReady - bReady;
+  });
   const visibleGames = liveEvent && Array.isArray(liveEvent.enabledGames) && liveEvent.enabledGames.length > 0
-    ? games.filter(g => (liveEvent.enabledGames as string[]).includes(g.slug)).slice(0, 6)
-    : games.slice(0, 6);
+    ? sortedGames.filter(g => (liveEvent.enabledGames as string[]).includes(g.slug)).slice(0, 6)
+    : sortedGames.slice(0, 6);
 
   const joinUrl = `${window.location.origin}/play${liveEvent ? `?e=${liveEvent.joinCode}` : ''}`;
 
