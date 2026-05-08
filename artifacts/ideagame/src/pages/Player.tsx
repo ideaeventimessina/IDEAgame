@@ -238,8 +238,11 @@ export default function Player() {
   const myTeam = player?.teamId ? teams.find(t => t.id === player.teamId) : teams.find(t => t.id === selectedTeam) ?? teams[0];
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-md flex-col px-5 py-6"
-         style={{ background: 'radial-gradient(ellipse at top, hsl(248 70% 12%), hsl(248 70% 4%))' }}>
+    <div className="mx-auto flex min-h-screen w-full max-w-md flex-col overflow-x-hidden px-5 pt-6"
+         style={{
+           background: 'radial-gradient(ellipse at top, hsl(248 70% 12%), hsl(248 70% 4%))',
+           paddingBottom: 'calc(6.5rem + env(safe-area-inset-bottom))',
+         }}>
       <header className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground text-display font-black">I</div>
@@ -285,68 +288,81 @@ export default function Player() {
 
         {(step === 'join' || step === 'joining') && !event && (
           <motion.div key="enter-code" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-            className="flex flex-1 flex-col items-center justify-center gap-6">
-            <div className="text-center">
-              <div className="text-display text-3xl font-black">Unisciti all'evento</div>
-              <div className="mt-2 text-sm text-muted-foreground">Inserisci il codice ricevuto dall'animatore</div>
+            className="flex flex-1 flex-col">
+            <div className="flex flex-1 flex-col items-center justify-center gap-6">
+              <div className="text-center">
+                <div className="text-display text-3xl font-black">Unisciti all'evento</div>
+                <div className="mt-2 text-sm text-muted-foreground">Inserisci il codice ricevuto dall'animatore</div>
+              </div>
+              <div className="w-full">
+                <input
+                  value={nick}
+                  onChange={e => setNick(e.target.value.toUpperCase())}
+                  onKeyDown={e => { if (e.key === 'Enter' && nick.trim()) { const c = nick.trim(); setNick(''); fetchEvent(c); } }}
+                  placeholder="ES. SORR40"
+                  maxLength={10}
+                  className="w-full rounded-2xl border border-border bg-card px-5 py-5 text-center text-3xl font-black tracking-[0.3em] text-foreground outline-none focus:border-primary"
+                />
+              </div>
+              {error && <div className="w-full rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-center text-sm text-destructive">{error}</div>}
             </div>
-            <div className="w-full">
-              <input
-                value={nick}
-                onChange={e => setNick(e.target.value.toUpperCase())}
-                onKeyDown={e => { if (e.key === 'Enter' && nick.trim()) { const c = nick.trim(); setNick(''); fetchEvent(c); } }}
-                placeholder="ES. SORR40"
-                maxLength={10}
-                className="w-full rounded-2xl border border-border bg-card px-5 py-5 text-center text-3xl font-black tracking-[0.3em] text-foreground outline-none focus:border-primary"
-              />
+            {/* Sticky CTA — always visible above DemoSwitcher */}
+            <div className="sticky bottom-24 pt-4 pb-2"
+                 style={{ background: 'linear-gradient(to bottom, transparent, hsl(248 70% 4%) 40%)' }}>
+              <button
+                onClick={() => { const c = nick.trim(); if (c) { setNick(''); fetchEvent(c); } }}
+                disabled={!nick.trim()}
+                className="w-full rounded-2xl bg-primary py-5 text-lg font-black text-primary-foreground shadow-[0_0_30px_rgba(245,182,66,0.35)] disabled:opacity-40 hover:opacity-90"
+              >
+                Entra
+              </button>
             </div>
-            {error && <div className="w-full rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-center text-sm text-destructive">{error}</div>}
-            <button
-              onClick={() => { const c = nick.trim(); if (c) { setNick(''); fetchEvent(c); } }}
-              disabled={!nick.trim()}
-              className="w-full rounded-2xl bg-primary py-4 text-lg font-black text-primary-foreground shadow-[0_0_30px_rgba(245,182,66,0.35)] disabled:opacity-40 hover:opacity-90"
-            >
-              Entra
-            </button>
           </motion.div>
         )}
 
         {(step === 'join' || step === 'joining') && event && (
           <motion.div key="join" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
             className="flex flex-1 flex-col">
-            <div className="text-display text-4xl font-black">{t('play.title')}</div>
-            <div className="mt-1 text-muted-foreground">{event.name}</div>
-            {error && <div className="mt-3 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>}
+            {/* Scrollable content area */}
+            <div className="flex-1">
+              <div className="text-display text-4xl font-black">{t('play.title')}</div>
+              <div className="mt-1 text-muted-foreground">{event.name}</div>
+              {error && <div className="mt-3 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>}
 
-            <label className="mt-8 block text-sm font-bold uppercase tracking-widest text-muted-foreground">{t('play.nickname')}</label>
-            <input value={nick} onChange={e => setNick(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleJoin()}
-              placeholder="Marco" maxLength={24}
-              className="mt-2 w-full rounded-2xl border border-border bg-card px-5 py-4 text-2xl font-bold text-foreground outline-none focus:border-primary" />
+              <label className="mt-8 block text-sm font-bold uppercase tracking-widest text-muted-foreground">{t('play.nickname')}</label>
+              <input value={nick} onChange={e => setNick(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleJoin()}
+                placeholder="Marco" maxLength={24}
+                className="mt-2 w-full rounded-2xl border border-border bg-card px-5 py-4 text-2xl font-bold text-foreground outline-none focus:border-primary" />
 
-            {teams.length > 0 && (
-              <>
-                <div className="mt-8 text-sm font-bold uppercase tracking-widest text-muted-foreground">{t('play.team')}</div>
-                <div className="mt-3 grid grid-cols-2 gap-3">
-                  {teams.map(tm => (
-                    <button key={tm.id} onClick={() => setSelectedTeam(tm.id)}
-                      className="rounded-2xl border-2 px-4 py-5 text-left transition-all"
-                      style={{ borderColor: tm.color, background: selectedTeam === tm.id ? `${tm.color}22` : 'transparent',
-                               opacity: selectedTeam === tm.id ? 1 : 0.7, transform: selectedTeam === tm.id ? 'scale(1.02)' : 'scale(1)' }}>
-                      <div className="flex items-center gap-2">
-                        <div className="h-4 w-4 rounded-full" style={{ background: tm.color }} />
-                        <div className="text-display text-lg font-bold">{tm.name}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
+              {teams.length > 0 && (
+                <>
+                  <div className="mt-8 text-sm font-bold uppercase tracking-widest text-muted-foreground">{t('play.team')}</div>
+                  <div className="mt-3 grid grid-cols-2 gap-3 pb-4">
+                    {teams.map(tm => (
+                      <button key={tm.id} onClick={() => setSelectedTeam(tm.id)}
+                        className="rounded-2xl border-2 px-4 py-5 text-left transition-all"
+                        style={{ borderColor: tm.color, background: selectedTeam === tm.id ? `${tm.color}22` : 'transparent',
+                                 opacity: selectedTeam === tm.id ? 1 : 0.7, transform: selectedTeam === tm.id ? 'scale(1.02)' : 'scale(1)' }}>
+                        <div className="flex items-center gap-2">
+                          <div className="h-4 w-4 rounded-full" style={{ background: tm.color }} />
+                          <div className="text-display text-lg font-bold">{tm.name}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
 
-            <button disabled={!nick.trim() || step === 'joining'} onClick={handleJoin}
-              className="mt-auto flex w-full items-center justify-center gap-3 rounded-3xl bg-primary py-5 text-2xl font-black text-primary-foreground disabled:opacity-40">
-              {step === 'joining' && <Loader2 className="h-6 w-6 animate-spin" />}
-              {t('play.join')}
-            </button>
+            {/* Sticky CTA — sempre visibile sopra il DemoSwitcher */}
+            <div className="sticky bottom-24 pt-6 pb-2"
+                 style={{ background: 'linear-gradient(to bottom, transparent, hsl(248 70% 4%) 40%)' }}>
+              <button disabled={!nick.trim() || step === 'joining'} onClick={handleJoin}
+                className="flex w-full items-center justify-center gap-3 rounded-3xl bg-primary py-5 text-2xl font-black text-primary-foreground shadow-[0_0_30px_rgba(245,182,66,0.25)] disabled:opacity-40">
+                {step === 'joining' && <Loader2 className="h-6 w-6 animate-spin" />}
+                {t('play.join')}
+              </button>
+            </div>
           </motion.div>
         )}
 
