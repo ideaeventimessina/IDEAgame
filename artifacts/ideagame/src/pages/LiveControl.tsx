@@ -256,6 +256,7 @@ export default function LiveControl() {
   const [karaokeState, setKaraokeState] = useState<KaraokeStateLC | null>(null);
   const [karaokeBusy, setKaraokeBusy] = useState(false);
   const [karaokeMsg, setKaraokeMsg] = useState('');
+  const [karaokeMode, setKaraokeMode] = useState<'karaoke' | 'freestyle'>('karaoke');
 
   // Freestyle Battle state
   const [freestyleSets, setFreestyleSets] = useState<{ id: string; title: string; beatUrl: string | null }[]>([]);
@@ -497,9 +498,9 @@ export default function LiveControl() {
       .catch(() => setKaraokeState(null));
   }, [session?.gameSlug, session?.id]);
 
-  // Load freestyle sets when freestyle-battle session is active
+  // Load freestyle sets when freestyle-battle or karaoke-battle session is active
   useEffect(() => {
-    if (session?.gameSlug !== 'freestyle-battle') return;
+    if (session?.gameSlug !== 'freestyle-battle' && session?.gameSlug !== 'karaoke-battle') return;
     apiFetch('/freestyle/sets')
       .then(d => setFreestyleSets(d as { id: string; title: string; beatUrl: string | null }[]))
       .catch(() => setFreestyleSets([]));
@@ -507,7 +508,7 @@ export default function LiveControl() {
 
   // Sync freestyle state from API when session is active
   useEffect(() => {
-    if (session?.gameSlug !== 'freestyle-battle' || !session?.id) return;
+    if ((session?.gameSlug !== 'freestyle-battle' && session?.gameSlug !== 'karaoke-battle') || !session?.id) return;
     apiFetch(`/freestyle/sessions/${session.id}/state`)
       .then(d => setFreestyleState(d as FreestyleStateLC))
       .catch(() => setFreestyleState(null));
@@ -1614,11 +1615,13 @@ export default function LiveControl() {
                     <select value={gameSlug} onChange={e => setGameSlug(e.target.value)}
                       className="rounded-xl border border-border bg-background px-3 py-2 text-sm">
                       <option value="quizzone">Quizzone</option>
-                      <option value="gioco-coppie">Gioco delle coppie</option>
-                      <option value="percorso-a-risate">Percorso a risate</option>
-                      <option value="hot-or-not">Hot or Not</option>
-                      <option value="indovina-titolo">Indovina il titolo</option>
-                      <option value="festa-segreti">Festa dei segreti</option>
+                      <option value="gioco-coppie">Gioco delle Coppie</option>
+                      <option value="percorso-a-risate">Percorso a Risate</option>
+                      <option value="adult-only">Adult Only</option>
+                      <option value="sfida-ballo">Sfida di Ballo</option>
+                      <option value="parola-alle-spalle">Parola alle Spalle</option>
+                      <option value="karaoke-battle">Karaoke Battle (+ Freestyle)</option>
+                      <option value="saramusica">SaraMusica</option>
                     </select>
                     <div className="flex items-center gap-2">
                       <button onClick={() => setTotalRounds(r => Math.max(1, r - 1))} className="rounded-lg border border-border p-2 hover-elevate"><Minus className="h-3 w-3" /></button>
@@ -2678,25 +2681,42 @@ export default function LiveControl() {
         {/* ─── Karaoke Battle panel ────────────────────────────────── */}
         {session?.gameSlug === 'karaoke-battle' && (
           <div className="rounded-2xl border border-pink-500/30 bg-card p-5 space-y-3">
-            <div className="flex items-center gap-2">
-              <span className="text-lg">🎤</span>
+            {/* Header + mode tabs */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-lg">{karaokeMode === 'freestyle' ? '🎵' : '🎤'}</span>
               <div className="text-xs uppercase tracking-widest text-muted-foreground">Karaoke Battle</div>
-              {karaokeState && (
+              <div className="flex rounded-xl overflow-hidden border border-border">
+                <button onClick={() => setKaraokeMode('karaoke')}
+                  className={`px-2.5 py-1 text-[11px] font-bold transition-colors ${karaokeMode === 'karaoke' ? 'bg-pink-500/20 text-pink-400' : 'text-muted-foreground hover:bg-secondary/30'}`}>
+                  🎤 Karaoke
+                </button>
+                <button onClick={() => setKaraokeMode('freestyle')}
+                  className={`px-2.5 py-1 text-[11px] font-bold transition-colors border-l border-border ${karaokeMode === 'freestyle' ? 'bg-orange-500/20 text-orange-400' : 'text-muted-foreground hover:bg-secondary/30'}`}>
+                  🎵 Freestyle
+                </button>
+              </div>
+              {karaokeMode === 'karaoke' && karaokeState && (
                 <a href={`${BASE}karaoke-battle?s=${session.id}&e=${selectedEventId}`} target="_blank" rel="noopener noreferrer"
                   className="ml-auto flex items-center gap-1 text-xs text-pink-400 hover:underline">
                   <ExternalLink className="h-3 w-3" /> Proiettore
                 </a>
               )}
+              {karaokeMode === 'freestyle' && freestyleState && (
+                <a href={`${BASE}freestyle-battle?s=${session.id}&e=${selectedEventId}`} target="_blank" rel="noopener noreferrer"
+                  className="ml-auto flex items-center gap-1 text-xs text-orange-400 hover:underline">
+                  <ExternalLink className="h-3 w-3" /> Proiettore Freestyle
+                </a>
+              )}
             </div>
 
-            {karaokeMsg && (
+            {karaokeMode === 'karaoke' && karaokeMsg && (
               <div className={`rounded-xl px-4 py-2 text-sm ${karaokeMsg.startsWith('✓') ? 'border border-green-500/40 bg-green-500/10 text-green-400' : 'border border-destructive/40 bg-destructive/10 text-destructive'}`}>
                 {karaokeMsg}
               </div>
             )}
 
             {/* Status bar */}
-            {karaokeState && (
+            {karaokeMode === 'karaoke' && karaokeState && (
               <div className="flex items-center gap-2 text-xs flex-wrap">
                 <span className={`rounded-full border px-2.5 py-1 font-bold ${
                   karaokeState.status === 'singing' ? 'border-pink-500/40 bg-pink-500/10 text-pink-400' :
@@ -2713,7 +2733,7 @@ export default function LiveControl() {
             )}
 
             {/* Init: set selector */}
-            {!karaokeState && (
+            {karaokeMode === 'karaoke' && !karaokeState && (
               <>
                 <div>
                   <div className="text-xs text-muted-foreground mb-1">Playlist</div>
@@ -2737,7 +2757,7 @@ export default function LiveControl() {
             )}
 
             {/* Running panel */}
-            {karaokeState && karaokeState.status !== 'ended' && (
+            {karaokeMode === 'karaoke' && karaokeState && karaokeState.status !== 'ended' && (
               <>
                 {/* Current track */}
                 {karaokeState.currentTrack && (
@@ -2831,9 +2851,167 @@ export default function LiveControl() {
               </>
             )}
 
-            {karaokeState?.status === 'ended' && (
+            {karaokeMode === 'karaoke' && karaokeState?.status === 'ended' && (
               <div className="rounded-xl border border-border bg-background/50 px-4 py-3 text-center text-sm text-muted-foreground">
                 🏁 Karaoke terminato
+              </div>
+            )}
+
+            {/* ── Freestyle mode content ── */}
+            {karaokeMode === 'freestyle' && freestyleMsg && (
+              <div className={`rounded-xl px-4 py-2 text-sm ${freestyleMsg.startsWith('✓') ? 'border border-green-500/40 bg-green-500/10 text-green-400' : 'border border-destructive/40 bg-destructive/10 text-destructive'}`}>
+                {freestyleMsg}
+              </div>
+            )}
+
+            {karaokeMode === 'freestyle' && freestyleState && (
+              <div className="flex items-center gap-2 text-xs flex-wrap">
+                <span className={`rounded-full border px-2.5 py-1 font-bold ${
+                  freestyleState.phase === 'performing' ? 'border-orange-500/40 bg-orange-500/10 text-orange-400' :
+                  freestyleState.phase === 'ended' ? 'border-destructive/40 bg-destructive/10 text-destructive' :
+                  freestyleState.phase === 'revealing' ? 'border-blue-500/40 bg-blue-500/10 text-blue-400' :
+                  freestyleState.phase === 'thinking' ? 'border-yellow-500/40 bg-yellow-500/10 text-yellow-400' :
+                  'border-border text-muted-foreground'
+                }`}>
+                  {freestyleState.phase === 'idle' ? '⏳ Pronto' :
+                   freestyleState.phase === 'revealing' ? '🎲 Rivelazione' :
+                   freestyleState.phase === 'thinking' ? '🧠 Pensando…' :
+                   freestyleState.phase === 'booking' ? '✋ Prenotazioni' :
+                   freestyleState.phase === 'performing' ? '🎤 Esibizione' : '🏁 Terminato'}
+                </span>
+                <span className="text-muted-foreground font-bold">{freestyleState.setName}</span>
+                <span className="text-muted-foreground">Round {(freestyleState.roundIndex ?? 0) + 1}</span>
+              </div>
+            )}
+
+            {karaokeMode === 'freestyle' && !freestyleState && (
+              <>
+                <div>
+                  <div className="text-xs text-muted-foreground mb-1">Set di parole</div>
+                  <select value={selectedFreestyleSetId} onChange={e => setSelectedFreestyleSetId(e.target.value)}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm">
+                    <option value="">— seleziona set —</option>
+                    {freestyleSets.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+                  </select>
+                  {freestyleSets.length === 0 && (
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      Nessun set — creane uno in <a href={`${BASE}admin/karaoke-battle`} className="underline text-orange-400">Admin → Karaoke → Freestyle</a>
+                    </div>
+                  )}
+                </div>
+                <button disabled={!selectedFreestyleSetId || freestyleBusy} onClick={() => void handleFreestyleInit()}
+                  className="w-full rounded-xl bg-orange-600 py-2.5 text-sm font-bold text-white disabled:opacity-40 flex items-center justify-center gap-2">
+                  {freestyleBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  Inizializza Freestyle
+                </button>
+              </>
+            )}
+
+            {karaokeMode === 'freestyle' && freestyleState && freestyleState.phase !== 'ended' && (
+              <>
+                <div className="flex flex-wrap gap-1">
+                  {freestyleState.words.map((w, i) => (
+                    <span key={w.id} className={`rounded-lg px-1.5 py-0.5 text-[10px] font-bold transition-all ${
+                      i >= freestyleState.revealedCount ? 'opacity-20 bg-white/5 text-white/30' :
+                      w.recognized ? 'bg-green-500/30 text-green-300 border border-green-500/50' :
+                      'bg-orange-500/20 text-orange-300'
+                    }`}>{w.word}</span>
+                  ))}
+                </div>
+                {(freestyleState.phase === 'idle' || freestyleState.phase === 'revealing') && (
+                  <div className="flex gap-2 flex-wrap">
+                    {freestyleState.phase === 'idle' && (
+                      <button onClick={() => void handleFreestyleStartReveal()} disabled={freestyleBusy}
+                        className="flex items-center gap-1.5 rounded-xl bg-blue-600/80 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">
+                        <Play className="h-3.5 w-3.5" /> Avvia rivelazione
+                      </button>
+                    )}
+                    {freestyleState.phase === 'revealing' && (
+                      <button onClick={() => void handleFreestyleRevealWord()} disabled={freestyleBusy}
+                        className="flex items-center gap-1.5 rounded-xl bg-orange-600/80 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">
+                        <ChevronRight className="h-3.5 w-3.5" /> Prossima parola ({freestyleState.revealedCount}/{freestyleState.words.length})
+                      </button>
+                    )}
+                  </div>
+                )}
+                {freestyleState.phase === 'thinking' && (
+                  <button onClick={() => void handleFreestyleOpenBookings()} disabled={freestyleBusy}
+                    className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-green-600/80 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">
+                    <Users className="h-3.5 w-3.5" /> Apri prenotazioni
+                  </button>
+                )}
+                {freestyleState.bookings.find(b => b.status === 'active' || b.status === 'performing') && (() => {
+                  const active = freestyleState.bookings.find(b => b.status === 'active' || b.status === 'performing')!;
+                  return (
+                    <div className="flex items-center gap-2 rounded-xl border border-orange-500/30 bg-orange-500/10 px-3 py-2">
+                      <div className="h-5 w-5 rounded-full shrink-0" style={{ background: active.teamColor }} />
+                      <div className="flex-1 text-sm font-bold text-orange-300">🎤 {active.nickname}</div>
+                      <div className="text-xs text-muted-foreground">{active.teamName}</div>
+                      <button onClick={() => void handleFreestyleCancelBooking(active.id)}
+                        className="rounded-lg border border-destructive/40 p-1 text-destructive hover:bg-destructive/10">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  );
+                })()}
+                <div className="space-y-2">
+                  <div className="text-xs text-muted-foreground uppercase tracking-widest">Assegna punti freestyle</div>
+                  {freestyleState.teams.map(tm => (
+                    <div key={tm.id} className="flex items-center gap-2">
+                      <span className="h-3 w-3 rounded-full shrink-0" style={{ background: tm.color }} />
+                      <span className="flex-1 truncate text-sm font-bold">{tm.name}</span>
+                      <span className="text-display text-base font-black tabular-nums w-12 text-right" style={{ color: tm.color }}>{tm.score}</span>
+                      {[50, 100, 150, 200].map(pts => (
+                        <button key={pts} onClick={() => void handleFreestyleScore(tm.id, pts)} disabled={freestyleBusy}
+                          className="rounded-lg border border-border px-2 py-1.5 text-xs font-bold hover-elevate disabled:opacity-40">
+                          +{pts}
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+                {freestyleState.bookings.filter(b => b.status === 'waiting').length > 0 && (
+                  <div className="space-y-1">
+                    <div className="text-xs text-muted-foreground uppercase tracking-widest">Coda performer</div>
+                    {freestyleState.bookings
+                      .filter(b => b.status === 'waiting')
+                      .sort((a, b) => a.orderIndex - b.orderIndex)
+                      .map((booking, idx) => (
+                        <div key={booking.id} className="flex items-center gap-2 rounded-xl border border-border bg-background/50 px-3 py-2">
+                          <span className="text-xs text-muted-foreground w-4">{idx + 1}</span>
+                          <span className="h-3 w-3 rounded-full shrink-0" style={{ background: booking.teamColor }} />
+                          <span className="flex-1 text-sm font-bold">{booking.nickname}</span>
+                          <span className="text-xs text-muted-foreground">{booking.teamName}</span>
+                          <button onClick={() => void handleFreestyleSetPerformer(booking.id)} disabled={freestyleBusy}
+                            className="rounded-lg border border-orange-500/40 bg-orange-500/10 px-2 py-1 text-xs font-bold text-orange-400 disabled:opacity-40">
+                            🎤 Vai
+                          </button>
+                          <button onClick={() => void handleFreestyleCancelBooking(booking.id)}
+                            className="rounded-lg border border-destructive/40 p-1 text-destructive hover:bg-destructive/10">
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))
+                    }
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <button onClick={() => void handleFreestyleNextRound()} disabled={freestyleBusy}
+                    className="flex-1 flex items-center justify-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-bold hover:bg-secondary/30 disabled:opacity-40">
+                    <SkipForward className="h-3.5 w-3.5" /> Nuovo round
+                  </button>
+                  <button onClick={handleFreestyleEnd} disabled={freestyleBusy}
+                    className="flex items-center gap-1.5 rounded-xl border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs font-bold text-destructive disabled:opacity-40">
+                    {freestyleBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Power className="h-3.5 w-3.5" />}
+                    Fine
+                  </button>
+                </div>
+              </>
+            )}
+
+            {karaokeMode === 'freestyle' && freestyleState?.phase === 'ended' && (
+              <div className="rounded-xl border border-border bg-background/50 px-4 py-3 text-center text-sm text-muted-foreground">
+                🏁 Freestyle terminato
               </div>
             )}
           </div>

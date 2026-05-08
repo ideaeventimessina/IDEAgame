@@ -220,12 +220,14 @@ export default function Player() {
         const ws = await apiFetch(`/word-back/sessions/${session.id}/state`).catch(() => null) as WordBackStateP | null;
         if (ws) setWordBackStateP(ws);
       }
-      // If karaoke-battle is running, fetch current state
+      // If karaoke-battle is running, fetch karaoke state; also try freestyle (when run in freestyle mode)
       if (session.gameSlug === 'karaoke-battle') {
         const ks = await apiFetch(`/karaoke/sessions/${session.id}/state`).catch(() => null) as KaraokeStateP | null;
         if (ks) setKaraokeStateP(ks);
+        const fs = await apiFetch(`/freestyle/sessions/${session.id}/state`).catch(() => null) as FreestyleStateP | null;
+        if (fs) setFreestyleStateP(fs);
       }
-      // If freestyle-battle is running, fetch current state
+      // If freestyle-battle is running, fetch current state (legacy standalone)
       if (session.gameSlug === 'freestyle-battle') {
         const fs = await apiFetch(`/freestyle/sessions/${session.id}/state`).catch(() => null) as FreestyleStateP | null;
         if (fs) setFreestyleStateP(fs);
@@ -617,6 +619,13 @@ export default function Player() {
                     sessionId={gameState.sessionId}
                     playerId={player.id}
                     teamColor={myTeam?.color ?? '#8B5CF6'}
+                  />
+                ) : gameState.gameSlug === 'karaoke-battle' && freestyleStateP && !karaokeStateP ? (
+                  <FreestylePhoneController
+                    state={freestyleStateP}
+                    sessionId={gameState.sessionId}
+                    playerId={player.id}
+                    teamColor={myTeam?.color ?? '#f97316'}
                   />
                 ) : gameState.gameSlug === 'karaoke-battle' ? (
                   <KaraokePhoneController
