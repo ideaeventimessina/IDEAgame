@@ -676,6 +676,11 @@ export default function Hub() {
             </div>
           )}
           <LocaleSwitcher />
+          <button onClick={() => navigate('/control')}
+            className="hidden lg:flex items-center gap-1.5 rounded-xl border border-border bg-card/60 px-3 py-1.5 text-xs font-bold text-muted-foreground hover:text-foreground transition-colors sm:px-4 sm:py-2 sm:text-sm">
+            <SlidersHorizontal className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+            Cockpit
+          </button>
         </div>
       </header>
 
@@ -858,15 +863,6 @@ export default function Hub() {
         </motion.div>
       </div>
 
-      {/* ── Cockpit flottante — sempre visibile ── */}
-      <motion.button type="button" onClick={() => navigate('/control')}
-        initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
-        transition={{ delay: 0.5, type: 'spring', stiffness: 200 }}
-        whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-        className="fixed bottom-6 right-6 z-30 hidden lg:flex items-center gap-2.5 rounded-2xl bg-primary px-5 py-3.5 text-sm font-black text-primary-foreground shadow-2xl shadow-primary/30">
-        <SlidersHorizontal className="h-4 w-4" />
-        Cockpit Animatore
-      </motion.button>
 
       {/* ── Panic: Black Screen overlay (proiettore) ── */}
       <AnimatePresence>
