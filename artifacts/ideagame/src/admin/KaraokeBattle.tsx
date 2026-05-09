@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Mic, Music, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import { AdminLayout } from './AdminLayout';
+import { JonnyGenerateBanner } from '@/components/JonnyGenerateBanner';
 
 const BASE = (import.meta.env.BASE_URL as string) ?? '/';
 async function apiFetch(path: string, opts?: RequestInit) {
@@ -495,6 +496,9 @@ export default function KaraokeBattle() {
             <p className="text-sm text-muted-foreground">Playlist karaoke & set freestyle rap</p>
           </div>
         </div>
+      </div>
+
+      <JonnyGenerateBanner gameSlug="karaoke-battle" gameLabel="Karaoke Battle" />
 
         {/* Mode tabs */}
         <div className="flex rounded-2xl overflow-hidden border border-border">
@@ -507,7 +511,6 @@ export default function KaraokeBattle() {
             🎵 Freestyle Rap
           </button>
         </div>
-      </div>
 
       {/* Tab content */}
       {activeTab === 'karaoke' ? <KaraokeTab /> : <FreestyleTab />}

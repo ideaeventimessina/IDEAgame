@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Mic, Music } from "lucide-react";
 import { AdminLayout } from "@/admin/AdminLayout";
+import { JonnyGenerateBanner } from "@/components/JonnyGenerateBanner";
 
 const apiFetch = (path: string, opts?: RequestInit) =>
   fetch(`${import.meta.env.BASE_URL}api${path}`, { credentials: "include", ...opts }).then(async (r) => {
@@ -77,6 +78,8 @@ export default function AdminFreestyleBattle() {
             <p className="text-sm text-muted-foreground">Gestisci i set di parole per il rap improvvisato</p>
           </div>
         </div>
+
+        <JonnyGenerateBanner gameSlug="freestyle-battle" gameLabel="Freestyle Battle" />
 
         {msg && (
           <div className={`rounded-xl px-4 py-2 text-sm ${msg.startsWith("✓") ? "border border-green-500/40 bg-green-500/10 text-green-400" : "border border-destructive/40 bg-destructive/10 text-destructive"}`}>

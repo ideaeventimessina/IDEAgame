@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { AdminLayout } from './AdminLayout';
 import { Trash2, Plus, ChevronRight, ToggleLeft, ToggleRight, Loader2, Lock } from 'lucide-react';
+import { JonnyGenerateBanner } from '@/components/JonnyGenerateBanner';
 
 const BASE = (import.meta.env.BASE_URL as string) ?? '/';
 async function apiFetch(path: string, opts?: RequestInit) {
@@ -173,6 +174,10 @@ export default function AdminAdultOnly() {
               <p className="text-xs text-muted-foreground">Mazzi e carte per il gioco adulti — nessun contenuto esplicito</p>
             </div>
           </div>
+        </div>
+
+        <div className="px-6 pt-4 shrink-0">
+          <JonnyGenerateBanner gameSlug="adult-only" gameLabel="Adult Only" />
         </div>
 
         {error && (

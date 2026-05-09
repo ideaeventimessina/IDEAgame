@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { AdminLayout } from './AdminLayout';
 import { Trash2, Plus, Loader2, BookOpen, Tag, Zap, Clock, Edit2, Check, X } from 'lucide-react';
+import { JonnyGenerateBanner } from '@/components/JonnyGenerateBanner';
 
 interface WordBackSet {
   id: string; title: string; description: string; language: string;
@@ -188,6 +189,8 @@ export default function AdminWordBack() {
   return (
     <AdminLayout title="Parola alle Spalle — Mazzi">
       <div className="space-y-6">
+        <JonnyGenerateBanner gameSlug="parola-alle-spalle" gameLabel="Parola alle Spalle" />
+
         {error && (
           <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
             {error}

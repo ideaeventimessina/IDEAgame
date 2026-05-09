@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { AdminLayout } from './AdminLayout';
 import { Plus, Trash2, Loader2, ChevronDown, ChevronRight, Image as ImageIcon, Copy } from 'lucide-react';
+import { JonnyGenerateBanner } from '@/components/JonnyGenerateBanner';
 import {
   useListCardSets, useCreateCardSet, useDeleteCardSet,
   useListCards, useCreateCard,
@@ -66,6 +67,10 @@ export default function AdminCardSets() {
         >
           <Plus className="h-4 w-4" /> Nuovo deck
         </button>
+      </div>
+
+      <div className="mb-6">
+        <JonnyGenerateBanner gameSlug="gioco-delle-coppie" gameLabel="Gioco delle Coppie" />
       </div>
 
       {/* New set dialog */}

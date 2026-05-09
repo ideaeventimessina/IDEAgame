@@ -1,7 +1,8 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { AdminLayout } from './AdminLayout';
 import { Wand2, Loader2, ChevronDown, ChevronUp, CheckCircle2, XCircle, Import, RefreshCw, Trash2, Sparkles, AlertCircle, Eye, EyeOff, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useSearch } from 'wouter';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -40,6 +41,7 @@ const GAMES = [
   { slug: 'parola-alle-spalle', label: 'Parola alle Spalle', emoji: '🗣️' },
   { slug: 'karaoke-battle',     label: 'Karaoke Battle',     emoji: '🎤' },
   { slug: 'freestyle-battle',   label: 'Freestyle Battle',   emoji: '🎵' },
+  { slug: 'saramusica',         label: 'SaraMusica',         emoji: '🎵' },
 ];
 
 const AUDIENCE_OPTIONS: { value: Audience; label: string }[] = [
@@ -244,6 +246,35 @@ function PayloadPreview({ gameSlug, payload }: { gameSlug: string; payload: Reco
     );
   };
 
+  const renderSaraMusica = () => {
+    const tracks = (payload.tracks as Array<Record<string, unknown>>) || [];
+    const CHALLENGE_LABELS: Record<string, string> = { indovina: '🎵 Indovina', canta: '🎤 Canta', rumore: '📣 Rumore' };
+    return (
+      <div className="space-y-2 mt-3">
+        <div className="text-xs uppercase tracking-widest text-muted-foreground">{tracks.length} tracce:</div>
+        {tracks.slice(0, expanded ? 999 : 5).map((t, i) => (
+          <div key={i} className="rounded-lg border border-border/50 bg-card/40 p-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-bold">{t.title as string}</span>
+              <span className="text-xs text-muted-foreground">{t.artist as string}</span>
+            </div>
+            <div className="mt-1 flex gap-3 text-[10px] text-muted-foreground">
+              <span>{CHALLENGE_LABELS[t.challengeType as string] ?? (t.challengeType as string)}</span>
+              {!!t.snippetHint && <span className="italic text-primary/80">"{t.snippetHint as string}"</span>}
+              <span>⏱ {t.durationSeconds as number}s</span>
+              <span>🏆 {t.points as number}pt</span>
+            </div>
+          </div>
+        ))}
+        {tracks.length > 5 && (
+          <button onClick={() => setExpanded(e => !e)} className="text-xs text-primary hover:underline">
+            {expanded ? 'Mostra meno ▲' : `Mostra tutte (${tracks.length}) ▼`}
+          </button>
+        )}
+      </div>
+    );
+  };
+
   const renderMap: Record<string, () => React.ReactNode> = {
     'percorso-a-risate': renderPercorso,
     'quizzone': renderQuizzone,
@@ -252,6 +283,7 @@ function PayloadPreview({ gameSlug, payload }: { gameSlug: string; payload: Reco
     'karaoke-battle': renderKaraoke,
     'freestyle-battle': renderFreestyle,
     'gioco-delle-coppie': renderCoppie,
+    'saramusica': renderSaraMusica,
   };
 
   const render = renderMap[gameSlug];
@@ -370,6 +402,8 @@ function ItemCard({
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function JonnyCreator() {
+  const search = useSearch();
+
   // Form state
   const [title, setTitle] = useState('');
   const [theme, setTheme] = useState('');
@@ -381,6 +415,15 @@ export default function JonnyCreator() {
   const [teams, setTeams] = useState('4');
   const [selectedGames, setSelectedGames] = useState<string[]>(['percorso-a-risate', 'quizzone']);
   const [notes, setNotes] = useState('');
+
+  // Pre-select game from URL ?game= param (e.g. from JonnyGenerateBanner)
+  useEffect(() => {
+    const params = new URLSearchParams(search);
+    const preselected = params.get('game');
+    if (preselected && GAMES.find(g => g.slug === preselected)) {
+      setSelectedGames([preselected]);
+    }
+  }, [search]);
 
   // UI state
   const [generating, setGenerating] = useState(false);

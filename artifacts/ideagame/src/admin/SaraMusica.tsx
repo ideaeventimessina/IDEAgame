@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { PlusCircle, Trash2, Music2, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import { AdminLayout } from './AdminLayout';
+import { JonnyGenerateBanner } from '@/components/JonnyGenerateBanner';
 
 interface SaraMusicaSet {
   id: string; title: string; description: string; isActive: boolean; createdAt: string;
@@ -122,6 +123,8 @@ export default function AdminSaraMusica() {
           <PlusCircle className="h-4 w-4" /> Nuovo set
         </button>
       </div>
+
+      <JonnyGenerateBanner gameSlug="saramusica" gameLabel="SaraMusica" />
 
       {/* New set form */}
       {showNewSet && (

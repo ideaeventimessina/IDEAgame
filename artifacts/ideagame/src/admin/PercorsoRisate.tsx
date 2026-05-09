@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { PlusCircle, Trash2, ChevronUp, ChevronDown, Edit2, Check, X, Loader2, ImageIcon } from 'lucide-react';
 import { AdminLayout } from './AdminLayout';
 import { useAuth } from '@/auth/roles';
+import { JonnyGenerateBanner } from '@/components/JonnyGenerateBanner';
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 interface PathSet {
@@ -336,6 +337,10 @@ export default function PercorsoRisate() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <div className="mb-6">
+        <JonnyGenerateBanner gameSlug="percorso-a-risate" gameLabel="Percorso a Risate" />
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-[340px_1fr]">
 
