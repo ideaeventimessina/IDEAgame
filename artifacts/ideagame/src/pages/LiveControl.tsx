@@ -7,6 +7,7 @@ import {
   ChevronRight, Zap, AlertTriangle, PlusCircle, Trophy, Siren,
 } from 'lucide-react';
 import { PanicPanel } from '@/components/PanicPanel';
+import { useLocalMode } from '@/hooks/useLocalMode';
 import { useEventSocket } from '@/hooks/useEventSocket';
 import {
   useListEvents,
@@ -315,8 +316,9 @@ export default function LiveControl() {
   const session = sessions.find(s => s.id === selectedSessionId);
   const selectedEvent = events.find(e => e.id === selectedEventId);
   const joinCode = selectedEvent?.joinCode ?? '';
+  const lan = useLocalMode();
   const BASE_URL = (import.meta.env.BASE_URL as string) ?? '/';
-  const joinUrl = `${window.location.origin}${BASE_URL}play?e=${joinCode}`.replace(/([^:])\/\//g, '$1/');
+  const joinUrl = `${lan.effectiveOrigin}${BASE_URL}play?e=${joinCode}`.replace(/([^:])\/\//g, '$1/');
 
   useEffect(() => {
     if (!selectedEventId && events.length > 0) setSelectedEventId(events[0]!.id);

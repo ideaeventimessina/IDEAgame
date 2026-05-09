@@ -35,8 +35,12 @@ import karaokeRouter from "./karaoke";
 import freestyleRouter from "./freestyle";
 import saraMusicaRouter from "./saramusica";
 import panicRouter from "./panic";
+import networkRouter from "./network";
 
 const router: IRouter = Router();
+
+// Public routes (no auth) — must come before loadUser
+router.use(networkRouter);
 
 router.use(loadUser);
 router.use(healthRouter);

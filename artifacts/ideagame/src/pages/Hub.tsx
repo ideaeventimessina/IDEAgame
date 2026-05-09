@@ -1,6 +1,6 @@
 import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Wifi, Users, Radio, Loader2, ChevronDown, ChevronUp, Sparkles, SlidersHorizontal, CalendarPlus } from 'lucide-react';
+import { Wifi, WifiOff, Users, Radio, Loader2, ChevronDown, ChevronUp, Sparkles, SlidersHorizontal, CalendarPlus } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Octagon } from '@/components/Octagon';
 import { GameIcon } from '@/components/GameIcon';
@@ -10,6 +10,7 @@ import { GameIntroOverlay } from '@/components/GameIntroOverlay';
 import { useT } from '@/i18n';
 import { useListGames, useGetCurrentEvent, useListPlayers, getListPlayersQueryKey } from '@workspace/api-client-react';
 import { useEventSocket } from '@/hooks/useEventSocket';
+import { useLocalMode } from '@/hooks/useLocalMode';
 
 type IconName = Parameters<typeof GameIcon>[0]['name'];
 
@@ -63,6 +64,7 @@ export default function Hub() {
   const [rosterOpen, setRosterOpen] = useState(false);
   const [introGame, setIntroGame] = useState<IntroGame | null>(null);
   const [projectorBlack, setProjectorBlack] = useState(false);
+  const lan = useLocalMode();
 
   const { data: games = [], isLoading: gamesLoading } = useListGames();
   const { data: liveEvent } = useGetCurrentEvent();
@@ -122,7 +124,7 @@ export default function Hub() {
     ? sortedGames.filter(g => (liveEvent.enabledGames as string[]).includes(g.slug)).slice(0, 8)
     : sortedGames.slice(0, 8);
 
-  const joinUrl = `${window.location.origin}/play${liveEvent ? `?e=${liveEvent.joinCode}` : ''}`;
+  const joinUrl = `${lan.effectiveOrigin}/play${liveEvent ? `?e=${liveEvent.joinCode}` : ''}`;
 
   // ── Octagon grid ────────────────────────────────────────────────────────
   function OctGrid({ oct, ox, oy }: { oct: number; ox: number; oy: number }) {
@@ -187,7 +189,9 @@ export default function Hub() {
     if (!liveEvent) return null;
     const qrSize = compact ? 140 : 220;
     return (
-      <div className={`flex flex-col items-center rounded-3xl border border-border bg-card/70 backdrop-blur-md ${compact ? 'p-4' : 'p-8'}`}>
+      <div className={`flex flex-col items-center rounded-3xl border backdrop-blur-md ${
+        lan.localMode ? 'border-orange-500/50 bg-orange-950/30' : 'border-border bg-card/70'
+      } ${compact ? 'p-4' : 'p-8'}`}>
         <div className={`uppercase tracking-widest text-muted-foreground ${compact ? 'mb-3 text-xs' : 'mb-4 text-sm'}`}>
           {t('hub.scan_to_join')}
         </div>
@@ -204,6 +208,59 @@ export default function Hub() {
             <div className="text-display text-3xl font-black text-primary">{players.length}</div>
           </div>
         )}
+
+        {/* ── LAN / Offline mode toggle ───────────────────────────── */}
+        <div className="mt-4 w-full border-t border-border pt-4 space-y-2">
+          <button
+            onClick={() => lan.setLocalMode(!lan.localMode)}
+            className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-xs font-bold transition-all ${
+              lan.localMode
+                ? 'border-orange-500/60 bg-orange-500/15 text-orange-300'
+                : 'border-border bg-card/40 text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <span className="flex items-center gap-1.5">
+              {lan.localMode
+                ? <WifiOff className="h-3.5 w-3.5" />
+                : <Wifi className="h-3.5 w-3.5" />
+              }
+              {lan.localMode ? 'Modalità LAN attiva' : 'Attiva Modalità LAN'}
+            </span>
+            <span className={`relative h-4 w-7 rounded-full transition-colors ${lan.localMode ? 'bg-orange-500' : 'bg-border'}`}>
+              <span className={`absolute top-0 h-4 w-4 rounded-full bg-white shadow transition-transform ${lan.localMode ? 'translate-x-3' : 'translate-x-0'}`} />
+            </span>
+          </button>
+
+          {lan.localMode && (
+            <div className="space-y-1.5">
+              {(lan.networkInfo?.localIps ?? []).length > 0 ? (
+                (lan.networkInfo?.localIps ?? []).map(ip => (
+                  <button
+                    key={ip}
+                    onClick={() => lan.setSelectedIp(ip)}
+                    className={`w-full rounded-lg px-3 py-1.5 text-left text-xs font-mono transition-colors ${
+                      lan.selectedIp === ip
+                        ? 'border border-orange-500/50 bg-orange-500/20 text-orange-200'
+                        : 'border border-border bg-card/40 text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {ip} {lan.selectedIp === ip ? '✓' : ''}
+                  </button>
+                ))
+              ) : (
+                <input
+                  value={lan.selectedIp}
+                  onChange={e => lan.setSelectedIp(e.target.value)}
+                  placeholder="192.168.1.x"
+                  className="w-full rounded-lg border border-orange-500/40 bg-card/40 px-3 py-1.5 text-xs font-mono text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-orange-500/60"
+                />
+              )}
+              <div className="rounded-lg bg-orange-500/10 px-3 py-1.5 text-[10px] font-mono text-orange-300 truncate">
+                QR → {lan.effectiveOrigin}/play
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     );
   }
@@ -327,10 +384,18 @@ export default function Hub() {
           </div>
         </div>
         <div className="flex items-center gap-2 sm:gap-4">
-          <div className="hidden items-center gap-2 rounded-full border border-border bg-card/60 px-3 py-1.5 text-xs sm:flex sm:px-4 sm:py-2 sm:text-sm">
-            <Wifi className="h-3.5 w-3.5 text-primary sm:h-4 sm:w-4" />
-            <span className="text-muted-foreground">{t('hub.network_local')}</span>
-          </div>
+          {lan.localMode ? (
+            <div className="flex items-center gap-1.5 rounded-full border border-orange-500/50 bg-orange-500/15 px-3 py-1.5 text-xs font-bold text-orange-400 sm:px-4 sm:py-2 sm:text-sm">
+              <WifiOff className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              <span>LAN</span>
+              {!lan.isOnline && <span className="animate-pulse">● OFFLINE</span>}
+            </div>
+          ) : (
+            <div className="hidden items-center gap-2 rounded-full border border-border bg-card/60 px-3 py-1.5 text-xs sm:flex sm:px-4 sm:py-2 sm:text-sm">
+              <Wifi className="h-3.5 w-3.5 text-primary sm:h-4 sm:w-4" />
+              <span className="text-muted-foreground">{t('hub.network_local')}</span>
+            </div>
+          )}
           <LocaleSwitcher />
         </div>
       </header>
