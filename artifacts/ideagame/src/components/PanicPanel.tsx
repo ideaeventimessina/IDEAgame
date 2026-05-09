@@ -221,12 +221,11 @@ export function PanicPanel({ open, onClose, eventId, joinCode, joinUrl, session 
       color: session
         ? 'border-red-600/80 bg-red-600/20 text-red-200'
         : 'border-border bg-card/40 text-muted-foreground opacity-50 cursor-not-allowed',
-      description: session ? 'Chiudi il gioco e salva i punteggi' : 'Nessuna sessione attiva',
+      description: session ? 'Chiudi il gioco e vai al podio' : 'Nessuna sessione attiva',
       confirm: true,
-      confirmMsg: `Terminare immediatamente "${session?.gameSlug}" e salvare i punteggi?`,
+      confirmMsg: `Terminare immediatamente "${session?.gameSlug}" e andare al podio?`,
       action: async () => {
         if (!session) return;
-        // Call game-specific end endpoint if available, else PATCH session
         const END_ROUTES: Record<string, string> = {
           'percorso-a-risate': `/percorso/sessions/${session.id}/end`,
           'adult-only':        `/adult-only/sessions/${session.id}/end`,
@@ -244,7 +243,9 @@ export function PanicPanel({ open, onClose, eventId, joinCode, joinUrl, session 
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: 'ended' }),
         });
-        flash('Gioco terminato — punteggi salvati');
+        // Close panel and navigate to scoreboard
+        onClose();
+        navigate(`/scoreboard?e=${eventId}`);
       },
     },
   ];
