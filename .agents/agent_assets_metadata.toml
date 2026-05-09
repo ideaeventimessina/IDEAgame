@@ -108,6 +108,12 @@ uri = "file://artifacts/ideagame/public/jonny/saluti.png"
 type = "image"
 title = "jonny goodbye wave"
 
+[[generated]]
+id = "SLl7laxHo3Fa7JvrD74e9"
+uri = "file://artifacts/ideagame/public/jonny-master.png"
+type = "image"
+title = "jonny master full body host transparent"
+
 [[outputs]]
 id = "XgJSbedSAlI0m_mnD6OiA"
 uri = "file://artifacts/ideagame/SCENES.md"

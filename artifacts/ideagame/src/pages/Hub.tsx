@@ -1,6 +1,6 @@
 import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Wifi, WifiOff, Users, Radio, Loader2, ChevronDown, ChevronUp, Sparkles, SlidersHorizontal, CalendarPlus, Play, X } from 'lucide-react';
+import { Wifi, WifiOff, Users, Radio, Loader2, ChevronDown, ChevronUp, Sparkles, SlidersHorizontal, CalendarPlus, X } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Octagon } from '@/components/Octagon';
 import { GameIcon } from '@/components/GameIcon';
@@ -9,9 +9,49 @@ import { LocaleSwitcher } from '@/components/LocaleSwitcher';
 import { GameIntroOverlay } from '@/components/GameIntroOverlay';
 import { useT } from '@/i18n';
 import { useListGames, useGetCurrentEvent, useListPlayers, getListPlayersQueryKey } from '@workspace/api-client-react';
-import { JonnyAvatar } from '@/components/JonnyAvatar';
 import { useEventSocket } from '@/hooks/useEventSocket';
 import { useLocalMode } from '@/hooks/useLocalMode';
+
+// ── Theme-park ambient particles ─────────────────────────────────────────────
+const CONFETTI_PALETTE = ['#F5B642','#FF69B4','#60A5FA','#A78BFA','#34D399','#F87171','#F472B6'];
+
+function HubConfetti() {
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden z-0">
+      {Array.from({ length: 22 }).map((_, i) => {
+        const color = CONFETTI_PALETTE[i % CONFETTI_PALETTE.length];
+        const left  = `${(i * 9.1 + 5) % 100}%`;
+        const dur   = 7 + (i % 5) * 1.2;
+        const w     = 4 + (i % 4) * 2;
+        const h     = i % 3 === 0 ? w : w * 0.4;
+        return (
+          <motion.div key={i} className="absolute top-0 rounded-sm" style={{ left, width: w, height: h, backgroundColor: color, opacity: 0.6 }}
+            animate={{ y: ['0vh', '108vh'], rotate: [0, i % 2 ? 360 : -360], opacity: [0, 0.7, 0.7, 0] }}
+            transition={{ duration: dur, delay: -(i * 0.55), repeat: Infinity, ease: 'linear' }} />
+        );
+      })}
+    </div>
+  );
+}
+
+function HubStars() {
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden z-0">
+      {Array.from({ length: 60 }).map((_, i) => {
+        const x = (i * 41 + 13) % 100;
+        const y = (i * 61 + 7) % 100;
+        const sz = 1 + (i % 3) * 0.6;
+        const op = 0.12 + (i % 4) * 0.1;
+        return (
+          <motion.div key={i} className="absolute rounded-full bg-white"
+            style={{ left: `${x}%`, top: `${y}%`, width: sz, height: sz, opacity: op }}
+            animate={{ opacity: [op * 0.3, op, op * 0.3] }}
+            transition={{ duration: 2 + (i % 6) * 0.5, delay: -(i * 0.18), repeat: Infinity }} />
+        );
+      })}
+    </div>
+  );
+}
 
 type IconName = Parameters<typeof GameIcon>[0]['name'];
 
@@ -485,7 +525,34 @@ export default function Hub() {
 
   return (
     <div className="relative h-screen w-full flex flex-col overflow-hidden"
-      style={{ background: 'radial-gradient(ellipse 140% 60% at 50% -10%, #1a0a30 0%, #0a0418 45%, #040210 100%)' }}>
+      style={{ background: 'radial-gradient(ellipse 160% 80% at 50% -5%, #2d0d52 0%, #130628 40%, #060213 100%)' }}>
+
+      {/* ── Jonny's World ambient layers ── */}
+      <HubStars />
+      <HubConfetti />
+
+      {/* ── Jonny floating figure — desktop only ── */}
+      <div className="hidden lg:block pointer-events-none absolute bottom-0 right-[235px] z-5 select-none"
+        style={{ width: 220, height: 340 }}>
+        <motion.img src="/jonny-master.png" alt="Jonny"
+          className="w-full h-full object-contain object-bottom"
+          style={{ filter: 'drop-shadow(0 0 40px rgba(245,182,66,0.45)) drop-shadow(0 20px 60px rgba(100,40,200,0.4))' }}
+          animate={{ y: [0, -12, 0] }}
+          transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+          initial={{ opacity: 0, y: 30, scale: 0.9 }}
+          whileInView={{ opacity: 1, y: 0, scale: 1 }}
+        />
+        {/* Gold glow halo under feet */}
+        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-32 h-8 rounded-full"
+          style={{ background: 'radial-gradient(ellipse, rgba(245,182,66,0.35) 0%, transparent 70%)', filter: 'blur(8px)' }} />
+      </div>
+
+      {/* ── Top ambient glow ── */}
+      <div className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 w-[80%] h-[35%] z-0"
+        style={{ background: 'radial-gradient(ellipse, rgba(120,50,255,0.22) 0%, transparent 70%)', filter: 'blur(60px)' }} />
+      {/* Bottom-left gold glow */}
+      <div className="pointer-events-none absolute bottom-0 left-0 w-[40%] h-[40%] z-0"
+        style={{ background: 'radial-gradient(ellipse at bottom left, rgba(245,182,66,0.1) 0%, transparent 70%)', filter: 'blur(40px)' }} />
 
       {/* ── No-session dialog (gioco non ancora avviato) ── */}
       <AnimatePresence>

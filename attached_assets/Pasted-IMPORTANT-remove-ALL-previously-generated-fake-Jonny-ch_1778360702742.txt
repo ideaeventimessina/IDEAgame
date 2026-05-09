@@ -1,0 +1,113 @@
+IMPORTANT: remove ALL previously generated fake Jonny characters from the platform.
+
+Delete every unofficial Jonny variation created before.
+They are inconsistent and must not be used anymore.
+
+From now on:
+
+Use ONLY the uploaded Jonny’s World image as the official visual reference.
+
+Your first task:
+extract and recreate ONLY the real Jonny character from this image as the official master asset.
+
+Rules:
+- same exact face
+- same glasses
+- same beard
+- same hairstyle
+- same smile
+- same proportions
+- same elegant host vibe
+- same premium cartoon 3D style
+
+DO NOT redesign him.
+DO NOT create alternate faces.
+DO NOT generate random mascot variants.
+
+Create:
+
+FULL BODY
+arms open
+welcoming pose
+transparent PNG background
+
+Outfit:
+luxury black suit
+gold details
+premium entertainment host style
+
+Expression:
+charismatic
+friendly
+confident
+slightly playful
+
+This file becomes:
+
+jonny-master.png
+
+--------------------------------------
+
+SECOND RULE:
+
+The entire PUBLIC side of Jonny’s World must visually inherit the same explosive visual language from the uploaded artwork:
+
+- same vibrant colors
+- same cinematic lighting
+- same neon accents
+- same luxury carnival atmosphere
+- same 3D depth
+- same magical theme park energy
+- same playful premium feeling
+
+The following areas must be visually redesigned using this visual DNA:
+
+- Landing page
+- Standby screen
+- Hub
+- Game intros
+- Public projector screens
+- Player mobile screens
+- Winner screens
+- Jonny AI creator screens
+
+Use:
+confetti
+lights
+3D environments
+animated attractions
+depth
+vibrant gradients
+theme park feeling
+interactive show energy
+
+--------------------------------------
+
+ADMIN RULE:
+
+The ADMIN side must stay clean and operational exactly like now.
+
+Admin panels must remain:
+
+- clean
+- readable
+- efficient
+- fast
+- professional
+- light backgrounds
+- operational dashboards
+
+DO NOT transform admin into a chaotic theme park UI.
+
+Admin remains mission control.
+Public side becomes magical entertainment world.
+
+--------------------------------------
+
+Summary:
+
+ADMIN = operational cockpit  
+PUBLIC = immersive Jonny’s World experience
+
+No more fake Jonnys.
+Use only the official one.

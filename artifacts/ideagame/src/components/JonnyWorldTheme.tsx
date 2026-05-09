@@ -14,31 +14,31 @@ export const ARENA: Record<ArenaKey, {
 }> = {
   quizzone: {
     bg: 'radial-gradient(ellipse 140% 80% at 50% -5%, #0d1f3c 0%, #060d1a 45%, #020609 100%)',
-    accent: '#60A5FA', glow: '#3B82F6', title: 'QUIZ ARENA', jonny: '/jonny/sfida-nobg.png',
+    accent: '#60A5FA', glow: '#3B82F6', title: 'QUIZ ARENA', jonny: '/jonny-master.png',
   },
   coppie: {
     bg: 'radial-gradient(ellipse 140% 80% at 50% -5%, #2d0a1a 0%, #150410 45%, #080206 100%)',
-    accent: '#FF69B4', glow: '#FF1493', title: 'ARENA DELLE COPPIE', jonny: '/jonny/vincitore-nobg.png',
+    accent: '#FF69B4', glow: '#FF1493', title: 'ARENA DELLE COPPIE', jonny: '/jonny-master.png',
   },
   ballo: {
     bg: 'radial-gradient(ellipse 140% 80% at 50% -5%, #140b2a 0%, #09051a 45%, #04020f 100%)',
-    accent: '#A78BFA', glow: '#7C3AED', title: 'DANCE ARENA', jonny: '/jonny/via-nobg.png',
+    accent: '#A78BFA', glow: '#7C3AED', title: 'DANCE ARENA', jonny: '/jonny-master.png',
   },
   percorso: {
     bg: 'radial-gradient(ellipse 140% 80% at 50% -5%, #201200 0%, #100900 45%, #060400 100%)',
-    accent: '#F5B642', glow: '#D97706', title: 'PERCORSO A RISATE', jonny: '/jonny/sfida-nobg.png',
+    accent: '#F5B642', glow: '#D97706', title: 'PERCORSO A RISATE', jonny: '/jonny-master.png',
   },
   wordback: {
     bg: 'radial-gradient(ellipse 140% 80% at 50% -5%, #001c10 0%, #000e08 45%, #000503 100%)',
-    accent: '#34D399', glow: '#059669', title: 'WORD CHALLENGE', jonny: '/jonny/sfida-nobg.png',
+    accent: '#34D399', glow: '#059669', title: 'WORD CHALLENGE', jonny: '/jonny-master.png',
   },
   adult: {
     bg: 'radial-gradient(ellipse 140% 80% at 50% -5%, #1e0006 0%, #0d0003 45%, #060001 100%)',
-    accent: '#F87171', glow: '#DC2626', title: 'ADULT ARENA', jonny: '/jonny/saluti-nobg.png',
+    accent: '#F87171', glow: '#DC2626', title: 'ADULT ARENA', jonny: '/jonny-master.png',
   },
   karaoke: {
     bg: 'radial-gradient(ellipse 140% 80% at 50% -5%, #200a28 0%, #110516 45%, #090309 100%)',
-    accent: '#F472B6', glow: '#DB2777', title: 'KARAOKE STAGE', jonny: '/jonny/via-nobg.png',
+    accent: '#F472B6', glow: '#DB2777', title: 'KARAOKE STAGE', jonny: '/jonny-master.png',
   },
 };
 
@@ -121,7 +121,7 @@ export function JonnyWaitingScreen({ theme, subtitle, label }: { theme: typeof A
       <NeonTitle text={theme.title} color={theme.accent} size="lg" />
       {subtitle && <p className="text-lg text-white/55 font-semibold max-w-lg">{subtitle}</p>}
       <motion.img src={theme.jonny} alt="Jonny"
-        style={{ height: 200, width: 'auto', objectFit: 'contain', mixBlendMode: 'multiply', filter: `drop-shadow(0 8px 36px ${theme.glow}77)` }}
+        style={{ height: 200, width: 'auto', objectFit: 'contain', filter: `drop-shadow(0 8px 36px ${theme.glow}77)` }}
         animate={{ y: [0, -14, 0] }}
         transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
       />
@@ -174,8 +174,8 @@ export function WinPodium({ theme, teams, winnerName, onHome }: {
         transition={{ type: 'spring', stiffness: 200, damping: 24 }}
         className="flex flex-col items-center gap-5 w-full max-w-lg px-6">
         {/* Jonny celebrating */}
-        <motion.img src="/jonny/vincitore-nobg.png" alt="Jonny"
-          style={{ height: 130, mixBlendMode: 'multiply', filter: `drop-shadow(0 8px 32px ${theme.glow}99)` }}
+        <motion.img src="/jonny-master.png" alt="Jonny"
+          style={{ height: 130, filter: `drop-shadow(0 8px 32px ${theme.glow}99)` }}
           animate={{ y: [0, -10, 0], rotate: [-2, 2, -2] }}
           transition={{ duration: 2.8, repeat: Infinity }} />
         {/* Title */}

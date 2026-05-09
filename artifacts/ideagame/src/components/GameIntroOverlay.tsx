@@ -92,7 +92,7 @@ export function GameIntroOverlay({ name, tagline, accentColor, icon, slug, onDon
           />
 
           {/* Centre content */}
-          <div className="relative z-10 flex flex-col items-center gap-6 px-8 text-center">
+          <div className="relative z-10 flex flex-col items-center gap-4 px-8 text-center">
             {/* Octagonal icon frame */}
             <AnimatePresence>
               {phase !== 'burst' && (
@@ -103,15 +103,15 @@ export function GameIntroOverlay({ name, tagline, accentColor, icon, slug, onDon
                   transition={{ type: 'spring', stiffness: 180, damping: 18 }}
                   className="oct-clip flex items-center justify-center"
                   style={{
-                    width: 160,
-                    height: 160,
+                    width: 140,
+                    height: 140,
                     background: `linear-gradient(145deg, ${accentColor} 0%, ${accentColor}99 60%, #0a0820 130%)`,
                     filter: `drop-shadow(0 0 60px ${accentColor}88)`,
                   }}
                 >
                   <GameIcon
                     name={icon as IconName}
-                    style={{ width: 72, height: 72, color: 'white' }}
+                    style={{ width: 64, height: 64, color: 'white' }}
                   />
                 </motion.div>
               )}
@@ -149,6 +149,20 @@ export function GameIntroOverlay({ name, tagline, accentColor, icon, slug, onDon
               )}
             </AnimatePresence>
           </div>
+
+          {/* Jonny floating from bottom-right */}
+          <AnimatePresence>
+            {phase === 'text' && (
+              <motion.img src="/jonny-master.png" alt="Jonny"
+                initial={{ opacity: 0, x: 80, y: 40 }}
+                animate={{ opacity: 1, x: 0, y: [0, -10, 0] }}
+                exit={{ opacity: 0, x: 80 }}
+                transition={{ opacity: { duration: 0.5 }, x: { type: 'spring', stiffness: 120 }, y: { duration: 3.5, repeat: Infinity, ease: 'easeInOut', delay: 0.5 } }}
+                className="pointer-events-none absolute bottom-0 right-0 select-none"
+                style={{ height: 'clamp(180px, 30vh, 280px)', width: 'auto', objectFit: 'contain', objectPosition: 'bottom', filter: `drop-shadow(0 0 40px ${accentColor}66) drop-shadow(0 20px 50px rgba(0,0,0,0.6))` }}
+              />
+            )}
+          </AnimatePresence>
 
           {/* Fade-out veil */}
           <AnimatePresence>

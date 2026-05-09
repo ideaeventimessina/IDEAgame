@@ -483,8 +483,8 @@ function Finale({ onJoin }: { onJoin: () => void }) {
       <div className="relative z-10 flex flex-col items-center max-w-4xl mx-auto">
 
         {/* Jonny vincitore */}
-        <motion.img src="/jonny/vincitore-nobg.png" alt="Jonny"
-          style={{ height: 'clamp(180px, 30vh, 340px)', width: 'auto', objectFit: 'contain', mixBlendMode: 'multiply', filter: 'drop-shadow(0 16px 50px rgba(245,182,66,0.6))' }}
+        <motion.img src="/jonny-master.png" alt="Jonny"
+          style={{ height: 'clamp(180px, 30vh, 340px)', width: 'auto', objectFit: 'contain', filter: 'drop-shadow(0 16px 50px rgba(245,182,66,0.6))' }}
           initial={{ opacity: 0, y: 40, scale: 0.85 }} whileInView={{ opacity: 1, y: 0, scale: 1 }} viewport={{ once: true }}
           transition={{ duration: 0.7, type: 'spring', stiffness: 100 }}
           animate={{ y: [0, -16, 0] }}
