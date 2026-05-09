@@ -7,6 +7,7 @@ import { JonnyLayer } from '@/components/JonnyLayer';
 import { JonnyWaiting } from '@/components/JonnyWaiting';
 import { JonnyAvatar } from '@/components/JonnyAvatar';
 import { useJonny } from '@/contexts/JonnyContext';
+import { PlayerLanding } from './PlayerLanding';
 
 interface EventInfo { id: string; name: string; joinCode: string; brandColor: string }
 interface TeamInfo { id: string; name: string; color: string }
@@ -132,7 +133,7 @@ interface SaraMusicaStateP {
   usedTrackIds: string[];
 }
 
-type Step = 'loading' | 'join' | 'joining' | 'play' | 'error';
+type Step = 'landing' | 'loading' | 'join' | 'joining' | 'play' | 'error';
 
 const BASE = (import.meta.env.BASE_URL as string) ?? '/';
 async function apiFetch(path: string, opts?: RequestInit) {
@@ -150,7 +151,7 @@ export default function Player() {
   const searchParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
   const joinCodeFromUrl = searchParams.get('e')?.toUpperCase() ?? '';
 
-  const [step, setStep] = useState<Step>(joinCodeFromUrl ? 'loading' : 'join');
+  const [step, setStep] = useState<Step>(joinCodeFromUrl ? 'loading' : 'landing');
   const [error, setError] = useState('');
   const [event, setEvent] = useState<EventInfo | null>(null);
   const [teams, setTeams] = useState<TeamInfo[]>([]);
@@ -475,6 +476,15 @@ export default function Player() {
   };
 
   const myTeam = player?.teamId ? teams.find(t => t.id === player.teamId) : teams.find(t => t.id === selectedTeam) ?? teams[0];
+
+  if (step === 'landing') {
+    return (
+      <>
+        <PlayerLanding onJoin={() => setStep('join')} />
+        {isHostedByJonny && <JonnyLayer />}
+      </>
+    );
+  }
 
   return (
     <div className="mx-auto flex h-screen w-full max-w-md flex-col overflow-hidden px-5 pt-6"
