@@ -83,7 +83,8 @@ export function PanicPanel({ open, onClose, eventId, joinCode, joinUrl, session 
     'karaoke-battle':    `/karaoke/sessions/${session?.id}/next`,
   };
 
-  const canSkip = !!session && !!SKIP_ROUTES[session.gameSlug];
+  const sessionActive = !!session && session.status !== 'ended';
+  const canSkip = sessionActive && !!SKIP_ROUTES[session!.gameSlug];
 
   const actions = [
     // ── Navigazione ──────────────────────────────────────
@@ -197,14 +198,14 @@ export function PanicPanel({ open, onClose, eventId, joinCode, joinUrl, session 
       key: 'reset',
       label: 'Reset Gioco',
       icon: RotateCcw,
-      color: session
+      color: sessionActive
         ? 'border-red-500/60 bg-red-500/10 text-red-300'
         : 'border-border bg-card/40 text-muted-foreground opacity-50 cursor-not-allowed',
-      description: session ? 'Termina sessione e svuota la board' : 'Nessuna sessione attiva',
+      description: sessionActive ? 'Termina sessione e svuota la board' : 'Nessuna sessione attiva',
       confirm: true,
       confirmMsg: `Terminare la sessione "${session?.gameSlug}" e resettare il gioco?`,
       action: async () => {
-        if (!session) return;
+        if (!sessionActive || !session) return;
         await apiFetch(`/sessions/${session.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -218,14 +219,14 @@ export function PanicPanel({ open, onClose, eventId, joinCode, joinUrl, session 
       key: 'end',
       label: 'End Game',
       icon: PowerOff,
-      color: session
+      color: sessionActive
         ? 'border-red-600/80 bg-red-600/20 text-red-200'
         : 'border-border bg-card/40 text-muted-foreground opacity-50 cursor-not-allowed',
-      description: session ? 'Chiudi il gioco e vai al podio' : 'Nessuna sessione attiva',
+      description: sessionActive ? 'Chiudi il gioco e vai al podio' : 'Nessuna sessione attiva',
       confirm: true,
       confirmMsg: `Terminare immediatamente "${session?.gameSlug}" e andare al podio?`,
       action: async () => {
-        if (!session) return;
+        if (!sessionActive || !session) return;
         const END_ROUTES: Record<string, string> = {
           'percorso-a-risate': `/percorso/sessions/${session.id}/end`,
           'adult-only':        `/adult-only/sessions/${session.id}/end`,
