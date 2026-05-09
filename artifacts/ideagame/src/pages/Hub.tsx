@@ -9,6 +9,7 @@ import { LocaleSwitcher } from '@/components/LocaleSwitcher';
 import { GameIntroOverlay } from '@/components/GameIntroOverlay';
 import { useT } from '@/i18n';
 import { useListGames, useGetCurrentEvent, useListPlayers, getListPlayersQueryKey } from '@workspace/api-client-react';
+import { JonnyAvatar } from '@/components/JonnyAvatar';
 import { useEventSocket } from '@/hooks/useEventSocket';
 import { useLocalMode } from '@/hooks/useLocalMode';
 
@@ -150,7 +151,7 @@ export default function Hub() {
   const lan = useLocalMode();
 
   const { data: games = [], isLoading: gamesLoading } = useListGames();
-  const { data: liveEvent } = useGetCurrentEvent();
+  const { data: liveEvent, isLoading: eventLoading } = useGetCurrentEvent();
   const { data: players = [] } = useListPlayers(
     liveEvent?.id ?? '',
     { query: { queryKey: getListPlayersQueryKey(liveEvent?.id ?? ''), enabled: !!liveEvent?.id } },
@@ -439,6 +440,53 @@ export default function Hub() {
           <div className="relative z-10 rounded-full border border-destructive/60 bg-destructive/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-destructive">18+</div>
         )}
       </motion.button>
+    );
+  }
+
+  // ── Standby screen: nessun evento attivo ─────────────────────────────
+  // Show standby whenever liveEvent is not yet available (loading) or absent
+  if (!liveEvent) {
+    return (
+      <div className="relative h-screen w-full overflow-hidden bg-background flex flex-col items-center justify-center">
+        {/* Ambient hex radial glow */}
+        <div className="pointer-events-none absolute inset-0"
+          style={{ background: 'radial-gradient(ellipse 80% 60% at 50% 55%, hsl(var(--primary)/0.07) 0%, transparent 70%)' }} />
+
+        {/* Black screen panic overlay */}
+        <AnimatePresence>
+          {projectorBlack && (
+            <motion.div key="projector-black" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              className="fixed inset-0 z-[200] bg-black" onClick={() => setProjectorBlack(false)} />
+          )}
+        </AnimatePresence>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, ease: 'easeOut' }}
+          className="relative z-10 flex flex-col items-center gap-6 sm:gap-10"
+        >
+          {/* Logo */}
+          <motion.div
+            animate={{ scale: [1, 1.015, 1] }}
+            transition={{ repeat: Infinity, duration: 4, ease: 'easeInOut' }}
+            className="flex items-center justify-center rounded-3xl bg-white shadow-2xl px-8 py-5 sm:px-14 sm:py-8"
+          >
+            <img src="/logo.png" alt="IDEA Games"
+              className="h-16 w-auto object-contain sm:h-28 lg:h-36" />
+          </motion.div>
+
+          {/* Jonny */}
+          <motion.div
+            animate={{ y: [0, -10, 0] }}
+            transition={{ repeat: Infinity, duration: 3.5, ease: 'easeInOut' }}
+            className="flex flex-col items-center gap-3"
+          >
+            <JonnyAvatar mood="waiting" size={200} className="drop-shadow-2xl sm:!w-[280px] sm:!h-[280px] lg:!w-[340px] lg:!h-[340px]" />
+          </motion.div>
+        </motion.div>
+      </div>
     );
   }
 
