@@ -216,10 +216,6 @@ export default function AdminWordBack() {
                 >
                   {s.title}
                 </button>
-                <button onClick={() => void handleDeleteSet(s.id)}
-                  className="rounded-lg border border-destructive/40 bg-destructive/10 p-1.5 text-destructive hover:bg-destructive/20">
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
               </div>
             ))}
           </div>
