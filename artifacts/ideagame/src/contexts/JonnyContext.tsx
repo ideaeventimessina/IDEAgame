@@ -1,6 +1,25 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
 
-export type JonnyMood = 'idle' | 'excited' | 'thinking' | 'cheering' | 'celebrating';
+export type JonnyMood =
+  | 'idle'          // benvenuto.png — waving hello
+  | 'waiting'       // attesa.png   — thoughtful waiting
+  | 'excited'       // via.png      — fist pump, "let's go!"
+  | 'your_turn'     // tocca_a_te   — thumbs up toward player
+  | 'thinking'      // pensa        — hand on chin
+  | 'attention'     // attenzione   — finger pointing up
+  | 'answer_sent'   // risposta_inviata — confirmation thumbs up
+  | 'correct'       // risposta_corretta — arms raised victory
+  | 'wrong'         // risposta_sbagliata — gentle shrug
+  | 'points'        // punti        — holding gold coin
+  | 'scoreboard'    // classifica   — sunglasses + scoreboard
+  | 'winner'        // vincitore    — holding trophy
+  | 'paused'        // pausa        — hands pressed pause symbol
+  | 'countdown'     // ultimi_secondi — urgent pointing finger
+  | 'round_done'    // round_ok     — applause clapping
+  | 'question'      // domanda      — curious open hands
+  | 'challenge'     // sfida        — dynamic pointing + star
+  | 'bye';          // saluti       — farewell wave
+
 export type JonnyMode = 'live' | 'home';
 
 export interface JonnyToast {

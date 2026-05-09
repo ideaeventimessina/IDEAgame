@@ -1,5 +1,112 @@
 uploads = []
-generated = []
+
+[[generated]]
+id = "pPM9n4b0wd-VtiHII_1eU"
+uri = "file://artifacts/ideagame/public/jonny/benvenuto.png"
+type = "image"
+title = "jonny benvenuto"
+
+[[generated]]
+id = "8B_mg0qnyVEPYocmgjdAS"
+uri = "file://artifacts/ideagame/public/jonny/attesa.png"
+type = "image"
+title = "jonny attesa"
+
+[[generated]]
+id = "AtJ6pmyNlYbqc0WvV42_y"
+uri = "file://artifacts/ideagame/public/jonny/via.png"
+type = "image"
+title = "jonny via go"
+
+[[generated]]
+id = "PoenOXObh_TnH54nl5u4a"
+uri = "file://artifacts/ideagame/public/jonny/tocca_a_te.png"
+type = "image"
+title = "jonny your turn"
+
+[[generated]]
+id = "UafhDpH06dpGzaXLESvSt"
+uri = "file://artifacts/ideagame/public/jonny/pensa.png"
+type = "image"
+title = "jonny thinking"
+
+[[generated]]
+id = "3OXGF_L_9q8g9lP9Guaup"
+uri = "file://artifacts/ideagame/public/jonny/attenzione.png"
+type = "image"
+title = "jonny attention"
+
+[[generated]]
+id = "YwhX3r3zedhz48JGBQPtR"
+uri = "file://artifacts/ideagame/public/jonny/risposta_inviata.png"
+type = "image"
+title = "jonny answer sent"
+
+[[generated]]
+id = "p9EMBWXMAfrlCqJp6zAkj"
+uri = "file://artifacts/ideagame/public/jonny/risposta_corretta.png"
+type = "image"
+title = "jonny correct answer"
+
+[[generated]]
+id = "Xf0wBjzuE6UZnjZX1Hdcf"
+uri = "file://artifacts/ideagame/public/jonny/risposta_sbagliata.png"
+type = "image"
+title = "jonny wrong answer"
+
+[[generated]]
+id = "8IRSOEO1uEZQ03sA0FAnX"
+uri = "file://artifacts/ideagame/public/jonny/punti.png"
+type = "image"
+title = "jonny points coin"
+
+[[generated]]
+id = "fCinWFFT4Q7zTT9Fc8kIk"
+uri = "file://artifacts/ideagame/public/jonny/classifica.png"
+type = "image"
+title = "jonny scoreboard"
+
+[[generated]]
+id = "KZasQF66jiiXYIoSWkks5"
+uri = "file://artifacts/ideagame/public/jonny/vincitore.png"
+type = "image"
+title = "jonny winner trophy"
+
+[[generated]]
+id = "gqvn168RP-al5MxICDGu8"
+uri = "file://artifacts/ideagame/public/jonny/pausa.png"
+type = "image"
+title = "jonny pause"
+
+[[generated]]
+id = "Iz4xhRhnP2GN8-rulkQdH"
+uri = "file://artifacts/ideagame/public/jonny/ultimi_secondi.png"
+type = "image"
+title = "jonny last seconds"
+
+[[generated]]
+id = "Qy1or2vT7xmmsZOri7hOo"
+uri = "file://artifacts/ideagame/public/jonny/round_ok.png"
+type = "image"
+title = "jonny round complete"
+
+[[generated]]
+id = "UzeDwOGwxUn_64Z-OtRZb"
+uri = "file://artifacts/ideagame/public/jonny/domanda.png"
+type = "image"
+title = "jonny question"
+
+[[generated]]
+id = "2OLWyGln_p1qoJJ3r6E1T"
+uri = "file://artifacts/ideagame/public/jonny/sfida.png"
+type = "image"
+title = "jonny special challenge"
+
+[[generated]]
+id = "57IBcE8hUJ0r0PGI2U7DH"
+uri = "file://artifacts/ideagame/public/jonny/saluti.png"
+type = "image"
+title = "jonny goodbye wave"
 
 [[outputs]]
 id = "XgJSbedSAlI0m_mnD6OiA"

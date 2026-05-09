@@ -36,14 +36,14 @@ function resolvePhase(
   if (step === 'join') {
     if (jonnyMode === 'home') {
       return {
-        mood: 'excited',
+        mood: 'idle',
         message: playerName
           ? `Bentornato, ${playerName}! Pronto per la sfida?`
           : `Ciao! Sono Jonny, il tuo game master${eventName ? ` di "${eventName}"` : ''}! Inserisci il tuo nome 👇`,
       };
     }
     return {
-      mood: 'excited',
+      mood: 'idle',
       message: playerName
         ? `Bentornato, ${playerName}! Dai il massimo!`
         : `Ciao! Sono Jonny, il co-host${eventName ? ` di "${eventName}"` : ''}! Inserisci il tuo nome 👇`,
@@ -54,11 +54,11 @@ function resolvePhase(
   }
   if (step === 'play') {
     if (gameState.status === 'paused') {
-      return { mood: 'thinking', message: '⏸ Pausa! Torneremo subito…' };
+      return { mood: 'paused', message: '⏸ Pausa! Torneremo subito…' };
     }
     if (gameState.status === 'ended') {
       return {
-        mood: 'celebrating',
+        mood: 'bye',
         message: jonnyMode === 'home'
           ? '🏆 Partita finita! Sei stato fantastico!'
           : '🏆 Partita finita! Grazie per aver giocato!',
@@ -90,7 +90,6 @@ export function JonnyLayer({ step, gameState, playerName, eventName }: JonnyLaye
 
   return (
     <>
-      {/* Main floating bubble */}
       <AnimatePresence>
         {visible && (
           <motion.div
@@ -102,13 +101,15 @@ export function JonnyLayer({ step, gameState, playerName, eventName }: JonnyLaye
             className="pointer-events-auto fixed bottom-28 left-4 right-4 z-50 flex items-end gap-3"
             style={{ maxWidth: 428, margin: '0 auto' }}
           >
-            {/* Avatar with gentle float */}
+            {/* Avatar — animates on mood change */}
             <motion.div
-              animate={{ rotate: [0, -3, 3, 0], y: [0, -2, 0] }}
-              transition={{ repeat: Infinity, duration: 4, ease: 'easeInOut' }}
+              key={jonnyMood}
+              initial={{ scale: 0.85, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: 'spring', stiffness: 420, damping: 22 }}
               className="shrink-0"
             >
-              <JonnyAvatar mood={jonnyMood} size={68} />
+              <JonnyAvatar mood={jonnyMood} size={80} />
             </motion.div>
 
             {/* Speech bubble */}

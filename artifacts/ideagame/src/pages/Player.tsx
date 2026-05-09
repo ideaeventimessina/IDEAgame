@@ -423,40 +423,40 @@ export default function Player() {
   // ─── Jonny reactive hooks — solo messaggi, nessuna logica di gioco ──────────
   useEffect(() => {
     if (!isHostedByJonny) return;
-    if (gameState.status === 'running') jonnyTell('Via! Forza squadra! 🚀', 'cheering');
-    else if (gameState.status === 'paused') jonnyTell('⏸ Pausa — torna subito!', 'thinking');
-    else if (gameState.status === 'ended') jonnyTell('🏆 Partita finita! Grande prestazione!', 'celebrating');
+    if (gameState.status === 'running') jonnyTell('Via! Forza squadra! 🚀', 'excited');
+    else if (gameState.status === 'paused') jonnyTell('⏸ Pausa — torna subito!', 'paused');
+    else if (gameState.status === 'ended') jonnyTell('🏆 Partita finita! Grande prestazione!', 'bye');
   }, [gameState.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!isHostedByJonny || !quizzoneQuestion) return;
-    jonnyTell(`Domanda ${quizzoneQuestion.roundIndex + 1}/${quizzoneQuestion.totalRounds} — Hai ${quizzoneQuestion.timeLimit}s! 🧠`, 'thinking');
+    jonnyTell(`Domanda ${quizzoneQuestion.roundIndex + 1}/${quizzoneQuestion.totalRounds} — Hai ${quizzoneQuestion.timeLimit}s! 🧠`, 'question');
   }, [quizzoneQuestion?.roundIndex]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!isHostedByJonny || !quizzoneReveal) return;
-    jonnyFlash('Risposte rivelate!', '📊', 'excited');
+    jonnyFlash('Risposte rivelate!', '📊', 'round_done');
   }, [quizzoneReveal?.roundIndex]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!isHostedByJonny || !coppieBoard || !player?.teamId) return;
     const myIdx = coppieBoard.teams.findIndex(t => t.id === player.teamId);
     if (myIdx === coppieBoard.currentTeamIdx) {
-      jonnyFlash('Tocca a te!', '🃏', 'cheering');
+      jonnyFlash('Tocca a te!', '🃏', 'your_turn');
     } else {
-      jonnyFlash('Aspetta il tuo turno…', '⏳', 'thinking');
+      jonnyFlash('Aspetta il tuo turno…', '⏳', 'waiting');
     }
   }, [coppieBoard?.currentTeamIdx]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!isHostedByJonny || !coppieBoard?.winner) return;
-    jonnyTell('🎉 Qualcuno ha vinto la partita a coppie!', 'celebrating');
+    jonnyTell('🎉 Qualcuno ha vinto la partita a coppie!', 'winner');
   }, [coppieBoard?.winner]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!isHostedByJonny || !percorsoStateP) return;
     const pStep = percorsoStateP.steps[percorsoStateP.currentStepIdx];
-    if (pStep) jonnyTell(`Sfida: "${pStep.title}" — ${pStep.points} punti!`, 'excited');
+    if (pStep) jonnyTell(`Sfida: "${pStep.title}" — ${pStep.points} punti!`, 'challenge');
   }, [percorsoStateP?.currentStepIdx]); // eslint-disable-line react-hooks/exhaustive-deps
   // ─────────────────────────────────────────────────────────────────────────────
 
