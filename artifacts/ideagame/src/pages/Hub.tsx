@@ -116,7 +116,7 @@ function StatusBadge({ slug, size = 'sm' }: { slug: string; size?: 'xs' | 'sm' }
   );
 }
 
-type IntroGame = { name: string; accentColor: string; icon: string; tagline: string; slug: string };
+type IntroGame = { name: string; accentColor: string; icon: string; tagline: string; slug: string; sessionId: string; eventId: string };
 
 export default function Hub() {
   const t = useT();
@@ -200,23 +200,26 @@ export default function Hub() {
   );
   const { on } = useEventSocket(liveEvent?.id ?? null);
 
-  // Listen for new running sessions → trigger game intro overlay
+  // Listen for game:started / game:resumed → trigger intro overlay then auto-navigate to board
   useEffect(() => {
     if (!liveEvent?.id) return;
-    return on<{ session: { gameSlug: string; status: string } }>('session:updated', (data) => {
-      if (data.session.status === 'running') {
-        const game = games.find(g => g.slug === data.session.gameSlug);
-        if (game) {
-          setIntroGame({
-            name: game.name,
-            accentColor: game.accentColor,
-            icon: game.icon,
-            tagline: game.tagline ?? '',
-            slug: game.slug,
-          });
-        }
+    const handleGameStarted = (data: { session: { id: string; gameSlug: string; status: string }; eventId: string }) => {
+      const game = games.find(g => g.slug === data.session.gameSlug);
+      if (game) {
+        setIntroGame({
+          name: game.name,
+          accentColor: game.accentColor,
+          icon: game.icon,
+          tagline: game.tagline ?? '',
+          slug: game.slug,
+          sessionId: data.session.id,
+          eventId: data.eventId,
+        });
       }
-    });
+    };
+    const u1 = on<{ session: { id: string; gameSlug: string; status: string }; eventId: string }>('game:started', handleGameStarted);
+    const u2 = on<{ session: { id: string; gameSlug: string; status: string }; eventId: string }>('game:resumed', handleGameStarted);
+    return () => { u1?.(); u2?.(); };
   }, [liveEvent?.id, on, games]);
 
   // Panic panel: projector commands
@@ -632,13 +635,19 @@ export default function Hub() {
       <AnimatePresence>
         {introGame && (
           <GameIntroOverlay
-            key={`${introGame.slug}-${Date.now()}`}
+            key={`${introGame.slug}-${introGame.sessionId}`}
             name={introGame.name}
             accentColor={introGame.accentColor}
             icon={introGame.icon}
             tagline={introGame.tagline}
             slug={introGame.slug}
-            onDone={() => setIntroGame(null)}
+            onDone={() => {
+              const boardPath = SLUG_TO_BOARD[introGame.slug];
+              setIntroGame(null);
+              if (boardPath) {
+                navigate(`${boardPath}?s=${introGame.sessionId}&e=${introGame.eventId}`);
+              }
+            }}
           />
         )}
       </AnimatePresence>
