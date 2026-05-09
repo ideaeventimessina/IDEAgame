@@ -1,6 +1,6 @@
 import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Wifi, WifiOff, Users, Radio, Loader2, ChevronDown, ChevronUp, Sparkles, SlidersHorizontal, CalendarPlus } from 'lucide-react';
+import { Wifi, WifiOff, Users, Radio, Loader2, ChevronDown, ChevronUp, Sparkles, SlidersHorizontal, CalendarPlus, Play, X } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Octagon } from '@/components/Octagon';
 import { GameIcon } from '@/components/GameIcon';
@@ -20,7 +20,25 @@ const READY_SLUGS = new Set([
   'percorso-a-risate', 'adult-only',
   'sfida-ballo', 'sfida-di-ballo',
   'parola-alle-spalle', 'karaoke-battle', 'saramusica',
+  'freestyle-battle',
 ]);
+
+// Slug → real projector board URL (needs ?s=SESSION_ID&e=EVENT_ID)
+const SLUG_TO_BOARD: Record<string, string> = {
+  'percorso-a-risate':  '/percorso-risate',
+  'gioco-delle-coppie': '/coppie',
+  'gioco-coppie':       '/coppie',
+  'quizzone':           '/quizzone',
+  'adult-only':         '/adult-only',
+  'sfida-di-ballo':     '/sfida-ballo',
+  'sfida-ballo':        '/sfida-ballo',
+  'parola-alle-spalle': '/parola-alle-spalle',
+  'karaoke-battle':     '/karaoke-battle',
+  'freestyle-battle':   '/freestyle-battle',
+  'saramusica':         '/saramusica',
+};
+
+type NoSessionState = { name: string; slug: string; accentColor: string } | null;
 
 // 3-2-3 orbital layout around center logo
 const POSITIONS = [
@@ -64,6 +82,28 @@ export default function Hub() {
   const [rosterOpen, setRosterOpen] = useState(false);
   const [introGame, setIntroGame] = useState<IntroGame | null>(null);
   const [projectorBlack, setProjectorBlack] = useState(false);
+  const [noSessionGame, setNoSessionGame] = useState<NoSessionState>(null);
+
+  // Navigate to a game — if a real board exists, check for active session first
+  const handleGameClick = async (slug: string, name: string, accentColor: string) => {
+    const boardPath = SLUG_TO_BOARD[slug];
+    if (!boardPath || !liveEvent) {
+      // No real board or no live event → fall back to generic preview
+      navigate(`/game/${slug}`);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/events/${liveEvent.id}/active-session`);
+      const session = res.ok ? await res.json() : null;
+      if (session && session.gameSlug === slug && session.status !== 'ended') {
+        navigate(`${boardPath}?s=${session.id}&e=${liveEvent.id}`);
+      } else {
+        setNoSessionGame({ name, slug, accentColor });
+      }
+    } catch {
+      navigate(`/game/${slug}`);
+    }
+  };
   const lan = useLocalMode();
 
   const { data: games = [], isLoading: gamesLoading } = useListGames();
@@ -164,7 +204,7 @@ export default function Hub() {
                 top:  ch / 2 + pos.y * oy - oct / 2,
               }}>
               <Octagon color={g.accentColor} size={oct} delay={i * 0.035}
-                onClick={() => navigate(`/game/${g.slug}`)}>
+                onClick={() => handleGameClick(g.slug, g.name, g.accentColor)}>
                 <div className="mb-2 flex items-center justify-center rounded-xl"
                   style={{ width: oct * 0.38, height: oct * 0.38, background: `${g.accentColor}22`, color: g.accentColor }}>
                   <GameIcon name={g.icon as IconName} style={{ width: oct * 0.24, height: oct * 0.24 }} />
@@ -335,7 +375,7 @@ export default function Hub() {
     return (
       <motion.button
         type="button"
-        onClick={() => navigate(`/game/${g.slug}`)}
+        onClick={() => handleGameClick(g.slug, g.name, g.accentColor)}
         initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.05 + i * 0.06, type: 'spring', stiffness: 120 }}
         whileTap={{ scale: 0.97 }}
@@ -361,6 +401,61 @@ export default function Hub() {
 
   return (
     <div className="relative h-screen w-full flex flex-col overflow-hidden">
+
+      {/* ── No-session dialog (gioco non ancora avviato) ── */}
+      <AnimatePresence>
+        {noSessionGame && (
+          <motion.div
+            key="no-session-overlay"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[150] flex items-center justify-center bg-black/70 backdrop-blur-sm px-4"
+            onClick={() => setNoSessionGame(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.85, opacity: 0, y: 24 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.85, opacity: 0, y: 24 }}
+              transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+              className="relative w-full max-w-sm rounded-3xl border bg-card p-7 shadow-2xl"
+              style={{ borderColor: `${noSessionGame.accentColor}55` }}
+              onClick={e => e.stopPropagation()}
+            >
+              <button
+                className="absolute right-4 top-4 rounded-full p-1.5 text-muted-foreground hover:text-foreground"
+                onClick={() => setNoSessionGame(null)}
+              >
+                <X className="h-4 w-4" />
+              </button>
+              <div className="mb-1 text-xs uppercase tracking-widest text-muted-foreground">Gioco non attivo</div>
+              <div className="text-display text-2xl font-black" style={{ color: noSessionGame.accentColor }}>
+                {noSessionGame.name}
+              </div>
+              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                Per aprire il board del gioco devi prima <strong className="text-foreground">avviare una sessione</strong> dal Cockpit animatore.
+              </p>
+              <div className="mt-2 rounded-2xl border border-border bg-muted/30 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
+                <span className="font-bold text-foreground">Come fare:</span><br />
+                Cockpit → seleziona l'evento → crea sessione <span className="font-mono text-primary">{noSessionGame.slug}</span> → avvia → torna qui e clicca il gioco.
+              </div>
+              <div className="mt-5 flex gap-3">
+                <button
+                  onClick={() => { setNoSessionGame(null); navigate('/control'); }}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-primary px-4 py-3 text-sm font-black text-primary-foreground hover-elevate"
+                >
+                  <Play className="h-4 w-4" />
+                  Vai al Cockpit
+                </button>
+                <button
+                  onClick={() => setNoSessionGame(null)}
+                  className="rounded-2xl border border-border px-4 py-3 text-sm font-bold text-muted-foreground hover:text-foreground"
+                >
+                  Chiudi
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Game intro overlay (triggered by socket session:updated) ── */}
       <AnimatePresence>
