@@ -98,12 +98,12 @@ export function PanicPanel({ open, onClose, eventId, joinCode, joinUrl, session 
     },
     {
       key: 'hub',
-      label: "Torna all'Hub",
+      label: 'Torna al Cockpit',
       icon: Home,
       color: 'border-sky-500/60 bg-sky-500/15 text-sky-300',
-      description: 'Schermata principale proiettore',
+      description: 'Chiudi emergenza e torna al controllo',
       confirm: false,
-      action: async () => { onClose(); navigate('/'); },
+      action: async () => { onClose(); navigate('/control'); },
     },
     {
       key: 'podio',
