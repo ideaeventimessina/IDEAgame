@@ -157,6 +157,9 @@
   .hex-clip {
     clip-path: polygon(25% 4%, 75% 4%, 100% 50%, 75% 96%, 25% 96%, 0% 50%);
   }
+  .oct-clip {
+    clip-path: polygon(29% 0%, 71% 0%, 100% 29%, 100% 71%, 71% 100%, 29% 100%, 0% 71%, 0% 29%);
+  }
   .stage-vignette::before {
     content: "";
     position: absolute; inset: 0;

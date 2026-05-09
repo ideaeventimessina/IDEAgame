@@ -3,7 +3,7 @@ import type { Locale } from '@/data/types';
 export const STRINGS: Record<Locale, Record<string, string>> = {
   it: {
     'app.title': 'IDEAgame',
-    'app.tagline': 'Sei spettacoli. Una platea. Venti giocatori.',
+    'app.tagline': 'Otto spettacoli. Una platea. Venti giocatori.',
     'hub.live_event': 'Evento in corso',
     'hub.players_connected': 'giocatori connessi',
     'hub.scan_to_join': 'Inquadra per giocare',
@@ -111,7 +111,7 @@ export const STRINGS: Record<Locale, Record<string, string>> = {
   },
   en: {
     'app.title': 'IDEAgame',
-    'app.tagline': 'Six shows. One stage. Twenty players.',
+    'app.tagline': 'Eight shows. One stage. Twenty players.',
     'hub.live_event': 'Live event',
     'hub.players_connected': 'players connected',
     'hub.scan_to_join': 'Scan to join',
@@ -218,7 +218,7 @@ export const STRINGS: Record<Locale, Record<string, string>> = {
   },
   es: {
     'app.title': 'IDEAgame',
-    'app.tagline': 'Seis espectáculos. Un escenario. Veinte jugadores.',
+    'app.tagline': 'Ocho espectáculos. Un escenario. Veinte jugadores.',
     'hub.choose_game': 'Elige un juego',
     'hub.scan_to_join': 'Escanea para jugar',
     'hub.players_connected': 'jugadores conectados',
@@ -227,7 +227,7 @@ export const STRINGS: Record<Locale, Record<string, string>> = {
   },
   fr: {
     'app.title': 'IDEAgame',
-    'app.tagline': 'Six spectacles. Une scène. Vingt joueurs.',
+    'app.tagline': 'Huit spectacles. Une scène. Vingt joueurs.',
     'hub.choose_game': 'Choisis un jeu',
     'hub.scan_to_join': 'Scanne pour jouer',
     'hub.players_connected': 'joueurs connectés',
