@@ -708,11 +708,12 @@ export default function LiveControl() {
     if (goToScoreboard) navigate(`/scoreboard?e=${selectedEventId}`);
   };
 
-  const handleScore = (teamId: string, delta: number) => withBusy(async () => {
-    if (!session) return;
+  // Used by ScorePanel — must throw on error so ScorePanel can show inline feedback
+  const handleScore = async (teamId: string, delta: number): Promise<void> => {
+    if (!session) throw new Error('Nessuna sessione attiva');
     await recordScore.mutateAsync({ id: selectedEventId, data: { teamId, gameSlug: session.gameSlug, round: session.currentRound, points: delta } });
     qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) });
-  });
+  };
 
   // ─── Percorso handlers ─────────────────────────────────────────────────────
 
