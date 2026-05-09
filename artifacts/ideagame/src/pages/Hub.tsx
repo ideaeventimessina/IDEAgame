@@ -39,10 +39,11 @@ const D_OCT = 200;
 const D_OX  = 175;
 const D_OY  = 148;
 
-// Tablet octagon grid constants
-const T_OCT = 100;
-const T_OX  = 86;
-const T_OY  = 96;
+// Tablet octagon grid constants — bigger, floating layout
+// cw = 2*(1.5*130+77.5)+10 = 555 px   ch = 2*(1.15*126+77.5)+10 = 455 px
+const T_OCT = 155;
+const T_OX  = 130;
+const T_OY  = 126;
 
 function StatusBadge({ slug, size = 'sm' }: { slug: string; size?: 'xs' | 'sm' }) {
   const ready = READY_SLUGS.has(slug);
@@ -415,22 +416,40 @@ export default function Hub() {
       </div>
 
       {/* ════════════════════════════════════════════════════════════
-          TABLET  (768 px – 1023 px): sidebar | oct-grid
+          TABLET  (768 px – 1023 px): full-bleed + floating panels
           ════════════════════════════════════════════════════════════ */}
-      <div className="hidden md:grid lg:hidden flex-1 min-h-0 grid-cols-[280px_1fr] gap-6 px-6 py-4 overflow-hidden">
-        <div className="flex flex-col gap-4 overflow-y-auto pb-2">
-          {liveEvent ? <QrPanel /> : <EventCTA />}
-          <RosterPanel />
-        </div>
-        <div className="flex flex-col items-center justify-center overflow-hidden">
+      <div className="hidden md:relative md:flex md:flex-1 md:min-h-0 md:items-center md:justify-center md:overflow-hidden lg:hidden">
+
+        {/* Left floating panel */}
+        <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}
+          className="absolute left-4 top-1/2 z-20 w-[170px] -translate-y-1/2">
+          {liveEvent ? <QrPanel compact /> : <EventCTA />}
+        </motion.div>
+
+        {/* Centre: octagon game grid */}
+        <div className="flex flex-col items-center justify-center">
           {gamesLoading
             ? <Loader2 className="h-8 w-8 animate-spin text-primary" />
             : <OctGrid oct={T_OCT} ox={T_OX} oy={T_OY} />
           }
-          <div className="mt-5 text-display text-lg uppercase tracking-[0.3em] text-muted-foreground/60">
+          <div className="mt-3 text-display text-base uppercase tracking-[0.35em] text-muted-foreground/40">
             {t('hub.choose_game')}
           </div>
         </div>
+
+        {/* Right floating panel */}
+        <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
+          className="absolute right-4 top-1/2 z-20 flex w-[170px] -translate-y-1/2 flex-col gap-2">
+          <RosterPanel />
+          <button onClick={() => navigate('/control')}
+            className="flex w-full items-center gap-2 rounded-2xl border border-primary/40 bg-primary/10 px-3 py-2.5 text-left hover-elevate">
+            <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary" />
+            <div>
+              <div className="text-display text-[11px] font-black text-primary">✨ Serata Completa</div>
+              <div className="text-[9px] text-muted-foreground">Percorso · Coppie · Quizzone</div>
+            </div>
+          </button>
+        </motion.div>
       </div>
 
       {/* ════════════════════════════════════════════════════════════
