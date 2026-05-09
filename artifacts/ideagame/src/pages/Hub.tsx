@@ -198,9 +198,28 @@ export default function Hub() {
     liveEvent?.id ?? '',
     { query: { queryKey: getListPlayersQueryKey(liveEvent?.id ?? ''), enabled: !!liveEvent?.id } },
   );
-  const { on } = useEventSocket(liveEvent?.id ?? null);
+  const { on, connected } = useEventSocket(liveEvent?.id ?? null);
 
-  // Listen for game:started / game:resumed → trigger intro overlay then auto-navigate to board
+  // On mount and on every socket reconnect: check for an already-running session
+  // This is the primary navigation trigger — it catches events missed during socket reconnects
+  useEffect(() => {
+    if (!liveEvent?.id || !connected || games.length === 0) return;
+    let cancelled = false;
+    fetch(`/api/events/${liveEvent.id}/active-session`, { credentials: 'include' })
+      .then(r => (r.ok ? r.json() : null))
+      .then((session: { id: string; gameSlug: string; status: string } | null) => {
+        if (cancelled || !session || session.status !== 'running') return;
+        const boardPath = SLUG_TO_BOARD[session.gameSlug];
+        if (boardPath) {
+          navigate(`${boardPath}?s=${session.id}&e=${liveEvent.id}`);
+        }
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [liveEvent?.id, liveEvent, connected, games, navigate]);
+
+  // Listen for game:started / game:resumed → show intro overlay then navigate
+  // Secondary trigger: for sessions that start while the Hub is already connected
   useEffect(() => {
     if (!liveEvent?.id) return;
     const handleGameStarted = (data: { session: { id: string; gameSlug: string; status: string }; eventId: string }) => {
