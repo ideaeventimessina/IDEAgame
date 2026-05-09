@@ -299,7 +299,7 @@ router.post("/jonny/generations", requireAuth, async (req: AuthedRequest, res: R
   let generatedJson: Record<string, unknown>;
   try {
     const completion = await openai.chat.completions.create({
-      model: "gpt-5.1",
+      model: "gpt-4.1",
       max_completion_tokens: 8192,
       response_format: { type: "json_object" },
       messages: [

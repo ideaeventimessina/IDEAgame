@@ -173,8 +173,11 @@ export function WinPodium({ theme, teams, winnerName, onHome }: {
       <motion.div initial={{ scale: 0.75, y: 50, opacity: 0 }} animate={{ scale: 1, y: 0, opacity: 1 }}
         transition={{ type: 'spring', stiffness: 200, damping: 24 }}
         className="flex flex-col items-center gap-5 w-full max-w-lg px-6">
-        {/* Trophy icon */}
-        <div className="text-6xl">🏆</div>
+        {/* Jonny celebrating */}
+        <motion.img src="/jonny-master.jpg" alt="Jonny"
+          style={{ height: 130, filter: `drop-shadow(0 8px 32px ${theme.glow}99)` }}
+          animate={{ y: [0, -10, 0], rotate: [-2, 2, -2] }}
+          transition={{ duration: 2.8, repeat: Infinity }} />
         {/* Title */}
         <div className="text-center">
           <NeonTitle text="FINE PARTITA" color={theme.accent} size="lg" />

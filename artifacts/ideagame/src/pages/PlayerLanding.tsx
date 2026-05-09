@@ -93,13 +93,18 @@ function Hero({ onJoin, onScrollDown }: { onJoin: () => void; onScrollDown: () =
       <div className="pointer-events-none absolute" style={{ top: '30%', left: '-5%', width: 280, height: 280, borderRadius: '50%', background: 'radial-gradient(circle, #F5B64210 0%, transparent 70%)', filter: 'blur(50px)' }} />
       <div className="pointer-events-none absolute" style={{ top: '40%', right: '-5%', width: 240, height: 240, borderRadius: '50%', background: 'radial-gradient(circle, #FF69B410 0%, transparent 70%)', filter: 'blur(50px)' }} />
 
-      {/* Background gradient */}
-      <div className="absolute inset-0 z-0"
-        style={{ background: 'radial-gradient(ellipse 130% 90% at 50% -5%, #2d0d52 0%, #130628 45%, #060213 100%)' }}>
-        {/* Bottom gradient for CTA readability */}
+      {/* Hero poster image — fills the screen */}
+      <motion.div className="absolute inset-0 z-0"
+        initial={{ opacity: 0, scale: 1.04 }} animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 1.1, ease: 'easeOut' }}>
+        <img src="/jonny-world-hero.png" alt="Jonny's World"
+          className="w-full h-full object-cover object-center"
+          style={{ filter: 'brightness(0.88) saturate(1.15)' }} />
         <div className="absolute inset-0"
-          style={{ background: 'linear-gradient(to bottom, transparent 50%, rgba(4,2,16,0.92) 80%, rgba(4,2,16,0.99) 100%)' }} />
-      </div>
+          style={{ background: 'linear-gradient(to bottom, rgba(4,2,16,0.05) 0%, rgba(4,2,16,0.0) 35%, rgba(4,2,16,0.55) 60%, rgba(4,2,16,0.92) 78%, rgba(4,2,16,0.99) 100%)' }} />
+        <div className="absolute inset-0"
+          style={{ background: 'linear-gradient(to bottom, rgba(4,2,16,0.45) 0%, transparent 18%)' }} />
+      </motion.div>
 
       {/* CTAs — pinned to bottom of hero */}
       <div className="absolute bottom-0 left-0 right-0 z-10 flex flex-col items-center pb-10 sm:pb-12 px-5">
@@ -475,6 +480,13 @@ function Finale({ onJoin }: { onJoin: () => void }) {
 
       <div className="relative z-10 flex flex-col items-center max-w-4xl mx-auto">
 
+        {/* Jonny vincitore */}
+        <motion.img src="/jonny-master.jpg" alt="Jonny"
+          style={{ height: 'clamp(180px, 30vh, 340px)', width: 'auto', objectFit: 'contain', filter: 'drop-shadow(0 16px 50px rgba(245,182,66,0.6))' }}
+          initial={{ opacity: 0, y: 40, scale: 0.85 }} whileInView={{ opacity: 1, y: 0, scale: 1 }} viewport={{ once: true }}
+          transition={{ duration: 0.7, type: 'spring', stiffness: 100 }}
+          animate={{ y: [0, -16, 0] }}
+        />
 
         <motion.h2 className="font-black text-white mt-8 leading-tight"
           style={{ fontSize: 'clamp(2.2rem, 7vw, 5.5rem)', filter: 'drop-shadow(0 0 40px rgba(245,182,66,0.3))' }}
