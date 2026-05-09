@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEventSocket } from '@/hooks/useEventSocket';
+import { ArenaBg, ArenaHeader, JonnyWaitingScreen, ArenaScoreBar, WinPodium, SocketBadge, NeonTimerBar, ARENA } from '@/components/JonnyWorldTheme';
 
 interface WordBackCard {
   id: string; word: string; hint: string | null; category: string;
@@ -32,21 +33,19 @@ async function apiFetch(path: string) {
 const DIFF_COLOR: Record<string, string> = {
   easy: '#22c55e', medium: '#eab308', hard: '#ef4444',
 };
-const CATEGORY_EMOJI: Record<string, string> = {
-  animali: '🐾', oggetti: '📦', film: '🎬', personaggi: '🎭',
-  azioni: '⚡', mestieri: '👷', eventi: '🎉', 'parole assurde': '🤪',
-};
+
+const T = ARENA.wordback;
 
 export default function GameWordBack() {
-  const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+  const params    = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
   const sessionId = params.get('s') ?? '';
-  const eventId = params.get('e') ?? '';
+  const eventId   = params.get('e') ?? '';
 
   const [state, setState] = useState<WordBackState | null>(null);
   const [flashMsg, setFlashMsg] = useState('');
   const [timeLeft, setTimeLeft] = useState(0);
 
-  const { on } = useEventSocket(eventId || null);
+  const { connected, on } = useEventSocket(eventId || null);
 
   const loadState = useCallback(async () => {
     if (!sessionId) return;
@@ -59,28 +58,27 @@ export default function GameWordBack() {
   useEffect(() => {
     if (!eventId) return;
     const unsubs = [
-      on<{ state: WordBackState }>('wordback:started', ({ state: s }) => setState(s)),
-      on<{ state: WordBackState }>('wordback:card_changed', ({ state: s }) => { setState(s); setFlashMsg(''); }),
-      on<{ state: WordBackState }>('wordback:booking_added', ({ state: s }) => setState(s)),
-      on<{ state: WordBackState }>('wordback:booking_removed', ({ state: s }) => setState(s)),
+      on<{ state: WordBackState }>('wordback:started',              ({ state: s }) => setState(s)),
+      on<{ state: WordBackState }>('wordback:card_changed',          ({ state: s }) => { setState(s); setFlashMsg(''); }),
+      on<{ state: WordBackState }>('wordback:booking_added',         ({ state: s }) => setState(s)),
+      on<{ state: WordBackState }>('wordback:booking_removed',       ({ state: s }) => setState(s)),
       on<{ state: WordBackState }>('wordback:active_player_changed', ({ state: s }) => {
         setState(s);
         const p = s.bookings.find(b => b.status === 'active');
-        if (p) setFlashMsg(`È il turno di ${p.nickname}!`);
+        if (p) setFlashMsg(`Tocca a ${p.nickname}!`);
       }),
-      on<{ state: WordBackState }>('wordback:timer_started', ({ state: s }) => setState(s)),
-      on<{ state: WordBackState }>('wordback:timer_stopped', ({ state: s }) => setState(s)),
-      on<{ state: WordBackState }>('wordback:score_updated', ({ state: s }) => {
+      on<{ state: WordBackState }>('wordback:timer_started',         ({ state: s }) => setState(s)),
+      on<{ state: WordBackState }>('wordback:timer_stopped',         ({ state: s }) => setState(s)),
+      on<{ state: WordBackState }>('wordback:score_updated',         ({ state: s }) => {
         setState(s);
-        setFlashMsg('Parola indovinata! 🎉');
-        setTimeout(() => setFlashMsg(''), 3000);
+        setFlashMsg('Parola indovinata!');
+        setTimeout(() => setFlashMsg(''), 2800);
       }),
       on<{ state: WordBackState }>('wordback:ended', ({ state: s }) => setState(s)),
     ];
     return () => unsubs.forEach(u => u());
   }, [eventId, on]);
 
-  // Timer countdown
   useEffect(() => {
     if (!state?.timerStartedAt || !state.currentCard) { setTimeLeft(0); return; }
     const update = () => {
@@ -96,110 +94,104 @@ export default function GameWordBack() {
 
   if (!state) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[hsl(248_70%_4%)]">
-        <div className="text-display text-xl font-black text-muted-foreground animate-pulse">
-          Caricamento…
-        </div>
-      </div>
+      <ArenaBg theme={T}>
+        <JonnyWaitingScreen theme={T} label="Caricamento…" />
+      </ArenaBg>
     );
   }
 
-  const bookings = state.bookings ?? [];
+  if (state.status === 'ended') {
+    const sorted = [...state.teams].sort((a, b) => b.score - a.score);
+    return (
+      <ArenaBg theme={T}>
+        <WinPodium theme={T} teams={state.teams} winnerName={sorted[0]?.name ?? null} onHome={() => { window.location.href = '/'; }} />
+      </ArenaBg>
+    );
+  }
+
+  const bookings     = state.bookings ?? [];
   const activePlayer = bookings.find(b => b.status === 'active');
   const waitingQueue = bookings.filter(b => b.status === 'waiting');
-  const sortedTeams = [...state.teams].sort((a, b) => b.score - a.score);
-  const timerPct = state.currentCard && state.timerStartedAt
-    ? Math.max(0, (timeLeft / state.currentCard.timeLimit) * 100)
-    : 0;
-  const timerColor = timerPct > 50 ? '#22c55e' : timerPct > 20 ? '#eab308' : '#ef4444';
+  const sortedTeams  = [...state.teams].sort((a, b) => b.score - a.score);
+  const timerPct     = state.currentCard && state.timerStartedAt
+    ? Math.max(0, (timeLeft / state.currentCard.timeLimit) * 100) : 0;
+  const timerColor   = timerPct > 50 ? '#22c55e' : timerPct > 20 ? '#eab308' : '#ef4444';
+  const diffColor    = state.currentCard ? (DIFF_COLOR[state.currentCard.difficulty] ?? '#888') : T.accent;
 
   return (
-    <div className="relative flex h-screen flex-col overflow-hidden bg-[hsl(248_70%_4%)] text-white select-none">
+    <ArenaBg theme={T}>
+      {/* Timer bar */}
+      {state.timerStartedAt && <NeonTimerBar pct={timerPct} color={timerColor} />}
 
-      {/* ── Header bar ── */}
-      <div className="flex items-center justify-between px-10 pt-6 pb-2">
-        <div className="text-display text-xl font-black tracking-widest opacity-60 uppercase">
-          Parola alle Spalle
-        </div>
-        <div className="text-xs font-bold uppercase tracking-widest opacity-40">{state.setName}</div>
-      </div>
-
-      {/* ── Timer bar ── */}
-      {state.timerStartedAt && (
-        <div className="mx-10 h-2 rounded-full bg-white/10 overflow-hidden">
-          <motion.div className="h-full rounded-full"
-            animate={{ width: `${timerPct}%` }}
-            transition={{ duration: 0.5 }}
-            style={{ background: timerColor }}
-          />
-        </div>
-      )}
-
-      {/* ── Main word area ── */}
-      <div className="flex flex-1 flex-col items-center justify-center px-10 gap-6">
-
-        {/* Flash message */}
-        <AnimatePresence>
-          {flashMsg && (
-            <motion.div
-              key={flashMsg}
-              initial={{ opacity: 0, y: -20, scale: 0.9 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 20 }}
-              className="absolute top-20 left-1/2 -translate-x-1/2 z-50 rounded-3xl border border-primary/60 bg-primary/20 px-8 py-4 text-display text-2xl font-black text-primary backdrop-blur-md text-center"
-            >
-              {flashMsg}
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {state.status === 'idle' && (
-          <div className="text-center space-y-4">
-            <div className="text-6xl">🎮</div>
-            <div className="text-display text-3xl font-black text-muted-foreground">
-              In attesa dell'animatore…
-            </div>
-            <div className="text-lg text-muted-foreground">
-              Chi vuole mimare? Tocca il telefono per prenotarti!
-            </div>
+      {/* Header */}
+      <ArenaHeader theme={T}
+        left={
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-black uppercase tracking-[0.25em]" style={{ color: T.accent }}>{T.title}</span>
+            {state.setName && <span className="text-xs text-white/35">{state.setName}</span>}
           </div>
+        }
+        right={<SocketBadge connected={connected} />}
+      />
+
+      {/* Flash */}
+      <AnimatePresence>
+        {flashMsg && (
+          <motion.div key={flashMsg} initial={{ opacity: 0, scale: 0.85, y: -15 }} animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0 }} className="absolute top-20 left-1/2 z-50 -translate-x-1/2 w-full max-w-lg px-4 pointer-events-none">
+            <div className="rounded-3xl border-2 px-8 py-4 text-center text-display text-2xl font-black"
+              style={{ borderColor: `${T.accent}77`, background: `${T.accent}18`, color: T.accent, backdropFilter: 'blur(14px)', boxShadow: `0 0 40px ${T.glow}44` }}>
+              {flashMsg}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Main area */}
+      <div className="flex flex-1 flex-col items-center justify-center px-10 gap-6 overflow-hidden">
+
+        {/* IDLE */}
+        {state.status === 'idle' && (
+          <JonnyWaitingScreen theme={T} subtitle="Chi vuole mimare? Prenota dal telefono!" label="In attesa dell'animatore…" />
         )}
 
+        {/* RUNNING / REVEALED */}
         {(state.status === 'running' || state.status === 'revealed') && (
-          <>
-            {/* Category badge */}
+          <div className="flex flex-col items-center gap-6 w-full text-center">
+            {/* Metadata */}
             {state.currentCard && (
-              <div className="flex items-center gap-2">
-                <span className="text-2xl">{CATEGORY_EMOJI[state.currentCard.category] ?? '🎯'}</span>
-                <span className="rounded-full border border-white/20 bg-white/10 px-4 py-1 text-sm font-bold uppercase tracking-widest text-white/70">
+              <div className="flex items-center gap-3 flex-wrap justify-center">
+                <div className="rounded-full border border-white/20 bg-white/08 px-4 py-1 text-sm font-bold uppercase tracking-widest text-white/60">
                   {state.currentCard.category}
-                </span>
-                <span className="rounded-full border px-3 py-1 text-xs font-black uppercase tracking-widest"
-                  style={{ borderColor: `${DIFF_COLOR[state.currentCard.difficulty]}60`, color: DIFF_COLOR[state.currentCard.difficulty], background: `${DIFF_COLOR[state.currentCard.difficulty]}15` }}>
+                </div>
+                <div className="rounded-full border px-3 py-1 text-xs font-black uppercase tracking-widest"
+                  style={{ borderColor: `${diffColor}55`, color: diffColor, background: `${diffColor}12` }}>
                   {state.currentCard.difficulty}
-                </span>
-                <span className="text-sm font-bold text-primary">{state.currentCard.points} pt</span>
+                </div>
+                <div className="text-sm font-black" style={{ color: T.accent }}>{state.currentCard.points} pt</div>
               </div>
             )}
 
-            {/* THE WORD — giant */}
+            {/* THE WORD */}
             <AnimatePresence mode="wait">
               {state.currentCard && (
-                <motion.div
-                  key={state.currentCard.id}
-                  initial={{ opacity: 0, scale: 0.7 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 1.2 }}
+                <motion.div key={state.currentCard.id}
+                  initial={{ opacity: 0, scale: 0.7 }} animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 1.15 }}
                   transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-                  className="text-center"
-                >
-                  <div className="text-display font-black leading-none"
-                    style={{ fontSize: 'clamp(4rem, 12vw, 9rem)', color: state.status === 'revealed' ? '#f5b642' : 'white',
-                      textShadow: state.status === 'revealed' ? '0 0 60px #f5b64266' : '0 4px 40px rgba(0,0,0,0.5)' }}>
+                  className="text-center">
+                  <div className="text-display font-black leading-none select-none"
+                    style={{
+                      fontSize: 'clamp(4rem, 12vw, 9rem)',
+                      color: state.status === 'revealed' ? '#F5B642' : 'white',
+                      textShadow: state.status === 'revealed'
+                        ? '0 0 60px #F5B64266, 0 0 120px #F5B64233'
+                        : `0 0 40px ${T.glow}22`,
+                    }}>
                     {state.currentCard.word}
                   </div>
                   {state.currentCard.hint && (
-                    <div className="mt-4 text-lg text-white/50 italic">💡 {state.currentCard.hint}</div>
+                    <div className="mt-4 text-lg text-white/45 italic">{state.currentCard.hint}</div>
                   )}
                 </motion.div>
               )}
@@ -214,84 +206,69 @@ export default function GameWordBack() {
 
             {/* Active player */}
             {activePlayer && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                className="flex items-center gap-3 rounded-2xl border border-white/20 bg-white/10 px-6 py-3 backdrop-blur-sm"
-              >
-                <div className="flex h-10 w-10 items-center justify-center rounded-full text-background text-display font-black"
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                className="flex items-center gap-4 rounded-2xl border px-6 py-3"
+                style={{ borderColor: `${activePlayer.teamColor}44`, background: `${activePlayer.teamColor}12`, backdropFilter: 'blur(12px)' }}>
+                <div className="flex h-10 w-10 items-center justify-center rounded-full text-black text-display font-black text-lg"
                   style={{ background: activePlayer.teamColor }}>
                   {activePlayer.nickname[0]?.toUpperCase()}
                 </div>
                 <div>
-                  <div className="text-sm text-white/60 uppercase tracking-widest font-bold">Protagonista</div>
+                  <div className="text-xs text-white/50 uppercase tracking-widest font-bold">Protagonista</div>
                   <div className="text-display text-xl font-black" style={{ color: activePlayer.teamColor }}>
                     {activePlayer.nickname}
                   </div>
                 </div>
-                <div className="ml-2 rounded-full border px-3 py-1 text-xs font-bold"
-                  style={{ borderColor: `${activePlayer.teamColor}60`, color: activePlayer.teamColor, background: `${activePlayer.teamColor}15` }}>
+                <div className="rounded-full border px-3 py-1 text-xs font-bold"
+                  style={{ borderColor: `${activePlayer.teamColor}55`, color: activePlayer.teamColor, background: `${activePlayer.teamColor}12` }}>
                   {activePlayer.teamName}
                 </div>
               </motion.div>
             )}
 
             {!activePlayer && (
-              <div className="text-lg text-white/40 italic">
-                Chi vuole mimare? Prenota dal telefono! 📱
-              </div>
+              <div className="text-lg text-white/35 italic">Chi vuole mimare? Prenota dal telefono!</div>
             )}
-          </>
-        )}
-
-        {state.status === 'ended' && (
-          <div className="text-center space-y-4">
-            <div className="text-6xl">🏆</div>
-            <div className="text-display text-4xl font-black text-primary">Gioco terminato!</div>
-            <div className="text-lg text-muted-foreground">Classifica finale</div>
           </div>
         )}
       </div>
 
-      {/* ── Bottom: queue + scores ── */}
-      <div className="flex items-end justify-between px-10 pb-6 gap-6">
-
-        {/* Queue — next mimes */}
+      {/* Bottom: queue + scores */}
+      <div className="flex items-end justify-between px-8 pb-4 gap-6 shrink-0">
+        {/* Queue */}
         <div className="flex-1">
           {waitingQueue.length > 0 && (
-            <div className="space-y-2">
-              <div className="text-xs font-bold uppercase tracking-widest text-white/40 mb-2">Prossimi mimi</div>
+            <div>
+              <div className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: `${T.accent}66` }}>Prossimi</div>
               <div className="flex flex-wrap gap-2">
                 {waitingQueue.slice(0, 5).map((b, i) => (
-                  <div key={b.id} className="flex items-center gap-1.5 rounded-xl border border-white/20 bg-white/10 px-3 py-1.5">
-                    <span className="text-xs text-white/50 font-bold">{i + 1}</span>
-                    <div className="h-4 w-4 rounded-full" style={{ background: b.teamColor }} />
-                    <span className="text-sm font-bold">{b.nickname}</span>
+                  <div key={b.id} className="flex items-center gap-1.5 rounded-xl border border-white/15 bg-white/08 px-3 py-1.5">
+                    <span className="text-xs text-white/40 font-bold">{i + 1}</span>
+                    <div className="h-3.5 w-3.5 rounded-full" style={{ background: b.teamColor }} />
+                    <span className="text-sm font-bold text-white/80">{b.nickname}</span>
                   </div>
                 ))}
                 {waitingQueue.length > 5 && (
-                  <div className="flex items-center rounded-xl border border-white/20 bg-white/10 px-3 py-1.5">
-                    <span className="text-sm text-white/50">+{waitingQueue.length - 5} altri</span>
+                  <div className="flex items-center rounded-xl border border-white/15 bg-white/08 px-3 py-1.5 text-sm text-white/45">
+                    +{waitingQueue.length - 5} altri
                   </div>
                 )}
               </div>
             </div>
           )}
-          {waitingQueue.length === 0 && state.status === 'running' && (
-            <div className="text-sm text-white/30 italic">Nessun mimo in attesa — prenota dal telefono!</div>
-          )}
         </div>
-
-        {/* Team scores */}
-        <div className="flex gap-4">
+        {/* Scores */}
+        <div className="flex gap-3">
           {sortedTeams.map((tm, i) => (
-            <div key={tm.id} className="flex flex-col items-center gap-1 rounded-2xl border border-white/15 bg-white/10 px-5 py-3">
-              <div className="h-3 w-3 rounded-full" style={{ background: tm.color }} />
-              <div className="text-xs font-bold text-white/60 truncate max-w-[80px] text-center">{i === 0 ? '👑 ' : ''}{tm.name}</div>
+            <div key={tm.id} className="flex flex-col items-center gap-1 rounded-2xl border px-4 py-2.5"
+              style={{ borderColor: `${tm.color}${i === 0 ? '66' : '30'}`, background: `${tm.color}12`, boxShadow: i === 0 ? `0 0 16px ${tm.color}33` : 'none' }}>
+              <div className="h-2.5 w-2.5 rounded-full" style={{ background: tm.color }} />
+              <div className="text-xs font-bold text-white/55 truncate max-w-[70px] text-center">{tm.name}</div>
               <div className="text-display text-2xl font-black tabular-nums" style={{ color: tm.color }}>{tm.score}</div>
             </div>
           ))}
         </div>
       </div>
-    </div>
+    </ArenaBg>
   );
 }

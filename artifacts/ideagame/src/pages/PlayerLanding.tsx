@@ -261,7 +261,7 @@ export function PlayerLanding({ onJoin }: Props) {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.9 }}
-          whileHover={{ color: 'rgba(255,255,255,0.7)' } as object}
+          whileHover={{ color: 'rgba(255,255,255,0.7)' } as Record<string, string>}
         >
           Ho un codice evento → inseriscilo
         </motion.button>

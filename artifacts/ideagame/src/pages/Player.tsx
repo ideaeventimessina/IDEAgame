@@ -481,7 +481,7 @@ export default function Player() {
     return (
       <>
         <PlayerLanding onJoin={() => setStep('join')} />
-        {isHostedByJonny && <JonnyLayer />}
+        {isHostedByJonny && <JonnyLayer step="join" gameState={gameState} />}
       </>
     );
   }

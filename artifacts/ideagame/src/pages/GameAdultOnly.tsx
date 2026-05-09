@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearch, useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trophy, Home, Wifi, WifiOff, SkipForward } from 'lucide-react';
 import { useEventSocket } from '@/hooks/useEventSocket';
+import {
+  ArenaBg, ArenaHeader, JonnyWaitingScreen, ArenaScoreBar, WinPodium,
+  SocketBadge, FlashOverlay, NeonTimerBar, ARENA,
+} from '@/components/JonnyWorldTheme';
 
-/* ─── Types ──────────────────────────────────────────────────────────────── */
 interface AdultCard {
   id: string; title: string; body: string; category: string;
   points: number; timeLimit: number; level: string; orderIndex: number;
@@ -17,29 +19,25 @@ interface AdultState {
   timerStartedAt: string | null; skipped: number[];
 }
 
-/* ─── Category config ────────────────────────────────────────────────────── */
-const CAT_CONFIG: Record<string, { emoji: string; label: string; color: string; bg: string }> = {
-  'domande-piccanti-leggere': { emoji: '🔥', label: 'Domanda Piccante',   color: '#f472b6', bg: 'rgba(244,114,182,0.12)' },
-  'vero-falso':               { emoji: '✅', label: 'Vero / Falso',        color: '#4ade80', bg: 'rgba(74,222,128,0.12)'  },
-  'mondo-animale-curioso':    { emoji: '🦁', label: 'Mondo Animale',       color: '#fbbf24', bg: 'rgba(251,191,36,0.12)'  },
-  'coppie-challenge':         { emoji: '💑', label: 'Coppie Challenge',    color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' },
-  'yoga-pose-ironiche':       { emoji: '🧘', label: 'Yoga Ironico',        color: '#60a5fa', bg: 'rgba(96,165,250,0.12)'  },
-  'imitazioni-vocali-soft':   { emoji: '🎙️', label: 'Imitazione Vocale', color: '#34d399', bg: 'rgba(52,211,153,0.12)'  },
+const CAT_CONFIG: Record<string, { label: string; color: string }> = {
+  'domande-piccanti-leggere': { label: 'Domanda Piccante',   color: '#f472b6' },
+  'vero-falso':               { label: 'Vero / Falso',       color: '#4ade80' },
+  'mondo-animale-curioso':    { label: 'Mondo Animale',      color: '#fbbf24' },
+  'coppie-challenge':         { label: 'Coppie Challenge',   color: '#a78bfa' },
+  'yoga-pose-ironiche':       { label: 'Yoga Ironico',       color: '#60a5fa' },
+  'imitazioni-vocali-soft':   { label: 'Imitazione Vocale',  color: '#34d399' },
 };
 function getCat(c: string) {
-  return CAT_CONFIG[c] ?? { emoji: '🎯', label: c, color: '#F5B642', bg: 'rgba(245,182,66,0.12)' };
+  return CAT_CONFIG[c] ?? { label: c, color: '#F87171' };
 }
 
-const LEVEL_CONFIG: Record<string, { emoji: string; label: string; glow: string }> = {
-  soft:    { emoji: '🌶️',       label: 'Soft',    glow: '#4ade80' },
-  spicy:   { emoji: '🌶️🌶️',   label: 'Spicy',   glow: '#fbbf24' },
-  extreme: { emoji: '🌶️🌶️🌶️', label: 'Extreme', glow: '#f472b6' },
+const LEVEL_COLORS: Record<string, string> = {
+  soft: '#4ade80', spicy: '#fbbf24', extreme: '#f472b6',
 };
-function getLevel(l: string) {
-  return LEVEL_CONFIG[l] ?? LEVEL_CONFIG['soft']!;
-}
+const LEVEL_LABELS: Record<string, string> = {
+  soft: 'Soft', spicy: 'Spicy', extreme: 'Extreme',
+};
 
-/* ─── Helpers ─────────────────────────────────────────────────────────────── */
 const BASE = (import.meta.env.BASE_URL as string) ?? '/';
 async function apiFetch(path: string, opts?: RequestInit) {
   const url = `${BASE}api${path}`.replace(/\/\//g, '/');
@@ -49,7 +47,6 @@ async function apiFetch(path: string, opts?: RequestInit) {
   return body;
 }
 
-/* ─── Timer hook ─────────────────────────────────────────────────────────── */
 function useTimer(timerStartedAt: string | null, timeLimit: number) {
   const [timeLeft, setTimeLeft] = useState(timeLimit);
   useEffect(() => {
@@ -65,40 +62,31 @@ function useTimer(timerStartedAt: string | null, timeLimit: number) {
   return timeLeft;
 }
 
-/* ─── Age Gate ───────────────────────────────────────────────────────────── */
 function AgeGate({ onAccept, onBack }: { onAccept: () => void; onBack: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-6">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.9, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="w-full max-w-lg rounded-3xl border border-pink-500/30 bg-[#0d0a1a] p-8 text-center shadow-2xl"
-        style={{ boxShadow: '0 0 60px rgba(244,114,182,0.15)' }}
-      >
-        <div className="text-8xl mb-4">🔞</div>
-        <h1 className="text-display text-3xl font-black text-white mb-2">
-          Contenuto per adulti
-        </h1>
-        <p className="text-pink-300/80 text-lg font-bold mb-1">Adult Only</p>
-        <p className="text-muted-foreground text-sm mt-4 leading-relaxed max-w-sm mx-auto">
-          Questo gioco contiene contenuti pensati esclusivamente per un pubblico
-          adulto (18+). Nessun contenuto esplicito o volgare — solo ironia, 
-          eleganza e spettacolo.
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6"
+      style={{ background: 'rgba(0,0,0,0.95)', backdropFilter: 'blur(20px)' }}>
+      <motion.div initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }}
+        className="w-full max-w-md rounded-3xl border-2 p-8 text-center shadow-2xl"
+        style={{ borderColor: '#F87171aa', background: 'radial-gradient(ellipse at top, #1a0010, #0a0006)', boxShadow: '0 0 80px #F8717133' }}>
+        <div className="mx-auto mb-4 h-20 w-20 flex items-center justify-center rounded-full border-2 border-red-500/40 bg-red-500/10">
+          <span className="text-4xl font-black text-red-400">18+</span>
+        </div>
+        <h1 className="text-display text-3xl font-black text-white mb-2">Contenuto per adulti</h1>
+        <p className="text-red-300/70 font-bold mb-4">Adult Only</p>
+        <p className="text-white/50 text-sm leading-relaxed max-w-sm mx-auto">
+          Questo gioco contiene contenuti pensati esclusivamente per un pubblico adulto (18+).
+          Nessun contenuto esplicito — solo ironia, eleganza e spettacolo.
         </p>
         <div className="mt-8 flex flex-col gap-3">
-          <motion.button
-            whileTap={{ scale: 0.97 }}
-            onClick={onAccept}
-            className="w-full rounded-2xl bg-gradient-to-r from-pink-500 to-purple-600 py-4 text-lg font-black text-white shadow-lg"
-            style={{ boxShadow: '0 8px 32px rgba(244,114,182,0.35)' }}
-          >
-            ✓ Accetto — sono maggiorenne
+          <motion.button whileTap={{ scale: 0.97 }} onClick={onAccept}
+            className="w-full rounded-2xl py-4 text-lg font-black text-white"
+            style={{ background: 'linear-gradient(135deg, #F87171, #DC2626)', boxShadow: '0 8px 32px rgba(248,113,113,0.4)' }}>
+            Accetto — sono maggiorenne
           </motion.button>
-          <button
-            onClick={onBack}
-            className="w-full rounded-2xl border border-border py-3 text-sm font-bold text-muted-foreground hover:text-foreground transition-colors"
-          >
-            ← Torna indietro
+          <button onClick={onBack}
+            className="w-full rounded-2xl border border-white/15 py-3 text-sm font-bold text-white/50 hover:text-white/80 transition-colors">
+            Torna indietro
           </button>
         </div>
       </motion.div>
@@ -106,35 +94,33 @@ function AgeGate({ onAccept, onBack }: { onAccept: () => void; onBack: () => voi
   );
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
-   MAIN PROJECTOR COMPONENT
-══════════════════════════════════════════════════════════════════════════ */
+const T = ARENA.adult;
+
 export default function GameAdultOnly() {
   const search = useSearch();
   const [, navigate] = useLocation();
   const params = new URLSearchParams(search);
-  const sessionId = params.get('s') ?? '';
+  const sessionId    = params.get('s') ?? '';
   const eventIdParam = params.get('e') ?? '';
 
   const [ageConfirmed, setAgeConfirmed] = useState(() =>
     typeof window !== 'undefined' && sessionStorage.getItem('adult-only-age-ok') === '1'
   );
-  const [state, setState] = useState<AdultState | null>(null);
+  const [state, setState]   = useState<AdultState | null>(null);
   const [eventId, setEventId] = useState(eventIdParam);
   const [loading, setLoading] = useState(!!sessionId);
-  const [flash, setFlash] = useState<string | null>(null);
+  const [flash, setFlash]   = useState<string | null>(null);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollRef    = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const { connected, on } = useEventSocket(eventId || null);
 
   const triggerFlash = (msg: string) => {
     setFlash(msg);
     if (flashTimer.current) clearTimeout(flashTimer.current);
-    flashTimer.current = setTimeout(() => setFlash(null), 2000);
+    flashTimer.current = setTimeout(() => setFlash(null), 2200);
   };
 
-  // Initial load
   useEffect(() => {
     if (!sessionId) return;
     setLoading(true);
@@ -143,43 +129,36 @@ export default function GameAdultOnly() {
       .catch(() => setLoading(false));
   }, [sessionId]);
 
-  // Polling fallback
   useEffect(() => {
     if (!sessionId || !ageConfirmed) return;
     pollRef.current = setInterval(async () => {
-      try {
-        const d = await apiFetch(`/adult-only/sessions/${sessionId}/state`) as AdultState;
-        setState(d);
-      } catch { /* silent */ }
+      try { const d = await apiFetch(`/adult-only/sessions/${sessionId}/state`); setState(d as AdultState); }
+      catch { /* silent */ }
     }, connected ? 15000 : 4000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [sessionId, connected, ageConfirmed]);
 
-  // Socket events
   useEffect(() => {
     if (!eventId) return;
     const unsubs = [
-      on<{ state: AdultState }>('adult:started', ({ state: s }) => { setState(s); triggerFlash('🎮 Gioco avviato!'); }),
-      on<{ state: AdultState }>('adult:card_changed', ({ state: s }) => { setState(s); }),
-      on<{ state: AdultState }>('adult:score_updated', ({ state: s }) => { setState(s); triggerFlash('⭐ Punti aggiornati!'); }),
-      on<{ state: AdultState }>('adult:ended', ({ state: s }) => { setState(s); }),
+      on<{ state: AdultState }>('adult:started',       ({ state: s }) => { setState(s); triggerFlash('Gioco avviato!'); }),
+      on<{ state: AdultState }>('adult:card_changed',  ({ state: s }) => setState(s)),
+      on<{ state: AdultState }>('adult:score_updated', ({ state: s }) => { setState(s); triggerFlash('Punti aggiornati!'); }),
+      on<{ state: AdultState }>('adult:ended',         ({ state: s }) => setState(s)),
     ];
     return () => unsubs.forEach(u => u());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId, on]);
 
-  const handleAcceptAge = () => {
-    sessionStorage.setItem('adult-only-age-ok', '1');
-    setAgeConfirmed(true);
-  };
+  const handleAcceptAge = () => { sessionStorage.setItem('adult-only-age-ok', '1'); setAgeConfirmed(true); };
 
-  const currentCard = state && state.currentCardIdx >= 0
-    ? state.cards[state.currentCardIdx] ?? null
-    : null;
-  const timeLeft = useTimer(state?.timerStartedAt ?? null, currentCard?.timeLimit ?? 30);
+  const currentCard = state && state.currentCardIdx >= 0 ? state.cards[state.currentCardIdx] ?? null : null;
+  const timeLeft    = useTimer(state?.timerStartedAt ?? null, currentCard?.timeLimit ?? 30);
   const sortedTeams = state ? [...state.teams].sort((a, b) => b.score - a.score) : [];
-  const cat = currentCard ? getCat(currentCard.category) : null;
-  const lev = currentCard ? getLevel(currentCard.level) : null;
-  const timerPct = currentCard && currentCard.timeLimit > 0 ? (timeLeft / currentCard.timeLimit) * 100 : 0;
+  const cat  = currentCard ? getCat(currentCard.category) : null;
+  const levColor = currentCard ? (LEVEL_COLORS[currentCard.level] ?? T.accent) : T.accent;
+  const levLabel = currentCard ? (LEVEL_LABELS[currentCard.level] ?? currentCard.level) : '';
+  const timerPct   = currentCard && currentCard.timeLimit > 0 ? (timeLeft / currentCard.timeLimit) * 100 : 0;
   const timerColor = timerPct > 50 ? '#4ade80' : timerPct > 25 ? '#fbbf24' : '#f87171';
 
   if (!ageConfirmed) {
@@ -187,185 +166,124 @@ export default function GameAdultOnly() {
   }
 
   if (loading) {
+    return <ArenaBg theme={T}><JonnyWaitingScreen theme={T} label="Caricamento…" /></ArenaBg>;
+  }
+
+  if (state?.status === 'ended') {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#06040f]">
-        <div className="text-center">
-          <div className="text-6xl mb-4 animate-pulse">🔞</div>
-          <div className="text-display text-xl font-black text-white">Caricamento…</div>
-        </div>
-      </div>
+      <ArenaBg theme={T}>
+        <WinPodium theme={T} teams={state.teams} winnerName={sortedTeams[0]?.name ?? null} onHome={() => navigate('/')} />
+      </ArenaBg>
     );
   }
 
   return (
-    <div className="relative flex h-screen flex-col overflow-hidden bg-[#06040f]"
-      style={{ background: 'radial-gradient(ellipse 90% 70% at 50% 0%, #1a0a2e 0%, #06040f 100%)' }}>
+    <ArenaBg theme={T}>
+      {currentCard?.timeLimit && currentCard.timeLimit > 0 && (
+        <NeonTimerBar pct={timerPct} color={timerColor} />
+      )}
 
-      {/* Flash overlay */}
-      <AnimatePresence>
-        {flash && (
-          <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
-            className="absolute top-6 left-1/2 z-50 -translate-x-1/2 rounded-2xl border border-pink-500/40 bg-pink-500/20 px-8 py-3 text-xl font-black text-pink-300">
-            {flash}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Flash */}
+      <FlashOverlay flash={flash} color={T.accent} />
 
-      {/* ── Top bar ─────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between px-6 pt-4 pb-2 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="text-2xl">🔞</div>
-          <div>
-            <div className="text-xs font-bold uppercase tracking-widest text-pink-400/70">Adult Only</div>
-            <div className="text-display text-sm font-black text-white/80">{state?.deckName ?? '—'}</div>
+      {/* Header */}
+      <ArenaHeader theme={T}
+        left={
+          <div className="flex items-center gap-3">
+            <button onClick={() => navigate('/')} title="Torna al parco"
+              className="flex h-7 w-7 items-center justify-center rounded-lg border transition-all"
+              style={{ borderColor: `${T.accent}44`, background: `${T.accent}12` }}>
+              <img src="/logo.png" alt="" className="h-4 w-4 object-contain" />
+            </button>
+            <span className="text-xs font-black uppercase tracking-[0.25em]" style={{ color: T.accent }}>{T.title}</span>
+            {state && <span className="text-xs text-white/35">{state.deckName}</span>}
           </div>
-        </div>
-        <div className="flex items-center gap-4">
-          {state && state.currentCardIdx >= 0 && (
-            <div className="text-sm font-bold text-muted-foreground tabular-nums">
-              {state.currentCardIdx + 1}/{state.cards.length}
-            </div>
-          )}
-          <div className={`flex items-center gap-1.5 text-xs ${connected ? 'text-green-400' : 'text-amber-400'}`}>
-            {connected ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
-            {connected ? 'Live' : 'Offline'}
+        }
+        right={
+          <div className="flex items-center gap-3">
+            {state && state.currentCardIdx >= 0 && (
+              <span className="text-xs tabular-nums text-white/40">
+                {state.currentCardIdx + 1}/{state.cards.length}
+              </span>
+            )}
+            <SocketBadge connected={connected} />
           </div>
-          <button onClick={() => navigate('/')}
-            className="rounded-xl border border-border p-2 text-muted-foreground hover:text-white">
-            <Home className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
+        }
+      />
 
-      {/* ── Main content ────────────────────────────────────────────────── */}
-      <div className="flex flex-1 flex-col items-center justify-center px-8 py-4 min-h-0">
+      {/* Main content */}
+      <div className="flex flex-1 flex-col items-center justify-center px-6 py-4 min-h-0 overflow-hidden">
 
         {/* IDLE */}
         {(!state || state.status === 'idle') && (
-          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
-            className="text-center max-w-2xl">
-            <div className="text-9xl mb-6">🔞</div>
-            <h1 className="text-display text-5xl font-black text-white mb-4">Adult Only</h1>
-            <p className="text-xl text-pink-300/70">
-              {state ? `${state.deckName} · ${state.cards.length} carte` : 'In attesa dell\'animatore…'}
-            </p>
-            <div className="mt-8 text-sm text-muted-foreground/50">
-              Contenuti ironici ed eleganti per serate adulte — nessun contenuto esplicito
-            </div>
-          </motion.div>
+          <JonnyWaitingScreen theme={T}
+            subtitle={state ? `${state.deckName} · ${state.cards.length} carte` : 'In attesa dell\'animatore…'} />
         )}
 
-        {/* RUNNING — current card */}
-        {state?.status === 'running' && currentCard && cat && lev && (
+        {/* RUNNING */}
+        {state?.status === 'running' && currentCard && cat && (
           <AnimatePresence mode="wait">
-            <motion.div
-              key={state.currentCardIdx}
-              initial={{ opacity: 0, y: 40, scale: 0.95 }}
+            <motion.div key={state.currentCardIdx}
+              initial={{ opacity: 0, y: 40, scale: 0.96 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -30, scale: 0.95 }}
+              exit={{ opacity: 0, y: -30, scale: 0.96 }}
               transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-              className="w-full max-w-3xl"
-            >
-              {/* Category + level badges */}
-              <div className="flex items-center justify-center gap-3 mb-4">
-                <div className="flex items-center gap-2 rounded-full border px-4 py-1.5 text-sm font-bold"
-                  style={{ borderColor: `${cat.color}40`, background: cat.bg, color: cat.color }}>
-                  <span>{cat.emoji}</span>
-                  <span>{cat.label}</span>
+              className="w-full max-w-3xl flex flex-col items-center gap-5">
+
+              {/* Badges */}
+              <div className="flex items-center gap-3 flex-wrap justify-center">
+                <div className="rounded-full border px-4 py-1.5 text-sm font-bold"
+                  style={{ borderColor: `${cat.color}55`, background: `${cat.color}12`, color: cat.color }}>
+                  {cat.label}
                 </div>
-                <div className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-bold text-white/60">
-                  <span>{lev.emoji}</span>
-                  <span>{lev.label}</span>
+                <div className="rounded-full border border-white/15 bg-white/08 px-3 py-1.5 text-sm font-bold"
+                  style={{ color: levColor }}>
+                  {levLabel}
                 </div>
-                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-bold text-white/60">
+                <div className="rounded-full border border-white/15 bg-white/08 px-3 py-1.5 text-sm font-bold text-white/55">
                   {currentCard.points} pt
                 </div>
               </div>
 
               {/* Card */}
-              <div className="rounded-3xl border px-10 py-10 text-center"
+              <div className="w-full rounded-3xl border-2 px-8 py-10 text-center"
                 style={{
-                  borderColor: `${cat.color}30`,
-                  background: `radial-gradient(ellipse 80% 60% at 50% 0%, ${cat.bg}, rgba(13,10,26,0.95))`,
-                  boxShadow: `0 0 80px ${cat.color}20, inset 0 0 40px ${cat.bg}`,
+                  borderColor: `${cat.color}44`,
+                  background: `radial-gradient(ellipse 80% 60% at 50% 0%, ${cat.color}12, rgba(0,0,0,0.6))`,
+                  boxShadow: `0 0 60px ${cat.color}18`,
                 }}>
-                <h2 className="text-display text-5xl font-black leading-tight text-white mb-4"
-                  style={{ textShadow: `0 0 40px ${cat.color}80` }}>
+                <h2 className="text-display text-4xl sm:text-5xl font-black leading-tight text-white mb-5"
+                  style={{ textShadow: `0 0 40px ${cat.color}66` }}>
                   {currentCard.title}
                 </h2>
-                <p className="text-xl text-white/70 leading-relaxed max-w-2xl mx-auto">
+                <p className="text-lg sm:text-xl text-white/65 leading-relaxed">
                   {currentCard.body}
                 </p>
               </div>
 
-              {/* Timer bar */}
+              {/* Timer */}
               {currentCard.timeLimit > 0 && (
-                <div className="mt-6 space-y-2">
+                <div className="w-full max-w-sm space-y-2">
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Tempo</span>
-                    <span className="font-black tabular-nums text-display" style={{ color: timerColor }}>
-                      {Math.ceil(timeLeft)}s
-                    </span>
+                    <span className="text-white/35">Tempo</span>
+                    <span className="text-display font-black tabular-nums" style={{ color: timerColor }}>{Math.ceil(timeLeft)}s</span>
                   </div>
-                  <div className="h-3 w-full overflow-hidden rounded-full bg-white/10">
-                    <motion.div
-                      className="h-full rounded-full"
-                      style={{ background: timerColor, boxShadow: `0 0 12px ${timerColor}80` }}
-                      animate={{ width: `${timerPct}%` }}
-                      transition={{ duration: 0.25, ease: 'linear' }}
-                    />
+                  <div className="h-2.5 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.08)' }}>
+                    <motion.div className="h-full rounded-full"
+                      style={{ background: timerColor, boxShadow: `0 0 12px ${timerColor}88` }}
+                      animate={{ width: `${timerPct}%` }} transition={{ duration: 0.25 }} />
                   </div>
                 </div>
               )}
             </motion.div>
           </AnimatePresence>
         )}
-
-        {/* ENDED */}
-        {state?.status === 'ended' && (
-          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
-            className="text-center max-w-2xl w-full">
-            <div className="text-8xl mb-4">🏆</div>
-            <h1 className="text-display text-5xl font-black text-white mb-2">Fine partita!</h1>
-            <p className="text-xl text-pink-300/60 mb-8">Classifica finale</p>
-            <div className="space-y-3">
-              {sortedTeams.map((tm, i) => (
-                <motion.div key={tm.id}
-                  initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.1 }}
-                  className="flex items-center gap-4 rounded-2xl border px-6 py-4"
-                  style={{ borderColor: `${tm.color}40`, background: `${tm.color}10` }}>
-                  <span className="text-display text-3xl font-black w-10 text-center"
-                    style={{ color: tm.color }}>
-                    {i === 0 ? '👑' : `${i + 1}.`}
-                  </span>
-                  <span className="flex-1 text-display text-xl font-black text-white text-left">{tm.name}</span>
-                  <span className="text-display text-3xl font-black tabular-nums"
-                    style={{ color: tm.color }}>{tm.score}</span>
-                </motion.div>
-              ))}
-            </div>
-          </motion.div>
-        )}
       </div>
 
-      {/* ── Team scores bar ──────────────────────────────────────────────── */}
-      {state && state.teams.length > 0 && state.status !== 'ended' && (
-        <div className="shrink-0 border-t border-white/10 px-6 py-3">
-          <div className="flex items-center justify-center gap-4 flex-wrap">
-            {sortedTeams.map((tm, i) => (
-              <div key={tm.id} className="flex items-center gap-2">
-                <span className="h-3 w-3 rounded-full" style={{ background: tm.color }} />
-                <span className="text-sm font-bold text-white/70">{tm.name}</span>
-                <span className="text-display text-lg font-black tabular-nums" style={{ color: tm.color }}>
-                  {tm.score}
-                </span>
-                {i < sortedTeams.length - 1 && <span className="text-border">·</span>}
-              </div>
-            ))}
-          </div>
-        </div>
+      {/* Score bar */}
+      {state && state.teams.length > 0 && (
+        <ArenaScoreBar teams={state.teams} accent={T.accent} />
       )}
-    </div>
+    </ArenaBg>
   );
 }
