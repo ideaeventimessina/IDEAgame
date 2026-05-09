@@ -6,3 +6,15 @@ id = "XgJSbedSAlI0m_mnD6OiA"
 uri = "file://artifacts/ideagame/SCENES.md"
 type = "text"
 title = "IDEAgame — 20-Scene Navigation Spec"
+
+[[outputs]]
+id = "gpByDn1HWcHCs8CX_2Q2i"
+uri = "file://artifacts/ideagame/public/jonny.svg"
+type = "image"
+title = "Jonny — versione trasparente"
+
+[[outputs]]
+id = "r1DMD3lflrLkLKqsX_lRS"
+uri = "file://artifacts/ideagame/public/jonny-white.svg"
+type = "image"
+title = "Jonny — versione sfondo bianco"
