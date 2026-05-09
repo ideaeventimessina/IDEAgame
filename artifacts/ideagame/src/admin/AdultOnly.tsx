@@ -231,6 +231,11 @@ export default function AdminAdultOnly() {
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     {selectedDeckId === deck.id && <ChevronRight className="h-3.5 w-3.5 text-pink-400" />}
+                    <button
+                      onClick={e => { e.stopPropagation(); void handleDeleteDeck(deck.id); }}
+                      className="rounded-lg p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
                   </div>
                 </button>
               ))}

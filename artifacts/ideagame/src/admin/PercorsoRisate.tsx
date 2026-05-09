@@ -388,6 +388,12 @@ export default function PercorsoRisate() {
                       <div className="font-bold truncate">{set.name}</div>
                       {set.description && <div className="text-xs text-muted-foreground truncate">{set.description}</div>}
                     </div>
+                    <button
+                      onClick={e => { e.stopPropagation(); void handleDeleteSet(set.id); }}
+                      disabled={deletingSetId === set.id}
+                      className="shrink-0 rounded-lg border border-destructive/30 bg-destructive/10 p-1.5 text-destructive hover:bg-destructive/20 disabled:opacity-40">
+                      {deletingSetId === set.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                    </button>
                   </motion.div>
                 ))}
               </div>

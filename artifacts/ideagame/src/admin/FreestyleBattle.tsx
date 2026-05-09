@@ -46,6 +46,11 @@ export default function AdminFreestyleBattle() {
     onError: (e: Error) => setMsg(e.message),
   });
 
+  const deleteSet = useMutation({
+    mutationFn: (id: string) => apiFetch(`/freestyle/sets/${id}`, { method: "DELETE" }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["freestyle-sets"] }); setSelectedSetId(null); },
+  });
+
   const addWord = useMutation({
     mutationFn: () => apiFetch(`/freestyle/sets/${selectedSetId}/words`, {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -121,6 +126,12 @@ export default function AdminFreestyleBattle() {
                         <Music className="h-3 w-3" /> Beat configurato
                       </div>
                     )}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); deleteSet.mutate(s.id); }}
+                    className="rounded-lg border border-destructive/40 p-1 text-destructive hover:bg-destructive/10"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
                   </div>
                 </div>
               </div>

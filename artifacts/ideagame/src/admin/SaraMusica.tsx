@@ -79,6 +79,12 @@ export default function AdminSaraMusica() {
     finally { setBusy(false); }
   };
 
+  const deleteSet = async (id: string) => {
+    if (!confirm('Eliminare questo set e tutte le sue tracce?')) return;
+    await apiFetch(`/saramusica/sets/${id}`, { method: 'DELETE' });
+    await loadSets();
+  };
+
   const createTrack = async (setId: string) => {
     if (!newTrack.title.trim() || !newTrack.artist.trim() || busy) return;
     setBusy(true);
@@ -155,6 +161,10 @@ export default function AdminSaraMusica() {
                   </div>
                 </button>
                 <span className="text-xs text-muted-foreground">{tracks[set.id]?.length ?? '?'} tracce</span>
+                <button onClick={() => void deleteSet(set.id)}
+                  className="rounded-xl border border-destructive/40 p-2 text-destructive hover:bg-destructive/10">
+                  <Trash2 className="h-4 w-4" />
+                </button>
               </div>
 
               {/* Tracks */}

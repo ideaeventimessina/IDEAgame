@@ -217,6 +217,12 @@ function CardSetRow({
         </div>
         <div className="flex items-center gap-3">
           <span className="rounded-full bg-secondary px-2.5 py-0.5 text-xs font-bold">{pairs.length} coppie</span>
+          <button
+            onClick={e => { e.stopPropagation(); onDelete(); }}
+            className="rounded-lg border border-border p-2 hover-elevate text-destructive"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
         </div>
       </div>
 
