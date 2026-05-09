@@ -4,8 +4,9 @@ import {
   Pause, Play, SkipForward, Plus, Minus,
   Power, MonitorOff, X, Loader2, Wifi, WifiOff, ExternalLink,
   Sparkles, Eye, EyeOff, CheckCircle2, Clock, BarChart3, Users,
-  ChevronRight, Zap, AlertTriangle, PlusCircle, Trophy,
+  ChevronRight, Zap, AlertTriangle, PlusCircle, Trophy, Siren,
 } from 'lucide-react';
+import { PanicPanel } from '@/components/PanicPanel';
 import { useEventSocket } from '@/hooks/useEventSocket';
 import {
   useListEvents,
@@ -272,6 +273,9 @@ export default function LiveControl() {
   const [saraMusicaBusy, setSaraMusicaBusy] = useState(false);
   const [saraMusicaMsg, setSaraMusicaMsg] = useState('');
 
+  // Panic panel
+  const [panicOpen, setPanicOpen] = useState(false);
+
   // Evening mode state
   const [eveningMode, setEveningMode] = useState<EveningMode | null>(null);
   const [eveningBusy, setEveningBusy] = useState(false);
@@ -309,6 +313,10 @@ export default function LiveControl() {
   const recordScore = useRecordScore();
 
   const session = sessions.find(s => s.id === selectedSessionId);
+  const selectedEvent = events.find(e => e.id === selectedEventId);
+  const joinCode = selectedEvent?.joinCode ?? '';
+  const BASE_URL = (import.meta.env.BASE_URL as string) ?? '/';
+  const joinUrl = `${window.location.origin}${BASE_URL}play?e=${joinCode}`.replace(/([^:])\/\//g, '$1/');
 
   useEffect(() => {
     if (!selectedEventId && events.length > 0) setSelectedEventId(events[0]!.id);
@@ -1438,6 +1446,26 @@ export default function LiveControl() {
     <div className="h-screen overflow-y-auto bg-background px-4 py-6 pb-10">
       {/* Blackout overlay */}
       {black && <div className="fixed inset-0 z-50 bg-black" onClick={() => setBlack(false)} />}
+
+      {/* ── EMERGENZA floating button ─────────────────────────────────────── */}
+      <button
+        onClick={() => setPanicOpen(true)}
+        className="fixed top-4 right-4 z-[90] flex items-center gap-2 rounded-xl border border-red-700/70 bg-red-900/80 px-4 py-2.5 text-sm font-black uppercase tracking-widest text-red-200 backdrop-blur-md shadow-lg shadow-red-950/60 hover:bg-red-800/90 hover:border-red-600/80 transition-all active:scale-95"
+        title="Pannello Emergenza"
+      >
+        <Siren className="h-4 w-4 text-red-400" />
+        EMERGENZA
+      </button>
+
+      {/* ── Panic Panel overlay ───────────────────────────────────────────── */}
+      <PanicPanel
+        open={panicOpen}
+        onClose={() => setPanicOpen(false)}
+        eventId={selectedEventId}
+        joinCode={joinCode}
+        joinUrl={joinUrl}
+        session={session ? { id: session.id, gameSlug: session.gameSlug, status: session.status } : undefined}
+      />
 
       {/* ── Winner overlay ───────────────────────────────────────────────── */}
       {winnerOverlay && (

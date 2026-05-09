@@ -62,6 +62,7 @@ export default function Hub() {
   const [, navigate] = useLocation();
   const [rosterOpen, setRosterOpen] = useState(false);
   const [introGame, setIntroGame] = useState<IntroGame | null>(null);
+  const [projectorBlack, setProjectorBlack] = useState(false);
 
   const { data: games = [], isLoading: gamesLoading } = useListGames();
   const { data: liveEvent } = useGetCurrentEvent();
@@ -89,6 +90,17 @@ export default function Hub() {
       }
     });
   }, [liveEvent?.id, on, games]);
+
+  // Panic panel: projector commands
+  useEffect(() => {
+    if (!liveEvent?.id) return;
+    const unsubs = [
+      on('projector:black',          () => setProjectorBlack(true)),
+      on('projector:black-off',      () => setProjectorBlack(false)),
+      on('projector:close-overlays', () => { setProjectorBlack(false); setIntroGame(null); }),
+    ];
+    return () => { unsubs.forEach(u => u?.()); };
+  }, [liveEvent?.id, on]);
 
   // Canonical 3-2-3 slot order: flagship games first, adult-only last in middle row
   const SLUG_ORDER = [
@@ -511,6 +523,21 @@ export default function Hub() {
         <SlidersHorizontal className="h-4 w-4" />
         Cockpit Animatore
       </motion.button>
+
+      {/* ── Panic: Black Screen overlay (proiettore) ── */}
+      <AnimatePresence>
+        {projectorBlack && (
+          <motion.div
+            key="projector-black"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="fixed inset-0 z-[200] bg-black"
+            onClick={() => setProjectorBlack(false)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
