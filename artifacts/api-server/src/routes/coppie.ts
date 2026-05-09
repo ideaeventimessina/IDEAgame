@@ -238,6 +238,14 @@ router.post(
   },
 );
 
+/**
+ * In-memory lock to prevent concurrent flip requests on the same session.
+ * Node.js is single-threaded: the check+add below is synchronous (no await),
+ * so it is effectively atomic. Any second request arriving while the first
+ * is awaiting DB operations will see the lock and get a 409.
+ */
+const _flipLocks = new Set<string>();
+
 /* ─── POST flip (public: player phones flip cards) ────────────────────── */
 router.post(
   "/coppie/sessions/:id/flip",
@@ -259,136 +267,148 @@ router.post(
       return;
     }
 
-    const [row] = await db
-      .select()
-      .from(coppieBoardsTable)
-      .where(eq(coppieBoardsTable.sessionId, sessionId));
-    if (!row) {
-      res.status(404).json({ error: "Board non inizializzata" });
+    // Acquire per-session lock (prevents race condition on simultaneous flips)
+    if (_flipLocks.has(sessionId)) {
+      res.status(409).json({ error: "Flip in corso, riprova tra un momento" });
       return;
     }
+    _flipLocks.add(sessionId);
 
-    const meta = await getSessionMeta(sessionId);
-    if (!meta) {
-      res.status(404).json({ error: "Sessione non trovata" });
-      return;
-    }
-    const { eventId } = meta;
+    try {
+      const [row] = await db
+        .select()
+        .from(coppieBoardsTable)
+        .where(eq(coppieBoardsTable.sessionId, sessionId));
+      if (!row) {
+        res.status(404).json({ error: "Board non inizializzata" });
+        return;
+      }
 
-    const board: CoppieBoard = JSON.parse(
-      JSON.stringify(row.board),
-    ) as CoppieBoard;
+      const meta = await getSessionMeta(sessionId);
+      if (!meta) {
+        res.status(404).json({ error: "Sessione non trovata" });
+        return;
+      }
+      const { eventId } = meta;
 
-    // Validate teamId belongs to this board
-    const validTeamIds = new Set(board.teams.map((t) => t.id));
-    if (!validTeamIds.has(teamId)) {
-      res.status(403).json({ error: "Squadra non appartenente a questo evento" });
-      return;
-    }
+      const board: CoppieBoard = JSON.parse(
+        JSON.stringify(row.board),
+      ) as CoppieBoard;
 
-    if (board.locked || board.status !== "playing") {
-      res.status(409).json({ error: "Board bloccata, attendi" });
-      return;
-    }
-    if (board.flipping.length >= 2) {
-      res.status(409).json({ error: "Aspetta la validazione" });
-      return;
-    }
+      // Validate teamId belongs to this board
+      const validTeamIds = new Set(board.teams.map((t) => t.id));
+      if (!validTeamIds.has(teamId)) {
+        res.status(403).json({ error: "Squadra non appartenente a questo evento" });
+        return;
+      }
 
-    const currentTeam = board.teams[board.currentTeamIdx];
-    if (board.mode === "teams" && currentTeam && currentTeam.id !== teamId) {
-      res.status(409).json({ error: "Non è il turno della tua squadra" });
-      return;
-    }
+      if (board.locked || board.status !== "playing") {
+        res.status(409).json({ error: "Board bloccata, attendi" });
+        return;
+      }
+      if (board.flipping.length >= 2) {
+        res.status(409).json({ error: "Aspetta la validazione" });
+        return;
+      }
 
-    const card = board.cards[pos];
-    if (!card) {
-      res.status(400).json({ error: "Posizione non valida" });
-      return;
-    }
-    if (card.matched || card.flipped) {
-      res.status(409).json({ error: "Carta non disponibile" });
-      return;
-    }
+      const currentTeam = board.teams[board.currentTeamIdx];
+      if (board.mode === "teams" && currentTeam && currentTeam.id !== teamId) {
+        res.status(409).json({ error: "Non è il turno della tua squadra" });
+        return;
+      }
 
-    card.flipped = true;
-    board.flipping.push(pos);
+      const card = board.cards[pos];
+      if (!card) {
+        res.status(400).json({ error: "Posizione non valida" });
+        return;
+      }
+      if (card.matched || card.flipped) {
+        res.status(409).json({ error: "Carta non disponibile" });
+        return;
+      }
 
-    if (board.flipping.length === 2) {
-      const [p1, p2] = board.flipping as [number, number];
-      const c1 = board.cards[p1]!;
-      const c2 = board.cards[p2]!;
+      card.flipped = true;
+      board.flipping.push(pos);
 
-      if (c1.pairId === c2.pairId) {
-        // MATCH
-        c1.matched = true;
-        c2.matched = true;
-        c1.matchedBy = teamId;
-        c2.matchedBy = teamId;
-        board.flipping = [];
-        board.matchCount += 1;
+      if (board.flipping.length === 2) {
+        const [p1, p2] = board.flipping as [number, number];
+        const c1 = board.cards[p1]!;
+        const c2 = board.cards[p2]!;
 
-        const ti = board.teams.findIndex((t) => t.id === teamId);
-        if (ti >= 0) board.teams[ti]!.score += 1;
+        if (c1.pairId === c2.pairId) {
+          // MATCH
+          c1.matched = true;
+          c2.matched = true;
+          c1.matchedBy = teamId;
+          c2.matchedBy = teamId;
+          board.flipping = [];
+          board.matchCount += 1;
 
-        if (board.matchCount >= board.totalPairs) {
-          board.status = "ended";
-          const winner = [...board.teams].sort((a, b) => b.score - a.score)[0];
-          board.winner = winner?.id ?? null;
-          for (const t of board.teams) {
-            if (t.score > 0) {
-              await db
-                .insert(scoresTable)
-                .values({
-                  eventId,
-                  teamId: t.id,
-                  gameSlug: "gioco-coppie",
-                  points: t.score,
-                  round: 0,
-                })
-                .catch(() => {});
+          const ti = board.teams.findIndex((t) => t.id === teamId);
+          if (ti >= 0) board.teams[ti]!.score += 1;
+
+          if (board.matchCount >= board.totalPairs) {
+            board.status = "ended";
+            const winner = [...board.teams].sort((a, b) => b.score - a.score)[0];
+            board.winner = winner?.id ?? null;
+            for (const t of board.teams) {
+              if (t.score > 0) {
+                await db
+                  .insert(scoresTable)
+                  .values({
+                    eventId,
+                    teamId: t.id,
+                    gameSlug: "gioco-coppie",
+                    points: t.score,
+                    round: 0,
+                  })
+                  .catch(() => {});
+              }
             }
           }
+
+          await db
+            .update(coppieBoardsTable)
+            .set({ board })
+            .where(eq(coppieBoardsTable.sessionId, sessionId));
+
+          const matchedTeam = board.teams.find((t) => t.id === teamId);
+          emitToEvent(eventId, "coppie:match", { p1, p2, teamId, matchedTeamName: matchedTeam?.name ?? '', board });
+          if (board.status === "ended")
+            emitToEvent(eventId, "coppie:end", { board });
+          else emitToEvent(eventId, "coppie:state", board);
+          res.json(board);
+        } else {
+          // MISMATCH
+          board.locked = true;
+          await db
+            .update(coppieBoardsTable)
+            .set({ board })
+            .where(eq(coppieBoardsTable.sessionId, sessionId));
+
+          const nextIdx = (board.currentTeamIdx + 1) % Math.max(board.teams.length, 1);
+          const nextTeam = board.teams[nextIdx];
+          emitToEvent(eventId, "coppie:mismatch", {
+            p1,
+            p2,
+            teamId,
+            nextTeamName: nextTeam?.name ?? '',
+            board,
+          });
+          res.json(board);
         }
-
-        await db
-          .update(coppieBoardsTable)
-          .set({ board })
-          .where(eq(coppieBoardsTable.sessionId, sessionId));
-
-        const matchedTeam = board.teams.find((t) => t.id === teamId);
-        emitToEvent(eventId, "coppie:match", { p1, p2, teamId, matchedTeamName: matchedTeam?.name ?? '', board });
-        if (board.status === "ended")
-          emitToEvent(eventId, "coppie:end", { board });
-        else emitToEvent(eventId, "coppie:state", board);
-        res.json(board);
       } else {
-        // MISMATCH
-        board.locked = true;
+        // First card flipped
         await db
           .update(coppieBoardsTable)
           .set({ board })
           .where(eq(coppieBoardsTable.sessionId, sessionId));
-
-        const nextIdx = (board.currentTeamIdx + 1) % Math.max(board.teams.length, 1);
-        const nextTeam = board.teams[nextIdx];
-        emitToEvent(eventId, "coppie:mismatch", {
-          p1,
-          p2,
-          teamId,
-          nextTeamName: nextTeam?.name ?? '',
-          board,
-        });
+        emitToEvent(eventId, "coppie:flip", { pos, teamId, board });
         res.json(board);
       }
-    } else {
-      // First card flipped
-      await db
-        .update(coppieBoardsTable)
-        .set({ board })
-        .where(eq(coppieBoardsTable.sessionId, sessionId));
-      emitToEvent(eventId, "coppie:flip", { pos, teamId, board });
-      res.json(board);
+    } finally {
+      // Always release the lock so the session doesn't deadlock
+      _flipLocks.delete(sessionId);
     }
   },
 );

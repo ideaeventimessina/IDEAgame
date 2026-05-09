@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import app from "./app";
 import { initSocket } from "./socket";
 import { logger } from "./lib/logger";
+import { db, playersTable } from "@workspace/db";
 
 const rawPort = process.env["PORT"];
 
@@ -15,6 +16,21 @@ const port = Number(rawPort);
 
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
+}
+
+// On startup, mark all players as disconnected.
+// Any player whose phone is still open will re-emit player:register via Socket.IO
+// and be flipped back to isConnected=true within seconds.
+// This prevents ghost "connected" players from a previous server session.
+async function resetStaleConnections(): Promise<void> {
+  try {
+    const result = await db
+      .update(playersTable)
+      .set({ isConnected: false });
+    logger.info({ rowCount: (result as unknown as { rowCount?: number }).rowCount ?? "?" }, "startup: reset stale player connections");
+  } catch (err) {
+    logger.error({ err }, "startup: failed to reset stale player connections (non-fatal)");
+  }
 }
 
 // Create the raw HTTP server WITHOUT a request handler.
@@ -35,6 +51,9 @@ server.on("request", (req, res) => {
   // /socket.io/* requests are already handled by socket.io's listener (registered above)
 });
 
-server.listen(port, () => {
-  logger.info({ port }, "Server listening");
+// Reset stale connections then start listening
+resetStaleConnections().finally(() => {
+  server.listen(port, () => {
+    logger.info({ port }, "Server listening");
+  });
 });

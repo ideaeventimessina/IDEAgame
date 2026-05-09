@@ -14,6 +14,12 @@ import { emitToEvent } from "../socket";
 
 const router: IRouter = Router();
 
+/**
+ * In-memory lock to prevent concurrent /advance calls for the same event.
+ * Prevents duplicate game sessions when two admins click "Avanti" simultaneously.
+ */
+const _advanceLocks = new Set<string>();
+
 const BASE_PLAYLIST: EveningGame[] = [
   { slug: "percorso-a-risate", label: "Percorso a Risate", emoji: "🎭", sessionId: null, status: "pending" },
   { slug: "gioco-coppie",      label: "Gioco delle Coppie", emoji: "🃏", sessionId: null, status: "pending" },
@@ -62,46 +68,58 @@ router.post("/events/:id/evening/init", requireAuth, async (req: AuthedRequest, 
 // POST /events/:id/evening/advance  — mark current game done, start next
 router.post("/events/:id/evening/advance", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
   const eventId = String(req.params["id"]);
-  const [e] = await db.select().from(eventsTable).where(eq(eventsTable.id, eventId));
-  if (!e) { res.status(404).json({ error: "Not found" }); return; }
-  if (!guardEvent(req, e)) { res.status(403).json({ error: "Forbidden" }); return; }
-  const [mode] = await db.select().from(eveningModesTable).where(eq(eveningModesTable.eventId, eventId));
-  if (!mode) { res.status(404).json({ error: "Evening mode not initialized" }); return; }
 
-  const playlist = [...(mode.playlist as EveningGame[])];
-
-  // Mark any running game as done
-  const runningIdx = playlist.findIndex(g => g.status === "running");
-  if (runningIdx >= 0) {
-    playlist[runningIdx] = { ...playlist[runningIdx]!, status: "done" };
+  // Prevent concurrent advances for the same event (two admins clicking simultaneously)
+  if (_advanceLocks.has(eventId)) {
+    res.status(409).json({ error: "Avanzamento già in corso, riprova" });
+    return;
   }
+  _advanceLocks.add(eventId);
 
-  // Find next pending game
-  const nextIdx = playlist.findIndex(g => g.status === "pending");
-  let newSession: typeof gameSessionsTable.$inferSelect | null = null;
-  let newStatus = "running";
+  try {
+    const [e] = await db.select().from(eventsTable).where(eq(eventsTable.id, eventId));
+    if (!e) { res.status(404).json({ error: "Not found" }); return; }
+    if (!guardEvent(req, e)) { res.status(403).json({ error: "Forbidden" }); return; }
+    const [mode] = await db.select().from(eveningModesTable).where(eq(eveningModesTable.eventId, eventId));
+    if (!mode) { res.status(404).json({ error: "Evening mode not initialized" }); return; }
 
-  if (nextIdx >= 0) {
-    const slug = playlist[nextIdx]!.slug;
-    const totalRounds = slug === "quizzone" ? 5 : 1;
-    const [s] = await db.insert(gameSessionsTable).values({
-      eventId, gameSlug: slug, status: "idle", currentRound: 0, totalRounds,
-    }).returning();
-    newSession = s ?? null;
-    if (newSession) {
-      playlist[nextIdx] = { ...playlist[nextIdx]!, sessionId: newSession.id, status: "running" };
+    const playlist = [...(mode.playlist as EveningGame[])];
+
+    // Mark any running game as done
+    const runningIdx = playlist.findIndex(g => g.status === "running");
+    if (runningIdx >= 0) {
+      playlist[runningIdx] = { ...playlist[runningIdx]!, status: "done" };
     }
-  } else {
-    newStatus = "ended";
+
+    // Find next pending game
+    const nextIdx = playlist.findIndex(g => g.status === "pending");
+    let newSession: typeof gameSessionsTable.$inferSelect | null = null;
+    let newStatus = "running";
+
+    if (nextIdx >= 0) {
+      const slug = playlist[nextIdx]!.slug;
+      const totalRounds = slug === "quizzone" ? 5 : 1;
+      const [s] = await db.insert(gameSessionsTable).values({
+        eventId, gameSlug: slug, status: "idle", currentRound: 0, totalRounds,
+      }).returning();
+      newSession = s ?? null;
+      if (newSession) {
+        playlist[nextIdx] = { ...playlist[nextIdx]!, sessionId: newSession.id, status: "running" };
+      }
+    } else {
+      newStatus = "ended";
+    }
+
+    const [updated] = await db.update(eveningModesTable)
+      .set({ playlist: playlist as unknown as EveningGame[], status: newStatus, updatedAt: new Date() })
+      .where(eq(eveningModesTable.id, mode.id))
+      .returning();
+
+    emitToEvent(eventId, "evening:updated", { evening: updated, session: newSession });
+    res.json({ evening: updated, session: newSession });
+  } finally {
+    _advanceLocks.delete(eventId);
   }
-
-  const [updated] = await db.update(eveningModesTable)
-    .set({ playlist: playlist as unknown as EveningGame[], status: newStatus, updatedAt: new Date() })
-    .where(eq(eveningModesTable.id, mode.id))
-    .returning();
-
-  emitToEvent(eventId, "evening:updated", { evening: updated, session: newSession });
-  res.json({ evening: updated, session: newSession });
 });
 
 // DELETE /events/:id/evening  — reset
