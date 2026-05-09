@@ -93,96 +93,59 @@ function Hero({ onJoin, onScrollDown }: { onJoin: () => void; onScrollDown: () =
       <div className="pointer-events-none absolute" style={{ top: '30%', left: '-5%', width: 280, height: 280, borderRadius: '50%', background: 'radial-gradient(circle, #F5B64210 0%, transparent 70%)', filter: 'blur(50px)' }} />
       <div className="pointer-events-none absolute" style={{ top: '40%', right: '-5%', width: 240, height: 240, borderRadius: '50%', background: 'radial-gradient(circle, #FF69B410 0%, transparent 70%)', filter: 'blur(50px)' }} />
 
-      {/* Main hero layout: stacks on mobile, side-by-side on desktop */}
-      <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between w-full max-w-7xl mx-auto px-6 sm:px-10 lg:px-16 flex-1 py-16 gap-8 lg:gap-0">
+      {/* Hero poster image — fills the screen */}
+      <motion.div className="absolute inset-0 z-0"
+        initial={{ opacity: 0, scale: 1.04 }} animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 1.1, ease: 'easeOut' }}>
+        <img src="/jonny-world-hero.png" alt="Jonny's World"
+          className="w-full h-full object-cover object-center"
+          style={{ filter: 'brightness(0.88) saturate(1.15)' }} />
+        {/* Bottom gradient — heavy dark zone for CTA readability */}
+        <div className="absolute inset-0"
+          style={{ background: 'linear-gradient(to bottom, rgba(4,2,16,0.05) 0%, rgba(4,2,16,0.0) 35%, rgba(4,2,16,0.55) 60%, rgba(4,2,16,0.92) 78%, rgba(4,2,16,0.99) 100%)' }} />
+        {/* Top vignette */}
+        <div className="absolute inset-0"
+          style={{ background: 'linear-gradient(to bottom, rgba(4,2,16,0.45) 0%, transparent 18%)' }} />
+      </motion.div>
 
-        {/* Left: text + CTAs */}
-        <div className="flex flex-col items-center lg:items-start text-center lg:text-left lg:max-w-[52%]">
+      {/* CTAs — pinned to bottom of hero */}
+      <div className="absolute bottom-0 left-0 right-0 z-10 flex flex-col items-center pb-10 sm:pb-12 px-5">
 
-          {/* Top badge */}
-          <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
-            className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 mb-6 text-xs font-black uppercase tracking-[0.2em]"
-            style={{ background: 'rgba(245,182,66,0.12)', border: '1px solid rgba(245,182,66,0.35)', color: '#F5B642' }}>
-            <motion.span className="inline-block w-2 h-2 rounded-full bg-current"
-              animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.4, repeat: Infinity }} />
-            8 mondi di gioco live
-          </motion.div>
-
-          {/* JONNY'S WORLD title — 3D extrusion effect */}
-          <motion.div initial={{ opacity: 0, scale: 0.88, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ duration: 0.7, delay: 0.1, type: 'spring', stiffness: 120 }}
-            className="font-black leading-none text-display"
-            style={{
-              fontSize: 'clamp(3rem, 11vw, 9rem)',
-              color: '#F5B642',
-              filter: 'drop-shadow(0 8px 0 #7a3e00) drop-shadow(0 0 60px rgba(245,182,66,0.35))',
-              lineHeight: 0.92,
-            }}>
-            JONNY'S<br />WORLD
-          </motion.div>
-
-          {/* Subtitle */}
-          <motion.p initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35, duration: 0.5 }}
-            className="mt-4 sm:mt-5 font-bold uppercase tracking-[0.18em]"
-            style={{ fontSize: 'clamp(0.65rem, 2vw, 1.05rem)', color: '#A78BFA', textShadow: '0 0 24px #A78BFA55' }}>
-            Il parco del divertimento intelligente
-          </motion.p>
-
-          {/* CTAs */}
-          <motion.div className="flex flex-col sm:flex-row gap-3 mt-8 sm:mt-10 w-full sm:w-auto"
-            initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5, duration: 0.5 }}>
-
-            <motion.button onClick={onJoin} whileTap={{ scale: 0.97 }}
-              className="relative overflow-hidden rounded-2xl font-black text-black"
-              style={{ padding: '18px 40px', fontSize: 'clamp(0.95rem, 2vw, 1.15rem)', background: 'linear-gradient(135deg, #FFE57A 0%, #F5B642 50%, #E08800 100%)', boxShadow: '0 0 40px rgba(245,182,66,0.55), 0 4px 20px rgba(0,0,0,0.4)' }}>
-              <motion.div className="absolute inset-0 -skew-x-12 w-1/4"
-                style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)' }}
-                animate={{ x: ['-150%', '400%'] }} transition={{ duration: 3, repeat: Infinity, repeatDelay: 2 }} />
-              Entra nel mondo
-            </motion.button>
-
-            <motion.button onClick={onScrollDown} whileTap={{ scale: 0.97 }}
-              className="rounded-2xl font-bold"
-              style={{ padding: '18px 32px', fontSize: 'clamp(0.85rem, 1.8vw, 1rem)', border: '1.5px solid rgba(167,139,250,0.5)', color: '#A78BFA', background: 'rgba(167,139,250,0.08)' }}>
-              Scopri gli 8 giochi
-            </motion.button>
-          </motion.div>
-
-          {/* Mini stat row */}
-          <motion.div className="flex gap-6 sm:gap-8 mt-8 sm:mt-10"
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.7 }}>
-            {[['8', 'giochi'], ['Live', 'party'], ['No app', 'solo QR']].map(([big, small]) => (
-              <div key={big} className="flex flex-col">
-                <span className="font-black text-white" style={{ fontSize: 'clamp(1.1rem, 3vw, 1.5rem)' }}>{big}</span>
-                <span className="text-xs uppercase tracking-[0.15em]" style={{ color: 'rgba(255,255,255,0.4)' }}>{small}</span>
-              </div>
-            ))}
-          </motion.div>
+        {/* Badge */}
+        <div className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 mb-5 text-xs font-black uppercase tracking-[0.2em]"
+          style={{ background: 'rgba(245,182,66,0.15)', border: '1px solid rgba(245,182,66,0.45)', color: '#F5B642', backdropFilter: 'blur(10px)' }}>
+          <motion.span className="inline-block w-2 h-2 rounded-full bg-current flex-shrink-0"
+            animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.4, repeat: Infinity }} />
+          8 mondi di gioco live
         </div>
 
-        {/* Right: Jonny mascot */}
-        <motion.div className="flex flex-col items-center justify-end lg:justify-center relative"
-          initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2, duration: 0.8 }}>
+        <div className="flex flex-col sm:flex-row gap-3 w-full max-w-lg">
+          <motion.button onClick={onJoin} whileTap={{ scale: 0.97 }}
+            className="relative flex-1 overflow-hidden rounded-2xl font-black text-black"
+            style={{ padding: '20px 32px', fontSize: 'clamp(1rem, 2.5vw, 1.2rem)', background: 'linear-gradient(135deg, #FFE57A 0%, #F5B642 50%, #E08800 100%)', boxShadow: '0 0 50px rgba(245,182,66,0.7), 0 4px 24px rgba(0,0,0,0.6)' }}>
+            <motion.div className="absolute inset-0 -skew-x-12 w-1/4"
+              style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.42), transparent)' }}
+              animate={{ x: ['-150%', '400%'] }} transition={{ duration: 3, repeat: Infinity, repeatDelay: 2 }} />
+            Entra nel mondo
+          </motion.button>
 
-          {/* Stage glow below Jonny */}
-          <div className="absolute bottom-0 left-1/2 -translate-x-1/2"
-            style={{ width: '70%', height: 60, background: 'radial-gradient(ellipse, rgba(245,182,66,0.35) 0%, transparent 70%)', filter: 'blur(20px)' }} />
+          <motion.button onClick={onScrollDown} whileTap={{ scale: 0.97 }}
+            className="flex-1 rounded-2xl font-bold"
+            style={{ padding: '20px 24px', fontSize: 'clamp(0.88rem, 2vw, 1rem)', border: '1.5px solid rgba(245,182,66,0.5)', color: '#FFE57A', background: 'rgba(4,2,16,0.55)', backdropFilter: 'blur(12px)' }}>
+            Scopri gli 8 giochi
+          </motion.button>
+        </div>
 
-          <motion.img src="/jonny/via-nobg.png" alt="Jonny"
-            style={{
-              height: 'clamp(220px, 40vh, 520px)', width: 'auto', objectFit: 'contain',
-              mixBlendMode: 'multiply', filter: 'drop-shadow(0 20px 60px rgba(245,182,66,0.55)) drop-shadow(0 0 30px rgba(167,139,250,0.3))',
-              position: 'relative', zIndex: 1,
-            }}
-            animate={{ y: [0, -20, 0], rotate: [-1, 1, -1] }}
-            transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }} />
-        </motion.div>
+        <button onClick={onJoin} className="mt-4 font-medium"
+          style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.35)', background: 'none', border: 'none', cursor: 'pointer' }}>
+          Ho un codice evento → inseriscilo
+        </button>
       </div>
 
       {/* Scroll indicator */}
-      <motion.div className="relative z-10 flex flex-col items-center pb-6 sm:pb-8"
+      <motion.div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 flex flex-col items-center"
         animate={{ y: [0, 8, 0] }} transition={{ duration: 2, repeat: Infinity }}>
-        <div className="w-px h-12 sm:h-16" style={{ background: 'linear-gradient(to bottom, rgba(245,182,66,0.6), transparent)' }} />
+        <div className="w-px h-10" style={{ background: 'linear-gradient(to bottom, rgba(245,182,66,0.5), transparent)' }} />
       </motion.div>
     </section>
   );

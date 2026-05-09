@@ -446,29 +446,22 @@ export default function Hub() {
   // ── Standby screen: nessun evento attivo ─────────────────────────────
   if (!liveEvent) {
     return (
-      <div className="relative h-screen w-full overflow-hidden flex flex-col items-center justify-center select-none"
-        style={{ background: 'radial-gradient(ellipse 140% 80% at 50% -5%, #1e0a3c 0%, #0d0520 45%, #060310 100%)' }}>
+      <div className="relative h-screen w-full overflow-hidden select-none">
 
-        {/* Star particles */}
-        <div className="pointer-events-none absolute inset-0 overflow-hidden">
-          {Array.from({ length: 55 }).map((_, i) => {
-            const x = (i * 37 + 13) % 100;
-            const y = (i * 53 + 9) % 100;
-            const sz = 1 + (i % 4) * 0.7;
-            return (
-              <motion.div key={i} className="absolute rounded-full"
-                style={{ left: `${x}%`, top: `${y}%`, width: sz, height: sz, background: '#A78BFA' }}
-                animate={{ opacity: [0.1, 0.7, 0.1] }}
-                transition={{ duration: 2.5 + (i % 6) * 0.55, delay: -(i * 0.18), repeat: Infinity }} />
-            );
-          })}
-        </div>
-        {/* Glow spots */}
-        <div className="pointer-events-none absolute inset-0 overflow-hidden">
-          <div style={{ position: 'absolute', top: '-15%', left: '50%', transform: 'translateX(-50%)', width: '70%', height: '50%', borderRadius: '50%', background: 'radial-gradient(ellipse, #7C3AED20 0%, transparent 70%)', filter: 'blur(50px)' }} />
-          <div style={{ position: 'absolute', bottom: '-5%', left: '10%', width: '35%', height: '35%', borderRadius: '50%', background: 'radial-gradient(ellipse, #F5B64212 0%, transparent 70%)', filter: 'blur(35px)' }} />
-          <div style={{ position: 'absolute', bottom: '-5%', right: '10%', width: '35%', height: '35%', borderRadius: '50%', background: 'radial-gradient(ellipse, #F5B64212 0%, transparent 70%)', filter: 'blur(35px)' }} />
-        </div>
+        {/* Full-screen hero poster */}
+        <motion.img src="/jonny-world-hero.png" alt="Jonny's World"
+          className="absolute inset-0 w-full h-full object-cover object-center"
+          style={{ filter: 'brightness(0.92) saturate(1.1)' }}
+          initial={{ opacity: 0, scale: 1.06 }} animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 1.2, ease: 'easeOut' }} />
+
+        {/* Subtle dark vignette around edges */}
+        <div className="pointer-events-none absolute inset-0"
+          style={{ background: 'radial-gradient(ellipse 110% 110% at 50% 50%, transparent 50%, rgba(4,2,16,0.65) 100%)' }} />
+
+        {/* Bottom fade for badge */}
+        <div className="pointer-events-none absolute inset-0"
+          style={{ background: 'linear-gradient(to bottom, transparent 60%, rgba(4,2,16,0.85) 100%)' }} />
 
         {/* Black screen panic overlay */}
         <AnimatePresence>
@@ -478,46 +471,14 @@ export default function Hub() {
           )}
         </AnimatePresence>
 
-        {/* Jonny's World content */}
-        <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.9, ease: 'easeOut' }}
-          className="relative z-10 flex flex-col items-center gap-6 sm:gap-8 text-center px-8">
-
-          {/* JONNY'S WORLD title */}
-          <motion.div
-            animate={{ filter: ['drop-shadow(0 0 20px #F5B64266)', 'drop-shadow(0 0 50px #F5B64299)', 'drop-shadow(0 0 20px #F5B64266)'] }}
-            transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }}
-            className="text-display font-black leading-none select-none"
-            style={{
-              fontSize: 'clamp(2.8rem, 10vw, 8rem)',
-              background: 'linear-gradient(135deg, #F5B642 0%, #FFD700 40%, #F5B642 70%, #FFA500 100%)',
-              WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-            }}>
-            JONNY'S WORLD
-          </motion.div>
-
-          {/* Subtitle */}
-          <div className="text-sm sm:text-xl font-bold tracking-[0.15em] uppercase"
-            style={{ color: '#A78BFA', textShadow: '0 0 20px #A78BFA66' }}>
-            Il Parco del Divertimento Intelligente
-          </div>
-
-          {/* Jonny mascot */}
-          <motion.img src="/jonny/via-nobg.png" alt="Jonny"
-            style={{
-              height: 'clamp(180px, 32vh, 340px)', width: 'auto', objectFit: 'contain',
-              mixBlendMode: 'multiply', filter: 'drop-shadow(0 16px 48px #A78BFA77)',
-            }}
-            animate={{ y: [0, -18, 0], rotate: [-1.5, 1.5, -1.5] }}
-            transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }} />
-
-          {/* Waiting label */}
-          <motion.div animate={{ opacity: [0.5, 1, 0.5] }} transition={{ duration: 2.5, repeat: Infinity }}
-            className="rounded-2xl border px-6 sm:px-10 py-2.5 sm:py-3 text-xs sm:text-sm font-black tracking-[0.2em] uppercase"
-            style={{ borderColor: '#F5B64244', background: '#F5B64210', color: '#F5B642' }}>
+        {/* Waiting badge — bottom center */}
+        <div className="absolute bottom-0 left-0 right-0 z-10 flex flex-col items-center pb-8 sm:pb-12">
+          <motion.div animate={{ opacity: [0.6, 1, 0.6] }} transition={{ duration: 2.5, repeat: Infinity }}
+            className="rounded-2xl border px-8 sm:px-14 py-3 sm:py-4 text-sm sm:text-base font-black tracking-[0.25em] uppercase"
+            style={{ borderColor: 'rgba(245,182,66,0.5)', background: 'rgba(4,2,16,0.7)', color: '#F5B642', backdropFilter: 'blur(12px)' }}>
             In attesa di un evento…
           </motion.div>
-        </motion.div>
+        </div>
       </div>
     );
   }
