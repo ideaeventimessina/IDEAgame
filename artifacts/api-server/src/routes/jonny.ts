@@ -155,7 +155,7 @@ Genera almeno 10 canzoni. Tema/mood: ${theme}. Lingua canzoni: qualsiasi ma lega
 }
 Genera almeno 30 parole strane/divertenti legate al tema ${theme}. Solo parole singole o brevi espressioni.`,
 
-    "sara-musica": `Genera "sara-musica": playlist canzoni da indovinare a tema. Struttura:
+    "saramusica": `Genera "saramusica": playlist canzoni da indovinare a tema. Struttura:
 {
   "setTitle": "titolo playlist",
   "description": "descrizione per animatore",
@@ -517,25 +517,45 @@ router.post("/jonny/items/:id/import", requireAuth, async (req: AuthedRequest, r
         break;
       }
 
-      case "sara-musica": {
+      case "saramusica": {
+        const setTitle = (payload.titolo as string) || (payload.setTitle as string) || item.title;
+        const setDesc = (payload.descrizione as string) || (payload.description as string) || "";
         const [set] = await db.insert(saraMusicaSetsTable).values({
           tenantId: user.tenantId ?? undefined,
-          title: (payload.setTitle as string) || item.title,
-          description: (payload.description as string) || "",
+          title: setTitle,
+          description: setDesc,
         }).returning();
-        const tracks = (payload.tracks as Array<Record<string, unknown>>) || [];
-        if (tracks.length > 0) {
+
+        // Support both flat `tracks[]` and nested `rounds[].tracce[]`
+        let flatTracks: Array<Record<string, unknown>> = [];
+        if (Array.isArray(payload.tracks) && (payload.tracks as unknown[]).length > 0) {
+          flatTracks = payload.tracks as Array<Record<string, unknown>>;
+        } else if (Array.isArray(payload.rounds)) {
+          for (const round of payload.rounds as Array<Record<string, unknown>>) {
+            const tracce = (round.tracce as Array<Record<string, unknown>>) || [];
+            flatTracks.push(...tracce);
+          }
+        }
+
+        if (flatTracks.length > 0) {
           await db.insert(saraMusicaTracksTable).values(
-            tracks.map((t, i) => ({
-              setId: set!.id,
-              title: (t.title as string) || `Canzone ${i + 1}`,
-              artist: (t.artist as string) || "Artista",
-              challengeType: (["indovina", "canta", "rumore"].includes(t.challengeType as string) ? t.challengeType as string : "indovina"),
-              snippetHint: (t.snippetHint as string) || "",
-              durationSeconds: Number(t.durationSeconds) || 30,
-              points: Number(t.points) || 100,
-              orderIndex: i,
-            }))
+            flatTracks.map((t, i) => {
+              // nested format: risposta_corretta.titolo_canzone / risposta_corretta.film
+              const risposta = t.risposta_corretta as Record<string, unknown> | undefined;
+              const title = (t.title as string) || (risposta?.titolo_canzone as string) || (t.titolo_canzone as string) || `Canzone ${i + 1}`;
+              const artist = (t.artist as string) || (risposta?.film as string) || (t.film as string) || "";
+              const hint = (t.snippetHint as string) || (t.testo_indizio as string) || "";
+              return {
+                setId: set!.id,
+                title,
+                artist,
+                challengeType: (["indovina", "canta", "rumore"].includes(t.challengeType as string) ? t.challengeType as string : "indovina"),
+                snippetHint: hint,
+                durationSeconds: Number(t.durationSeconds) || 30,
+                points: Number(t.points) || 100,
+                orderIndex: i,
+              };
+            })
           );
         }
         targetEntityId = set!.id;
