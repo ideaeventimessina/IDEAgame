@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { I18nProvider } from "@/i18n";
 import { AuthProvider } from "@/auth/roles";
 import { DemoSwitcher } from "@/components/DemoSwitcher";
+import { BackToCockpit } from "@/components/BackToCockpit";
 import NotFound from "@/pages/not-found";
 import Hub from "@/pages/Hub";
 import GameStage from "@/pages/GameStage";
@@ -115,6 +116,7 @@ function App() {
             <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
               <Router />
               <DemoSwitcher />
+              <BackToCockpit />
             </WouterRouter>
             <Toaster />
           </TooltipProvider>
