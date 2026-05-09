@@ -1594,6 +1594,11 @@ export default function LiveControl() {
               <option value="">— seleziona evento —</option>
               {events.map(ev => <option key={ev.id} value={ev.id}>{ev.name} ({ev.joinCode})</option>)}
             </select>
+            {events.length === 0 && (
+              <div className="mt-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-400">
+                Nessun evento trovato. <button onClick={() => navigate('/admin/events')} className="underline font-bold">Crea un evento</button> dal pannello admin o <button onClick={() => navigate('/login')} className="underline font-bold">effettua il login</button>.
+              </div>
+            )}
           </div>
 
           {selectedEventId && (

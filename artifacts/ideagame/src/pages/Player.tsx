@@ -483,20 +483,29 @@ export default function Player() {
         {(step === 'join' || step === 'joining') && !event && (
           <motion.div key="enter-code" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
             className="flex flex-1 flex-col">
-            <div className="flex flex-1 flex-col items-center justify-center gap-6">
-              <div className="text-center">
-                <div className="text-display text-3xl font-black">Unisciti all'evento</div>
-                <div className="mt-2 text-sm text-muted-foreground">Inserisci il codice ricevuto dall'animatore</div>
+            <div className="flex flex-1 flex-col items-center justify-center gap-5">
+              {/* Hero icon */}
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/15 text-3xl">
+                🎮
               </div>
-              <div className="w-full">
+              <div className="text-center">
+                <div className="text-display text-3xl font-black">Unisciti all&apos;evento</div>
+                <div className="mt-2 text-sm text-muted-foreground">Scansiona il QR sul proiettore<br/>o inserisci il codice dell&apos;animatore</div>
+              </div>
+              <div className="w-full space-y-2">
                 <input
                   value={nick}
                   onChange={e => setNick(e.target.value.toUpperCase())}
                   onKeyDown={e => { if (e.key === 'Enter' && nick.trim()) { const c = nick.trim(); setNick(''); fetchEvent(c); } }}
                   placeholder="ES. SORR40"
                   maxLength={10}
+                  autoCapitalize="characters"
+                  autoComplete="off"
                   className="w-full rounded-2xl border border-border bg-card px-5 py-5 text-center text-3xl font-black tracking-[0.3em] text-foreground outline-none focus:border-primary"
                 />
+                <div className="text-center text-xs text-muted-foreground/60">
+                  Il codice è visibile sul grande schermo
+                </div>
               </div>
               {error && <div className="w-full rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-center text-sm text-destructive">{error}</div>}
             </div>
@@ -508,7 +517,7 @@ export default function Player() {
                 disabled={!nick.trim()}
                 className="w-full rounded-2xl bg-primary py-5 text-lg font-black text-primary-foreground shadow-[0_0_30px_rgba(245,182,66,0.35)] disabled:opacity-40 hover:opacity-90"
               >
-                Entra
+                Entra →
               </button>
             </div>
           </motion.div>

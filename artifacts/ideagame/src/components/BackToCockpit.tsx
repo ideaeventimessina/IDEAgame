@@ -3,7 +3,6 @@ import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SlidersHorizontal } from 'lucide-react';
 
-// Routes where the cockpit button should NOT appear
 const HIDE_ON = ['/admin', '/play', '/login', '/splash', '/language', '/tenant', '/control', '/event-setup', '/permissions'];
 
 export function BackToCockpit() {
@@ -12,11 +11,9 @@ export function BackToCockpit() {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const hide = HIDE_ON.some(p => location === p || location.startsWith(p + '/'));
-  if (hide) return null;
 
-  // Show on mouse move, auto-hide after 3s of inactivity
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
+    if (hide) return;
     const show = () => {
       setVisible(true);
       if (timerRef.current) clearTimeout(timerRef.current);
@@ -27,7 +24,9 @@ export function BackToCockpit() {
       window.removeEventListener('mousemove', show);
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, []);
+  }, [hide]);
+
+  if (hide) return null;
 
   return (
     <AnimatePresence>

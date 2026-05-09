@@ -6,37 +6,37 @@ import type {
 export const GAMES: Game[] = [
   {
     id: 'g1', slug: 'percorso-a-risate', name: 'Percorso a Risate',
-    tagline: 'A laughing obstacle course on the big screen.',
+    tagline: 'Il grande percorso a sfide su schermo gigante.',
     accentColor: '#F5B642', icon: 'route', enabled: true,
     settings: { rounds: 6, timeLimit: 45, scoringWeight: 1 }
   },
   {
     id: 'g2', slug: 'gioco-delle-coppie', name: 'Gioco delle Coppie',
-    tagline: 'How well do you really know each other?',
+    tagline: 'Quanto vi conoscete davvero? Scopritelo live.',
     accentColor: '#E84A8E', icon: 'heart', enabled: true,
     settings: { rounds: 5, timeLimit: 30, scoringWeight: 1 }
   },
   {
     id: 'g3', slug: 'quizzone', name: 'Quizzone',
-    tagline: 'The flagship trivia showdown.',
+    tagline: 'Il quiz di gruppo più adrenalinico della serata.',
     accentColor: '#5BC0EB', icon: 'brain', enabled: true,
     settings: { rounds: 10, timeLimit: 25, scoringWeight: 1.2 }
   },
   {
     id: 'g4', slug: 'saramusica', name: 'SaraMusica',
-    tagline: 'Name the tune. Win the room.',
+    tagline: 'Indovina la canzone e vinci la stanza.',
     accentColor: '#9B5DE5', icon: 'music', enabled: true,
     settings: { rounds: 8, timeLimit: 20, scoringWeight: 1.1 }
   },
   {
     id: 'g5', slug: 'adult-only', name: 'Adult Only',
-    tagline: 'Late-night, lights low, gloves off.',
+    tagline: 'Per i coraggiosi. Notte fonda, guanti giù.',
     accentColor: '#FF1F6D', icon: 'flame', enabled: true, adultOnly: true,
     settings: { rounds: 6, timeLimit: 40, scoringWeight: 1 }
   },
   {
     id: 'g6', slug: 'sfida-di-ballo', name: 'Sfida di Ballo',
-    tagline: 'Step. Spin. Slay the floor.',
+    tagline: 'Muoviti, spingi il limite, conquista la pista.',
     accentColor: '#00F5A0', icon: 'sparkles', enabled: true,
     settings: { rounds: 5, timeLimit: 60, scoringWeight: 1.3 }
   },

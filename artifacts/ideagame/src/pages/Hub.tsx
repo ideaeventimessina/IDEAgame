@@ -33,11 +33,11 @@ const POSITIONS = [
   { x:  1,   y:  1.15 },
 ];
 
-// Desktop octagon grid constants — large, breathing grid
-// cw = 2*(1.5*175+100)+10 = 735 px   ch = 2*(1.15*148+100)+10 = 552 px
-const D_OCT = 200;
-const D_OX  = 175;
-const D_OY  = 148;
+// Desktop octagon grid constants — sized to fit 1280×720 projector (16:9)
+// cw = 2*(1.5*163+97)+10 = 694 px   ch = 2*(1.15*128+97)+10 = 499 px
+const D_OCT = 194;
+const D_OX  = 163;
+const D_OY  = 128;
 
 // Tablet octagon grid constants — bigger, floating layout
 // cw = 2*(1.5*130+77.5)+10 = 555 px   ch = 2*(1.15*126+77.5)+10 = 455 px
@@ -90,11 +90,22 @@ export default function Hub() {
     });
   }, [liveEvent?.id, on, games]);
 
-  const sortedGames = [...games].sort((a, b) => {
-    const aReady = READY_SLUGS.has(a.slug) ? 0 : 1;
-    const bReady = READY_SLUGS.has(b.slug) ? 0 : 1;
-    return aReady - bReady;
-  });
+  // Canonical 3-2-3 slot order: flagship games first, adult-only last in middle row
+  const SLUG_ORDER = [
+    'percorso-a-risate',
+    'gioco-delle-coppie',
+    'quizzone',
+    'saramusica',
+    'adult-only',
+    'sfida-di-ballo',
+    'parola-alle-spalle',
+    'karaoke-battle',
+  ];
+  const slugRank = (slug: string) => {
+    const i = SLUG_ORDER.indexOf(slug);
+    return i === -1 ? 99 : i;
+  };
+  const sortedGames = [...games].sort((a, b) => slugRank(a.slug) - slugRank(b.slug));
   const visibleGames = liveEvent && Array.isArray(liveEvent.enabledGames) && liveEvent.enabledGames.length > 0
     ? sortedGames.filter(g => (liveEvent.enabledGames as string[]).includes(g.slug)).slice(0, 8)
     : sortedGames.slice(0, 8);
@@ -134,7 +145,7 @@ export default function Hub() {
                 left: cw / 2 + pos.x * ox - oct / 2,
                 top:  ch / 2 + pos.y * oy - oct / 2,
               }}>
-              <Octagon color={g.accentColor} size={oct} delay={0.05 + i * 0.07}
+              <Octagon color={g.accentColor} size={oct} delay={i * 0.035}
                 onClick={() => navigate(`/game/${g.slug}`)}>
                 <div className="mb-2 flex items-center justify-center rounded-xl"
                   style={{ width: oct * 0.38, height: oct * 0.38, background: `${g.accentColor}22`, color: g.accentColor }}>
@@ -455,7 +466,7 @@ export default function Hub() {
       {/* ════════════════════════════════════════════════════════════
           DESKTOP  (≥1024 px): full-bleed grid + floating side panels
           ════════════════════════════════════════════════════════════ */}
-      <div className="hidden lg:relative lg:flex lg:flex-1 lg:min-h-0 lg:items-center lg:justify-center lg:overflow-hidden">
+      <div className="hidden lg:relative lg:flex lg:flex-1 lg:min-h-0 lg:items-center lg:justify-center">
 
         {/* ── Left floating panel ── */}
         <motion.div initial={{ opacity: 0, x: -24 }} animate={{ opacity: 1, x: 0 }}
@@ -496,7 +507,7 @@ export default function Hub() {
         initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
         transition={{ delay: 0.5, type: 'spring', stiffness: 200 }}
         whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-        className="fixed bottom-6 right-6 z-30 flex items-center gap-2.5 rounded-2xl bg-primary px-5 py-3.5 text-sm font-black text-primary-foreground shadow-2xl shadow-primary/30">
+        className="fixed bottom-6 right-6 z-30 hidden lg:flex items-center gap-2.5 rounded-2xl bg-primary px-5 py-3.5 text-sm font-black text-primary-foreground shadow-2xl shadow-primary/30">
         <SlidersHorizontal className="h-4 w-4" />
         Cockpit Animatore
       </motion.button>
