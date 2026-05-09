@@ -33,12 +33,11 @@ const POSITIONS = [
   { x:  1,   y:  1.15 },
 ];
 
-// Desktop octagon grid constants
-// cw = 2*(1.5*128+152/2)+10 = 552 px  ch = 2*(1.15*132+152/2)+10 = 466 px
-// Desktop content height ≈ 720-72-40-32=576px → 466+48 label = 514px ✓
-const D_OCT = 152;
-const D_OX  = 128;
-const D_OY  = 132;
+// Desktop octagon grid constants — large, breathing grid
+// cw = 2*(1.5*175+100)+10 = 735 px   ch = 2*(1.15*148+100)+10 = 552 px
+const D_OCT = 200;
+const D_OX  = 175;
+const D_OY  = 148;
 
 // Tablet octagon grid constants
 const T_OCT = 100;
@@ -435,33 +434,39 @@ export default function Hub() {
       </div>
 
       {/* ════════════════════════════════════════════════════════════
-          DESKTOP  (≥1024 px): QR/CTA | oct-grid | roster
+          DESKTOP  (≥1024 px): full-bleed grid + floating side panels
           ════════════════════════════════════════════════════════════ */}
-      <div className="hidden lg:grid flex-1 min-h-0 mx-auto w-full max-w-[1420px] grid-cols-[300px_1fr_300px] items-center gap-8 px-8 py-4 overflow-hidden">
+      <div className="hidden lg:relative lg:flex lg:flex-1 lg:min-h-0 lg:items-center lg:justify-center lg:overflow-hidden">
 
-        <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="overflow-y-auto">
-          {liveEvent ? <QrPanel /> : <EventCTA />}
+        {/* ── Left floating panel ── */}
+        <motion.div initial={{ opacity: 0, x: -24 }} animate={{ opacity: 1, x: 0 }}
+          transition={{ type: 'spring', stiffness: 160, damping: 22 }}
+          className="absolute left-6 top-1/2 z-20 w-[210px] -translate-y-1/2">
+          {liveEvent ? <QrPanel compact /> : <EventCTA />}
         </motion.div>
 
-        <div className="flex flex-col items-center justify-center overflow-hidden">
+        {/* ── Centre: big octagon game grid ── */}
+        <div className="flex flex-col items-center justify-center">
           {gamesLoading
-            ? <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            ? <Loader2 className="h-10 w-10 animate-spin text-primary" />
             : <OctGrid oct={D_OCT} ox={D_OX} oy={D_OY} />
           }
-          <div className="mt-5 text-display text-xl uppercase tracking-[0.35em] text-muted-foreground/50">
+          <div className="mt-4 text-display text-xl uppercase tracking-[0.38em] text-muted-foreground/40">
             {t('hub.choose_game')}
           </div>
         </div>
 
-        <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
-          className="flex flex-col gap-4 overflow-y-auto pb-2">
+        {/* ── Right floating panel ── */}
+        <motion.div initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }}
+          transition={{ type: 'spring', stiffness: 160, damping: 22 }}
+          className="absolute right-6 top-1/2 z-20 flex w-[210px] -translate-y-1/2 flex-col gap-3">
           <RosterPanel />
           <button onClick={() => navigate('/control')}
-            className="w-full flex items-center gap-3 rounded-2xl border border-primary/40 bg-primary/10 px-5 py-4 text-left hover-elevate">
-            <Sparkles className="h-5 w-5 shrink-0 text-primary" />
+            className="flex w-full items-center gap-2.5 rounded-2xl border border-primary/40 bg-primary/10 px-4 py-3 text-left hover-elevate">
+            <Sparkles className="h-4 w-4 shrink-0 text-primary" />
             <div>
-              <div className="text-display text-sm font-black text-primary">✨ Serata Completa</div>
-              <div className="text-xs text-muted-foreground">Percorso · Coppie · Quizzone</div>
+              <div className="text-display text-xs font-black text-primary">✨ Serata Completa</div>
+              <div className="text-[10px] text-muted-foreground">Percorso · Coppie · Quizzone</div>
             </div>
           </button>
         </motion.div>
