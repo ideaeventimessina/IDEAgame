@@ -2,7 +2,8 @@ import { useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
 import { JonnyAvatar } from '@/components/JonnyAvatar';
-import { useJonny, type JonnyMood } from '@/contexts/JonnyContext';
+import { JonnyMessage } from '@/components/JonnyMessage';
+import { useJonny, type JonnyMood, type JonnyMode } from '@/contexts/JonnyContext';
 
 type Step = 'loading' | 'join' | 'joining' | 'play' | 'error';
 interface GameState {
@@ -25,39 +26,57 @@ interface PhaseConfig {
   message: string;
 }
 
-function resolvePhase(step: Step, gameState: GameState, playerName?: string, eventName?: string): PhaseConfig | null {
+function resolvePhase(
+  step: Step,
+  gameState: GameState,
+  jonnyMode: JonnyMode,
+  playerName?: string,
+  eventName?: string,
+): PhaseConfig | null {
   if (step === 'join') {
+    if (jonnyMode === 'home') {
+      return {
+        mood: 'excited',
+        message: playerName
+          ? `Bentornato, ${playerName}! Pronto per la sfida?`
+          : `Ciao! Sono Jonny, il tuo game master${eventName ? ` di "${eventName}"` : ''}! Inserisci il tuo nome 👇`,
+      };
+    }
     return {
       mood: 'excited',
       message: playerName
-        ? `Bentornato, ${playerName}! Scegli il team e vai!`
-        : `Ciao! Sono Jonny, il tuo co-host${eventName ? ` di "${eventName}"` : ''}! Inserisci il tuo nome 👇`,
+        ? `Bentornato, ${playerName}! Dai il massimo!`
+        : `Ciao! Sono Jonny, il co-host${eventName ? ` di "${eventName}"` : ''}! Inserisci il tuo nome 👇`,
     };
   }
   if (step === 'joining') {
     return { mood: 'thinking', message: 'Sto registrando il tuo ingresso…' };
   }
   if (step === 'play') {
-    if (gameState.status === 'idle') {
-      return { mood: 'thinking', message: 'Pronti? Aspettiamo che il gioco inizi… 🎯' };
-    }
-    if (gameState.status === 'running') {
-      return { mood: 'cheering', message: 'Forza! Dai tutto! 💪' };
-    }
     if (gameState.status === 'paused') {
-      return { mood: 'thinking', message: 'Pausa! Torna subito…' };
+      return { mood: 'thinking', message: '⏸ Pausa! Torneremo subito…' };
     }
     if (gameState.status === 'ended') {
-      return { mood: 'celebrating', message: 'Partita finita! Grande prestazione! 🏆' };
+      return {
+        mood: 'celebrating',
+        message: jonnyMode === 'home'
+          ? '🏆 Partita finita! Sei stato fantastico!'
+          : '🏆 Partita finita! Grazie per aver giocato!',
+      };
     }
   }
   return null;
 }
 
 export function JonnyLayer({ step, gameState, playerName, eventName }: JonnyLayerProps) {
-  const { isHostedByJonny, jonnyMood, jonnyMessage, setJonnyMood, setJonnyMessage, dismissJonny, dismissed } = useJonny();
+  const {
+    isHostedByJonny, jonnyMode,
+    jonnyMood, jonnyMessage,
+    setJonnyMood, setJonnyMessage,
+    dismissJonny, dismissed,
+  } = useJonny();
 
-  const phase = resolvePhase(step, gameState, playerName, eventName);
+  const phase = resolvePhase(step, gameState, jonnyMode, playerName, eventName);
 
   useEffect(() => {
     if (!phase) return;
@@ -67,66 +86,75 @@ export function JonnyLayer({ step, gameState, playerName, eventName }: JonnyLaye
 
   const visible = isHostedByJonny && !dismissed && !!jonnyMessage;
 
+  if (!isHostedByJonny) return null;
+
   return (
-    <AnimatePresence>
-      {visible && (
-        <motion.div
-          key={`jonny-${step}-${gameState.status}`}
-          initial={{ opacity: 0, y: 32, scale: 0.92 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 24, scale: 0.95 }}
-          transition={{ type: 'spring', stiffness: 380, damping: 28 }}
-          className="pointer-events-auto fixed bottom-28 left-4 right-4 z-50 flex items-end gap-3"
-          style={{ maxWidth: 420, margin: '0 auto' }}
-        >
-          {/* Avatar */}
+    <>
+      {/* Main floating bubble */}
+      <AnimatePresence>
+        {visible && (
           <motion.div
-            animate={{ rotate: [0, -3, 3, 0] }}
-            transition={{ repeat: Infinity, duration: 4, ease: 'easeInOut' }}
-            className="shrink-0"
+            key={`jonny-${step}-${gameState.status}`}
+            initial={{ opacity: 0, y: 32, scale: 0.92 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 24, scale: 0.95 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 28 }}
+            className="pointer-events-auto fixed bottom-28 left-4 right-4 z-50 flex items-end gap-3"
+            style={{ maxWidth: 428, margin: '0 auto' }}
           >
-            <JonnyAvatar mood={jonnyMood} size={72} />
-          </motion.div>
-
-          {/* Speech bubble */}
-          <div className="relative flex-1">
-            {/* Tail pointing left toward avatar */}
-            <div
-              className="absolute -left-2 bottom-4 h-0 w-0"
-              style={{
-                borderTop: '8px solid transparent',
-                borderBottom: '8px solid transparent',
-                borderRight: '10px solid rgba(212,175,55,0.25)',
-              }}
-            />
-            <div
-              className="relative rounded-2xl border px-4 py-3 text-sm font-medium leading-snug"
-              style={{
-                background: 'linear-gradient(135deg, rgba(20,15,40,0.97) 0%, rgba(10,8,25,0.97) 100%)',
-                borderColor: 'rgba(212,175,55,0.35)',
-                color: '#e8d5a3',
-                backdropFilter: 'blur(12px)',
-                boxShadow: '0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(212,175,55,0.1)',
-              }}
+            {/* Avatar with gentle float */}
+            <motion.div
+              animate={{ rotate: [0, -3, 3, 0], y: [0, -2, 0] }}
+              transition={{ repeat: Infinity, duration: 4, ease: 'easeInOut' }}
+              className="shrink-0"
             >
-              <div className="mb-0.5 text-[10px] font-bold tracking-widest" style={{ color: '#D4AF37' }}>
-                JONNY
-              </div>
-              {jonnyMessage}
+              <JonnyAvatar mood={jonnyMood} size={68} />
+            </motion.div>
 
-              {/* Dismiss */}
-              <button
-                onClick={dismissJonny}
-                className="absolute right-2 top-2 rounded-full p-0.5 opacity-50 hover:opacity-100 transition-opacity"
-                style={{ color: '#D4AF37' }}
-                aria-label="Chiudi"
+            {/* Speech bubble */}
+            <div className="relative flex-1">
+              <div
+                className="absolute -left-2 bottom-4 h-0 w-0"
+                style={{
+                  borderTop: '7px solid transparent',
+                  borderBottom: '7px solid transparent',
+                  borderRight: '9px solid rgba(212,175,55,0.25)',
+                }}
+              />
+              <div
+                className="relative rounded-2xl border px-4 py-3 text-sm font-medium leading-snug"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(16,12,34,0.97) 0%, rgba(10,8,25,0.97) 100%)',
+                  borderColor: 'rgba(212,175,55,0.35)',
+                  color: '#e8d5a3',
+                  backdropFilter: 'blur(12px)',
+                  boxShadow: '0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(212,175,55,0.08)',
+                }}
               >
-                <X className="h-3.5 w-3.5" />
-              </button>
+                <div className="mb-0.5 flex items-center gap-1.5">
+                  <span className="text-[10px] font-black tracking-widest" style={{ color: '#D4AF37' }}>JONNY</span>
+                  {jonnyMode === 'home' && (
+                    <span className="rounded-full border px-1.5 py-0 text-[9px] font-bold tracking-widest"
+                      style={{ borderColor: 'rgba(212,175,55,0.4)', color: '#D4AF37' }}>HOME</span>
+                  )}
+                </div>
+                {jonnyMessage}
+                <button
+                  onClick={dismissJonny}
+                  className="absolute right-2 top-2 rounded-full p-0.5 opacity-40 hover:opacity-100 transition-opacity"
+                  style={{ color: '#D4AF37' }}
+                  aria-label="Chiudi"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
-          </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Quick feedback toasts */}
+      <JonnyMessage />
+    </>
   );
 }

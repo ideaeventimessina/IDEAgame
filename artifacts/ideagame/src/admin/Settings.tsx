@@ -26,7 +26,7 @@ const DEFAULTS: SettingsValue = {
 export default function Settings() {
   const t = useT();
   const qc = useQueryClient();
-  const { isHostedByJonny, setIsHostedByJonny } = useJonny();
+  const { isHostedByJonny, setIsHostedByJonny, jonnyMode, setJonnyMode } = useJonny();
   const { data: rows = [], isLoading } = useListSystemSettings();
   const upsert = useUpsertSystemSetting();
   const [v, setV] = useState<SettingsValue>(DEFAULTS);
@@ -128,9 +128,36 @@ export default function Settings() {
               </label>
             </div>
             {isHostedByJonny && (
-              <div className="border-t border-border/50 px-5 py-3 text-xs text-muted-foreground">
-                Attivabile anche con <code className="rounded bg-card/80 px-1 py-0.5 font-mono" style={{ color: '#D4AF37' }}>?jonny=1</code> nell&apos;URL della pagina giocatore.
-                Architettura pronta — AI automation configurabile in futuro.
+              <div className="border-t border-border/50 px-5 py-4 space-y-3">
+                {/* Mode selector */}
+                <div>
+                  <div className="mb-2 text-[10px] font-bold tracking-widest" style={{ color: '#D4AF37' }}>MODALITÀ</div>
+                  <div className="flex gap-2">
+                    {(['live', 'home'] as const).map(m => (
+                      <button
+                        key={m}
+                        onClick={() => setJonnyMode(m)}
+                        className="flex-1 rounded-xl border px-3 py-2 text-xs font-bold transition-colors"
+                        style={{
+                          borderColor: jonnyMode === m ? '#D4AF37' : 'rgba(255,255,255,0.12)',
+                          background: jonnyMode === m ? 'rgba(212,175,55,0.12)' : 'transparent',
+                          color: jonnyMode === m ? '#D4AF37' : 'var(--muted-foreground)',
+                        }}
+                      >
+                        {m === 'live' ? '🎤 LIVE — co-host' : '🏠 HOME — game master'}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-1.5 text-[11px] text-muted-foreground">
+                    {jonnyMode === 'live'
+                      ? 'Jonny affianca l\'animatore umano: messaggi di supporto, feedback, attesa.'
+                      : 'Jonny è il game master autonomo (placeholder — AI automation non ancora attiva).'}
+                  </div>
+                </div>
+                {/* URL tip */}
+                <div className="text-[11px] text-muted-foreground border-t border-border/30 pt-3">
+                  Attivabile via URL: <code className="rounded bg-card/80 px-1 py-0.5 font-mono" style={{ color: '#D4AF37' }}>?jonny=1</code>
+                </div>
               </div>
             )}
           </div>

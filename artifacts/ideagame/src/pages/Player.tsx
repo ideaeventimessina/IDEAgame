@@ -4,6 +4,7 @@ import { Zap, Check, Wifi, WifiOff, Loader2, AlertTriangle, RefreshCw, Clock } f
 import { useT, useI18n, LOCALES } from '@/i18n';
 import { useEventSocket } from '@/hooks/useEventSocket';
 import { JonnyLayer } from '@/components/JonnyLayer';
+import { JonnyWaiting } from '@/components/JonnyWaiting';
 import { useJonny } from '@/contexts/JonnyContext';
 
 interface EventInfo { id: string; name: string; joinCode: string; brandColor: string }
@@ -144,7 +145,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
 export default function Player() {
   const t = useT();
   const { locale, setLocale } = useI18n();
-  const { isHostedByJonny } = useJonny();
+  const { isHostedByJonny, jonnyMode, jonnyTell, jonnyFlash } = useJonny();
   const searchParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
   const joinCodeFromUrl = searchParams.get('e')?.toUpperCase() ?? '';
 
@@ -419,6 +420,46 @@ export default function Player() {
     emit('player:register', { playerId: player.id, eventId: event.id });
   }, [connected, player, event, emit]);
 
+  // ─── Jonny reactive hooks — solo messaggi, nessuna logica di gioco ──────────
+  useEffect(() => {
+    if (!isHostedByJonny) return;
+    if (gameState.status === 'running') jonnyTell('Via! Forza squadra! 🚀', 'cheering');
+    else if (gameState.status === 'paused') jonnyTell('⏸ Pausa — torna subito!', 'thinking');
+    else if (gameState.status === 'ended') jonnyTell('🏆 Partita finita! Grande prestazione!', 'celebrating');
+  }, [gameState.status]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!isHostedByJonny || !quizzoneQuestion) return;
+    jonnyTell(`Domanda ${quizzoneQuestion.roundIndex + 1}/${quizzoneQuestion.totalRounds} — Hai ${quizzoneQuestion.timeLimit}s! 🧠`, 'thinking');
+  }, [quizzoneQuestion?.roundIndex]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!isHostedByJonny || !quizzoneReveal) return;
+    jonnyFlash('Risposte rivelate!', '📊', 'excited');
+  }, [quizzoneReveal?.roundIndex]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!isHostedByJonny || !coppieBoard || !player?.teamId) return;
+    const myIdx = coppieBoard.teams.findIndex(t => t.id === player.teamId);
+    if (myIdx === coppieBoard.currentTeamIdx) {
+      jonnyFlash('Tocca a te!', '🃏', 'cheering');
+    } else {
+      jonnyFlash('Aspetta il tuo turno…', '⏳', 'thinking');
+    }
+  }, [coppieBoard?.currentTeamIdx]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!isHostedByJonny || !coppieBoard?.winner) return;
+    jonnyTell('🎉 Qualcuno ha vinto la partita a coppie!', 'celebrating');
+  }, [coppieBoard?.winner]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!isHostedByJonny || !percorsoStateP) return;
+    const pStep = percorsoStateP.steps[percorsoStateP.currentStepIdx];
+    if (pStep) jonnyTell(`Sfida: "${pStep.title}" — ${pStep.points} punti!`, 'excited');
+  }, [percorsoStateP?.currentStepIdx]); // eslint-disable-line react-hooks/exhaustive-deps
+  // ─────────────────────────────────────────────────────────────────────────────
+
   const handleJoin = async () => {
     if (!event || !nick.trim()) return;
     setStep('joining'); setError('');
@@ -569,11 +610,19 @@ export default function Player() {
             </div>
 
             {gameState.status === 'idle' && (
-              <div className="mt-8 flex flex-col items-center gap-4 text-center">
-                <Loader2 className="h-10 w-10 animate-spin text-primary" />
-                <div className="text-xl font-bold">In attesa dell&apos;animatore…</div>
-                <div className="text-sm text-muted-foreground">Il gioco inizierà a breve</div>
-              </div>
+              isHostedByJonny ? (
+                <JonnyWaiting
+                  playerName={player.nickname}
+                  eventName={event?.name}
+                  jonnyMode={jonnyMode}
+                />
+              ) : (
+                <div className="mt-8 flex flex-col items-center gap-4 text-center">
+                  <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                  <div className="text-xl font-bold">In attesa dell&apos;animatore…</div>
+                  <div className="text-sm text-muted-foreground">Il gioco inizierà a breve</div>
+                </div>
+              )
             )}
 
             {gameState.status === 'paused' && (
