@@ -289,57 +289,53 @@ router.post("/jonny/generations", requireAuth, async (req: AuthedRequest, res: R
     createdBy: user.id,
   }).returning();
 
-  // Build prompt and call AI
-  const systemPrompt = buildSystemPrompt({
-    theme, targetAudience, tone, language, difficulty,
-    durationMinutes, numberOfTeams, selectedGames, notes,
-    eventTitle: title,
-  });
+  // Generate one game at a time to avoid JSON truncation
+  const baseParams = { theme, targetAudience, tone, language, difficulty, durationMinutes, numberOfTeams, notes, eventTitle: title };
+  const allGames: Record<string, unknown> = {};
+  const itemInserts: Array<{ generationId: string; gameSlug: string; itemType: string; title: string; payload: Record<string, unknown>; status: string }> = [];
+  const errors: string[] = [];
 
-  let generatedJson: Record<string, unknown>;
-  try {
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4.1",
-      max_completion_tokens: 8192,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: `Genera i contenuti per la serata "${title}" con tema "${theme}". Rispondo solo con JSON valido.` },
-      ],
-    });
-    const raw = completion.choices[0]?.message?.content ?? "{}";
-    generatedJson = JSON.parse(raw) as Record<string, unknown>;
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err);
-    await db.update(jonnyGenerationsTable)
-      .set({ status: "failed", errorMessage: errMsg })
-      .where(eq(jonnyGenerationsTable.id, gen!.id));
-    res.status(500).json({ error: "Generazione AI fallita", detail: errMsg });
-    return;
+  for (const slug of selectedGames) {
+    const singlePrompt = buildSystemPrompt({ ...baseParams, selectedGames: [slug] });
+    try {
+      const completion = await openai.chat.completions.create({
+        model: "gpt-5.1",
+        max_completion_tokens: 8192,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: singlePrompt },
+          { role: "user", content: `Genera il contenuto per il gioco "${slug}" per la serata "${title}" con tema "${theme}". Rispondi SOLO con JSON valido.` },
+        ],
+      });
+      const raw = completion.choices[0]?.message?.content ?? "{}";
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      // Support both {games: {slug: ...}} and direct payload
+      const payload = (parsed.games as Record<string, unknown>)?.[slug] ?? parsed as Record<string, unknown>;
+      allGames[slug] = payload;
+      const itemTitle = ((payload.setTitle || payload.packTitle || payload.deckTitle || payload.title) as string | undefined) ?? `${slug} — ${title}`;
+      itemInserts.push({ generationId: gen!.id, gameSlug: slug, itemType: "set", title: itemTitle, payload, status: "draft" });
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      errors.push(`${slug}: ${errMsg}`);
+      // Insert a failed placeholder so the UI shows something
+      itemInserts.push({ generationId: gen!.id, gameSlug: slug, itemType: "set", title: `${slug} — errore`, payload: {}, status: "failed" });
+    }
   }
-
-  // Save generated items per game
-  const games = (generatedJson.games ?? {}) as Record<string, unknown>;
-  const itemInserts = selectedGames.map((slug) => {
-    const payload = (games[slug] ?? {}) as Record<string, unknown>;
-    const itemTitle = (payload.setTitle || payload.packTitle || payload.deckTitle || `${slug} — ${title}`) as string;
-    return {
-      generationId: gen!.id,
-      gameSlug: slug,
-      itemType: "set",
-      title: itemTitle,
-      payload,
-      status: "draft",
-    };
-  });
 
   if (itemInserts.length > 0) {
     await db.insert(jonnyGeneratedItemsTable).values(itemInserts);
   }
 
+  const finalStatus = errors.length === selectedGames.length ? "failed" : "generated";
+  const errorMessage = errors.length > 0 ? errors.join("; ") : undefined;
   await db.update(jonnyGenerationsTable)
-    .set({ status: "generated", generatedJson })
+    .set({ status: finalStatus, generatedJson: { games: allGames }, ...(errorMessage ? { errorMessage } : {}) })
     .where(eq(jonnyGenerationsTable.id, gen!.id));
+
+  if (finalStatus === "failed") {
+    res.status(500).json({ error: "Generazione AI fallita", detail: errorMessage });
+    return;
+  }
 
   // Return updated generation with items
   const [updated] = await db.select().from(jonnyGenerationsTable).where(eq(jonnyGenerationsTable.id, gen!.id));
