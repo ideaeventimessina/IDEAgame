@@ -199,6 +199,9 @@ importers:
       express-session:
         specifier: ^1.19.0
         version: 1.19.0
+      openai:
+        specifier: ^6.36.0
+        version: 6.36.0(ws@8.18.3)(zod@4.3.6)
       pino:
         specifier: ^9
         version: 9.14.0

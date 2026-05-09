@@ -10,7 +10,13 @@ import {
   saraMusicaSetsTable, saraMusicaTracksTable,
 } from "@workspace/db";
 import { type AuthedRequest, requireAuth } from "../middlewares/auth";
-import { openai } from "@workspace/integrations-openai-ai-server";
+import OpenAI from "openai";
+
+function getOpenAI(): OpenAI {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error("OPENAI_API_KEY non configurata. Aggiungila nei Secrets di Replit.");
+  return new OpenAI({ apiKey });
+}
 
 const router: IRouter = Router();
 
@@ -298,7 +304,7 @@ router.post("/jonny/generations", requireAuth, async (req: AuthedRequest, res: R
   for (const slug of selectedGames) {
     const singlePrompt = buildSystemPrompt({ ...baseParams, selectedGames: [slug] });
     try {
-      const completion = await openai.chat.completions.create({
+      const completion = await getOpenAI().chat.completions.create({
         model: "gpt-5.1",
         max_completion_tokens: 8192,
         response_format: { type: "json_object" },
