@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { PlusCircle, Trash2, Music2, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
+import { AdminLayout } from './AdminLayout';
 
 interface SaraMusicaSet {
   id: string; title: string; description: string; isActive: boolean; createdAt: string;
@@ -109,6 +110,7 @@ export default function AdminSaraMusica() {
   };
 
   return (
+    <AdminLayout title="SaraMusica">
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -229,5 +231,6 @@ export default function AdminSaraMusica() {
         </div>
       )}
     </div>
+    </AdminLayout>
   );
 }

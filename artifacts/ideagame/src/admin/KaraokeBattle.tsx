@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Mic, Music, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { AdminLayout } from './AdminLayout';
 
 const BASE = (import.meta.env.BASE_URL as string) ?? '/';
 async function apiFetch(path: string, opts?: RequestInit) {
@@ -481,6 +482,7 @@ export default function KaraokeBattle() {
   const [activeTab, setActiveTab] = useState<'karaoke' | 'freestyle'>('karaoke');
 
   return (
+    <AdminLayout title="Karaoke Battle">
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -510,5 +512,6 @@ export default function KaraokeBattle() {
       {/* Tab content */}
       {activeTab === 'karaoke' ? <KaraokeTab /> : <FreestyleTab />}
     </div>
+    </AdminLayout>
   );
 }
