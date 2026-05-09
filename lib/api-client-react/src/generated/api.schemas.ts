@@ -193,6 +193,7 @@ export interface CreateEventBody {
   brandColor?: string;
   expectedPlayers?: number;
   enabledGames?: string[];
+  tenantId?: string;
 }
 
 export type UpdateEventBodyStatus =

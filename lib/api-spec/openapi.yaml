@@ -917,6 +917,7 @@ components:
         brandColor: { type: string }
         expectedPlayers: { type: integer }
         enabledGames: { type: array, items: { type: string } }
+        tenantId: { type: string }
     UpdateEventBody:
       type: object
       properties:

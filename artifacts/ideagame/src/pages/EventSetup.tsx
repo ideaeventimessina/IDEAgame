@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
-import { Calendar, MapPin, Users, Palette, Save, ArrowRight, Loader2 } from 'lucide-react';
+import { Building2, Calendar, MapPin, Users, Palette, Save, ArrowRight, Loader2 } from 'lucide-react';
 import {
   useListGames,
   useCreateEvent,
   useUpdateEvent,
+  useGetMe,
+  useListTenants,
   getListEventsQueryKey,
   getGetCurrentEventQueryKey,
 } from '@workspace/api-client-react';
@@ -14,6 +16,9 @@ export default function EventSetup() {
   const [, navigate] = useLocation();
   const qc = useQueryClient();
   const { data: games = [] } = useListGames();
+  const { data: me } = useGetMe();
+  const isSuperAdmin = me?.role === 'super_admin';
+  const { data: tenants = [] } = useListTenants({ query: { queryKey: ['tenants'], enabled: isSuperAdmin } });
   const createEvent = useCreateEvent();
   const updateEvent = useUpdateEvent();
 
@@ -23,6 +28,7 @@ export default function EventSetup() {
   const [players, setPlayers] = useState(2);
   const [color, setColor] = useState('#F5B642');
   const [enabled, setEnabled] = useState<string[]>([]);
+  const [tenantId, setTenantId] = useState('');
   const [error, setError] = useState<string | null>(null);
   const initRef = useRef(false);
 
@@ -38,6 +44,10 @@ export default function EventSetup() {
 
   const onSave = async (then: 'admin' | 'lobby') => {
     setError(null);
+    if (isSuperAdmin && !tenantId) {
+      setError('Seleziona un tenant per l\'evento');
+      return;
+    }
     try {
       const created = await createEvent.mutateAsync({
         data: {
@@ -47,6 +57,7 @@ export default function EventSetup() {
           brandColor: color,
           expectedPlayers: players,
           enabledGames: enabled,
+          ...(isSuperAdmin && tenantId ? { tenantId } : {}),
         },
       });
       const id = (created as { id: string }).id;
@@ -74,6 +85,21 @@ export default function EventSetup() {
         </div>
 
         <div className="space-y-3">
+          {isSuperAdmin && (
+            <Field label="Tenant" icon={<Building2 className="h-3.5 w-3.5" />}>
+              <select
+                value={tenantId}
+                onChange={e => setTenantId(e.target.value)}
+                className="w-full bg-transparent text-sm outline-none"
+              >
+                <option value="">— seleziona tenant —</option>
+                {tenants.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </Field>
+          )}
+
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Nome evento" icon={<Calendar className="h-3.5 w-3.5" />}>
               <input
@@ -154,14 +180,14 @@ export default function EventSetup() {
 
         <div className="mt-5 flex items-center justify-end gap-3">
           <button
-            disabled={createEvent.isPending || !name}
+            disabled={createEvent.isPending || !name || (isSuperAdmin && !tenantId)}
             onClick={() => onSave('admin')}
             className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2.5 text-sm font-bold hover-elevate disabled:opacity-40"
           >
             <Save className="h-4 w-4" /> Salva bozza
           </button>
           <button
-            disabled={createEvent.isPending || !name}
+            disabled={createEvent.isPending || !name || (isSuperAdmin && !tenantId)}
             onClick={() => onSave('lobby')}
             className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-[0_0_24px_rgba(245,182,66,0.35)] hover-elevate disabled:opacity-40"
           >

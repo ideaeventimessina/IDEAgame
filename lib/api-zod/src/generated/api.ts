@@ -178,10 +178,10 @@ export const ListGamesResponseItem = zod.object({
   enabled: zod.boolean(),
   adultOnly: zod.boolean(),
   settings: zod.object({
-    rounds: zod.number().optional(),
-    timeLimit: zod.number().optional(),
-    scoringWeight: zod.number().optional(),
-  }).nullable().optional(),
+    rounds: zod.number(),
+    timeLimit: zod.number(),
+    scoringWeight: zod.number(),
+  }),
 });
 export const ListGamesResponse = zod.array(ListGamesResponseItem);
 
@@ -202,12 +202,12 @@ export const ListEventsResponse = zod.array(ListEventsResponseItem);
 
 export const CreateEventBody = zod.object({
   name: zod.string(),
-  tenantId: zod.string().optional(),
   venue: zod.string().optional(),
   startsAt: zod.coerce.date().optional(),
   brandColor: zod.string().optional(),
   expectedPlayers: zod.number().optional(),
   enabledGames: zod.array(zod.string()).optional(),
+  tenantId: zod.string().optional(),
 });
 
 export const GetCurrentEventResponse = zod.union([

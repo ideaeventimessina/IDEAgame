@@ -120,7 +120,7 @@ export function JonnyWaitingScreen({ theme, subtitle, label }: { theme: typeof A
     <div className="flex flex-1 flex-col items-center justify-center gap-5 px-8 text-center">
       <NeonTitle text={theme.title} color={theme.accent} size="lg" />
       {subtitle && <p className="text-lg text-white/55 font-semibold max-w-lg">{subtitle}</p>}
-      <motion.img src={theme.jonny} alt="Jonny"
+      <motion.img src="/jonny-master.jpg" alt="Jonny"
         style={{ height: 200, width: 'auto', objectFit: 'contain', filter: `drop-shadow(0 8px 36px ${theme.glow}77)` }}
         animate={{ y: [0, -14, 0] }}
         transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}

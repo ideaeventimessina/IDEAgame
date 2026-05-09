@@ -195,7 +195,7 @@ export default function GamePercorso() {
               className="flex flex-col items-center gap-8 text-center">
               <NeonTitle text={state.setName} color={T.accent} size="lg" className="text-center" />
               <div className="text-xl text-white/50">{state.steps.length} sfide pronte</div>
-              <motion.img src={T.jonny} alt="Jonny"
+              <motion.img src="/jonny-master.jpg" alt="Jonny"
                 style={{ height: 160, mixBlendMode: 'multiply', filter: `drop-shadow(0 8px 32px ${T.glow}77)` }}
                 animate={{ y: [0, -12, 0] }} transition={{ duration: 3, repeat: Infinity }} />
               <motion.div className="rounded-2xl border px-6 py-2.5 text-sm font-bold"

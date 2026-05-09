@@ -137,7 +137,7 @@ export default function GameBallo() {
             <NeonTitle text={state.challengeName} color={T.accent} size="lg" className="text-center" />
             <div className="mt-3 text-white/45 text-lg">Preparatevi! Durata: {state.duration}s</div>
           </motion.div>
-          <motion.img src={T.jonny} alt="Jonny"
+          <motion.img src="/jonny-master.jpg" alt="Jonny"
             style={{ height: 180, mixBlendMode: 'multiply', filter: `drop-shadow(0 8px 32px ${T.glow}77)` }}
             animate={{ y: [0, -12, 0] }} transition={{ duration: 2.8, repeat: Infinity }} />
           <div className="flex gap-3 flex-wrap justify-center">
