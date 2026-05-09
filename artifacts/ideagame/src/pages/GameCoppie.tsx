@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { RotateCcw } from 'lucide-react';
 import { useEventSocket } from '@/hooks/useEventSocket';
 import { ArenaBg, ArenaHeader, JonnyWaitingScreen, ArenaScoreBar, SocketBadge, FlashOverlay, ARENA } from '@/components/JonnyWorldTheme';
+import { useGameAudio } from '@/hooks/useGameAudio';
 
 interface CoppieCard {
   pos: number; cardId: string; pairId: string; imageUrl: string; label: string;
@@ -49,6 +50,8 @@ export default function GameCoppie() {
   const flashTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const unflipRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollRef     = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const { playLoop, playStinger } = useGameAudio('gioco-coppie', { autoLoop: 'lobby_loop' });
 
   const { connected, on } = useEventSocket(eventId || null);
 
@@ -101,23 +104,29 @@ export default function GameCoppie() {
       ((data as { board?: CoppieBoard }).board ?? data) as CoppieBoard;
     const unsubs = [
       on('coppie:state', d => setBoard(extractBoard(d))),
-      on('coppie:flip',  d => setBoard(extractBoard(d))),
       on('coppie:match', d => {
         const b = extractBoard(d);
         setBoard(b);
         const name = (d as { matchedTeamName?: string }).matchedTeamName;
         showFlash({ text: name ? `Coppia! ${name}` : 'Coppia trovata!', color: '#22c55e' });
+        playStinger('match_correct');
       }),
       on('coppie:mismatch', d => {
         setBoard(extractBoard(d));
         const next = (d as { nextTeamName?: string }).nextTeamName;
         showFlash({ text: next ? `Cambio turno → ${next}` : 'Cambio turno', color: '#f59e0b' });
+        playStinger('match_wrong');
         if (unflipRef.current) clearTimeout(unflipRef.current);
         unflipRef.current = setTimeout(callUnflip, 1600);
       }),
       on('coppie:end', d => {
         setBoard(extractBoard(d));
         showFlash({ text: 'Partita conclusa!', color: T.accent }, 4000);
+        playStinger('winner_stinger');
+      }),
+      on('coppie:flip', d => {
+        setBoard(extractBoard(d));
+        playStinger('flip_card');
       }),
     ];
     return () => {

@@ -3,6 +3,7 @@ import { useLocation, useSearch } from 'wouter';
 import { motion } from 'framer-motion';
 import { Home, Trophy, RefreshCw, Loader2, ChevronRight } from 'lucide-react';
 import { useEventSocket } from '@/hooks/useEventSocket';
+import { AudioManager } from '@/audio/AudioManager';
 
 const BASE = (import.meta.env.BASE_URL as string) ?? '/';
 async function apiFetch(path: string) {
@@ -60,11 +61,14 @@ export default function SerataCompleta() {
 
   useEffect(() => {
     if (!eventId) return;
-    return on<{ evening: EveningMode }>('evening:updated', ({ evening: ev }) => {
+    return on<{ evening: EveningMode; session?: { gameSlug?: string } }>('evening:updated', ({ evening: ev, session }) => {
       setEvening(ev);
       void apiFetch(`/events/${eventId}/evening/scoreboard`).then(sc => {
         if (Array.isArray(sc)) setScores(sc as TeamScore[]);
       });
+      if (session?.gameSlug) {
+        AudioManager.transitionTo(session.gameSlug);
+      }
     });
   }, [eventId, on]);
 

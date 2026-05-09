@@ -3,6 +3,7 @@ import { useSearch, useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Users, BarChart3 } from 'lucide-react';
 import { useEventSocket } from '@/hooks/useEventSocket';
+import { useGameAudio } from '@/hooks/useGameAudio';
 import { ArenaBg, ArenaHeader, JonnyWaitingScreen, ArenaScoreBar, WinPodium, SocketBadge, FlashOverlay, NeonTimerBar, ARENA } from '@/components/JonnyWorldTheme';
 
 const BASE = (import.meta.env.BASE_URL as string) ?? '/';
@@ -52,6 +53,7 @@ export default function GameQuizzone() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollRef  = useRef<ReturnType<typeof setInterval> | null>(null);
   const { connected, on } = useEventSocket(eventId || null);
+  const { playLoop, playStinger } = useGameAudio('quizzone', { autoLoop: 'lobby_loop' });
 
   const startCountdown = useCallback((questionStartedAt: string, timeLimit: number) => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -91,6 +93,7 @@ export default function GameQuizzone() {
         setState(prev => ({ ...prev!, ...data, hasQuestion: true }));
         if (data.questionStartedAt && data.timeLimit) startCountdown(data.questionStartedAt, data.timeLimit);
         setResponseCount(0);
+        playLoop('tension_loop');
       }),
       on<{ sessionId: string; roundIndex: number; correctAnswer: number; explanation: string; scores: RevealState['scores'] }>(
         'quiz:reveal', (data) => {
@@ -98,6 +101,8 @@ export default function GameQuizzone() {
           setReveal({ roundIndex: data.roundIndex, correctAnswer: data.correctAnswer, explanation: data.explanation, scores: data.scores });
           if (timerRef.current) clearInterval(timerRef.current);
           setTimeLeft(0);
+          playStinger('score_stinger');
+          playLoop('round_loop');
         }),
       on<{ count: number; sessionId: string }>('quiz:answer_received', (data) => {
         if (data.sessionId !== sessionId) return;
@@ -107,6 +112,7 @@ export default function GameQuizzone() {
         if (data.sessionId !== sessionId) return;
         setGameEnded(true);
         if (timerRef.current) clearInterval(timerRef.current);
+        playStinger('winner_stinger');
       }),
     ];
     return () => { unsubs.forEach(u => u()); };

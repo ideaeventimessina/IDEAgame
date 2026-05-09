@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearch, useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEventSocket } from '@/hooks/useEventSocket';
+import { useGameAudio } from '@/hooks/useGameAudio';
 import {
   ArenaBg, ArenaHeader, JonnyWaitingScreen, ArenaScoreBar, WinPodium,
   SocketBadge, FlashOverlay, NeonTimerBar, NeonTitle, ARENA,
@@ -74,13 +75,16 @@ export default function GamePercorso() {
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollRef    = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const { playLoop, playStinger } = useGameAudio('percorso-a-risate', { autoLoop: 'lobby_loop' });
+
   const { connected, on } = useEventSocket(eventId || null);
 
-  const showFlash = useCallback((f: PercorsoFlash, ms = 2800) => {
+  const showFlash = useCallback((f: PercorsoFlash, ms = 2800, stinger?: string) => {
+    if (stinger) void playStinger(stinger);
     if (flashTimer.current) clearTimeout(flashTimer.current);
     setFlash(f);
     flashTimer.current = setTimeout(() => setFlash(null), ms);
-  }, []);
+  }, [playStinger]);
 
   const fetchState = useCallback(async () => {
     if (!sessionId) return;
@@ -108,10 +112,10 @@ export default function GamePercorso() {
   useEffect(() => {
     if (!eventId) return;
     const unsubs = [
-      on<{ state: PercorsoState }>('path:started',      ({ state: s }) => { setState(s); showFlash({ text: 'Percorso iniziato!', type: 'step' }); }),
-      on<{ state: PercorsoState }>('path:step_changed', ({ state: s }) => { setState(s); if (s.lastFlash) showFlash(s.lastFlash); }),
-      on<{ state: PercorsoState; points: number }>('path:score_updated', ({ state: s }) => { setState(s); if (s.lastFlash) showFlash(s.lastFlash); }),
-      on<{ state: PercorsoState }>('path:ended',        ({ state: s }) => { setState(s); showFlash({ text: 'Fine percorso!', type: 'end' }, 5000); }),
+      on<{ state: PercorsoState }>('path:started',      ({ state: s }) => { setState(s); showFlash({ text: 'Percorso iniziato!', type: 'step' }, 2800, 'score_stinger'); }),
+      on<{ state: PercorsoState }>('path:step_changed', ({ state: s }) => { setState(s); if (s.lastFlash) showFlash(s.lastFlash, 2800, 'transition_whoosh'); }),
+      on<{ state: PercorsoState; points: number }>('path:score_updated', ({ state: s }) => { setState(s); if (s.lastFlash) showFlash(s.lastFlash, 2800, 'score_stinger'); }),
+      on<{ state: PercorsoState }>('path:ended',        ({ state: s }) => { setState(s); showFlash({ text: 'Fine percorso!', type: 'end' }, 5000, 'winner_stinger'); }),
     ];
     return () => unsubs.forEach(u => u());
   }, [eventId, on, showFlash]);

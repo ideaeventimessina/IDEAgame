@@ -11,6 +11,7 @@ import { useT } from '@/i18n';
 import { useListGames, useGetCurrentEvent, useListPlayers, getListPlayersQueryKey } from '@workspace/api-client-react';
 import { useEventSocket } from '@/hooks/useEventSocket';
 import { useLocalMode } from '@/hooks/useLocalMode';
+import { useGameAudio } from '@/hooks/useGameAudio';
 
 // ── Theme-park ambient particles ─────────────────────────────────────────────
 const CONFETTI_PALETTE = ['#F5B642','#FF69B4','#60A5FA','#A78BFA','#34D399','#F87171','#F472B6'];
@@ -125,6 +126,7 @@ export default function Hub() {
   const [projectorBlack, setProjectorBlack] = useState(false);
   const [noSessionGame, setNoSessionGame] = useState<NoSessionState>(null);
   const [creatingSession, setCreatingSession] = useState(false);
+  useGameAudio('hub', { preload: true });
 
   // Navigate to a game — READY games NEVER go to /game/:slug mock
   const handleGameClick = async (slug: string, name: string, accentColor: string) => {

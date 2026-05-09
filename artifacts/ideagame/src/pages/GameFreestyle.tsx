@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEventSocket } from "@/hooks/useEventSocket";
+import { useGameAudio } from "@/hooks/useGameAudio";
 
 const apiFetch = (path: string, opts?: RequestInit) =>
   fetch(`${import.meta.env.BASE_URL}api${path}`, { credentials: "include", ...opts }).then(async (r) => {
@@ -91,6 +92,7 @@ export default function GameFreestyle() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const { on } = useEventSocket(eventId || null);
+  const { playLoop, playStinger } = useGameAudio("freestyle-battle", { autoLoop: "lobby_loop" });
 
   useEffect(() => {
     if (!sessionId) return;

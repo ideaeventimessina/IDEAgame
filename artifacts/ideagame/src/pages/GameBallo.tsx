@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useSearch } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEventSocket } from '@/hooks/useEventSocket';
+import { useGameAudio } from '@/hooks/useGameAudio';
 import { ArenaBg, ArenaHeader, JonnyWaitingScreen, ArenaScoreBar, WinPodium, SocketBadge, NeonTitle, ARENA } from '@/components/JonnyWorldTheme';
 
 interface DanceTeam { id: string; name: string; color: string; score: number; energy: number; }
@@ -64,6 +65,7 @@ export default function GameBallo() {
   const [state, setState] = useState<DanceState | null>(null);
   const [loading, setLoading] = useState(true);
   const { connected, on } = useEventSocket(eventId || null);
+  const { playLoop, playStinger } = useGameAudio('sfida-ballo', { autoLoop: 'lobby_loop' });
 
   const timeLeft = useCountdown(state?.startedAt ?? null, state?.duration ?? 60);
   const diff = getDiff(state?.difficulty ?? 'medium');
@@ -79,13 +81,13 @@ export default function GameBallo() {
   useEffect(() => {
     if (!eventId) return;
     const unsubs = [
-      on<{ state: DanceState }>('dance:started',       ({ state: s }) => setState(s)),
+      on<{ state: DanceState }>('dance:started',       ({ state: s }) => { setState(s); playLoop('round_loop'); }),
       on<{ state: DanceState }>('dance:motion',        ({ state: s }) => setState(s)),
       on<{ state: DanceState }>('dance:score_updated', ({ state: s }) => setState(s)),
-      on<{ state: DanceState }>('dance:ended',         ({ state: s }) => setState(s)),
+      on<{ state: DanceState }>('dance:ended',         ({ state: s }) => { setState(s); playStinger('winner_drop'); }),
     ];
     return () => unsubs.forEach((u) => u());
-  }, [eventId, on]);
+  }, [eventId, on, playLoop, playStinger]);
 
   const sorted = state ? [...state.teams].sort((a, b) => b.score - a.score) : [];
 

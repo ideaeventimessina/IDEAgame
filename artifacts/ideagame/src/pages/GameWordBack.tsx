@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEventSocket } from '@/hooks/useEventSocket';
 import { ArenaBg, ArenaHeader, JonnyWaitingScreen, ArenaScoreBar, WinPodium, SocketBadge, NeonTimerBar, ARENA } from '@/components/JonnyWorldTheme';
+import { useGameAudio } from '@/hooks/useGameAudio';
 
 interface WordBackCard {
   id: string; word: string; hint: string | null; category: string;
@@ -46,6 +47,7 @@ export default function GameWordBack() {
   const [timeLeft, setTimeLeft] = useState(0);
 
   const { connected, on } = useEventSocket(eventId || null);
+  const { playLoop, playStinger } = useGameAudio('parola-alle-spalle', { autoLoop: 'lobby_loop' });
 
   const loadState = useCallback(async () => {
     if (!sessionId) return;

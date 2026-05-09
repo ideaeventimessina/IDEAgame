@@ -52,8 +52,10 @@ import AdminTranslations from "@/admin/Translations";
 import AdminSettings from "@/admin/Settings";
 import AdminCardSets from "@/admin/CardSets";
 import AdminQuizPacks from "@/admin/QuizPacks";
+import AdminAudioSettings from "@/admin/AudioSettings";
 import { Guard } from "@/admin/Guard";
 import { JonnyProvider } from "@/contexts/JonnyContext";
+import { AudioProvider } from "@/contexts/AudioContext";
 
 const queryClient = new QueryClient();
 
@@ -105,6 +107,7 @@ function Router() {
       <Route path="/admin/karaoke-battle"><Guard route="/admin/karaoke-battle"><AdminKaraoke /></Guard></Route>
       <Route path="/admin/freestyle-battle"><Guard route="/admin/freestyle-battle"><AdminFreestyle /></Guard></Route>
       <Route path="/admin/saramusica"><Guard route="/admin/saramusica"><AdminSaraMusica /></Guard></Route>
+      <Route path="/admin/audio"><Guard route="/admin/audio"><AdminAudioSettings /></Guard></Route>
       <Route component={NotFound} />
     </Switch>
   );
@@ -116,6 +119,7 @@ function App() {
       <I18nProvider>
         <AuthProvider>
           <JonnyProvider>
+            <AudioProvider>
             <TooltipProvider>
               <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
                 <Router />
@@ -124,6 +128,7 @@ function App() {
               </WouterRouter>
               <Toaster />
             </TooltipProvider>
+            </AudioProvider>
           </JonnyProvider>
         </AuthProvider>
       </I18nProvider>

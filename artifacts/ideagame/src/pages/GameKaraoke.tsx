@@ -6,6 +6,7 @@ import {
   ArenaBg, ArenaHeader, JonnyWaitingScreen, ArenaScoreBar, WinPodium,
   SocketBadge, NeonTimerBar, ARENA,
 } from '@/components/JonnyWorldTheme';
+import { useGameAudio } from '@/hooks/useGameAudio';
 
 interface KaraokeTrack {
   id: string; title: string; artist: string; lyricSnippet: string;
@@ -50,6 +51,7 @@ export default function GameKaraoke() {
   const [elapsed, setElapsed] = useState(0);
 
   const { connected, on } = useEventSocket(eventId || null);
+  const { playLoop, playStinger } = useGameAudio('karaoke-battle', { autoLoop: 'lobby_loop' });
 
   const loadState = useCallback(async () => {
     if (!sessionId) return;

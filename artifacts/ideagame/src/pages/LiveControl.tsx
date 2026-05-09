@@ -5,7 +5,10 @@ import {
   Power, MonitorOff, X, Loader2, Wifi, WifiOff, ExternalLink,
   Sparkles, Eye, EyeOff, CheckCircle2, Clock, BarChart3, Users,
   ChevronRight, Zap, AlertTriangle, PlusCircle, Trophy, Siren,
+  Volume2, VolumeX, Music, Mic2,
 } from 'lucide-react';
+import { AudioManager } from '@/audio/AudioManager';
+import { useAudioSettings } from '@/contexts/AudioContext';
 import { PanicPanel } from '@/components/PanicPanel';
 import { ScorePanel } from '@/components/ScorePanel';
 import { useLocalMode } from '@/hooks/useLocalMode';
@@ -199,6 +202,7 @@ interface EveningMode {
 export default function LiveControl() {
   const [, navigate] = useLocation();
   const qc = useQueryClient();
+  const { settings: audioSettings, setMasterVolume, toggleSfx } = useAudioSettings();
 
   const [selectedEventId, setSelectedEventId] = useState(() => new URLSearchParams(window.location.search).get('e') ?? '');
   const [selectedSessionId, setSelectedSessionId] = useState('');
@@ -1669,6 +1673,51 @@ export default function LiveControl() {
               )}
             </div>
           )}
+        </div>
+
+        {/* ─── Audio Live panel ─── */}
+        <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Music className="h-4 w-4 text-primary" />
+            <div className="text-xs uppercase tracking-widest text-muted-foreground flex-1">Audio Live</div>
+            <button
+              onClick={() => toggleSfx()}
+              className={`rounded-full border px-2.5 py-0.5 text-xs font-bold transition-all ${audioSettings.sfxEnabled ? 'border-green-500/40 bg-green-500/10 text-green-400' : 'border-border text-muted-foreground'}`}>
+              {audioSettings.sfxEnabled ? '🔊 ON' : '🔇 OFF'}
+            </button>
+          </div>
+
+          {/* Master volume */}
+          <div className="flex items-center gap-3">
+            <VolumeX className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            <input type="range" min={0} max={1} step={0.05} value={audioSettings.masterVolume}
+              onChange={e => setMasterVolume(parseFloat(e.target.value))}
+              className="flex-1 accent-primary" />
+            <Volume2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            <span className="text-xs tabular-nums text-muted-foreground w-8 text-right">{Math.round(audioSettings.masterVolume * 100)}%</span>
+          </div>
+
+          {/* Quick stinger buttons */}
+          <div className="flex flex-wrap gap-2">
+            {[
+              { label: '👏 Applausi',   stinger: 'applause' },
+              { label: '🥁 Suspense',   stinger: 'tension_loop' },
+              { label: '🏆 Vincitore',  stinger: 'winner_stinger' },
+              { label: '💫 Transizione',stinger: 'transition_whoosh' },
+            ].map(({ label, stinger }) => (
+              <button key={stinger}
+                onClick={() => AudioManager.playGlobalStinger(stinger)}
+                disabled={!audioSettings.sfxEnabled}
+                className="rounded-xl border border-border px-3 py-1.5 text-xs font-bold hover:bg-secondary/30 disabled:opacity-40 transition-all">
+                {label}
+              </button>
+            ))}
+            <button
+              onClick={() => AudioManager.stopAll()}
+              className="rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-1.5 text-xs font-bold text-destructive hover:bg-destructive/20 transition-all">
+              <Mic2 className="h-3 w-3 inline mr-1" />Stop tutto
+            </button>
+          </div>
         </div>
 
         {/* ─── Serata Completa panel ─── */}

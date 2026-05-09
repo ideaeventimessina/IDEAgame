@@ -6,6 +6,7 @@ import {
   ArenaBg, ArenaHeader, JonnyWaitingScreen, ArenaScoreBar, WinPodium,
   SocketBadge, FlashOverlay, NeonTimerBar, ARENA,
 } from '@/components/JonnyWorldTheme';
+import { useGameAudio } from '@/hooks/useGameAudio';
 
 interface AdultCard {
   id: string; title: string; body: string; category: string;
@@ -114,6 +115,7 @@ export default function GameAdultOnly() {
   const pollRef    = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const { connected, on } = useEventSocket(eventId || null);
+  const { playLoop, playStinger } = useGameAudio('adult-only', { autoLoop: 'lobby_loop' });
 
   const triggerFlash = (msg: string) => {
     setFlash(msg);

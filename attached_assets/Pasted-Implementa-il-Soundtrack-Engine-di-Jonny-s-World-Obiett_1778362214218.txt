@@ -1,0 +1,152 @@
+Implementa il Soundtrack Engine di Jonny’s World.
+
+Obiettivo:
+ogni gioco deve avere musica, loop e sound effects coerenti, senza rompere il motore esistente.
+
+NON toccare:
+- backend live dei giochi
+- socket core
+- scoring
+- LAN mode
+- player join
+- session logic
+
+Crea un sistema audio centralizzato.
+
+1. Audio Library
+Crea struttura:
+/public/audio/jonny-world/
+
+Sottocartelle:
+- global/
+- hub/
+- percorso-a-risate/
+- gioco-coppie/
+- quizzone/
+- saramusica/
+- adult-only/
+- sfida-ballo/
+- parola-alle-spalle/
+- karaoke-battle/
+
+2. Tipi audio
+Ogni gioco deve supportare:
+
+- intro_5s
+- lobby_loop
+- round_loop
+- tension_loop
+- countdown_10s
+- correct_stinger
+- wrong_stinger
+- score_stinger
+- winner_stinger
+- transition_whoosh
+- panic_blackout
+- podium_theme
+
+3. Audio Manager
+Crea un AudioManager frontend unico con:
+
+- preload audio per il gioco attivo
+- play loop
+- stop loop
+- crossfade tra loop
+- play one-shot stinger
+- volume master
+- mute globale
+- modalità reduce audio
+- fallback silenzioso se file mancante
+- nessun crash se audio non parte per policy browser
+
+4. Admin audio settings
+In /admin/settings o nuova pagina /admin/audio:
+
+- master volume
+- music volume
+- effects volume
+- enable/disable music
+- enable/disable sound effects
+- test sound button
+- reset defaults
+
+5. LiveControl
+Aggiungi sezione rapida “Audio Live”:
+
+- mute/unmute
+- volume master
+- play applause
+- play suspense
+- play winner
+- stop all audio
+
+6. Projector screens
+Ogni pagina gioco deve usare AudioManager:
+
+Percorso a Risate:
+- round_loop comico/cartoon
+- score_stinger buffo
+- winner_stinger esplosivo
+
+Gioco delle Coppie:
+- lobby_loop soft romantico/comico
+- flip_card sound
+- match correct_stinger
+- mismatch wrong_stinger
+
+Quizzone:
+- question tension_loop
+- countdown_10s
+- correct/wrong stinger
+- reveal hit
+
+SaraMusica:
+- music arena loop
+- crowd hype
+- applause
+
+Adult Only:
+- cabaret luxury loop
+- soft spicy stinger
+- no volgarità sonora
+
+Sfida di Ballo:
+- dance beat loop
+- energy rise
+- winner drop
+
+Parola alle Spalle:
+- comedy theatre loop
+- booking ding
+- success applause
+
+Karaoke Battle:
+- stage intro
+- karaoke bed
+- applause / boo soft
+
+7. Serata Completa
+Quando cambia gioco:
+- fade out audio precedente
+- play transition_whoosh
+- preload prossimo gioco
+- play intro_5s del gioco successivo
+
+8. Offline-first
+Tutti gli audio devono essere file locali.
+Nessuna dipendenza streaming durante il live.
+Se un file manca, il gioco continua senza audio.
+
+9. Licensing
+Non inserire musica commerciale hardcoded.
+Usa nomi placeholder e struttura pronta.
+I file reali saranno caricati manualmente dall’admin.
+
+10. Test
+- test mute/unmute
+- test volume
+- test cambio gioco
+- test missing audio file
+- test browser autoplay blocked
+- test LAN/offline
+- nessun errore console
