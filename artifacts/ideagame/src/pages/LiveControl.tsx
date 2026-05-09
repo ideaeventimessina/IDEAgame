@@ -673,37 +673,24 @@ export default function LiveControl() {
     setRevealAnswer(false);
   });
 
-  const handleEnd = () => {
-    confirm({
-      title: 'Termina gioco',
-      message: 'Vuoi terminare questa sessione di gioco? I punteggi verranno salvati e potrai vedere il podio.',
-      confirmLabel: 'Termina e vai al podio',
-      danger: true,
-      onConfirm: () => withBusy(async () => {
-        if (!session) return;
-        await updateSession.mutateAsync({ id: session.id, data: { status: 'ended' } });
-        qc.invalidateQueries({ queryKey: getListGameSessionsQueryKey(selectedEventId) });
-        navigate(`/scoreboard?e=${selectedEventId}`);
-      }),
-    });
-  };
-
-  const handleEarlyEnd = () => {
+  // Single unified "end game" flow: end session immediately, then show winner overlay.
+  // The winner overlay then navigates to scoreboard on confirm.
+  const handleEnd = () => withBusy(async () => {
     if (!session) return;
+    await updateSession.mutateAsync({ id: session.id, data: { status: 'ended' } });
+    qc.invalidateQueries({ queryKey: getListGameSessionsQueryKey(selectedEventId) });
     const rows = [...scoreboardRows].sort((a, b) => b.total - a.total);
     const maxScore = rows.length > 0 ? (rows[0]?.total ?? 0) : 0;
     const allZero = maxScore === 0;
     const allTied = !allZero && rows.length > 1 && rows.every(r => r.total === maxScore);
     const winners = allZero ? [] : rows.filter(r => r.total === maxScore);
     setWinnerOverlay({ winners, allZero, allTied, sessionId: session.id });
-  };
+  });
 
-  const handleWinnerClose = async (goToScoreboard: boolean) => {
-    if (!winnerOverlay) return;
-    try {
-      await updateSession.mutateAsync({ id: winnerOverlay.sessionId, data: { status: 'ended' } });
-      qc.invalidateQueries({ queryKey: getListGameSessionsQueryKey(selectedEventId) });
-    } catch { /* ignore */ }
+  // Kept for backward compat — delegates to handleEnd
+  const handleEarlyEnd = handleEnd;
+
+  const handleWinnerClose = (goToScoreboard: boolean) => {
     setWinnerOverlay(null);
     if (goToScoreboard) navigate(`/scoreboard?e=${selectedEventId}`);
   };
@@ -1473,29 +1460,19 @@ export default function LiveControl() {
 
       {/* ── Winner overlay ───────────────────────────────────────────────── */}
       {winnerOverlay && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md px-4">
-          <div className="w-full max-w-md rounded-3xl border border-border bg-card p-8 space-y-6 text-center shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md px-4">
+          <div className="w-full max-w-md rounded-3xl border border-border bg-card p-8 space-y-5 text-center shadow-2xl">
             {winnerOverlay.allZero ? (
               <>
                 <div className="text-5xl">😶</div>
                 <div className="text-display text-2xl font-black">Nessun vincitore</div>
-                <div className="text-muted-foreground text-sm">Tutti i team hanno zero punti.<br/>La partita finisce senza cerimonia.</div>
-                <div className="flex gap-3 pt-2">
-                  <button onClick={() => setWinnerOverlay(null)}
-                    className="flex-1 rounded-xl border border-border py-3 font-bold hover-elevate">
-                    ← Torna al controllo
-                  </button>
-                  <button onClick={() => handleWinnerClose(false)}
-                    className="flex-1 rounded-xl bg-destructive py-3 font-bold text-destructive-foreground hover-elevate">
-                    Termina sessione
-                  </button>
-                </div>
+                <div className="text-muted-foreground text-sm">Tutti i team hanno zero punti.</div>
               </>
             ) : winnerOverlay.allTied ? (
               <>
                 <div className="text-5xl">🎊</div>
                 <div className="text-display text-2xl font-black">Pareggio!</div>
-                <div className="text-muted-foreground text-sm mb-2">Tutti i team hanno lo stesso punteggio — vincono tutti!</div>
+                <div className="text-muted-foreground text-sm mb-1">Vincono tutti!</div>
                 <div className="flex flex-wrap justify-center gap-2">
                   {winnerOverlay.winners.map(w => (
                     <div key={w.teamId} className="flex items-center gap-2 rounded-full px-4 py-2 font-bold text-sm"
@@ -1504,29 +1481,18 @@ export default function LiveControl() {
                     </div>
                   ))}
                 </div>
-                <div className="flex gap-3 pt-2">
-                  <button onClick={() => setWinnerOverlay(null)}
-                    className="flex-1 rounded-xl border border-border py-3 font-bold hover-elevate">
-                    ← Torna al controllo
-                  </button>
-                  <button onClick={() => handleWinnerClose(true)}
-                    className="flex-1 rounded-xl bg-primary py-3 font-bold text-primary-foreground hover-elevate">
-                    Termina → Podio
-                  </button>
-                </div>
               </>
             ) : (
               <>
                 <div className="text-5xl">🏆</div>
                 {winnerOverlay.winners.length === 1 ? (
                   <>
-                    <div className="text-display text-xl font-black text-muted-foreground uppercase tracking-widest">Vince</div>
+                    <div className="text-xs uppercase tracking-widest text-muted-foreground">Vince</div>
                     <div className="rounded-2xl px-6 py-5 text-display text-3xl font-black"
                          style={{ background: `${winnerOverlay.winners[0]!.color}25`, border: `3px solid ${winnerOverlay.winners[0]!.color}`, color: winnerOverlay.winners[0]!.color }}>
                       {winnerOverlay.winners[0]!.teamName}
                       <div className="mt-1 text-lg opacity-80">{winnerOverlay.winners[0]!.total} punti</div>
                     </div>
-                    {/* altri team in classifica */}
                     {winnerOverlay.winners.length < scoreboardRows.length && (
                       <div className="space-y-1 text-left text-sm text-muted-foreground">
                         {[...scoreboardRows].sort((a,b) => b.total - a.total).filter(r => r.teamId !== winnerOverlay.winners[0]!.teamId).map((r, i) => (
@@ -1551,18 +1517,24 @@ export default function LiveControl() {
                     </div>
                   </>
                 )}
-                <div className="flex gap-3 pt-2">
-                  <button onClick={() => setWinnerOverlay(null)}
-                    className="flex-1 rounded-xl border border-border py-3 font-bold hover-elevate">
-                    ← Torna al controllo
-                  </button>
-                  <button onClick={() => handleWinnerClose(true)}
-                    className="flex-1 rounded-xl bg-primary py-3 font-bold text-primary-foreground hover-elevate">
-                    Termina → Podio
-                  </button>
-                </div>
               </>
             )}
+
+            {/* Primary CTA — always "Vai al Podio" */}
+            <button
+              onClick={() => handleWinnerClose(true)}
+              className="w-full rounded-2xl bg-primary py-4 text-base font-black text-primary-foreground hover-elevate shadow-lg"
+            >
+              🏆 Vai al Podio
+            </button>
+
+            {/* Secondary — small text link, harder to hit by mistake */}
+            <button
+              onClick={() => setWinnerOverlay(null)}
+              className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors py-1"
+            >
+              ← Torna al controllo (la sessione è già terminata)
+            </button>
           </div>
         </div>
       )}
@@ -1842,14 +1814,10 @@ export default function LiveControl() {
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <SkipForward className="h-4 w-4" />} Prossimo round
               </button>
               <button onClick={handleEnd} disabled={busy || session.status === 'ended'}
-                className="rounded-xl bg-destructive py-3 text-sm font-bold text-destructive-foreground hover-elevate inline-flex items-center justify-center gap-2 disabled:opacity-40">
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />} Termina
+                className="rounded-xl bg-amber-500 py-3 text-sm font-black text-black hover-elevate inline-flex items-center justify-center gap-2 disabled:opacity-40">
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trophy className="h-4 w-4" />} Termina Partita
               </button>
             </div>
-            <button onClick={handleEarlyEnd} disabled={busy || session.status === 'ended'}
-              className="w-full rounded-xl bg-amber-500/20 border border-amber-500/40 py-3 text-sm font-bold text-amber-300 hover-elevate inline-flex items-center justify-center gap-2 disabled:opacity-40">
-              <Trophy className="h-4 w-4" /> Termina e premia il vincitore
-            </button>
           </div>
         )}
 
