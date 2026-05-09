@@ -5,6 +5,7 @@ import { useT, useI18n, LOCALES } from '@/i18n';
 import { useEventSocket } from '@/hooks/useEventSocket';
 import { JonnyLayer } from '@/components/JonnyLayer';
 import { JonnyWaiting } from '@/components/JonnyWaiting';
+import { JonnyAvatar } from '@/components/JonnyAvatar';
 import { useJonny } from '@/contexts/JonnyContext';
 
 interface EventInfo { id: string; name: string; joinCode: string; brandColor: string }
@@ -483,8 +484,7 @@ export default function Player() {
          }}>
       <header className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground text-display font-black">I</div>
-          <div className="text-display text-lg font-black">{t('app.title')}</div>
+          <img src="/logo.png" alt="IDEAgame" className="h-9 w-auto" />
         </div>
         <div className="flex items-center gap-2">
           {step === 'play' && (
@@ -527,11 +527,9 @@ export default function Player() {
         {(step === 'join' || step === 'joining') && !event && (
           <motion.div key="enter-code" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
             className="flex flex-1 flex-col">
-            <div className="flex flex-1 flex-col items-center justify-center gap-5">
-              {/* Hero icon */}
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/15 text-3xl">
-                🎮
-              </div>
+            <div className="flex flex-1 flex-col items-center justify-center gap-4">
+              {/* Jonny hero */}
+              <JonnyAvatar mood="idle" size={140} className="drop-shadow-2xl" />
               <div className="text-center">
                 <div className="text-display text-3xl font-black">Unisciti all&apos;evento</div>
                 <div className="mt-2 text-sm text-muted-foreground">Scansiona il QR sul proiettore<br/>o inserisci il codice dell&apos;animatore</div>
