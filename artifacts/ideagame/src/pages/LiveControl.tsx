@@ -7,6 +7,7 @@ import {
   ChevronRight, Zap, AlertTriangle, PlusCircle, Trophy, Siren,
 } from 'lucide-react';
 import { PanicPanel } from '@/components/PanicPanel';
+import { ScorePanel } from '@/components/ScorePanel';
 import { useLocalMode } from '@/hooks/useLocalMode';
 import { useEventSocket } from '@/hooks/useEventSocket';
 import {
@@ -2052,26 +2053,13 @@ export default function LiveControl() {
 
         {/* Scores */}
         {session && teams.length > 0 && (
-          <div className="rounded-2xl border border-border bg-card p-5">
-            <div className="text-xs uppercase tracking-widest text-muted-foreground mb-3">Punteggi live</div>
-            <div className="space-y-2">
-              {teams.map(tm => {
-                const entry = scoreboardRows.find(r => r.teamId === tm.id);
-                const total = entry?.total ?? 0;
-                return (
-                  <div key={tm.id} className="flex items-center gap-3">
-                    <span className="h-3 w-3 rounded-full flex-shrink-0" style={{ background: tm.color }} />
-                    <div className="flex-1 truncate font-bold">{tm.name}</div>
-                    <button onClick={() => handleScore(tm.id, -1)} disabled={busy || session.status !== 'running'}
-                      className="grid h-9 w-9 place-items-center rounded-lg border border-border hover-elevate disabled:opacity-40"><Minus className="h-4 w-4" /></button>
-                    <div className="w-14 text-center text-display text-lg font-black tabular-nums" style={{ color: tm.color }}>{total}</div>
-                    <button onClick={() => handleScore(tm.id, 1)} disabled={busy || session.status !== 'running'}
-                      className="grid h-9 w-9 place-items-center rounded-lg border border-border hover-elevate disabled:opacity-40"><Plus className="h-4 w-4" /></button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          <ScorePanel
+            teams={teams}
+            scoreboardRows={scoreboardRows}
+            busy={busy}
+            sessionRunning={session.status === 'running'}
+            onScore={handleScore}
+          />
         )}
 
         {/* Coppie init panel */}
