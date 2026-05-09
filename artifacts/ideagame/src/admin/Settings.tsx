@@ -6,6 +6,8 @@ import {
   useListSystemSettings, useUpsertSystemSetting, getListSystemSettingsQueryKey,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useJonny } from '@/contexts/JonnyContext';
+import { JonnyAvatar } from '@/components/JonnyAvatar';
 
 type SettingsValue = {
   brandColor: string;
@@ -24,6 +26,7 @@ const DEFAULTS: SettingsValue = {
 export default function Settings() {
   const t = useT();
   const qc = useQueryClient();
+  const { isHostedByJonny, setIsHostedByJonny } = useJonny();
   const { data: rows = [], isLoading } = useListSystemSettings();
   const upsert = useUpsertSystemSetting();
   const [v, setV] = useState<SettingsValue>(DEFAULTS);
@@ -94,6 +97,42 @@ export default function Settings() {
                 <input type="checkbox" checked={v.offlineFirst} onChange={e => setV({ ...v, offlineFirst: e.target.checked })} className="h-5 w-10 cursor-pointer accent-primary" />
               </label>
             </Field>
+          </div>
+
+          {/* ─── Jonny Co-Host ──────────────────────────────────────────── */}
+          <div className="mt-6 rounded-2xl border border-border bg-card overflow-hidden">
+            <div className="flex items-center gap-4 px-5 py-4" style={{ background: 'linear-gradient(135deg, rgba(212,175,55,0.08), rgba(20,15,40,0.5))' }}>
+              <JonnyAvatar mood={isHostedByJonny ? 'excited' : 'idle'} size={56} />
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-display font-black text-sm tracking-wide" style={{ color: '#D4AF37' }}>JONNY</span>
+                  <span className="rounded-full border px-2 py-0.5 text-[10px] font-bold tracking-widest"
+                    style={{ borderColor: 'rgba(212,175,55,0.4)', color: '#D4AF37' }}>CO-HOST</span>
+                </div>
+                <div className="mt-0.5 text-sm text-muted-foreground">
+                  Jonny appare sui telefoni dei giocatori come co-host animato durante onboarding, attesa, gioco e vittoria.
+                </div>
+              </div>
+              <label className="flex shrink-0 cursor-pointer items-center gap-2">
+                <span className="text-xs text-muted-foreground">{isHostedByJonny ? 'Attivo' : 'Disattivo'}</span>
+                <div
+                  onClick={() => setIsHostedByJonny(!isHostedByJonny)}
+                  className="relative h-6 w-11 rounded-full transition-colors"
+                  style={{ background: isHostedByJonny ? '#D4AF37' : 'rgba(255,255,255,0.15)', cursor: 'pointer' }}
+                >
+                  <div
+                    className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform"
+                    style={{ transform: isHostedByJonny ? 'translateX(20px)' : 'translateX(2px)' }}
+                  />
+                </div>
+              </label>
+            </div>
+            {isHostedByJonny && (
+              <div className="border-t border-border/50 px-5 py-3 text-xs text-muted-foreground">
+                Attivabile anche con <code className="rounded bg-card/80 px-1 py-0.5 font-mono" style={{ color: '#D4AF37' }}>?jonny=1</code> nell&apos;URL della pagina giocatore.
+                Architettura pronta — AI automation configurabile in futuro.
+              </div>
+            )}
           </div>
 
           {error && <div className="mt-4 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>}

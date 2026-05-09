@@ -4,6 +4,19 @@ A luxury, hex-themed live party game platform with a real persistent backend
 (tenants, users, events, teams, players, scores, media, quizzes, translations),
 real session-based authentication, and a typed React/Vite admin console + projector hub.
 
+## 🎤 Jonny — Co-Host Architecture (completato)
+
+| Componente | File | Note |
+|---|---|---|
+| SVG mascot | `artifacts/ideagame/public/jonny.svg` | Testa cartoon: pompadour black & gold, occhiali neri, occhi sparkle. Favicon dell'app. |
+| React component | `src/components/JonnyAvatar.tsx` | Props: `mood` (idle/excited/thinking/cheering/celebrating), `size`. Variazioni occhi/sopracciglia/bocca per mood. |
+| Feature flag | `src/contexts/JonnyContext.tsx` | `isHostedByJonny` persistito in `localStorage:ideagame:jonny:enabled`. Rilevabile via `?jonny=1` nell'URL per test rapidi. |
+| Player layer | `src/components/JonnyLayer.tsx` | Bolla gold floating con Jonny avatar. Appare a: onboarding (`excited`), attesa (`thinking`), gioco (`cheering`), fine (`celebrating`). Dismissibile con X. |
+| Integrazione Player | `src/pages/Player.tsx` | `<JonnyLayer>` renderizzato condizionalmente su `isHostedByJonny`. |
+| Toggle admin | `src/admin/Settings.tsx` | Pannello JONNY CO-HOST con toggle ON/OFF in `/admin/settings`. |
+
+**Architettura pronta per AI automation futura** — `jonnyMood` + `jonnyMessage` sono settabili da qualsiasi componente via `useJonny()`. Nessun backend AI ancora collegato.
+
 ## Stato finale del lavoro (in italiano)
 
 ### ✅ Persistente (DB + API + UI)

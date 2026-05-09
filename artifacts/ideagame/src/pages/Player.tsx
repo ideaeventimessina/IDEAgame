@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Zap, Check, Wifi, WifiOff, Loader2, AlertTriangle, RefreshCw, Clock } from 'lucide-react';
 import { useT, useI18n, LOCALES } from '@/i18n';
 import { useEventSocket } from '@/hooks/useEventSocket';
+import { JonnyLayer } from '@/components/JonnyLayer';
+import { useJonny } from '@/contexts/JonnyContext';
 
 interface EventInfo { id: string; name: string; joinCode: string; brandColor: string }
 interface TeamInfo { id: string; name: string; color: string }
@@ -142,6 +144,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
 export default function Player() {
   const t = useT();
   const { locale, setLocale } = useI18n();
+  const { isHostedByJonny } = useJonny();
   const searchParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
   const joinCodeFromUrl = searchParams.get('e')?.toUpperCase() ?? '';
 
@@ -686,6 +689,15 @@ export default function Player() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {isHostedByJonny && (
+        <JonnyLayer
+          step={step}
+          gameState={gameState}
+          playerName={player?.nickname ?? (nick || undefined)}
+          eventName={event?.name}
+        />
+      )}
     </div>
   );
 }

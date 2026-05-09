@@ -52,6 +52,7 @@ import AdminSettings from "@/admin/Settings";
 import AdminCardSets from "@/admin/CardSets";
 import AdminQuizPacks from "@/admin/QuizPacks";
 import { Guard } from "@/admin/Guard";
+import { JonnyProvider } from "@/contexts/JonnyContext";
 
 const queryClient = new QueryClient();
 
@@ -112,14 +113,16 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <I18nProvider>
         <AuthProvider>
-          <TooltipProvider>
-            <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-              <Router />
-              <DemoSwitcher />
-              <BackToCockpit />
-            </WouterRouter>
-            <Toaster />
-          </TooltipProvider>
+          <JonnyProvider>
+            <TooltipProvider>
+              <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+                <Router />
+                <DemoSwitcher />
+                <BackToCockpit />
+              </WouterRouter>
+              <Toaster />
+            </TooltipProvider>
+          </JonnyProvider>
         </AuthProvider>
       </I18nProvider>
     </QueryClientProvider>
