@@ -213,6 +213,12 @@ export default function GameStage() {
         )}
       </AnimatePresence>
 
+      {/* ── DEMO banner ── */}
+      <div className="relative z-20 flex items-center justify-center gap-3 bg-destructive/90 backdrop-blur-sm py-2 px-4 border-b border-destructive/60">
+        <span className="text-[10px] sm:text-xs font-black uppercase tracking-[0.25em] text-white/90">⚠ DEMO / NON LIVE</span>
+        <span className="hidden sm:inline text-[10px] text-white/70 uppercase tracking-widest">— Questa è una schermata di anteprima. Per il gioco reale usa il Cockpit animatore.</span>
+      </div>
+
       {/* Top bar */}
       <header className="relative z-10 flex items-center justify-between px-4 py-3 sm:px-10 sm:py-6">
         <button onClick={() => navigate('/')} className="flex items-center gap-2 rounded-xl border border-border bg-card/60 px-3 py-2 hover-elevate sm:gap-3 sm:rounded-2xl sm:px-5 sm:py-3">

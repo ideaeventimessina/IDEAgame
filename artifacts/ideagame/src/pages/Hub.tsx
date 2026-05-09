@@ -38,7 +38,7 @@ const SLUG_TO_BOARD: Record<string, string> = {
   'saramusica':         '/saramusica',
 };
 
-type NoSessionState = { name: string; slug: string; accentColor: string } | null;
+type NoSessionState = { name: string; slug: string; accentColor: string; eventId: string | null } | null;
 
 // 3-2-3 orbital layout around center logo
 const POSITIONS = [
@@ -83,25 +83,68 @@ export default function Hub() {
   const [introGame, setIntroGame] = useState<IntroGame | null>(null);
   const [projectorBlack, setProjectorBlack] = useState(false);
   const [noSessionGame, setNoSessionGame] = useState<NoSessionState>(null);
+  const [creatingSession, setCreatingSession] = useState(false);
 
-  // Navigate to a game — if a real board exists, check for active session first
+  // Navigate to a game — READY games NEVER go to /game/:slug mock
   const handleGameClick = async (slug: string, name: string, accentColor: string) => {
+    const isReady = READY_SLUGS.has(slug);
     const boardPath = SLUG_TO_BOARD[slug];
-    if (!boardPath || !liveEvent) {
-      // No real board or no live event → fall back to generic preview
+
+    if (!isReady) {
+      // Non-ready game → demo preview only
       navigate(`/game/${slug}`);
       return;
     }
+
+    // READY game: always try to open real board, never fall back to /game/:slug
+    if (!liveEvent) {
+      setNoSessionGame({ name, slug, accentColor, eventId: null });
+      return;
+    }
+
     try {
       const res = await fetch(`/api/events/${liveEvent.id}/active-session`);
       const session = res.ok ? await res.json() : null;
-      if (session && session.gameSlug === slug && session.status !== 'ended') {
+      if (session && session.gameSlug === slug && session.status !== 'ended' && boardPath) {
         navigate(`${boardPath}?s=${session.id}&e=${liveEvent.id}`);
       } else {
-        setNoSessionGame({ name, slug, accentColor });
+        setNoSessionGame({ name, slug, accentColor, eventId: liveEvent.id });
       }
     } catch {
-      navigate(`/game/${slug}`);
+      setNoSessionGame({ name, slug, accentColor, eventId: liveEvent.id });
+    }
+  };
+
+  // Create a fresh session and immediately open the board
+  const handleCreateSession = async () => {
+    if (!noSessionGame?.eventId) return;
+    setCreatingSession(true);
+    try {
+      const res = await fetch(`/api/events/${noSessionGame.eventId}/sessions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ gameSlug: noSessionGame.slug, totalRounds: 1 }),
+      });
+      if (res.ok) {
+        const session = await res.json();
+        const boardPath = SLUG_TO_BOARD[noSessionGame.slug];
+        setNoSessionGame(null);
+        if (boardPath) {
+          navigate(`${boardPath}?s=${session.id}&e=${noSessionGame.eventId}`);
+        } else {
+          navigate('/control');
+        }
+      } else {
+        // Not authenticated → redirect to cockpit
+        setNoSessionGame(null);
+        navigate('/control');
+      }
+    } catch {
+      setNoSessionGame(null);
+      navigate('/control');
+    } finally {
+      setCreatingSession(false);
     }
   };
   const lan = useLocalMode();
@@ -426,28 +469,45 @@ export default function Hub() {
               >
                 <X className="h-4 w-4" />
               </button>
-              <div className="mb-1 text-xs uppercase tracking-widest text-muted-foreground">Gioco non attivo</div>
+              {noSessionGame.eventId ? (
+                <div className="mb-1 text-xs uppercase tracking-widest text-muted-foreground">Sessione non avviata</div>
+              ) : (
+                <div className="mb-1 text-xs uppercase tracking-widest text-amber-400">Nessun evento attivo</div>
+              )}
               <div className="text-display text-2xl font-black" style={{ color: noSessionGame.accentColor }}>
                 {noSessionGame.name}
               </div>
-              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-                Per aprire il board del gioco devi prima <strong className="text-foreground">avviare una sessione</strong> dal Cockpit animatore.
-              </p>
-              <div className="mt-2 rounded-2xl border border-border bg-muted/30 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
-                <span className="font-bold text-foreground">Come fare:</span><br />
-                Cockpit → seleziona l'evento → crea sessione <span className="font-mono text-primary">{noSessionGame.slug}</span> → avvia → torna qui e clicca il gioco.
-              </div>
-              <div className="mt-5 flex gap-3">
+              {noSessionGame.eventId ? (
+                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                  Nessuna sessione attiva per questo gioco. Puoi <strong className="text-foreground">crearla subito</strong> (se sei autenticato) oppure aprire il Cockpit per configurarla.
+                </p>
+              ) : (
+                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                  Per avviare un gioco devi prima <strong className="text-foreground">creare un evento</strong> e avviare una sessione dal Cockpit animatore.
+                </p>
+              )}
+              <div className="mt-5 flex flex-col gap-2">
+                {noSessionGame.eventId && (
+                  <button
+                    onClick={handleCreateSession}
+                    disabled={creatingSession}
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-black hover-elevate disabled:opacity-60"
+                    style={{ background: noSessionGame.accentColor, color: '#0a0820' }}
+                  >
+                    {creatingSession ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                    {creatingSession ? 'Creazione sessione…' : 'Crea sessione e apri board'}
+                  </button>
+                )}
                 <button
                   onClick={() => { setNoSessionGame(null); navigate('/control'); }}
-                  className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-primary px-4 py-3 text-sm font-black text-primary-foreground hover-elevate"
+                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-4 py-3 text-sm font-black text-primary-foreground hover-elevate"
                 >
-                  <Play className="h-4 w-4" />
-                  Vai al Cockpit
+                  <SlidersHorizontal className="h-4 w-4" />
+                  Apri Cockpit
                 </button>
                 <button
                   onClick={() => setNoSessionGame(null)}
-                  className="rounded-2xl border border-border px-4 py-3 text-sm font-bold text-muted-foreground hover:text-foreground"
+                  className="rounded-2xl border border-border px-4 py-2 text-sm font-bold text-muted-foreground hover:text-foreground"
                 >
                   Chiudi
                 </button>
