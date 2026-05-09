@@ -100,9 +100,13 @@ export default function Hub() {
       on('projector:black',          () => setProjectorBlack(true)),
       on('projector:black-off',      () => setProjectorBlack(false)),
       on('projector:close-overlays', () => { setProjectorBlack(false); setIntroGame(null); }),
+      on('projector:go-scoreboard',  (payload: { eventId?: string }) => {
+        const eid = payload?.eventId ?? liveEvent.id;
+        navigate(`/scoreboard?e=${eid}`);
+      }),
     ];
     return () => { unsubs.forEach(u => u?.()); };
-  }, [liveEvent?.id, on]);
+  }, [liveEvent?.id, on, navigate]);
 
   // Canonical 3-2-3 slot order: flagship games first, adult-only last in middle row
   const SLUG_ORDER = [

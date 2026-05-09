@@ -243,6 +243,12 @@ export function PanicPanel({ open, onClose, eventId, joinCode, joinUrl, session 
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: 'ended' }),
         });
+        // Tell the projector (Hub) to navigate to scoreboard automatically
+        await apiFetch(`/panic/events/${eventId}/emit`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ event: 'projector:go-scoreboard', payload: { eventId } }),
+        }).catch(() => null);
         // Close panel and navigate to scoreboard
         onClose();
         navigate(`/scoreboard?e=${eventId}`);
