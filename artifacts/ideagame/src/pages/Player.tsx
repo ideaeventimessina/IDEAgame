@@ -514,11 +514,8 @@ export default function Player() {
         {step === 'loading' && (
           <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="flex flex-1 flex-col items-center justify-center gap-5">
-            <motion.img src="/jonny-master.png" alt="Jonny"
-              style={{ height: 120, width: 'auto', filter: 'drop-shadow(0 0 24px rgba(245,182,66,0.4))' }}
-              animate={{ y: [0, -8, 0] }} transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }} />
             <div className="flex flex-col items-center gap-2">
-              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
               <div className="text-muted-foreground text-sm">Recupero evento…</div>
             </div>
           </motion.div>
@@ -543,20 +540,9 @@ export default function Player() {
           <motion.div key="enter-code" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
             className="flex flex-1 flex-col">
             <div className="flex flex-1 flex-col items-center justify-center gap-4">
-              {/* Jonny's World hero banner */}
-              <div className="relative w-full max-w-xs overflow-hidden rounded-2xl"
-                style={{ height: 160 }}>
-                <img src="/jonny-world-hero.png" alt="Jonny's World"
-                  className="absolute inset-0 w-full h-full object-cover object-top"
-                  style={{ filter: 'brightness(0.82) saturate(1.1)' }} />
-                <div className="absolute inset-0"
-                  style={{ background: 'linear-gradient(to bottom, transparent 40%, rgba(4,2,20,0.92) 100%)' }} />
-                <div className="absolute bottom-3 left-0 right-0 text-center">
-                  <div className="text-display text-sm font-black tracking-[0.2em] uppercase"
-                    style={{ color: '#F5B642', textShadow: '0 0 20px rgba(245,182,66,0.6)' }}>
-                    Jonny&apos;s World
-                  </div>
-                </div>
+              <div className="text-display text-2xl font-black tracking-[0.15em] uppercase"
+                style={{ color: '#F5B642', textShadow: '0 0 30px rgba(245,182,66,0.5)' }}>
+                Jonny&apos;s World
               </div>
               <div className="text-center">
                 <div className="text-display text-3xl font-black">Unisciti all&apos;evento</div>

@@ -490,12 +490,9 @@ export default function Hub() {
     return (
       <div className="relative h-screen w-full overflow-hidden select-none">
 
-        {/* Full-screen hero poster */}
-        <motion.img src="/jonny-world-hero.png" alt="Jonny's World"
-          className="absolute inset-0 w-full h-full object-cover object-center"
-          style={{ filter: 'brightness(0.92) saturate(1.1)' }}
-          initial={{ opacity: 0, scale: 1.06 }} animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 1.2, ease: 'easeOut' }} />
+        {/* Full-screen background gradient */}
+        <div className="absolute inset-0"
+          style={{ background: 'radial-gradient(ellipse 130% 90% at 50% -5%, #2d0d52 0%, #130628 45%, #060213 100%)' }} />
 
         {/* Subtle dark vignette around edges */}
         <div className="pointer-events-none absolute inset-0"
@@ -533,21 +530,6 @@ export default function Hub() {
       <HubStars />
       <HubConfetti />
 
-      {/* ── Jonny floating figure — desktop only ── */}
-      <div className="hidden lg:block pointer-events-none absolute bottom-0 right-[235px] z-5 select-none"
-        style={{ width: 220, height: 340 }}>
-        <motion.img src="/jonny-master.png" alt="Jonny"
-          className="w-full h-full object-contain object-bottom"
-          style={{ filter: 'drop-shadow(0 0 40px rgba(245,182,66,0.45)) drop-shadow(0 20px 60px rgba(100,40,200,0.4))' }}
-          animate={{ y: [0, -12, 0] }}
-          transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-          initial={{ opacity: 0, y: 30, scale: 0.9 }}
-          whileInView={{ opacity: 1, y: 0, scale: 1 }}
-        />
-        {/* Gold glow halo under feet */}
-        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-32 h-8 rounded-full"
-          style={{ background: 'radial-gradient(ellipse, rgba(245,182,66,0.35) 0%, transparent 70%)', filter: 'blur(8px)' }} />
-      </div>
 
       {/* ── Top ambient glow ── */}
       <div className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 w-[80%] h-[35%] z-0"

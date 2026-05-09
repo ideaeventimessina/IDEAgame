@@ -1,6 +1,5 @@
 import { Sparkles } from 'lucide-react';
 import { useLocation } from 'wouter';
-import { JonnyAvatar } from '@/components/JonnyAvatar';
 
 interface Props {
   gameSlug: string;
@@ -13,9 +12,7 @@ export function JonnyGenerateBanner({ gameSlug, gameLabel }: Props) {
   return (
     <div className="flex items-center justify-between gap-4 rounded-2xl border border-primary/30 bg-gradient-to-r from-primary/10 via-accent/5 to-primary/10 px-4 py-3">
       <div className="flex items-center gap-3">
-        <div className="shrink-0">
-          <JonnyAvatar mood="excited" size={48} />
-        </div>
+        <Sparkles className="h-6 w-6 shrink-0 text-primary" />
         <div>
           <div className="text-sm font-black text-foreground">Genera con Jonny AI</div>
           <div className="text-xs text-muted-foreground">

@@ -244,9 +244,7 @@ export default function GameCoppie() {
             <motion.div initial={{ scale: 0.75, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
               transition={{ delay: 0.15, type: 'spring', stiffness: 200 }}
               className="flex flex-col items-center gap-5 text-center px-8">
-              <motion.img src="/jonny-master.png" alt="Jonny"
-                style={{ height: 140, filter: `drop-shadow(0 8px 32px ${T.glow}99)` }}
-                animate={{ y: [0, -10, 0] }} transition={{ duration: 2.5, repeat: Infinity }} />
+              <div className="text-7xl">🏆</div>
               <div className="text-display text-4xl sm:text-6xl font-black"
                 style={{ color: winnerTeam?.color ?? T.accent, textShadow: `0 0 40px ${winnerTeam?.color ?? T.glow}88` }}>
                 {winnerTeam ? winnerTeam.name : 'Pareggio!'}

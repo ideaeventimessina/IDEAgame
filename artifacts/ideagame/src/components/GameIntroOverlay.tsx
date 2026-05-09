@@ -150,19 +150,6 @@ export function GameIntroOverlay({ name, tagline, accentColor, icon, slug, onDon
             </AnimatePresence>
           </div>
 
-          {/* Jonny floating from bottom-right */}
-          <AnimatePresence>
-            {phase === 'text' && (
-              <motion.img src="/jonny-master.png" alt="Jonny"
-                initial={{ opacity: 0, x: 80, y: 40 }}
-                animate={{ opacity: 1, x: 0, y: [0, -10, 0] }}
-                exit={{ opacity: 0, x: 80 }}
-                transition={{ opacity: { duration: 0.5 }, x: { type: 'spring', stiffness: 120 }, y: { duration: 3.5, repeat: Infinity, ease: 'easeInOut', delay: 0.5 } }}
-                className="pointer-events-none absolute bottom-0 right-0 select-none"
-                style={{ height: 'clamp(180px, 30vh, 280px)', width: 'auto', objectFit: 'contain', objectPosition: 'bottom', filter: `drop-shadow(0 0 40px ${accentColor}66) drop-shadow(0 20px 50px rgba(0,0,0,0.6))` }}
-              />
-            )}
-          </AnimatePresence>
 
           {/* Fade-out veil */}
           <AnimatePresence>

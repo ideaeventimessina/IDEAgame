@@ -10,35 +10,35 @@ import { useLocation } from 'wouter';
 export type ArenaKey = 'quizzone' | 'coppie' | 'ballo' | 'percorso' | 'wordback' | 'adult' | 'karaoke';
 
 export const ARENA: Record<ArenaKey, {
-  bg: string; accent: string; glow: string; title: string; jonny: string;
+  bg: string; accent: string; glow: string; title: string;
 }> = {
   quizzone: {
     bg: 'radial-gradient(ellipse 140% 80% at 50% -5%, #0d1f3c 0%, #060d1a 45%, #020609 100%)',
-    accent: '#60A5FA', glow: '#3B82F6', title: 'QUIZ ARENA', jonny: '/jonny-master.png',
+    accent: '#60A5FA', glow: '#3B82F6', title: 'QUIZ ARENA',
   },
   coppie: {
     bg: 'radial-gradient(ellipse 140% 80% at 50% -5%, #2d0a1a 0%, #150410 45%, #080206 100%)',
-    accent: '#FF69B4', glow: '#FF1493', title: 'ARENA DELLE COPPIE', jonny: '/jonny-master.png',
+    accent: '#FF69B4', glow: '#FF1493', title: 'ARENA DELLE COPPIE',
   },
   ballo: {
     bg: 'radial-gradient(ellipse 140% 80% at 50% -5%, #140b2a 0%, #09051a 45%, #04020f 100%)',
-    accent: '#A78BFA', glow: '#7C3AED', title: 'DANCE ARENA', jonny: '/jonny-master.png',
+    accent: '#A78BFA', glow: '#7C3AED', title: 'DANCE ARENA',
   },
   percorso: {
     bg: 'radial-gradient(ellipse 140% 80% at 50% -5%, #201200 0%, #100900 45%, #060400 100%)',
-    accent: '#F5B642', glow: '#D97706', title: 'PERCORSO A RISATE', jonny: '/jonny-master.png',
+    accent: '#F5B642', glow: '#D97706', title: 'PERCORSO A RISATE',
   },
   wordback: {
     bg: 'radial-gradient(ellipse 140% 80% at 50% -5%, #001c10 0%, #000e08 45%, #000503 100%)',
-    accent: '#34D399', glow: '#059669', title: 'WORD CHALLENGE', jonny: '/jonny-master.png',
+    accent: '#34D399', glow: '#059669', title: 'WORD CHALLENGE',
   },
   adult: {
     bg: 'radial-gradient(ellipse 140% 80% at 50% -5%, #1e0006 0%, #0d0003 45%, #060001 100%)',
-    accent: '#F87171', glow: '#DC2626', title: 'ADULT ARENA', jonny: '/jonny-master.png',
+    accent: '#F87171', glow: '#DC2626', title: 'ADULT ARENA',
   },
   karaoke: {
     bg: 'radial-gradient(ellipse 140% 80% at 50% -5%, #200a28 0%, #110516 45%, #090309 100%)',
-    accent: '#F472B6', glow: '#DB2777', title: 'KARAOKE STAGE', jonny: '/jonny-master.png',
+    accent: '#F472B6', glow: '#DB2777', title: 'KARAOKE STAGE',
   },
 };
 
@@ -173,11 +173,8 @@ export function WinPodium({ theme, teams, winnerName, onHome }: {
       <motion.div initial={{ scale: 0.75, y: 50, opacity: 0 }} animate={{ scale: 1, y: 0, opacity: 1 }}
         transition={{ type: 'spring', stiffness: 200, damping: 24 }}
         className="flex flex-col items-center gap-5 w-full max-w-lg px-6">
-        {/* Jonny celebrating */}
-        <motion.img src="/jonny-master.png" alt="Jonny"
-          style={{ height: 130, filter: `drop-shadow(0 8px 32px ${theme.glow}99)` }}
-          animate={{ y: [0, -10, 0], rotate: [-2, 2, -2] }}
-          transition={{ duration: 2.8, repeat: Infinity }} />
+        {/* Trophy icon */}
+        <div className="text-6xl">🏆</div>
         {/* Title */}
         <div className="text-center">
           <NeonTitle text="FINE PARTITA" color={theme.accent} size="lg" />
