@@ -1,208 +1,269 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { JonnyAvatar } from '@/components/JonnyAvatar';
-import type { JonnyMood } from '@/contexts/JonnyContext';
 
 const GAMES = [
-  { name: 'Percorso\na Risate', emoji: '😂', color: '#FF6B6B', glow: '#FF6B6B' },
-  { name: 'Gioco delle\nCoppie', emoji: '💑', color: '#FF69B4', glow: '#FF69B4' },
-  { name: 'Quizzone', emoji: '❓', color: '#4ECDC4', glow: '#4ECDC4' },
-  { name: 'Sfida di\nBallo', emoji: '💃', color: '#A78BFA', glow: '#A78BFA' },
-  { name: 'Freestyle\nBattle', emoji: '🎤', color: '#F59E0B', glow: '#F59E0B' },
-  { name: 'Adult\nOnly', emoji: '🔞', color: '#F87171', glow: '#F87171' },
-  { name: 'Percorso\na Parole', emoji: '🗣️', color: '#34D399', glow: '#34D399' },
-  { name: 'Karaoke\nBattle', emoji: '🎵', color: '#60A5FA', glow: '#60A5FA' },
+  { name: 'Percorso\na Risate',   color: '#FF5E5E', glow: '#FF5E5E' },
+  { name: 'Gioco delle\nCoppie',  color: '#FF69B4', glow: '#FF69B4' },
+  { name: 'Quizzone',             color: '#00E5C8', glow: '#00E5C8' },
+  { name: 'Sfida di\nBallo',      color: '#B06BFF', glow: '#B06BFF' },
+  { name: 'Freestyle\nBattle',    color: '#FFB800', glow: '#FFB800' },
+  { name: 'Adult\nOnly 18+',      color: '#FF4B4B', glow: '#FF4B4B' },
+  { name: 'Parola alle\nSpalle',  color: '#3DFFB0', glow: '#3DFFB0' },
+  { name: 'Karaoke\nBattle',      color: '#5EA8FF', glow: '#5EA8FF' },
 ];
 
-const JONNY_SLIDES: { mood: JonnyMood; label: string }[] = [
-  { mood: 'idle',       label: 'Benvenuto nel\nmondo di Jonny!' },
-  { mood: 'excited',    label: 'Preparati a\ndivertirti!' },
-  { mood: 'round_done', label: 'Sfida i tuoi\namici!' },
-  { mood: 'attention',  label: 'Tante sorprese\nti aspettano!' },
-  { mood: 'winner',     label: 'Solo uno può\ntrionfare!' },
-  { mood: 'challenge',  label: 'Ogni gioco\nè un\'avventura!' },
+const POSES = [
+  { src: '/jonny/via-nobg.png',      caption: 'Preparati a divertirti!' },
+  { src: '/jonny/saluti-nobg.png',   caption: 'Benvenuto nel mondo di Jonny!' },
+  { src: '/jonny/sfida-nobg.png',    caption: 'Scegli la tua sfida!' },
+  { src: '/jonny/vincitore-nobg.png',caption: 'Solo uno può trionfare!' },
 ];
 
-const CONFETTI_COLORS = ['#F5B642','#FF6B6B','#4ECDC4','#A78BFA','#FF69B4','#34D399','#60A5FA'];
+const CONFETTI = [
+  '#F5B642','#FF5E5E','#00E5C8','#B06BFF','#FF69B4','#3DFFB0','#5EA8FF','#FFB800',
+];
 
-function Particle({ i }: { i: number }) {
-  const color = CONFETTI_COLORS[i % CONFETTI_COLORS.length];
-  const left = `${(i * 7.3 + 3) % 100}%`;
-  const dur = 3 + (i % 5) * 0.8;
-  const delay = -(i * 0.4);
-  const size = 6 + (i % 4) * 3;
-  const isCircle = i % 3 === 0;
+function Confetto({ i }: { i: number }) {
+  const color = CONFETTI[i % CONFETTI.length];
+  const left   = `${(i * 6.7 + 2) % 100}%`;
+  const dur    = 4 + (i % 4) * 0.9;
+  const delay  = -(i * 0.35);
+  const w      = 5 + (i % 4) * 3;
+  const h      = i % 3 === 0 ? w : w * 0.45;
   return (
     <motion.div
-      className="absolute top-0 pointer-events-none"
-      style={{ left, width: size, height: isCircle ? size : size * 0.5, borderRadius: isCircle ? '50%' : 2, backgroundColor: color, opacity: 0.85 }}
-      animate={{ y: ['0vh', '105vh'], rotate: [0, 360 * (i % 2 === 0 ? 1 : -1)], opacity: [0, 1, 1, 0] }}
+      className="absolute top-0 pointer-events-none rounded-sm"
+      style={{ left, width: w, height: h, backgroundColor: color, opacity: 0.9 }}
+      animate={{ y: ['0vh', '108vh'], rotate: [0, i % 2 === 0 ? 360 : -360], opacity: [0, 0.9, 0.9, 0] }}
       transition={{ duration: dur, delay, repeat: Infinity, ease: 'linear' }}
     />
   );
 }
 
-function NeonCard({ name, emoji, color, glow, idx }: { name: string; emoji: string; color: string; glow: string; idx: number }) {
-  return (
-    <motion.div
-      className="shrink-0 flex flex-col items-center justify-center gap-1 rounded-2xl border-2 px-4 py-4 cursor-pointer select-none"
-      style={{ borderColor: color, background: `${color}18`, boxShadow: `0 0 18px ${glow}55, inset 0 0 12px ${glow}15`, minWidth: 100 }}
-      initial={{ opacity: 0, y: 30 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.4 + idx * 0.07, type: 'spring', stiffness: 200 }}
-      whileTap={{ scale: 0.94 }}
-      whileHover={{ scale: 1.06, boxShadow: `0 0 32px ${glow}99, inset 0 0 16px ${glow}25` }}
-    >
-      <span className="text-3xl">{emoji}</span>
-      <span className="text-center text-xs font-black leading-tight" style={{ color, whiteSpace: 'pre-line' }}>{name}</span>
-    </motion.div>
-  );
-}
-
-interface Props {
-  onJoin: () => void;
-}
+interface Props { onJoin: () => void }
 
 export function PlayerLanding({ onJoin }: Props) {
-  const [slideIdx, setSlideIdx] = useState(0);
+  const [poseIdx, setPoseIdx] = useState(0);
 
   useEffect(() => {
-    const t = setInterval(() => setSlideIdx(i => (i + 1) % JONNY_SLIDES.length), 3000);
+    const t = setInterval(() => setPoseIdx(i => (i + 1) % POSES.length), 3200);
     return () => clearInterval(t);
   }, []);
 
-  const slide = JONNY_SLIDES[slideIdx];
+  const pose = POSES[poseIdx];
 
   return (
-    <div className="relative flex flex-col items-center overflow-hidden min-h-screen w-full"
+    <div
+      className="relative flex flex-col items-center w-full overflow-x-hidden"
       style={{
-        background: 'radial-gradient(ellipse 140% 80% at 50% 0%, #3b1d8a 0%, #1a0b4b 40%, #0d0520 100%)',
-        paddingBottom: 'calc(6rem + env(safe-area-inset-bottom))',
-      }}>
-
-      {/* Confetti rain */}
+        minHeight: '100svh',
+        background: 'radial-gradient(ellipse 160% 90% at 50% -10%, #4a1a9e 0%, #2d0f72 30%, #160840 60%, #08051a 100%)',
+        paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))',
+      }}
+    >
+      {/* ── Coriandoli ── */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden z-0">
-        {Array.from({ length: 28 }).map((_, i) => <Particle key={i} i={i} />)}
+        {Array.from({ length: 32 }).map((_, i) => <Confetto key={i} i={i} />)}
       </div>
 
-      {/* Hero image overlay */}
-      <div className="pointer-events-none absolute inset-0 z-0 opacity-[0.07]"
-        style={{ backgroundImage: 'url(/jonny-world-hero.png)', backgroundSize: 'cover', backgroundPosition: 'center top' }} />
+      {/* ── Glow spots ── */}
+      <div className="pointer-events-none absolute z-0" style={{ top: '15%', left: '10%', width: 200, height: 200, borderRadius: '50%', background: 'radial-gradient(circle, #7c3aed55 0%, transparent 70%)', filter: 'blur(40px)' }} />
+      <div className="pointer-events-none absolute z-0" style={{ top: '50%', right: '5%', width: 160, height: 160, borderRadius: '50%', background: 'radial-gradient(circle, #FF5E5E33 0%, transparent 70%)', filter: 'blur(30px)' }} />
+      <div className="pointer-events-none absolute z-0" style={{ top: '70%', left: '5%', width: 140, height: 140, borderRadius: '50%', background: 'radial-gradient(circle, #00E5C833 0%, transparent 70%)', filter: 'blur(30px)' }} />
 
-      {/* Radial glow spots */}
-      <div className="pointer-events-none absolute left-1/4 top-1/3 w-64 h-64 rounded-full z-0"
-        style={{ background: 'radial-gradient(circle, #7c3aed44 0%, transparent 70%)', filter: 'blur(40px)' }} />
-      <div className="pointer-events-none absolute right-1/4 top-2/3 w-48 h-48 rounded-full z-0"
-        style={{ background: 'radial-gradient(circle, #f59e0b33 0%, transparent 70%)', filter: 'blur(30px)' }} />
-
-      {/* ─── HEADER logo ─── */}
-      <div className="relative z-10 w-full flex items-center justify-center pt-5 pb-1">
-        <motion.img
-          src="/logo.png" alt="IDEAgame"
-          className="h-8 w-auto drop-shadow-[0_0_16px_rgba(245,182,66,0.8)]"
-          initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
-        />
-      </div>
-
-      {/* ─── TITLE ─── */}
-      <motion.div className="relative z-10 text-center px-4 mt-1"
-        initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.6, delay: 0.1 }}>
-        <div className="text-display font-black leading-none"
-          style={{ fontSize: 'clamp(2rem, 9vw, 3rem)', color: '#F5B642',
-            textShadow: '0 0 20px #F5B64299, 0 0 60px #F5B64255, 2px 2px 0 #7c3aed, 4px 4px 0 #4c1d95' }}>
-          JONNY'S
-        </div>
-        <div className="text-display font-black leading-none -mt-1"
-          style={{ fontSize: 'clamp(2.6rem, 12vw, 4rem)', color: '#ffffff',
-            textShadow: '0 0 20px #ffffff55, 2px 2px 0 #F5B642, 4px 4px 0 #7c3aed, 6px 6px 0 #4c1d95' }}>
-          WORLD
-        </div>
-        <motion.div className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.2em]"
-          style={{ color: '#F5B642', textShadow: '0 0 10px #F5B64288' }}
-          animate={{ opacity: [0.7, 1, 0.7] }} transition={{ duration: 2, repeat: Infinity }}>
-          ✦ Il Parco del Divertimento Intelligente ✦
-        </motion.div>
+      {/* ── Logo ── */}
+      <motion.div
+        className="relative z-10 pt-6 pb-0"
+        initial={{ opacity: 0, y: -16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
+        <img src="/logo.png" alt="IDEAgame" className="h-9 w-auto" style={{ filter: 'drop-shadow(0 0 12px rgba(245,182,66,0.7))' }} />
       </motion.div>
 
-      {/* ─── JONNY + SPEECH (layout orizzontale su schermi larghi) ─── */}
-      <div className="relative z-10 flex items-center justify-center gap-3 mt-2 px-4 w-full">
+      {/* ── Titolo ── */}
+      <motion.div
+        className="relative z-10 text-center px-4 mt-3 select-none"
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.55, delay: 0.1 }}
+      >
+        <div
+          className="font-black leading-none text-display"
+          style={{
+            fontSize: 'clamp(2.4rem, 11vw, 3.8rem)',
+            background: 'linear-gradient(160deg, #FFE57A 0%, #F5B642 40%, #FF8C00 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
+            filter: 'drop-shadow(0 0 18px rgba(245,182,66,0.55))',
+          }}
+        >
+          JONNY'S WORLD
+        </div>
+        <motion.p
+          className="mt-1.5 text-xs font-semibold uppercase tracking-[0.22em]"
+          style={{ color: 'rgba(245,182,66,0.75)', letterSpacing: '0.22em' }}
+          animate={{ opacity: [0.6, 1, 0.6] }}
+          transition={{ duration: 2.4, repeat: Infinity }}
+        >
+          Il Parco del Divertimento Intelligente
+        </motion.p>
+      </motion.div>
+
+      {/* ── Jonny ── */}
+      <div className="relative z-10 flex items-center justify-center w-full mt-1 px-4" style={{ minHeight: 260 }}>
         <AnimatePresence mode="wait">
-          <motion.div key={slideIdx} className="flex items-center gap-3"
-            initial={{ opacity: 0, scale: 0.85 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            transition={{ duration: 0.4 }}>
-            <motion.div
-              animate={{ y: [0, -8, 0] }}
-              transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}>
-              <JonnyAvatar mood={slide.mood} size={230}
-                className="drop-shadow-[0_0_40px_rgba(245,182,66,0.6)] shrink-0" />
-            </motion.div>
-          </motion.div>
+          <motion.img
+            key={pose.src}
+            src={pose.src}
+            alt="Jonny"
+            style={{ height: 260, width: 'auto', objectFit: 'contain', filter: 'drop-shadow(0 8px 32px rgba(245,182,66,0.4))' }}
+            initial={{ opacity: 0, scale: 0.88, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.92, y: -8 }}
+            transition={{ duration: 0.42 }}
+          />
         </AnimatePresence>
 
-        {/* Speech bubble laterale */}
-        <div className="flex flex-col gap-2">
+        {/* Caption bubble */}
+        <div className="absolute bottom-0 left-0 right-0 flex justify-center">
           <AnimatePresence mode="wait">
-            <motion.div key={`txt-${slideIdx}`}
-              className="rounded-2xl rounded-bl-sm border-2 border-yellow-400/60 px-4 py-3 text-center text-sm font-black max-w-[160px]"
-              style={{ background: 'rgba(245,182,66,0.12)', color: '#FDE68A',
-                whiteSpace: 'pre-line', textShadow: '0 0 10px #F5B64266',
-                boxShadow: '0 0 20px rgba(245,182,66,0.2)' }}
-              initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
-              transition={{ duration: 0.3 }}>
-              {slide.label}
+            <motion.div
+              key={`cap-${poseIdx}`}
+              className="rounded-2xl border px-4 py-2 text-center text-sm font-bold"
+              style={{
+                borderColor: 'rgba(245,182,66,0.45)',
+                background: 'rgba(20,8,50,0.65)',
+                backdropFilter: 'blur(8px)',
+                color: '#FFE57A',
+                maxWidth: 260,
+              }}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.28 }}
+            >
+              {pose.caption}
             </motion.div>
           </AnimatePresence>
-          {/* Slide dots */}
-          <div className="flex gap-1.5 justify-center">
-            {JONNY_SLIDES.map((_, i) => (
-              <button key={i} onClick={() => setSlideIdx(i)}
-                className="rounded-full transition-all"
-                style={{ width: i === slideIdx ? 18 : 6, height: 6,
-                  background: i === slideIdx ? '#F5B642' : '#4c1d9588' }} />
-            ))}
-          </div>
         </div>
-      </div>
 
-      {/* ─── GAME CARDS ─── */}
-      <div className="relative z-10 w-full mt-3">
-        <div className="px-4 mb-1.5 text-xs font-black uppercase tracking-widest text-yellow-400/80">🎮 I Giochi</div>
-        <div className="flex gap-2.5 overflow-x-auto px-4 pb-2 snap-x snap-mandatory scrollbar-hide">
-          {GAMES.map((g, i) => (
-            <div key={g.name} className="snap-start">
-              <NeonCard {...g} idx={i} />
-            </div>
+        {/* Floating dots nav */}
+        <div className="absolute -bottom-5 left-0 right-0 flex justify-center gap-1.5">
+          {POSES.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setPoseIdx(i)}
+              style={{
+                width: i === poseIdx ? 20 : 6,
+                height: 6,
+                borderRadius: 4,
+                background: i === poseIdx ? '#F5B642' : 'rgba(245,182,66,0.25)',
+                transition: 'all 0.3s',
+                border: 'none',
+                cursor: 'pointer',
+              }}
+            />
           ))}
         </div>
       </div>
 
-      {/* ─── CTA ─── */}
-      <div className="relative z-10 w-full px-4 mt-4">
+      {/* ── Badge strip ── */}
+      <motion.div
+        className="relative z-10 flex gap-2 mt-8 px-4 w-full"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.45 }}
+      >
+        {[
+          { label: '8 Giochi', sub: 'diversi ogni sera' },
+          { label: 'Live Party', sub: 'tutti insieme' },
+          { label: 'Sul tuo\ntelefono', sub: 'nessuna app' },
+        ].map(b => (
+          <div
+            key={b.label}
+            className="flex-1 flex flex-col items-center rounded-2xl py-2.5 px-1"
+            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}
+          >
+            <span className="text-xs font-black text-white text-center leading-tight whitespace-pre-line">{b.label}</span>
+            <span className="text-[9px] text-white/45 text-center mt-0.5">{b.sub}</span>
+          </div>
+        ))}
+      </motion.div>
+
+      {/* ── Giochi ── */}
+      <div className="relative z-10 w-full mt-5">
+        <div className="px-4 mb-2 text-[10px] font-black uppercase tracking-[0.2em]" style={{ color: 'rgba(245,182,66,0.7)' }}>
+          I Giochi
+        </div>
+        <div className="flex gap-2.5 overflow-x-auto px-4 pb-1 scrollbar-hide snap-x snap-mandatory">
+          {GAMES.map((g, i) => (
+            <motion.div
+              key={g.name}
+              className="snap-start shrink-0 flex items-center justify-center rounded-xl"
+              style={{
+                minWidth: 96, height: 72,
+                border: `1.5px solid ${g.color}`,
+                background: `linear-gradient(135deg, ${g.color}18 0%, ${g.color}08 100%)`,
+                boxShadow: `0 0 14px ${g.glow}44, inset 0 0 10px ${g.glow}12`,
+                cursor: 'default',
+              }}
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 + i * 0.06, type: 'spring', stiffness: 180 }}
+            >
+              <span
+                className="font-black text-center leading-tight whitespace-pre-line"
+                style={{
+                  fontSize: 11, color: g.color,
+                  textShadow: `0 0 8px ${g.glow}99`,
+                }}
+              >
+                {g.name}
+              </span>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── CTA ── */}
+      <div className="relative z-10 w-full px-4 mt-5">
         <motion.button
           onClick={onJoin}
-          className="relative w-full overflow-hidden rounded-2xl py-5 text-xl font-black text-black"
-          style={{ background: 'linear-gradient(135deg, #F5B642 0%, #FF8C00 50%, #F5B642 100%)',
-            backgroundSize: '200% 200%', boxShadow: '0 0 40px rgba(245,182,66,0.7), 0 4px 30px rgba(245,182,66,0.4)' }}
-          animate={{ backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'] }}
-          transition={{ duration: 3, repeat: Infinity }}
-          whileTap={{ scale: 0.97 }}
-          whileHover={{ boxShadow: '0 0 60px rgba(245,182,66,0.9), 0 4px 40px rgba(245,182,66,0.6)' }}
-          initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5, type: 'spring', stiffness: 200 }}>
+          className="relative w-full overflow-hidden rounded-2xl font-black text-black"
+          style={{
+            padding: '18px 0',
+            fontSize: '1.15rem',
+            background: 'linear-gradient(135deg, #F5B642 0%, #FF9500 100%)',
+            boxShadow: '0 0 36px rgba(245,182,66,0.65), 0 4px 24px rgba(245,182,66,0.35)',
+          }}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.6, type: 'spring', stiffness: 180 }}
+          whileTap={{ scale: 0.975 }}
+          whileHover={{ boxShadow: '0 0 52px rgba(245,182,66,0.85), 0 4px 36px rgba(245,182,66,0.5)' }}
+        >
           {/* Shine sweep */}
-          <motion.div className="absolute inset-0 w-1/3 skew-x-[-20deg]"
-            style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)' }}
-            animate={{ x: ['-100%', '300%'] }}
-            transition={{ duration: 2.5, repeat: Infinity, repeatDelay: 1.5 }} />
-          🎮 Gioca con noi!
+          <motion.div
+            className="absolute top-0 bottom-0 w-1/4 skew-x-[-18deg]"
+            style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.38), transparent)' }}
+            animate={{ x: ['-120%', '420%'] }}
+            transition={{ duration: 2.8, repeat: Infinity, repeatDelay: 1.8 }}
+          />
+          Gioca con noi
         </motion.button>
 
-        <motion.button onClick={onJoin}
-          className="mt-2.5 w-full text-center text-sm text-white/50 hover:text-white/80 transition-colors"
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.8 }}>
-          Ho già un codice → inseriscilo
+        <motion.button
+          onClick={onJoin}
+          className="mt-3 w-full text-center text-xs font-semibold transition-colors"
+          style={{ color: 'rgba(255,255,255,0.38)' }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.9 }}
+          whileHover={{ color: 'rgba(255,255,255,0.7)' } as object}
+        >
+          Ho un codice evento → inseriscilo
         </motion.button>
       </div>
     </div>
