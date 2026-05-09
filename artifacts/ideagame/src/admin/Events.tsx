@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { AdminLayout } from './AdminLayout';
-import { Plus, Trash2, Loader2, ExternalLink, Calendar } from 'lucide-react';
+import { Plus, Trash2, Loader2, ExternalLink, Calendar, StopCircle } from 'lucide-react';
 import {
-  useListEvents, useCreateEvent, useDeleteEvent,
+  useListEvents, useCreateEvent, useDeleteEvent, useUpdateEvent,
   useListTenants,
   getListEventsQueryKey, getListTenantsQueryKey,
 } from '@workspace/api-client-react';
@@ -26,6 +26,7 @@ export default function Events() {
   const { data: tenants = [] } = useListTenants({ query: { queryKey: getListTenantsQueryKey(), enabled: isSuperAdmin } });
   const create = useCreateEvent();
   const del = useDeleteEvent();
+  const update = useUpdateEvent();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: '', venue: '', brandColor: '#F5B642', expectedPlayers: 20, tenantId: '' });
 
@@ -101,15 +102,27 @@ export default function Events() {
                           className="rounded-lg border border-border p-2 hover-elevate"
                           title="Apri controllo"
                         ><ExternalLink className="h-4 w-4" /></button>
+                        {ev.status === 'live' && (
+                          <button
+                            onClick={async () => {
+                              if (confirm(`Terminare la serata "${ev.name}"? Il proiettore tornerà alla schermata iniziale.`)) {
+                                await update.mutateAsync({ id: ev.id, data: { status: 'ended' } });
+                                refresh();
+                              }
+                            }}
+                            className="rounded-lg border border-amber-500/50 p-2 hover-elevate text-amber-400"
+                            title="Termina serata (proiettore → standby)"
+                          ><StopCircle className="h-4 w-4" /></button>
+                        )}
                         <button
                           onClick={async () => {
-                            if (confirm(`Eliminare "${ev.name}"?`)) {
+                            if (confirm(`Eliminare "${ev.name}" e tutti i suoi dati?`)) {
                               await del.mutateAsync({ id: ev.id });
                               refresh();
                             }
                           }}
                           className="rounded-lg border border-border p-2 hover-elevate text-destructive"
-                          title="Elimina"
+                          title="Elimina evento"
                         ><Trash2 className="h-4 w-4" /></button>
                       </div>
                     </td>
