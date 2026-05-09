@@ -3070,7 +3070,7 @@ export default function LiveControl() {
                   </select>
                   {freestyleSets.length === 0 && (
                     <div className="mt-1 text-xs text-muted-foreground">
-                      Nessun set — creane uno in <a href={`${BASE}admin/freestyle-battle`} className="underline text-orange-400">Admin → Freestyle</a>
+                      Nessun set — creane uno in <a href={`${BASE}admin/karaoke-battle`} className="underline text-orange-400">Admin → Karaoke → Freestyle</a>
                     </div>
                   )}
                 </div>

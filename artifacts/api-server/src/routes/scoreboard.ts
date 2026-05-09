@@ -18,7 +18,11 @@ router.get("/events/:id/scoreboard", requireAuth, async (req: AuthedRequest, res
   const out = teams.map(t => {
     const own = scores.filter(s => s.teamId === t.id);
     const byGame: Record<string, number> = {};
-    for (const s of own) byGame[s.gameSlug] = (byGame[s.gameSlug] ?? 0) + s.points;
+    for (const s of own) {
+      // Normalise: freestyle-battle scores count under karaoke-battle
+      const slug = s.gameSlug === 'freestyle-battle' ? 'karaoke-battle' : s.gameSlug;
+      byGame[slug] = (byGame[slug] ?? 0) + s.points;
+    }
     const summed = own.reduce((a, s) => a + s.points, 0);
     return { teamId: t.id, teamName: t.name, color: t.color, total: summed || t.score, byGame };
   }).sort((a, b) => b.total - a.total);
