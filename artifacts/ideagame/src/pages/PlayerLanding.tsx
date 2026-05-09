@@ -118,7 +118,7 @@ export function PlayerLanding({ onJoin }: Props) {
             key={pose.src}
             src={pose.src}
             alt="Jonny"
-            style={{ height: 260, width: 'auto', objectFit: 'contain', filter: 'drop-shadow(0 8px 32px rgba(245,182,66,0.4))' }}
+            style={{ height: 260, width: 'auto', objectFit: 'contain', mixBlendMode: 'multiply' as const, filter: 'drop-shadow(0 8px 32px rgba(245,182,66,0.45)) contrast(1.05)' }}
             initial={{ opacity: 0, scale: 0.88, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.92, y: -8 }}
