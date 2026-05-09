@@ -350,6 +350,123 @@ function Modalita({ onJoin }: { onJoin: () => void }) {
   );
 }
 
+// ── JONNY CREATOR ─────────────────────────────────────────────────────────────
+
+const CREATOR_STEPS = [
+  { num: '01', emoji: '🎭', title: 'Scegli il tema',       body: 'Digiti "La Bella e la Bestia" e Jonny capisce tutto — pubblico, tono, difficoltà.' },
+  { num: '02', emoji: '🤖', title: 'Jonny genera',         body: 'In 30 secondi: quiz, sfide, playlist e parole — pronti per la tua serata.' },
+  { num: '03', emoji: '✅', title: 'Approvi o modifichi',  body: 'Rivedi ogni contenuto, tieni quello che vuoi, elimina il resto con un clic.' },
+  { num: '04', emoji: '🚀', title: 'Importa direttamente', body: 'Un clic e il contenuto è live nella tua console — pronto per il proiettore.' },
+];
+
+function JonnyCrea() {
+  return (
+    <section className="relative py-20 sm:py-28 px-5 sm:px-10 lg:px-16 overflow-hidden"
+      style={{ background: 'linear-gradient(180deg, #060210 0%, #0f0830 50%, #060210 100%)' }}>
+
+      {/* BG aurora */}
+      <div className="pointer-events-none absolute inset-0">
+        <div style={{ position: 'absolute', top: '20%', left: '50%', transform: 'translateX(-50%)', width: '70%', height: '60%', borderRadius: '50%', background: 'radial-gradient(ellipse, rgba(245,182,66,0.07) 0%, transparent 70%)', filter: 'blur(60px)' }} />
+      </div>
+
+      <div className="max-w-7xl mx-auto relative z-10">
+        <SectionLabel>Jonny AI Creator</SectionLabel>
+
+        <div className="text-center mb-10 sm:mb-14">
+          <motion.div className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 mb-4 text-xs font-black uppercase tracking-[0.2em]"
+            style={{ background: 'rgba(245,182,66,0.12)', border: '1px solid rgba(245,182,66,0.35)', color: '#F5B642' }}
+            initial={{ opacity: 0, scale: 0.9 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true }}>
+            ✨ Powered by AI
+          </motion.div>
+          <motion.h2 className="font-black text-white leading-tight"
+            style={{ fontSize: 'clamp(1.8rem, 5vw, 3.5rem)' }}
+            initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+            transition={{ delay: 0.08 }}>
+            Jonny crea la tua serata.<br />
+            <span style={{ color: '#F5B642' }}>Tu ti diverti.</span>
+          </motion.h2>
+          <motion.p className="mt-4 max-w-lg mx-auto"
+            style={{ fontSize: 'clamp(0.83rem, 1.7vw, 1rem)', color: 'rgba(255,255,255,0.45)', lineHeight: 1.7 }}
+            initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} transition={{ delay: 0.15 }}>
+            Digita il tema — "matrimonio anni '80", "La Bella e la Bestia", "serata aziendale tech" —
+            e Jonny genera in 30 secondi quiz, sfide fisiche, playlist karaoke e molto altro.
+          </motion.p>
+        </div>
+
+        {/* Steps */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-10 sm:mb-14">
+          {CREATOR_STEPS.map((s, i) => (
+            <motion.div key={s.num}
+              initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, margin: '-50px' }}
+              transition={{ delay: i * 0.08, duration: 0.5, type: 'spring', stiffness: 150 }}
+              className="relative rounded-2xl sm:rounded-3xl flex flex-col"
+              style={{ padding: 'clamp(16px,3vw,28px)', background: 'rgba(245,182,66,0.05)', border: '1.5px solid rgba(245,182,66,0.18)', boxShadow: '0 4px 24px rgba(245,182,66,0.06)' }}>
+
+              <div className="text-2xl sm:text-3xl mb-3">{s.emoji}</div>
+              <div className="font-black leading-none mb-2" style={{ fontSize: 'clamp(2.2rem, 5vw, 3.5rem)', color: 'rgba(245,182,66,0.15)', lineHeight: 1 }}>
+                {s.num}
+              </div>
+              <h3 className="font-black mb-2" style={{ fontSize: 'clamp(0.82rem, 1.8vw, 1rem)', color: '#F5B642' }}>
+                {s.title}
+              </h3>
+              <p style={{ fontSize: 'clamp(0.7rem, 1.4vw, 0.82rem)', color: 'rgba(255,255,255,0.42)', lineHeight: 1.6 }}>
+                {s.body}
+              </p>
+            </motion.div>
+          ))}
+        </div>
+
+        {/* Demo showcase */}
+        <motion.div className="relative overflow-hidden rounded-3xl"
+          style={{ background: 'linear-gradient(145deg, rgba(245,182,66,0.1) 0%, rgba(124,58,237,0.08) 100%)', border: '1.5px solid rgba(245,182,66,0.22)', padding: 'clamp(24px, 4vw, 40px)' }}
+          initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+          transition={{ delay: 0.1, duration: 0.6 }}>
+
+          <div className="pointer-events-none absolute top-0 right-0 w-2/5 h-full"
+            style={{ background: 'radial-gradient(circle at 90% 20%, rgba(245,182,66,0.1) 0%, transparent 60%)' }} />
+
+          <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center gap-6 lg:gap-10">
+            <div className="flex-1">
+              <div className="text-sm font-black uppercase tracking-[0.15em] mb-2" style={{ color: 'rgba(245,182,66,0.6)' }}>
+                Esempio dal vivo
+              </div>
+              <div className="font-black text-white mb-3" style={{ fontSize: 'clamp(1.1rem, 2.5vw, 1.5rem)' }}>
+                Tema: "La Bella e la Bestia"
+              </div>
+              <p style={{ fontSize: 'clamp(0.78rem, 1.5vw, 0.9rem)', color: 'rgba(255,255,255,0.45)', lineHeight: 1.65 }}>
+                Jonny genera automaticamente: <strong style={{ color: 'rgba(255,255,255,0.7)' }}>15 domande quiz</strong> sui film Disney,
+                una <strong style={{ color: 'rgba(255,255,255,0.7)' }}>playlist karaoke</strong> con "Tale As Old As Time" e altri classici,
+                <strong style={{ color: 'rgba(255,255,255,0.7)' }}> 10 sfide fisiche</strong> a tema fiaba e
+                <strong style={{ color: 'rgba(255,255,255,0.7)' }}> 20 parole</strong> per "Parola alle Spalle".
+              </p>
+            </div>
+
+            <div className="flex-shrink-0 flex flex-col gap-2 w-full lg:w-auto">
+              <div className="flex flex-col gap-1.5">
+                {['🎯 Quiz Quizzone', '🎤 Playlist Karaoke', '⚡ Sfide Percorso', '🔤 Parola alle Spalle'].map((item, i) => (
+                  <motion.div key={item} className="flex items-center gap-2 rounded-xl px-3 py-2"
+                    style={{ background: 'rgba(245,182,66,0.08)', border: '1px solid rgba(245,182,66,0.2)' }}
+                    initial={{ opacity: 0, x: 16 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }}
+                    transition={{ delay: 0.2 + i * 0.07 }}>
+                    <span className="text-sm">{item}</span>
+                    <div className="ml-auto flex items-center gap-1">
+                      <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#4ade80', boxShadow: '0 0 6px #4ade80' }} />
+                      <span className="text-[10px] font-bold" style={{ color: '#4ade80' }}>PRONTO</span>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+              <div className="text-center text-xs mt-1" style={{ color: 'rgba(255,255,255,0.25)' }}>
+                generato in ~30 secondi
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
 // ── FINALE ────────────────────────────────────────────────────────────────────
 
 function Finale({ onJoin }: { onJoin: () => void }) {
@@ -446,6 +563,7 @@ export function PlayerLanding({ onJoin }: Props) {
       <div ref={mondiRef}><Mondi /></div>
       <ComeFunziona />
       <Modalita onJoin={onJoin} />
+      <JonnyCrea />
       <Finale onJoin={onJoin} />
       <Footer />
     </div>

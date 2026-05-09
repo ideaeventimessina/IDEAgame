@@ -7,6 +7,7 @@ import {
   quizPacksTable, adultOnlyDecksTable, adultOnlyCardsTable,
   wordBackSetsTable, wordBackCardsTable, karaokeSetsTable, karaokeTracksTable,
   freestyleSetsTable, freestyleWordsTable,
+  saraMusicaSetsTable, saraMusicaTracksTable,
 } from "@workspace/db";
 import { type AuthedRequest, requireAuth } from "../middlewares/auth";
 import { openai } from "@workspace/integrations-openai-ai-server";
@@ -147,6 +148,26 @@ Genera almeno 10 canzoni. Tema/mood: ${theme}. Lingua canzoni: qualsiasi ma lega
   "words": ["parola1", "parola2", "parola3", ...]
 }
 Genera almeno 30 parole strane/divertenti legate al tema ${theme}. Solo parole singole o brevi espressioni.`,
+
+    "sara-musica": `Genera "sara-musica": playlist canzoni da indovinare a tema. Struttura:
+{
+  "setTitle": "titolo playlist",
+  "description": "descrizione per animatore",
+  "hostIntro": "intro animatore",
+  "jonnyIntro": "frase apertura Jonny",
+  "tracks": [
+    {
+      "title": "titolo canzone",
+      "artist": "artista",
+      "challengeType": "indovina|canta|rumore",
+      "snippetHint": "primo verso o indizio testuale (senza copyright esteso)",
+      "durationSeconds": 30,
+      "points": 100,
+      "jonnyLine": "commento Jonny per questa canzone"
+    }
+  ]
+}
+Genera almeno 12 canzoni legate al tema ${theme}. Varia tipi: indovina (indovinare titolo/artista), canta (cantare il ritornello), rumore (imitare strumento/sound). Usa canzoni famose ma descrivi solo titolo+artista.`,
 
     "gioco-delle-coppie": `Genera "gioco-delle-coppie": coppie di immagini tematiche. Struttura:
 {
@@ -486,6 +507,31 @@ router.post("/jonny/items/:id/import", requireAuth, async (req: AuthedRequest, r
             words.map((w, i) => ({
               setId: set!.id,
               word: w || `parola ${i + 1}`,
+              orderIndex: i,
+            }))
+          );
+        }
+        targetEntityId = set!.id;
+        break;
+      }
+
+      case "sara-musica": {
+        const [set] = await db.insert(saraMusicaSetsTable).values({
+          tenantId: user.tenantId ?? undefined,
+          title: (payload.setTitle as string) || item.title,
+          description: (payload.description as string) || "",
+        }).returning();
+        const tracks = (payload.tracks as Array<Record<string, unknown>>) || [];
+        if (tracks.length > 0) {
+          await db.insert(saraMusicaTracksTable).values(
+            tracks.map((t, i) => ({
+              setId: set!.id,
+              title: (t.title as string) || `Canzone ${i + 1}`,
+              artist: (t.artist as string) || "Artista",
+              challengeType: (["indovina", "canta", "rumore"].includes(t.challengeType as string) ? t.challengeType as string : "indovina"),
+              snippetHint: (t.snippetHint as string) || "",
+              durationSeconds: Number(t.durationSeconds) || 30,
+              points: Number(t.points) || 100,
               orderIndex: i,
             }))
           );
