@@ -1,0 +1,209 @@
+Nuova evoluzione IDEAgame: Jonny AI Creator.
+
+Obiettivo:
+creare un agente AI online che aiuti admin e agenzie a generare set di sfide completi per tutti i giochi, partendo da un tema unico o da istruzioni specifiche per singolo gioco.
+
+Regola fondamentale:
+La generazione AI avviene solo online, prima dell’evento, dalla scrivania dell’agenzia/admin.
+Durante la serata live il sistema deve usare solo contenuti già salvati nel database, quindi deve funzionare anche offline.
+
+Implementa architettura “Jonny AI Creator”.
+
+1. Nuova pagina admin
+/admin/jonny-creator
+
+Scopo:
+generare contenuti giocabili completi.
+
+Campi:
+- nome evento opzionale
+- tema principale
+- pubblico target: bambini / famiglie / adulti / aziendale / matrimonio / compleanno / diciottesimo
+- tono: elegante / comico / trash controllato / luxury / competitivo / romantico / ironico
+- lingua
+- difficoltà generale
+- durata serata
+- numero squadre previsto
+- giochi da includere
+- note libere dell’admin
+
+Modalità:
+A. Genera intera serata
+B. Genera solo un gioco
+C. Rigenera solo una parte
+D. Migliora set esistente
+
+2. Output atteso
+Jonny deve generare contenuti strutturati e salvabili per:
+
+- Percorso a Risate
+- Gioco delle Coppie
+- Quizzone
+- Adult Only
+- Sfida di Ballo
+- Parola alle Spalle
+- Karaoke Battle
+- SaraMusica quando sarà pronto
+
+Per ogni gioco genera:
+- titolo set
+- descrizione
+- regole brevi per animatore
+- numero round
+- lista contenuti
+- punti
+- timer
+- difficoltà
+- categoria
+- microcopy per Jonny
+- eventuali asset richiesti
+- note tecniche
+
+3. Database
+Crea tabelle:
+
+jonny_generations:
+- id
+- tenantId
+- eventId nullable
+- title
+- theme
+- targetAudience
+- tone
+- language
+- difficulty
+- durationMinutes
+- selectedGames jsonb
+- promptText
+- status: draft / generating / generated / approved / failed
+- generatedJson jsonb
+- errorMessage nullable
+- createdBy
+- createdAt
+- updatedAt
+
+jonny_generated_items:
+- id
+- generationId
+- gameSlug
+- itemType
+- title
+- payload jsonb
+- status: draft / approved / rejected / imported
+- targetEntityId nullable
+- createdAt
+- updatedAt
+
+4. Generazione strutturata
+L’AI deve restituire JSON valido, non testo libero.
+
+Schema output:
+
+{
+  "theme": "...",
+  "language": "it",
+  "audience": "...",
+  "games": [
+    {
+      "gameSlug": "percorso-a-risate",
+      "setTitle": "...",
+      "hostIntro": "...",
+      "rules": "...",
+      "rounds": [
+        {
+          "title": "...",
+          "description": "...",
+          "category": "...",
+          "difficulty": "easy|medium|hard",
+          "points": 100,
+          "timeLimit": 45,
+          "jonnyLine": "...",
+          "safetyNote": "..."
+        }
+      ]
+    }
+  ]
+}
+
+5. Import nei giochi reali
+Dopo generazione, l’admin deve poter:
+
+- vedere anteprima
+- modificare contenuti
+- approvare
+- importare nel gioco corretto
+
+Mapping:
+
+Percorso a Risate → laughing_path_sets / laughing_path_steps
+Quizzone → quiz_packs / quiz_rounds
+Adult Only → adult_only_decks / adult_only_cards
+Sfida di Ballo → dance_challenges
+Parola alle Spalle → word_back_sets / word_back_cards
+Karaoke Battle → karaoke_sets / karaoke_tracks
+Gioco delle Coppie → creare set descrittivo e placeholder immagini, ma richiedere upload immagini manuale
+
+6. UX pagina Jonny Creator
+Layout:
+- sinistra: form generazione
+- centro: anteprima struttura serata
+- destra: stato/import
+
+Azioni:
+- genera
+- rigenera
+- modifica
+- approva
+- importa tutto
+- importa singolo gioco
+- duplica set
+- salva come bozza
+
+7. Qualità e sicurezza
+Regole:
+- niente contenuti volgari se target non adulto
+- Adult Only solo se target adulti e conferma admin
+- evitare contenuti offensivi
+- evitare contenuti pericolosi
+- tono sempre da intrattenimento pubblico
+- se tema copyright, generare quiz/attività descrittive senza asset ufficiali non autorizzati
+- ogni contenuto deve essere modificabile prima dell’import
+
+8. Offline-first
+Dopo import:
+- i contenuti devono essere completamente salvati nel DB
+- LiveControl deve poterli selezionare anche senza internet
+- nessuna chiamata AI durante il live
+
+9. Jonny Layer
+Ogni contenuto generato deve includere anche microcopy per Jonny:
+- frase di introduzione
+- frase durante attesa
+- frase in caso di successo
+- frase in caso di errore
+- frase di chiusura round
+
+10. Test
+Crea test con tema:
+“La Bella e la Bestia”
+
+Target:
+famiglie
+
+Giochi:
+- Percorso a Risate
+- Quizzone
+- Parola alle Spalle
+- Gioco delle Coppie
+
+Verifica:
+- generazione JSON valida
+- anteprima visibile
+- modifica manuale
+- approvazione
+- import in almeno 3 giochi reali
+- contenuti selezionabili in LiveControl
+- funzionamento offline dopo import
+
+Non toccare le logiche live dei giochi già funzionanti.
+Costruisci solo il layer Jonny AI Creator e l’import controllato.

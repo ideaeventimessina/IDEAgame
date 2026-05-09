@@ -24,6 +24,7 @@ import GameQuizzone from "@/pages/GameQuizzone";
 import GamePercorso from "@/pages/GamePercorso";
 import SerataCompleta from "@/pages/SerataCompleta";
 import AdminPercorsoRisate from "@/admin/PercorsoRisate";
+import JonnyCreator from "@/admin/JonnyCreator";
 import AdminAdultOnly from "@/admin/AdultOnly";
 import GameAdultOnly from "@/pages/GameAdultOnly";
 import AdminBallo from "@/admin/Ballo";
@@ -96,6 +97,7 @@ function Router() {
       <Route path="/admin/card-sets"><Guard route="/admin/card-sets"><AdminCardSets /></Guard></Route>
       <Route path="/admin/quiz-packs"><Guard route="/admin/quiz-packs"><AdminQuizPacks /></Guard></Route>
       <Route path="/admin/percorso-risate"><Guard route="/admin/percorso-risate"><AdminPercorsoRisate /></Guard></Route>
+      <Route path="/admin/jonny-creator"><Guard route="/admin/jonny-creator"><JonnyCreator /></Guard></Route>
       <Route path="/admin/adult-only"><Guard route="/admin/adult-only"><AdminAdultOnly /></Guard></Route>
       <Route path="/admin/sfida-ballo"><Guard route="/admin/sfida-ballo"><AdminBallo /></Guard></Route>
       <Route path="/admin/parola-alle-spalle"><Guard route="/admin/parola-alle-spalle"><AdminWordBack /></Guard></Route>

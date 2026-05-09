@@ -34,6 +34,7 @@ import wordBackRouter from "./wordback";
 import karaokeRouter from "./karaoke";
 import freestyleRouter from "./freestyle";
 import saraMusicaRouter from "./saramusica";
+import jonnyRouter from "./jonny";
 import panicRouter from "./panic";
 import networkRouter from "./network";
 
@@ -79,6 +80,7 @@ router.use(wordBackRouter);
 router.use(karaokeRouter);
 router.use(freestyleRouter);
 router.use(saraMusicaRouter);
+router.use(jonnyRouter);
 router.use(panicRouter);
 
 export default router;
