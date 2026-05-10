@@ -160,6 +160,7 @@ export default function Player() {
   const [selectedTeam, setSelectedTeam] = useState('');
   const [gameState, setGameState] = useState<GameState>({ sessionId: null, currentRound: 0, totalRounds: 1, status: 'idle', gameSlug: null });
   const [buzzed, setBuzzed] = useState(false);
+  const [scoreFlash, setScoreFlash] = useState<{ points: number; total: number; ts: number } | null>(null);
   const [coppieBoard, setCoppieBoard] = useState<CoppieBoardState | null>(null);
   const [quizzoneQuestion, setQuizzoneQuestion] = useState<QuizzoneQuestion | null>(null);
   const [quizzoneReveal, setQuizzoneReveal] = useState<QuizzoneReveal | null>(null);
@@ -315,6 +316,11 @@ export default function Player() {
       }),
       on('game:paused', () => setGameState(p => ({ ...p, status: 'paused' }))),
       on('game:ended', () => setGameState(p => ({ ...p, status: 'ended' }))),
+      on<{ teamId: string; points: number; total: number }>('score:updated', (data) => {
+        if (player && data.teamId === player.teamId) {
+          setScoreFlash({ points: data.points, total: data.total, ts: Date.now() });
+        }
+      }),
       on('coppie:state',   (d) => setCoppieBoard(extractBoard(d))),
       on('coppie:flip',    (d) => setCoppieBoard(extractBoard(d))),
       on('coppie:match',   (d) => setCoppieBoard(extractBoard(d))),
@@ -604,7 +610,7 @@ export default function Player() {
 
               <label className="mt-8 block text-sm font-bold uppercase tracking-widest text-muted-foreground">{t('play.nickname')}</label>
               <input value={nick} onChange={e => setNick(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleJoin()}
-                placeholder="Marco" maxLength={24}
+                placeholder="Marco" maxLength={24} autoFocus
                 className="mt-2 w-full rounded-2xl border border-border bg-card px-5 py-4 text-2xl font-bold text-foreground outline-none focus:border-primary" />
 
               {/* Modalità individuale: nessuna selezione squadra */}
@@ -634,6 +640,15 @@ export default function Player() {
               </div>
               <div className="ml-auto">{connected ? <Wifi className="h-4 w-4 text-green-400" /> : <WifiOff className="h-4 w-4 text-amber-400 animate-pulse" />}</div>
             </div>
+
+            {/* Score flash notification (Fix 5) */}
+            {scoreFlash && Date.now() - scoreFlash.ts < 4000 && (
+              <motion.div key={scoreFlash.ts} initial={{ opacity: 0, y: -12, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -12 }}
+                className="mt-2 flex items-center justify-between rounded-2xl border border-green-500/40 bg-green-500/10 px-4 py-2.5">
+                <span className="text-sm font-bold text-green-400">+{scoreFlash.points} pt per la tua squadra!</span>
+                <span className="text-xs text-muted-foreground">tot. {scoreFlash.total}</span>
+              </motion.div>
+            )}
 
             {gameState.status === 'idle' && (
               isHostedByJonny ? (

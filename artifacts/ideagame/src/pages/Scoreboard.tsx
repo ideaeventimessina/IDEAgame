@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { useEffect } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useLocation } from 'wouter';
 import { ArrowLeft, Crown, TrendingUp, Loader2, Wifi, WifiOff } from 'lucide-react';
 import { useT } from '@/i18n';
@@ -10,6 +10,10 @@ import {
 import { useEventSocket } from '@/hooks/useEventSocket';
 import { useQueryClient } from '@tanstack/react-query';
 
+const BASE = (import.meta.env.BASE_URL as string) ?? '/';
+
+interface PublicScoreRow { teamId: string; teamName: string; color: string; total: number }
+
 export default function Scoreboard() {
   const t = useT();
   const [, navigate] = useLocation();
@@ -19,6 +23,7 @@ export default function Scoreboard() {
     typeof window !== 'undefined' ? window.location.search : ''
   );
   const eventIdFromUrl = urlParams.get('e') ?? '';
+  const joinCodeFromUrl = urlParams.get('c') ?? '';
 
   const { data: currentEvent } = useGetCurrentEvent();
   const eventId = eventIdFromUrl || currentEvent?.id || '';
@@ -26,22 +31,56 @@ export default function Scoreboard() {
 
   const { connected: socketConnected, on } = useEventSocket(eventId || null);
 
-  const { data: rows = [], isLoading } = useGetScoreboard(eventId, {
+  // Public scoreboard (by join code, no auth required)
+  const [publicRows, setPublicRows] = useState<PublicScoreRow[] | null>(null);
+  const [publicLoading, setPublicLoading] = useState(false);
+
+  const fetchPublic = useCallback(async (code: string) => {
+    setPublicLoading(true);
+    try {
+      const url = `${BASE}api/events/by-code/${code}/scoreboard`.replace(/\/\//g, '/');
+      const r = await fetch(url);
+      if (r.ok) setPublicRows(await r.json() as PublicScoreRow[]);
+    } catch { /* silent */ }
+    finally { setPublicLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    if (joinCodeFromUrl) void fetchPublic(joinCodeFromUrl);
+  }, [joinCodeFromUrl, fetchPublic]);
+
+  useEffect(() => {
+    if (!joinCodeFromUrl) return;
+    const unsubs = [
+      on('score:updated', () => void fetchPublic(joinCodeFromUrl)),
+      on('team:updated',  () => void fetchPublic(joinCodeFromUrl)),
+    ];
+    return () => unsubs.forEach(u => u());
+  }, [joinCodeFromUrl, on, fetchPublic]);
+
+  // Auth scoreboard (requires session)
+  const { data: authRows = [], isLoading: authLoading } = useGetScoreboard(eventId, {
     query: {
       queryKey: getGetScoreboardQueryKey(eventId),
-      enabled: !!eventId,
+      enabled: !!eventId && !joinCodeFromUrl,
       refetchInterval: socketConnected ? false : 8000,
     },
   });
 
   useEffect(() => {
-    if (!eventId) return;
+    if (!eventId || joinCodeFromUrl) return;
     const unsubs = [
       on('score:updated', () => qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(eventId) })),
       on('team:updated',  () => qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(eventId) })),
     ];
     return () => unsubs.forEach(u => u());
-  }, [eventId, on, qc]);
+  }, [eventId, joinCodeFromUrl, on, qc]);
+
+  const rows: PublicScoreRow[] = joinCodeFromUrl
+    ? (publicRows ?? [])
+    : authRows.map(r => ({ teamId: r.teamId, teamName: r.teamName, color: r.color, total: r.total }));
+
+  const isLoading = joinCodeFromUrl ? publicLoading : authLoading;
 
   const max = rows[0]?.total ?? 1;
   const podium = rows.slice(0, 3);

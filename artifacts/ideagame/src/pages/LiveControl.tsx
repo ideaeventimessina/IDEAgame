@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useLocation } from 'wouter';
+import { useToast } from '@/hooks/use-toast';
 import {
   Pause, Play, SkipForward, Plus, Minus,
   Power, MonitorOff, X, Loader2, Wifi, WifiOff, ExternalLink,
@@ -286,6 +287,10 @@ export default function LiveControl() {
   const [eveningMode, setEveningMode] = useState<EveningMode | null>(null);
   const [eveningBusy, setEveningBusy] = useState(false);
   const [eveningIncludeAdult, setEveningIncludeAdult] = useState(false);
+  const [eveningAdvanceOverlay, setEveningAdvanceOverlay] = useState(false);
+
+  // Focus mode (hides setup panels, shows only active game controls)
+  const [focusMode, setFocusMode] = useState(false);
 
   // Quizzone control state
   const [quizPacks, setQuizPacks] = useState<QuizPack[]>([]);
@@ -627,12 +632,18 @@ export default function LiveControl() {
     setEveningBusy(false);
   }, [selectedEventId]);
 
+  const { toast } = useToast();
+
   const withBusy = useCallback(async (fn: () => Promise<void>) => {
     setBusy(true); setError('');
     try { await fn(); }
-    catch (e) { setError((e as Error).message); }
+    catch (e) {
+      const msg = (e as Error).message;
+      setError(msg);
+      toast({ title: 'Errore', description: msg, variant: 'destructive' });
+    }
     finally { setBusy(false); }
-  }, []);
+  }, [toast]);
 
   const confirm = (dialog: ConfirmDialog) => setConfirmDialog(dialog);
 
@@ -1340,9 +1351,7 @@ export default function LiveControl() {
 
   const handleEveningAdvance = () => {
     if (!selectedEventId || eveningBusy || !eveningMode) return;
-    // Find the next pending game
     const nextPending = eveningMode.playlist.find(g => g.status === 'pending');
-    // If next game is Adult Only, require 18+ confirmation from the animator
     if (nextPending?.slug === 'adult-only') {
       confirm({
         title: '🔞 Conferma Adult Only',
@@ -1352,7 +1361,8 @@ export default function LiveControl() {
         onConfirm: () => void doEveningAdvance(),
       });
     } else {
-      void doEveningAdvance();
+      // Show the big full-screen overlay instead of advancing immediately
+      setEveningAdvanceOverlay(true);
     }
   };
 
@@ -1401,7 +1411,9 @@ export default function LiveControl() {
       setRevealAnswer(false);
       setQuizzoneMsg(`✓ Domanda ${roundIdx + 1} inviata!`);
     } catch (e) {
-      setError((e as Error).message);
+      const msg = (e as Error).message;
+      setError(msg);
+      toast({ title: 'Errore domanda', description: msg, variant: 'destructive' });
     } finally { setQuizzoneBusy(false); }
   };
 
@@ -1415,7 +1427,9 @@ export default function LiveControl() {
       setQuizzoneMsg('✓ Risposta rivelata!');
       qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) });
     } catch (e) {
-      setError((e as Error).message);
+      const msg = (e as Error).message;
+      setError(msg);
+      toast({ title: 'Errore reveal', description: msg, variant: 'destructive' });
     } finally { setQuizzoneBusy(false); }
   };
 
@@ -1434,7 +1448,9 @@ export default function LiveControl() {
           setQuizzoneActive(false);
           navigate(`/scoreboard?e=${selectedEventId}`);
         } catch (e) {
-          setError((e as Error).message);
+          const msg = (e as Error).message;
+          setError(msg);
+          toast({ title: 'Errore fine quiz', description: msg, variant: 'destructive' });
         } finally { setQuizzoneBusy(false); }
       },
     });
@@ -1460,6 +1476,61 @@ export default function LiveControl() {
         <Siren className="h-4 w-4 text-red-400" />
         EMERGENZA
       </button>
+
+      {/* ── Focus Mode sticky bar ─────────────────────────────────────────── */}
+      {session && session.status === 'running' && focusMode && (
+        <div className="fixed top-0 left-0 right-0 z-[80] flex items-center justify-between gap-3 border-b border-border bg-background/95 px-4 py-2.5 backdrop-blur-md">
+          <div className="flex items-center gap-2">
+            <div className="h-2 w-2 rounded-full bg-green-400 animate-pulse" />
+            <span className="text-xs font-black uppercase tracking-widest" style={{ color: accentColor }}>
+              {session.gameSlug.replace(/-/g, ' ')}
+            </span>
+            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${session.status === 'running' ? 'border-green-500/40 bg-green-500/10 text-green-400' : 'border-border text-muted-foreground'}`}>
+              {session.status}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            {session.status === 'running' && (
+              <button onClick={() => handlePause()} disabled={busy}
+                className="rounded-lg border border-border bg-card px-3 py-1 text-xs font-bold hover:bg-secondary/30 disabled:opacity-40">
+                <Pause className="h-3 w-3 inline mr-1" />Pausa
+              </button>
+            )}
+            <button onClick={() => setFocusMode(false)}
+              className="rounded-lg border border-primary/40 bg-primary/10 px-3 py-1 text-xs font-bold text-primary hover:bg-primary/20">
+              Esci Focus
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Evening Advance full-screen overlay (Fix 8) ────────────────────── */}
+      {eveningAdvanceOverlay && eveningMode && (
+        <div className="fixed inset-0 z-[95] flex flex-col items-center justify-center gap-8 bg-black/90 backdrop-blur-md px-6"
+             onClick={() => setEveningAdvanceOverlay(false)}>
+          <div className="text-center space-y-2">
+            <div className="text-6xl">{eveningMode.playlist.find(g => g.status === 'pending')?.emoji ?? '✨'}</div>
+            <div className="text-xs uppercase tracking-[0.5em] text-muted-foreground">Prossimo gioco</div>
+            <div className="text-display text-4xl font-black text-foreground">
+              {eveningMode.playlist.find(g => g.status === 'pending')?.label ?? 'Avanti!'}
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {eveningMode.playlist.filter(g => g.status === 'done').length + 1}/{eveningMode.playlist.length}
+            </div>
+          </div>
+          <button
+            disabled={eveningBusy}
+            onClick={e => { e.stopPropagation(); setEveningAdvanceOverlay(false); void doEveningAdvance(); }}
+            className="flex min-h-[120px] w-full max-w-sm items-center justify-center gap-3 rounded-3xl bg-primary px-8 text-2xl font-black text-primary-foreground shadow-2xl shadow-primary/30 disabled:opacity-40 active:scale-95 transition-transform">
+            {eveningBusy ? <Loader2 className="h-8 w-8 animate-spin" /> : <ChevronRight className="h-8 w-8" />}
+            TAP PER AVVIARE
+          </button>
+          <button onClick={() => setEveningAdvanceOverlay(false)}
+            className="text-sm text-muted-foreground hover:text-foreground">
+            Annulla
+          </button>
+        </div>
+      )}
 
       {/* ── Panic Panel overlay ───────────────────────────────────────────── */}
       <PanicPanel
@@ -1579,15 +1650,23 @@ export default function LiveControl() {
       <div className="mx-auto max-w-2xl space-y-4">
 
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className={`flex items-center justify-between ${focusMode ? 'pt-12' : ''}`}>
           <button onClick={() => navigate('/')} className="rounded-full border border-border p-2 hover-elevate"><X className="h-4 w-4" /></button>
           <div className="flex items-center gap-2">
             <div className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Cockpit animatore</div>
             {socketConnected ? <Wifi className="h-3 w-3 text-green-400" /> : <WifiOff className="h-3 w-3 text-amber-400 animate-pulse" />}
           </div>
           <div className="flex items-center gap-2">
+            {session && session.status === 'running' && (
+              <button
+                onClick={() => setFocusMode(f => !f)}
+                title={focusMode ? 'Esci dalla modalità focus' : 'Modalità focus — mostra solo il gioco attivo'}
+                className={`rounded-full border p-2 text-[10px] font-black transition-all ${focusMode ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover-elevate text-muted-foreground'}`}>
+                <Zap className="h-4 w-4" />
+              </button>
+            )}
             <button
-              onClick={() => navigate(`/scoreboard?e=${selectedEventId}`)}
+              onClick={() => navigate(`/scoreboard?e=${selectedEventId}&c=${joinCode}`)}
               disabled={!selectedEventId}
               title="Vai al podio"
               className="rounded-full border border-border p-2 hover-elevate disabled:opacity-40">
@@ -1603,7 +1682,7 @@ export default function LiveControl() {
         {error && <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>}
 
         {/* Event & session selector */}
-        <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+        {!focusMode && <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
           <div>
             <div className="text-xs uppercase tracking-widest text-muted-foreground mb-1">Evento</div>
             <select value={selectedEventId} onChange={e => { setSelectedEventId(e.target.value); setSelectedSessionId(''); setShowNewSession(false); }}
@@ -1674,10 +1753,10 @@ export default function LiveControl() {
               )}
             </div>
           )}
-        </div>
+        </div>}
 
         {/* ─── Audio Live panel ─── */}
-        <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+        {!focusMode && <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
           <div className="flex items-center gap-2">
             <Music className="h-4 w-4 text-primary" />
             <div className="text-xs uppercase tracking-widest text-muted-foreground flex-1">Audio Live</div>
@@ -1719,7 +1798,7 @@ export default function LiveControl() {
               <Mic2 className="h-3 w-3 inline mr-1" />Stop tutto
             </button>
           </div>
-        </div>
+        </div>}
 
         {/* ─── Serata Completa panel ─── */}
         {selectedEventId && (
@@ -2001,6 +2080,26 @@ export default function LiveControl() {
                         {currentRound.explanation}
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* ─── Fix 7: Prompter — Prossima domanda preview ───── */}
+                {quizzoneRevealed && quizzoneRoundIdx + 1 < totalPackRounds && rounds[quizzoneRoundIdx + 1] && (
+                  <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 space-y-2">
+                    <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-amber-400 font-black">
+                      <Eye className="h-3 w-3" />
+                      Prossima domanda — solo per te (animatore)
+                    </div>
+                    <div className="text-xs font-bold leading-snug text-foreground/80">
+                      {rounds[quizzoneRoundIdx + 1].questionText}
+                    </div>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {rounds[quizzoneRoundIdx + 1].answers.map((a, i) => (
+                        <span key={i} className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${i === rounds[quizzoneRoundIdx + 1].correctAnswer ? 'bg-green-500/20 text-green-400' : 'bg-border/40 text-muted-foreground'}`}>
+                          {String.fromCharCode(65 + i)}. {a}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 )}
 
