@@ -3,7 +3,7 @@ import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SlidersHorizontal } from 'lucide-react';
 
-const HIDE_ON = ['/admin', '/play', '/login', '/splash', '/language', '/tenant', '/control', '/event-setup', '/permissions'];
+const HIDE_ON = ['/', '/admin', '/play', '/login', '/splash', '/language', '/tenant', '/control', '/event-setup', '/permissions'];
 
 export function BackToCockpit() {
   const [location, navigate] = useLocation();

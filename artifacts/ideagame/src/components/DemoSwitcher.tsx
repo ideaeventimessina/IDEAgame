@@ -3,12 +3,20 @@ import { useState } from 'react';
 import { useLocation } from 'wouter';
 import { Tv, Smartphone, ShieldCheck, Rocket, LayoutGrid, X } from 'lucide-react';
 import { useT } from '@/i18n';
+import { useAuth } from '@/auth/roles';
 import { motion, AnimatePresence } from 'framer-motion';
+
+const ADMIN_ROLES = ['super_admin', 'tenant_owner', 'game_manager', 'entertainer'] as const;
 
 export function DemoSwitcher() {
   const [location, navigate] = useLocation();
   const [open, setOpen] = useState(false);
   const t = useT();
+  const { user, role } = useAuth();
+
+  // Only show the Navigator to authenticated admin/staff users.
+  // Unauthenticated projector viewers and players must never see it.
+  if (!user || !ADMIN_ROLES.includes(role as typeof ADMIN_ROLES[number])) return null;
 
   const isAdmin = location.startsWith('/admin');
   const isPlay  = location.startsWith('/play');
