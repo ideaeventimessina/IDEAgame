@@ -126,6 +126,7 @@ export default function Hub() {
   const [projectorBlack, setProjectorBlack] = useState(false);
   const [noSessionGame, setNoSessionGame] = useState<NoSessionState>(null);
   const [creatingSession, setCreatingSession] = useState(false);
+  const [sessionRunning, setSessionRunning] = useState(false);
   useGameAudio('hub', { preload: true });
 
   // Navigate to a game — READY games NEVER go to /game/:slug mock
@@ -214,7 +215,9 @@ export default function Hub() {
     fetch(`/api/events/${liveEvent.id}/active-session`, { credentials: 'include' })
       .then(r => (r.ok ? r.json() : null))
       .then((session: { id: string; gameSlug: string; status: string } | null) => {
-        if (cancelled || !session || session.status !== 'running') return;
+        if (cancelled) return;
+        if (!session || session.status !== 'running') { setSessionRunning(false); return; }
+        setSessionRunning(true);
         const boardPath = SLUG_TO_BOARD[session.gameSlug];
         if (boardPath) {
           navigate(`${boardPath}?s=${session.id}&e=${liveEvent.id}`);
@@ -230,6 +233,7 @@ export default function Hub() {
   useEffect(() => {
     if (!liveEvent?.id) return;
     const handleGameStarted = (data: { session: { id: string; gameSlug: string; status: string }; eventId: string }) => {
+      setSessionRunning(true);
       const game = games.find(g => g.slug === data.session.gameSlug);
       if (game) {
         setIntroGame({
@@ -256,10 +260,12 @@ export default function Hub() {
       on('projector:black-off',      () => setProjectorBlack(false)),
       on('projector:close-overlays', () => { setProjectorBlack(false); setIntroGame(null); }),
       on('projector:go-scoreboard',  (payload: { eventId?: string }) => {
+        setSessionRunning(false);
         const eid = payload?.eventId ?? liveEvent.id;
         navigate(`/scoreboard?e=${eid}`);
       }),
-      on('projector:go-hub', () => navigate('/')),
+      on('projector:go-hub', () => { setSessionRunning(false); navigate('/'); }),
+      on<{ session: unknown }>('game:ended', () => setSessionRunning(false)),
     ];
     return () => { unsubs.forEach(u => u?.()); };
   }, [liveEvent?.id, on, navigate]);
@@ -735,7 +741,7 @@ export default function Hub() {
       <div className="md:hidden flex-1 flex flex-col overflow-hidden px-4 pt-3 gap-3 pb-20">
 
         {/* QR compact / no-event pill */}
-        {liveEvent ? (
+        {liveEvent && !sessionRunning ? (
           <div className="shrink-0 flex items-center gap-4 rounded-2xl border border-border bg-card/70 p-3 backdrop-blur-md">
             <QrPlaceholder text={joinUrl} size={90} />
             <div className="flex-1 min-w-0">
@@ -746,6 +752,16 @@ export default function Hub() {
                 <span className="text-display text-xl font-black text-primary">{players.length}</span>
                 <span>{t('hub.players_connected')}</span>
               </div>
+            </div>
+          </div>
+        ) : liveEvent && sessionRunning ? (
+          <div className="shrink-0 flex items-center gap-3 rounded-2xl border border-destructive/40 bg-destructive/10 p-3 backdrop-blur-md">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-destructive/20">
+              <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-destructive" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-bold uppercase tracking-widest text-destructive">Partita in corso</div>
+              <div className="mt-0.5 text-xs text-muted-foreground">Accesso chiuso — contatta l'animatore</div>
             </div>
           </div>
         ) : (
@@ -822,7 +838,7 @@ export default function Hub() {
         {/* Left floating panel */}
         <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}
           className="absolute left-4 top-1/2 z-20 w-[170px] -translate-y-1/2">
-          {liveEvent ? <QrPanel compact /> : <EventCTA />}
+          {liveEvent && !sessionRunning ? <QrPanel compact /> : !liveEvent ? <EventCTA /> : null}
         </motion.div>
 
         {/* Centre: octagon game grid */}
@@ -860,7 +876,7 @@ export default function Hub() {
         <motion.div initial={{ opacity: 0, x: -24 }} animate={{ opacity: 1, x: 0 }}
           transition={{ type: 'spring', stiffness: 160, damping: 22 }}
           className="absolute left-6 top-1/2 z-20 w-[210px] -translate-y-1/2">
-          {liveEvent ? <QrPanel compact /> : <EventCTA />}
+          {liveEvent && !sessionRunning ? <QrPanel compact /> : !liveEvent ? <EventCTA /> : null}
         </motion.div>
 
         {/* ── Centre: big octagon game grid ── */}
