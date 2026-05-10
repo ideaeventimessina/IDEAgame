@@ -8,7 +8,8 @@ import { QrPlaceholder } from '@/components/QrPlaceholder';
 import { LocaleSwitcher } from '@/components/LocaleSwitcher';
 import { GameIntroOverlay } from '@/components/GameIntroOverlay';
 import { useT } from '@/i18n';
-import { useListGames, useGetCurrentEvent, useListPlayers, getListPlayersQueryKey } from '@workspace/api-client-react';
+import { useListGames, useGetCurrentEvent, getGetCurrentEventQueryKey, useListPlayers, getListPlayersQueryKey } from '@workspace/api-client-react';
+import { useAuth } from '@/auth/roles';
 import { useEventSocket } from '@/hooks/useEventSocket';
 import { useLocalMode } from '@/hooks/useLocalMode';
 import { useGameAudio } from '@/hooks/useGameAudio';
@@ -118,9 +119,58 @@ function StatusBadge({ slug, size = 'sm' }: { slug: string; size?: 'xs' | 'sm' }
 
 type IntroGame = { name: string; accentColor: string; icon: string; tagline: string; slug: string; sessionId: string; eventId: string };
 
+type PublicEvent = { id: string; name: string; venue: string; joinCode: string; status: string; brandColor: string; enabledGames: string[] };
+type PublicPlayer = { id: string; nickname: string; avatarColor: string; teamId: string; isConnected: boolean };
+
 export default function Hub() {
   const t = useT();
   const [, navigate] = useLocation();
+  const { user } = useAuth();
+
+  // ── Public (unauthenticated) projector mode ─────────────────────────────
+  const urlParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+  const urlCode = urlParams.get('e')?.toUpperCase().trim() ?? null;
+  const [inputCode, setInputCode] = useState('');
+  const [activeCode, setActiveCode] = useState<string | null>(urlCode);
+  const [publicEvent, setPublicEvent] = useState<PublicEvent | null>(null);
+  const [publicPlayers, setPublicPlayers] = useState<PublicPlayer[]>([]);
+  const [codeError, setCodeError] = useState<string | null>(null);
+
+  // Poll public event by join code when not authenticated
+  useEffect(() => {
+    if (user || !activeCode) return;
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const r = await fetch(`/api/events/by-code/${activeCode}`);
+        if (!r.ok) {
+          if (!cancelled) { setCodeError('Codice non valido o evento non attivo.'); setPublicEvent(null); }
+          return;
+        }
+        const { event } = await r.json() as { event: PublicEvent };
+        if (!cancelled) { setPublicEvent(event); setCodeError(null); }
+      } catch { /* ignore */ }
+    };
+    run();
+    const id = setInterval(run, 10_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [user, activeCode]);
+
+  // Poll public players when we have an event
+  useEffect(() => {
+    if (user || !publicEvent?.id || !activeCode) return;
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const r = await fetch(`/api/events/by-code/${activeCode}/players`);
+        if (r.ok) { const data = await r.json(); if (!cancelled) setPublicPlayers(data); }
+      } catch { /* ignore */ }
+    };
+    run();
+    const id = setInterval(run, 4_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [user, publicEvent?.id, activeCode]);
+
   const [rosterOpen, setRosterOpen] = useState(false);
   const [introGame, setIntroGame] = useState<IntroGame | null>(null);
   const [projectorBlack, setProjectorBlack] = useState(false);
@@ -142,7 +192,7 @@ export default function Hub() {
 
     // READY game: always try to open real board, never fall back to /game/:slug
     if (!liveEvent) {
-      setNoSessionGame({ name, slug, accentColor, eventId: null });
+      if (user) setNoSessionGame({ name, slug, accentColor, eventId: null });
       return;
     }
 
@@ -152,10 +202,11 @@ export default function Hub() {
       if (session && session.gameSlug === slug && session.status !== 'ended' && boardPath) {
         navigate(`${boardPath}?s=${session.id}&e=${liveEvent.id}`);
       } else {
-        setNoSessionGame({ name, slug, accentColor, eventId: liveEvent.id });
+        // Public mode: no create-session option — pass null eventId so dialog shows "ask the animator"
+        setNoSessionGame({ name, slug, accentColor, eventId: user ? liveEvent.id : null });
       }
     } catch {
-      setNoSessionGame({ name, slug, accentColor, eventId: liveEvent.id });
+      if (user) setNoSessionGame({ name, slug, accentColor, eventId: liveEvent.id });
     }
   };
 
@@ -194,12 +245,22 @@ export default function Hub() {
   const lan = useLocalMode();
 
   const { data: games = [], isLoading: gamesLoading } = useListGames();
-  const { data: liveEvent, isLoading: eventLoading } = useGetCurrentEvent();
-  const { data: players = [] } = useListPlayers(
-    liveEvent?.id ?? '',
-    { query: { queryKey: getListPlayersQueryKey(liveEvent?.id ?? ''), enabled: !!liveEvent?.id } },
+  // Only fetch authenticated event when logged in — public mode uses publicEvent instead
+  const { data: authEvent, isLoading: eventLoading } = useGetCurrentEvent({
+    query: { queryKey: getGetCurrentEventQueryKey(), enabled: !!user },
+  });
+  const liveEvent: PublicEvent | null = user ? (authEvent as PublicEvent ?? null) : publicEvent;
+  const liveEventId = liveEvent?.id ?? '';
+
+  const { data: authPlayers = [] } = useListPlayers(
+    liveEventId,
+    { query: { queryKey: getListPlayersQueryKey(liveEventId), enabled: !!user && !!liveEventId } },
   );
-  const { on, connected } = useEventSocket(liveEvent?.id ?? null);
+  const players: PublicPlayer[] = user
+    ? (authPlayers as PublicPlayer[])
+    : publicPlayers;
+
+  const { on, connected } = useEventSocket(liveEventId || null);
 
   // Keep a ref to games so the active-session effect can read them without
   // re-triggering on every React Query refetch (games is not a dep below).
@@ -521,6 +582,56 @@ export default function Hub() {
     );
   }
 
+  // ── Join-code entry screen: unauthenticated with no code ─────────────
+  if (!user && !activeCode) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6"
+        style={{ background: 'radial-gradient(ellipse 160% 80% at 50% -5%, #2d0d52 0%, #130628 40%, #060213 100%)' }}>
+        <HubStars />
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="relative z-10 w-full max-w-sm text-center">
+          <div className="mx-auto flex items-center justify-center rounded-2xl bg-white px-4 py-2 shadow-xl shadow-black/30" style={{ width: 148 }}>
+            <img src="/logo.png" alt="IDEA Games" className="h-14 w-auto object-contain" />
+          </div>
+          <div className="mt-6 text-display text-3xl font-black">Jonny's World</div>
+          <div className="mt-2 text-sm text-muted-foreground">Inserisci il codice evento per visualizzare il proiettore</div>
+
+          <div className="mt-8 space-y-3">
+            <input
+              value={inputCode}
+              onChange={e => { setInputCode(e.target.value.toUpperCase()); setCodeError(null); }}
+              onKeyDown={e => { if (e.key === 'Enter' && inputCode.trim()) setActiveCode(inputCode.trim()); }}
+              placeholder="Es. SORR40"
+              maxLength={10}
+              className="w-full rounded-2xl border border-primary/40 bg-card/60 px-5 py-4 text-center text-display text-2xl font-black uppercase tracking-[0.3em] text-primary placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/60 backdrop-blur-md"
+            />
+            {codeError && (
+              <div className="rounded-xl bg-destructive/10 px-4 py-2.5 text-sm text-destructive">{codeError}</div>
+            )}
+            <button
+              onClick={() => { if (inputCode.trim()) setActiveCode(inputCode.trim()); }}
+              disabled={!inputCode.trim()}
+              className="w-full rounded-2xl bg-primary py-4 text-sm font-black text-primary-foreground hover-elevate disabled:opacity-40"
+            >
+              Connetti al proiettore →
+            </button>
+          </div>
+
+          <div className="mt-8 flex items-center gap-3 text-xs text-muted-foreground/60">
+            <div className="flex-1 h-px bg-border" />
+            oppure
+            <div className="flex-1 h-px bg-border" />
+          </div>
+          <button onClick={() => navigate('/login')}
+            className="mt-4 w-full rounded-2xl border border-border py-3.5 text-sm font-bold text-muted-foreground hover:text-foreground transition-colors">
+            Accedi come animatore →
+          </button>
+        </motion.div>
+      </div>
+    );
+  }
+
   // ── Standby screen: nessun evento attivo ─────────────────────────────
   if (!liveEvent) {
     return (
@@ -709,11 +820,13 @@ export default function Hub() {
             </div>
           )}
           <LocaleSwitcher />
-          <button onClick={() => navigate('/control')}
-            className="hidden lg:flex items-center gap-1.5 rounded-xl border border-border bg-card/60 px-3 py-1.5 text-xs font-bold text-muted-foreground hover:text-foreground transition-colors sm:px-4 sm:py-2 sm:text-sm">
-            <SlidersHorizontal className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-            Cockpit
-          </button>
+          {user && (
+            <button onClick={() => navigate('/control')}
+              className="hidden lg:flex items-center gap-1.5 rounded-xl border border-border bg-card/60 px-3 py-1.5 text-xs font-bold text-muted-foreground hover:text-foreground transition-colors sm:px-4 sm:py-2 sm:text-sm">
+              <SlidersHorizontal className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              Cockpit
+            </button>
+          )}
         </div>
       </header>
 
@@ -764,7 +877,7 @@ export default function Hub() {
               <div className="mt-0.5 text-xs text-muted-foreground">Accesso chiuso — contatta l'animatore</div>
             </div>
           </div>
-        ) : (
+        ) : user ? (
           <div className="shrink-0 flex items-center gap-3 rounded-2xl border border-border bg-card/70 p-3 backdrop-blur-md">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10">
               <CalendarPlus className="h-5 w-5 text-primary" />
@@ -777,7 +890,7 @@ export default function Hub() {
               Cockpit
             </button>
           </div>
-        )}
+        ) : null}
 
         {/* Game cards 2-col */}
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -791,19 +904,21 @@ export default function Hub() {
           )}
         </div>
 
-        {/* Serata Completa CTA */}
-        <motion.button type="button" onClick={() => navigate('/control')}
-          initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
-          whileTap={{ scale: 0.97 }}
-          className="shrink-0 w-full flex items-center gap-3 rounded-2xl border border-primary/40 bg-primary/10 px-4 py-2.5 text-left hover-elevate">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/20">
-            <Sparkles className="h-4 w-4 text-primary" />
-          </div>
-          <div>
-            <div className="text-display text-sm font-black text-primary">✨ Serata Completa</div>
-            <div className="text-xs text-muted-foreground">Percorso · Coppie · Quizzone in sequenza</div>
-          </div>
-        </motion.button>
+        {/* Serata Completa CTA — admin only */}
+        {user && (
+          <motion.button type="button" onClick={() => navigate('/control')}
+            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
+            whileTap={{ scale: 0.97 }}
+            className="shrink-0 w-full flex items-center gap-3 rounded-2xl border border-primary/40 bg-primary/10 px-4 py-2.5 text-left hover-elevate">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/20">
+              <Sparkles className="h-4 w-4 text-primary" />
+            </div>
+            <div>
+              <div className="text-display text-sm font-black text-primary">✨ Serata Completa</div>
+              <div className="text-xs text-muted-foreground">Percorso · Coppie · Quizzone in sequenza</div>
+            </div>
+          </motion.button>
+        )}
 
         {/* Player roster collapsible */}
         <div className="shrink-0 rounded-2xl border border-border bg-card/70 overflow-hidden">
@@ -838,7 +953,7 @@ export default function Hub() {
         {/* Left floating panel */}
         <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}
           className="absolute left-4 top-1/2 z-20 w-[170px] -translate-y-1/2">
-          {liveEvent && !sessionRunning ? <QrPanel compact /> : !liveEvent ? <EventCTA /> : null}
+          {liveEvent && !sessionRunning ? <QrPanel compact /> : !liveEvent && user ? <EventCTA /> : null}
         </motion.div>
 
         {/* Centre: octagon game grid */}
@@ -856,14 +971,16 @@ export default function Hub() {
         <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
           className="absolute right-4 top-1/2 z-20 flex w-[170px] -translate-y-1/2 flex-col gap-2">
           <RosterPanel />
-          <button onClick={() => navigate('/control')}
-            className="flex w-full items-center gap-2 rounded-2xl border border-primary/40 bg-primary/10 px-3 py-2.5 text-left hover-elevate">
-            <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary" />
-            <div>
-              <div className="text-display text-[11px] font-black text-primary">✨ Serata Completa</div>
-              <div className="text-[9px] text-muted-foreground">Percorso · Coppie · Quizzone</div>
-            </div>
-          </button>
+          {user && (
+            <button onClick={() => navigate('/control')}
+              className="flex w-full items-center gap-2 rounded-2xl border border-primary/40 bg-primary/10 px-3 py-2.5 text-left hover-elevate">
+              <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary" />
+              <div>
+                <div className="text-display text-[11px] font-black text-primary">✨ Serata Completa</div>
+                <div className="text-[9px] text-muted-foreground">Percorso · Coppie · Quizzone</div>
+              </div>
+            </button>
+          )}
         </motion.div>
       </div>
 
@@ -876,7 +993,7 @@ export default function Hub() {
         <motion.div initial={{ opacity: 0, x: -24 }} animate={{ opacity: 1, x: 0 }}
           transition={{ type: 'spring', stiffness: 160, damping: 22 }}
           className="absolute left-6 top-1/2 z-20 w-[210px] -translate-y-1/2">
-          {liveEvent && !sessionRunning ? <QrPanel compact /> : !liveEvent ? <EventCTA /> : null}
+          {liveEvent && !sessionRunning ? <QrPanel compact /> : !liveEvent && user ? <EventCTA /> : null}
         </motion.div>
 
         {/* ── Centre: big octagon game grid ── */}
@@ -895,14 +1012,16 @@ export default function Hub() {
           transition={{ type: 'spring', stiffness: 160, damping: 22 }}
           className="absolute right-6 top-1/2 z-20 flex w-[210px] -translate-y-1/2 flex-col gap-3">
           <RosterPanel />
-          <button onClick={() => navigate('/control')}
-            className="flex w-full items-center gap-2.5 rounded-2xl border border-primary/40 bg-primary/10 px-4 py-3 text-left hover-elevate">
-            <Sparkles className="h-4 w-4 shrink-0 text-primary" />
-            <div>
-              <div className="text-display text-xs font-black text-primary">✨ Serata Completa</div>
-              <div className="text-[10px] text-muted-foreground">Percorso · Coppie · Quizzone</div>
-            </div>
-          </button>
+          {user && (
+            <button onClick={() => navigate('/control')}
+              className="flex w-full items-center gap-2.5 rounded-2xl border border-primary/40 bg-primary/10 px-4 py-3 text-left hover-elevate">
+              <Sparkles className="h-4 w-4 shrink-0 text-primary" />
+              <div>
+                <div className="text-display text-xs font-black text-primary">✨ Serata Completa</div>
+                <div className="text-[10px] text-muted-foreground">Percorso · Coppie · Quizzone</div>
+              </div>
+            </button>
+          )}
         </motion.div>
       </div>
 
