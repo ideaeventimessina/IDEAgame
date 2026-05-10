@@ -434,6 +434,12 @@ export default function Hub() {
           <div className="text-xs text-muted-foreground">{t('hub.local_url')}</div>
           <div className="text-mono text-2xl font-bold text-primary">{liveEvent.joinCode}</div>
         </div>
+        {sessionRunning && (
+          <div className={`mt-3 flex w-full items-center gap-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 px-3 py-2 ${compact ? 'text-xs' : 'text-xs'}`}>
+            <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-amber-400" />
+            <span className="text-amber-300 font-semibold">Partita in corso</span>
+          </div>
+        )}
         {!compact && (
           <div className="mt-6 flex w-full items-center justify-between border-t border-border pt-5">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -925,27 +931,24 @@ export default function Hub() {
       <div className="md:hidden flex-1 flex flex-col overflow-hidden px-4 pt-3 gap-3 pb-20">
 
         {/* QR compact / no-event pill */}
-        {liveEvent && !sessionRunning ? (
+        {liveEvent ? (
           <div className="shrink-0 flex items-center gap-4 rounded-2xl border border-border bg-card/70 p-3 backdrop-blur-md">
             <QrPlaceholder text={joinUrl} size={90} />
             <div className="flex-1 min-w-0">
               <div className="text-xs uppercase tracking-widest text-muted-foreground mb-1">{t('hub.scan_to_join')}</div>
               <div className="text-mono text-2xl font-black text-primary">{liveEvent.joinCode}</div>
-              <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
-                <Users className="h-4 w-4" />
-                <span className="text-display text-xl font-black text-primary">{players.length}</span>
-                <span>{t('hub.players_connected')}</span>
-              </div>
-            </div>
-          </div>
-        ) : liveEvent && sessionRunning ? (
-          <div className="shrink-0 flex items-center gap-3 rounded-2xl border border-destructive/40 bg-destructive/10 p-3 backdrop-blur-md">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-destructive/20">
-              <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-destructive" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-xs font-bold uppercase tracking-widest text-destructive">Partita in corso</div>
-              <div className="mt-0.5 text-xs text-muted-foreground">Accesso chiuso — contatta l'animatore</div>
+              {sessionRunning ? (
+                <div className="mt-1 flex items-center gap-1.5">
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-amber-400" />
+                  <span className="text-xs font-semibold text-amber-300">Partita in corso</span>
+                </div>
+              ) : (
+                <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
+                  <Users className="h-4 w-4" />
+                  <span className="text-display text-xl font-black text-primary">{players.length}</span>
+                  <span>{t('hub.players_connected')}</span>
+                </div>
+              )}
             </div>
           </div>
         ) : user ? (
