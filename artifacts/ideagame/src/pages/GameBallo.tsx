@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useSearch } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEventSocket } from '@/hooks/useEventSocket';
+import { useProjectorNavigation } from '@/hooks/useProjectorNavigation';
 import { useGameAudio } from '@/hooks/useGameAudio';
 import { ArenaBg, ArenaHeader, JonnyWaitingScreen, ArenaScoreBar, WinPodium, SocketBadge, NeonTitle, ARENA } from '@/components/JonnyWorldTheme';
 
@@ -65,6 +66,7 @@ export default function GameBallo() {
   const [state, setState] = useState<DanceState | null>(null);
   const [loading, setLoading] = useState(true);
   const { connected, on } = useEventSocket(eventId || null);
+  useProjectorNavigation(eventId, on);
   const { playLoop, playStinger } = useGameAudio('sfida-ballo', { autoLoop: 'lobby_loop' });
 
   const timeLeft = useCountdown(state?.startedAt ?? null, state?.duration ?? 60);

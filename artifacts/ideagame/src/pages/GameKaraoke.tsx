@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEventSocket } from '@/hooks/useEventSocket';
+import { useProjectorNavigation } from '@/hooks/useProjectorNavigation';
 import { Mic, Users, Clock } from 'lucide-react';
 import {
   ArenaBg, ArenaHeader, JonnyWaitingScreen, ArenaScoreBar, WinPodium,
@@ -51,6 +52,7 @@ export default function GameKaraoke() {
   const [elapsed, setElapsed] = useState(0);
 
   const { connected, on } = useEventSocket(eventId || null);
+  useProjectorNavigation(eventId, on);
   const { playLoop, playStinger } = useGameAudio('karaoke-battle', { autoLoop: 'lobby_loop' });
 
   const loadState = useCallback(async () => {

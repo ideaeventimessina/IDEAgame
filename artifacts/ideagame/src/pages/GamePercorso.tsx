@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearch, useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEventSocket } from '@/hooks/useEventSocket';
+import { useProjectorNavigation } from '@/hooks/useProjectorNavigation';
 import { useGameAudio } from '@/hooks/useGameAudio';
 import {
   ArenaBg, ArenaHeader, JonnyWaitingScreen, ArenaScoreBar, WinPodium,
@@ -78,6 +79,7 @@ export default function GamePercorso() {
   const { playLoop, playStinger } = useGameAudio('percorso-a-risate', { autoLoop: 'lobby_loop' });
 
   const { connected, on } = useEventSocket(eventId || null);
+  useProjectorNavigation(eventId, on);
 
   const showFlash = useCallback((f: PercorsoFlash, ms = 2800, stinger?: string) => {
     if (stinger) void playStinger(stinger);

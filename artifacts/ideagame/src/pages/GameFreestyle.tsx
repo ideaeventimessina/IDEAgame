@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEventSocket } from "@/hooks/useEventSocket";
+import { useProjectorNavigation } from "@/hooks/useProjectorNavigation";
 import { useGameAudio } from "@/hooks/useGameAudio";
 
 const apiFetch = (path: string, opts?: RequestInit) =>
@@ -92,6 +93,7 @@ export default function GameFreestyle() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const { on } = useEventSocket(eventId || null);
+  useProjectorNavigation(eventId, on);
   const { playLoop, playStinger } = useGameAudio("freestyle-battle", { autoLoop: "lobby_loop" });
 
   useEffect(() => {

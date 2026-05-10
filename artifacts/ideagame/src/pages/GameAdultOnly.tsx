@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useSearch, useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEventSocket } from '@/hooks/useEventSocket';
+import { useProjectorNavigation } from '@/hooks/useProjectorNavigation';
 import {
   ArenaBg, ArenaHeader, JonnyWaitingScreen, ArenaScoreBar, WinPodium,
   SocketBadge, FlashOverlay, NeonTimerBar, ARENA,
@@ -115,6 +116,7 @@ export default function GameAdultOnly() {
   const pollRef    = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const { connected, on } = useEventSocket(eventId || null);
+  useProjectorNavigation(eventId, on);
   const { playLoop, playStinger } = useGameAudio('adult-only', { autoLoop: 'lobby_loop' });
 
   const triggerFlash = (msg: string) => {

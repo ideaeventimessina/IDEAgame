@@ -683,17 +683,18 @@ export default function LiveControl() {
     if (!session) return;
     await updateSession.mutateAsync({ id: session.id, data: { status: 'ended' } });
     qc.invalidateQueries({ queryKey: getListGameSessionsQueryKey(selectedEventId) });
-    // Tell the projector (Hub) to navigate to the scoreboard automatically
-    if (selectedEventId) {
-      apiFetch(`/panic/events/${selectedEventId}/emit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ event: 'projector:go-scoreboard', payload: { eventId: selectedEventId } }),
-      }).catch(() => null);
-    }
     const rows = [...scoreboardRows].sort((a, b) => b.total - a.total);
     const maxScore = rows.length > 0 ? (rows[0]?.total ?? 0) : 0;
     const allZero = maxScore === 0;
+    // Tell the projector to navigate: scoreboard if there are scores, Hub default if zero
+    if (selectedEventId) {
+      const projectorEvent = allZero ? 'projector:go-hub' : 'projector:go-scoreboard';
+      apiFetch(`/panic/events/${selectedEventId}/emit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event: projectorEvent, payload: { eventId: selectedEventId } }),
+      }).catch(() => null);
+    }
     const allTied = !allZero && rows.length > 1 && rows.every(r => r.total === maxScore);
     const winners = allZero ? [] : rows.filter(r => r.total === maxScore);
     setWinnerOverlay({ winners, allZero, allTied, sessionId: session.id });

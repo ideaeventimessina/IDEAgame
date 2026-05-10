@@ -3,6 +3,7 @@ import { useSearch, useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Users, BarChart3 } from 'lucide-react';
 import { useEventSocket } from '@/hooks/useEventSocket';
+import { useProjectorNavigation } from '@/hooks/useProjectorNavigation';
 import { useGameAudio } from '@/hooks/useGameAudio';
 import { ArenaBg, ArenaHeader, JonnyWaitingScreen, ArenaScoreBar, WinPodium, SocketBadge, FlashOverlay, NeonTimerBar, ARENA } from '@/components/JonnyWorldTheme';
 
@@ -53,6 +54,7 @@ export default function GameQuizzone() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollRef  = useRef<ReturnType<typeof setInterval> | null>(null);
   const { connected, on } = useEventSocket(eventId || null);
+  useProjectorNavigation(eventId, on);
   const { playLoop, playStinger } = useGameAudio('quizzone', { autoLoop: 'lobby_loop' });
 
   const startCountdown = useCallback((questionStartedAt: string, timeLimit: number) => {

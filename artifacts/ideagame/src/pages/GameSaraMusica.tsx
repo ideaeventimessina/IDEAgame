@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEventSocket } from '@/hooks/useEventSocket';
+import { useProjectorNavigation } from '@/hooks/useProjectorNavigation';
 import { Music2, Zap, Clock, Volume2 } from 'lucide-react';
 import { useGameAudio } from '@/hooks/useGameAudio';
 
@@ -51,6 +52,7 @@ export default function GameSaraMusica() {
   const [flash, setFlash] = useState('');
 
   const { on } = useEventSocket(eventId || null);
+  useProjectorNavigation(eventId, on);
   const { playLoop, playStinger } = useGameAudio('saramusica', { autoLoop: 'round_loop' });
 
   const loadState = useCallback(async () => {

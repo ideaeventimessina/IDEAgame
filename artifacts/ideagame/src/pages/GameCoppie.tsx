@@ -3,6 +3,7 @@ import { useSearch, useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RotateCcw } from 'lucide-react';
 import { useEventSocket } from '@/hooks/useEventSocket';
+import { useProjectorNavigation } from '@/hooks/useProjectorNavigation';
 import { ArenaBg, ArenaHeader, JonnyWaitingScreen, ArenaScoreBar, SocketBadge, FlashOverlay, ARENA } from '@/components/JonnyWorldTheme';
 import { useGameAudio } from '@/hooks/useGameAudio';
 
@@ -54,6 +55,7 @@ export default function GameCoppie() {
   const { playLoop, playStinger } = useGameAudio('gioco-coppie', { autoLoop: 'lobby_loop' });
 
   const { connected, on } = useEventSocket(eventId || null);
+  useProjectorNavigation(eventId, on);
 
   const showFlash = useCallback((msg: FlashMsg, durationMs = 2200) => {
     if (flashTimer.current) clearTimeout(flashTimer.current);

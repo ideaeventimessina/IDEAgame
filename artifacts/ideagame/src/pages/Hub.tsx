@@ -1,7 +1,7 @@
 import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Wifi, WifiOff, Users, Radio, Loader2, ChevronDown, ChevronUp, Sparkles, SlidersHorizontal, CalendarPlus, X } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Octagon } from '@/components/Octagon';
 import { GameIcon } from '@/components/GameIcon';
 import { QrPlaceholder } from '@/components/QrPlaceholder';
@@ -200,10 +200,16 @@ export default function Hub() {
   );
   const { on, connected } = useEventSocket(liveEvent?.id ?? null);
 
-  // On mount and on every socket reconnect: check for an already-running session
-  // This is the primary navigation trigger — it catches events missed during socket reconnects
+  // Keep a ref to games so the active-session effect can read them without
+  // re-triggering on every React Query refetch (games is not a dep below).
+  const gamesRef = useRef(games);
+  useEffect(() => { gamesRef.current = games; }, [games]);
+
+  // On mount and on every socket reconnect: check for an already-running session.
+  // This is the primary navigation trigger — it catches game:started events that
+  // were emitted while the socket was reconnecting (Socket.IO doesn't replay them).
   useEffect(() => {
-    if (!liveEvent?.id || !connected || games.length === 0) return;
+    if (!liveEvent?.id || !connected) return;
     let cancelled = false;
     fetch(`/api/events/${liveEvent.id}/active-session`, { credentials: 'include' })
       .then(r => (r.ok ? r.json() : null))
@@ -216,7 +222,8 @@ export default function Hub() {
       })
       .catch(() => undefined);
     return () => { cancelled = true; };
-  }, [liveEvent?.id, liveEvent, connected, games, navigate]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveEvent?.id, connected]);
 
   // Listen for game:started / game:resumed → show intro overlay then navigate
   // Secondary trigger: for sessions that start while the Hub is already connected
@@ -252,6 +259,7 @@ export default function Hub() {
         const eid = payload?.eventId ?? liveEvent.id;
         navigate(`/scoreboard?e=${eid}`);
       }),
+      on('projector:go-hub', () => navigate('/')),
     ];
     return () => { unsubs.forEach(u => u?.()); };
   }, [liveEvent?.id, on, navigate]);
