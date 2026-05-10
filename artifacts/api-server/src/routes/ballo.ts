@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, asc, or, isNull } from "drizzle-orm";
+import OpenAI from "openai";
 import {
   db,
   danceChallengesTable,
@@ -12,6 +13,11 @@ import {
 import type { DanceState, DanceTeamInState } from "@workspace/db";
 import { type AuthedRequest, requireAuth, loadUser } from "../middlewares/auth";
 import { emitToEvent } from "../socket";
+
+const openai = new OpenAI({
+  baseURL: process.env["AI_INTEGRATIONS_OPENAI_BASE_URL"],
+  apiKey: process.env["AI_INTEGRATIONS_OPENAI_API_KEY"],
+});
 
 const router: IRouter = Router();
 
@@ -122,6 +128,81 @@ router.get(
       .where(where)
       .orderBy(asc(danceChallengesTable.createdAt));
     res.json(rows);
+  },
+);
+
+/* ── AI generation ──────────────────────────────────────────────────────── */
+
+router.post(
+  "/dance-challenges/generate",
+  requireAuth,
+  async (req: AuthedRequest, res): Promise<void> => {
+    const { theme = "", count = 5, difficulty = "mixed" } = req.body as {
+      theme?: string;
+      count?: number;
+      difficulty?: string;
+    };
+
+    const diffInstruction =
+      difficulty === "mixed"
+        ? 'Varia le difficoltà: metti alcune facili, alcune medie, alcune difficili.'
+        : `Usa esclusivamente difficoltà "${difficulty}" per tutte le sfide.`;
+
+    const prompt = `Sei un animatore esperto di feste italiane. Genera esattamente ${count} sfide di ballo originali e divertenti${theme ? ` a tema "${theme}"` : ''} per gruppi in una festa serale.
+
+${diffInstruction}
+
+Per ogni sfida fornisci:
+- name: nome breve e accattivante (max 4 parole, in italiano)
+- description: istruzioni brevi e chiare per i giocatori (1-2 frasi, in italiano, coinvolgenti)
+- duration: durata in secondi (tra 30 e 120)
+- difficulty: "easy" | "medium" | "hard"
+- musicHint: suggerimento musicale reale (artista — brano, preferibilmente noto)
+
+Rispondi con un oggetto JSON nel formato: {"challenges": [...array delle sfide...]}`;
+
+    let generated: Array<{ name: string; description: string; duration: number; difficulty: string; musicHint: string }>;
+
+    try {
+      const completion = await openai.chat.completions.create({
+        model: "gpt-5-mini",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+        max_completion_tokens: 2048,
+      });
+      const raw = completion.choices[0]?.message?.content ?? "{}";
+      const parsed = JSON.parse(raw) as { challenges?: unknown[] } | unknown[];
+      const arr = Array.isArray(parsed)
+        ? parsed
+        : (parsed as Record<string, unknown[]>)[Object.keys(parsed as object)[0]] ?? [];
+      generated = arr as typeof generated;
+    } catch (err) {
+      req.log.error({ err }, "AI generation failed");
+      res.status(502).json({ error: "Generazione AI fallita. Riprova." });
+      return;
+    }
+
+    if (!Array.isArray(generated) || generated.length === 0) {
+      res.status(502).json({ error: "Risposta AI non valida. Riprova." });
+      return;
+    }
+
+    const tenantId = req.user!.role === "super_admin" ? null : req.user!.tenantId;
+    const rows = await db
+      .insert(danceChallengesTable)
+      .values(
+        generated.map((g) => ({
+          name: String(g.name ?? "").trim().slice(0, 80),
+          description: String(g.description ?? "").trim(),
+          duration: Math.min(300, Math.max(15, Number(g.duration) || 60)),
+          difficulty: ["easy", "medium", "hard"].includes(g.difficulty) ? g.difficulty : "medium",
+          musicHint: String(g.musicHint ?? "").trim(),
+          tenantId,
+        }))
+      )
+      .returning();
+
+    res.status(201).json(rows);
   },
 );
 

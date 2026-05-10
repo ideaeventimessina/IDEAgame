@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { AdminLayout } from './AdminLayout';
-import { Trash2, Plus, Loader2, Music, Clock, Zap } from 'lucide-react';
+import { Trash2, Plus, Loader2, Music, Clock, Zap, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface DanceChallenge {
   id: string;
@@ -45,6 +45,13 @@ export default function AdminBallo() {
   const [difficulty, setDifficulty] = useState('medium');
   const [musicHint, setMusicHint] = useState('');
 
+  // AI generation state
+  const [showAiPanel, setShowAiPanel] = useState(false);
+  const [aiTheme, setAiTheme] = useState('');
+  const [aiCount, setAiCount] = useState(5);
+  const [aiDifficulty, setAiDifficulty] = useState('mixed');
+  const [aiGenerating, setAiGenerating] = useState(false);
+
   useEffect(() => {
     loadChallenges();
   }, []);
@@ -76,6 +83,23 @@ export default function AdminBallo() {
     finally { setSubmitting(false); }
   };
 
+  const handleAiGenerate = async () => {
+    setAiGenerating(true); setError(''); setMsg('');
+    try {
+      const data = await apiFetch('/dance-challenges/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ theme: aiTheme.trim(), count: aiCount, difficulty: aiDifficulty }),
+      });
+      const created = data as DanceChallenge[];
+      setMsg(`✓ ${created.length} sfide generate con AI!`);
+      setShowAiPanel(false);
+      setAiTheme('');
+      await loadChallenges();
+    } catch (e) { setError((e as Error).message); }
+    finally { setAiGenerating(false); }
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm('Eliminare questa sfida?')) return;
     setDeleting(id); setMsg('');
@@ -92,17 +116,81 @@ export default function AdminBallo() {
       <div className="space-y-6 p-6">
 
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
             <h2 className="text-display text-2xl font-black">Catalogo Sfide Ballo</h2>
             <p className="text-sm text-muted-foreground mt-0.5">Crea sfide musicali con timer e difficoltà</p>
           </div>
-          <button onClick={() => setShowForm(s => !s)}
-            className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground">
-            <Plus className="h-4 w-4" />
-            {showForm ? 'Annulla' : 'Nuova sfida'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => { setShowAiPanel(s => !s); setShowForm(false); }}
+              className="flex items-center gap-2 rounded-xl border border-primary/50 bg-primary/10 px-4 py-2.5 text-sm font-bold text-primary hover:bg-primary/20 transition-colors">
+              <Sparkles className="h-4 w-4" />
+              Genera con AI
+              {showAiPanel ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            </button>
+            <button onClick={() => { setShowForm(s => !s); setShowAiPanel(false); }}
+              className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground">
+              <Plus className="h-4 w-4" />
+              {showForm ? 'Annulla' : 'Nuova sfida'}
+            </button>
+          </div>
         </div>
+
+        {/* AI Generation panel */}
+        {showAiPanel && (
+          <div className="rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/5 to-purple-500/5 p-6 space-y-4">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-primary" />
+              <h3 className="font-black text-lg">Genera sfide con AI</h3>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              L'AI crea sfide originali con nome, descrizione, durata e suggerimento musicale — pronte da usare subito.
+            </p>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="block sm:col-span-2">
+                <div className="mb-1 text-xs uppercase tracking-widest text-muted-foreground">Tema / Stile (opzionale)</div>
+                <input
+                  value={aiTheme}
+                  onChange={e => setAiTheme(e.target.value)}
+                  placeholder="es. anni 80, latino, hip hop, romantico…"
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                />
+              </label>
+
+              <label className="block">
+                <div className="mb-1 text-xs uppercase tracking-widest text-muted-foreground">Numero di sfide</div>
+                <select value={aiCount} onChange={e => setAiCount(Number(e.target.value))}
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm">
+                  {[3, 5, 8, 10].map(n => <option key={n} value={n}>{n} sfide</option>)}
+                </select>
+              </label>
+
+              <label className="block">
+                <div className="mb-1 text-xs uppercase tracking-widest text-muted-foreground">
+                  <Zap className="inline h-3 w-3 mr-1" />Difficoltà
+                </div>
+                <select value={aiDifficulty} onChange={e => setAiDifficulty(e.target.value)}
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm">
+                  <option value="mixed">🎲 Mista (variata)</option>
+                  <option value="easy">🌱 Solo Facile</option>
+                  <option value="medium">🔥 Solo Media</option>
+                  <option value="hard">💪 Solo Difficile</option>
+                </select>
+              </label>
+            </div>
+
+            <button
+              onClick={() => void handleAiGenerate()}
+              disabled={aiGenerating}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-bold text-primary-foreground disabled:opacity-40 hover-elevate">
+              {aiGenerating
+                ? <><Loader2 className="h-4 w-4 animate-spin" /> Generazione in corso…</>
+                : <><Sparkles className="h-4 w-4" /> Genera {aiCount} sfide</>
+              }
+            </button>
+          </div>
+        )}
 
         {/* Feedback */}
         {error && <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>}
