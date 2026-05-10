@@ -37,6 +37,7 @@ import saraMusicaRouter from "./saramusica";
 import jonnyRouter from "./jonny";
 import panicRouter from "./panic";
 import networkRouter from "./network";
+import homeRouter from "./home";
 
 const router: IRouter = Router();
 
@@ -82,5 +83,6 @@ router.use(freestyleRouter);
 router.use(saraMusicaRouter);
 router.use(jonnyRouter);
 router.use(panicRouter);
+router.use(homeRouter);
 
 export default router;

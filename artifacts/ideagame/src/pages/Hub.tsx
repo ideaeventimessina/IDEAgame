@@ -907,7 +907,7 @@ export default function Hub() {
         </div>
       </header>
 
-      {/* ── Live event banner ─────────────────────────────────────── */}
+      {/* ── Live event banner + Gioca con Jonny ──────────────────── */}
       <div className="relative z-10 shrink-0 px-4 sm:px-8 lg:px-10">
         {liveEvent ? (
           <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
@@ -921,7 +921,18 @@ export default function Hub() {
             {liveEvent.venue && <span className="hidden text-muted-foreground lg:block">— {liveEvent.venue}</span>}
           </motion.div>
         ) : (
-          <div className="text-sm text-muted-foreground italic">Nessun evento in corso</div>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="text-sm text-muted-foreground italic">Nessun evento in corso</div>
+            <motion.button
+              initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+              whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+              onClick={() => navigate('/home')}
+              className="flex items-center gap-2 rounded-full bg-primary px-4 py-1.5 text-xs font-black text-black shadow-lg shadow-primary/30"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              Gioca con Jonny — Modalità Home
+            </motion.button>
+          </div>
         )}
       </div>
 
@@ -1027,7 +1038,19 @@ export default function Hub() {
         {/* Left floating panel */}
         <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}
           className="absolute left-4 top-1/2 z-20 w-[170px] -translate-y-1/2">
-          {liveEvent && !sessionRunning ? <QrPanel compact /> : !liveEvent && user ? <EventCTA /> : null}
+          {liveEvent ? <QrPanel compact /> : !liveEvent && user ? <EventCTA /> : (
+            <motion.button
+              whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
+              onClick={() => navigate('/home')}
+              className="flex w-full flex-col items-center gap-3 rounded-3xl border-2 border-primary/50 bg-primary/10 p-5 text-center hover-elevate"
+            >
+              <Sparkles className="h-7 w-7 text-primary" />
+              <div>
+                <div className="text-display text-sm font-black text-primary">Gioca con Jonny</div>
+                <div className="mt-0.5 text-[10px] text-muted-foreground">Modalità Home — senza evento</div>
+              </div>
+            </motion.button>
+          )}
         </motion.div>
 
         {/* Centre: octagon game grid */}

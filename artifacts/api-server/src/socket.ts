@@ -99,3 +99,22 @@ export function getIo(): SocketServer {
 export function emitToEvent(eventId: string, event: string, data: unknown): void {
   _io?.to(`event:${eventId}`).emit(event, data);
 }
+
+export function emitToRoom(room: string, event: string, data: unknown): void {
+  _io?.to(room).emit(event, data);
+}
+
+// Socket join for HOME sessions
+export function initHomeSocketHandlers(io: SocketServer): void {
+  io.on("connection", (socket) => {
+    socket.on("join:home", (sessionId: string) => {
+      if (typeof sessionId === "string" && sessionId.length > 0) {
+        void socket.join(`home:${sessionId}`);
+        logger.info({ sid: socket.id, sessionId }, "ws:join:home");
+      }
+    });
+    socket.on("leave:home", (sessionId: string) => {
+      void socket.leave(`home:${sessionId}`);
+    });
+  });
+}

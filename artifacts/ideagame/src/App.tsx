@@ -53,6 +53,8 @@ import AdminSettings from "@/admin/Settings";
 import AdminCardSets from "@/admin/CardSets";
 import AdminQuizPacks from "@/admin/QuizPacks";
 import AdminAudioSettings from "@/admin/AudioSettings";
+import HomeGame from "@/pages/HomeGame";
+import HomeJoin from "@/pages/HomeJoin";
 import { Guard } from "@/admin/Guard";
 import { JonnyProvider } from "@/contexts/JonnyContext";
 import { AudioProvider } from "@/contexts/AudioContext";
@@ -85,6 +87,8 @@ function Router() {
       <Route path="/scoreboard" component={Scoreboard} />
       <Route path="/play" component={Player} />
       <Route path="/play/permissions" component={Permissions} />
+      <Route path="/home" component={HomeGame} />
+      <Route path="/home/join" component={HomeJoin} />
       <Route path="/admin"><Guard route="/admin"><AdminDashboard /></Guard></Route>
       <Route path="/admin/games"><Guard route="/admin/games"><AdminGames /></Guard></Route>
       <Route path="/admin/quizzes"><Guard route="/admin/quizzes"><AdminQuizzes /></Guard></Route>
