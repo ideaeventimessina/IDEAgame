@@ -177,6 +177,7 @@ export default function Hub() {
   const [noSessionGame, setNoSessionGame] = useState<NoSessionState>(null);
   const [creatingSession, setCreatingSession] = useState(false);
   const [sessionRunning, setSessionRunning] = useState(false);
+  const [sessionEnded, setSessionEnded] = useState(false);
   useGameAudio('hub', { preload: true });
 
   // Navigate to a game — READY games NEVER go to /game/:slug mock
@@ -277,8 +278,13 @@ export default function Hub() {
       .then(r => (r.ok ? r.json() : null))
       .then((session: { id: string; gameSlug: string; status: string } | null) => {
         if (cancelled) return;
-        if (!session || session.status !== 'running') { setSessionRunning(false); return; }
+        if (!session || session.status !== 'running') {
+          setSessionRunning(false);
+          if (session?.status === 'ended') setSessionEnded(true);
+          return;
+        }
         setSessionRunning(true);
+        setSessionEnded(false);
         const boardPath = SLUG_TO_BOARD[session.gameSlug];
         if (boardPath) {
           navigate(`${boardPath}?s=${session.id}&e=${liveEvent.id}`);
@@ -295,6 +301,7 @@ export default function Hub() {
     if (!liveEvent?.id) return;
     const handleGameStarted = (data: { session: { id: string; gameSlug: string; status: string }; eventId: string }) => {
       setSessionRunning(true);
+      setSessionEnded(false);
       const game = games.find(g => g.slug === data.session.gameSlug);
       if (game) {
         setIntroGame({
@@ -326,7 +333,7 @@ export default function Hub() {
         navigate(`/scoreboard?e=${eid}`);
       }),
       on('projector:go-hub', () => { setSessionRunning(false); navigate('/'); }),
-      on<{ session: unknown }>('game:ended', () => setSessionRunning(false)),
+      on<{ session: unknown }>('game:ended', () => { setSessionRunning(false); setSessionEnded(true); }),
     ];
     return () => { unsubs.forEach(u => u?.()); };
   }, [liveEvent?.id, on, navigate]);
@@ -666,6 +673,70 @@ export default function Hub() {
             className="rounded-2xl border px-8 sm:px-14 py-3 sm:py-4 text-sm sm:text-base font-black tracking-[0.25em] uppercase"
             style={{ borderColor: 'rgba(245,182,66,0.5)', background: 'rgba(4,2,16,0.7)', color: '#F5B642', backdropFilter: 'blur(12px)' }}>
             In attesa di un evento…
+          </motion.div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Serata conclusa: sessione terminata, evento ancora live ───────────
+  if (liveEvent && sessionEnded) {
+    return (
+      <div className="relative h-screen w-full overflow-hidden select-none"
+        style={{ background: 'radial-gradient(ellipse 160% 80% at 50% -5%, #1a0535 0%, #0a0220 50%, #040110 100%)' }}>
+        <HubStars />
+
+        {/* Gold bokeh blobs */}
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="absolute left-1/4 top-1/4 h-96 w-96 rounded-full opacity-10 blur-3xl"
+            style={{ background: 'radial-gradient(circle, #F5B642 0%, transparent 70%)' }} />
+          <div className="absolute right-1/4 bottom-1/4 h-64 w-64 rounded-full opacity-8 blur-3xl"
+            style={{ background: 'radial-gradient(circle, #a855f7 0%, transparent 70%)' }} />
+        </div>
+
+        {/* Black screen panic overlay */}
+        <AnimatePresence>
+          {projectorBlack && (
+            <motion.div key="projector-black" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }} className="fixed inset-0 z-[200] bg-black" onClick={() => setProjectorBlack(false)} />
+          )}
+        </AnimatePresence>
+
+        {/* Content */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 px-8 text-center">
+          {/* Trophy */}
+          <motion.div
+            initial={{ scale: 0, rotate: -10 }} animate={{ scale: 1, rotate: 0 }}
+            transition={{ type: 'spring', stiffness: 200, damping: 18, delay: 0.1 }}
+            className="text-7xl sm:text-8xl lg:text-9xl select-none">
+            🏆
+          </motion.div>
+
+          {/* Event name */}
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
+            <div className="text-xs uppercase tracking-[0.35em] text-muted-foreground mb-2">{liveEvent.name}</div>
+            <div className="text-display text-4xl sm:text-5xl lg:text-6xl font-black"
+              style={{ background: 'linear-gradient(135deg, #F5B642 0%, #fff8e8 50%, #F5B642 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+              Grazie a tutti!
+            </div>
+            <div className="mt-3 text-base sm:text-lg text-muted-foreground">
+              La serata è conclusa — a presto! 🎉
+            </div>
+          </motion.div>
+
+          {/* Scoreboard link */}
+          <motion.button
+            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
+            onClick={() => navigate(`/scoreboard?e=${liveEvent.id}`)}
+            className="mt-2 rounded-2xl border border-primary/50 bg-primary/10 px-8 py-3 text-sm font-black text-primary backdrop-blur-md hover-elevate">
+            Vedi classifica finale →
+          </motion.button>
+
+          {/* Soft pulsing badge */}
+          <motion.div
+            animate={{ opacity: [0.4, 0.8, 0.4] }} transition={{ duration: 3, repeat: Infinity }}
+            className="mt-4 text-xs uppercase tracking-[0.3em] text-muted-foreground/50">
+            {user ? 'Avvia una nuova sessione dal Cockpit per ricominciare' : 'In attesa della prossima sessione…'}
           </motion.div>
         </div>
       </div>
