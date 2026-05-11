@@ -15,6 +15,14 @@ type MusicPaths = {
   'sfida-ballo': string;
   'percorso-a-risate': string;
   'gioco-coppie': string;
+  'percorso-sfida': string;
+  'percorso-domanda': string;
+  'percorso-mimo': string;
+  'percorso-ballo': string;
+  'percorso-veloce': string;
+  'percorso-coppia': string;
+  'percorso-reazione': string;
+  'percorso-fantasia': string;
 };
 
 type SettingsValue = {
@@ -30,15 +38,30 @@ const DEFAULTS: SettingsValue = {
   defaultLocale: 'it',
   projectionMode: true,
   offlineFirst: true,
-  musicPaths: { lobby: '', quizzone: '', 'sfida-ballo': '', 'percorso-a-risate': '', 'gioco-coppie': '' },
+  musicPaths: {
+    lobby: '', quizzone: '', 'sfida-ballo': '', 'percorso-a-risate': '', 'gioco-coppie': '',
+    'percorso-sfida': '', 'percorso-domanda': '', 'percorso-mimo': '', 'percorso-ballo': '',
+    'percorso-veloce': '', 'percorso-coppia': '', 'percorso-reazione': '', 'percorso-fantasia': '',
+  },
 };
 
 const MUSIC_SLOTS: { key: keyof MusicPaths; label: string; icon: string; fallback: string }[] = [
   { key: 'lobby',            label: 'Lobby / Home (sottofondo principale)', icon: '🏠', fallback: '/audio/jonny-world/global/lobby_loop.mp3' },
   { key: 'quizzone',         label: 'Quizzone',                             icon: '❓', fallback: '/audio/jonny-world/quizzone/round_loop.mp3' },
   { key: 'sfida-ballo',      label: 'Sfida di Ballo',                       icon: '💃', fallback: '/audio/jonny-world/sfida-ballo/round_loop.mp3' },
-  { key: 'percorso-a-risate',label: 'Percorso a Risate',                    icon: '⚡', fallback: '/audio/jonny-world/percorso-a-risate/round_loop.mp3' },
+  { key: 'percorso-a-risate',label: 'Percorso a Risate (generale)',          icon: '⚡', fallback: '/audio/jonny-world/percorso-a-risate/round_loop.mp3' },
   { key: 'gioco-coppie',     label: 'Gioco delle Coppie',                   icon: '🃏', fallback: '/audio/jonny-world/gioco-coppie/tension_loop.mp3' },
+];
+
+const PERCORSO_CHALLENGE_SLOTS: { key: keyof MusicPaths; label: string; icon: string }[] = [
+  { key: 'percorso-sfida',    label: 'Sfida fisica',  icon: '⚡' },
+  { key: 'percorso-domanda',  label: 'Domanda',       icon: '❓' },
+  { key: 'percorso-mimo',     label: 'Mimo',          icon: '🎭' },
+  { key: 'percorso-ballo',    label: 'Ballo',         icon: '💃' },
+  { key: 'percorso-veloce',   label: 'Veloce',        icon: '🏃' },
+  { key: 'percorso-coppia',   label: 'Coppia',        icon: '👫' },
+  { key: 'percorso-reazione', label: 'Reazione',      icon: '😱' },
+  { key: 'percorso-fantasia', label: 'Fantasia',      icon: '🌟' },
 ];
 
 // ── MusicUploader ─────────────────────────────────────────────────────────────
@@ -262,6 +285,31 @@ export default function Settings() {
                   icon={slot.icon}
                   fallback={slot.fallback}
                   currentPath={v.musicPaths[slot.key]}
+                  onUploaded={path => void setMusic(slot.key, path)}
+                  onClear={() => void clearMusic(slot.key)}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* ─── Percorso challenge music ───────────────────────────────── */}
+          <div className="mt-8">
+            <div className="mb-4 flex items-center gap-3">
+              <span className="text-xl">⚡</span>
+              <div>
+                <div className="font-black uppercase tracking-widest text-sm" style={{ color: '#F5B642' }}>Musica per tipo di sfida (Percorso)</div>
+                <div className="text-xs text-muted-foreground mt-0.5">Ogni tipo di sfida può avere la sua musica personalizzata. Lascia vuoto per usare la musica generale del Percorso.</div>
+              </div>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {PERCORSO_CHALLENGE_SLOTS.map(slot => (
+                <MusicUploader
+                  key={slot.key}
+                  slotKey={slot.key}
+                  label={slot.label}
+                  icon={slot.icon}
+                  fallback=""
+                  currentPath={v.musicPaths[slot.key] ?? ''}
                   onUploaded={path => void setMusic(slot.key, path)}
                   onClear={() => void clearMusic(slot.key)}
                 />

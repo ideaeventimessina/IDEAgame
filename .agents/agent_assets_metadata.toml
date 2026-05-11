@@ -114,6 +114,54 @@ uri = "file://artifacts/ideagame/public/jonny-master.png"
 type = "image"
 title = "jonny master full body host transparent"
 
+[[generated]]
+id = "5CKSfTrx69XcSvNClV4vf"
+uri = "file://artifacts/ideagame/public/challenges/sfida.png"
+type = "image"
+title = "percorso sfida fisica jonny puppet"
+
+[[generated]]
+id = "tRf5QsqhiXW0rGRXe6yEC"
+uri = "file://artifacts/ideagame/public/challenges/domanda.png"
+type = "image"
+title = "percorso domanda quiz jonny puppet"
+
+[[generated]]
+id = "QSGQekxhqe_Wf7OQ7p2t-"
+uri = "file://artifacts/ideagame/public/challenges/mimo.png"
+type = "image"
+title = "percorso mimo pantomima jonny puppet"
+
+[[generated]]
+id = "4--gv7SiwLUGwXoGGOYYm"
+uri = "file://artifacts/ideagame/public/challenges/ballo.png"
+type = "image"
+title = "percorso ballo danza jonny puppet"
+
+[[generated]]
+id = "vW1H8VZoqCc3h-0a9n1hh"
+uri = "file://artifacts/ideagame/public/challenges/veloce.png"
+type = "image"
+title = "percorso veloce speed challenge jonny puppet"
+
+[[generated]]
+id = "Nprww7cAnWCwBcU5fpuBV"
+uri = "file://artifacts/ideagame/public/challenges/coppia.png"
+type = "image"
+title = "percorso coppia team challenge jonny puppets"
+
+[[generated]]
+id = "JEakq1txeeNXDaquksNwH"
+uri = "file://artifacts/ideagame/public/challenges/reazione.png"
+type = "image"
+title = "percorso reazione shock jonny puppet"
+
+[[generated]]
+id = "HMeuiK4L5-Jep9whpYBNL"
+uri = "file://artifacts/ideagame/public/challenges/fantasia.png"
+type = "image"
+title = "percorso fantasia creativity jonny puppet"
+
 [[outputs]]
 id = "XgJSbedSAlI0m_mnD6OiA"
 uri = "file://artifacts/ideagame/SCENES.md"

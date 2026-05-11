@@ -184,8 +184,27 @@ export default function GameKaraoke() {
             <div className="mt-2 text-xl text-white/50 font-bold">{track.artist}</div>
           </div>
 
-          {/* YouTube embed */}
+          {/* Video (stored offline) or YouTube fallback */}
           {track.youtubeUrl && (() => {
+            const isStorage = track.youtubeUrl.startsWith('/objects/');
+            if (isStorage) {
+              return (
+                <motion.div key={`vid-${track.id}`} initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.15 }}
+                  className="w-full rounded-2xl overflow-hidden border"
+                  style={{ borderColor: `${T.accent}25`, maxHeight: '260px' }}>
+                  <video
+                    key={track.youtubeUrl}
+                    src={`/api/storage${track.youtubeUrl}`}
+                    autoPlay
+                    loop
+                    controls
+                    playsInline
+                    className="w-full h-full object-contain"
+                    style={{ maxHeight: '260px' }}
+                  />
+                </motion.div>
+              );
+            }
             const ytId = track.youtubeUrl.match(/(?:v=|youtu\.be\/|embed\/)([^&?/]+)/)?.[1];
             if (!ytId) return null;
             return (
@@ -204,7 +223,7 @@ export default function GameKaraoke() {
             );
           })()}
 
-          {/* Lyrics (show only if no YouTube or as supplement) */}
+          {/* Lyrics (show only if no video media) */}
           {track.lyricSnippet && !track.youtubeUrl && (
             <motion.div key={`lyrics-${track.id}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}
               className="rounded-3xl border px-8 py-6"

@@ -1,10 +1,66 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Mic, Music, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { Plus, Trash2, Mic, Music, ChevronDown, ChevronUp, ExternalLink, Loader2, X, Video } from 'lucide-react';
 import { AdminLayout } from './AdminLayout';
 import { JonnyGenerateBanner } from '@/components/JonnyGenerateBanner';
 import { ProjectorPreview } from './ProjectorPreview';
+
+// ─── VideoUploadField ─────────────────────────────────────────────────────────
+function VideoUploadField({ value, onChange }: { value: string; onChange: (url: string) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleFile = async (file: File) => {
+    if (!file.type.startsWith('video/') && !file.name.match(/\.(mp4|webm|mov|avi|mkv)$/i)) {
+      setError('Seleziona un file video (mp4, webm, mov…)'); return;
+    }
+    setUploading(true); setError(null);
+    try {
+      const res = await fetch('/api/storage/uploads/request-url', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type || 'video/mp4' }),
+      });
+      if (!res.ok) throw new Error('Errore generazione URL');
+      const { uploadURL, objectPath } = await res.json() as { uploadURL: string; objectPath: string };
+      const put = await fetch(uploadURL, { method: 'PUT', body: file, headers: { 'Content-Type': file.type || 'video/mp4' } });
+      if (!put.ok) throw new Error('Errore upload video');
+      onChange(objectPath);
+    } catch (e) { setError(e instanceof Error ? e.message : 'Errore upload'); }
+    finally { setUploading(false); }
+  };
+
+  const isStorage = value.startsWith('/objects/');
+  const filename = isStorage ? value.split('/').pop() : '';
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-2">
+        <input ref={inputRef} type="file" accept="video/*,.mp4,.webm,.mov,.avi"
+          className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) void handleFile(f); e.target.value = ''; }} />
+        <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading}
+          className="flex items-center gap-2 rounded-xl border border-pink-500/40 bg-pink-500/10 px-3 py-2 text-xs font-bold text-pink-400 hover:bg-pink-500/20 disabled:opacity-40 transition-colors">
+          {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Video className="h-3.5 w-3.5" />}
+          {uploading ? 'Caricamento…' : isStorage ? 'Sostituisci video' : 'Carica video (offline)'}
+        </button>
+        {isStorage && filename && (
+          <span className="flex-1 truncate text-xs text-muted-foreground" title={value}>{filename}</span>
+        )}
+        {isStorage && (
+          <button type="button" onClick={() => onChange('')}
+            className="rounded-lg border border-border p-1 text-muted-foreground hover:text-destructive">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+      {!isStorage && value && (
+        <div className="text-[10px] text-muted-foreground truncate pl-1">{value}</div>
+      )}
+      {error && <div className="text-xs text-destructive">{error}</div>}
+    </div>
+  );
+}
 
 const BASE = (import.meta.env.BASE_URL as string) ?? '/';
 async function apiFetch(path: string, opts?: RequestInit) {
@@ -295,8 +351,10 @@ function KaraokeTab() {
                               className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
                             <input value={newTrack.audioUrl} onChange={e => setNewTrack(p => ({ ...p, audioUrl: e.target.value }))}
                               placeholder="URL audio (opzionale)" className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
-                            <input value={newTrack.youtubeUrl} onChange={e => setNewTrack(p => ({ ...p, youtubeUrl: e.target.value }))}
-                              placeholder="URL YouTube (es. https://youtube.com/watch?v=…)" className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-pink-500" />
+                            <VideoUploadField
+                              value={newTrack.youtubeUrl}
+                              onChange={url => setNewTrack(p => ({ ...p, youtubeUrl: url }))}
+                            />
                             <div className="grid grid-cols-3 gap-3">
                               <select value={newTrack.category} onChange={e => setNewTrack(p => ({ ...p, category: e.target.value }))}
                                 className="rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none">

@@ -4,10 +4,22 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useEventSocket } from '@/hooks/useEventSocket';
 import { useProjectorNavigation } from '@/hooks/useProjectorNavigation';
 import { useGameAudio } from '@/hooks/useGameAudio';
+import { useListSystemSettings } from '@workspace/api-client-react';
 import {
   ArenaBg, ArenaHeader, JonnyWaitingScreen, ArenaScoreBar, WinPodium,
   SocketBadge, FlashOverlay, NeonTimerBar, NeonTitle, ARENA,
 } from '@/components/JonnyWorldTheme';
+
+const CHALLENGE_IMAGES: Record<string, string> = {
+  sfida:    '/challenges/sfida.png',
+  domanda:  '/challenges/domanda.png',
+  mimo:     '/challenges/mimo.png',
+  ballo:    '/challenges/ballo.png',
+  veloce:   '/challenges/veloce.png',
+  coppia:   '/challenges/coppia.png',
+  reazione: '/challenges/reazione.png',
+  fantasia: '/challenges/fantasia.png',
+};
 
 interface PercorsoStep {
   id: string; title: string; description: string; challengeType: string;
@@ -80,7 +92,16 @@ export default function GamePercorso() {
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollRef    = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const { playLoop, playStinger } = useGameAudio('percorso-a-risate', { autoLoop: 'lobby_loop' });
+  const { playLoop, stopLoop, playStinger } = useGameAudio('percorso-a-risate', { autoLoop: 'lobby_loop' });
+  const { data: settingsRows = [] } = useListSystemSettings();
+  const musicPaths = (() => {
+    const r = settingsRows.find(r => r.key === 'tenant.settings');
+    if (r && typeof r.value === 'object' && r.value !== null) {
+      const v = r.value as { musicPaths?: Record<string, string> };
+      return v.musicPaths ?? {};
+    }
+    return {} as Record<string, string>;
+  })();
 
   const { connected, on } = useEventSocket(eventId || null);
   useProjectorNavigation(eventId, on);
@@ -114,6 +135,23 @@ export default function GamePercorso() {
       .then((s: unknown) => { if ((s as { eventId?: string }).eventId) setEventId((s as { eventId: string }).eventId); })
       .catch(() => {});
   }, [sessionId, eventId]);
+
+  const prevChallengeType = useRef<string | null>(null);
+  useEffect(() => {
+    const ct = state?.status === 'running'
+      ? (state.steps[state.currentStepIdx]?.challengeType ?? null)
+      : null;
+    if (!ct || ct === prevChallengeType.current) return;
+    prevChallengeType.current = ct;
+    const slotKey = `percorso-${ct}`;
+    const customPath = musicPaths[slotKey];
+    if (!customPath) return;
+    const audio = new Audio(`/api/storage${customPath}`);
+    audio.loop = true;
+    stopLoop(true);
+    audio.play().catch(() => {});
+    return () => { audio.pause(); };
+  }, [state?.currentStepIdx, state?.status, musicPaths, stopLoop]);
 
   useEffect(() => {
     if (!eventId) return;
@@ -225,33 +263,59 @@ export default function GamePercorso() {
               transition={{ type: 'spring', stiffness: 220, damping: 22 }}
               className="flex w-full max-w-5xl flex-col items-center gap-6 text-center">
 
-              {/* Challenge type badge */}
-              <div className="flex items-center gap-4 rounded-2xl border-2 px-7 py-3"
-                style={{ borderColor: `${cfg.color}55`, background: `${cfg.color}12` }}>
-                <span className="text-display text-2xl font-black tracking-wide" style={{ color: cfg.color }}>{cfg.label}</span>
-                <div className="h-4 w-px bg-white/20" />
-                <span className="text-lg text-white/50 font-bold">{currentStep.points} pt</span>
-              </div>
+              {/* Layout: illustration left, content right on wide screens */}
+              <div className="flex w-full max-w-5xl items-start gap-8">
 
-              {/* Challenge title */}
-              <div className="text-display font-black leading-tight text-white"
-                style={{ fontSize: 'clamp(3rem, 8vw, 7rem)', textShadow: `0 0 60px ${cfg.color}44` }}>
-                {currentStep.title}
-              </div>
+                {/* AI challenge illustration */}
+                {CHALLENGE_IMAGES[currentStep.challengeType] && (
+                  <motion.div
+                    key={`img-${currentStep.challengeType}`}
+                    initial={{ opacity: 0, x: -30, scale: 0.85 }}
+                    animate={{ opacity: 1, x: 0, scale: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+                    className="hidden sm:flex shrink-0 flex-col items-center gap-3"
+                  >
+                    <img
+                      src={CHALLENGE_IMAGES[currentStep.challengeType]}
+                      alt={cfg.label}
+                      className="w-44 h-44 object-contain rounded-3xl"
+                      style={{ filter: `drop-shadow(0 0 32px ${cfg.color}66)` }}
+                    />
+                  </motion.div>
+                )}
 
-              {/* Description */}
-              {currentStep.description && (
-                <div className="max-w-3xl text-xl sm:text-2xl leading-relaxed text-white/55">
-                  {currentStep.description}
+                {/* Text content */}
+                <div className="flex flex-1 flex-col items-center sm:items-start gap-5 text-center sm:text-left">
+                  {/* Challenge type badge */}
+                  <div className="flex items-center gap-4 rounded-2xl border-2 px-7 py-3"
+                    style={{ borderColor: `${cfg.color}55`, background: `${cfg.color}12` }}>
+                    <span className="text-display text-2xl font-black tracking-wide" style={{ color: cfg.color }}>{cfg.label}</span>
+                    <div className="h-4 w-px bg-white/20" />
+                    <span className="text-lg text-white/50 font-bold">{currentStep.points} pt</span>
+                  </div>
+
+                  {/* Challenge title */}
+                  <div className="text-display font-black leading-tight text-white"
+                    style={{ fontSize: 'clamp(2.5rem, 6vw, 5.5rem)', textShadow: `0 0 60px ${cfg.color}44` }}>
+                    {currentStep.title}
+                  </div>
+
+                  {/* Description */}
+                  {currentStep.description && (
+                    <div className="max-w-3xl text-xl sm:text-2xl leading-relaxed text-white/55">
+                      {currentStep.description}
+                    </div>
+                  )}
+
+                  {/* Optional media (admin-picked) */}
+                  {currentStep.optionalMediaUrl && (
+                    <img src={currentStep.optionalMediaUrl} alt=""
+                      className="max-h-48 w-auto rounded-2xl border object-contain shadow-2xl"
+                      style={{ borderColor: `${cfg.color}33` }} />
+                  )}
                 </div>
-              )}
-
-              {/* Optional media */}
-              {currentStep.optionalMediaUrl && (
-                <img src={currentStep.optionalMediaUrl} alt=""
-                  className="max-h-64 w-auto rounded-2xl border object-contain shadow-2xl"
-                  style={{ borderColor: `${cfg.color}33` }} />
-              )}
+              </div>
 
               {/* Timer */}
               <div className="flex flex-col items-center gap-2 w-full max-w-sm">
