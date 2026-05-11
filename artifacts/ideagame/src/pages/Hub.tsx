@@ -746,26 +746,27 @@ export default function Hub() {
 
           {/* Player avatars live */}
           {publicPlayers.length > 0 && (
-            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}
-              className="flex flex-col items-center gap-3">
+            <div className="flex flex-col items-center gap-3">
               <div className="text-xs uppercase tracking-widest text-muted-foreground/60">Già connessi</div>
               <div className="flex flex-wrap justify-center gap-2 max-w-xl">
-                {publicPlayers.slice(0, 20).map((p) => (
-                  <motion.div key={p.id}
-                    initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }}
-                    transition={{ type: 'spring', stiffness: 200, damping: 18 }}
-                    className="flex items-center gap-1.5 rounded-full border border-white/10 bg-card/60 px-3 py-1.5 text-sm font-bold backdrop-blur-sm"
-                    style={{ borderColor: `${p.avatarColor}40` }}>
-                    <div className="h-5 w-5 shrink-0 rounded-full text-[10px] font-black flex items-center justify-center text-background"
-                      style={{ background: p.avatarColor }}>{p.nickname[0]?.toUpperCase()}</div>
-                    {p.nickname}
-                  </motion.div>
-                ))}
+                <AnimatePresence initial={false}>
+                  {publicPlayers.slice(0, 20).map((p) => (
+                    <motion.div key={p.id}
+                      initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }}
+                      transition={{ type: 'spring', stiffness: 200, damping: 18 }}
+                      className="flex items-center gap-1.5 rounded-full border border-white/10 bg-card/60 px-3 py-1.5 text-sm font-bold backdrop-blur-sm"
+                      style={{ borderColor: `${p.avatarColor}40` }}>
+                      <div className="h-5 w-5 shrink-0 rounded-full text-[10px] font-black flex items-center justify-center text-background"
+                        style={{ background: p.avatarColor }}>{p.nickname[0]?.toUpperCase()}</div>
+                      {p.nickname}
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
                 {publicPlayers.length > 20 && (
                   <div className="rounded-full border border-border bg-card/60 px-3 py-1.5 text-sm text-muted-foreground">+{publicPlayers.length - 20}</div>
                 )}
               </div>
-            </motion.div>
+            </div>
           )}
         </div>
 
@@ -774,9 +775,8 @@ export default function Hub() {
           <motion.img src="/jonny-master-nobg.png" alt="Jonny"
             className="w-full h-full object-contain object-bottom"
             style={{ filter: 'drop-shadow(0 0 40px rgba(245,182,66,0.45))' }}
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: [0, -12, 0] }}
-            transition={{ opacity: { duration: 0.6 }, y: { duration: 3.5, repeat: Infinity, ease: 'easeInOut', delay: 0.6 } }} />
+            animate={{ y: [0, -12, 0] }}
+            transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }} />
         </div>
       </div>
     );
@@ -982,13 +982,11 @@ export default function Hub() {
       {/* ── Jonny floating figure — desktop only ── */}
       <div className="hidden lg:block pointer-events-none absolute bottom-0 right-[235px] z-5 select-none"
         style={{ width: 220, height: 340 }}>
-        <motion.img src="/jonny-master.jpg" alt="Jonny"
+        <motion.img src="/jonny-master-nobg.png" alt="Jonny"
           className="w-full h-full object-contain object-bottom"
           style={{ filter: 'drop-shadow(0 0 40px rgba(245,182,66,0.45)) drop-shadow(0 20px 60px rgba(100,40,200,0.4))' }}
           animate={{ y: [0, -12, 0] }}
           transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-          initial={{ opacity: 0, y: 30, scale: 0.9 }}
-          whileInView={{ opacity: 1, y: 0, scale: 1 }}
         />
         <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-32 h-8 rounded-full"
           style={{ background: 'radial-gradient(ellipse, rgba(245,182,66,0.35) 0%, transparent 70%)', filter: 'blur(8px)' }} />
