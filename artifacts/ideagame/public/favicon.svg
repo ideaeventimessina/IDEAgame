@@ -1,3 +1,7 @@
 <svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect width="180" height="180" rx="36" fill="#FF3C00"/>
+  <!-- Hex background -->
+  <polygon points="90,8 164,50 164,130 90,172 16,130 16,50" fill="#0D0D0D"/>
+  <polygon points="90,16 156,54 156,126 90,164 24,126 24,54" fill="#1A1A2E" stroke="#D4AF37" stroke-width="2"/>
+  <!-- Letter J -->
+  <text x="90" y="126" font-family="Georgia, serif" font-size="96" font-weight="bold" fill="#D4AF37" text-anchor="middle" letter-spacing="-2">J</text>
 </svg>
