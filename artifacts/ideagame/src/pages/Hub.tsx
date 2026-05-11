@@ -14,6 +14,7 @@ import { useEventSocket } from '@/hooks/useEventSocket';
 import { useLocalMode } from '@/hooks/useLocalMode';
 import { useAudioOrchestrator } from '@/contexts/AudioOrchestrator';
 import { AudioManager } from '@/audio/AudioManager';
+import { PlayerLanding } from '@/pages/PlayerLanding';
 // ── Theme-park ambient particles ─────────────────────────────────────────────
 const CONFETTI_PALETTE = ['#F5B642','#FF69B4','#60A5FA','#A78BFA','#34D399','#F87171','#F472B6'];
 
@@ -205,6 +206,7 @@ export default function Hub() {
   const [sessionRunning, setSessionRunning] = useState(false);
   const [sessionEnded, setSessionEnded] = useState(false);
   const [hubPhase, setHubPhase] = useState<'join' | 'gameboard'>('join');
+  const [showCodeModal, setShowCodeModal] = useState(false);
   const [preloadedThemes, setPreloadedThemes] = useState<Record<string, { id: string; name: string } | null>>({});
   // Audio rimosso dall'Hub — suono solo da LiveControl/admin
 
@@ -627,53 +629,90 @@ export default function Hub() {
     );
   }
 
-  // ── Join-code entry screen: unauthenticated with no code ─────────────
+  // ── Landing page: unauthenticated with no code ───────────────────────
   if (!user && !activeCode) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6"
-        style={{ background: 'radial-gradient(ellipse 160% 80% at 50% -5%, #2d0d52 0%, #130628 40%, #060213 100%)' }}>
-        <HubStars />
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="relative z-10 w-full max-w-sm text-center">
-          <div className="mx-auto flex items-center justify-center rounded-2xl bg-white px-4 py-2 shadow-xl shadow-black/30" style={{ width: 148 }}>
-            <img src="/logo.png" alt="IDEA Games" className="h-14 w-auto object-contain" />
-          </div>
-          <div className="mt-6 text-display text-3xl font-black">Jonny's World</div>
-          <div className="mt-2 text-sm text-muted-foreground">Inserisci il codice evento per visualizzare il proiettore</div>
+      <>
+        <PlayerLanding
+          onJoin={() => setShowCodeModal(true)}
+          onHome={() => navigate('/home')}
+          onAdmin={() => navigate('/login')}
+        />
 
-          <div className="mt-8 space-y-3">
-            <input
-              value={inputCode}
-              onChange={e => { setInputCode(e.target.value.toUpperCase()); setCodeError(null); }}
-              onKeyDown={e => { if (e.key === 'Enter' && inputCode.trim()) setActiveCode(inputCode.trim()); }}
-              placeholder="Es. SORR40"
-              maxLength={10}
-              className="w-full rounded-2xl border border-primary/40 bg-card/60 px-5 py-4 text-center text-display text-2xl font-black uppercase tracking-[0.3em] text-primary placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/60 backdrop-blur-md"
-            />
-            {codeError && (
-              <div className="rounded-xl bg-destructive/10 px-4 py-2.5 text-sm text-destructive">{codeError}</div>
-            )}
-            <button
-              onClick={() => { if (inputCode.trim()) setActiveCode(inputCode.trim()); }}
-              disabled={!inputCode.trim()}
-              className="w-full rounded-2xl bg-primary py-4 text-sm font-black text-primary-foreground hover-elevate disabled:opacity-40"
+        {/* Code-entry modal */}
+        <AnimatePresence>
+          {showCodeModal && (
+            <motion.div
+              key="code-modal"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center px-5"
+              style={{ background: 'rgba(4,2,14,0.88)', backdropFilter: 'blur(18px)' }}
+              onClick={e => { if (e.target === e.currentTarget) setShowCodeModal(false); }}
             >
-              Connetti al proiettore →
-            </button>
-          </div>
+              <motion.div
+                initial={{ opacity: 0, scale: 0.92, y: 24 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.92, y: 24 }}
+                transition={{ type: 'spring', stiffness: 260, damping: 22 }}
+                className="relative w-full max-w-sm rounded-3xl text-center"
+                style={{ background: 'linear-gradient(145deg, #1a0a38 0%, #0e0520 100%)', border: '1.5px solid rgba(245,182,66,0.3)', padding: '2.5rem 2rem', boxShadow: '0 32px 80px rgba(0,0,0,0.8), 0 0 60px rgba(245,182,66,0.1)' }}
+              >
+                {/* Close */}
+                <button onClick={() => setShowCodeModal(false)}
+                  className="absolute top-4 right-4 rounded-xl p-1.5 text-muted-foreground hover:text-foreground transition-colors"
+                  style={{ background: 'rgba(255,255,255,0.06)' }}>
+                  <X className="h-4 w-4" />
+                </button>
 
-          <div className="mt-8 flex items-center gap-3 text-xs text-muted-foreground/60">
-            <div className="flex-1 h-px bg-border" />
-            oppure
-            <div className="flex-1 h-px bg-border" />
-          </div>
-          <button onClick={() => navigate('/login')}
-            className="mt-4 w-full rounded-2xl border border-border py-3.5 text-sm font-bold text-muted-foreground hover:text-foreground transition-colors">
-            Accedi come animatore →
-          </button>
-        </motion.div>
-      </div>
+                <div className="mx-auto flex items-center justify-center rounded-2xl bg-white px-3 py-1.5 shadow-xl mb-5" style={{ width: 120 }}>
+                  <img src="/logo.png" alt="IDEA Games" className="h-10 w-auto object-contain" />
+                </div>
+
+                <div className="text-display text-xl font-black mb-1">Entra in un evento</div>
+                <div className="text-sm text-muted-foreground mb-6">Inserisci il codice oppure inquadra il QR</div>
+
+                <div className="space-y-3">
+                  <input
+                    value={inputCode}
+                    onChange={e => { setInputCode(e.target.value.toUpperCase()); setCodeError(null); }}
+                    onKeyDown={e => { if (e.key === 'Enter' && inputCode.trim()) { setActiveCode(inputCode.trim()); setShowCodeModal(false); } }}
+                    placeholder="Es. SORR40"
+                    maxLength={10}
+                    autoFocus
+                    className="w-full rounded-2xl border border-primary/40 bg-card/60 px-5 py-4 text-center text-display text-2xl font-black uppercase tracking-[0.3em] text-primary placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/60 backdrop-blur-md"
+                  />
+                  {codeError && (
+                    <div className="rounded-xl bg-destructive/10 px-4 py-2.5 text-sm text-destructive">{codeError}</div>
+                  )}
+                  <button
+                    onClick={() => { if (inputCode.trim()) { setActiveCode(inputCode.trim()); setShowCodeModal(false); } }}
+                    disabled={!inputCode.trim()}
+                    className="w-full rounded-2xl bg-primary py-4 text-sm font-black text-primary-foreground hover-elevate disabled:opacity-40"
+                    style={{ background: 'linear-gradient(135deg, #FFE57A 0%, #F5B642 50%, #E08800 100%)', color: '#000' }}
+                  >
+                    Connetti al proiettore →
+                  </button>
+                </div>
+
+                <div className="mt-6 flex items-center gap-3 text-xs text-muted-foreground/50">
+                  <div className="flex-1 h-px bg-border" />oppure<div className="flex-1 h-px bg-border" />
+                </div>
+                <button onClick={() => { setShowCodeModal(false); navigate('/login'); }}
+                  className="mt-4 w-full rounded-2xl border border-border py-3 text-sm font-bold text-muted-foreground hover:text-foreground transition-colors">
+                  Accedi come animatore →
+                </button>
+                <button onClick={() => { setShowCodeModal(false); navigate('/home'); }}
+                  className="mt-2 w-full rounded-xl py-2.5 text-sm font-bold transition-colors"
+                  style={{ color: '#A78BFA', background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.2)' }}>
+                  🏠 Vai a Modalità Home
+                </button>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </>
     );
   }
 

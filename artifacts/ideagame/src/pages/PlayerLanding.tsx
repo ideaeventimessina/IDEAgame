@@ -78,7 +78,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 // ── HERO ─────────────────────────────────────────────────────────────────────
 
-function Hero({ onJoin, onScrollDown }: { onJoin: () => void; onScrollDown: () => void }) {
+function Hero({ onJoin, onHome, onAdmin, onScrollDown }: { onJoin: () => void; onHome: () => void; onAdmin: () => void; onScrollDown: () => void }) {
   return (
     <section className="relative flex flex-col overflow-hidden select-none"
       style={{ minHeight: '100svh', background: 'radial-gradient(ellipse 120% 70% at 50% -5%, #1e0840 0%, #0e0520 40%, #060210 100%)' }}>
@@ -106,6 +106,13 @@ function Hero({ onJoin, onScrollDown }: { onJoin: () => void; onScrollDown: () =
           style={{ background: 'linear-gradient(to bottom, rgba(4,2,16,0.45) 0%, transparent 18%)' }} />
       </motion.div>
 
+      {/* Admin login — top right */}
+      <button onClick={onAdmin}
+        className="absolute top-5 right-5 z-20 rounded-xl px-4 py-2 text-xs font-bold transition-colors"
+        style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.45)', backdropFilter: 'blur(10px)' }}>
+        Accedi come animatore →
+      </button>
+
       {/* CTAs — pinned to bottom of hero */}
       <div className="absolute bottom-0 left-0 right-0 z-10 flex flex-col items-center pb-10 sm:pb-12 px-5">
 
@@ -124,20 +131,27 @@ function Hero({ onJoin, onScrollDown }: { onJoin: () => void; onScrollDown: () =
             <motion.div className="absolute inset-0 -skew-x-12 w-1/4"
               style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.42), transparent)' }}
               animate={{ x: ['-150%', '400%'] }} transition={{ duration: 3, repeat: Infinity, repeatDelay: 2 }} />
-            Entra nel mondo
+            🎯 Evento Live
           </motion.button>
 
-          <motion.button onClick={onScrollDown} whileTap={{ scale: 0.97 }}
-            className="flex-1 rounded-2xl font-bold"
-            style={{ padding: '20px 24px', fontSize: 'clamp(0.88rem, 2vw, 1rem)', border: '1.5px solid rgba(245,182,66,0.5)', color: '#FFE57A', background: 'rgba(4,2,16,0.55)', backdropFilter: 'blur(12px)' }}>
-            Scopri gli 8 giochi
+          <motion.button onClick={onHome} whileTap={{ scale: 0.97 }}
+            className="relative flex-1 overflow-hidden rounded-2xl font-black"
+            style={{ padding: '20px 24px', fontSize: 'clamp(0.88rem, 2vw, 1rem)', background: 'linear-gradient(135deg, #A78BFA22 0%, #7C3AED33 100%)', border: '1.5px solid rgba(167,139,250,0.5)', color: '#C4B5FD', backdropFilter: 'blur(12px)', boxShadow: '0 0 30px rgba(167,139,250,0.2)' }}>
+            🏠 Modalità Home
           </motion.button>
         </div>
 
-        <button onClick={onJoin} className="mt-4 font-medium"
-          style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.35)', background: 'none', border: 'none', cursor: 'pointer' }}>
-          Ho un codice evento → inseriscilo
-        </button>
+        <div className="mt-4 flex items-center gap-4">
+          <button onClick={onJoin} className="font-medium"
+            style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.35)', background: 'none', border: 'none', cursor: 'pointer' }}>
+            Ho un codice evento → inseriscilo
+          </button>
+          <span style={{ color: 'rgba(255,255,255,0.15)', fontSize: '0.7rem' }}>·</span>
+          <button onClick={onScrollDown} className="font-medium"
+            style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.35)', background: 'none', border: 'none', cursor: 'pointer' }}>
+            Scopri i giochi ↓
+          </button>
+        </div>
       </div>
 
       {/* Scroll indicator */}
@@ -266,19 +280,23 @@ function ComeFunziona() {
 
 // ── MODALITA' ─────────────────────────────────────────────────────────────────
 
-function Modalita({ onJoin }: { onJoin: () => void }) {
+function Modalita({ onJoin, onHome }: { onJoin: () => void; onHome: () => void }) {
   const modes = [
     {
       tag: 'Live Event', title: 'Feste, matrimoni, eventi aziendali',
       body: "Jonny's World è pensato per le serate dal vivo. Fino a 200 persone, tutto su schermo, tutto live.",
       color: '#F5B642', dark: '#7a3e00',
       items: ['Proiettore + QR code', 'Fino a 200 ospiti', 'Ogni gioco su misura'],
+      btnLabel: '🎯 Entra in un evento', btnAction: onJoin,
+      btnStyle: { background: 'linear-gradient(135deg, #FFE57A 0%, #F5B642 100%)', color: '#000', boxShadow: '0 0 24px rgba(245,182,66,0.45)' },
     },
     {
       tag: 'Home Mode', title: 'Gioca da casa con Jonny come host',
       body: "Stessa esperienza, divano di casa. Connetti la TV, invita gli amici — Jonny è lì.",
       color: '#A78BFA', dark: '#2d1060',
       items: ['Smart TV + telefoni', 'Nessun limite di giocatori', 'Modalità family-friendly'],
+      btnLabel: '🏠 Avvia Home Mode', btnAction: onHome,
+      btnStyle: { background: 'linear-gradient(135deg, #A78BFA33 0%, #7C3AED44 100%)', color: '#C4B5FD', border: '1.5px solid rgba(167,139,250,0.5)', boxShadow: '0 0 20px rgba(167,139,250,0.2)' },
     },
   ];
 
@@ -333,13 +351,11 @@ function Modalita({ onJoin }: { onJoin: () => void }) {
                 ))}
               </ul>
 
-              {i === 0 && (
-                <motion.button onClick={onJoin} whileTap={{ scale: 0.97 }}
-                  className="relative z-10 self-start mt-2 rounded-xl font-black text-black"
-                  style={{ padding: '12px 28px', fontSize: '0.9rem', background: 'linear-gradient(135deg, #FFE57A 0%, #F5B642 100%)', boxShadow: '0 0 24px rgba(245,182,66,0.45)' }}>
-                  Entra in un evento
-                </motion.button>
-              )}
+              <motion.button onClick={m.btnAction} whileTap={{ scale: 0.97 }}
+                className="relative z-10 self-start mt-2 rounded-xl font-black"
+                style={{ padding: '12px 28px', fontSize: '0.9rem', ...m.btnStyle }}>
+                {m.btnLabel}
+              </motion.button>
             </motion.div>
           ))}
         </div>
@@ -548,19 +564,19 @@ function Footer() {
 
 // ── ROOT ──────────────────────────────────────────────────────────────────────
 
-interface Props { onJoin: () => void }
+interface Props { onJoin: () => void; onHome: () => void; onAdmin: () => void }
 
-export function PlayerLanding({ onJoin }: Props) {
+export function PlayerLanding({ onJoin, onHome, onAdmin }: Props) {
   const mondiRef = useRef<HTMLDivElement>(null);
 
   const scrollToMondi = () => mondiRef.current?.scrollIntoView({ behavior: 'smooth' });
 
   return (
     <div className="relative w-full overflow-x-hidden" style={{ background: '#060210' }}>
-      <Hero onJoin={onJoin} onScrollDown={scrollToMondi} />
+      <Hero onJoin={onJoin} onHome={onHome} onAdmin={onAdmin} onScrollDown={scrollToMondi} />
       <div ref={mondiRef}><Mondi /></div>
       <ComeFunziona />
-      <Modalita onJoin={onJoin} />
+      <Modalita onJoin={onJoin} onHome={onHome} />
       <JonnyCrea />
       <Finale onJoin={onJoin} />
       <Footer />
