@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { AdminLayout } from './AdminLayout';
 import { Trash2, Plus, ChevronRight, ToggleLeft, ToggleRight, Loader2, Lock } from 'lucide-react';
 import { JonnyGenerateBanner } from '@/components/JonnyGenerateBanner';
+import { ProjectorPreview } from './ProjectorPreview';
 
 const BASE = (import.meta.env.BASE_URL as string) ?? '/';
 async function apiFetch(path: string, opts?: RequestInit) {
@@ -342,6 +343,36 @@ export default function AdminAdultOnly() {
                       </button>
                     </div>
                   </div>
+                )}
+
+                {/* ─── Anteprima proiettore ──────────────────────────── */}
+                {cards.length > 0 && (
+                  <ProjectorPreview total={cards.length} accentColor="#ec4899">
+                    {idx => {
+                      const card = cards[idx]!;
+                      return (
+                        <div className="flex flex-col items-center justify-center gap-5 px-8 py-10 text-center min-h-[260px]">
+                          <div className="flex items-center gap-3">
+                            <span className="text-3xl">{CAT_EMOJI[card.category] ?? '🎯'}</span>
+                            <span className="rounded-full border border-pink-400/40 bg-pink-400/15 px-3 py-1 text-xs font-black text-pink-300 uppercase tracking-widest">
+                              {CATEGORIES.find(c => c.value === card.category)?.label.replace(/^[^\s]+ /, '') ?? card.category}
+                            </span>
+                            <span className="text-base">{LEVEL_EMOJI[card.level] ?? '🌶️'}</span>
+                          </div>
+                          <div className="text-display font-black text-white text-3xl leading-tight max-w-xl">
+                            {card.title}
+                          </div>
+                          <div className="max-w-lg text-white/70 text-base leading-relaxed">
+                            {card.body}
+                          </div>
+                          <div className="flex items-center gap-5 text-sm font-bold text-white/50">
+                            <span className="text-pink-300">+{card.points} pt</span>
+                            {card.timeLimit > 0 && <span>⏱ {card.timeLimit}s</span>}
+                          </div>
+                        </div>
+                      );
+                    }}
+                  </ProjectorPreview>
                 )}
 
                 {/* Cards list */}
