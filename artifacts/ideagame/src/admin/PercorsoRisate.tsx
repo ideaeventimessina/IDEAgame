@@ -558,45 +558,37 @@ function PercorsoSlidePreview({ steps }: { steps: PathStep[] }) {
       </div>
 
       {/* Slide */}
-      <div className="relative min-h-[260px] flex flex-col items-center justify-center gap-4 px-8 py-10"
+      <div className="relative flex flex-col items-center justify-center gap-2.5 px-6 py-5"
         style={{ background: `radial-gradient(ellipse at 60% 30%, ${color}18 0%, transparent 70%), linear-gradient(135deg, #0d0d0d 0%, #111 100%)` }}>
 
-        {/* Hex decoration */}
-        <div className="absolute inset-0 overflow-hidden opacity-5 pointer-events-none select-none">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="absolute text-[120px] leading-none"
-              style={{ top: `${(i % 3) * 35}%`, left: `${(i % 4) * 28}%`, color }}>⬡</div>
-          ))}
-        </div>
-
         {/* Type badge */}
-        <div className="flex items-center gap-2 rounded-full border px-4 py-1.5 text-sm font-bold"
+        <div className="flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold"
           style={{ borderColor: `${color}60`, background: `${color}15`, color }}>
-          <span className="text-xl">{cfg.emoji}</span>
-          <span className="uppercase tracking-widest text-xs">{cfg.label}</span>
+          <span className="text-base">{cfg.emoji}</span>
+          <span className="uppercase tracking-widest text-[10px]">{cfg.label}</span>
         </div>
 
         {/* Title */}
-        <div className="text-display text-3xl md:text-4xl font-black text-white text-center leading-tight max-w-xl">
+        <div className="text-display text-lg md:text-xl font-black text-white text-center leading-tight max-w-xl">
           {step.title}
         </div>
 
         {/* Description */}
         {step.description && (
-          <div className="text-white/70 text-base text-center max-w-lg">{step.description}</div>
+          <div className="text-white/60 text-xs text-center max-w-lg">{step.description}</div>
         )}
 
         {/* Optional image */}
         {step.optionalMediaUrl && (
-          <img src={step.optionalMediaUrl} alt="" className="max-h-28 max-w-xs rounded-xl object-contain opacity-90"
+          <img src={step.optionalMediaUrl} alt="" className="max-h-16 max-w-[180px] rounded-lg object-contain opacity-90"
             onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
         )}
 
         {/* Footer: timer + points */}
-        <div className="flex items-center gap-6 rounded-full border border-white/10 bg-white/5 px-6 py-2">
-          <span className="text-white/80 text-sm font-bold">⏱ {step.timeLimit}s</span>
-          <span className="w-px h-4 bg-white/20" />
-          <span className="font-bold text-sm" style={{ color }}>⭐ {step.points} pt</span>
+        <div className="flex items-center gap-4 rounded-full border border-white/10 bg-white/5 px-4 py-1.5">
+          <span className="text-white/70 text-xs font-bold">⏱ {step.timeLimit}s</span>
+          <span className="w-px h-3 bg-white/20" />
+          <span className="font-bold text-xs" style={{ color }}>⭐ {step.points} pt</span>
         </div>
       </div>
     </div>

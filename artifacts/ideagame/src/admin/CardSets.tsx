@@ -181,47 +181,42 @@ function CoppiePreview({ pairs }: { pairs: [string, AnyCard[]][] }) {
       </div>
 
       {/* Slide: both cards of the pair */}
-      <div className="relative flex flex-col items-center gap-4 px-6 py-8"
+      <div className="relative flex flex-col items-center gap-3 px-5 py-4"
         style={{ background: 'radial-gradient(ellipse at 50% 0%, #F5B64218 0%, transparent 70%), linear-gradient(135deg, #0d0d0d 0%, #111 100%)' }}>
 
-        {/* Hex bg decoration */}
-        <div className="absolute inset-0 overflow-hidden opacity-5 pointer-events-none select-none flex items-center justify-center">
-          <div className="text-[300px] leading-none text-[#F5B642]">⬡</div>
-        </div>
+        <div className="text-[10px] font-bold uppercase tracking-widest text-[#F5B642]/60">coppia da trovare</div>
 
-        <div className="text-xs font-bold uppercase tracking-widest text-[#F5B642]/70">coppia da trovare</div>
-
-        <div className="relative z-10 flex gap-4 w-full max-w-xl justify-center">
+        <div className="relative z-10 flex gap-3 justify-center">
           {/* Card A */}
-          <div className="flex-1 max-w-[220px] rounded-2xl overflow-hidden border-2 border-[#F5B642]/40 shadow-lg">
+          <div className="w-[120px] rounded-xl overflow-hidden border-2 border-[#F5B642]/40 shadow-lg">
             {imgA ? (
               <img src={imgA} alt={label} className="w-full aspect-[4/3] object-cover" />
             ) : (
               <div className="w-full aspect-[4/3] bg-secondary flex items-center justify-center">
-                <ImageIcon className="h-10 w-10 text-muted-foreground/30" />
+                <ImageIcon className="h-6 w-6 text-muted-foreground/30" />
               </div>
             )}
           </div>
 
           {/* Match indicator */}
           <div className="flex items-center justify-center">
-            <div className="rounded-full border-2 border-[#F5B642]/40 bg-[#F5B642]/10 px-3 py-1.5 text-[#F5B642] font-black text-lg">↔</div>
+            <div className="rounded-full border border-[#F5B642]/40 bg-[#F5B642]/10 px-2 py-1 text-[#F5B642] font-black text-sm">↔</div>
           </div>
 
           {/* Card B */}
-          <div className="flex-1 max-w-[220px] rounded-2xl overflow-hidden border-2 border-[#F5B642]/40 shadow-lg">
+          <div className="w-[120px] rounded-xl overflow-hidden border-2 border-[#F5B642]/40 shadow-lg">
             {imgB ? (
               <img src={imgB} alt={label} className="w-full aspect-[4/3] object-cover" />
             ) : (
               <div className="w-full aspect-[4/3] bg-secondary flex items-center justify-center">
-                <ImageIcon className="h-10 w-10 text-muted-foreground/30" />
+                <ImageIcon className="h-6 w-6 text-muted-foreground/30" />
               </div>
             )}
           </div>
         </div>
 
         {/* Label revealed */}
-        <div className="relative z-10 rounded-full border border-[#F5B642]/30 bg-[#F5B642]/10 px-6 py-2 text-[#F5B642] font-black text-lg">
+        <div className="relative z-10 rounded-full border border-[#F5B642]/30 bg-[#F5B642]/10 px-4 py-1 text-[#F5B642] font-black text-sm">
           {label}
         </div>
       </div>
