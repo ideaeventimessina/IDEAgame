@@ -15,6 +15,7 @@ export const gameSessionsTable = pgTable("game_sessions", {
   startedAt: timestamp("started_at", { withTimezone: true }),
   endedAt: timestamp("ended_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  gameSettings: jsonb("game_settings").$type<Record<string, unknown>>().notNull().default({}),
 });
 
 export const roundStatus = pgEnum("round_status", ["pending", "running", "completed"]);

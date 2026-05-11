@@ -69,6 +69,44 @@ function publicQuestion(payload: QuizzoneRoundPayload, sessionId: string) {
   return { ...pub, sessionId };
 }
 
+// ─── POST /quizzone/sessions/:id/init ─────────────────────────────────────────
+// Auth — host links a quiz pack to the session (called by LiveControl / Serata Completa)
+router.post("/quizzone/sessions/:id/init", requireAuth, async (req: AuthedRequest, res: Response): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Sessione non trovata" }); return; }
+
+  const me = req.user!;
+  if (me.role !== "super_admin") {
+    const [ev] = await db.select().from(eventsTable).where(eq(eventsTable.id, session.eventId));
+    if (!ev || ev.tenantId !== me.tenantId) { res.status(403).json({ error: "Forbidden" }); return; }
+  }
+
+  const body = req.body as { packId?: string };
+  const packId = String(body.packId ?? "");
+  if (!isUUID(packId)) { res.status(400).json({ error: "packId obbligatorio" }); return; }
+
+  const [pack] = await db.select().from(quizPacksTable).where(eq(quizPacksTable.id, packId));
+  if (!pack) { res.status(404).json({ error: "Quiz pack non trovato" }); return; }
+
+  const totalRounds = Array.isArray(pack.generatedJson) ? (pack.generatedJson as unknown[]).length : 0;
+
+  await db.update(gameSessionsTable)
+    .set({
+      gameSettings: { packId, packTitle: pack.title, totalRounds },
+      totalRounds,
+      status: "running",
+      startedAt: new Date(),
+    })
+    .where(eq(gameSessionsTable.id, id));
+
+  emitToEvent(session.eventId, "quiz:started", { sessionId: id, packId, packTitle: pack.title, totalRounds });
+
+  res.json({ ok: true, sessionId: id, packId, packTitle: pack.title, totalRounds });
+});
+
 // ─── GET /quizzone/sessions/:id/state ─────────────────────────────────────────
 // Public — projector, player phone
 router.get("/quizzone/sessions/:id/state", async (req: AuthedRequest, res): Promise<void> => {
@@ -78,10 +116,18 @@ router.get("/quizzone/sessions/:id/state", async (req: AuthedRequest, res): Prom
   const session = await getSession(id);
   if (!session) { res.status(404).json({ error: "Sessione non trovata" }); return; }
 
+  const settings = (session.gameSettings ?? {}) as { packId?: string; packTitle?: string; totalRounds?: number };
   const { round, payload } = await getCurrentRound(id);
 
   if (!payload) {
-    res.json({ sessionId: id, status: session.status, hasQuestion: false });
+    res.json({
+      sessionId: id,
+      status: session.status,
+      hasQuestion: false,
+      packId: settings.packId ?? null,
+      packTitle: settings.packTitle ?? null,
+      totalRounds: settings.totalRounds ?? 0,
+    });
     return;
   }
 
@@ -94,6 +140,8 @@ router.get("/quizzone/sessions/:id/state", async (req: AuthedRequest, res): Prom
     status: session.status,
     roundId: round!.id,
     responseCount,
+    packId: settings.packId ?? payload.packId ?? null,
+    packTitle: settings.packTitle ?? null,
   });
 });
 

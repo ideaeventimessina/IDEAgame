@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { AdminLayout } from './AdminLayout';
-import { Plus, Trash2, Loader2, ExternalLink, Calendar, StopCircle, Play } from 'lucide-react';
+import { Plus, Trash2, Loader2, ExternalLink, Calendar, StopCircle, Play, Pencil, X } from 'lucide-react';
 import {
   useListEvents, useCreateEvent, useDeleteEvent, useUpdateEvent,
   useListTenants,
@@ -17,6 +17,12 @@ const STATUS_COLORS: Record<string, string> = {
   ended: 'bg-muted text-muted-foreground',
 };
 
+type EventItem = {
+  id: string; name: string; venue?: string | null; joinCode: string;
+  startsAt?: string | null; status: string; brandColor?: string | null;
+  expectedPlayers?: number | null; tenantId?: string | null;
+};
+
 export default function Events() {
   const qc = useQueryClient();
   const [, navigate] = useLocation();
@@ -27,10 +33,45 @@ export default function Events() {
   const create = useCreateEvent();
   const del = useDeleteEvent();
   const update = useUpdateEvent();
+
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: '', venue: '', brandColor: '#F5B642', expectedPlayers: 20, tenantId: '' });
 
+  const [editOpen, setEditOpen] = useState(false);
+  const [editId, setEditId] = useState('');
+  const [editForm, setEditForm] = useState({ name: '', venue: '', brandColor: '#F5B642', expectedPlayers: 20, startsAt: '' });
+  const [editBusy, setEditBusy] = useState(false);
+
   const refresh = () => qc.invalidateQueries({ queryKey: getListEventsQueryKey() });
+
+  const openEdit = (ev: EventItem) => {
+    setEditId(ev.id);
+    setEditForm({
+      name: ev.name,
+      venue: ev.venue ?? '',
+      brandColor: ev.brandColor ?? '#F5B642',
+      expectedPlayers: ev.expectedPlayers ?? 20,
+      startsAt: ev.startsAt ? new Date(ev.startsAt).toISOString().slice(0, 16) : '',
+    });
+    setEditOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editForm.name.trim()) return;
+    setEditBusy(true);
+    try {
+      await update.mutateAsync({ id: editId, data: {
+        name: editForm.name,
+        venue: editForm.venue || undefined,
+        brandColor: editForm.brandColor,
+        expectedPlayers: editForm.expectedPlayers,
+        ...(editForm.startsAt ? { startsAt: new Date(editForm.startsAt).toISOString() } : {}),
+      }});
+      setEditOpen(false);
+      refresh();
+    } catch { /* silent */ }
+    finally { setEditBusy(false); }
+  };
 
   const handleCreate = async () => {
     if (!form.name.trim()) return;
@@ -62,7 +103,7 @@ export default function Events() {
       ) : (
         <div className="overflow-hidden rounded-2xl border border-border bg-card">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px]">
+            <table className="w-full min-w-[700px]">
               <thead className="border-b border-border bg-secondary/40 text-left text-xs uppercase tracking-widest text-muted-foreground">
                 <tr>
                   <th className="px-5 py-3">Evento</th>
@@ -74,7 +115,7 @@ export default function Events() {
                 </tr>
               </thead>
               <tbody>
-                {events.map(ev => (
+                {(events as EventItem[]).map(ev => (
                   <tr key={ev.id} className="border-b border-border last:border-0 hover:bg-secondary/20 transition-colors">
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-3">
@@ -102,6 +143,11 @@ export default function Events() {
                           className="rounded-lg border border-border p-2 hover-elevate"
                           title="Apri controllo"
                         ><ExternalLink className="h-4 w-4" /></button>
+                        <button
+                          onClick={() => openEdit(ev)}
+                          className="rounded-lg border border-border p-2 hover-elevate text-primary"
+                          title="Modifica evento"
+                        ><Pencil className="h-4 w-4" /></button>
                         {ev.status === 'draft' && (
                           <button
                             onClick={async () => {
@@ -149,6 +195,7 @@ export default function Events() {
         </div>
       )}
 
+      {/* ── Crea evento ───────────────────────────────────────── */}
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm" onClick={() => setOpen(false)}>
           <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -208,6 +255,71 @@ export default function Events() {
                 className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 font-bold text-primary-foreground disabled:opacity-50"
               >
                 {create.isPending ? <><Loader2 className="h-4 w-4 animate-spin" /> Creando…</> : 'Crea evento'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modifica evento ───────────────────────────────────── */}
+      {editOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm" onClick={() => setEditOpen(false)}>
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <Pencil className="h-5 w-5" />
+                </div>
+                <div className="text-display text-2xl font-black">Modifica evento</div>
+              </div>
+              <button onClick={() => setEditOpen(false)} className="rounded-lg border border-border p-1.5 hover-elevate">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <Field label="Nome evento *" value={editForm.name} onChange={v => setEditForm({ ...editForm, name: v })} placeholder="Compleanno Anna…" />
+              <Field label="Venue" value={editForm.venue} onChange={v => setEditForm({ ...editForm, venue: v })} placeholder="Villa Romana, Milano" />
+              <label className="block">
+                <div className="mb-1 text-xs uppercase tracking-widest text-muted-foreground">Data e ora inizio</div>
+                <input
+                  type="datetime-local"
+                  value={editForm.startsAt}
+                  onChange={e => setEditForm({ ...editForm, startsAt: e.target.value })}
+                  className="w-full rounded-lg border border-border bg-background/40 px-3 py-2 outline-none focus:border-primary"
+                />
+              </label>
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="block">
+                    <div className="mb-1 text-xs uppercase tracking-widest text-muted-foreground">Colore brand</div>
+                    <div className="flex items-center gap-2 rounded-lg border border-border bg-background/40 px-3 py-2">
+                      <input type="color" value={editForm.brandColor} onChange={e => setEditForm({ ...editForm, brandColor: e.target.value })}
+                             className="h-6 w-6 cursor-pointer rounded border-0 bg-transparent p-0" />
+                      <span className="font-mono text-sm">{editForm.brandColor}</span>
+                    </div>
+                  </label>
+                </div>
+                <div className="flex-1">
+                  <label className="block">
+                    <div className="mb-1 text-xs uppercase tracking-widest text-muted-foreground">Giocatori attesi</div>
+                    <input
+                      type="number" min={1} max={500}
+                      value={editForm.expectedPlayers}
+                      onChange={e => setEditForm({ ...editForm, expectedPlayers: parseInt(e.target.value) || 20 })}
+                      className="w-full rounded-lg border border-border bg-background/40 px-3 py-2 outline-none focus:border-primary"
+                    />
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-3">
+              <button onClick={() => setEditOpen(false)} className="rounded-xl border border-border px-4 py-2 hover-elevate">Annulla</button>
+              <button
+                disabled={editBusy || !editForm.name.trim()}
+                onClick={handleSaveEdit}
+                className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 font-bold text-primary-foreground disabled:opacity-50"
+              >
+                {editBusy ? <><Loader2 className="h-4 w-4 animate-spin" /> Salvando…</> : 'Salva modifiche'}
               </button>
             </div>
           </div>

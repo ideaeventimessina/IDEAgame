@@ -621,7 +621,7 @@ export default function LiveControl() {
     return () => { if (pollResponseRef.current) clearInterval(pollResponseRef.current); };
   }, [session?.id, quizzoneActive, quizzoneRevealed]);
 
-  // Reset quizzone state when session changes
+  // Reset quizzone state when session changes; auto-restore pack from init
   useEffect(() => {
     setQuizzoneRoundIdx(0);
     setQuizzoneRevealed(false);
@@ -629,7 +629,19 @@ export default function LiveControl() {
     setQuizzoneResponseCount(0);
     setRevealAnswer(false);
     setQuizzoneMsg('');
-  }, [session?.id]);
+    if (session?.gameSlug !== 'quizzone' || !session.id) return;
+    apiFetch(`/quizzone/sessions/${session.id}/state`)
+      .then((s) => {
+        const state = s as { packId?: string; hasQuestion?: boolean; roundIndex?: number; revealed?: boolean };
+        if (state.packId) setSelectedPackId(state.packId);
+        if (state.hasQuestion) {
+          setQuizzoneActive(true);
+          setQuizzoneRoundIdx(state.roundIndex ?? 0);
+          setQuizzoneRevealed(state.revealed ?? false);
+        }
+      })
+      .catch(() => { /* silent */ });
+  }, [session?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reset percorso state when session changes
   useEffect(() => {
@@ -1521,6 +1533,23 @@ export default function LiveControl() {
 
   // ─── Quizzone control handlers ─────────────────────────────────────────────
 
+  const handleQuizzoneInit = async () => {
+    if (!session || !selectedPackId || quizzoneBusy) return;
+    setQuizzoneBusy(true); setQuizzoneMsg(''); setError('');
+    try {
+      await apiFetch(`/quizzone/sessions/${session.id}/init`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ packId: selectedPackId }),
+      });
+      setQuizzoneMsg('✓ Pack inizializzato!');
+    } catch (e) {
+      const msg = (e as Error).message;
+      setError(msg);
+      toast({ title: 'Errore init quizzone', description: msg, variant: 'destructive' });
+    } finally { setQuizzoneBusy(false); }
+  };
+
   const handleQuizzoneStartQuestion = async (roundIdx: number) => {
     if (!session || !selectedPackId || quizzoneBusy) return;
     setQuizzoneBusy(true); setQuizzoneMsg(''); setError('');
@@ -2240,6 +2269,17 @@ export default function LiveControl() {
                 </select>
               )}
             </div>
+
+            {/* Init button — shown when pack selected but session not yet started */}
+            {selectedPackId && !quizzoneActive && session?.status !== 'ended' && (
+              <button
+                disabled={quizzoneBusy}
+                onClick={() => void handleQuizzoneInit()}
+                className="w-full flex items-center justify-center gap-2 rounded-xl border-2 border-primary bg-primary/10 py-2.5 text-sm font-black text-primary disabled:opacity-40">
+                {quizzoneBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+                Inizializza con questo pack
+              </button>
+            )}
 
             {packDetail && (
               <>

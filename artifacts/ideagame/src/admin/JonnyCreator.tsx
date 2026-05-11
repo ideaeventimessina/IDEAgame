@@ -237,7 +237,7 @@ function PayloadPreview({ gameSlug, payload }: { gameSlug: string; payload: Reco
         {pairs.slice(0, expanded ? 999 : 4).map((p, i) => (
           <div key={i} className="rounded-lg border border-border/50 bg-card/40 p-2.5">
             <div className="text-sm font-bold">{p.label as string}</div>
-            {p.imageDescription && <p className="mt-1 text-[11px] text-muted-foreground">💡 {p.imageDescription as string}</p>}
+            {typeof p.imageDescription === 'string' && p.imageDescription && <p className="mt-1 text-[11px] text-muted-foreground">💡 {p.imageDescription}</p>}
           </div>
         ))}
         {pairs.length > 4 && <button onClick={() => setExpanded(e => !e)} className="text-xs text-primary hover:underline">{expanded ? '▲' : `+${pairs.length - 4} altre ▼`}</button>}
