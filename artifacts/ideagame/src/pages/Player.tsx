@@ -20,6 +20,7 @@ interface CoppieBoardState {
   mode: string; currentTeamIdx: number; flipping: number[];
   locked: boolean; status: string; winner: string | null;
   matchCount: number; totalPairs: number;
+  votes?: Record<string, number>;
 }
 interface QuizzoneQuestion {
   sessionId: string;
@@ -1256,8 +1257,9 @@ function CoppiePhoneController({ board, sessionId, teamId, teamColor, onBoardUpd
   teamColor: string;
   onBoardUpdate: (b: CoppieBoardState) => void;
 }) {
-  const [flipping, setFlipping] = useState<number | null>(null);
-  const [flipError, setFlipError] = useState('');
+  const [pendingPos, setPendingPos] = useState<number | null>(null);
+  const [voteError, setVoteError] = useState('');
+  const playerId = typeof window !== 'undefined' ? (localStorage.getItem('ideagame:player:id') ?? 'anon') : 'anon';
 
   if (!board) {
     return (
@@ -1273,25 +1275,68 @@ function CoppiePhoneController({ board, sessionId, teamId, teamColor, onBoardUpd
   const isMyTurn = board.mode !== 'teams' || currentTeam?.id === teamId;
   const cols = board.cards.length <= 12 ? 4 : board.cards.length <= 20 ? 5 : 6;
 
-  const handleFlip = async (pos: number) => {
-    if (!sessionId || !teamId || board.locked || board.status !== 'playing') return;
-    if (!isMyTurn) { setFlipError('Non è il tuo turno!'); setTimeout(() => setFlipError(''), 2000); return; }
+  const myVote = board.votes ? board.votes[playerId] ?? null : null;
+  const voteCount = board.votes ? Object.keys(board.votes).length : 0;
+
+  /* ── Preview phase ─────────────────────────────────────── */
+  if (board.status === 'preview') {
+    return (
+      <div className="mt-4 flex flex-col items-center gap-4 text-center px-2">
+        <motion.div animate={{ scale: [1, 1.08, 1] }} transition={{ duration: 1.2, repeat: Infinity }}
+          className="text-display text-5xl font-black" style={{ color: teamColor }}>
+          👀
+        </motion.div>
+        <div className="text-lg font-black text-white">Memorizza le coppie!</div>
+        <div className="text-sm text-muted-foreground">Le carte sono scoperte sul proiettore — osserva bene.</div>
+        <div className="flex gap-1 mt-2">
+          {[0,1,2].map(i => (
+            <motion.div key={i} className="h-2 w-2 rounded-full" style={{ background: teamColor }}
+              animate={{ opacity: [0.3,1,0.3], scale: [0.8,1.1,0.8] }}
+              transition={{ repeat: Infinity, duration: 1.2, delay: i * 0.2 }} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Vote phase: cast a vote for a card position ───────── */
+  const handleVote = async (pos: number) => {
+    if (!sessionId || !teamId || board.status !== 'playing') return;
+    if (!isMyTurn) { setVoteError('Non è il tuo turno!'); setTimeout(() => setVoteError(''), 2000); return; }
     const card = board.cards[pos];
     if (!card || card.matched || card.flipped) return;
-    setFlipping(pos);
-    setFlipError('');
+    if (myVote === pos) {
+      // flip directly if already voted for this pos (confirm)
+      setPendingPos(pos);
+      setVoteError('');
+      try {
+        const result = await apiFetch(`/coppie/sessions/${sessionId}/flip`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pos, teamId }),
+        }) as { board: CoppieBoardState } | CoppieBoardState;
+        const updated = (result as { board?: CoppieBoardState }).board ?? result as CoppieBoardState;
+        onBoardUpdate(updated);
+      } catch (e) {
+        const msg = (e as Error).message;
+        if (!msg.includes('bloccata') && !msg.includes('turno') && !msg.includes('Flip')) setVoteError(msg);
+      } finally { setPendingPos(null); }
+      return;
+    }
+    setPendingPos(pos);
+    setVoteError('');
     try {
-      const result = await apiFetch(`/coppie/sessions/${sessionId}/flip`, {
+      const result = await apiFetch(`/coppie/sessions/${sessionId}/vote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pos, teamId }),
-      }) as { board: CoppieBoardState } | CoppieBoardState;
-      const updated = (result as { board?: CoppieBoardState }).board ?? result as CoppieBoardState;
+        body: JSON.stringify({ pos, teamId, playerId }),
+      }) as unknown as { board?: CoppieBoardState };
+      const updated = result.board ?? {} as CoppieBoardState;
       onBoardUpdate(updated);
     } catch (e) {
       const msg = (e as Error).message;
-      if (!msg.includes('bloccata') && !msg.includes('turno')) setFlipError(msg);
-    } finally { setFlipping(null); }
+      if (!msg.includes('turno')) setVoteError(msg);
+    } finally { setPendingPos(null); }
   };
 
   return (
@@ -1305,10 +1350,27 @@ function CoppiePhoneController({ board, sessionId, teamId, teamColor, onBoardUpd
         </span>
       </div>
 
+      {/* Vote status */}
+      {isMyTurn && board.status === 'playing' && (
+        <div className="rounded-xl border border-border bg-card/40 px-3 py-2 text-xs text-center">
+          {myVote !== null
+            ? <span className="text-amber-400">Hai scelto la carta {myVote + 1} — tocca di nuovo per confermare o scegli un'altra</span>
+            : <span className="text-muted-foreground">Tocca una carta per votarla — tutti devono scegliere</span>
+          }
+          {voteCount > 0 && <span className="ml-2 text-white/40">({voteCount} vot{voteCount === 1 ? 'o' : 'i'})</span>}
+        </div>
+      )}
+
       {/* Not my turn notice */}
       {!isMyTurn && board.status === 'playing' && (
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-center text-xs text-amber-400">
           Aspetta il tuo turno — sta giocando {currentTeam?.name}
+        </div>
+      )}
+
+      {voteError && (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs text-center text-destructive">
+          {voteError}
         </div>
       )}
 
@@ -1329,31 +1391,38 @@ function CoppiePhoneController({ board, sessionId, teamId, teamColor, onBoardUpd
 
       {/* Mini grid */}
       {board.status === 'playing' && (
-        <div className={`grid gap-1.5`} style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
+        <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
           {board.cards.map((card) => {
-            const isFlipping = flipping === card.pos;
+            const isPending = pendingPos === card.pos;
             const isFlipped = card.flipped || card.matched;
             const isMatched = card.matched;
+            const isMyVote = myVote === card.pos;
+            const voteCountHere = board.votes
+              ? Object.values(board.votes).filter(v => v === card.pos).length
+              : 0;
             return (
               <motion.button
                 key={card.pos}
-                onClick={() => void handleFlip(card.pos)}
-                disabled={isFlipped || board.locked || !isMyTurn || board.status !== 'playing'}
-                whileTap={{ scale: 0.92 }}
+                onClick={() => void handleVote(card.pos)}
+                disabled={isFlipped || board.locked || !isMyTurn || board.status !== 'playing' || isPending}
+                whileTap={{ scale: 0.9 }}
                 className={`relative aspect-square rounded-lg border-2 transition-all ${
                   isMatched
                     ? 'border-green-500/60 bg-green-500/20 opacity-60'
                     : isFlipped
                     ? 'border-primary/60 bg-primary/20'
+                    : isMyVote
+                    ? 'border-amber-400 bg-amber-400/20 scale-[1.04]'
                     : 'border-border bg-card hover:border-primary/40 hover:bg-primary/10'
                 } disabled:cursor-not-allowed`}
+                style={isMyVote ? { boxShadow: `0 0 0 2px rgba(251,191,36,0.4)` } : undefined}
               >
-                {isFlipping && (
+                {isPending && (
                   <div className="absolute inset-0 flex items-center justify-center">
                     <Loader2 className="h-4 w-4 animate-spin text-primary" />
                   </div>
                 )}
-                {isFlipped && !isFlipping && (
+                {isFlipped && !isPending && (
                   <div className="absolute inset-0 flex items-center justify-center p-0.5">
                     {card.imageUrl ? (
                       <img src={card.imageUrl} alt="" className="h-full w-full rounded object-cover" />
@@ -1362,9 +1431,15 @@ function CoppiePhoneController({ board, sessionId, teamId, teamColor, onBoardUpd
                     )}
                   </div>
                 )}
-                {!isFlipped && !isFlipping && (
+                {!isFlipped && !isPending && (
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="h-2 w-2 rounded-full bg-muted-foreground/30" />
+                    <div className={`h-2 w-2 rounded-full ${isMyVote ? 'bg-amber-400' : 'bg-muted-foreground/30'}`} />
+                  </div>
+                )}
+                {/* Vote count badge */}
+                {!isFlipped && voteCountHere > 0 && (
+                  <div className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full bg-amber-400 flex items-center justify-center">
+                    <span className="text-[9px] font-black text-black">{voteCountHere}</span>
                   </div>
                 )}
               </motion.button>
@@ -1385,9 +1460,9 @@ function CoppiePhoneController({ board, sessionId, teamId, teamColor, onBoardUpd
         ))}
       </div>
 
-      {flipError && (
+      {voteError && (
         <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-2 text-center text-sm text-destructive">
-          {flipError}
+          {voteError}
         </div>
       )}
     </div>

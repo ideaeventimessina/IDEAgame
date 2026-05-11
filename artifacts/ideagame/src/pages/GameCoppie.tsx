@@ -15,8 +15,9 @@ interface CoppieTeam { id: string; name: string; color: string; score: number; }
 interface CoppieBoard {
   cards: CoppieCard[]; teams: CoppieTeam[];
   mode: 'teams' | 'individual'; currentTeamIdx: number; flipping: number[];
-  locked: boolean; status: 'playing' | 'ended'; winner: string | null;
+  locked: boolean; status: 'preview' | 'playing' | 'ended'; winner: string | null;
   matchCount: number; totalPairs: number;
+  votes?: Record<string, number>;
 }
 interface FlashMsg { text: string; color: string }
 
@@ -48,6 +49,8 @@ export default function GameCoppie() {
   const [eventId, setEventId] = useState(eventIdParam);
   const [loading, setLoading] = useState(!!sessionId);
   const [flash, setFlash]   = useState<FlashMsg | null>(null);
+  const [previewCountdown, setPreviewCountdown] = useState<number | null>(null);
+  const previewTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const flashTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const unflipRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollRef     = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -100,12 +103,50 @@ export default function GameCoppie() {
     prevConnected.current = connected;
   }, [connected, sessionId, fetchBoard]);
 
+  const startPreviewCountdown = useCallback((sId: string, eId: string) => {
+    if (previewTimerRef.current) clearInterval(previewTimerRef.current);
+    setPreviewCountdown(5);
+    let remaining = 5;
+    previewTimerRef.current = setInterval(() => {
+      remaining -= 1;
+      setPreviewCountdown(remaining);
+      if (remaining <= 0) {
+        clearInterval(previewTimerRef.current!);
+        previewTimerRef.current = null;
+        setPreviewCountdown(null);
+        apiFetch(`/coppie/sessions/${sId}/start`, { method: 'POST' })
+          .then(b => setBoard(b as CoppieBoard))
+          .catch(() => {});
+        void eId;
+      }
+    }, 1000);
+  }, []);
+
+  useEffect(() => {
+    if (board?.status === 'preview' && sessionId && previewCountdown === null && !previewTimerRef.current) {
+      startPreviewCountdown(sessionId, eventId);
+    }
+  }, [board?.status, sessionId, eventId, previewCountdown, startPreviewCountdown]);
+
+  useEffect(() => {
+    return () => { if (previewTimerRef.current) clearInterval(previewTimerRef.current); };
+  }, []);
+
   useEffect(() => {
     if (!eventId) return;
     const extractBoard = (data: unknown) =>
       ((data as { board?: CoppieBoard }).board ?? data) as CoppieBoard;
     const unsubs = [
-      on('coppie:state', d => setBoard(extractBoard(d))),
+      on('coppie:preview', d => {
+        const b = extractBoard(d);
+        setBoard(b);
+        if (sessionId) startPreviewCountdown(sessionId, eventId);
+      }),
+      on('coppie:state', d => { setBoard(extractBoard(d)); setPreviewCountdown(null); }),
+      on('coppie:vote', d => {
+        const b = (d as { board?: CoppieBoard }).board;
+        if (b) setBoard(b);
+      }),
       on('coppie:match', d => {
         const b = extractBoard(d);
         setBoard(b);
@@ -135,7 +176,7 @@ export default function GameCoppie() {
       unsubs.forEach(u => u());
       if (unflipRef.current) clearTimeout(unflipRef.current);
     };
-  }, [eventId, on, callUnflip, showFlash]);
+  }, [eventId, on, callUnflip, showFlash, sessionId, startPreviewCountdown]);
 
   if (!sessionId) {
     return (
@@ -168,6 +209,58 @@ export default function GameCoppie() {
   const currentTeam = board.teams[board.currentTeamIdx];
   const winnerTeam  = board.winner ? board.teams.find(t => t.id === board.winner) : null;
   const { cols, rows } = gridCols(board.cards.length);
+
+  /* ── Preview overlay ─────────────────────────────────────── */
+  if (board.status === 'preview') {
+    return (
+      <ArenaBg theme={T}>
+        <div className="flex flex-1 flex-col items-center justify-center gap-6 p-6 relative">
+          {/* countdown ring */}
+          <div className="relative flex items-center justify-center">
+            <svg className="absolute" width={160} height={160} viewBox="0 0 160 160">
+              <circle cx={80} cy={80} r={70} fill="none" stroke={`${T.accent}20`} strokeWidth={8} />
+              {previewCountdown !== null && (
+                <circle cx={80} cy={80} r={70} fill="none" stroke={T.accent} strokeWidth={8}
+                  strokeDasharray={`${2 * Math.PI * 70}`}
+                  strokeDashoffset={`${2 * Math.PI * 70 * (1 - previewCountdown / 5)}`}
+                  strokeLinecap="round" transform="rotate(-90 80 80)"
+                  style={{ transition: 'stroke-dashoffset 0.9s linear' }} />
+              )}
+            </svg>
+            <motion.div animate={{ scale: [1, 1.06, 1] }} transition={{ duration: 1, repeat: Infinity }}
+              className="text-display text-7xl font-black tabular-nums" style={{ color: T.accent }}>
+              {previewCountdown ?? 5}
+            </motion.div>
+          </div>
+
+          <div className="text-center space-y-1">
+            <div className="text-display text-3xl font-black text-white">Memorizza le coppie!</div>
+            <div className="text-white/50 text-sm">Il gioco inizia tra {previewCountdown ?? 5} second{previewCountdown === 1 ? 'o' : 'i'}…</div>
+          </div>
+
+          {/* Card grid shown during preview — all face-up */}
+          <div className="w-full max-w-5xl">
+            <div className="grid gap-2"
+              style={{ gridTemplateColumns: `repeat(${cols}, 1fr)`, maxWidth: '100%' }}>
+              {board.cards.map(card => (
+                <motion.div key={card.pos}
+                  initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: card.pos * 0.03 }}
+                  className="relative aspect-square rounded-xl overflow-hidden border-2"
+                  style={{ borderColor: `${T.accent}44` }}>
+                  <img src={card.imageUrl} alt={card.label} className="w-full h-full object-cover" loading="eager" />
+                  <div className="absolute inset-0 flex items-end p-1.5"
+                    style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.7), transparent 55%)' }}>
+                    <div className="text-white text-[10px] font-bold truncate">{card.label}</div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </ArenaBg>
+    );
+  }
 
   return (
     <ArenaBg theme={T}>

@@ -220,7 +220,7 @@ router.post(
       currentTeamIdx: 0,
       flipping: [],
       locked: false,
-      status: "playing",
+      status: "preview",
       winner: null,
       matchCount: 0,
       totalPairs: targetPairs,
@@ -233,8 +233,128 @@ router.post(
       .insert(coppieBoardsTable)
       .values({ sessionId, cardSetId, difficulty, mode, board });
 
-    emitToEvent(eventId, "coppie:state", board);
+    emitToEvent(eventId, "coppie:preview", board);
     res.status(201).json(board);
+  },
+);
+
+/* ─── POST start (public: ends preview, begins playing) ────────────── */
+router.post(
+  "/coppie/sessions/:id/start",
+  async (req: Request, res: Response): Promise<void> => {
+    const sessionId = String(req.params["id"]);
+    if (!isValidUUID(sessionId)) {
+      res.status(400).json({ error: "sessionId non valido" });
+      return;
+    }
+
+    const [row] = await db
+      .select()
+      .from(coppieBoardsTable)
+      .where(eq(coppieBoardsTable.sessionId, sessionId));
+    if (!row) {
+      res.status(404).json({ error: "Board non trovata" });
+      return;
+    }
+
+    const meta = await getSessionMeta(sessionId);
+    if (!meta) {
+      res.status(404).json({ error: "Sessione non trovata" });
+      return;
+    }
+    const { eventId } = meta;
+
+    const board: CoppieBoard = JSON.parse(
+      JSON.stringify(row.board),
+    ) as CoppieBoard;
+
+    if (board.status !== "preview") {
+      res.json(board);
+      return;
+    }
+
+    board.status = "playing";
+    board.votes = {};
+
+    await db
+      .update(coppieBoardsTable)
+      .set({ board })
+      .where(eq(coppieBoardsTable.sessionId, sessionId));
+
+    emitToEvent(eventId, "coppie:state", board);
+    res.json(board);
+  },
+);
+
+/* ─── POST vote (public: player casts vote for a card position) ──────── */
+router.post(
+  "/coppie/sessions/:id/vote",
+  async (req: Request, res: Response): Promise<void> => {
+    const sessionId = String(req.params["id"]);
+    if (!isValidUUID(sessionId)) {
+      res.status(400).json({ error: "sessionId non valido" });
+      return;
+    }
+
+    const body = req.body as Record<string, unknown>;
+    const pos = body["pos"];
+    const teamId = body["teamId"];
+    const playerId = body["playerId"];
+
+    if (typeof pos !== "number" || typeof teamId !== "string" || typeof playerId !== "string") {
+      res.status(400).json({ error: "pos, teamId, playerId obbligatori" });
+      return;
+    }
+
+    const [row] = await db
+      .select()
+      .from(coppieBoardsTable)
+      .where(eq(coppieBoardsTable.sessionId, sessionId));
+    if (!row) {
+      res.status(404).json({ error: "Board non trovata" });
+      return;
+    }
+
+    const meta = await getSessionMeta(sessionId);
+    if (!meta) {
+      res.status(404).json({ error: "Sessione non trovata" });
+      return;
+    }
+    const { eventId } = meta;
+
+    const board: CoppieBoard = JSON.parse(
+      JSON.stringify(row.board),
+    ) as CoppieBoard;
+
+    if (board.status !== "playing") {
+      res.status(409).json({ error: "Partita non in corso" });
+      return;
+    }
+
+    if (board.mode === "teams") {
+      const currentTeam = board.teams[board.currentTeamIdx];
+      if (currentTeam && currentTeam.id !== teamId) {
+        res.status(409).json({ error: "Non è il turno della tua squadra" });
+        return;
+      }
+    }
+
+    const card = board.cards[pos];
+    if (!card || card.matched || card.flipped) {
+      res.status(409).json({ error: "Carta non disponibile" });
+      return;
+    }
+
+    if (!board.votes) board.votes = {};
+    board.votes[playerId] = pos;
+
+    await db
+      .update(coppieBoardsTable)
+      .set({ board })
+      .where(eq(coppieBoardsTable.sessionId, sessionId));
+
+    emitToEvent(eventId, "coppie:vote", { board, votes: board.votes, playerId, pos, teamId });
+    res.json({ votes: board.votes, board });
   },
 );
 

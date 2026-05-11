@@ -29,7 +29,8 @@ export interface CoppieBoard {
   currentTeamIdx: number;
   flipping: number[];
   locked: boolean;
-  status: "playing" | "ended";
+  status: "preview" | "playing" | "ended";
+  votes?: Record<string, number>;
   winner: string | null;
   matchCount: number;
   totalPairs: number;

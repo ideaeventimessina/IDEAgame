@@ -1,14 +1,16 @@
 import { useLocation } from 'wouter';
-import { Building2, Activity, Users, DollarSign, Play, Image as ImageIcon, ArrowUpRight, Loader2 } from 'lucide-react';
+import { Building2, Activity, Users, DollarSign, Play, Image as ImageIcon, ArrowUpRight, Loader2, Mic2, Monitor } from 'lucide-react';
 import { AdminLayout } from './AdminLayout';
 import { useT } from '@/i18n';
 import { useAuth } from '@/auth/roles';
 import { useGetKpis, useListEvents, useListTenants, getGetKpisQueryKey, getListTenantsQueryKey } from '@workspace/api-client-react';
+import { usePresenterMode } from '@/contexts/PresenterModeContext';
 
 export default function Dashboard() {
   const t = useT();
   const [, navigate] = useLocation();
   const { role } = useAuth();
+  const { mode, setMode } = usePresenterMode();
 
   const { data: kpis, isLoading: kpiLoading } = useGetKpis({ query: { queryKey: getGetKpisQueryKey(), enabled: role === 'super_admin' } });
   const { data: events = [] } = useListEvents();
@@ -23,6 +25,33 @@ export default function Dashboard() {
 
   return (
     <AdminLayout title={t('admin.dashboard')}>
+
+      {/* ── Modalità switcher ─────────────────────────────────────────────── */}
+      <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 p-1.5 flex gap-1.5">
+        <button
+          onClick={() => setMode('regia')}
+          className={`flex-1 flex items-center justify-center gap-2.5 rounded-xl py-3.5 text-sm font-black transition-all ${
+            mode === 'regia'
+              ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/30'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <Monitor className="h-4 w-4" />
+          Regia
+        </button>
+        <button
+          onClick={() => { setMode('presentatore'); navigate('/presenter'); }}
+          className={`flex-1 flex items-center justify-center gap-2.5 rounded-xl py-3.5 text-sm font-black transition-all ${
+            mode === 'presentatore'
+              ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/30'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <Mic2 className="h-4 w-4" />
+          Presentatore
+        </button>
+      </div>
+
       {kpiLoading && role === 'super_admin' ? (
         <div className="flex h-32 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
       ) : (
@@ -79,6 +108,11 @@ export default function Dashboard() {
             <button onClick={() => navigate('/lobby')} className="flex w-full items-center justify-between rounded-xl bg-primary px-5 py-4 text-primary-foreground hover-elevate">
               <span className="flex items-center gap-3 font-bold"><Play className="h-5 w-5" /> {t('admin.quick_start')}</span>
               <ArrowUpRight className="h-4 w-4" />
+            </button>
+            <button onClick={() => navigate('/presenter')}
+              className="flex w-full items-center justify-between rounded-xl border border-amber-500/40 bg-amber-500/10 px-5 py-4 hover-elevate">
+              <span className="flex items-center gap-3 font-bold text-amber-400"><Mic2 className="h-5 w-5" /> Vai al Presentatore</span>
+              <ArrowUpRight className="h-4 w-4 text-amber-400" />
             </button>
             <button onClick={() => navigate('/admin/media')} className="flex w-full items-center justify-between rounded-xl border border-border bg-card px-5 py-4 hover-elevate">
               <span className="flex items-center gap-3 font-bold"><ImageIcon className="h-5 w-5" /> {t('admin.open_media')}</span>

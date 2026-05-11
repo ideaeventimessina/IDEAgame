@@ -59,6 +59,8 @@ import HomeJoin from "@/pages/HomeJoin";
 import { Guard } from "@/admin/Guard";
 import { JonnyProvider } from "@/contexts/JonnyContext";
 import { AudioProvider } from "@/contexts/AudioContext";
+import { PresenterModeProvider } from "@/contexts/PresenterModeContext";
+import Presenter from "@/pages/Presenter";
 
 const queryClient = new QueryClient();
 
@@ -90,6 +92,7 @@ function Router() {
       <Route path="/play/permissions" component={Permissions} />
       <Route path="/home" component={HomeGame} />
       <Route path="/home/join" component={HomeJoin} />
+      <Route path="/presenter"><Guard route="/admin"><Presenter /></Guard></Route>
       <Route path="/admin"><Guard route="/admin"><AdminDashboard /></Guard></Route>
       <Route path="/admin/games"><Guard route="/admin/games"><AdminGames /></Guard></Route>
       <Route path="/admin/quizzes"><Guard route="/admin/quizzes"><AdminQuizzes /></Guard></Route>
@@ -124,6 +127,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <I18nProvider>
         <AuthProvider>
+          <PresenterModeProvider>
           <JonnyProvider>
             <AudioProvider>
             <TooltipProvider>
@@ -136,6 +140,7 @@ function App() {
             </TooltipProvider>
             </AudioProvider>
           </JonnyProvider>
+          </PresenterModeProvider>
         </AuthProvider>
       </I18nProvider>
     </QueryClientProvider>

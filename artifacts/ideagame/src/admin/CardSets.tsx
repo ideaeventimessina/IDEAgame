@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { AdminLayout } from './AdminLayout';
-import { Plus, Trash2, Loader2, ChevronDown, ChevronRight, Image as ImageIcon, Copy } from 'lucide-react';
+import { Plus, Trash2, Loader2, ChevronDown, ChevronRight, Image as ImageIcon, Copy, Upload, Camera } from 'lucide-react';
 import { JonnyGenerateBanner } from '@/components/JonnyGenerateBanner';
 import {
   useListCardSets, useCreateCardSet, useDeleteCardSet,
@@ -21,6 +21,15 @@ async function apiFetch(path: string, opts?: RequestInit) {
 
 interface NewSetForm { slug: string; name: string; description: string; }
 interface NewPairForm { label: string; imageA: string; imageB: string; }
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result as string);
+    r.onerror = () => rej(r.error);
+    r.readAsDataURL(file);
+  });
+}
 
 export default function AdminCardSets() {
   const qc = useQueryClient();
@@ -157,6 +166,13 @@ function CardSetRow({
   const [pairForm, setPairForm] = useState<NewPairForm>({ label: '', imageA: '', imageB: '' });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const fileARef = useRef<HTMLInputElement>(null);
+  const fileBRef = useRef<HTMLInputElement>(null);
+
+  async function handleFileUpload(file: File, field: 'imageA' | 'imageB') {
+    const dataUrl = await readFileAsDataUrl(file);
+    setPairForm(p => ({ ...p, [field]: dataUrl }));
+  }
 
   const pairs = (() => {
     const map = new Map<string, (typeof cards)>();
@@ -297,6 +313,12 @@ function CardSetRow({
             <div className="text-display text-xl font-black mb-1">Aggiungi coppia</div>
             <div className="text-xs text-muted-foreground mb-5">Inserisci un'etichetta e gli URL delle immagini. Le 2 carte formeranno una coppia.</div>
             {err && <div className="mb-4 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-2 text-sm text-destructive">{err}</div>}
+            {/* hidden file inputs */}
+            <input ref={fileARef} type="file" accept="image/*" capture="environment" className="hidden"
+              onChange={e => { if (e.target.files?.[0]) void handleFileUpload(e.target.files[0], 'imageA'); }} />
+            <input ref={fileBRef} type="file" accept="image/*" capture="environment" className="hidden"
+              onChange={e => { if (e.target.files?.[0]) void handleFileUpload(e.target.files[0], 'imageB'); }} />
+
             <div className="space-y-4">
               <div>
                 <label className="text-xs uppercase tracking-widest text-muted-foreground">Etichetta</label>
@@ -306,24 +328,58 @@ function CardSetRow({
                   className="mt-1 w-full rounded-xl border border-border bg-background px-4 py-2.5 outline-none focus:border-primary" />
               </div>
               <div className="grid grid-cols-2 gap-4">
+                {/* Image A */}
                 <div>
-                  <label className="text-xs uppercase tracking-widest text-muted-foreground">Immagine A (URL)</label>
-                  <input value={pairForm.imageA}
-                    onChange={e => setPairForm(p => ({ ...p, imageA: e.target.value }))}
-                    placeholder="https://..."
-                    className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />
+                  <label className="text-xs uppercase tracking-widest text-muted-foreground">Immagine A</label>
+                  <div className="mt-1 flex gap-1.5">
+                    <input value={pairForm.imageA.startsWith('data:') ? '' : pairForm.imageA}
+                      onChange={e => setPairForm(p => ({ ...p, imageA: e.target.value }))}
+                      placeholder="https://..."
+                      className="flex-1 min-w-0 rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />
+                    <button type="button" title="Carica file" onClick={() => fileARef.current?.click()}
+                      className="rounded-lg border border-border bg-background p-2 hover:bg-secondary transition-colors">
+                      <Upload className="h-4 w-4" />
+                    </button>
+                    <button type="button" title="Scatta foto" onClick={() => {
+                      if (fileARef.current) { fileARef.current.removeAttribute('capture'); fileARef.current.setAttribute('capture', 'environment'); fileARef.current.click(); }
+                    }} className="rounded-lg border border-border bg-background p-2 hover:bg-secondary transition-colors">
+                      <Camera className="h-4 w-4" />
+                    </button>
+                  </div>
                   {pairForm.imageA && (
-                    <img src={pairForm.imageA} alt="" className="mt-2 w-full aspect-video object-cover rounded-lg border border-border" onError={e => (e.currentTarget.style.display = 'none')} />
+                    <div className="mt-2 relative group">
+                      <img src={pairForm.imageA} alt="" className="w-full aspect-video object-cover rounded-lg border border-border" onError={e => (e.currentTarget.style.display = 'none')} />
+                      <button type="button" onClick={() => setPairForm(p => ({ ...p, imageA: '' }))}
+                        className="absolute top-1 right-1 h-5 w-5 rounded-full bg-black/60 text-white text-[10px] font-black opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">✕</button>
+                      {pairForm.imageA.startsWith('data:') && <div className="text-[10px] text-muted-foreground mt-1">📁 File locale</div>}
+                    </div>
                   )}
                 </div>
+                {/* Image B */}
                 <div>
                   <label className="text-xs uppercase tracking-widest text-muted-foreground">Immagine B (opz.)</label>
-                  <input value={pairForm.imageB}
-                    onChange={e => setPairForm(p => ({ ...p, imageB: e.target.value }))}
-                    placeholder="Uguale ad A se vuoto"
-                    className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />
+                  <div className="mt-1 flex gap-1.5">
+                    <input value={pairForm.imageB.startsWith('data:') ? '' : pairForm.imageB}
+                      onChange={e => setPairForm(p => ({ ...p, imageB: e.target.value }))}
+                      placeholder="Uguale ad A se vuoto"
+                      className="flex-1 min-w-0 rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />
+                    <button type="button" title="Carica file" onClick={() => fileBRef.current?.click()}
+                      className="rounded-lg border border-border bg-background p-2 hover:bg-secondary transition-colors">
+                      <Upload className="h-4 w-4" />
+                    </button>
+                    <button type="button" title="Scatta foto" onClick={() => {
+                      if (fileBRef.current) { fileBRef.current.setAttribute('capture', 'environment'); fileBRef.current.click(); }
+                    }} className="rounded-lg border border-border bg-background p-2 hover:bg-secondary transition-colors">
+                      <Camera className="h-4 w-4" />
+                    </button>
+                  </div>
                   {pairForm.imageB && (
-                    <img src={pairForm.imageB} alt="" className="mt-2 w-full aspect-video object-cover rounded-lg border border-border" onError={e => (e.currentTarget.style.display = 'none')} />
+                    <div className="mt-2 relative group">
+                      <img src={pairForm.imageB} alt="" className="w-full aspect-video object-cover rounded-lg border border-border" onError={e => (e.currentTarget.style.display = 'none')} />
+                      <button type="button" onClick={() => setPairForm(p => ({ ...p, imageB: '' }))}
+                        className="absolute top-1 right-1 h-5 w-5 rounded-full bg-black/60 text-white text-[10px] font-black opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">✕</button>
+                      {pairForm.imageB.startsWith('data:') && <div className="text-[10px] text-muted-foreground mt-1">📁 File locale</div>}
+                    </div>
                   )}
                 </div>
               </div>
