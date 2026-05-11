@@ -50,6 +50,16 @@ const GAME_ICONS: Record<string, React.ReactNode> = {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
+// ── localStorage persistence ────────────────────────────────────────────────
+const STORAGE_KEY = 'ideagame:home:player';
+function saveJoin(sessionId: string, joinCode: string, playerId: string, nick: string) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ sessionId, joinCode, playerId, nickname: nick })); } catch { /* ignore */ }
+}
+function clearJoin() { try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ } }
+function getSavedJoin(): { sessionId: string; joinCode: string; playerId: string; nickname: string } | null {
+  try { const r = localStorage.getItem(STORAGE_KEY); return r ? JSON.parse(r) as { sessionId: string; joinCode: string; playerId: string; nickname: string } : null; } catch { return null; }
+}
+
 export default function HomeJoin() {
   const [, navigate] = useLocation();
   const urlParams = new URLSearchParams(window.location.search);
@@ -70,10 +80,35 @@ export default function HomeJoin() {
 
   const { on, emit } = useEventSocket(null);
 
-  // Auto-lookup session when arriving via QR code (?s=CODE in URL)
+  // Restore saved session on mount (e.g. after page refresh)
+  // Priority: URL code > localStorage > code entry screen
   useEffect(() => {
-    if (!urlCode) return;
-    lookupSession(urlCode);
+    if (urlCode) {
+      lookupSession(urlCode);
+      return;
+    }
+    const saved = getSavedJoin();
+    if (!saved) return;
+    fetch(`/api/home/sessions/${saved.sessionId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { session: HomeSession; players: HomePlayer[] } | null) => {
+        if (!d || d.session.status === 'ended') { clearJoin(); return; }
+        const p = d.players.find(pl => pl.id === saved.playerId);
+        if (!p) { clearJoin(); return; }
+        setSession(d.session);
+        setPlayers(d.players);
+        setPlayer(p);
+        setNickname(saved.nickname);
+        if (d.session.status === 'playing') {
+          setPhase('playing');
+          setAnswered(null);
+          setRevealed(false);
+          startTimer(Number(d.session.roundPayload?.timeLimit ?? 15));
+        } else {
+          setPhase('lobby');
+        }
+      })
+      .catch(() => clearJoin());
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -84,8 +119,8 @@ export default function HomeJoin() {
     return () => { emit('leave:home', session.id); };
   }, [session?.id, emit]);
 
-  // Polling fallback: refresh player list every 4s while in lobby
-  // (socket may drop on mobile networks — this keeps the count accurate)
+  // Polling fallback: every 2s in lobby, refresh state AND detect when game starts
+  // (socket may drop on mobile/PS networks — this ensures the transition always fires)
   useEffect(() => {
     if (phase !== 'lobby' || !session?.id) return;
     const sid = session.id;
@@ -93,11 +128,24 @@ export default function HomeJoin() {
       fetch(`/api/home/sessions/${sid}`)
         .then(r => r.ok ? r.json() : null)
         .then((data: { session: HomeSession; players: HomePlayer[] } | null) => {
-          if (data) setPlayers(data.players);
+          if (!data) return;
+          setPlayers(data.players);
+          if (data.session.status === 'playing') {
+            setSession(data.session);
+            setPhase('playing');
+            setAnswered(null);
+            setRevealed(false);
+            startTimer(Number(data.session.roundPayload?.timeLimit ?? 15));
+          } else if (data.session.status === 'ended') {
+            setSession(data.session);
+            setPhase('ended');
+            clearJoin();
+          }
         })
         .catch(() => {});
-    }, 4000);
+    }, 2000);
     return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, session?.id]);
 
   // Socket listeners
@@ -125,6 +173,7 @@ export default function HomeJoin() {
       setSession(data.session);
       setPlayers(data.players);
       setPhase('ended');
+      clearJoin();
     });
     const u4 = on<{ payload: Record<string, unknown>; players: HomePlayer[] }>('home:card_flip', (data) => {
       setSession(prev => prev ? { ...prev, roundPayload: data.payload } : prev);
@@ -188,9 +237,10 @@ export default function HomeJoin() {
       const p: HomePlayer = await r.json();
       setPlayer(p);
 
-      // Fetch updated player list so the lobby counter is correct immediately
-      // (the server already emitted home:state to the room, but our socket
-      // may not have joined the room yet — race condition)
+      // Persist to localStorage so refresh restores the player
+      saveJoin(session.id, session.joinCode, p.id, nickname.trim());
+
+      // Fetch updated player list immediately (socket may not be in room yet)
       try {
         const stateR = await fetch(`/api/home/sessions/${session.id}`);
         if (stateR.ok) {

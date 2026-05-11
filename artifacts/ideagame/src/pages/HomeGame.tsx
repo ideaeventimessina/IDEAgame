@@ -176,22 +176,15 @@ export default function HomeGame() {
   const { on } = useHomeSocket(session?.id ?? null);
   const { on: socketOn } = useEventSocket(null);
 
-  // ── Unlock audio on first user gesture ───────────────────────────────────
-  // Browsers block Audio.play() unless triggered by a real user interaction.
-  // We listen for the first click/touch anywhere on the page to start the
-  // lobby music. This covers both the welcome screen and URL-loaded sessions.
-  useEffect(() => {
-    const unlock = () => {
-      playBg('/audio/jonny-world/global/lobby_loop.mp3');
-    };
-    document.addEventListener('click', unlock, { once: true });
-    document.addEventListener('touchstart', unlock, { once: true });
-    return () => {
-      document.removeEventListener('click', unlock);
-      document.removeEventListener('touchstart', unlock);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // ── Audio unlock state ────────────────────────────────────────────────────
+  // PlayStation and many mobile browsers block Audio.play() until a real
+  // user gesture. We show a visible button overlay so the user can tap it.
+  const [audioUnlocked, setAudioUnlocked] = useState(false);
+
+  const unlockAudio = useCallback((src = '/audio/jonny-world/global/lobby_loop.mp3') => {
+    setAudioUnlocked(true);
+    playBg(src);
+  }, [playBg]);
 
   // ── Load session if URL has ?s= ───────────────────────────────────────────
   useEffect(() => {
@@ -290,6 +283,7 @@ export default function HomeGame() {
 
   // ── API helpers ────────────────────────────────────────────────────────────
   const createSession = async () => {
+    unlockAudio(); // first user gesture — unlock audio
     setLoading(true);
     try {
       const r = await fetch('/api/home/sessions', {
@@ -328,7 +322,7 @@ export default function HomeGame() {
       startTimer(Number(updated.roundPayload?.timeLimit ?? 15));
       setJonnyMood('thinking');
       const gameSrc = GAME_AUDIO[selectedGame.slug] ?? '/audio/jonny-world/global/round_loop.mp3';
-      playBg(gameSrc);
+      unlockAudio(gameSrc);
     } finally {
       setLoading(false);
     }
@@ -349,7 +343,7 @@ export default function HomeGame() {
         setSession(data.session);
         setPhase('ended');
         setJonnyMood('winner');
-        playBg('/audio/jonny-world/global/podium_theme.mp3', false, 0.5);
+        unlockAudio('/audio/jonny-world/global/podium_theme.mp3');
       } else {
         setSession(data.session);
         setRevealed(false);
@@ -367,15 +361,24 @@ export default function HomeGame() {
 
   return (
     <div className="relative flex h-screen w-screen flex-col overflow-hidden bg-[#07061a]">
-      {/* Starfield */}
+      {/* Static starfield — no animation for PS/slow browser compatibility */}
       <div className="pointer-events-none absolute inset-0 z-0">
-        {Array.from({ length: 50 }).map((_, i) => (
-          <motion.div key={i} className="absolute rounded-full bg-white"
-            style={{ left: `${(i * 37 + 11) % 100}%`, top: `${(i * 53 + 7) % 100}%`, width: 1 + (i % 3) * 0.5, height: 1 + (i % 3) * 0.5, opacity: 0.08 + (i % 4) * 0.06 }}
-            animate={{ opacity: [0.05, 0.18, 0.05] }}
-            transition={{ duration: 2 + (i % 5) * 0.6, delay: -(i * 0.15), repeat: Infinity }} />
+        {Array.from({ length: 40 }).map((_, i) => (
+          <div key={i} className="absolute rounded-full bg-white"
+            style={{ left: `${(i * 37 + 11) % 100}%`, top: `${(i * 53 + 7) % 100}%`, width: 1 + (i % 2), height: 1 + (i % 2), opacity: 0.07 + (i % 4) * 0.04 }} />
         ))}
       </div>
+
+      {/* Audio unlock button — visible until user taps (needed for PlayStation/mobile) */}
+      {!audioUnlocked && (
+        <button
+          onClick={() => unlockAudio()}
+          className="absolute bottom-4 right-4 z-50 flex items-center gap-2 rounded-2xl border border-primary/50 bg-black/70 px-4 py-2 text-sm font-bold text-primary"
+          style={{ backdropFilter: 'blur(8px)' }}
+        >
+          🎵 Attiva audio
+        </button>
+      )}
 
       <AnimatePresence mode="wait">
 
@@ -476,10 +479,8 @@ export default function HomeGame() {
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-3">
-                    <AnimatePresence>
                       {players.map((p, i) => (
-                        <motion.div key={p.id}
-                          initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+                        <div key={p.id}
                           className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-3">
                           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-black text-black"
                             style={{ background: AVATAR_RING[i % AVATAR_RING.length] }}>
@@ -489,9 +490,8 @@ export default function HomeGame() {
                             <div className="font-bold text-white">{p.nickname}</div>
                             <div className="text-xs text-white/40">Pronto</div>
                           </div>
-                        </motion.div>
+                        </div>
                       ))}
-                    </AnimatePresence>
                   </div>
                 )}
               </div>
