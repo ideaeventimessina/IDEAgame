@@ -53,6 +53,7 @@ import AdminSettings from "@/admin/Settings";
 import AdminCardSets from "@/admin/CardSets";
 import AdminQuizPacks from "@/admin/QuizPacks";
 import AdminAudioSettings from "@/admin/AudioSettings";
+import AdminAudit from "@/admin/Audit";
 import HomeGame from "@/pages/HomeGame";
 import HomeJoin from "@/pages/HomeJoin";
 import { Guard } from "@/admin/Guard";
@@ -112,6 +113,7 @@ function Router() {
       <Route path="/admin/freestyle-battle"><Guard route="/admin/freestyle-battle"><AdminFreestyle /></Guard></Route>
       <Route path="/admin/saramusica"><Guard route="/admin/saramusica"><AdminSaraMusica /></Guard></Route>
       <Route path="/admin/audio"><Guard route="/admin/audio"><AdminAudioSettings /></Guard></Route>
+      <Route path="/admin/audit"><Guard route="/admin/audit"><AdminAudit /></Guard></Route>
       <Route component={NotFound} />
     </Switch>
   );

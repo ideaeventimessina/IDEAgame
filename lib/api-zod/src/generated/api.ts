@@ -899,3 +899,23 @@ export const ListAuditLogResponseItem = zod.object({
   createdAt: zod.coerce.date(),
 });
 export const ListAuditLogResponse = zod.array(ListAuditLogResponseItem);
+
+export const RequestUploadUrlBody = zod.object({
+  name: zod.string(),
+  size: zod.number(),
+  contentType: zod.string(),
+});
+
+export const RequestUploadUrlResponse = zod.object({
+  uploadURL: zod.string(),
+  objectPath: zod.string(),
+  metadata: zod.object({
+    name: zod.string(),
+    size: zod.number(),
+    contentType: zod.string(),
+  }),
+});
+
+export const GetStorageObjectParams = zod.object({
+  objectPath: zod.coerce.string(),
+});

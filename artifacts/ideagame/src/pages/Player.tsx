@@ -475,7 +475,7 @@ export default function Player() {
       const p = await apiFetch(`/events/${event.id}/players`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nickname: nick.trim(), teamId: null }),
+        body: JSON.stringify({ nickname: nick.trim(), teamId: selectedTeam || null }),
       }) as PlayerInfo;
       setPlayer(p); setStep('play');
     } catch (e) { setError((e as Error).message); setStep('join'); }

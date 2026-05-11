@@ -19,6 +19,7 @@ export const ADMIN_NAV: { key: string; route: string; labelKey: string; roles: R
   { key: 'quiz-packs', route: '/admin/quiz-packs', labelKey: 'admin.quiz_packs', roles: ['super_admin', 'tenant_owner', 'game_manager'] },
   { key: 'media', route: '/admin/media', labelKey: 'admin.media', roles: ['super_admin', 'tenant_owner', 'game_manager'] },
   { key: 'teams', route: '/admin/teams', labelKey: 'admin.teams', roles: ['super_admin', 'tenant_owner', 'game_manager', 'entertainer'] },
+  { key: 'audit', route: '/admin/audit', labelKey: 'admin.audit', roles: ['super_admin', 'tenant_owner'] },
   { key: 'tenants', route: '/admin/tenants', labelKey: 'admin.tenants', roles: ['super_admin'] },
   { key: 'billing', route: '/admin/billing', labelKey: 'admin.billing', roles: ['super_admin', 'tenant_owner'] },
   { key: 'users', route: '/admin/users', labelKey: 'admin.users', roles: ['super_admin', 'tenant_owner'] },

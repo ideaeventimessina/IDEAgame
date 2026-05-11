@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { AdminLayout } from './AdminLayout';
-import { Plus, Trash2, Loader2, ExternalLink, Calendar, StopCircle } from 'lucide-react';
+import { Plus, Trash2, Loader2, ExternalLink, Calendar, StopCircle, Play } from 'lucide-react';
 import {
   useListEvents, useCreateEvent, useDeleteEvent, useUpdateEvent,
   useListTenants,
@@ -102,6 +102,18 @@ export default function Events() {
                           className="rounded-lg border border-border p-2 hover-elevate"
                           title="Apri controllo"
                         ><ExternalLink className="h-4 w-4" /></button>
+                        {ev.status === 'draft' && (
+                          <button
+                            onClick={async () => {
+                              if (confirm(`Lanciare "${ev.name}"? Diventerà l'evento corrente sul proiettore.`)) {
+                                await update.mutateAsync({ id: ev.id, data: { status: 'live' } });
+                                refresh();
+                              }
+                            }}
+                            className="rounded-lg border border-green-500/50 p-2 hover-elevate text-green-400"
+                            title="Lancia serata (draft → live)"
+                          ><Play className="h-4 w-4" /></button>
+                        )}
                         {ev.status === 'live' && (
                           <button
                             onClick={async () => {

@@ -770,6 +770,36 @@ paths:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/AuditEntry" } }
 
+  /storage/uploads/request-url:
+    post:
+      operationId: requestUploadUrl
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RequestUploadUrlBody" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RequestUploadUrlResponse" }
+
+  /storage/{objectPath}:
+    get:
+      operationId: getStorageObject
+      parameters:
+        - name: objectPath
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+
 components:
   schemas:
     HealthStatus:
@@ -1333,3 +1363,25 @@ components:
       properties:
         pos: { type: integer }
         teamId: { type: string }
+
+    RequestUploadUrlBody:
+      type: object
+      required: [name, size, contentType]
+      properties:
+        name: { type: string }
+        size: { type: integer }
+        contentType: { type: string }
+
+    RequestUploadUrlResponse:
+      type: object
+      required: [uploadURL, objectPath, metadata]
+      properties:
+        uploadURL: { type: string }
+        objectPath: { type: string }
+        metadata:
+          type: object
+          required: [name, size, contentType]
+          properties:
+            name: { type: string }
+            size: { type: integer }
+            contentType: { type: string }
