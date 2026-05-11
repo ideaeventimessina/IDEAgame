@@ -176,9 +176,20 @@ export default function HomeGame() {
   const { on } = useHomeSocket(session?.id ?? null);
   const { on: socketOn } = useEventSocket(null);
 
-  // ── Start lobby music immediately on mount ────────────────────────────────
+  // ── Unlock audio on first user gesture ───────────────────────────────────
+  // Browsers block Audio.play() unless triggered by a real user interaction.
+  // We listen for the first click/touch anywhere on the page to start the
+  // lobby music. This covers both the welcome screen and URL-loaded sessions.
   useEffect(() => {
-    playBg('/audio/jonny-world/global/lobby_loop.mp3');
+    const unlock = () => {
+      playBg('/audio/jonny-world/global/lobby_loop.mp3');
+    };
+    document.addEventListener('click', unlock, { once: true });
+    document.addEventListener('touchstart', unlock, { once: true });
+    return () => {
+      document.removeEventListener('click', unlock);
+      document.removeEventListener('touchstart', unlock);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
