@@ -8,8 +8,9 @@ export default function Login() {
   const [, navigate] = useLocation();
   const { login } = useAuth();
   const { locale, setLocale } = useI18n();
-  const [email, setEmail] = useState('admin@ideagame.app');
-  const [password, setPassword] = useState('ideagame');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const isDev = import.meta.env.DEV;
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -58,15 +59,17 @@ export default function Login() {
           <button type="submit" disabled={busy} className="w-full rounded-xl bg-primary py-3 font-bold text-primary-foreground hover-elevate disabled:opacity-50">
             {busy ? 'Accesso…' : 'Accedi'}
           </button>
-          <div className="rounded-lg bg-muted/30 p-3 text-center text-xs text-muted-foreground">
-            <div className="font-semibold text-foreground">Account di test (password: <code className="text-primary">ideagame</code>)</div>
-            <div className="mt-1 grid gap-0.5">
-              <div>admin@ideagame.app — super admin</div>
-              <div>owner@mango.events — tenant owner</div>
-              <div>manager@mango.events — game manager</div>
-              <div>host@mango.events — entertainer</div>
+          {isDev && (
+            <div className="rounded-lg bg-muted/30 p-3 text-center text-xs text-muted-foreground">
+              <div className="font-semibold text-foreground">Account di test (password: <code className="text-primary">ideagame</code>)</div>
+              <div className="mt-1 grid gap-0.5">
+                <div>admin@ideagame.app — super admin</div>
+                <div>owner@mango.events — tenant owner</div>
+                <div>manager@mango.events — game manager</div>
+                <div>host@mango.events — entertainer</div>
+              </div>
             </div>
-          </div>
+          )}
         </form>
 
         <div className="mt-6 flex items-center justify-center gap-2 text-xs text-muted-foreground">
