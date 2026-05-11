@@ -21,6 +21,7 @@ import {
   useUpdateGameSession,
   useListTeams, getListTeamsQueryKey,
   useListCardSets,
+  useListGames,
   useRecordScore,
   useGetScoreboard, getGetScoreboardQueryKey,
 } from '@workspace/api-client-react';
@@ -292,6 +293,13 @@ export default function LiveControl() {
   // Focus mode (hides setup panels, shows only active game controls)
   const [focusMode, setFocusMode] = useState(false);
 
+  // ─── Hub Game Board pre-load system ────────────────────────────────────────
+  const [hubPhase, setHubPhase] = useState<'join' | 'gameboard'>('join');
+  const [preloadedThemes, setPreloadedThemes] = useState<Record<string, { id: string; name: string } | null>>({});
+  const [allGameSets, setAllGameSets] = useState<Record<string, { id: string; name: string }[]>>({});
+  const [preloadBusy, setPreloadBusy] = useState<Record<string, boolean>>({});
+  const [hubPhaseBusy, setHubPhaseBusy] = useState(false);
+
   // Quizzone control state
   const [quizPacks, setQuizPacks] = useState<QuizPack[]>([]);
   const [selectedPackId, setSelectedPackId] = useState('');
@@ -307,6 +315,7 @@ export default function LiveControl() {
   const pollResponseRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const { data: cardSets = [] } = useListCardSets();
+  const { data: games = [] } = useListGames();
   const { connected: socketConnected, on } = useEventSocket(selectedEventId || null);
   const { data: events = [] } = useListEvents();
   const { data: sessions = [] } = useListGameSessions(selectedEventId, {
@@ -558,6 +567,43 @@ export default function LiveControl() {
       .catch(() => setEveningMode(null));
   }, [selectedEventId]);
 
+  // ─── Load ALL game sets (for preload panel) when event changes ──────────────
+  useEffect(() => {
+    if (!selectedEventId) { setAllGameSets({}); return; }
+    const fetches: Array<{ slug: string; promise: Promise<{ id: string; name: string }[]> }> = [
+      { slug: 'percorso-a-risate', promise: apiFetch('/percorso/sets').then((d) => (d as { id: string; name: string }[]).map(s => ({ id: s.id, name: s.name }))).catch(() => []) },
+      { slug: 'gioco-coppie',       promise: Promise.resolve(cardSets.map((s: { id: string; name: string }) => ({ id: s.id, name: s.name }))) },
+      { slug: 'adult-only',          promise: apiFetch('/adult-only/decks').then((d) => (d as { id: string; name: string }[]).map(s => ({ id: s.id, name: s.name }))).catch(() => []) },
+      { slug: 'sfida-ballo',         promise: apiFetch('/dance-challenges').then((d) => (d as { id: string; name: string }[]).map(s => ({ id: s.id, name: s.name }))).catch(() => []) },
+      { slug: 'parola-alle-spalle',  promise: apiFetch('/word-back/sets').then((d) => (d as { id: string; name: string }[]).map(s => ({ id: s.id, name: s.name }))).catch(() => []) },
+      { slug: 'karaoke-battle',      promise: apiFetch('/karaoke/sets').then((d) => (d as { id: string; title: string }[]).map(s => ({ id: s.id, name: s.title }))).catch(() => []) },
+      { slug: 'freestyle-battle',    promise: apiFetch('/freestyle/sets').then((d) => (d as { id: string; title: string }[]).map(s => ({ id: s.id, name: s.title }))).catch(() => []) },
+      { slug: 'saramusica',          promise: apiFetch('/saramusica/sets').then((d) => (d as { id: string; title: string }[]).map(s => ({ id: s.id, name: s.title }))).catch(() => []) },
+      { slug: 'quizzone',            promise: apiFetch('/quiz-packs').then((d) => (d as { id: string; title: string; status: string }[]).filter(p => p.status === 'approved' || p.status === 'generated').map(s => ({ id: s.id, name: s.title }))).catch(() => []) },
+    ];
+    Promise.allSettled(fetches.map(f => f.promise)).then(results => {
+      const newSets: Record<string, { id: string; name: string }[]> = {};
+      fetches.forEach(({ slug }, i) => {
+        const r = results[i];
+        if (r && r.status === 'fulfilled') newSets[slug] = r.value;
+      });
+      setAllGameSets(newSets);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEventId]);
+
+  // ─── Restore preloaded themes from localStorage when event changes ──────────
+  useEffect(() => {
+    if (!selectedEventId) { setPreloadedThemes({}); return; }
+    const SLUGS = ['percorso-a-risate','gioco-coppie','adult-only','sfida-ballo','parola-alle-spalle','karaoke-battle','freestyle-battle','saramusica','quizzone'];
+    const restored: Record<string, { id: string; name: string } | null> = {};
+    SLUGS.forEach(slug => {
+      const raw = localStorage.getItem(`ideagame:preload:${selectedEventId}:${slug}`);
+      if (raw) { try { restored[slug] = JSON.parse(raw) as { id: string; name: string }; } catch { /* ignore */ } }
+    });
+    setPreloadedThemes(restored);
+  }, [selectedEventId]);
+
   // Poll response count when question is active and not revealed
   useEffect(() => {
     if (!session?.id || !quizzoneActive || quizzoneRevealed) {
@@ -724,6 +770,89 @@ export default function LiveControl() {
     if (!session) throw new Error('Nessuna sessione attiva');
     await recordScore.mutateAsync({ id: selectedEventId, data: { teamId, gameSlug: session.gameSlug, round: session.currentRound, points: delta } });
     qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) });
+  };
+
+  // ─── Hub Game Board handlers ────────────────────────────────────────────────
+
+  const emitHubPhase = async (phase: 'join' | 'gameboard') => {
+    if (!selectedEventId || hubPhaseBusy) return;
+    setHubPhaseBusy(true);
+    try {
+      await apiFetch(`/panic/events/${selectedEventId}/emit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event: 'hub:phase', payload: { phase } }),
+      });
+      setHubPhase(phase);
+    } catch (e) {
+      toast({ title: 'Errore Hub', description: (e as Error).message, variant: 'destructive' });
+    } finally { setHubPhaseBusy(false); }
+  };
+
+  const preloadTheme = async (slug: string, id: string, name: string) => {
+    if (!selectedEventId) return;
+    const theme = { id, name };
+    setPreloadedThemes(prev => ({ ...prev, [slug]: theme }));
+    localStorage.setItem(`ideagame:preload:${selectedEventId}:${slug}`, JSON.stringify(theme));
+    apiFetch(`/panic/events/${selectedEventId}/emit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event: 'hub:game-preloaded', payload: { slug, theme } }),
+    }).catch(() => null);
+  };
+
+  const clearPreloadTheme = async (slug: string) => {
+    if (!selectedEventId) return;
+    setPreloadedThemes(prev => ({ ...prev, [slug]: null }));
+    localStorage.removeItem(`ideagame:preload:${selectedEventId}:${slug}`);
+    apiFetch(`/panic/events/${selectedEventId}/emit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event: 'hub:game-preloaded', payload: { slug, theme: null } }),
+    }).catch(() => null);
+  };
+
+  const initGameWithPreloadedTheme = async (slug: string, sessionId: string, themeId: string): Promise<void> => {
+    const endpointMap: Record<string, { path: string; body: Record<string, string> }> = {
+      'percorso-a-risate':  { path: `/percorso/sessions/${sessionId}/init`,   body: { setId: themeId } },
+      'gioco-coppie':       { path: `/coppie/sessions/${sessionId}/init`,      body: { cardSetId: themeId, difficulty: 'medium', mode: 'teams' } },
+      'adult-only':         { path: `/adult-only/sessions/${sessionId}/init`,  body: { deckId: themeId } },
+      'sfida-ballo':        { path: `/dance/sessions/${sessionId}/init`,        body: { challengeId: themeId } },
+      'parola-alle-spalle': { path: `/word-back/sessions/${sessionId}/init`,   body: { setId: themeId } },
+      'karaoke-battle':     { path: `/karaoke/sessions/${sessionId}/init`,     body: { setId: themeId } },
+      'freestyle-battle':   { path: `/freestyle/sessions/${sessionId}/init`,   body: { setId: themeId } },
+      'saramusica':         { path: `/saramusica/sessions/${sessionId}/init`,  body: { setId: themeId } },
+      'quizzone':           { path: `/quizzone/sessions/${sessionId}/init`,    body: { packId: themeId } },
+    };
+    const ep = endpointMap[slug];
+    if (ep) {
+      await apiFetch(ep.path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(ep.body),
+      });
+    }
+  };
+
+  const handleAvviaSolo = async (slug: string) => {
+    const theme = preloadedThemes[slug];
+    if (!theme || !selectedEventId) return;
+    setPreloadBusy(prev => ({ ...prev, [slug]: true }));
+    try {
+      const newSession = await createSession.mutateAsync({
+        id: selectedEventId,
+        data: { gameSlug: slug, totalRounds: 1 },
+      }) as { id: string };
+      qc.invalidateQueries({ queryKey: getListGameSessionsQueryKey(selectedEventId) });
+      setSelectedSessionId(newSession.id);
+      await updateSession.mutateAsync({ id: newSession.id, data: { status: 'running' } });
+      qc.invalidateQueries({ queryKey: getListGameSessionsQueryKey(selectedEventId) });
+      await initGameWithPreloadedTheme(slug, newSession.id, theme.id);
+    } catch (e) {
+      toast({ title: 'Errore avvio', description: (e as Error).message, variant: 'destructive' });
+    } finally {
+      setPreloadBusy(prev => ({ ...prev, [slug]: false }));
+    }
   };
 
   // ─── Percorso handlers ─────────────────────────────────────────────────────
@@ -1799,6 +1928,98 @@ export default function LiveControl() {
             </button>
           </div>
         </div>}
+
+        {/* ─── Hub Game Board panel ─── */}
+        {selectedEventId && !focusMode && (
+          <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-base">📺</span>
+              <div className="text-xs uppercase tracking-widest text-muted-foreground flex-1">Hub · Schermo Proiettore</div>
+              <div className={`text-[10px] font-bold rounded-full px-2 py-0.5 border ${hubPhase === 'gameboard' ? 'border-green-500/40 bg-green-500/10 text-green-400' : 'border-border text-muted-foreground'}`}>
+                {hubPhase === 'gameboard' ? '🎮 Game Board' : '📱 QR Accesso'}
+              </div>
+            </div>
+
+            {/* Phase toggle */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => void emitHubPhase('join')}
+                disabled={hubPhase === 'join' || hubPhaseBusy}
+                className={`flex-1 rounded-xl border py-2 text-xs font-bold transition-all disabled:opacity-50 ${hubPhase === 'join' ? 'border-primary/60 bg-primary/15 text-primary' : 'border-border text-muted-foreground hover:bg-secondary/30'}`}
+              >📱 QR Accesso</button>
+              <button
+                onClick={() => void emitHubPhase('gameboard')}
+                disabled={hubPhase === 'gameboard' || hubPhaseBusy}
+                className={`flex-1 rounded-xl border py-2 text-xs font-bold transition-all disabled:opacity-50 ${hubPhase === 'gameboard' ? 'border-green-500/60 bg-green-500/15 text-green-400' : 'border-border text-muted-foreground hover:bg-secondary/30'}`}
+              >🎮 Game Board</button>
+            </div>
+
+            {/* Per-game preload rows */}
+            <div className="space-y-2">
+              <div className="text-[10px] uppercase tracking-widest text-muted-foreground/60">Pre-carica tema per ogni gioco</div>
+              {(selectedEvent?.enabledGames as string[] | undefined ?? [])
+                .map(slug => ({ slug, game: games.find((g: { slug: string }) => g.slug === slug) }))
+                .filter(({ game }) => !!game)
+                .map(({ slug, game }) => {
+                  const sets = allGameSets[slug] ?? [];
+                  const loaded = preloadedThemes[slug] ?? null;
+                  const busy = preloadBusy[slug] ?? false;
+                  const canLaunch = !!loaded && !!selectedEventId;
+                  return (
+                    <div key={slug} className="rounded-xl border border-border bg-background/40 p-2.5 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <div className="text-xs font-black truncate flex-1" style={{ color: (game as { accentColor: string }).accentColor }}>
+                          {(game as { name: string }).name}
+                        </div>
+                        {loaded ? (
+                          <div className="flex items-center gap-1 rounded-full border border-green-500/40 bg-green-500/10 px-2 py-0.5 text-[10px] font-bold text-green-400">
+                            <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+                            {loaded.name}
+                          </div>
+                        ) : (
+                          <div className="rounded-full border border-amber-500/30 bg-amber-500/8 px-2 py-0.5 text-[10px] font-bold text-amber-400/70">
+                            Nessun tema
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex gap-1.5">
+                        <select
+                          value={loaded?.id ?? ''}
+                          onChange={e => {
+                            const opt = sets.find(s => s.id === e.target.value);
+                            if (opt) void preloadTheme(slug, opt.id, opt.name);
+                          }}
+                          className="flex-1 rounded-lg border border-border bg-background px-2 py-1.5 text-[11px] text-foreground"
+                        >
+                          <option value="">{sets.length === 0 ? 'Nessun set disponibile' : '— Seleziona tema —'}</option>
+                          {sets.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        </select>
+                        {loaded && (
+                          <button
+                            onClick={() => void clearPreloadTheme(slug)}
+                            className="rounded-lg border border-border px-2 text-xs text-muted-foreground hover:text-destructive hover:border-destructive/40 transition-colors"
+                            title="Rimuovi tema"
+                          >✕</button>
+                        )}
+                        <button
+                          onClick={() => void handleAvviaSolo(slug)}
+                          disabled={!canLaunch || busy}
+                          className="flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-[11px] font-black text-primary-foreground disabled:opacity-40 transition-all hover:bg-primary/90"
+                          title={!loaded ? 'Seleziona prima un tema' : 'Avvia sessione con questo tema'}
+                        >
+                          {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                          Avvia
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              {(selectedEvent?.enabledGames as string[] | undefined ?? []).length === 0 && (
+                <div className="text-xs text-muted-foreground italic">Nessun gioco abilitato per questo evento.</div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* ─── Serata Completa panel ─── */}
         {selectedEventId && (

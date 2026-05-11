@@ -178,6 +178,8 @@ export default function Hub() {
   const [creatingSession, setCreatingSession] = useState(false);
   const [sessionRunning, setSessionRunning] = useState(false);
   const [sessionEnded, setSessionEnded] = useState(false);
+  const [hubPhase, setHubPhase] = useState<'join' | 'gameboard'>('join');
+  const [preloadedThemes, setPreloadedThemes] = useState<Record<string, { id: string; name: string } | null>>({});
   useGameAudio('hub', { preload: true });
 
   // Navigate to a game — READY games NEVER go to /game/:slug mock
@@ -334,6 +336,10 @@ export default function Hub() {
       }),
       on('projector:go-hub', () => { setSessionRunning(false); navigate('/'); }),
       on<{ session: unknown }>('game:ended', () => { setSessionRunning(false); setSessionEnded(true); }),
+      on<{ phase: 'join' | 'gameboard' }>('hub:phase', ({ phase }) => setHubPhase(phase)),
+      on<{ slug: string; theme: { id: string; name: string } | null }>('hub:game-preloaded', ({ slug, theme }) => {
+        setPreloadedThemes(prev => ({ ...prev, [slug]: theme }));
+      }),
     ];
     return () => { unsubs.forEach(u => u?.()); };
   }, [liveEvent?.id, on, navigate]);
@@ -749,6 +755,62 @@ export default function Hub() {
     );
   }
 
+  // ── Game Board View (shown when hubPhase === 'gameboard') ─────────────────
+  function GameBoardView() {
+    return (
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden px-6 lg:px-12 py-4 gap-4">
+        <div className="shrink-0 text-xs uppercase tracking-[0.35em] text-muted-foreground/50 text-center">
+          L'animatore sceglierà il prossimo gioco dal cockpit
+        </div>
+        <div className={`flex-1 grid gap-4 lg:gap-6 content-center ${visibleGames.length <= 4 ? 'grid-cols-2 lg:grid-cols-4' : 'grid-cols-2 lg:grid-cols-4'}`}>
+          {visibleGames.map((g, i) => {
+            const theme = preloadedThemes[g.slug] ?? null;
+            const isReady = theme !== null;
+            return (
+              <motion.button
+                key={g.id}
+                type="button"
+                onClick={() => handleGameClick(g.slug, g.name, g.accentColor)}
+                initial={{ opacity: 0, scale: 0.85 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: i * 0.07, type: 'spring', stiffness: 120, damping: 16 }}
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                className="relative flex flex-col items-center gap-3 rounded-3xl border-2 p-5 text-center transition-shadow hover:shadow-xl"
+                style={{
+                  borderColor: isReady ? g.accentColor : 'rgba(255,255,255,0.08)',
+                  background: isReady ? `${g.accentColor}18` : 'rgba(255,255,255,0.03)',
+                  boxShadow: isReady ? `0 0 40px ${g.accentColor}22` : undefined,
+                }}
+              >
+                <div className="absolute inset-0 rounded-3xl opacity-5"
+                  style={{ background: `radial-gradient(ellipse at top, ${g.accentColor} 0%, transparent 70%)` }} />
+                <div className="relative z-10 flex h-16 w-16 items-center justify-center rounded-2xl"
+                  style={{ background: `${g.accentColor}22`, color: g.accentColor }}>
+                  <GameIcon name={g.icon as IconName} className="h-9 w-9" />
+                </div>
+                <div className="relative z-10 text-display text-base lg:text-lg font-black leading-tight" style={{ color: g.accentColor }}>
+                  {g.name}
+                </div>
+                {isReady ? (
+                  <div className="relative z-10 flex items-center gap-1.5 rounded-full border border-green-500/50 bg-green-500/10 px-3 py-1 text-xs font-bold text-green-400">
+                    <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+                    {theme.name}
+                  </div>
+                ) : (
+                  <div className="relative z-10 flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/8 px-3 py-1 text-xs font-bold text-amber-400/60">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400/60" />
+                    Nessun tema
+                  </div>
+                )}
+              </motion.button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="relative h-screen w-full flex flex-col overflow-hidden"
       style={{ background: 'radial-gradient(ellipse 160% 80% at 50% -5%, #2d0d52 0%, #130628 40%, #060213 100%)' }}>
@@ -941,8 +1003,8 @@ export default function Hub() {
           ════════════════════════════════════════════════════════════ */}
       <div className="md:hidden flex-1 flex flex-col overflow-hidden px-4 pt-3 gap-3 pb-20">
 
-        {/* QR compact / no-event pill */}
-        {liveEvent ? (
+        {/* QR compact / no-event pill — hidden in gameboard phase */}
+        {hubPhase === 'join' && liveEvent ? (
           <div className="shrink-0 flex items-center gap-4 rounded-2xl border border-border bg-card/70 p-3 backdrop-blur-md">
             <QrPlaceholder text={joinUrl} size={90} />
             <div className="flex-1 min-w-0">
@@ -962,6 +1024,19 @@ export default function Hub() {
               )}
             </div>
           </div>
+        ) : hubPhase === 'gameboard' && liveEvent ? (
+          <div className="shrink-0 flex items-center gap-4 rounded-2xl border border-green-500/20 bg-green-500/5 p-3 backdrop-blur-md">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-green-500/15">
+              <Users className="h-5 w-5 text-green-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-xs uppercase tracking-widest text-muted-foreground mb-0.5">Giocatori connessi</div>
+              <span className="text-display text-2xl font-black text-green-400">{players.length}</span>
+            </div>
+            <div className="rounded-full border border-green-500/40 bg-green-500/10 px-2.5 py-1 text-xs font-bold text-green-400">
+              🎮 Scegli gioco
+            </div>
+          </div>
         ) : user ? (
           <div className="shrink-0 flex items-center gap-3 rounded-2xl border border-border bg-card/70 p-3 backdrop-blur-md">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10">
@@ -977,11 +1052,13 @@ export default function Hub() {
           </div>
         ) : null}
 
-        {/* Game cards 2-col */}
+        {/* Game cards 2-col / game board */}
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-          <div className="shrink-0 mb-2 text-xs uppercase tracking-[0.25em] text-muted-foreground">{t('hub.choose_game')}</div>
+          {hubPhase !== 'gameboard' && <div className="shrink-0 mb-2 text-xs uppercase tracking-[0.25em] text-muted-foreground">{t('hub.choose_game')}</div>}
           {gamesLoading ? (
             <div className="flex justify-center py-6"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+          ) : hubPhase === 'gameboard' ? (
+            <GameBoardView />
           ) : (
             <div className="flex-1 overflow-y-auto grid grid-cols-2 gap-2.5 content-start pb-2">
               {visibleGames.map((g, i) => <GameCard key={g.id} g={g} i={i} />)}
@@ -1035,33 +1112,40 @@ export default function Hub() {
           ════════════════════════════════════════════════════════════ */}
       <div className="hidden md:relative md:flex md:flex-1 md:min-h-0 md:items-center md:justify-center md:overflow-hidden lg:hidden">
 
-        {/* Left floating panel */}
-        <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}
-          className="absolute left-4 top-1/2 z-20 w-[170px] -translate-y-1/2">
-          {liveEvent ? <QrPanel compact /> : !liveEvent && user ? <EventCTA /> : (
-            <motion.button
-              whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
-              onClick={() => navigate('/home')}
-              className="flex w-full flex-col items-center gap-3 rounded-3xl border-2 border-primary/50 bg-primary/10 p-5 text-center hover-elevate"
-            >
-              <Sparkles className="h-7 w-7 text-primary" />
-              <div>
-                <div className="text-display text-sm font-black text-primary">Gioca con Jonny</div>
-                <div className="mt-0.5 text-[10px] text-muted-foreground">Modalità Home — senza evento</div>
-              </div>
-            </motion.button>
-          )}
-        </motion.div>
+        {/* Left floating panel — hidden in gameboard phase */}
+        {hubPhase === 'join' && (
+          <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}
+            className="absolute left-4 top-1/2 z-20 w-[170px] -translate-y-1/2">
+            {liveEvent ? <QrPanel compact /> : !liveEvent && user ? <EventCTA /> : (
+              <motion.button
+                whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
+                onClick={() => navigate('/home')}
+                className="flex w-full flex-col items-center gap-3 rounded-3xl border-2 border-primary/50 bg-primary/10 p-5 text-center hover-elevate"
+              >
+                <Sparkles className="h-7 w-7 text-primary" />
+                <div>
+                  <div className="text-display text-sm font-black text-primary">Gioca con Jonny</div>
+                  <div className="mt-0.5 text-[10px] text-muted-foreground">Modalità Home — senza evento</div>
+                </div>
+              </motion.button>
+            )}
+          </motion.div>
+        )}
 
-        {/* Centre: octagon game grid */}
-        <div className="flex flex-col items-center justify-center">
-          {gamesLoading
-            ? <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            : <OctGrid oct={T_OCT} ox={T_OX} oy={T_OY} />
-          }
-          <div className="mt-3 text-display text-base uppercase tracking-[0.35em] text-muted-foreground/40">
-            {t('hub.choose_game')}
-          </div>
+        {/* Centre: octagon game grid OR game board */}
+        <div className={`flex flex-col items-center justify-center ${hubPhase === 'gameboard' ? 'w-full' : ''}`}>
+          {gamesLoading ? (
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          ) : hubPhase === 'gameboard' ? (
+            <GameBoardView />
+          ) : (
+            <OctGrid oct={T_OCT} ox={T_OX} oy={T_OY} />
+          )}
+          {hubPhase === 'join' && (
+            <div className="mt-3 text-display text-base uppercase tracking-[0.35em] text-muted-foreground/40">
+              {t('hub.choose_game')}
+            </div>
+          )}
         </div>
 
         {/* Right floating panel */}
@@ -1086,22 +1170,29 @@ export default function Hub() {
           ════════════════════════════════════════════════════════════ */}
       <div className="hidden lg:relative lg:flex lg:flex-1 lg:min-h-0 lg:items-center lg:justify-center">
 
-        {/* ── Left floating panel ── */}
-        <motion.div initial={{ opacity: 0, x: -24 }} animate={{ opacity: 1, x: 0 }}
-          transition={{ type: 'spring', stiffness: 160, damping: 22 }}
-          className="absolute left-6 top-1/2 z-20 w-[210px] -translate-y-1/2">
-          {liveEvent && !sessionRunning ? <QrPanel compact /> : !liveEvent && user ? <EventCTA /> : null}
-        </motion.div>
+        {/* ── Left floating panel — hidden in gameboard phase ── */}
+        {hubPhase === 'join' && (
+          <motion.div initial={{ opacity: 0, x: -24 }} animate={{ opacity: 1, x: 0 }}
+            transition={{ type: 'spring', stiffness: 160, damping: 22 }}
+            className="absolute left-6 top-1/2 z-20 w-[210px] -translate-y-1/2">
+            {liveEvent && !sessionRunning ? <QrPanel compact /> : !liveEvent && user ? <EventCTA /> : null}
+          </motion.div>
+        )}
 
-        {/* ── Centre: big octagon game grid ── */}
-        <div className="flex flex-col items-center justify-center">
-          {gamesLoading
-            ? <Loader2 className="h-10 w-10 animate-spin text-primary" />
-            : <OctGrid oct={D_OCT} ox={D_OX} oy={D_OY} />
-          }
-          <div className="mt-4 text-display text-xl uppercase tracking-[0.38em] text-muted-foreground/40">
-            {t('hub.choose_game')}
-          </div>
+        {/* ── Centre: big octagon game grid OR game board ── */}
+        <div className={`flex flex-col items-center justify-center ${hubPhase === 'gameboard' ? 'w-full' : ''}`}>
+          {gamesLoading ? (
+            <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          ) : hubPhase === 'gameboard' ? (
+            <GameBoardView />
+          ) : (
+            <OctGrid oct={D_OCT} ox={D_OX} oy={D_OY} />
+          )}
+          {hubPhase === 'join' && (
+            <div className="mt-4 text-display text-xl uppercase tracking-[0.38em] text-muted-foreground/40">
+              {t('hub.choose_game')}
+            </div>
+          )}
         </div>
 
         {/* ── Right floating panel ── */}

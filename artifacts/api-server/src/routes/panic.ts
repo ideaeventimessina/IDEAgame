@@ -14,6 +14,8 @@ const ALLOWED_EVENTS = new Set([
   "game:freeze-timer",
   "game:unfreeze-timer",
   "players:force-refresh",
+  "hub:phase",
+  "hub:game-preloaded",
 ]);
 
 function guardEvent(req: AuthedRequest, event: { tenantId: string | null }): boolean {
