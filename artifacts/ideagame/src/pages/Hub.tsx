@@ -901,7 +901,7 @@ export default function Hub() {
 
         {/* Full-screen hero poster */}
         <motion.img src="/jonny-world-hero.png" alt="Jonny's World"
-          className="absolute inset-0 w-full h-full object-cover object-center"
+          className="absolute inset-0 w-full h-full object-cover object-top"
           style={{ filter: 'brightness(0.92) saturate(1.1)' }}
           initial={{ opacity: 0, scale: 1.06 }} animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 1.2, ease: 'easeOut' }} />
