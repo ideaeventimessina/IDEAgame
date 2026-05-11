@@ -260,6 +260,23 @@ export default function HomeGame() {
 
   useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
 
+  // ── Polling fallback in lobby: refresh player list every 4s ───────────────
+  // Socket is the primary path; this ensures TV stays accurate even if
+  // the WebSocket drops (transport close) between player joins.
+  useEffect(() => {
+    if (phase !== 'lobby' || !session?.id) return;
+    const sid = session.id;
+    const interval = setInterval(() => {
+      fetch(`/api/home/sessions/${sid}`)
+        .then(r => r.ok ? r.json() : null)
+        .then((data: { session: HomeSession; players: HomePlayer[] } | null) => {
+          if (data) setPlayers(data.players);
+        })
+        .catch(() => {});
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [phase, session?.id]);
+
   // ── API helpers ────────────────────────────────────────────────────────────
   const createSession = async () => {
     setLoading(true);

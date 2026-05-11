@@ -84,6 +84,22 @@ export default function HomeJoin() {
     return () => { emit('leave:home', session.id); };
   }, [session?.id, emit]);
 
+  // Polling fallback: refresh player list every 4s while in lobby
+  // (socket may drop on mobile networks — this keeps the count accurate)
+  useEffect(() => {
+    if (phase !== 'lobby' || !session?.id) return;
+    const sid = session.id;
+    const interval = setInterval(() => {
+      fetch(`/api/home/sessions/${sid}`)
+        .then(r => r.ok ? r.json() : null)
+        .then((data: { session: HomeSession; players: HomePlayer[] } | null) => {
+          if (data) setPlayers(data.players);
+        })
+        .catch(() => {});
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [phase, session?.id]);
+
   // Socket listeners
   useEffect(() => {
     const u1 = on<{ session: HomeSession; players: HomePlayer[] }>('home:state', (data) => {
@@ -171,6 +187,18 @@ export default function HomeJoin() {
       }
       const p: HomePlayer = await r.json();
       setPlayer(p);
+
+      // Fetch updated player list so the lobby counter is correct immediately
+      // (the server already emitted home:state to the room, but our socket
+      // may not have joined the room yet — race condition)
+      try {
+        const stateR = await fetch(`/api/home/sessions/${session.id}`);
+        if (stateR.ok) {
+          const stateData = await stateR.json() as { session: HomeSession; players: HomePlayer[] };
+          setPlayers(stateData.players);
+        }
+      } catch { /* ignore — socket will sync soon */ }
+
       if (session.status === 'playing') {
         setPhase('playing');
         setAnswered(null);

@@ -1,6 +1,6 @@
 import { Server as SocketServer } from "socket.io";
 import type { Server as HttpServer } from "node:http";
-import { db, playersTable } from "@workspace/db";
+import { db, playersTable, homeSessionsTable, homePlayersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "./lib/logger";
 
@@ -119,11 +119,22 @@ export function emitToRoom(room: string, event: string, data: unknown): void {
 export function initHomeSocketHandlers(io: SocketServer): void {
   io.on("connection", (socket) => {
     socket.on("join:home", (sessionId: string) => {
-      if (typeof sessionId === "string" && sessionId.length > 0) {
-        void socket.join(`home:${sessionId}`);
-        logger.info({ sid: socket.id, sessionId }, "ws:join:home");
-      }
+      if (typeof sessionId !== "string" || sessionId.length === 0) return;
+      void socket.join(`home:${sessionId}`);
+      logger.info({ sid: socket.id, sessionId }, "ws:join:home");
+
+      // Immediately push current state to this socket so it is in sync
+      // even if it missed the broadcastState emitted during HTTP join
+      db.select().from(homeSessionsTable).where(eq(homeSessionsTable.id, sessionId))
+        .then(async ([session]) => {
+          if (!session) return;
+          const players = await db.select().from(homePlayersTable)
+            .where(eq(homePlayersTable.sessionId, sessionId));
+          socket.emit("home:state", { session, players });
+        })
+        .catch((err) => logger.error({ err, sessionId }, "join:home state push failed"));
     });
+
     socket.on("leave:home", (sessionId: string) => {
       void socket.leave(`home:${sessionId}`);
     });
