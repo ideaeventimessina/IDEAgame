@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { AdminLayout } from './AdminLayout';
-import { Plus, Trash2, Loader2, ChevronDown, ChevronRight, Image as ImageIcon, Copy, Upload, Camera } from 'lucide-react';
+import { Plus, Trash2, Loader2, ChevronDown, ChevronRight, Image as ImageIcon, Copy, Upload, Camera, ChevronLeft, ChevronRight as ChevronRightIcon } from 'lucide-react';
 import { JonnyGenerateBanner } from '@/components/JonnyGenerateBanner';
 import {
   useListCardSets, useCreateCardSet, useDeleteCardSet,
@@ -147,6 +147,88 @@ export default function AdminCardSets() {
   );
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   COPPIE PAIR PREVIEW
+══════════════════════════════════════════════════════════════════════════ */
+type AnyCard = { id: string; imageUrl?: string | null; pairId?: string | null; prompts?: Record<string, string> };
+
+function CoppiePreview({ pairs }: { pairs: [string, AnyCard[]][] }) {
+  const [idx, setIdx] = useState(0);
+  const safeIdx = Math.min(idx, pairs.length - 1);
+  const [pairId, pairCards] = pairs[safeIdx]!;
+  const label = (pairCards[0]?.prompts ?? {})['it'] ?? pairId;
+  const imgA = pairCards[0]?.imageUrl ?? '';
+  const imgB = pairCards[1]?.imageUrl ?? imgA;
+
+  return (
+    <div className="mx-5 mb-5 rounded-2xl border border-primary/20 bg-background/60 overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
+        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-primary">
+          <span>🃏</span> Anteprima coppie
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setIdx(i => Math.max(0, i - 1))} disabled={safeIdx === 0}
+            className="rounded-lg border border-border p-1 hover-elevate disabled:opacity-30">
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <span className="text-xs text-muted-foreground font-mono">{safeIdx + 1} / {pairs.length}</span>
+          <button onClick={() => setIdx(i => Math.min(pairs.length - 1, i + 1))} disabled={safeIdx === pairs.length - 1}
+            className="rounded-lg border border-border p-1 hover-elevate disabled:opacity-30">
+            <ChevronRightIcon className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Slide: both cards of the pair */}
+      <div className="relative flex flex-col items-center gap-4 px-6 py-8"
+        style={{ background: 'radial-gradient(ellipse at 50% 0%, #F5B64218 0%, transparent 70%), linear-gradient(135deg, #0d0d0d 0%, #111 100%)' }}>
+
+        {/* Hex bg decoration */}
+        <div className="absolute inset-0 overflow-hidden opacity-5 pointer-events-none select-none flex items-center justify-center">
+          <div className="text-[300px] leading-none text-[#F5B642]">⬡</div>
+        </div>
+
+        <div className="text-xs font-bold uppercase tracking-widest text-[#F5B642]/70">coppia da trovare</div>
+
+        <div className="relative z-10 flex gap-4 w-full max-w-xl justify-center">
+          {/* Card A */}
+          <div className="flex-1 max-w-[220px] rounded-2xl overflow-hidden border-2 border-[#F5B642]/40 shadow-lg">
+            {imgA ? (
+              <img src={imgA} alt={label} className="w-full aspect-[4/3] object-cover" />
+            ) : (
+              <div className="w-full aspect-[4/3] bg-secondary flex items-center justify-center">
+                <ImageIcon className="h-10 w-10 text-muted-foreground/30" />
+              </div>
+            )}
+          </div>
+
+          {/* Match indicator */}
+          <div className="flex items-center justify-center">
+            <div className="rounded-full border-2 border-[#F5B642]/40 bg-[#F5B642]/10 px-3 py-1.5 text-[#F5B642] font-black text-lg">↔</div>
+          </div>
+
+          {/* Card B */}
+          <div className="flex-1 max-w-[220px] rounded-2xl overflow-hidden border-2 border-[#F5B642]/40 shadow-lg">
+            {imgB ? (
+              <img src={imgB} alt={label} className="w-full aspect-[4/3] object-cover" />
+            ) : (
+              <div className="w-full aspect-[4/3] bg-secondary flex items-center justify-center">
+                <ImageIcon className="h-10 w-10 text-muted-foreground/30" />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Label revealed */}
+        <div className="relative z-10 rounded-full border border-[#F5B642]/30 bg-[#F5B642]/10 px-6 py-2 text-[#F5B642] font-black text-lg">
+          {label}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CardSetRow({
   set, expanded, onToggle, onDelete, onRefreshCards,
 }: {
@@ -265,43 +347,50 @@ function CardSetRow({
           ) : pairs.length === 0 && unpaired.length === 0 ? (
             <div className="px-5 pb-5 text-sm text-muted-foreground text-center">Nessuna carta nel deck. Aggiungi la prima coppia!</div>
           ) : (
-            <div className="px-5 pb-5 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-              {pairs.map(([pairId, pairCards]) => {
-                const card = pairCards[0]!;
-                const imageUrl = (card as { imageUrl?: string }).imageUrl ?? '';
-                const label = ((card as { prompts?: Record<string, string> }).prompts ?? {})['it'] ?? pairId;
-                return (
-                  <div key={pairId} className="rounded-xl border border-border bg-card overflow-hidden group">
-                    {imageUrl ? (
-                      <div className="aspect-video relative overflow-hidden bg-secondary">
-                        <img src={imageUrl} alt={label} className="w-full h-full object-cover" />
-                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 gap-2">
-                          {pairCards.map(c => (
-                            <button key={c.id} onClick={() => handleDeleteCard(c.id)}
-                              className="rounded-lg bg-destructive/80 p-1.5 text-white hover:bg-destructive">
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          ))}
-                        </div>
-                        {pairCards.length === 2 && (
-                          <div className="absolute top-1.5 right-1.5">
-                            <Copy className="h-3 w-3 text-white/60" />
+            <>
+              <div className="px-5 pb-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                {pairs.map(([pairId, pairCards]) => {
+                  const card = pairCards[0]!;
+                  const imageUrl = (card as { imageUrl?: string }).imageUrl ?? '';
+                  const label = ((card as { prompts?: Record<string, string> }).prompts ?? {})['it'] ?? pairId;
+                  return (
+                    <div key={pairId} className="rounded-xl border border-border bg-card overflow-hidden group">
+                      {imageUrl ? (
+                        <div className="aspect-video relative overflow-hidden bg-secondary">
+                          <img src={imageUrl} alt={label} className="w-full h-full object-cover" />
+                          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 gap-2">
+                            {pairCards.map(c => (
+                              <button key={c.id} onClick={() => handleDeleteCard(c.id)}
+                                className="rounded-lg bg-destructive/80 p-1.5 text-white hover:bg-destructive">
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            ))}
                           </div>
-                        )}
+                          {pairCards.length === 2 && (
+                            <div className="absolute top-1.5 right-1.5">
+                              <Copy className="h-3 w-3 text-white/60" />
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="aspect-video bg-secondary flex items-center justify-center">
+                          <ImageIcon className="h-8 w-8 text-muted-foreground/40" />
+                        </div>
+                      )}
+                      <div className="px-2.5 py-2">
+                        <div className="text-sm font-bold truncate">{label}</div>
+                        <div className="text-xs text-muted-foreground">{pairCards.length} cart{pairCards.length === 1 ? 'a' : 'e'}</div>
                       </div>
-                    ) : (
-                      <div className="aspect-video bg-secondary flex items-center justify-center">
-                        <ImageIcon className="h-8 w-8 text-muted-foreground/40" />
-                      </div>
-                    )}
-                    <div className="px-2.5 py-2">
-                      <div className="text-sm font-bold truncate">{label}</div>
-                      <div className="text-xs text-muted-foreground">{pairCards.length} cart{pairCards.length === 1 ? 'a' : 'e'}</div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+
+              {/* Pair preview */}
+              {pairs.length > 0 && (
+                <CoppiePreview pairs={pairs} />
+              )}
+            </>
           )}
         </div>
       )}

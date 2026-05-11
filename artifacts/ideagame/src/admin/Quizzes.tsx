@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { AdminLayout } from './AdminLayout';
 import { useT, LOCALES } from '@/i18n';
-import { Plus, Trash2, Search, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Search, Loader2, Eye } from 'lucide-react';
 import {
   useListQuestions, useCreateQuestion, useDeleteQuestion,
   getListQuestionsQueryKey,
@@ -87,8 +87,108 @@ export default function Quizzes() {
         </div>
       )}
 
+      {filtered.length > 0 && (
+        <QuizSlidePreview items={filtered} />
+      )}
+
       {open && <NewQuestionDialog onClose={() => setOpen(false)} onCreate={async (data) => { await create.mutateAsync({ data }); refresh(); }} />}
     </AdminLayout>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   QUIZ SLIDE PREVIEW
+══════════════════════════════════════════════════════════════════════════ */
+interface QuizItem {
+  id: string; category: string; difficulty: string; timeLimit?: number | null;
+  correctIndex?: number | null; prompts: unknown; options?: unknown;
+}
+function QuizSlidePreview({ items }: { items: QuizItem[] }) {
+  const [idx, setIdx] = useState(0);
+  const safeIdx = Math.min(idx, items.length - 1);
+  const item = items[safeIdx]!;
+  const prompts = item.prompts as Record<string, string>;
+  const options = (item.options ?? []) as Array<Record<string, string>>;
+  const correctIndex = (item.correctIndex ?? 0) as number;
+  const question = prompts.it ?? prompts.en ?? Object.values(prompts)[0] ?? '';
+
+  const OPTION_COLORS = ['#60a5fa', '#34d399', '#f472b6', '#fb923c'];
+  const OPTION_LABELS = ['A', 'B', 'C', 'D'];
+
+  return (
+    <div className="mt-6 rounded-2xl border border-primary/20 bg-background/60 overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
+        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-primary">
+          <Eye className="h-3.5 w-3.5" /> Anteprima quiz
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setIdx(i => Math.max(0, i - 1))} disabled={safeIdx === 0}
+            className="rounded-lg border border-border px-2.5 py-1 text-xs font-bold hover-elevate disabled:opacity-30">← Prec</button>
+          <span className="text-xs text-muted-foreground font-mono">{safeIdx + 1} / {items.length}</span>
+          <button onClick={() => setIdx(i => Math.min(items.length - 1, i + 1))} disabled={safeIdx === items.length - 1}
+            className="rounded-lg border border-border px-2.5 py-1 text-xs font-bold hover-elevate disabled:opacity-30">Succ →</button>
+        </div>
+      </div>
+
+      {/* Slide */}
+      <div className="relative flex flex-col items-center gap-5 px-8 py-10"
+        style={{ background: 'radial-gradient(ellipse at 50% 0%, #60a5fa18 0%, transparent 60%), linear-gradient(135deg, #0d0d0d 0%, #111 100%)' }}>
+
+        {/* Hex bg */}
+        <div className="absolute inset-0 overflow-hidden opacity-5 pointer-events-none select-none">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="absolute text-[140px] leading-none text-[#60a5fa]"
+              style={{ top: `${(i % 2) * 50}%`, left: `${(i % 3) * 35}%` }}>⬡</div>
+          ))}
+        </div>
+
+        {/* Category + difficulty */}
+        <div className="relative z-10 flex items-center gap-3">
+          <span className="rounded-full border border-[#60a5fa]/40 bg-[#60a5fa]/10 px-3 py-1 text-xs font-bold text-[#60a5fa] uppercase tracking-widest">
+            {item.category}
+          </span>
+          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-bold text-white/50 uppercase tracking-widest">
+            {item.difficulty}
+          </span>
+        </div>
+
+        {/* Question */}
+        <div className="relative z-10 text-display text-2xl md:text-3xl font-black text-white text-center leading-snug max-w-2xl">
+          {question}
+        </div>
+
+        {/* Options */}
+        {options.length > 0 && (
+          <div className="relative z-10 grid grid-cols-2 gap-3 w-full max-w-2xl">
+            {options.map((opt, i) => {
+              const text = opt.it ?? opt.en ?? Object.values(opt)[0] ?? `Opzione ${i + 1}`;
+              const isCorrect = i === correctIndex;
+              const color = OPTION_COLORS[i % OPTION_COLORS.length]!;
+              return (
+                <div key={i}
+                  className="flex items-center gap-3 rounded-xl border-2 px-4 py-3 transition-all"
+                  style={isCorrect
+                    ? { borderColor: color, background: `${color}20`, boxShadow: `0 0 16px ${color}30` }
+                    : { borderColor: 'rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)' }}>
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-black"
+                    style={{ background: isCorrect ? color : 'rgba(255,255,255,0.1)', color: isCorrect ? '#000' : 'rgba(255,255,255,0.5)' }}>
+                    {OPTION_LABELS[i]}
+                  </span>
+                  <span className={`text-sm font-bold ${isCorrect ? 'text-white' : 'text-white/60'}`}>{text}</span>
+                  {isCorrect && <span className="ml-auto text-base">✓</span>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Timer */}
+        <div className="relative z-10 flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-5 py-2 text-sm text-white/60 font-bold">
+          <span>⏱</span> {item.timeLimit ?? 25}s
+        </div>
+      </div>
+    </div>
   );
 }
 

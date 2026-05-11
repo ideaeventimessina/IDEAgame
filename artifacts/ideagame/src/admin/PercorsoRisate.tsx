@@ -519,10 +519,86 @@ export default function PercorsoRisate() {
                   <span><span className="font-bold text-foreground">{steps.reduce((a, s) => a + (s.isActive ? s.points : 0), 0)}</span> pt possibili</span>
                 </div>
               )}
+
+              {/* Preview */}
+              {steps.filter(s => s.isActive).length > 0 && (
+                <PercorsoSlidePreview steps={steps.filter(s => s.isActive)} />
+              )}
             </div>
           )}
         </div>
       </div>
     </AdminLayout>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PERCORSO SLIDE PREVIEW
+══════════════════════════════════════════════════════════════════════════ */
+function PercorsoSlidePreview({ steps }: { steps: PathStep[] }) {
+  const [idx, setIdx] = useState(0);
+  const step = steps[Math.min(idx, steps.length - 1)]!;
+  const cfg = CHALLENGE_TYPES.find(t => t.value === step.challengeType) ?? CHALLENGE_TYPES[0]!;
+  const color = CHALLENGE_COLORS[step.challengeType] ?? '#F5B642';
+
+  return (
+    <div className="mt-2 rounded-2xl border border-primary/20 bg-background/60 overflow-hidden">
+      {/* Header bar */}
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
+        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-primary">
+          <span>🎬</span> Anteprima proiettore
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setIdx(i => Math.max(0, i - 1))} disabled={idx === 0}
+            className="rounded-lg border border-border px-2.5 py-1 text-xs font-bold hover-elevate disabled:opacity-30">← Prec</button>
+          <span className="text-xs text-muted-foreground font-mono">{idx + 1} / {steps.length}</span>
+          <button onClick={() => setIdx(i => Math.min(steps.length - 1, i + 1))} disabled={idx === steps.length - 1}
+            className="rounded-lg border border-border px-2.5 py-1 text-xs font-bold hover-elevate disabled:opacity-30">Succ →</button>
+        </div>
+      </div>
+
+      {/* Slide */}
+      <div className="relative min-h-[260px] flex flex-col items-center justify-center gap-4 px-8 py-10"
+        style={{ background: `radial-gradient(ellipse at 60% 30%, ${color}18 0%, transparent 70%), linear-gradient(135deg, #0d0d0d 0%, #111 100%)` }}>
+
+        {/* Hex decoration */}
+        <div className="absolute inset-0 overflow-hidden opacity-5 pointer-events-none select-none">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="absolute text-[120px] leading-none"
+              style={{ top: `${(i % 3) * 35}%`, left: `${(i % 4) * 28}%`, color }}>⬡</div>
+          ))}
+        </div>
+
+        {/* Type badge */}
+        <div className="flex items-center gap-2 rounded-full border px-4 py-1.5 text-sm font-bold"
+          style={{ borderColor: `${color}60`, background: `${color}15`, color }}>
+          <span className="text-xl">{cfg.emoji}</span>
+          <span className="uppercase tracking-widest text-xs">{cfg.label}</span>
+        </div>
+
+        {/* Title */}
+        <div className="text-display text-3xl md:text-4xl font-black text-white text-center leading-tight max-w-xl">
+          {step.title}
+        </div>
+
+        {/* Description */}
+        {step.description && (
+          <div className="text-white/70 text-base text-center max-w-lg">{step.description}</div>
+        )}
+
+        {/* Optional image */}
+        {step.optionalMediaUrl && (
+          <img src={step.optionalMediaUrl} alt="" className="max-h-28 max-w-xs rounded-xl object-contain opacity-90"
+            onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+        )}
+
+        {/* Footer: timer + points */}
+        <div className="flex items-center gap-6 rounded-full border border-white/10 bg-white/5 px-6 py-2">
+          <span className="text-white/80 text-sm font-bold">⏱ {step.timeLimit}s</span>
+          <span className="w-px h-4 bg-white/20" />
+          <span className="font-bold text-sm" style={{ color }}>⭐ {step.points} pt</span>
+        </div>
+      </div>
+    </div>
   );
 }
