@@ -159,6 +159,8 @@ export default function Player() {
   const [nick, setNick] = useState('');
   const [selectedTeam, setSelectedTeam] = useState('');
   const [gameState, setGameState] = useState<GameState>({ sessionId: null, currentRound: 0, totalRounds: 1, status: 'idle', gameSlug: null });
+  const [prevGameSlug, setPrevGameSlug] = useState<string | null>(null);
+  const [myTeamScore, setMyTeamScore] = useState<number | null>(null);
   const [buzzed, setBuzzed] = useState(false);
   const [scoreFlash, setScoreFlash] = useState<{ points: number; total: number; ts: number } | null>(null);
   const [coppieBoard, setCoppieBoard] = useState<CoppieBoardState | null>(null);
@@ -299,7 +301,10 @@ export default function Player() {
 
     const unsubs = [
       on<{ session: { id: string; currentRound: number; totalRounds: number; status: string; gameSlug: string } }>('game:started', ({ session }) => {
-        setGameState({ sessionId: session.id, currentRound: session.currentRound, totalRounds: session.totalRounds, status: 'running', gameSlug: session.gameSlug });
+        setGameState(prev => {
+          if (prev.gameSlug && prev.gameSlug !== session.gameSlug) setPrevGameSlug(prev.gameSlug);
+          return { sessionId: session.id, currentRound: session.currentRound, totalRounds: session.totalRounds, status: 'running', gameSlug: session.gameSlug };
+        });
         setBuzzed(false);
         setQuizzoneQuestion(null);
         setQuizzoneReveal(null);
@@ -319,6 +324,7 @@ export default function Player() {
       on<{ teamId: string; points: number; total: number }>('score:updated', (data) => {
         if (player && data.teamId === player.teamId) {
           setScoreFlash({ points: data.points, total: data.total, ts: Date.now() });
+          setMyTeamScore(data.total);
         }
       }),
       on('coppie:state',   (d) => setCoppieBoard(extractBoard(d))),
@@ -698,10 +704,12 @@ export default function Player() {
             )}
 
             {gameState.status === 'ended' && (
-              <div className="mt-8 rounded-2xl border border-primary/40 bg-primary/10 px-6 py-5 text-center">
-                <div className="text-display text-xl font-black text-primary">🏆 Gioco terminato!</div>
-                <div className="mt-2 text-sm text-muted-foreground">Controlla il proiettore per la classifica</div>
-              </div>
+              <BetweenGamesScreen
+                myTeam={myTeam ?? null}
+                myTeamScore={myTeamScore}
+                prevGameSlug={prevGameSlug}
+                jonnyMode={jonnyMode}
+              />
             )}
 
             {gameState.status === 'running' && (
@@ -813,6 +821,104 @@ export default function Player() {
         />
       )}
     </div>
+  );
+}
+
+// ─── Between Games Screen ──────────────────────────────────────────────────────
+const GAME_NAMES: Record<string, string> = {
+  'percorso-a-risate': 'Percorso a Risate',
+  'gioco-coppie': 'Gioco delle Coppie',
+  'adult-only': 'Adult Only',
+  'sfida-ballo': 'Sfida di Ballo',
+  'parola-alle-spalle': 'Parola alle Spalle',
+  'karaoke-battle': 'Karaoke Battle',
+  'freestyle-battle': 'Freestyle Battle',
+  'saramusica': 'SaraMusica',
+  'quizzone': 'Quizzone',
+};
+
+const JONNY_BETWEEN_MSGS = [
+  'Stai andando alla grande — tieni duro! 💪',
+  'La prossima sfida è ancora più divertente! 🚀',
+  'Guarda il punteggio — la rimonta è possibile! 😏',
+  'Parla con la tua squadra, strategia! 🧠',
+  'Jonny ci crede in te — e tanto! ⭐',
+  'Respira… e preparati a vincere! 🏆',
+];
+
+function BetweenGamesScreen({ myTeam, myTeamScore, prevGameSlug, jonnyMode }: {
+  myTeam: TeamInfo | null;
+  myTeamScore: number | null;
+  prevGameSlug: string | null;
+  jonnyMode: string;
+}) {
+  const [msgIdx, setMsgIdx] = useState(0);
+  const [msgVisible, setMsgVisible] = useState(true);
+  useEffect(() => {
+    const t = setInterval(() => {
+      setMsgVisible(false);
+      setTimeout(() => { setMsgIdx(i => (i + 1) % JONNY_BETWEEN_MSGS.length); setMsgVisible(true); }, 350);
+    }, 4000);
+    return () => clearInterval(t);
+  }, []);
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+      className="mt-6 flex flex-col items-center gap-5 text-center px-4">
+
+      {/* Jonny celebrating */}
+      <motion.div animate={{ y: [0, -10, 0] }} transition={{ repeat: Infinity, duration: 2.8, ease: 'easeInOut' }}>
+        <JonnyAvatar mood="winner" size={130} />
+      </motion.div>
+
+      {/* What just ended */}
+      {prevGameSlug && (
+        <div className="rounded-xl border border-border bg-card/60 px-4 py-2 text-xs text-muted-foreground">
+          {GAME_NAMES[prevGameSlug] ?? prevGameSlug} — terminato!
+        </div>
+      )}
+
+      {/* Team score */}
+      {myTeam && (
+        <div className="w-full rounded-2xl border-2 px-5 py-4 space-y-1"
+          style={{ borderColor: myTeam.color, background: `${myTeam.color}12` }}>
+          <div className="text-xs uppercase tracking-widest text-muted-foreground">Punteggio squadra</div>
+          <div className="flex items-center justify-center gap-3">
+            <div className="h-4 w-4 rounded-full shrink-0" style={{ background: myTeam.color }} />
+            <div className="text-display text-xl font-black" style={{ color: myTeam.color }}>{myTeam.name}</div>
+          </div>
+          <div className="text-display text-4xl font-black" style={{ color: myTeam.color }}>
+            {myTeamScore !== null ? myTeamScore : '—'} <span className="text-lg font-bold text-muted-foreground">pt</span>
+          </div>
+        </div>
+      )}
+
+      {/* Jonny message */}
+      <div className="relative w-full max-w-xs rounded-2xl border px-4 py-3 text-sm font-medium"
+        style={{ background: 'linear-gradient(135deg, rgba(16,12,34,0.9) 0%, rgba(10,8,25,0.9) 100%)', borderColor: 'rgba(212,175,55,0.3)', color: '#e8d5a3', minHeight: 56 }}>
+        <div className="mb-1 text-[10px] font-black tracking-widest" style={{ color: '#D4AF37' }}>
+          JONNY{jonnyMode === 'home' ? ' HOME' : ''}
+        </div>
+        <AnimatePresence mode="wait">
+          {msgVisible && (
+            <motion.span key={msgIdx} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.3 }} className="block">
+              {JONNY_BETWEEN_MSGS[msgIdx]}
+            </motion.span>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Waiting pulse */}
+      <div className="flex gap-1.5">
+        {[0, 1, 2].map(i => (
+          <motion.div key={i} className="h-2 w-2 rounded-full" style={{ backgroundColor: '#D4AF37' }}
+            animate={{ opacity: [0.3, 1, 0.3], scale: [0.8, 1.1, 0.8] }}
+            transition={{ repeat: Infinity, duration: 1.2, delay: i * 0.2 }} />
+        ))}
+      </div>
+
+      <div className="text-xs text-muted-foreground/60">In attesa della prossima sfida…</div>
+    </motion.div>
   );
 }
 

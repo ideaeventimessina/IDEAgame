@@ -12,8 +12,6 @@ import { useListGames, useGetCurrentEvent, getGetCurrentEventQueryKey, useListPl
 import { useAuth } from '@/auth/roles';
 import { useEventSocket } from '@/hooks/useEventSocket';
 import { useLocalMode } from '@/hooks/useLocalMode';
-import { useGameAudio } from '@/hooks/useGameAudio';
-
 // ── Theme-park ambient particles ─────────────────────────────────────────────
 const CONFETTI_PALETTE = ['#F5B642','#FF69B4','#60A5FA','#A78BFA','#34D399','#F87171','#F472B6'];
 
@@ -180,7 +178,7 @@ export default function Hub() {
   const [sessionEnded, setSessionEnded] = useState(false);
   const [hubPhase, setHubPhase] = useState<'join' | 'gameboard'>('join');
   const [preloadedThemes, setPreloadedThemes] = useState<Record<string, { id: string; name: string } | null>>({});
-  useGameAudio('hub', { preload: true });
+  // Audio rimosso dall'Hub — suono solo da LiveControl/admin
 
   // Navigate to a game — READY games NEVER go to /game/:slug mock
   const handleGameClick = async (slug: string, name: string, accentColor: string) => {
@@ -647,6 +645,143 @@ export default function Hub() {
             Accedi come animatore →
           </button>
         </motion.div>
+      </div>
+    );
+  }
+
+  // ── Public projector: evento live, fase raccolta giocatori ──────────
+  if (!user && publicEvent && hubPhase === 'join') {
+    const publicJoinUrl = `${lan.effectiveOrigin}/play?e=${publicEvent.joinCode}`;
+    return (
+      <div className="relative h-screen w-full overflow-hidden select-none flex flex-col"
+        style={{ background: 'radial-gradient(ellipse 160% 90% at 50% -10%, #2d0d52 0%, #130628 45%, #060213 100%)' }}>
+        <HubStars />
+        <HubConfetti />
+
+        {/* Purple top glow */}
+        <div className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 w-[70%] h-[30%] z-0"
+          style={{ background: 'radial-gradient(ellipse, rgba(120,50,255,0.25) 0%, transparent 70%)', filter: 'blur(60px)' }} />
+
+        {/* Header */}
+        <header className="relative z-20 flex shrink-0 items-center justify-between px-8 py-5">
+          <div className="flex items-center justify-center rounded-2xl bg-white px-3 py-1.5 shadow-xl">
+            <img src="/logo.png" alt="IDEA Games" className="h-10 w-auto object-contain" />
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="rounded-full border border-destructive px-3 py-1 text-xs font-black uppercase tracking-widest text-destructive">
+              <span className="mr-1.5 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-destructive align-middle" />
+              LIVE
+            </div>
+            <div className="text-display text-sm font-bold text-muted-foreground">{publicEvent.name}</div>
+            {publicEvent.venue && <div className="hidden sm:block text-xs text-muted-foreground/60">— {publicEvent.venue}</div>}
+          </div>
+          {/* Player count */}
+          <div className="flex items-center gap-2 rounded-2xl border border-border bg-card/60 px-4 py-2 backdrop-blur-md">
+            <Users className="h-4 w-4 text-primary" />
+            <span className="text-display text-xl font-black text-primary">{publicPlayers.length}</span>
+            <span className="text-xs text-muted-foreground">connessi</span>
+          </div>
+        </header>
+
+        {/* Main content — QR gigante + titolo */}
+        <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-8 px-8 pb-10">
+
+          {/* Title */}
+          <motion.div initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+            className="text-center">
+            <div className="text-display text-5xl sm:text-6xl lg:text-7xl font-black leading-none"
+              style={{ background: 'linear-gradient(135deg, #F5B642 0%, #fff8e8 50%, #F5B642 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+              Unisciti alla serata!
+            </div>
+            <div className="mt-3 text-lg sm:text-xl text-muted-foreground">
+              Scansiona il QR o inserisci il codice sul telefono
+            </div>
+          </motion.div>
+
+          {/* QR + join code centrati */}
+          <motion.div initial={{ opacity: 0, scale: 0.88 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.2, type: 'spring', stiffness: 140, damping: 18 }}
+            className="flex flex-col items-center gap-6">
+            {/* QR card */}
+            <div className="rounded-3xl p-5 shadow-2xl shadow-black/60"
+              style={{ background: 'rgba(16,10,40,0.85)', border: '2px solid rgba(245,182,66,0.4)', backdropFilter: 'blur(20px)' }}>
+              <QrPlaceholder text={publicJoinUrl} size={280} />
+            </div>
+
+            {/* Join code huge */}
+            <div className="text-center">
+              <div className="text-xs uppercase tracking-[0.4em] text-muted-foreground mb-2">codice evento</div>
+              <div className="text-display text-6xl sm:text-7xl font-black tracking-[0.15em]"
+                style={{ color: '#F5B642', textShadow: '0 0 60px rgba(245,182,66,0.5)' }}>
+                {publicEvent.joinCode}
+              </div>
+              <div className="mt-2 text-sm text-muted-foreground/70">
+                vai su <span className="font-black text-foreground">{lan.effectiveOrigin.replace(/^https?:\/\//, '')}/play</span>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Player avatars live */}
+          {publicPlayers.length > 0 && (
+            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}
+              className="flex flex-col items-center gap-3">
+              <div className="text-xs uppercase tracking-widest text-muted-foreground/60">Già connessi</div>
+              <div className="flex flex-wrap justify-center gap-2 max-w-xl">
+                {publicPlayers.slice(0, 20).map((p) => (
+                  <motion.div key={p.id}
+                    initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }}
+                    transition={{ type: 'spring', stiffness: 200, damping: 18 }}
+                    className="flex items-center gap-1.5 rounded-full border border-white/10 bg-card/60 px-3 py-1.5 text-sm font-bold backdrop-blur-sm"
+                    style={{ borderColor: `${p.avatarColor}40` }}>
+                    <div className="h-5 w-5 shrink-0 rounded-full text-[10px] font-black flex items-center justify-center text-background"
+                      style={{ background: p.avatarColor }}>{p.nickname[0]?.toUpperCase()}</div>
+                    {p.nickname}
+                  </motion.div>
+                ))}
+                {publicPlayers.length > 20 && (
+                  <div className="rounded-full border border-border bg-card/60 px-3 py-1.5 text-sm text-muted-foreground">+{publicPlayers.length - 20}</div>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </div>
+
+        {/* Jonny floating */}
+        <div className="pointer-events-none absolute bottom-0 right-12 z-10 select-none hidden lg:block" style={{ width: 200, height: 310 }}>
+          <motion.img src="/jonny-master.jpg" alt="Jonny"
+            className="w-full h-full object-contain object-bottom"
+            style={{ filter: 'drop-shadow(0 0 40px rgba(245,182,66,0.4))' }}
+            animate={{ y: [0, -10, 0] }} transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }}
+            initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} />
+        </div>
+      </div>
+    );
+  }
+
+  // ── Public projector: Game Board phase ────────────────────────────────
+  if (!user && publicEvent && hubPhase === 'gameboard') {
+    return (
+      <div className="relative h-screen w-full overflow-hidden select-none flex flex-col"
+        style={{ background: 'radial-gradient(ellipse 160% 90% at 50% -10%, #2d0d52 0%, #130628 45%, #060213 100%)' }}>
+        <HubStars />
+        <header className="relative z-20 flex shrink-0 items-center justify-between px-8 py-5">
+          <div className="flex items-center justify-center rounded-2xl bg-white px-3 py-1.5 shadow-xl">
+            <img src="/logo.png" alt="IDEA Games" className="h-10 w-auto object-contain" />
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="rounded-full border border-destructive px-3 py-1 text-xs font-black uppercase tracking-widest text-destructive">
+              <span className="mr-1.5 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-destructive align-middle" />LIVE
+            </div>
+            <div className="text-display text-sm font-bold text-muted-foreground">{publicEvent.name}</div>
+          </div>
+          <div className="flex items-center gap-2 rounded-2xl border border-border bg-card/60 px-4 py-2 backdrop-blur-md">
+            <Users className="h-4 w-4 text-green-400" />
+            <span className="text-display text-xl font-black text-green-400">{publicPlayers.length}</span>
+            <span className="text-xs text-muted-foreground">pronti</span>
+          </div>
+        </header>
+        <div className="relative z-10 flex flex-1 flex-col min-h-0 overflow-hidden">
+          <GameBoardView />
+        </div>
       </div>
     );
   }
