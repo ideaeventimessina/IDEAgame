@@ -22,13 +22,20 @@ async function apiFetch(path: string, opts?: RequestInit) {
 interface NewSetForm { slug: string; name: string; description: string; }
 interface NewPairForm { label: string; imageA: string; imageB: string; }
 
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((res, rej) => {
-    const r = new FileReader();
-    r.onload = () => res(r.result as string);
-    r.onerror = () => rej(r.error);
-    r.readAsDataURL(file);
+async function uploadFileToStorage(file: File): Promise<string> {
+  const BASE_URL = (import.meta.env.BASE_URL as string) ?? '/';
+  const reqUrl = `${BASE_URL}api/storage/uploads/request-url`.replace(/\/\//g, '/');
+  const res = await fetch(reqUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type || 'image/jpeg' }),
   });
+  if (!res.ok) throw new Error('Errore URL upload');
+  const { uploadURL, objectPath } = await res.json() as { uploadURL: string; objectPath: string };
+  const put = await fetch(uploadURL, { method: 'PUT', body: file, headers: { 'Content-Type': file.type || 'image/jpeg' } });
+  if (!put.ok) throw new Error('Upload fallito');
+  return `/api/storage${objectPath}`;
 }
 
 export default function AdminCardSets() {
@@ -246,9 +253,17 @@ function CardSetRow({
   const fileARef = useRef<HTMLInputElement>(null);
   const fileBRef = useRef<HTMLInputElement>(null);
 
+  const [uploadingA, setUploadingA] = useState(false);
+  const [uploadingB, setUploadingB] = useState(false);
+
   async function handleFileUpload(file: File, field: 'imageA' | 'imageB') {
-    const dataUrl = await readFileAsDataUrl(file);
-    setPairForm(p => ({ ...p, [field]: dataUrl }));
+    const setUploading = field === 'imageA' ? setUploadingA : setUploadingB;
+    setUploading(true);
+    try {
+      const url = await uploadFileToStorage(file);
+      setPairForm(p => ({ ...p, [field]: url }));
+    } catch (e) { setErr((e as Error).message); }
+    finally { setUploading(false); }
   }
 
   const pairs = (() => {
@@ -416,18 +431,14 @@ function CardSetRow({
                 <div>
                   <label className="text-xs uppercase tracking-widest text-muted-foreground">Immagine A</label>
                   <div className="mt-1 flex gap-1.5">
-                    <input value={pairForm.imageA.startsWith('data:') ? '' : pairForm.imageA}
+                    <input value={pairForm.imageA}
                       onChange={e => setPairForm(p => ({ ...p, imageA: e.target.value }))}
                       placeholder="https://..."
                       className="flex-1 min-w-0 rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />
-                    <button type="button" title="Carica file" onClick={() => fileARef.current?.click()}
-                      className="rounded-lg border border-border bg-background p-2 hover:bg-secondary transition-colors">
-                      <Upload className="h-4 w-4" />
-                    </button>
-                    <button type="button" title="Scatta foto" onClick={() => {
-                      if (fileARef.current) { fileARef.current.removeAttribute('capture'); fileARef.current.setAttribute('capture', 'environment'); fileARef.current.click(); }
-                    }} className="rounded-lg border border-border bg-background p-2 hover:bg-secondary transition-colors">
-                      <Camera className="h-4 w-4" />
+                    <button type="button" title="Carica file / scatta foto" onClick={() => fileARef.current?.click()}
+                      disabled={uploadingA}
+                      className="rounded-lg border border-border bg-background p-2 hover:bg-secondary transition-colors disabled:opacity-50">
+                      {uploadingA ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
                     </button>
                   </div>
                   {pairForm.imageA && (
@@ -435,7 +446,6 @@ function CardSetRow({
                       <img src={pairForm.imageA} alt="" className="w-full aspect-video object-cover rounded-lg border border-border" onError={e => (e.currentTarget.style.display = 'none')} />
                       <button type="button" onClick={() => setPairForm(p => ({ ...p, imageA: '' }))}
                         className="absolute top-1 right-1 h-5 w-5 rounded-full bg-black/60 text-white text-[10px] font-black opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">✕</button>
-                      {pairForm.imageA.startsWith('data:') && <div className="text-[10px] text-muted-foreground mt-1">📁 File locale</div>}
                     </div>
                   )}
                 </div>
@@ -443,18 +453,14 @@ function CardSetRow({
                 <div>
                   <label className="text-xs uppercase tracking-widest text-muted-foreground">Immagine B (opz.)</label>
                   <div className="mt-1 flex gap-1.5">
-                    <input value={pairForm.imageB.startsWith('data:') ? '' : pairForm.imageB}
+                    <input value={pairForm.imageB}
                       onChange={e => setPairForm(p => ({ ...p, imageB: e.target.value }))}
                       placeholder="Uguale ad A se vuoto"
                       className="flex-1 min-w-0 rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />
-                    <button type="button" title="Carica file" onClick={() => fileBRef.current?.click()}
-                      className="rounded-lg border border-border bg-background p-2 hover:bg-secondary transition-colors">
-                      <Upload className="h-4 w-4" />
-                    </button>
-                    <button type="button" title="Scatta foto" onClick={() => {
-                      if (fileBRef.current) { fileBRef.current.setAttribute('capture', 'environment'); fileBRef.current.click(); }
-                    }} className="rounded-lg border border-border bg-background p-2 hover:bg-secondary transition-colors">
-                      <Camera className="h-4 w-4" />
+                    <button type="button" title="Carica file / scatta foto" onClick={() => fileBRef.current?.click()}
+                      disabled={uploadingB}
+                      className="rounded-lg border border-border bg-background p-2 hover:bg-secondary transition-colors disabled:opacity-50">
+                      {uploadingB ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
                     </button>
                   </div>
                   {pairForm.imageB && (
@@ -462,7 +468,6 @@ function CardSetRow({
                       <img src={pairForm.imageB} alt="" className="w-full aspect-video object-cover rounded-lg border border-border" onError={e => (e.currentTarget.style.display = 'none')} />
                       <button type="button" onClick={() => setPairForm(p => ({ ...p, imageB: '' }))}
                         className="absolute top-1 right-1 h-5 w-5 rounded-full bg-black/60 text-white text-[10px] font-black opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">✕</button>
-                      {pairForm.imageB.startsWith('data:') && <div className="text-[10px] text-muted-foreground mt-1">📁 File locale</div>}
                     </div>
                   )}
                 </div>

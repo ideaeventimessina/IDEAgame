@@ -11,7 +11,7 @@ import { useGameAudio } from '@/hooks/useGameAudio';
 
 interface KaraokeTrack {
   id: string; title: string; artist: string; lyricSnippet: string;
-  audioUrl: string | null; durationSeconds: number; points: number;
+  audioUrl: string | null; youtubeUrl: string | null; durationSeconds: number; points: number;
   category: string; difficulty: string;
 }
 interface KaraokeBooking {
@@ -164,7 +164,7 @@ export default function GameKaraoke() {
       {/* Main — two-column on desktop */}
       <div className="flex flex-1 min-h-0 gap-6 px-8 py-5 overflow-hidden">
 
-        {/* Left: Track info + Lyrics */}
+        {/* Left: Track info + YouTube + Lyrics */}
         <div className="flex flex-[3] flex-col justify-center gap-5">
 
           {/* Track header */}
@@ -178,14 +178,34 @@ export default function GameKaraoke() {
             </div>
             <motion.div key={track.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
               className="text-display font-black leading-tight text-white"
-              style={{ fontSize: 'clamp(2.5rem, 6vw, 5rem)', textShadow: `0 0 40px ${T.glow}44` }}>
+              style={{ fontSize: 'clamp(2rem, 5vw, 4rem)', textShadow: `0 0 40px ${T.glow}44` }}>
               {track.title}
             </motion.div>
             <div className="mt-2 text-xl text-white/50 font-bold">{track.artist}</div>
           </div>
 
-          {/* Lyrics */}
-          {track.lyricSnippet && (
+          {/* YouTube embed */}
+          {track.youtubeUrl && (() => {
+            const ytId = track.youtubeUrl.match(/(?:v=|youtu\.be\/|embed\/)([^&?/]+)/)?.[1];
+            if (!ytId) return null;
+            return (
+              <motion.div key={`yt-${track.id}`} initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.15 }}
+                className="w-full rounded-2xl overflow-hidden border"
+                style={{ borderColor: `${T.accent}25`, aspectRatio: '16/9', maxHeight: '260px' }}>
+                <iframe
+                  key={ytId}
+                  src={`https://www.youtube.com/embed/${ytId}?autoplay=1&rel=0&modestbranding=1&controls=1`}
+                  title={track.title}
+                  className="w-full h-full"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              </motion.div>
+            );
+          })()}
+
+          {/* Lyrics (show only if no YouTube or as supplement) */}
+          {track.lyricSnippet && !track.youtubeUrl && (
             <motion.div key={`lyrics-${track.id}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}
               className="rounded-3xl border px-8 py-6"
               style={{ borderColor: `${T.accent}25`, background: `${T.accent}08` }}>

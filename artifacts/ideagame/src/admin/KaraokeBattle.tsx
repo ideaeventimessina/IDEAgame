@@ -19,7 +19,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
 interface KaraokeSet { id: string; title: string; description: string; language: string; isActive: boolean; }
 interface KaraokeTrack {
   id: string; setId: string; title: string; artist: string; lyricSnippet: string;
-  audioUrl: string | null; durationSeconds: number; points: number;
+  audioUrl: string | null; youtubeUrl: string | null; durationSeconds: number; points: number;
   category: string; difficulty: string; orderIndex: number; isActive: boolean;
 }
 
@@ -45,7 +45,7 @@ function KaraokeTab() {
   const [newTitle, setNewTitle] = useState('');
   const [showNewSet, setShowNewSet] = useState(false);
   const [newTrack, setNewTrack] = useState({
-    title: '', artist: '', lyricSnippet: '', audioUrl: '',
+    title: '', artist: '', lyricSnippet: '', audioUrl: '', youtubeUrl: '',
     durationSeconds: 60, points: 150, category: 'pop', difficulty: 'medium', orderIndex: 0,
   });
   const [showTrackForm, setShowTrackForm] = useState<string | null>(null);
@@ -103,9 +103,9 @@ function KaraokeTab() {
     try {
       await apiFetch(`/karaoke/sets/${setId}/tracks`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...newTrack, audioUrl: newTrack.audioUrl.trim() || undefined }),
+        body: JSON.stringify({ ...newTrack, audioUrl: newTrack.audioUrl.trim() || undefined, youtubeUrl: newTrack.youtubeUrl.trim() || undefined }),
       });
-      setNewTrack({ title: '', artist: '', lyricSnippet: '', audioUrl: '', durationSeconds: 60, points: 150, category: 'pop', difficulty: 'medium', orderIndex: 0 });
+      setNewTrack({ title: '', artist: '', lyricSnippet: '', audioUrl: '', youtubeUrl: '', durationSeconds: 60, points: 150, category: 'pop', difficulty: 'medium', orderIndex: 0 });
       setShowTrackForm(null);
       await loadTracks(setId);
       flash('✓ Brano aggiunto!');
@@ -295,6 +295,8 @@ function KaraokeTab() {
                               className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
                             <input value={newTrack.audioUrl} onChange={e => setNewTrack(p => ({ ...p, audioUrl: e.target.value }))}
                               placeholder="URL audio (opzionale)" className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+                            <input value={newTrack.youtubeUrl} onChange={e => setNewTrack(p => ({ ...p, youtubeUrl: e.target.value }))}
+                              placeholder="URL YouTube (es. https://youtube.com/watch?v=…)" className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-pink-500" />
                             <div className="grid grid-cols-3 gap-3">
                               <select value={newTrack.category} onChange={e => setNewTrack(p => ({ ...p, category: e.target.value }))}
                                 className="rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none">

@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { PlusCircle, Trash2, ChevronUp, ChevronDown, Edit2, Check, X, Loader2, ImageIcon } from 'lucide-react';
+import { PlusCircle, Trash2, ChevronUp, ChevronDown, Edit2, Check, X, Loader2, ImageIcon, Grid, Link } from 'lucide-react';
 import { AdminLayout } from './AdminLayout';
 import { useAuth } from '@/auth/roles';
 import { JonnyGenerateBanner } from '@/components/JonnyGenerateBanner';
+import { useListMedia } from '@workspace/api-client-react';
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 interface PathSet {
@@ -48,6 +49,95 @@ const emptyForm = (): Omit<PathStep, 'id' | 'setId' | 'createdAt'> => ({
   title: '', description: '', challengeType: 'sfida',
   points: 100, timeLimit: 30, optionalMediaUrl: null, orderIndex: 0, isActive: true,
 });
+
+/* ─── Media picker field ─────────────────────────────────────────────────── */
+function MediaPickerField({ value, onChange }: { value: string | null; onChange: (v: string | null) => void }) {
+  const { data: allMedia = [] } = useListMedia();
+  const [mode, setMode] = useState<'picker' | 'url'>('picker');
+  const [search, setSearch] = useState('');
+
+  const mediaItems = allMedia.filter(m =>
+    (m.kind === 'image' || m.kind === 'video') &&
+    ((m.tags ?? []) as string[]).includes('percorso-a-risate') ||
+    (m.kind === 'image' || m.kind === 'video')
+  );
+
+  const filtered = search
+    ? mediaItems.filter(m => m.name.toLowerCase().includes(search.toLowerCase()))
+    : mediaItems;
+
+  const selected = allMedia.find(m => m.url === value);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <label className="block text-xs font-bold uppercase tracking-widest text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5"><ImageIcon className="h-3 w-3" /> Media opzionale</span>
+        </label>
+        <div className="flex gap-1">
+          <button type="button" onClick={() => setMode('picker')}
+            className={`rounded-md px-2 py-0.5 text-[10px] font-bold transition-all ${mode === 'picker' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground'}`}>
+            <Grid className="h-3 w-3 inline mr-1" />Libreria
+          </button>
+          <button type="button" onClick={() => setMode('url')}
+            className={`rounded-md px-2 py-0.5 text-[10px] font-bold transition-all ${mode === 'url' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground'}`}>
+            <Link className="h-3 w-3 inline mr-1" />URL
+          </button>
+        </div>
+      </div>
+
+      {mode === 'url' ? (
+        <div>
+          <input value={value ?? ''} onChange={e => onChange(e.target.value || null)}
+            placeholder="https://…"
+            className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm focus:border-primary focus:outline-none" />
+          {value && (
+            <img src={value} alt="" className="mt-2 h-24 w-auto rounded-lg object-contain"
+              onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+          )}
+        </div>
+      ) : (
+        <div className="rounded-xl border border-border bg-background/50 p-2">
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Cerca nella libreria…"
+            className="mb-2 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-xs outline-none focus:border-primary" />
+          {value && (
+            <div className="mb-2 flex items-center gap-2 rounded-lg bg-primary/10 border border-primary/30 px-2 py-1.5">
+              {selected?.kind === 'image' && selected.url && (
+                <img src={selected.url} className="h-8 w-12 rounded object-cover" alt="" />
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-bold truncate">{selected?.name ?? value}</div>
+              </div>
+              <button type="button" onClick={() => onChange(null)} className="text-muted-foreground hover:text-destructive">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+          <div className="grid grid-cols-3 gap-1.5 max-h-36 overflow-y-auto">
+            {filtered.slice(0, 30).map(m => (
+              <button key={m.id} type="button" onClick={() => onChange(m.url ?? null)}
+                className={`rounded-lg overflow-hidden border-2 transition-all ${value === m.url ? 'border-primary' : 'border-transparent hover:border-border'}`}>
+                {m.kind === 'image' && m.url ? (
+                  <img src={m.url} alt={m.name} className="w-full aspect-video object-cover" />
+                ) : (
+                  <div className="w-full aspect-video bg-secondary flex items-center justify-center text-muted-foreground">
+                    <ImageIcon className="h-5 w-5" />
+                  </div>
+                )}
+              </button>
+            ))}
+            {filtered.length === 0 && (
+              <div className="col-span-3 py-4 text-center text-xs text-muted-foreground">
+                Nessun media. Aggiungine uno dalla sezione Media.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /* ══════════════════════════════════════════════════════════════════════════
    MAIN PAGE
@@ -300,18 +390,11 @@ export default function PercorsoRisate() {
                 </div>
               </div>
 
-              {/* Optional media URL */}
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-widest text-muted-foreground mb-1">
-                  <span className="inline-flex items-center gap-1.5"><ImageIcon className="h-3 w-3" /> URL immagine opzionale</span>
-                </label>
-                <input value={form.optionalMediaUrl ?? ''} onChange={e => setForm(f => ({ ...f, optionalMediaUrl: e.target.value || null }))}
-                  placeholder="https://…"
-                  className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm focus:border-primary focus:outline-none" />
-                {form.optionalMediaUrl && (
-                  <img src={form.optionalMediaUrl} alt="" className="mt-2 h-24 w-auto rounded-lg object-contain" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                )}
-              </div>
+              {/* Optional media — picker from Media library */}
+              <MediaPickerField
+                value={form.optionalMediaUrl}
+                onChange={v => setForm(f => ({ ...f, optionalMediaUrl: v }))}
+              />
 
               {/* Active toggle */}
               <div className="flex items-center justify-between rounded-xl border border-border bg-background/50 px-4 py-3">
