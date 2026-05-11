@@ -12,6 +12,8 @@ import { useListGames, useGetCurrentEvent, getGetCurrentEventQueryKey, useListPl
 import { useAuth } from '@/auth/roles';
 import { useEventSocket } from '@/hooks/useEventSocket';
 import { useLocalMode } from '@/hooks/useLocalMode';
+import { useAudioOrchestrator } from '@/contexts/AudioOrchestrator';
+import { AudioManager } from '@/audio/AudioManager';
 // ── Theme-park ambient particles ─────────────────────────────────────────────
 const CONFETTI_PALETTE = ['#F5B642','#FF69B4','#60A5FA','#A78BFA','#34D399','#F87171','#F472B6'];
 
@@ -124,6 +126,15 @@ export default function Hub() {
   const t = useT();
   const [, navigate] = useLocation();
   const { user } = useAuth();
+
+  // ── Audio: return to hub loop whenever this page mounts ─────────────────
+  const { projectorActive, setActiveGameSlug } = useAudioOrchestrator();
+  useEffect(() => {
+    if (!projectorActive) return;
+    setActiveGameSlug(null); // null = back to hub lobby_loop
+    void AudioManager.playLoop('hub', 'lobby_loop');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectorActive]);
 
   // ── Public (unauthenticated) projector mode ─────────────────────────────
   const urlParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');

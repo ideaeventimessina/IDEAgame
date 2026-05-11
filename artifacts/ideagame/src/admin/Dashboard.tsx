@@ -1,10 +1,11 @@
 import { useLocation } from 'wouter';
-import { Building2, Activity, Users, DollarSign, Play, Image as ImageIcon, ArrowUpRight, Loader2, Mic2, Monitor } from 'lucide-react';
+import { Building2, Activity, Users, DollarSign, Play, Image as ImageIcon, ArrowUpRight, Loader2, Mic2, Monitor, MonitorPlay, Power } from 'lucide-react';
 import { AdminLayout } from './AdminLayout';
 import { useT } from '@/i18n';
 import { useAuth } from '@/auth/roles';
 import { useGetKpis, useListEvents, useListTenants, getGetKpisQueryKey, getListTenantsQueryKey } from '@workspace/api-client-react';
 import { usePresenterMode } from '@/contexts/PresenterModeContext';
+import { useAudioOrchestrator } from '@/contexts/AudioOrchestrator';
 
 export default function Dashboard() {
   const t = useT();
@@ -12,6 +13,7 @@ export default function Dashboard() {
   const { role } = useAuth();
   const { mode, setMode } = usePresenterMode();
 
+  const { projectorActive, startProjector, stopProjector } = useAudioOrchestrator();
   const { data: kpis, isLoading: kpiLoading } = useGetKpis({ query: { queryKey: getGetKpisQueryKey(), enabled: role === 'super_admin' } });
   const { data: events = [] } = useListEvents();
   const { data: tenants = [] } = useListTenants({ query: { queryKey: getListTenantsQueryKey(), enabled: role === 'super_admin' } });
@@ -105,6 +107,37 @@ export default function Dashboard() {
         <section className="rounded-2xl border border-border bg-gradient-to-br from-primary/15 via-card to-accent/10 p-6">
           <div className="text-display text-xl font-black">{t('dashboard.quick_actions')}</div>
           <div className="mt-5 space-y-3">
+
+            {/* ── AVVIA PROIETTORE ──────────────────────────────────── */}
+            <button
+              onClick={projectorActive ? stopProjector : startProjector}
+              className="flex w-full items-center justify-between rounded-xl px-5 py-4 hover-elevate transition-all"
+              style={projectorActive ? {
+                background: 'rgba(0,245,160,0.12)',
+                border: '1px solid rgba(0,245,160,0.40)',
+              } : {
+                background: 'rgba(245,182,66,0.12)',
+                border: '1px solid rgba(245,182,66,0.35)',
+              }}
+            >
+              <span className="flex items-center gap-3 font-black" style={{ color: projectorActive ? '#00F5A0' : '#F5B642' }}>
+                {projectorActive
+                  ? <><MonitorPlay className="h-5 w-5" /> 🔊 Proiettore Attivo</>
+                  : <><MonitorPlay className="h-5 w-5" /> Avvia Proiettore</>
+                }
+              </span>
+              {projectorActive
+                ? <Power className="h-4 w-4 text-red-400" />
+                : <ArrowUpRight className="h-4 w-4" style={{ color: '#F5B642' }} />
+              }
+            </button>
+            {projectorActive && (
+              <p className="text-[11px] text-muted-foreground px-1">
+                🎵 Sottofondo attivo — il volume si controlla dal Presentatore. Clicca di nuovo per spegnere tutto.
+              </p>
+            )}
+            {/* ──────────────────────────────────────────────────────── */}
+
             <button onClick={() => navigate('/lobby')} className="flex w-full items-center justify-between rounded-xl bg-primary px-5 py-4 text-primary-foreground hover-elevate">
               <span className="flex items-center gap-3 font-bold"><Play className="h-5 w-5" /> {t('admin.quick_start')}</span>
               <ArrowUpRight className="h-4 w-4" />

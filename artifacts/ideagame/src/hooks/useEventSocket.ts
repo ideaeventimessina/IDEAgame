@@ -4,7 +4,8 @@ import { io, type Socket } from "socket.io-client";
 // Singleton socket shared across the entire app
 let _socket: Socket | null = null;
 
-function getSocket(): Socket {
+/** Access the shared Socket.IO singleton — connect-on-demand. */
+export function getSocket(): Socket {
   if (!_socket) {
     _socket = io(window.location.origin, {
       path: "/socket.io",

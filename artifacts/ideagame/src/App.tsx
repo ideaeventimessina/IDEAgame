@@ -59,6 +59,7 @@ import HomeJoin from "@/pages/HomeJoin";
 import { Guard } from "@/admin/Guard";
 import { JonnyProvider } from "@/contexts/JonnyContext";
 import { AudioProvider } from "@/contexts/AudioContext";
+import { AudioOrchestratorProvider } from "@/contexts/AudioOrchestrator";
 import { PresenterModeProvider } from "@/contexts/PresenterModeContext";
 import Presenter from "@/pages/Presenter";
 
@@ -130,6 +131,7 @@ function App() {
           <PresenterModeProvider>
           <JonnyProvider>
             <AudioProvider>
+            <AudioOrchestratorProvider>
             <TooltipProvider>
               <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
                 <Router />
@@ -138,6 +140,7 @@ function App() {
               </WouterRouter>
               <Toaster />
             </TooltipProvider>
+            </AudioOrchestratorProvider>
             </AudioProvider>
           </JonnyProvider>
           </PresenterModeProvider>

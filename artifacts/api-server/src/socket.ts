@@ -67,6 +67,17 @@ export function initSocket(server: HttpServer): SocketServer {
       logger.info({ sid: socket.id, playerId, eventId }, "player:registered");
     });
 
+    // Volume relay: any client can set master volume for the whole show
+    socket.on("volume:set", (data: unknown) => {
+      if (!data || typeof data !== "object") return;
+      const d = data as Record<string, unknown>;
+      if (typeof d["volume"] === "number") {
+        const vol = Math.max(0, Math.min(1, d["volume"]));
+        _io!.emit("volume:set", { volume: vol });
+        logger.info({ volume: vol }, "audio:volume:set");
+      }
+    });
+
     socket.on("disconnect", (reason) => {
       const reg = playerSockets.get(socket.id);
       if (reg) {

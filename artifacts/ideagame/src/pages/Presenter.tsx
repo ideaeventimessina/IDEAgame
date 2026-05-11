@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   SkipForward, Pause, Play, Plus, Minus, Trophy, Mic2,
   ChevronDown, MonitorPlay, Loader2, WifiOff, Wifi,
-  ArrowLeft, RotateCcw, Users,
+  ArrowLeft, RotateCcw, Users, Power,
 } from 'lucide-react';
 import { useAuth } from '@/auth/roles';
 import { useEventSocket } from '@/hooks/useEventSocket';
@@ -17,6 +17,8 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { usePresenterMode } from '@/contexts/PresenterModeContext';
+import { useAudioOrchestrator } from '@/contexts/AudioOrchestrator';
+import { VolumeFab } from '@/components/VolumeFab';
 
 const BASE = (import.meta.env.BASE_URL as string) ?? '/';
 async function apiFetch(path: string, opts?: RequestInit) {
@@ -65,6 +67,7 @@ export default function Presenter() {
   const { setMode } = usePresenterMode();
   const { toast } = useToast();
   const qc = useQueryClient();
+  const { projectorActive, startProjector, stopProjector, setActiveGameSlug } = useAudioOrchestrator();
 
   const [selectedEventId, setSelectedEventId] = useState<string>('');
   const [selectedSessionId, setSelectedSessionId] = useState<string>('');
@@ -94,7 +97,7 @@ export default function Presenter() {
   });
 
   const updateSession = useUpdateGameSession();
-  const { connected, on } = useEventSocket(selectedEventId || null);
+  const { connected, on, emit } = useEventSocket(selectedEventId || null);
 
   // Redirect if not admin
   useEffect(() => {
@@ -139,6 +142,13 @@ export default function Presenter() {
     ];
     return () => { unsubs.forEach(u => u?.()); };
   }, [selectedEventId, on, qc]);
+
+  // Audio: transition game music when active session changes
+  useEffect(() => {
+    if (!projectorActive) return;
+    const slug = activeSession?.status === 'running' ? activeSession.gameSlug : null;
+    setActiveGameSlug(slug);
+  }, [activeSession?.gameSlug, activeSession?.status, projectorActive, setActiveGameSlug]);
 
   const handlePause = useCallback(async () => {
     if (!activeSession || sessionBusy) return;
@@ -231,10 +241,30 @@ export default function Presenter() {
           <span className="text-sm font-black text-primary">PRESENTATORE</span>
         </div>
 
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          {connected
-            ? <Wifi className="h-3.5 w-3.5 text-green-400" />
-            : <WifiOff className="h-3.5 w-3.5 text-destructive" />}
+        <div className="flex items-center gap-2">
+          {/* Avvia Proiettore — in header per accesso rapido */}
+          <button
+            onClick={projectorActive ? stopProjector : startProjector}
+            title={projectorActive ? 'Spegni audio proiettore' : 'Avvia audio proiettore'}
+            className="h-8 w-8 rounded-xl flex items-center justify-center border transition-all active:scale-90"
+            style={projectorActive ? {
+              background: 'rgba(0,245,160,0.15)',
+              borderColor: 'rgba(0,245,160,0.40)',
+            } : {
+              background: 'rgba(245,182,66,0.10)',
+              borderColor: 'rgba(245,182,66,0.30)',
+            }}
+          >
+            {projectorActive
+              ? <MonitorPlay className="h-4 w-4" style={{ color: '#00F5A0' }} />
+              : <MonitorPlay className="h-4 w-4" style={{ color: '#F5B642' }} />
+            }
+          </button>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            {connected
+              ? <Wifi className="h-3.5 w-3.5 text-green-400" />
+              : <WifiOff className="h-3.5 w-3.5 text-destructive" />}
+          </div>
         </div>
       </header>
 
@@ -462,7 +492,32 @@ export default function Presenter() {
             <MonitorPlay className="h-4 w-4" /> Vai al Podio
           </button>
         )}
+
+        {/* Avvia Proiettore full card — visible when not yet active */}
+        {!projectorActive && (
+          <button
+            onClick={startProjector}
+            className="w-full rounded-2xl px-5 py-5 font-black text-base flex items-center justify-center gap-3 active:scale-95 transition-all"
+            style={{ background: 'rgba(245,182,66,0.12)', border: '1px solid rgba(245,182,66,0.35)' }}
+          >
+            <MonitorPlay className="h-5 w-5" style={{ color: '#F5B642' }} />
+            <span style={{ color: '#F5B642' }}>Avvia Proiettore</span>
+          </button>
+        )}
+        {projectorActive && (
+          <button
+            onClick={stopProjector}
+            className="w-full rounded-2xl px-5 py-4 font-bold text-sm flex items-center justify-center gap-3 active:scale-95 transition-all"
+            style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)' }}
+          >
+            <Power className="h-4 w-4 text-red-400" />
+            <span className="text-red-400">Spegni audio proiettore</span>
+          </button>
+        )}
       </div>
+
+      {/* Volume FAB — fixed floating, always accessible */}
+      <VolumeFab emit={emit} on={on} />
     </div>
   );
 }
