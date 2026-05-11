@@ -61,6 +61,7 @@ import { JonnyProvider } from "@/contexts/JonnyContext";
 import { AudioProvider } from "@/contexts/AudioContext";
 import { AudioOrchestratorProvider } from "@/contexts/AudioOrchestrator";
 import { PresenterModeProvider } from "@/contexts/PresenterModeContext";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import Presenter from "@/pages/Presenter";
 
 const queryClient = new QueryClient();
@@ -125,6 +126,7 @@ function Router() {
 
 function App() {
   return (
+    <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
       <I18nProvider>
         <AuthProvider>
@@ -147,6 +149,7 @@ function App() {
         </AuthProvider>
       </I18nProvider>
     </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 
