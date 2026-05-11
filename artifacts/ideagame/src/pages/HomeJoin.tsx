@@ -16,7 +16,6 @@ import {
   Loader2, Check, ChevronRight, Timer, SkipForward,
   Trophy, Home, Zap, Music, Laugh, Star
 } from 'lucide-react';
-import { JonnyAvatar } from '@/components/JonnyAvatar';
 import { useEventSocket } from '@/hooks/useEventSocket';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -70,6 +69,13 @@ export default function HomeJoin() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const { on, emit } = useEventSocket(null);
+
+  // Auto-lookup session when arriving via QR code (?s=CODE in URL)
+  useEffect(() => {
+    if (!urlCode) return;
+    lookupSession(urlCode);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Join home socket room when we have a session
   useEffect(() => {
@@ -245,11 +251,21 @@ export default function HomeJoin() {
           </motion.div>
         )}
 
+        {/* ── LOADING (QR lookup in progress) ── */}
+        {phase === 'nickname' && !session && (
+          <motion.div key="loading-qr" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            className="relative z-10 flex flex-col items-center gap-6 text-center">
+            <img src="/jonny-master-nobg.png" alt="Jonny" className="h-28 w-auto object-contain drop-shadow-2xl" />
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <div className="text-white/60">Caricamento partita...</div>
+          </motion.div>
+        )}
+
         {/* ── NICKNAME ── */}
         {phase === 'nickname' && session && (
           <motion.div key="nickname" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
             className="relative z-10 flex w-full max-w-sm flex-col items-center gap-8 text-center">
-            <JonnyAvatar mood="excited" size={100} />
+            <img src="/jonny-master-nobg.png" alt="Jonny" className="h-28 w-auto object-contain drop-shadow-2xl" />
             <div>
               <div className="text-display text-3xl font-black text-white">Come ti chiami?</div>
               <div className="mt-1 text-sm text-white/50">{session.joinCode} — {players.length} giocator{players.length !== 1 ? 'i' : 'e'} connessi</div>
@@ -292,7 +308,7 @@ export default function HomeJoin() {
               <div className="text-white/70">Aspettiamo che l'host scelga il gioco...</div>
               <div className="text-xs text-white/40">{players.length} giocator{players.length !== 1 ? 'i' : 'e'} connessi</div>
             </div>
-            <JonnyAvatar mood="thinking" size={80} />
+            <img src="/jonny-master-nobg.png" alt="Jonny" className="h-24 w-auto object-contain drop-shadow-2xl opacity-80" />
           </motion.div>
         )}
 
@@ -348,7 +364,7 @@ export default function HomeJoin() {
         {phase === 'ended' && player && (
           <motion.div key="ended" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
             className="relative z-10 flex w-full max-w-sm flex-col items-center gap-6 text-center">
-            <Trophy className="h-20 w-20 text-primary" />
+            <img src="/jonny-master-nobg.png" alt="Jonny" className="h-28 w-auto object-contain drop-shadow-2xl" />
             <div>
               <div className="text-display text-3xl font-black text-white">Partita finita!</div>
               <div className="mt-2 text-primary text-xl font-black">{player.score} punti totali</div>
@@ -371,7 +387,6 @@ export default function HomeJoin() {
               ))}
             </div>
 
-            <JonnyAvatar mood="winner" size={100} />
             <button onClick={() => navigate('/home')} className="flex items-center gap-2 rounded-2xl bg-primary px-6 py-3 font-black text-black">
               Nuova Partita
             </button>

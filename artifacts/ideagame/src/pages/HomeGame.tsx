@@ -99,6 +99,39 @@ const ROUND_OPTIONS = [5, 8, 10, 15, 20];
 
 const AVATAR_RING = ['#F5B642','#FF69B4','#60A5FA','#A78BFA','#34D399','#F87171','#F472B6','#FB923C','#22D3EE','#4ADE80'];
 
+// ── Audio ─────────────────────────────────────────────────────────────────────
+
+const GAME_AUDIO: Record<string, string> = {
+  'quizzone':          '/audio/jonny-world/quizzone/round_loop.mp3',
+  'sfida-ballo':       '/audio/jonny-world/sfida-ballo/round_loop.mp3',
+  'percorso-a-risate': '/audio/jonny-world/percorso-a-risate/round_loop.mp3',
+  'gioco-coppie':      '/audio/jonny-world/gioco-coppie/tension_loop.mp3',
+};
+
+function useBgAudio() {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const play = useCallback((src: string, loop = true, volume = 0.35) => {
+    const current = audioRef.current;
+    if (current && !current.paused && current.getAttribute('data-src') === src) return;
+    if (current) { current.pause(); current.currentTime = 0; }
+    const a = new Audio(src);
+    a.loop = loop;
+    a.volume = volume;
+    a.setAttribute('data-src', src);
+    audioRef.current = a;
+    a.play().catch(() => {});
+  }, []);
+
+  const stop = useCallback(() => {
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
+  }, []);
+
+  useEffect(() => () => { audioRef.current?.pause(); }, []);
+
+  return { play, stop };
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function useHomeSocket(sessionId: string | null) {
@@ -138,9 +171,16 @@ export default function HomeGame() {
   const [jonnyMood, setJonnyMood] = useState<'idle' | 'excited' | 'thinking' | 'winner' | 'scoreboard' | 'correct'>('excited');
   const [jonnyMsg, setJonnyMsg] = useState('Benvenuti a IDEAgame Home!');
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const { play: playBg } = useBgAudio();
 
   const { on } = useHomeSocket(session?.id ?? null);
   const { on: socketOn } = useEventSocket(null);
+
+  // ── Start lobby music immediately on mount ────────────────────────────────
+  useEffect(() => {
+    playBg('/audio/jonny-world/global/lobby_loop.mp3');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Load session if URL has ?s= ───────────────────────────────────────────
   useEffect(() => {
@@ -259,6 +299,8 @@ export default function HomeGame() {
       setRevealed(false);
       startTimer(Number(updated.roundPayload?.timeLimit ?? 15));
       setJonnyMood('thinking');
+      const gameSrc = GAME_AUDIO[selectedGame.slug] ?? '/audio/jonny-world/global/round_loop.mp3';
+      playBg(gameSrc);
     } finally {
       setLoading(false);
     }
@@ -279,6 +321,7 @@ export default function HomeGame() {
         setSession(data.session);
         setPhase('ended');
         setJonnyMood('winner');
+        playBg('/audio/jonny-world/global/podium_theme.mp3', false, 0.5);
       } else {
         setSession(data.session);
         setRevealed(false);
@@ -311,22 +354,30 @@ export default function HomeGame() {
         {/* ══════════════ WELCOME ══════════════ */}
         {phase === 'welcome' && (
           <motion.div key="welcome" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="relative z-10 flex flex-1 flex-col items-center justify-center gap-10 px-8 text-center">
+            className="relative z-10 flex flex-1 flex-col items-center justify-center gap-8 px-8 text-center">
+
+            {/* Title */}
             <motion.div initial={{ scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
               transition={{ type: 'spring', stiffness: 120 }}>
-              <div className="mb-4 flex items-center justify-center gap-4">
-                <img src="/logo.png" alt="IDEA Games" className="h-20 w-auto object-contain" />
-              </div>
-              <div className="text-display text-5xl font-black text-white">Modalità <span className="text-primary">HOME</span></div>
-              <div className="mt-3 text-lg text-white/60">Gioca con Jonny — fino a 10 giocatori, stessa rete</div>
+              <div className="text-display text-6xl font-black text-white leading-none">Jonny's <span className="text-primary">World</span></div>
+              <div className="mt-2 text-lg text-white/50 tracking-widest uppercase font-semibold">Modalità Home</div>
             </motion.div>
 
-            <div className="flex items-center gap-6">
-              <JonnyAvatar mood={jonnyMood} size={140} />
-              <div className="max-w-xs rounded-2xl border border-primary/30 bg-primary/10 p-5 text-left">
+            {/* Jonny + bubble */}
+            <div className="flex items-end gap-6">
+              <motion.img
+                src="/jonny-master-nobg.png" alt="Jonny"
+                className="h-52 w-auto object-contain drop-shadow-2xl"
+                initial={{ x: -30, opacity: 0 }} animate={{ x: 0, opacity: 1 }}
+                transition={{ delay: 0.2, type: 'spring', stiffness: 100 }}
+              />
+              <motion.div
+                initial={{ x: 30, opacity: 0 }} animate={{ x: 0, opacity: 1 }}
+                transition={{ delay: 0.35 }}
+                className="mb-8 max-w-xs rounded-2xl border border-primary/30 bg-primary/10 p-5 text-left">
                 <div className="text-sm font-bold text-primary">JONNY dice:</div>
                 <div className="mt-1 text-white/80">"{jonnyMsg}"</div>
-              </div>
+              </motion.div>
             </div>
 
             <motion.button
@@ -339,9 +390,13 @@ export default function HomeGame() {
               Gioca con Jonny
             </motion.button>
 
-            <button onClick={() => navigate('/')} className="flex items-center gap-2 text-sm text-white/40 hover:text-white/70 transition-colors">
-              <Home className="h-4 w-4" /> Torna all'Hub
-            </button>
+            <div className="flex items-center gap-4">
+              <button onClick={() => navigate('/')} className="flex items-center gap-2 text-sm text-white/40 hover:text-white/70 transition-colors">
+                <Home className="h-4 w-4" /> Torna all'Hub
+              </button>
+              <span className="text-white/20">·</span>
+              <img src="/logo.png" alt="IDEA Games" className="h-6 w-auto object-contain opacity-40" />
+            </div>
           </motion.div>
         )}
 
@@ -352,9 +407,12 @@ export default function HomeGame() {
 
             {/* Header */}
             <div className="flex w-full max-w-4xl items-center justify-between">
-              <div>
-                <div className="text-display text-3xl font-black text-white">Sala d'Attesa</div>
-                <div className="text-sm text-white/50">I giocatori si uniscono scansionando il QR</div>
+              <div className="flex items-center gap-4">
+                <img src="/jonny-master-nobg.png" alt="Jonny" className="h-16 w-auto object-contain drop-shadow-xl" />
+                <div>
+                  <div className="text-display text-3xl font-black text-white">Jonny's <span className="text-primary">World</span></div>
+                  <div className="text-sm text-white/50">Sala d'Attesa — scansiona per unirti</div>
+                </div>
               </div>
               <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2">
                 <Users className="h-4 w-4 text-primary" />
