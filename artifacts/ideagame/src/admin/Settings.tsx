@@ -14,6 +14,7 @@ type SettingsValue = {
   defaultLocale: string;
   projectionMode: boolean;
   offlineFirst: boolean;
+  bgMusicUrl: string;
 };
 
 const DEFAULTS: SettingsValue = {
@@ -21,6 +22,7 @@ const DEFAULTS: SettingsValue = {
   defaultLocale: 'it',
   projectionMode: true,
   offlineFirst: true,
+  bgMusicUrl: '',
 };
 
 export default function Settings() {
@@ -96,6 +98,21 @@ export default function Settings() {
                 <span className="text-sm">Avvia gameplay senza connessione internet</span>
                 <input type="checkbox" checked={v.offlineFirst} onChange={e => setV({ ...v, offlineFirst: e.target.checked })} className="h-5 w-10 cursor-pointer accent-primary" />
               </label>
+            </Field>
+            <Field label="🎵 Musica di sottofondo (URL MP3)">
+              <input
+                type="url"
+                value={v.bgMusicUrl}
+                onChange={e => setV({ ...v, bgMusicUrl: e.target.value.trim() })}
+                placeholder="https://esempio.com/musica.mp3"
+                className="w-full rounded-md border border-border bg-background/40 px-3 py-2 text-sm outline-none focus:border-primary"
+              />
+              <div className="mt-1.5 text-xs text-muted-foreground">
+                Link diretto a un file .mp3 accessibile pubblicamente. Viene usato come musica di lobby in Modalità Home.
+              </div>
+              {v.bgMusicUrl && (
+                <audio key={v.bgMusicUrl} controls src={v.bgMusicUrl} className="mt-2 w-full h-8 opacity-70" />
+              )}
             </Field>
           </div>
 

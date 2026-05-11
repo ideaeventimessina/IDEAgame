@@ -8,7 +8,7 @@
  *      /home (se non c'è sessione → schermata di avvio)
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -18,6 +18,7 @@ import {
 import { QrPlaceholder } from '@/components/QrPlaceholder';
 import { JonnyAvatar } from '@/components/JonnyAvatar';
 import { useEventSocket } from '@/hooks/useEventSocket';
+import { useListSystemSettings } from '@workspace/api-client-react';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -176,15 +177,26 @@ export default function HomeGame() {
   const { on } = useHomeSocket(session?.id ?? null);
   const { on: socketOn } = useEventSocket(null);
 
+  // ── System settings — custom bg music URL ────────────────────────────────
+  const { data: settingsRows = [] } = useListSystemSettings();
+  const bgMusicUrl = useMemo(() => {
+    const r = settingsRows.find(r => r.key === 'tenant.settings');
+    if (r && typeof r.value === 'object' && r.value !== null) {
+      const url = (r.value as Record<string, unknown>).bgMusicUrl;
+      if (typeof url === 'string' && url.trim()) return url.trim();
+    }
+    return '/audio/jonny-world/global/lobby_loop.mp3';
+  }, [settingsRows]);
+
   // ── Audio unlock state ────────────────────────────────────────────────────
   // PlayStation and many mobile browsers block Audio.play() until a real
   // user gesture. We show a visible button overlay so the user can tap it.
   const [audioUnlocked, setAudioUnlocked] = useState(false);
 
-  const unlockAudio = useCallback((src = '/audio/jonny-world/global/lobby_loop.mp3') => {
+  const unlockAudio = useCallback((src?: string) => {
     setAudioUnlocked(true);
-    playBg(src);
-  }, [playBg]);
+    playBg(src ?? bgMusicUrl);
+  }, [playBg, bgMusicUrl]);
 
   // ── Load session if URL has ?s= ───────────────────────────────────────────
   useEffect(() => {
