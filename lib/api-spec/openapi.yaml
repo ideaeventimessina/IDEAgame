@@ -145,12 +145,31 @@ paths:
   /games:
     get:
       operationId: listGames
+      parameters:
+        - { name: all, in: query, required: false, schema: { type: boolean } }
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/Game" } }
+
+  /games/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    patch:
+      operationId: updateGame
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateGameBody" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Game" }
 
   /events:
     get:
@@ -988,6 +1007,17 @@ components:
       properties:
         name: { type: string }
         color: { type: string }
+    UpdateGameBody:
+      type: object
+      properties:
+        enabled: { type: boolean }
+        settings:
+          type: object
+          properties:
+            rounds: { type: integer }
+            timeLimit: { type: integer }
+            scoringWeight: { type: number }
+
     UpdateTeamBody:
       type: object
       properties:

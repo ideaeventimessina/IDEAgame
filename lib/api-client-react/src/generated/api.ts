@@ -44,6 +44,7 @@ import type {
   GameSession,
   HealthStatus,
   Kpis,
+  ListGamesParams,
   LoginBody,
   Me,
   Media,
@@ -60,6 +61,7 @@ import type {
   Tenant,
   Translation,
   UpdateEventBody,
+  UpdateGameBody,
   UpdateGameSessionBody,
   UpdatePlayerBody,
   UpdateQuestionBody,
@@ -961,35 +963,57 @@ export const useDeleteUser = <
   return useMutation(getDeleteUserMutationOptions(options));
 };
 
-export const getListGamesUrl = () => {
-  return `/api/games`;
+export const getListGamesUrl = (params?: ListGamesParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/games?${stringifiedParams}`
+    : `/api/games`;
 };
 
-export const listGames = async (options?: RequestInit): Promise<Game[]> => {
-  return customFetch<Game[]>(getListGamesUrl(), {
+export const listGames = async (
+  params?: ListGamesParams,
+  options?: RequestInit,
+): Promise<Game[]> => {
+  return customFetch<Game[]>(getListGamesUrl(params), {
     ...options,
     method: "GET",
   });
 };
 
-export const getListGamesQueryKey = () => {
-  return [`/api/games`] as const;
+export const getListGamesQueryKey = (params?: ListGamesParams) => {
+  return [`/api/games`, ...(params ? [params] : [])] as const;
 };
 
 export const getListGamesQueryOptions = <
   TData = Awaited<ReturnType<typeof listGames>>,
   TError = ErrorType<unknown>,
->(options?: {
-  query?: UseQueryOptions<Awaited<ReturnType<typeof listGames>>, TError, TData>;
-  request?: SecondParameter<typeof customFetch>;
-}) => {
+>(
+  params?: ListGamesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listGames>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey = queryOptions?.queryKey ?? getListGamesQueryKey();
+  const queryKey = queryOptions?.queryKey ?? getListGamesQueryKey(params);
 
   const queryFn: QueryFunction<Awaited<ReturnType<typeof listGames>>> = ({
     signal,
-  }) => listGames({ signal, ...requestOptions });
+  }) => listGames(params, { signal, ...requestOptions });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof listGames>>,
@@ -1006,11 +1030,18 @@ export type ListGamesQueryError = ErrorType<unknown>;
 export function useListGames<
   TData = Awaited<ReturnType<typeof listGames>>,
   TError = ErrorType<unknown>,
->(options?: {
-  query?: UseQueryOptions<Awaited<ReturnType<typeof listGames>>, TError, TData>;
-  request?: SecondParameter<typeof customFetch>;
-}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getListGamesQueryOptions(options);
+>(
+  params?: ListGamesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listGames>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListGamesQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
@@ -1018,6 +1049,87 @@ export function useListGames<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+export const getUpdateGameUrl = (id: string) => {
+  return `/api/games/${id}`;
+};
+
+export const updateGame = async (
+  id: string,
+  updateGameBody: UpdateGameBody,
+  options?: RequestInit,
+): Promise<Game> => {
+  return customFetch<Game>(getUpdateGameUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateGameBody),
+  });
+};
+
+export const getUpdateGameMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateGame>>,
+    TError,
+    { id: string; data: BodyType<UpdateGameBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateGame>>,
+  TError,
+  { id: string; data: BodyType<UpdateGameBody> },
+  TContext
+> => {
+  const mutationKey = ["updateGame"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateGame>>,
+    { id: string; data: BodyType<UpdateGameBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateGame(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateGameMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateGame>>
+>;
+export type UpdateGameMutationBody = BodyType<UpdateGameBody>;
+export type UpdateGameMutationError = ErrorType<unknown>;
+
+export const useUpdateGame = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateGame>>,
+    TError,
+    { id: string; data: BodyType<UpdateGameBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateGame>>,
+  TError,
+  { id: string; data: BodyType<UpdateGameBody> },
+  TContext
+> => {
+  return useMutation(getUpdateGameMutationOptions(options));
+};
 
 export const getListEventsUrl = () => {
   return `/api/events`;

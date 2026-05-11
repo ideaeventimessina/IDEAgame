@@ -168,6 +168,10 @@ export const DeleteUserParams = zod.object({
   id: zod.coerce.string(),
 });
 
+export const ListGamesQueryParams = zod.object({
+  all: zod.coerce.boolean().optional(),
+});
+
 export const ListGamesResponseItem = zod.object({
   id: zod.string(),
   slug: zod.string(),
@@ -184,6 +188,37 @@ export const ListGamesResponseItem = zod.object({
   }),
 });
 export const ListGamesResponse = zod.array(ListGamesResponseItem);
+
+export const UpdateGameParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const UpdateGameBody = zod.object({
+  enabled: zod.boolean().optional(),
+  settings: zod
+    .object({
+      rounds: zod.number().optional(),
+      timeLimit: zod.number().optional(),
+      scoringWeight: zod.number().optional(),
+    })
+    .optional(),
+});
+
+export const UpdateGameResponse = zod.object({
+  id: zod.string(),
+  slug: zod.string(),
+  name: zod.string(),
+  tagline: zod.string(),
+  accentColor: zod.string(),
+  icon: zod.string(),
+  enabled: zod.boolean(),
+  adultOnly: zod.boolean(),
+  settings: zod.object({
+    rounds: zod.number(),
+    timeLimit: zod.number(),
+    scoringWeight: zod.number(),
+  }),
+});
 
 export const ListEventsResponseItem = zod.object({
   id: zod.string(),

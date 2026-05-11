@@ -230,6 +230,17 @@ export interface CreateTeamBody {
   color: string;
 }
 
+export type UpdateGameBodySettings = {
+  rounds?: number;
+  timeLimit?: number;
+  scoringWeight?: number;
+};
+
+export interface UpdateGameBody {
+  enabled?: boolean;
+  settings?: UpdateGameBodySettings;
+}
+
 export interface UpdateTeamBody {
   name?: string;
   color?: string;
@@ -738,3 +749,7 @@ export interface RequestUploadUrlResponse {
   objectPath: string;
   metadata: RequestUploadUrlResponseMetadata;
 }
+
+export type ListGamesParams = {
+  all?: boolean;
+};
