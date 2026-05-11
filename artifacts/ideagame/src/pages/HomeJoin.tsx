@@ -14,7 +14,7 @@ import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Loader2, Check, ChevronRight, Timer, SkipForward,
-  Trophy, Home, Zap, Music, Laugh, Star
+  Home, Zap, Music, Laugh, Star, Sparkles
 } from 'lucide-react';
 import { useEventSocket } from '@/hooks/useEventSocket';
 
@@ -285,85 +285,115 @@ export default function HomeJoin() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="relative flex min-h-screen w-full flex-col items-center justify-center overflow-hidden bg-[#07061a] px-4 py-8">
-      {/* Stars */}
+    <div className="relative flex min-h-screen w-full flex-col items-center justify-center overflow-hidden px-4 py-8"
+      style={{ background:'linear-gradient(-45deg,#07061a,#1d0545,#0a1845,#1a0800,#07061a)', backgroundSize:'500% 500%', animation:'hjAurora 18s ease infinite' }}>
+
+      <style>{`
+        @keyframes hjAurora {
+          0%   { background-position: 0% 50%; }
+          50%  { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
+        @keyframes hjPulse {
+          0%,100% { transform: scale(1); box-shadow: 0 0 20px var(--ac, #F5B642); }
+          50%     { transform: scale(1.04); box-shadow: 0 0 40px var(--ac, #F5B642); }
+        }
+        @keyframes hjRing {
+          0%,100% { box-shadow: 0 0 0 4px rgba(245,182,66,0.25), 0 0 40px rgba(245,182,66,0.2); }
+          50%     { box-shadow: 0 0 0 8px rgba(245,182,66,0.15), 0 0 70px rgba(245,182,66,0.3); }
+        }
+        .hj-ring { animation: hjRing 2.5s ease infinite; }
+      `}</style>
+
+      {/* Coloured starfield */}
       <div className="pointer-events-none absolute inset-0 z-0">
-        {Array.from({ length: 30 }).map((_, i) => (
-          <div key={i} className="absolute rounded-full bg-white"
-            style={{ left: `${(i * 47 + 13) % 100}%`, top: `${(i * 59 + 7) % 100}%`, width: 1, height: 1, opacity: 0.08 + (i % 4) * 0.04 }} />
-        ))}
+        {Array.from({ length: 35 }).map((_, i) => {
+          const cs = ['#ffffff','#F5B642','#A855F7','#22D3EE','#F472B6'];
+          return <div key={i} className="absolute rounded-full"
+            style={{ left:`${(i*47+13)%100}%`, top:`${(i*59+7)%100}%`, width:1+(i%2), height:1+(i%2), background:cs[i%cs.length], opacity:0.09+(i%4)*0.04 }} />;
+        })}
       </div>
 
       <AnimatePresence mode="wait">
 
         {/* ── ENTER CODE ── */}
         {phase === 'code' && (
-          <motion.div key="code" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
-            className="relative z-10 flex w-full max-w-sm flex-col items-center gap-8 text-center">
-            <img src="/logo.png" alt="IDEA Games" className="h-16 w-auto object-contain" />
+          <motion.div key="code" initial={{ opacity:0, y:24 }} animate={{ opacity:1, y:0 }} exit={{ opacity:0, y:-20 }}
+            className="relative z-10 flex w-full max-w-sm flex-col items-center gap-7 text-center">
+            <img src="/logo.png" alt="IDEA Games" className="h-14 w-auto object-contain opacity-90"
+              style={{ filter:'drop-shadow(0 0 20px rgba(245,182,66,0.4))' }} />
             <div>
-              <div className="text-display text-3xl font-black text-white">Entra nel Gioco</div>
-              <div className="mt-1 text-sm text-white/50">Inserisci il codice che vedi sullo schermo</div>
+              <div className="text-display text-4xl font-black text-white">Entra nel Gioco</div>
+              <div className="mt-2 text-sm text-white/45">Inserisci il codice che vedi sullo schermo</div>
             </div>
             <input
-              type="text"
-              value={code}
+              type="text" value={code}
               onChange={e => setCode(e.target.value.toUpperCase().trim())}
-              onKeyDown={e => e.key === 'Enter' && code.length === 6 && lookupSession(code)}
-              placeholder="CODICE"
-              maxLength={6}
-              className="w-full rounded-2xl border border-border bg-card/70 px-6 py-4 text-center text-3xl font-black uppercase tracking-[0.5em] text-primary placeholder:text-white/20 focus:border-primary focus:outline-none"
+              onKeyDown={e => e.key==='Enter' && code.length===6 && lookupSession(code)}
+              placeholder="CODICE" maxLength={6}
+              className="w-full rounded-2xl px-6 py-5 text-center text-3xl font-black uppercase tracking-[0.5em] focus:outline-none"
+              style={{ background:'rgba(255,255,255,0.07)', border:'2px solid rgba(245,182,66,0.55)', color:'#F5B642', caretColor:'#F5B642' }}
             />
-            {error && <div className="rounded-xl bg-destructive/20 px-4 py-2 text-sm text-destructive">{error}</div>}
-            <button
-              onClick={() => lookupSession(code)}
-              disabled={loading || code.length < 6}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-6 py-4 text-lg font-black text-black disabled:opacity-40"
-            >
-              {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <ChevronRight className="h-5 w-5" />}
+            {error && (
+              <div className="rounded-2xl px-4 py-3 text-sm font-bold"
+                style={{ background:'rgba(239,68,68,0.18)', border:'1px solid rgba(239,68,68,0.4)', color:'#f87171' }}>
+                {error}
+              </div>
+            )}
+            <button onClick={() => lookupSession(code)} disabled={loading||code.length<6}
+              className="flex w-full items-center justify-center gap-3 rounded-2xl py-5 text-xl font-black text-black disabled:opacity-40"
+              style={{ background:'linear-gradient(135deg,#F5B642,#FF8C00)', boxShadow:'0 0 50px rgba(245,182,66,0.45)' }}>
+              {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : <ChevronRight className="h-6 w-6" />}
               Avanti
             </button>
-            <button onClick={() => navigate('/')} className="flex items-center gap-1 text-xs text-white/30 hover:text-white/60">
-              <Home className="h-3 w-3" /> Hub
+            <button onClick={() => navigate('/')}
+              className="flex items-center gap-1.5 text-xs text-white/25 transition-colors hover:text-white/50">
+              <Home className="h-3 w-3" /> Torna all'Hub
             </button>
           </motion.div>
         )}
 
-        {/* ── LOADING (QR lookup in progress) ── */}
+        {/* ── LOADING ── */}
         {phase === 'nickname' && !session && (
-          <motion.div key="loading-qr" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+          <motion.div key="loading-qr" initial={{ opacity:0 }} animate={{ opacity:1 }}
             className="relative z-10 flex flex-col items-center gap-6 text-center">
-            <img src="/jonny-master-nobg.png" alt="Jonny" className="h-28 w-auto object-contain drop-shadow-2xl" />
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <div className="text-white/60">Caricamento partita...</div>
+            <img src="/jonny-master-nobg.png" alt="Jonny" className="h-32 w-auto object-contain"
+              style={{ filter:'drop-shadow(0 0 40px rgba(245,182,66,0.4))' }} />
+            <Loader2 className="h-9 w-9 animate-spin" style={{ color:'#F5B642' }} />
+            <div className="text-white/55">Caricamento partita...</div>
           </motion.div>
         )}
 
         {/* ── NICKNAME ── */}
         {phase === 'nickname' && session && (
-          <motion.div key="nickname" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
-            className="relative z-10 flex w-full max-w-sm flex-col items-center gap-8 text-center">
-            <img src="/jonny-master-nobg.png" alt="Jonny" className="h-28 w-auto object-contain drop-shadow-2xl" />
+          <motion.div key="nickname" initial={{ opacity:0, y:24 }} animate={{ opacity:1, y:0 }} exit={{ opacity:0, y:-20 }}
+            className="relative z-10 flex w-full max-w-sm flex-col items-center gap-7 text-center">
+            <img src="/jonny-master-nobg.png" alt="Jonny" className="h-32 w-auto object-contain"
+              style={{ filter:'drop-shadow(0 0 50px rgba(245,182,66,0.45))' }} />
             <div>
-              <div className="text-display text-3xl font-black text-white">Come ti chiami?</div>
-              <div className="mt-1 text-sm text-white/50">{session.joinCode} — {players.length} giocator{players.length !== 1 ? 'i' : 'e'} connessi</div>
+              <div className="text-display text-4xl font-black text-white">Come ti chiami?</div>
+              <div className="mt-2 text-sm text-white/45">
+                {session.joinCode} — {players.length} giocator{players.length!==1?'i':'e'} già dentro
+              </div>
             </div>
             <input
-              type="text"
-              value={nickname}
-              onChange={e => setNickname(e.target.value.slice(0, 20))}
-              onKeyDown={e => e.key === 'Enter' && nickname.trim() && joinSession()}
-              placeholder="Il tuo nome..."
-              autoFocus
-              className="w-full rounded-2xl border border-border bg-card/70 px-6 py-4 text-center text-xl font-black text-white placeholder:text-white/20 focus:border-primary focus:outline-none"
+              type="text" value={nickname}
+              onChange={e => setNickname(e.target.value.slice(0,20))}
+              onKeyDown={e => e.key==='Enter' && nickname.trim() && joinSession()}
+              placeholder="Il tuo nome..." autoFocus
+              className="w-full rounded-2xl px-6 py-5 text-center text-xl font-black focus:outline-none"
+              style={{ background:'rgba(255,255,255,0.07)', border:'2px solid rgba(168,85,247,0.55)', color:'#fff', caretColor:'#A855F7' }}
             />
-            {error && <div className="rounded-xl bg-destructive/20 px-4 py-2 text-sm text-destructive">{error}</div>}
-            <button
-              onClick={joinSession}
-              disabled={loading || !nickname.trim()}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-6 py-4 text-lg font-black text-black disabled:opacity-40"
-            >
-              {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
+            {error && (
+              <div className="rounded-2xl px-4 py-3 text-sm font-bold"
+                style={{ background:'rgba(239,68,68,0.18)', border:'1px solid rgba(239,68,68,0.4)', color:'#f87171' }}>
+                {error}
+              </div>
+            )}
+            <button onClick={joinSession} disabled={loading||!nickname.trim()}
+              className="flex w-full items-center justify-center gap-3 rounded-2xl py-5 text-xl font-black text-black disabled:opacity-40"
+              style={{ background:'linear-gradient(135deg,#A855F7,#7c3aed)', boxShadow:'0 0 50px rgba(168,85,247,0.5)' }}>
+              {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : <Check className="h-6 w-6" />}
               Entra!
             </button>
           </motion.div>
@@ -371,65 +401,88 @@ export default function HomeJoin() {
 
         {/* ── LOBBY ── */}
         {phase === 'lobby' && player && session && (
-          <motion.div key="lobby" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
+          <motion.div key="lobby" initial={{ opacity:0, scale:0.92 }} animate={{ opacity:1, scale:1 }} exit={{ opacity:0 }}
             className="relative z-10 flex w-full max-w-sm flex-col items-center gap-8 text-center">
-            <div className="flex h-20 w-20 items-center justify-center rounded-3xl text-2xl font-black text-black"
-              style={{ background: player.avatarColor }}>
-              {player.nickname.slice(0, 2).toUpperCase()}
+
+            {/* Avatar ring */}
+            <div className="hj-ring flex h-24 w-24 items-center justify-center rounded-3xl text-2xl font-black text-black"
+              style={{ background:`linear-gradient(135deg,${player.avatarColor},${player.avatarColor}aa)` }}>
+              {player.nickname.slice(0,2).toUpperCase()}
             </div>
+
             <div>
-              <div className="text-display text-3xl font-black text-white">{player.nickname}</div>
-              <div className="mt-1 text-sm text-primary">Sei dentro! 🎉</div>
+              <div className="text-display text-4xl font-black text-white">{player.nickname}</div>
+              <div className="mt-2 text-lg font-black" style={{ color:'#F5B642' }}>Sei dentro! 🎉</div>
             </div>
-            <div className="flex w-full flex-col items-center gap-3 rounded-3xl border border-white/10 bg-white/5 p-6">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <div className="text-white/70">Aspettiamo che l'host scelga il gioco...</div>
-              <div className="text-xs text-white/40">{players.length} giocator{players.length !== 1 ? 'i' : 'e'} connessi</div>
+
+            <div className="flex w-full flex-col items-center gap-4 rounded-3xl p-7"
+              style={{ background:'rgba(255,255,255,0.05)', border:'1px solid rgba(168,85,247,0.35)', backdropFilter:'blur(12px)' }}>
+              <div className="flex items-center gap-3">
+                <Loader2 className="h-7 w-7 animate-spin" style={{ color:'#A855F7' }} />
+                <div className="font-bold text-white/75">Aspettiamo il gioco...</div>
+              </div>
+              <div className="text-sm text-white/35">{players.length} giocator{players.length!==1?'i':'e'} connessi</div>
+
+              {/* Mini player list */}
+              {players.length > 0 && (
+                <div className="flex flex-wrap justify-center gap-2 pt-1">
+                  {players.map((p, i) => (
+                    <div key={p.id} className="rounded-full px-3 py-1 text-xs font-black"
+                      style={{ background:`${AVATAR_COLORS[i%AVATAR_COLORS.length]}30`, border:`1px solid ${AVATAR_COLORS[i%AVATAR_COLORS.length]}55`, color:AVATAR_COLORS[i%AVATAR_COLORS.length] }}>
+                      {p.nickname}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-            <img src="/jonny-master-nobg.png" alt="Jonny" className="h-24 w-auto object-contain drop-shadow-2xl opacity-80" />
+
+            <img src="/jonny-master-nobg.png" alt="Jonny" className="h-24 w-auto object-contain"
+              style={{ filter:'drop-shadow(0 0 30px rgba(245,182,66,0.35))', opacity:0.85 }} />
           </motion.div>
         )}
 
         {/* ── PLAYING ── */}
         {phase === 'playing' && player && session && (
-          <motion.div key="playing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="relative z-10 flex w-full max-w-sm flex-col gap-5">
+          <motion.div key="playing" initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
+            className="relative z-10 flex w-full max-w-sm flex-col gap-4">
 
-            {/* Header */}
-            <div className="flex items-center justify-between">
+            {/* Header bar */}
+            <div className="flex items-center justify-between rounded-2xl px-4 py-3"
+              style={{ background:'rgba(0,0,0,0.45)', backdropFilter:'blur(14px)', border:'1px solid rgba(255,255,255,0.08)' }}>
               <div className="flex items-center gap-2">
                 {session.gameSlug && GAME_ICONS[session.gameSlug]}
                 <div>
-                  <div className="text-xs text-white/40">Round {session.currentRound + 1}/{session.totalRounds}</div>
+                  <div className="text-xs text-white/35">Round {session.currentRound+1}/{session.totalRounds}</div>
                   <div className="text-sm font-black text-white">{player.nickname}</div>
                 </div>
               </div>
-              <div className={`flex items-center gap-1.5 rounded-2xl border px-3 py-1.5 transition-colors ${
-                timeLeft !== null && timeLeft <= 5
-                  ? 'border-destructive/60 bg-destructive/20 text-destructive'
-                  : 'border-white/20 bg-white/5 text-white'
-              }`}>
-                <Timer className="h-4 w-4" />
-                <div className="text-2xl font-black tabular-nums">{timeLeft ?? '—'}</div>
+              <div className="rounded-xl px-4 py-2 text-center transition-all"
+                style={timeLeft!==null&&timeLeft<=5
+                  ? { background:'rgba(239,68,68,0.22)', border:'2px solid rgba(239,68,68,0.65)', boxShadow:'0 0 25px rgba(239,68,68,0.4)' }
+                  : { background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.14)' }}>
+                <div className="text-2xl font-black tabular-nums"
+                  style={{ color:timeLeft!==null&&timeLeft<=5?'#F87171':'#fff' }}>
+                  {timeLeft ?? '—'}
+                </div>
               </div>
             </div>
 
-            {/* Score chip */}
+            {/* Score */}
             <div className="flex justify-center">
-              <div className="rounded-full border border-primary/40 bg-primary/10 px-4 py-1 text-sm font-black text-primary">
+              <div className="rounded-full px-5 py-1.5 text-base font-black"
+                style={{ background:'rgba(245,182,66,0.18)', border:'1px solid rgba(245,182,66,0.45)', color:'#F5B642' }}>
                 {player.score} punti
               </div>
             </div>
 
-            {/* Phone controller */}
+            {/* Controller */}
             <PhoneController session={session} revealed={revealed} answered={answered} player={player}
               onAnswer={(idx) => {
                 setAnswered(idx);
                 if (timerRef.current) clearInterval(timerRef.current);
                 setRevealed(true);
-                // Award points for correct answer
                 const payload = session.roundPayload;
-                if (String(payload.mode) === 'home-quiz' && idx === Number(payload.correctIndex)) {
+                if (String(payload.mode)==='home-quiz' && idx===Number(payload.correctIndex)) {
                   void addScore(Number(payload.points ?? 200));
                 }
               }}
@@ -440,33 +493,40 @@ export default function HomeJoin() {
 
         {/* ── ENDED ── */}
         {phase === 'ended' && player && (
-          <motion.div key="ended" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+          <motion.div key="ended" initial={{ opacity:0, scale:0.9 }} animate={{ opacity:1, scale:1 }}
             className="relative z-10 flex w-full max-w-sm flex-col items-center gap-6 text-center">
-            <img src="/jonny-master-nobg.png" alt="Jonny" className="h-28 w-auto object-contain drop-shadow-2xl" />
+            <img src="/jonny-master-nobg.png" alt="Jonny" className="h-32 w-auto object-contain"
+              style={{ filter:'drop-shadow(0 0 50px rgba(245,182,66,0.5))' }} />
             <div>
-              <div className="text-display text-3xl font-black text-white">Partita finita!</div>
-              <div className="mt-2 text-primary text-xl font-black">{player.score} punti totali</div>
+              <div className="text-display text-4xl font-black text-white">Partita finita!</div>
+              <div className="mt-2 text-2xl font-black" style={{ color:'#F5B642' }}>{player.score} punti!</div>
             </div>
 
-            {/* Final ranking */}
             <div className="flex w-full flex-col gap-2">
-              {[...players].sort((a, b) => b.score - a.score).map((p, i) => (
-                <div key={p.id} className={`flex items-center gap-3 rounded-2xl border px-4 py-3 ${
-                  p.id === player.id ? 'border-primary/60 bg-primary/10' : 'border-white/10 bg-white/5'
-                }`}>
-                  <div className="text-lg font-black text-white/40">#{i + 1}</div>
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-black text-black"
-                    style={{ background: AVATAR_COLORS[i % AVATAR_COLORS.length] }}>
-                    {p.nickname.slice(0, 2).toUpperCase()}
+              {[...players].sort((a,b)=>b.score-a.score).map((p,i) => {
+                const MEDALS = ['🥇','🥈','🥉'];
+                const isSelf = p.id === player.id;
+                return (
+                  <div key={p.id} className="flex items-center gap-3 rounded-2xl px-4 py-3 transition-all"
+                    style={isSelf
+                      ? { background:'rgba(245,182,66,0.18)', border:'2px solid rgba(245,182,66,0.55)', boxShadow:'0 0 25px rgba(245,182,66,0.25)' }
+                      : { background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)' }}>
+                    <div className="text-xl w-7 text-center">{MEDALS[i] ?? `#${i+1}`}</div>
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-black text-black"
+                      style={{ background:`linear-gradient(135deg,${AVATAR_COLORS[i%AVATAR_COLORS.length]},${AVATAR_COLORS[(i+1)%AVATAR_COLORS.length]})` }}>
+                      {p.nickname.slice(0,2).toUpperCase()}
+                    </div>
+                    <div className="flex-1 text-left text-sm font-black" style={{ color:isSelf?'#F5B642':'#fff' }}>{p.nickname}</div>
+                    <div className="font-black" style={{ color:isSelf?'#F5B642':'rgba(255,255,255,0.6)' }}>{p.score}</div>
                   </div>
-                  <div className="flex-1 text-left text-sm font-bold text-white">{p.nickname}</div>
-                  <div className="font-black text-primary">{p.score}</div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
-            <button onClick={() => navigate('/home')} className="flex items-center gap-2 rounded-2xl bg-primary px-6 py-3 font-black text-black">
-              Nuova Partita
+            <button onClick={() => navigate('/home')}
+              className="flex items-center gap-3 rounded-2xl px-8 py-4 font-black text-black"
+              style={{ background:'linear-gradient(135deg,#F5B642,#FF8C00)', boxShadow:'0 0 40px rgba(245,182,66,0.45)' }}>
+              <Sparkles className="h-5 w-5" /> Nuova Partita
             </button>
           </motion.div>
         )}
@@ -492,49 +552,54 @@ function PhoneController({ session, revealed, answered, onAnswer, onSkip, player
   if (mode === 'home-quiz') {
     const answers = (p.answers as string[]) ?? [];
     const correct = Number(p.correctIndex ?? 0);
-    const COLORS = ['#60A5FA', '#F472B6', '#F5B642', '#34D399'];
-    const LETTERS = ['A', 'B', 'C', 'D'];
+    const BG_COLORS = ['#3B82F6','#EC4899','#EAB308','#10B981'];
+    const LETTERS   = ['A','B','C','D'];
 
     return (
       <div className="flex flex-col gap-3">
-        <div className="rounded-2xl border border-primary/20 bg-primary/10 p-4 text-center text-sm font-bold text-white/80">
+        {/* Compact question */}
+        <div className="rounded-2xl p-4 text-center text-sm font-bold leading-snug text-white/85"
+          style={{ background:'linear-gradient(135deg,rgba(168,85,247,0.2),rgba(245,182,66,0.07))', border:'1px solid rgba(168,85,247,0.4)' }}>
           {String(p.question ?? '')}
         </div>
+
+        {/* Full-colour answer grid */}
         <div className="grid grid-cols-2 gap-3">
           {answers.map((ans, i) => {
             const isCorrect = i === correct;
             const isSelected = answered === i;
+            let bg: string, border: string, shadow: string, textCol: string;
+            if (revealed) {
+              if (isCorrect) { bg='linear-gradient(135deg,#22c55e,#16a34a)'; border='2px solid #4ade80'; shadow='0 0 30px rgba(34,197,94,0.5)'; textCol='#fff'; }
+              else if (isSelected) { bg='rgba(239,68,68,0.18)'; border='2px solid rgba(239,68,68,0.5)'; shadow='none'; textCol='rgba(239,68,68,0.8)'; }
+              else { bg='rgba(255,255,255,0.04)'; border='1px solid rgba(255,255,255,0.08)'; shadow='none'; textCol='rgba(255,255,255,0.25)'; }
+            } else if (isSelected) {
+              bg=`linear-gradient(135deg,${BG_COLORS[i]},${BG_COLORS[i]}cc)`; border=`2px solid ${BG_COLORS[i]}`; shadow=`0 0 24px ${BG_COLORS[i]}80`; textCol='#000';
+            } else {
+              bg=`linear-gradient(135deg,${BG_COLORS[i]},${BG_COLORS[i]}cc)`; border=`2px solid ${BG_COLORS[i]}`; shadow=`0 0 18px ${BG_COLORS[i]}55`; textCol='#fff';
+            }
             return (
               <motion.button key={i}
-                whileHover={!revealed ? { scale: 1.04 } : {}}
-                whileTap={!revealed ? { scale: 0.94 } : {}}
-                onClick={() => !revealed && answered === null && onAnswer(i)}
-                disabled={revealed || answered !== null}
-                className={`flex flex-col items-center justify-center gap-2 rounded-2xl px-4 py-5 font-bold text-sm transition-all ${
-                  revealed
-                    ? isCorrect
-                      ? 'border-2 border-green-400 bg-green-400/20 text-green-300'
-                      : isSelected
-                        ? 'border-2 border-destructive/60 bg-destructive/20 text-destructive/70'
-                        : 'border border-white/5 bg-white/3 text-white/30'
-                    : answered === i
-                      ? 'border-2 text-black'
-                      : 'border border-white/10 bg-white/5 text-white hover:border-white/30'
-                }`}
-                style={!revealed && answered === i ? { borderColor: COLORS[i], background: COLORS[i] } : {}}
-              >
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg text-xs font-black text-black"
-                  style={{ background: COLORS[i] }}>
+                whileTap={!revealed && answered===null ? { scale:0.94 } : {}}
+                onClick={() => !revealed && answered===null && onAnswer(i)}
+                disabled={revealed || answered!==null}
+                className="flex flex-col items-center justify-center gap-2 rounded-2xl px-3 py-5 text-sm font-black leading-tight transition-all"
+                style={{ background:bg, border, boxShadow:shadow, color:textCol }}>
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg text-xs font-black"
+                  style={{ background:'rgba(0,0,0,0.28)', color:revealed&&isCorrect?'#4ade80':textCol }}>
                   {LETTERS[i]}
                 </div>
-                <div className="text-center leading-tight">{ans}</div>
-                {revealed && isCorrect && <Check className="h-4 w-4 text-green-400" />}
+                <div className="text-center">{ans}</div>
+                {revealed && isCorrect && <Check className="h-4 w-4 text-green-300" />}
               </motion.button>
             );
           })}
         </div>
-        <button onClick={onSkip} className="flex items-center justify-center gap-1.5 rounded-2xl border border-white/10 py-2 text-xs text-white/30 hover:text-white/60">
-          <SkipForward className="h-3 w-3" /> Salta questo round
+
+        <button onClick={onSkip}
+          className="flex items-center justify-center gap-1.5 rounded-2xl py-2.5 text-xs transition-colors"
+          style={{ background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', color:'rgba(255,255,255,0.3)' }}>
+          <SkipForward className="h-3 w-3" /> Salta round
         </button>
       </div>
     );
@@ -543,11 +608,21 @@ function PhoneController({ session, revealed, answered, onAnswer, onSkip, player
   if (mode === 'home-ballo') {
     return (
       <div className="flex flex-col items-center gap-5 text-center">
-        <div className="text-5xl">💃</div>
+        <div className="flex h-20 w-20 items-center justify-center rounded-3xl text-5xl"
+          style={{ background:'linear-gradient(135deg,rgba(168,85,247,0.3),rgba(168,85,247,0.12))', border:'2px solid rgba(168,85,247,0.5)', boxShadow:'0 0 40px rgba(168,85,247,0.35)' }}>
+          💃
+        </div>
         <div className="text-display text-2xl font-black text-white">{String(p.name ?? 'Sfida di Ballo')}</div>
         <div className="text-sm text-white/60">{String(p.description ?? '')}</div>
-        {!!p.musicHint && <div className="rounded-xl bg-purple-500/20 px-4 py-2 text-sm text-purple-300">🎵 {String(p.musicHint)}</div>}
-        <button onClick={onSkip} className="flex items-center gap-2 rounded-2xl border border-white/10 px-6 py-3 text-sm text-white/40 hover:text-white/70">
+        {!!p.musicHint && (
+          <div className="rounded-2xl px-4 py-2.5 text-sm font-bold"
+            style={{ background:'rgba(168,85,247,0.18)', border:'1px solid rgba(168,85,247,0.4)', color:'#c084fc' }}>
+            🎵 {String(p.musicHint)}
+          </div>
+        )}
+        <button onClick={onSkip}
+          className="flex items-center gap-2 rounded-2xl px-6 py-3 text-sm transition-colors"
+          style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)', color:'rgba(255,255,255,0.4)' }}>
           <SkipForward className="h-4 w-4" /> Salta
         </button>
       </div>
@@ -555,17 +630,20 @@ function PhoneController({ session, revealed, answered, onAnswer, onSkip, player
   }
 
   if (mode === 'home-percorso') {
-    const TYPE_ICONS: Record<string, string> = { sfida: '⚡', domanda: '❓', mimo: '🎭', reazione: '😱', fantasia: '🌟' };
+    const TYPE_ICONS: Record<string, string> = { sfida:'⚡', domanda:'❓', mimo:'🎭', reazione:'😱', fantasia:'🌟' };
     const icon = TYPE_ICONS[String(p.challengeType ?? 'sfida')] ?? '⚡';
     return (
       <div className="flex flex-col items-center gap-5 text-center">
-        <div className="text-5xl">{icon}</div>
+        <div className="text-6xl" style={{ filter:'drop-shadow(0 0 20px rgba(52,211,153,0.6))' }}>{icon}</div>
         <div className="text-display text-2xl font-black text-white">{String(p.title ?? 'Sfida')}</div>
-        <div className="text-sm text-white/60">{String(p.description ?? '')}</div>
-        <div className="rounded-xl border border-green-400/30 bg-green-400/10 px-4 py-2 text-sm font-black text-green-400">
+        <div className="text-sm text-white/60 leading-relaxed">{String(p.description ?? '')}</div>
+        <div className="rounded-2xl px-5 py-2.5 text-sm font-black"
+          style={{ background:'rgba(52,211,153,0.18)', border:'1px solid rgba(52,211,153,0.45)', color:'#34D399' }}>
           {Number(p.points ?? 150)} punti
         </div>
-        <button onClick={onSkip} className="flex items-center gap-2 rounded-2xl border border-white/10 px-6 py-3 text-sm text-white/40">
+        <button onClick={onSkip}
+          className="flex items-center gap-2 rounded-2xl px-6 py-3 text-sm transition-colors"
+          style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)', color:'rgba(255,255,255,0.4)' }}>
           <SkipForward className="h-4 w-4" /> Prossima sfida
         </button>
       </div>
