@@ -48,6 +48,28 @@ async function broadcastState(sessionId: string) {
   emitToRoom(homeRoom(sessionId), "home:state", { session, players });
 }
 
+// ── Coppie memory-game types ─────────────────────────────────────────────────
+interface CoppieCard {
+  id: string;
+  text: string;
+  pairId: number;
+  flipped: boolean;
+  matched: boolean;
+}
+interface CoppiePayload {
+  mode: "home-coppie";
+  roundIndex: number;
+  category: string;
+  cards: CoppieCard[];
+  currentFlipped: string[];
+  matchedPairs: number;
+  totalPairs: number;
+  points: number;
+  lastFlippedBy: string | null;
+  timeLimit: number;
+  [key: string]: unknown;
+}
+
 // ── POST /home/sessions ────────────────────────────────────────────────────
 router.post("/home/sessions", async (req, res): Promise<void> => {
   const hostName = String(req.body?.hostName ?? "Casa").slice(0, 50);
@@ -228,6 +250,101 @@ router.post("/home/sessions/:id/score", async (req, res): Promise<void> => {
   res.json({ ok: true });
 });
 
+// ── POST /home/sessions/:id/flip ────────────────────────────────────────────
+router.post("/home/sessions/:id/flip", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  if (session.status !== "playing") { res.status(409).json({ error: "Sessione non in corso" }); return; }
+
+  const payload = session.roundPayload as CoppiePayload;
+  if (payload.mode !== "home-coppie") { res.status(400).json({ error: "Non è una partita di coppie" }); return; }
+
+  const currentFlipped = payload.currentFlipped ?? [];
+  if (currentFlipped.length >= 2) { res.status(409).json({ error: "Aspetta che si girino le carte" }); return; }
+
+  const { cardId, playerId } = req.body as { cardId?: string; playerId?: string };
+  if (!cardId) { res.status(400).json({ error: "cardId obbligatorio" }); return; }
+
+  const card = payload.cards.find(c => c.id === cardId);
+  if (!card) { res.status(404).json({ error: "Carta non trovata" }); return; }
+  if (card.flipped || card.matched) { res.status(409).json({ error: "Carta non disponibile" }); return; }
+
+  // Flip the card face-up
+  const newCards = payload.cards.map(c => c.id === cardId ? { ...c, flipped: true } : c);
+  const newFlipped = [...currentFlipped, cardId];
+
+  let finalCards = newCards;
+  let finalFlipped = newFlipped;
+  let newMatchedPairs = payload.matchedPairs;
+  let matched = false;
+
+  if (newFlipped.length === 2) {
+    const [id1, id2] = newFlipped as [string, string];
+    const c1 = newCards.find(c => c.id === id1)!;
+    const c2 = newCards.find(c => c.id === id2)!;
+
+    if (c1.pairId === c2.pairId) {
+      // ✅ Match! Mark both as matched and clear the flipped buffer
+      finalCards = newCards.map(c => [id1, id2].includes(c.id) ? { ...c, matched: true, flipped: false } : c);
+      finalFlipped = [];
+      newMatchedPairs += 1;
+      matched = true;
+
+      // Award points to the player who found the match
+      if (playerId && isUUID(playerId)) {
+        const [p] = await db.select().from(homePlayersTable)
+          .where(and(eq(homePlayersTable.id, playerId), eq(homePlayersTable.sessionId, id)));
+        if (p) {
+          await db.update(homePlayersTable)
+            .set({ score: p.score + (payload.points ?? 150) })
+            .where(eq(homePlayersTable.id, playerId));
+        }
+      }
+    }
+    // No match: cards stay face-up for 1.5s, then server unflips them
+  }
+
+  const newPayload: CoppiePayload = {
+    ...payload,
+    cards: finalCards,
+    currentFlipped: finalFlipped,
+    matchedPairs: newMatchedPairs,
+    lastFlippedBy: playerId ?? null,
+  };
+
+  await db.update(homeSessionsTable)
+    .set({ roundPayload: newPayload })
+    .where(eq(homeSessionsTable.id, id));
+
+  const players = await getPlayers(id);
+  emitToRoom(homeRoom(id), "home:card_flip", { payload: newPayload, matched, playerId: playerId ?? null, players });
+
+  // Schedule unflip after 1.5s when 2 unmatched cards are showing
+  if (newFlipped.length === 2 && !matched) {
+    const unflipPayload: CoppiePayload = {
+      ...newPayload,
+      cards: newPayload.cards.map(c =>
+        newFlipped.includes(c.id) && !c.matched ? { ...c, flipped: false } : c
+      ),
+      currentFlipped: [],
+    };
+    setTimeout(async () => {
+      try {
+        await db.update(homeSessionsTable)
+          .set({ roundPayload: unflipPayload })
+          .where(eq(homeSessionsTable.id, id));
+        const ps = await getPlayers(id);
+        emitToRoom(homeRoom(id), "home:card_flip", { payload: unflipPayload, matched: false, playerId: null, players: ps });
+      } catch { /* sessione già terminata */ }
+    }, 1500);
+  }
+
+  res.json({ payload: newPayload, matched });
+});
+
 // ── POST /home/sessions/:id/end ────────────────────────────────────────────
 router.post("/home/sessions/:id/end", async (req, res): Promise<void> => {
   const id = String(req.params["id"]);
@@ -272,6 +389,9 @@ async function generateRoundPayload(
   }
   if (gameSlug === "percorso-a-risate") {
     return await generatePercorsoRound(category, roundIndex);
+  }
+  if (gameSlug === "gioco-coppie") {
+    return await generateCoppieRound(category, roundIndex);
   }
   // Fallback — generic trivia
   return await generateQuizRound(category, difficulty, roundIndex, totalRounds);
@@ -405,6 +525,62 @@ Rispondi con JSON: {"title":"...","description":"...","points":150,"timeLimit":6
       timeLimit: 60,
       timerStartedAt: null,
     };
+  }
+}
+
+// ─── Gioco delle Coppie — AI Generator ────────────────────────────────────────
+
+async function generateCoppieRound(category: string, roundIndex: number): Promise<RoundPayload> {
+  function shuffleDeck<T>(arr: T[]): T[] {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j]!, a[i]!];
+    }
+    return a;
+  }
+
+  function buildPayload(pairs: { a: string; b: string }[]): CoppiePayload {
+    const cards: CoppieCard[] = shuffleDeck([
+      ...pairs.map((p, i) => ({ id: `a${i}`, text: p.a, pairId: i, flipped: false, matched: false })),
+      ...pairs.map((p, i) => ({ id: `b${i}`, text: p.b, pairId: i, flipped: false, matched: false })),
+    ]);
+    return {
+      mode: "home-coppie",
+      roundIndex,
+      category,
+      cards,
+      currentFlipped: [],
+      matchedPairs: 0,
+      totalPairs: pairs.length,
+      points: 150,
+      lastFlippedBy: null,
+      timeLimit: 180,
+    };
+  }
+
+  const fallback = [
+    { a: "Roma", b: "Colosseo" }, { a: "Venezia", b: "Gondola" },
+    { a: "Milano", b: "Duomo" }, { a: "Napoli", b: "Pizza" },
+    { a: "Firenze", b: "Uffizi" }, { a: "Torino", b: "Mole" },
+  ];
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-5-mini",
+      messages: [{
+        role: "user",
+        content: `Genera 6 coppie di parole/frasi per un gioco memoria in italiano${category && category !== "Cultura Generale" ? ` a tema "${category}"` : ""}.\nRegole: coppie correlate ma diverse (es. "Roma"↔"Colosseo", "Einstein"↔"Relatività"). Max 3 parole per elemento.\nRispondi SOLO con JSON: {"pairs":[{"a":"...","b":"..."},...]}`,
+      }],
+      response_format: { type: "json_object" },
+      max_completion_tokens: 512,
+    });
+    const raw = JSON.parse(completion.choices[0]?.message?.content ?? "{}") as { pairs?: { a: string; b: string }[] };
+    const pairs = (raw.pairs ?? []).filter(p => p.a && p.b).slice(0, 6);
+    if (pairs.length < 3) throw new Error("Not enough pairs");
+    return buildPayload(pairs);
+  } catch {
+    return buildPayload(fallback);
   }
 }
 

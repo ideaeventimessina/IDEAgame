@@ -184,7 +184,11 @@ export default function HomeGame() {
       setJonnyMood('winner');
       setJonnyMsg('Che partita! 🏆');
     });
-    return () => { u1?.(); u2?.(); u3?.(); };
+    const u4 = on<{ payload: Record<string, unknown>; players: HomePlayer[] }>('home:card_flip', (data) => {
+      setSession(prev => prev ? { ...prev, roundPayload: data.payload } : prev);
+      if (data.players) setPlayers(data.players);
+    });
+    return () => { u1?.(); u2?.(); u3?.(); u4?.(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [on]);
 
@@ -588,7 +592,7 @@ export default function HomeGame() {
 
             {/* Main content */}
             <div className="flex flex-1 items-center justify-center px-8">
-              <RoundBoard session={session} revealed={revealed} onReveal={() => { setRevealed(true); if (timerRef.current) clearInterval(timerRef.current); setTimerRunning(false); setJonnyMood('correct'); }} />
+              <RoundBoard session={session} revealed={revealed} onReveal={() => { setRevealed(true); if (timerRef.current) clearInterval(timerRef.current); setTimerRunning(false); setJonnyMood('correct'); }} onNext={nextRound} />
             </div>
 
             {/* Scoreboard bar */}
@@ -667,10 +671,11 @@ export default function HomeGame() {
 
 // ── RoundBoard — renders the current round based on game mode ─────────────────
 
-function RoundBoard({ session, revealed, onReveal }: {
+function RoundBoard({ session, revealed, onReveal, onNext }: {
   session: HomeSession;
   revealed: boolean;
   onReveal: () => void;
+  onNext?: () => void;
 }) {
   const p = session.roundPayload;
   const mode = String(p.mode ?? 'home-quiz');
@@ -683,6 +688,9 @@ function RoundBoard({ session, revealed, onReveal }: {
   }
   if (mode === 'home-percorso') {
     return <PercorsoBoard payload={p} onReveal={onReveal} />;
+  }
+  if (mode === 'home-coppie') {
+    return <CoppieBoard payload={p} onNext={onNext} />;
   }
   return <div className="text-white/40">Caricamento round...</div>;
 }
@@ -796,6 +804,71 @@ function PercorsoBoard({ payload, onReveal }: { payload: Record<string, unknown>
       <button onClick={onReveal} className="flex items-center gap-2 rounded-2xl bg-green-500 px-6 py-3 font-black text-black">
         <Check className="h-4 w-4" /> Sfida completata
       </button>
+    </motion.div>
+  );
+}
+
+function CoppieBoard({ payload, onNext }: { payload: Record<string, unknown>; onNext?: () => void }) {
+  interface CC { id: string; text: string; pairId: number; flipped: boolean; matched: boolean; }
+  const cards = (payload.cards as CC[]) ?? [];
+  const matchedPairs = Number(payload.matchedPairs ?? 0);
+  const totalPairs = Number(payload.totalPairs ?? 6);
+  const allMatched = totalPairs > 0 && matchedPairs >= totalPairs;
+
+  return (
+    <motion.div key={String(payload.roundIndex)}
+      initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+      className="flex w-full max-w-3xl flex-col items-center gap-6">
+
+      <div className="flex w-full items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-2xl">🃏</span>
+          <div className="text-display text-xl font-black text-white">{String(payload.category ?? 'Coppie')}</div>
+        </div>
+        <div className="rounded-full border border-primary/40 bg-primary/10 px-4 py-1.5 text-sm font-black text-primary">
+          {matchedPairs} / {totalPairs} coppie trovate
+        </div>
+      </div>
+
+      <div className="grid w-full grid-cols-4 gap-3">
+        {cards.map((card) => (
+          <motion.div
+            key={card.id}
+            animate={{ scale: card.flipped && !card.matched ? 1.05 : 1 }}
+            transition={{ duration: 0.15 }}
+            className={`relative flex aspect-[4/3] items-center justify-center rounded-2xl border-2 p-2 text-center text-sm font-bold transition-colors ${
+              card.matched
+                ? 'border-green-400 bg-green-400/20 text-green-300 shadow-md shadow-green-400/20'
+                : card.flipped
+                  ? 'border-primary bg-primary/20 text-white shadow-md shadow-primary/20'
+                  : 'border-white/10 bg-white/5'
+            }`}
+          >
+            {card.matched && <Check className="absolute right-1.5 top-1.5 h-3 w-3 text-green-400" />}
+            {(card.flipped || card.matched)
+              ? <span className="leading-tight">{card.text}</span>
+              : <span className="text-2xl text-white/20">?</span>
+            }
+          </motion.div>
+        ))}
+      </div>
+
+      <AnimatePresence>
+        {allMatched && (
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+            className="flex flex-col items-center gap-3">
+            <div className="text-display text-3xl font-black text-primary">🎉 Tutte le coppie trovate!</div>
+            <motion.button
+              whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}
+              onClick={onNext}
+              className="flex items-center gap-2 rounded-2xl bg-primary px-8 py-3 font-black text-black shadow-lg shadow-primary/30"
+            >
+              <SkipForward className="h-4 w-4" /> Prossimo round
+            </motion.button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

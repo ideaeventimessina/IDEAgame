@@ -104,7 +104,11 @@ export default function HomeJoin() {
       setPlayers(data.players);
       setPhase('ended');
     });
-    return () => { u1?.(); u2?.(); u3?.(); };
+    const u4 = on<{ payload: Record<string, unknown>; players: HomePlayer[] }>('home:card_flip', (data) => {
+      setSession(prev => prev ? { ...prev, roundPayload: data.payload } : prev);
+      if (data.players) setPlayers(data.players);
+    });
+    return () => { u1?.(); u2?.(); u3?.(); u4?.(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [on, phase]);
 
@@ -324,7 +328,7 @@ export default function HomeJoin() {
             </div>
 
             {/* Phone controller */}
-            <PhoneController session={session} revealed={revealed} answered={answered}
+            <PhoneController session={session} revealed={revealed} answered={answered} player={player}
               onAnswer={(idx) => {
                 setAnswered(idx);
                 if (timerRef.current) clearInterval(timerRef.current);
@@ -381,12 +385,13 @@ export default function HomeJoin() {
 
 // ── PhoneController ────────────────────────────────────────────────────────────
 
-function PhoneController({ session, revealed, answered, onAnswer, onSkip }: {
+function PhoneController({ session, revealed, answered, onAnswer, onSkip, player }: {
   session: HomeSession;
   revealed: boolean;
   answered: number | null;
   onAnswer: (idx: number) => void;
   onSkip: () => void;
+  player?: HomePlayer | null;
 }) {
   const p = session.roundPayload;
   const mode = String(p.mode ?? 'home-quiz');
@@ -410,7 +415,7 @@ function PhoneController({ session, revealed, answered, onAnswer, onSkip }: {
               <motion.button key={i}
                 whileHover={!revealed ? { scale: 1.04 } : {}}
                 whileTap={!revealed ? { scale: 0.94 } : {}}
-                onClick={() => !revealed && !answered && onAnswer(i)}
+                onClick={() => !revealed && answered === null && onAnswer(i)}
                 disabled={revealed || answered !== null}
                 className={`flex flex-col items-center justify-center gap-2 rounded-2xl px-4 py-5 font-bold text-sm transition-all ${
                   revealed
@@ -470,6 +475,76 @@ function PhoneController({ session, revealed, answered, onAnswer, onSkip }: {
         <button onClick={onSkip} className="flex items-center gap-2 rounded-2xl border border-white/10 px-6 py-3 text-sm text-white/40">
           <SkipForward className="h-4 w-4" /> Prossima sfida
         </button>
+      </div>
+    );
+  }
+
+  if (mode === 'home-coppie') {
+    interface CC { id: string; text: string; pairId: number; flipped: boolean; matched: boolean; }
+    const cards = (p.cards as CC[]) ?? [];
+    const currentFlipped = (p.currentFlipped as string[]) ?? [];
+    const matchedPairs = Number(p.matchedPairs ?? 0);
+    const totalPairs = Number(p.totalPairs ?? 6);
+    const canFlip = currentFlipped.length < 2;
+    const allMatched = totalPairs > 0 && matchedPairs >= totalPairs;
+
+    const handleFlip = async (cardId: string) => {
+      if (!canFlip || allMatched) return;
+      try {
+        await fetch(`/api/home/sessions/${session.id}/flip`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cardId, playerId: player?.id }),
+        });
+      } catch { /* silent */ }
+    };
+
+    return (
+      <div className="flex flex-col items-center gap-4">
+        <div className="flex w-full items-center justify-between">
+          <div className="text-sm text-white/60">{matchedPairs}/{totalPairs} coppie trovate</div>
+          <div className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
+            allMatched ? 'bg-green-500/20 text-green-400' :
+            canFlip ? 'bg-primary/20 text-primary' : 'bg-white/10 text-white/40'
+          }`}>
+            {allMatched ? '🎉 Tutte trovate!' : canFlip ? 'Tocca una carta' : 'Aspetta…'}
+          </div>
+        </div>
+
+        <div className="grid w-full grid-cols-4 gap-1.5">
+          {cards.map((card) => {
+            const isFlippable = !card.flipped && !card.matched && canFlip && !allMatched;
+            return (
+              <motion.button
+                key={card.id}
+                whileTap={isFlippable ? { scale: 0.88 } : {}}
+                onClick={() => isFlippable && void handleFlip(card.id)}
+                className={`flex aspect-square items-center justify-center rounded-xl border-2 p-1 text-center text-xs font-bold leading-tight transition-all ${
+                  card.matched
+                    ? 'border-green-400 bg-green-400/20 text-green-300'
+                    : card.flipped
+                      ? 'border-primary bg-primary/20 text-white'
+                      : isFlippable
+                        ? 'border-white/15 bg-white/5 text-white/0 active:bg-primary/10'
+                        : 'border-white/8 bg-white/3 text-white/0 cursor-not-allowed'
+                }`}
+              >
+                {(card.flipped || card.matched)
+                  ? card.text
+                  : <span className="text-white/25 text-base">?</span>
+                }
+              </motion.button>
+            );
+          })}
+        </div>
+
+        {allMatched && (
+          <motion.div
+            initial={{ scale: 0 }} animate={{ scale: 1 }}
+            className="rounded-2xl border border-green-400/30 bg-green-400/10 px-4 py-2 text-center text-sm font-bold text-green-400">
+            🎉 Tutte trovate! Aspetta che l'host vada avanti
+          </motion.div>
+        )}
       </div>
     );
   }
