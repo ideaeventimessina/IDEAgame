@@ -95,11 +95,15 @@ interface PercorsoStepState {
   id: string; title: string; description: string; challengeType: string;
   points: number; timeLimit: number; optionalMediaUrl: string | null;
 }
+interface PercorsoVoteEntryLC { voterId: string; score: number; }
 interface PercorsoStateLC {
   setId: string; setName: string; steps: PercorsoStepState[];
   currentStepIdx: number; teams: { id: string; name: string; color: string; score: number }[];
   status: 'idle' | 'running' | 'ended';
   lastFlash: { text: string; type: string } | null; timerStartedAt: string | null;
+  performingTeamIds: string[];
+  votingOpen: boolean;
+  votes: Record<string, PercorsoVoteEntryLC[]>;
 }
 
 interface AdultOnlyDeckLC { id: string; name: string; description: string; }
@@ -237,6 +241,8 @@ export default function LiveControl() {
   const [percorsoState, setPercorsoState] = useState<PercorsoStateLC | null>(null);
   const [percorsoBusy, setPercorsoBusy] = useState(false);
   const [percorsoMsg, setPercorsoMsg] = useState('');
+  const [percorsoPerforming, setPercorsoPerforming] = useState<string[]>([]);
+  const [percorsoVoteBusy, setPercorsoVoteBusy] = useState(false);
 
   // Adult Only state
   const [adultOnlyDecks, setAdultOnlyDecks] = useState<AdultOnlyDeckLC[]>([]);
@@ -371,12 +377,16 @@ export default function LiveControl() {
         qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) });
       }),
       on<{ state: PercorsoStateLC }>('path:started', ({ state }) => setPercorsoState(state)),
-      on<{ state: PercorsoStateLC }>('path:step_changed', ({ state }) => setPercorsoState(state)),
+      on<{ state: PercorsoStateLC }>('path:step_changed', ({ state }) => { setPercorsoState(state); setPercorsoPerforming([]); }),
       on<{ state: PercorsoStateLC }>('path:score_updated', ({ state }) => {
         setPercorsoState(state);
         qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) });
       }),
       on<{ state: PercorsoStateLC }>('path:ended', ({ state }) => setPercorsoState(state)),
+      on<{ state: PercorsoStateLC }>('path:performing_set', ({ state }) => setPercorsoState(state)),
+      on<{ state: PercorsoStateLC }>('path:voting_opened', ({ state }) => setPercorsoState(state)),
+      on<{ state: PercorsoStateLC }>('path:vote_cast', ({ state }) => setPercorsoState(state)),
+      on<{ state: PercorsoStateLC }>('path:voting_closed', ({ state }) => setPercorsoState(state)),
       on<{ evening: EveningMode; session: { id: string } | null }>('evening:updated', ({ evening: ev }) => setEveningMode(ev)),
       on<{ state: AdultOnlyStateLC }>('adult:started', ({ state: s }) => setAdultOnlyState(s)),
       on<{ state: AdultOnlyStateLC }>('adult:card_changed', ({ state: s }) => setAdultOnlyState(s)),
@@ -936,6 +946,64 @@ export default function LiveControl() {
         finally { setPercorsoBusy(false); }
       },
     });
+  };
+
+  const handlePercorsoOpenVoting = async () => {
+    if (!session || percorsoVoteBusy) return;
+    setPercorsoVoteBusy(true); setPercorsoMsg('');
+    try {
+      const s = await apiFetch(`/percorso/sessions/${session.id}/performing`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamIds: percorsoPerforming }),
+      }) as PercorsoStateLC;
+      const s2 = await apiFetch(`/percorso/sessions/${session.id}/voting/open`, { method: 'POST' }) as PercorsoStateLC;
+      setPercorsoState({ ...s, ...s2 });
+      setPercorsoMsg('✓ Votazione aperta!');
+    } catch (e) { setPercorsoMsg((e as Error).message); }
+    finally { setPercorsoVoteBusy(false); }
+  };
+
+  const handlePercorsoCloseVoting = async () => {
+    if (!session || percorsoVoteBusy) return;
+    setPercorsoVoteBusy(true);
+    try {
+      const s = await apiFetch(`/percorso/sessions/${session.id}/voting/close`, { method: 'POST' }) as PercorsoStateLC;
+      setPercorsoState(s);
+      setPercorsoMsg('✓ Votazione chiusa');
+    } catch (e) { setPercorsoMsg((e as Error).message); }
+    finally { setPercorsoVoteBusy(false); }
+  };
+
+  const handlePercorsoAssignFromVote = async () => {
+    if (!session || !percorsoState || percorsoVoteBusy) return;
+    const step = percorsoState.steps[percorsoState.currentStepIdx];
+    if (!step) return;
+    setPercorsoVoteBusy(true);
+    try {
+      const ranked = percorsoState.performingTeamIds
+        .map(tid => {
+          const entries = percorsoState.votes[tid] ?? [];
+          const avg = entries.length > 0 ? entries.reduce((s, v) => s + v.score, 0) / entries.length : 0;
+          return { tid, avg };
+        })
+        .sort((a, b) => b.avg - a.avg);
+      const pointsMap = [1, 0.6, 0.3];
+      for (let i = 0; i < ranked.length; i++) {
+        const pts = Math.round(step.points * (pointsMap[i] ?? 0.3));
+        if (pts > 0) {
+          const s = await apiFetch(`/percorso/sessions/${session.id}/score`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ teamId: ranked[i]!.tid, points: pts }),
+          }) as PercorsoStateLC;
+          setPercorsoState(s);
+        }
+      }
+      setPercorsoMsg('✓ Punti assegnati dal voto!');
+      qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) });
+    } catch (e) { setPercorsoMsg((e as Error).message); }
+    finally { setPercorsoVoteBusy(false); }
   };
 
   // ─── Adult Only handlers ────────────────────────────────────────────────────
@@ -2647,8 +2715,103 @@ export default function LiveControl() {
                   </button>
                 </div>
 
+                {/* 🗳️ Audience Voting */}
+                <div className="rounded-xl border border-purple-500/30 bg-purple-500/5 p-3 space-y-2.5">
+                  <div className="text-xs font-bold uppercase tracking-widest text-purple-400">🗳️ Voto del pubblico</div>
+
+                  {/* Team checkboxes */}
+                  <div className="text-[10px] text-muted-foreground mb-1">Chi si esibisce? (min. 2)</div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {percorsoState.teams.map(tm => {
+                      const isSelected = percorsoPerforming.includes(tm.id);
+                      return (
+                        <button key={tm.id}
+                          onClick={() => setPercorsoPerforming(prev =>
+                            prev.includes(tm.id) ? prev.filter(id => id !== tm.id) : [...prev, tm.id]
+                          )}
+                          disabled={percorsoState.votingOpen}
+                          className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-bold transition-all text-left disabled:opacity-50 ${isSelected ? 'border-purple-500/60 bg-purple-500/15 text-purple-300' : 'border-border text-muted-foreground'}`}>
+                          <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: tm.color }} />
+                          <span className="flex-1 truncate">{tm.name}</span>
+                          {isSelected && <span className="shrink-0 text-purple-400">✓</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Open / tally / close */}
+                  {!percorsoState.votingOpen ? (
+                    <button
+                      onClick={() => void handlePercorsoOpenVoting()}
+                      disabled={percorsoVoteBusy || percorsoPerforming.length < 2}
+                      className="w-full flex items-center justify-center gap-2 rounded-lg border border-purple-500/40 bg-purple-500/15 py-2 text-xs font-bold text-purple-300 disabled:opacity-40">
+                      {percorsoVoteBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : '🗳️'}
+                      Apri votazione {percorsoPerforming.length >= 2 ? `(${percorsoPerforming.length} squadre)` : ''}
+                    </button>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="rounded-lg border border-purple-500/30 bg-purple-500/10 p-2.5 space-y-1.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-bold text-purple-300 animate-pulse">🟣 Votazione aperta</span>
+                          <span className="text-muted-foreground">
+                            {Math.max(...percorsoState.performingTeamIds.map(tid => (percorsoState.votes[tid] ?? []).length), 0)} voti
+                          </span>
+                        </div>
+                        {percorsoState.performingTeamIds.map(tid => {
+                          const team = percorsoState.teams.find(t => t.id === tid);
+                          const votes = percorsoState.votes[tid] ?? [];
+                          const avg = votes.length > 0 ? votes.reduce((s, v) => s + v.score, 0) / votes.length : 0;
+                          return (
+                            <div key={tid} className="flex items-center gap-1.5 text-xs">
+                              <span className="h-2 w-2 rounded-full shrink-0" style={{ background: team?.color }} />
+                              <span className="flex-1 truncate font-bold">{team?.name}</span>
+                              <span className="text-yellow-400 text-[10px]">{'⭐'.repeat(Math.round(avg))}</span>
+                              <span className="text-muted-foreground tabular-nums w-12 text-right">{avg > 0 ? avg.toFixed(1) : '—'} ({votes.length})</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <button onClick={() => void handlePercorsoCloseVoting()} disabled={percorsoVoteBusy}
+                        className="w-full flex items-center justify-center gap-2 rounded-lg bg-purple-500 py-2 text-xs font-bold text-white disabled:opacity-40">
+                        {percorsoVoteBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                        Chiudi votazione
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Results after closing */}
+                  {!percorsoState.votingOpen && percorsoState.performingTeamIds.length >= 2 &&
+                   percorsoState.performingTeamIds.some(tid => (percorsoState.votes[tid] ?? []).length > 0) && (
+                    <div className="space-y-1.5 border-t border-purple-500/20 pt-2">
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">📊 Risultati</div>
+                      {percorsoState.performingTeamIds
+                        .map(tid => {
+                          const team = percorsoState.teams.find(t => t.id === tid);
+                          const votes = percorsoState.votes[tid] ?? [];
+                          const avg = votes.length > 0 ? votes.reduce((s, v) => s + v.score, 0) / votes.length : 0;
+                          return { tid, team, avg, count: votes.length };
+                        })
+                        .sort((a, b) => b.avg - a.avg)
+                        .map(({ tid, team, avg, count }, rank) => (
+                          <div key={tid} className="flex items-center gap-1.5 text-xs">
+                            <span className={rank === 0 ? 'text-yellow-400' : 'text-muted-foreground'}>{rank === 0 ? '👑' : `${rank + 1}.`}</span>
+                            <span className="h-2 w-2 rounded-full" style={{ background: team?.color }} />
+                            <span className="flex-1 truncate font-bold">{team?.name}</span>
+                            <span className="text-yellow-400 text-[10px]">{'⭐'.repeat(Math.round(avg))}</span>
+                            <span className="text-muted-foreground tabular-nums">{avg > 0 ? avg.toFixed(1) : '—'} ({count})</span>
+                          </div>
+                        ))}
+                      <button onClick={() => void handlePercorsoAssignFromVote()} disabled={percorsoVoteBusy}
+                        className="w-full flex items-center justify-center gap-2 rounded-lg border border-yellow-500/40 bg-yellow-500/10 py-1.5 text-xs font-bold text-yellow-300 disabled:opacity-40">
+                        {percorsoVoteBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : '🏆'}
+                        Assegna punti dal voto
+                      </button>
+                    </div>
+                  )}
+                </div>
+
                 <div className="space-y-2">
-                  <div className="text-xs text-muted-foreground uppercase tracking-widest">Assegna punti</div>
+                  <div className="text-xs text-muted-foreground uppercase tracking-widest">Punti manuali</div>
                   {percorsoState.teams.map(tm => (
                     <div key={tm.id} className="flex items-center gap-2">
                       <span className="h-3 w-3 rounded-full shrink-0" style={{ background: tm.color }} />

@@ -267,6 +267,9 @@ router.post("/percorso/sessions/:id/init", requireAuth, async (req: AuthedReques
     status: "idle",
     lastFlash: null,
     timerStartedAt: null,
+    performingTeamIds: [],
+    votingOpen: false,
+    votes: {},
   };
 
   // Upsert
@@ -300,11 +303,13 @@ router.post("/percorso/sessions/:id/next", requireAuth, async (req: AuthedReques
     status: "running",
     lastFlash: nextIdx === 0 ? { text: "🎉 Inizia il percorso!", type: "step" } : { text: "➡ Prossima sfida!", type: "step" },
     timerStartedAt: new Date().toISOString(),
+    performingTeamIds: [],
+    votingOpen: false,
+    votes: {},
   };
 
   await savePercorsoState(sessionId, updated);
   if (nextIdx === 0) {
-    // Also update game_sessions status
     await db.update(gameSessionsTable).set({ status: "running", startedAt: new Date() }).where(eq(gameSessionsTable.id, sessionId));
   }
 
@@ -335,11 +340,123 @@ router.post("/percorso/sessions/:id/skip", requireAuth, async (req: AuthedReques
     status: "running",
     lastFlash: { text: "⏭ Sfida saltata", type: "step" },
     timerStartedAt: new Date().toISOString(),
+    performingTeamIds: [],
+    votingOpen: false,
+    votes: {},
   };
 
   await savePercorsoState(sessionId, updated);
   emitToEvent(eventId, "path:step_changed", { state: updated, stepIdx: nextIdx });
   res.json(updated);
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+   AUDIENCE VOTING
+══════════════════════════════════════════════════════════════════════════ */
+
+/* POST /percorso/sessions/:id/performing — set which teams are performing */
+router.post("/percorso/sessions/:id/performing", requireAuth, async (req: AuthedRequest, res: Response): Promise<void> => {
+  const sessionId = String(req.params["id"]);
+  if (!isUUID(sessionId)) { res.status(400).json({ error: "sessionId non valido" }); return; }
+
+  const eventId = await guardSessionAuth(req, sessionId);
+  if (!eventId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const state = await getPercorsoState(sessionId);
+  if (!state) { res.status(404).json({ error: "Sessione non inizializzata" }); return; }
+
+  const { teamIds } = req.body as { teamIds?: string[] };
+  if (!Array.isArray(teamIds) || teamIds.length < 2) {
+    res.status(400).json({ error: "Seleziona almeno 2 squadre" }); return;
+  }
+  if (!teamIds.every(id => state.teams.some(t => t.id === id))) {
+    res.status(400).json({ error: "Squadra non trovata in questa sessione" }); return;
+  }
+
+  const updated: PercorsoState = {
+    ...state,
+    performingTeamIds: teamIds,
+    votingOpen: false,
+    votes: {},
+  };
+
+  await savePercorsoState(sessionId, updated);
+  emitToEvent(eventId, "path:performing_set", { state: updated });
+  res.json(updated);
+});
+
+/* POST /percorso/sessions/:id/voting/open */
+router.post("/percorso/sessions/:id/voting/open", requireAuth, async (req: AuthedRequest, res: Response): Promise<void> => {
+  const sessionId = String(req.params["id"]);
+  if (!isUUID(sessionId)) { res.status(400).json({ error: "sessionId non valido" }); return; }
+
+  const eventId = await guardSessionAuth(req, sessionId);
+  if (!eventId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const state = await getPercorsoState(sessionId);
+  if (!state) { res.status(404).json({ error: "Sessione non inizializzata" }); return; }
+  if (state.performingTeamIds.length < 2) {
+    res.status(422).json({ error: "Seleziona almeno 2 squadre prima di aprire il voto" }); return;
+  }
+
+  const updated: PercorsoState = { ...state, votingOpen: true, votes: {} };
+  await savePercorsoState(sessionId, updated);
+  emitToEvent(eventId, "path:voting_opened", { state: updated });
+  res.json(updated);
+});
+
+/* POST /percorso/sessions/:id/voting/close */
+router.post("/percorso/sessions/:id/voting/close", requireAuth, async (req: AuthedRequest, res: Response): Promise<void> => {
+  const sessionId = String(req.params["id"]);
+  if (!isUUID(sessionId)) { res.status(400).json({ error: "sessionId non valido" }); return; }
+
+  const eventId = await guardSessionAuth(req, sessionId);
+  if (!eventId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const state = await getPercorsoState(sessionId);
+  if (!state) { res.status(404).json({ error: "Sessione non inizializzata" }); return; }
+
+  const updated: PercorsoState = { ...state, votingOpen: false };
+  await savePercorsoState(sessionId, updated);
+  emitToEvent(eventId, "path:voting_closed", { state: updated });
+  res.json(updated);
+});
+
+/* POST /percorso/sessions/:id/vote — PUBLIC (phones, no auth) */
+router.post("/percorso/sessions/:id/vote", async (req: Request, res): Promise<void> => {
+  const sessionId = String(req.params["id"]);
+  if (!isUUID(sessionId)) { res.status(400).json({ error: "sessionId non valido" }); return; }
+
+  const state = await getPercorsoState(sessionId);
+  if (!state) { res.status(404).json({ error: "Sessione non trovata" }); return; }
+  if (!state.votingOpen) { res.status(409).json({ error: "Votazione non aperta" }); return; }
+
+  const { performingTeamId, score, voterId } = req.body as {
+    performingTeamId?: string; score?: number; voterId?: string;
+  };
+  if (!performingTeamId || !isUUID(performingTeamId)) {
+    res.status(400).json({ error: "performingTeamId obbligatorio" }); return;
+  }
+  if (!state.performingTeamIds.includes(performingTeamId)) {
+    res.status(400).json({ error: "Squadra non in esibizione" }); return;
+  }
+  const s = Math.min(5, Math.max(1, Math.round(Number(score) || 3)));
+  const vid = String(voterId || "anon").slice(0, 64);
+
+  const existing = state.votes[performingTeamId] ?? [];
+  const idx = existing.findIndex(e => e.voterId === vid);
+  const updated_entries = idx >= 0
+    ? existing.map((e, i) => i === idx ? { ...e, score: s } : e)
+    : [...existing, { voterId: vid, score: s }];
+
+  const updatedVotes = { ...state.votes, [performingTeamId]: updated_entries };
+  const updated: PercorsoState = { ...state, votes: updatedVotes };
+
+  // Get eventId for emit
+  const [gs] = await db.select().from(gameSessionsTable).where(eq(gameSessionsTable.id, sessionId));
+  await savePercorsoState(sessionId, updated);
+  if (gs?.eventId) emitToEvent(gs.eventId, "path:vote_cast", { state: updated });
+  res.json({ ok: true });
 });
 
 /* POST /percorso/sessions/:id/score */

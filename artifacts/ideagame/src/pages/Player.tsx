@@ -43,11 +43,15 @@ interface QuizzoneReveal {
 interface ActiveSession { id: string; status: string; gameSlug: string; currentRound: number; totalRounds: number }
 interface PercorsoStepInfo { id: string; title: string; description: string; challengeType: string; points: number; timeLimit: number; optionalMediaUrl: string | null; }
 interface PercorsoTeamInfo { id: string; name: string; color: string; score: number; }
+interface PercorsoVoteEntryP { voterId: string; score: number; }
 interface PercorsoStateP {
   setId: string; setName: string; steps: PercorsoStepInfo[];
   currentStepIdx: number; teams: PercorsoTeamInfo[];
   status: 'idle' | 'running' | 'ended';
   lastFlash: { text: string; type: string } | null; timerStartedAt: string | null;
+  performingTeamIds: string[];
+  votingOpen: boolean;
+  votes: Record<string, PercorsoVoteEntryP[]>;
 }
 
 interface AdultOnlyCardP {
@@ -1127,11 +1131,33 @@ const PERCORSO_EMOJIS: Record<string, string> = {
   veloce: '🏃', coppia: '👫', reazione: '😱', fantasia: '🌟',
 };
 
+const BASE_P = (import.meta.env.BASE_URL as string) ?? '/';
+async function apiFetchP(path: string, opts?: RequestInit) {
+  const url = `${BASE_P}api${path}`.replace(/\/\//g, '/');
+  const r = await fetch(url, { credentials: 'include', ...opts });
+  return r.json().catch(() => ({}));
+}
+
 function PercorsoPhoneController({ state, teamId, teamColor }: {
   state: PercorsoStateP | null;
   teamId: string | null;
   teamColor: string;
 }) {
+  const [selectedVotes, setSelectedVotes] = useState<Record<string, number>>({});
+  const [hasVoted, setHasVoted] = useState(false);
+  const [voteLoading, setVoteLoading] = useState(false);
+
+  // Reset votes when step changes
+  useEffect(() => {
+    setSelectedVotes({});
+    setHasVoted(false);
+  }, [state?.currentStepIdx]);
+
+  // Also reset when voting re-opens
+  useEffect(() => {
+    if (state?.votingOpen) { setHasVoted(false); setSelectedVotes({}); }
+  }, [state?.votingOpen]);
+
   if (!state) {
     return (
       <div className="mt-8 flex flex-col items-center gap-4 text-center">
@@ -1145,6 +1171,30 @@ function PercorsoPhoneController({ state, teamId, teamColor }: {
   const currentStep = state.currentStepIdx >= 0 ? state.steps[state.currentStepIdx] ?? null : null;
   const emoji = currentStep ? (PERCORSO_EMOJIS[currentStep.challengeType] ?? '🎯') : null;
   const sortedTeams = [...state.teams].sort((a, b) => b.score - a.score);
+  const isPerforming = teamId ? state.performingTeamIds.includes(teamId) : false;
+  const canVote = state.votingOpen && !isPerforming && state.performingTeamIds.length >= 2;
+  const allVoted = state.performingTeamIds.every(tid => selectedVotes[tid] !== undefined);
+
+  const voterId = typeof window !== 'undefined' ? (localStorage.getItem('ideagame:player:id') ?? 'anon') : 'anon';
+
+  const handleSubmitVote = async () => {
+    if (!state || voteLoading) return;
+    const sessionId = typeof window !== 'undefined'
+      ? (new URLSearchParams(window.location.search).get('s') ?? '') : '';
+    if (!sessionId) return;
+    setVoteLoading(true);
+    try {
+      for (const [performingTeamId, score] of Object.entries(selectedVotes)) {
+        await apiFetchP(`/percorso/sessions/${sessionId}/vote`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ performingTeamId, score, voterId }),
+        });
+      }
+      setHasVoted(true);
+    } catch { /* silent */ }
+    finally { setVoteLoading(false); }
+  };
 
   // Timer countdown
   const [timeLeft, setTimeLeft] = useState(currentStep?.timeLimit ?? 30);
@@ -1187,36 +1237,110 @@ function PercorsoPhoneController({ state, teamId, teamColor }: {
           {/* Step counter */}
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>Sfida {state.currentStepIdx + 1}/{state.steps.length}</span>
-            <span className="tabular-nums">{Math.ceil(timeLeft)}s</span>
+            {!canVote && <span className="tabular-nums">{Math.ceil(timeLeft)}s</span>}
           </div>
 
-          {/* Timer bar */}
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-border/40">
-            <div className="h-full rounded-full transition-all duration-300"
-              style={{
-                width: `${currentStep.timeLimit > 0 ? (timeLeft / currentStep.timeLimit) * 100 : 0}%`,
-                background: timeLeft / currentStep.timeLimit > 0.5 ? '#22c55e' : timeLeft / currentStep.timeLimit > 0.25 ? '#eab308' : '#ef4444',
-              }} />
-          </div>
-
-          {/* Challenge card */}
-          <motion.div
-            key={state.currentStepIdx}
-            initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
-            className="rounded-2xl border border-primary/30 bg-primary/10 px-5 py-5 text-center">
-            <div className="text-4xl mb-2">{emoji}</div>
-            <div className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: teamColor }}>
-              {currentStep.challengeType} • {currentStep.points} pt
+          {/* Timer bar (hide during voting) */}
+          {!canVote && !isPerforming && (
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-border/40">
+              <div className="h-full rounded-full transition-all duration-300"
+                style={{
+                  width: `${currentStep.timeLimit > 0 ? (timeLeft / currentStep.timeLimit) * 100 : 0}%`,
+                  background: timeLeft / currentStep.timeLimit > 0.5 ? '#22c55e' : timeLeft / currentStep.timeLimit > 0.25 ? '#eab308' : '#ef4444',
+                }} />
             </div>
-            <div className="text-display text-xl font-black leading-snug">{currentStep.title}</div>
-            {currentStep.description && (
-              <div className="mt-2 text-sm text-muted-foreground">{currentStep.description}</div>
-            )}
-          </motion.div>
+          )}
 
-          {/* Optional media */}
-          {currentStep.optionalMediaUrl && (
-            <img src={currentStep.optionalMediaUrl} alt="" className="w-full max-h-40 rounded-xl object-contain border border-border" />
+          {/* PERFORMING: team is on stage */}
+          {isPerforming && (
+            <motion.div key={`performing-${state.currentStepIdx}`}
+              initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+              className="rounded-2xl border-2 border-yellow-500/50 bg-yellow-500/10 px-5 py-6 text-center space-y-3">
+              <div className="text-5xl">🎭</div>
+              <div className="text-display text-xl font-black text-yellow-400">Stai esibendo!</div>
+              <div className="text-sm text-white/60">Il pubblico ti sta guardando…</div>
+              <div className="text-display text-lg font-black leading-snug text-white">{currentStep.title}</div>
+              {state.votingOpen && (
+                <div className="rounded-full border border-purple-500/40 bg-purple-500/15 px-4 py-1.5 text-xs font-bold text-purple-300 animate-pulse">
+                  🗳️ Il pubblico sta votando…
+                </div>
+              )}
+            </motion.div>
+          )}
+
+          {/* VOTING: non-performing teams vote */}
+          {canVote && !hasVoted && (
+            <motion.div key={`voting-${state.currentStepIdx}`}
+              initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+              className="rounded-2xl border border-purple-500/40 bg-purple-500/10 px-4 py-4 space-y-4">
+              <div className="text-center">
+                <div className="text-2xl mb-1">🗳️</div>
+                <div className="text-display text-lg font-black text-purple-300">Vota chi ha convinto!</div>
+                <div className="text-xs text-muted-foreground">Dai un voto da 1 a 5 stelle a ogni squadra</div>
+              </div>
+              <div className="space-y-3">
+                {state.performingTeamIds.map(tid => {
+                  const team = state.teams.find(t => t.id === tid);
+                  const selected = selectedVotes[tid];
+                  return (
+                    <div key={tid} className="space-y-1.5">
+                      <div className="flex items-center gap-2 text-sm font-bold">
+                        <span className="h-3 w-3 rounded-full shrink-0" style={{ background: team?.color }} />
+                        <span>{team?.name ?? tid}</span>
+                      </div>
+                      <div className="flex gap-1.5 justify-center">
+                        {[1, 2, 3, 4, 5].map(star => (
+                          <button key={star}
+                            onClick={() => setSelectedVotes(prev => ({ ...prev, [tid]: star }))}
+                            className={`text-2xl transition-transform active:scale-90 ${star <= (selected ?? 0) ? 'opacity-100' : 'opacity-25'}`}>
+                            ⭐
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <button
+                onClick={() => void handleSubmitVote()}
+                disabled={!allVoted || voteLoading}
+                className="w-full rounded-2xl bg-purple-500 py-3 text-sm font-black text-white disabled:opacity-40 flex items-center justify-center gap-2">
+                {voteLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {allVoted ? 'Invia voto! 🎉' : `Vota tutte le ${state.performingTeamIds.length} squadre`}
+              </button>
+            </motion.div>
+          )}
+
+          {/* VOTED confirmation */}
+          {canVote && hasVoted && (
+            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+              className="rounded-2xl border border-green-500/40 bg-green-500/10 px-5 py-6 text-center">
+              <div className="text-4xl mb-2">✅</div>
+              <div className="text-display text-lg font-black text-green-400">Voto inviato!</div>
+              <div className="mt-1 text-sm text-white/60">Grazie per aver votato</div>
+            </motion.div>
+          )}
+
+          {/* Normal challenge card (when not performing and not in voting) */}
+          {!isPerforming && !canVote && (
+            <>
+              <motion.div
+                key={state.currentStepIdx}
+                initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+                className="rounded-2xl border border-primary/30 bg-primary/10 px-5 py-5 text-center">
+                <div className="text-4xl mb-2">{emoji}</div>
+                <div className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: teamColor }}>
+                  {currentStep.challengeType} • {currentStep.points} pt
+                </div>
+                <div className="text-display text-xl font-black leading-snug">{currentStep.title}</div>
+                {currentStep.description && (
+                  <div className="mt-2 text-sm text-muted-foreground">{currentStep.description}</div>
+                )}
+              </motion.div>
+              {currentStep.optionalMediaUrl && (
+                <img src={currentStep.optionalMediaUrl} alt="" className="w-full max-h-40 rounded-xl object-contain border border-border" />
+              )}
+            </>
           )}
         </>
       )}

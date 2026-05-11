@@ -15,11 +15,15 @@ interface PercorsoStep {
 }
 interface PercorsoTeam { id: string; name: string; color: string; score: number; }
 interface PercorsoFlash { text: string; type: 'score' | 'step' | 'end'; }
+interface PercorsoVoteEntry { voterId: string; score: number; }
 interface PercorsoState {
   setId: string; setName: string; steps: PercorsoStep[];
   currentStepIdx: number; teams: PercorsoTeam[];
   status: 'idle' | 'running' | 'ended';
   lastFlash: PercorsoFlash | null; timerStartedAt: string | null;
+  performingTeamIds: string[];
+  votingOpen: boolean;
+  votes: Record<string, PercorsoVoteEntry[]>;
 }
 
 const CHALLENGE_CONFIG: Record<string, { label: string; color: string }> = {
@@ -114,10 +118,14 @@ export default function GamePercorso() {
   useEffect(() => {
     if (!eventId) return;
     const unsubs = [
-      on<{ state: PercorsoState }>('path:started',      ({ state: s }) => { setState(s); showFlash({ text: 'Percorso iniziato!', type: 'step' }, 2800, 'score_stinger'); }),
-      on<{ state: PercorsoState }>('path:step_changed', ({ state: s }) => { setState(s); if (s.lastFlash) showFlash(s.lastFlash, 2800, 'transition_whoosh'); }),
+      on<{ state: PercorsoState }>('path:started',       ({ state: s }) => { setState(s); showFlash({ text: 'Percorso iniziato!', type: 'step' }, 2800, 'score_stinger'); }),
+      on<{ state: PercorsoState }>('path:step_changed',  ({ state: s }) => { setState(s); if (s.lastFlash) showFlash(s.lastFlash, 2800, 'transition_whoosh'); }),
       on<{ state: PercorsoState; points: number }>('path:score_updated', ({ state: s }) => { setState(s); if (s.lastFlash) showFlash(s.lastFlash, 2800, 'score_stinger'); }),
-      on<{ state: PercorsoState }>('path:ended',        ({ state: s }) => { setState(s); showFlash({ text: 'Fine percorso!', type: 'end' }, 5000, 'winner_stinger'); }),
+      on<{ state: PercorsoState }>('path:ended',         ({ state: s }) => { setState(s); showFlash({ text: 'Fine percorso!', type: 'end' }, 5000, 'winner_stinger'); }),
+      on<{ state: PercorsoState }>('path:performing_set',({ state: s }) => setState(s)),
+      on<{ state: PercorsoState }>('path:voting_opened', ({ state: s }) => { setState(s); showFlash({ text: '🗳️ Votazione aperta!', type: 'step' }, 2500); }),
+      on<{ state: PercorsoState }>('path:vote_cast',     ({ state: s }) => setState(s)),
+      on<{ state: PercorsoState }>('path:voting_closed', ({ state: s }) => { setState(s); showFlash({ text: '🗳️ Votazione chiusa!', type: 'step' }, 2500); }),
     ];
     return () => unsubs.forEach(u => u());
   }, [eventId, on, showFlash]);
@@ -275,6 +283,77 @@ export default function GamePercorso() {
                 boxShadow: i === state.currentStepIdx ? `0 0 8px ${T.accent}88` : 'none',
               }} />
           ))}
+        </div>
+      )}
+
+      {/* Performing teams + vote overlay */}
+      {state.status === 'running' && state.performingTeamIds.length >= 2 && (
+        <div className="absolute top-16 right-4 z-20 flex flex-col items-end gap-2">
+          {/* Performing badge */}
+          <div className="rounded-2xl border border-yellow-500/40 bg-black/70 px-3 py-2 backdrop-blur-sm">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-yellow-400/70 mb-1">🎭 In esibizione</div>
+            <div className="flex flex-col gap-1">
+              {state.performingTeamIds.map(tid => {
+                const team = state.teams.find(t => t.id === tid);
+                return (
+                  <div key={tid} className="flex items-center gap-1.5 text-xs font-bold">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: team?.color }} />
+                    <span className="text-white">{team?.name ?? tid}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Live vote tally */}
+          {state.votingOpen && (
+            <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
+              className="rounded-2xl border border-purple-500/50 bg-black/80 px-3 py-2 backdrop-blur-sm min-w-[140px]">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-purple-400 mb-1.5 animate-pulse">
+                🗳️ Voto in corso…
+              </div>
+              {state.performingTeamIds.map(tid => {
+                const team = state.teams.find(t => t.id === tid);
+                const votes = state.votes[tid] ?? [];
+                const avg = votes.length > 0 ? votes.reduce((s, v) => s + v.score, 0) / votes.length : 0;
+                return (
+                  <div key={tid} className="flex items-center gap-1.5 text-xs mb-1">
+                    <span className="h-2 w-2 rounded-full shrink-0" style={{ background: team?.color }} />
+                    <span className="flex-1 truncate text-white/80">{team?.name ?? tid}</span>
+                    <span className="text-yellow-400 text-[10px]">{'⭐'.repeat(Math.round(avg))}</span>
+                    <span className="text-white/40 tabular-nums text-[10px]">{votes.length}</span>
+                  </div>
+                );
+              })}
+            </motion.div>
+          )}
+
+          {/* Vote results after closing */}
+          {!state.votingOpen && state.performingTeamIds.some(tid => (state.votes[tid] ?? []).length > 0) && (
+            <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
+              className="rounded-2xl border border-green-500/40 bg-black/80 px-3 py-2 backdrop-blur-sm min-w-[140px]">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-green-400 mb-1.5">
+                📊 Risultati voto
+              </div>
+              {state.performingTeamIds
+                .map(tid => {
+                  const team = state.teams.find(t => t.id === tid);
+                  const votes = state.votes[tid] ?? [];
+                  const avg = votes.length > 0 ? votes.reduce((s, v) => s + v.score, 0) / votes.length : 0;
+                  return { tid, team, avg, count: votes.length };
+                })
+                .sort((a, b) => b.avg - a.avg)
+                .map(({ tid, team, avg, count }, rank) => (
+                  <div key={tid} className="flex items-center gap-1.5 text-xs mb-1">
+                    <span className={rank === 0 ? 'text-yellow-400' : 'text-white/40'}>{rank === 0 ? '👑' : `${rank + 1}.`}</span>
+                    <span className="h-2 w-2 rounded-full shrink-0" style={{ background: team?.color }} />
+                    <span className="flex-1 truncate text-white/80">{team?.name ?? tid}</span>
+                    <span className="text-yellow-400 text-[10px]">{avg > 0 ? `⭐${avg.toFixed(1)}` : '—'}</span>
+                    <span className="text-white/40 tabular-nums text-[10px]">({count})</span>
+                  </div>
+                ))}
+            </motion.div>
+          )}
         </div>
       )}
 

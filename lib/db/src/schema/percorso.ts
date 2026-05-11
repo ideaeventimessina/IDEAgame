@@ -52,6 +52,11 @@ export interface PercorsoFlash {
   type: "score" | "step" | "end";
 }
 
+export interface PercorsoVoteEntry {
+  voterId: string;
+  score: number; // 1-5
+}
+
 export interface PercorsoState {
   setId: string;
   setName: string;
@@ -61,6 +66,10 @@ export interface PercorsoState {
   status: "idle" | "running" | "ended";
   lastFlash: PercorsoFlash | null;
   timerStartedAt: string | null; // ISO — for client-side countdown
+  // Audience voting
+  performingTeamIds: string[];   // which teams are performing this step
+  votingOpen: boolean;           // true while audience can vote
+  votes: Record<string, PercorsoVoteEntry[]>; // performingTeamId → entries
 }
 
 /* ─── Live session state ─────────────────────────────────────────────── */
