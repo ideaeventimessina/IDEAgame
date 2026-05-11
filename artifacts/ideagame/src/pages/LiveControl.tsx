@@ -1826,6 +1826,32 @@ export default function LiveControl() {
             )}
           </div>
 
+          {selectedEventId && selectedEvent?.status === 'live' && (
+            <div className="flex items-center justify-between rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2">
+              <div className="text-xs text-muted-foreground">
+                <span className="mr-1.5 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-green-400 align-middle" />
+                Serata in corso
+              </div>
+              <button
+                onClick={() => confirm({
+                  title: 'Chiudi serata',
+                  message: 'Il proiettore mostrerà "Serata conclusa". I giocatori non potranno più unirsi.',
+                  confirmLabel: 'Chiudi serata',
+                  danger: true,
+                  onConfirm: async () => {
+                    try {
+                      await apiFetch(`/events/${selectedEventId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'ended' }) });
+                      toast({ title: 'Serata chiusa', description: 'Il proiettore ora mostra la schermata di fine serata.' });
+                    } catch (e) { toast({ title: 'Errore', description: (e as Error).message, variant: 'destructive' }); }
+                  },
+                })}
+                className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-1 text-xs font-bold text-destructive hover:bg-destructive/20 transition-colors"
+              >
+                Chiudi serata ✕
+              </button>
+            </div>
+          )}
+
           {selectedEventId && (
             <div>
               <div className="flex items-center justify-between mb-1">

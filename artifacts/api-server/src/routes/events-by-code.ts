@@ -20,11 +20,6 @@ router.get("/events/by-code/:code", async (req, res): Promise<void> => {
     return;
   }
 
-  if (event.status !== "live") {
-    res.status(409).json({ error: "Event is not live", status: event.status });
-    return;
-  }
-
   const teams = await db
     .select()
     .from(teamsTable)

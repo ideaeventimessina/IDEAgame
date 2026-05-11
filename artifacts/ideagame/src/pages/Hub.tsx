@@ -142,7 +142,7 @@ export default function Hub() {
       try {
         const r = await fetch(`/api/events/by-code/${activeCode}`);
         if (!r.ok) {
-          if (!cancelled) { setCodeError('Codice non valido o evento non attivo.'); setPublicEvent(null); }
+          if (!cancelled) { setCodeError('Codice non valido.'); setPublicEvent(null); }
           return;
         }
         const { event } = await r.json() as { event: PublicEvent };
@@ -662,6 +662,39 @@ export default function Hub() {
             Accedi come animatore →
           </button>
         </motion.div>
+      </div>
+    );
+  }
+
+  // ── Public projector: serata conclusa ────────────────────────────────
+  if (!user && publicEvent && publicEvent.status !== 'live') {
+    return (
+      <div className="relative h-screen w-full overflow-hidden select-none flex flex-col items-center justify-center"
+        style={{ background: 'radial-gradient(ellipse 160% 90% at 50% -10%, #1a0830 0%, #0a0318 50%, #030110 100%)' }}>
+        <HubStars />
+        <div className="relative z-10 flex flex-col items-center gap-8 text-center px-8">
+          <div className="flex items-center justify-center rounded-2xl bg-white px-4 py-2 shadow-xl">
+            <img src="/logo.png" alt="IDEA Games" className="h-12 w-auto object-contain" />
+          </div>
+          <div>
+            <div className="text-display text-5xl sm:text-6xl font-black"
+              style={{ background: 'linear-gradient(135deg, #F5B642 0%, #fff8e8 60%, #F5B642 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+              Serata conclusa
+            </div>
+            <div className="mt-3 text-lg text-muted-foreground">{publicEvent.name}</div>
+            {publicEvent.venue && <div className="mt-1 text-sm text-muted-foreground/60">{publicEvent.venue}</div>}
+          </div>
+          <div className="text-4xl">🎉</div>
+          <div className="text-muted-foreground/60 text-sm">Grazie per aver partecipato!</div>
+        </div>
+        {/* Jonny — scontornato, fermo */}
+        <div className="pointer-events-none absolute bottom-0 right-10 hidden lg:block" style={{ width: 220, height: 340 }}>
+          <motion.img src="/jonny-master-nobg.png" alt="Jonny"
+            className="w-full h-full object-contain object-bottom"
+            style={{ filter: 'drop-shadow(0 0 40px rgba(245,182,66,0.45))' }}
+            animate={{ y: [0, -12, 0] }}
+            transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }} />
+        </div>
       </div>
     );
   }
