@@ -184,14 +184,13 @@ Genera almeno 12 canzoni legate al tema ${theme}. Varia tipi: indovina (indovina
   "jonnyIntro": "frase apertura Jonny",
   "pairs": [
     {
-      "label": "nome coppia (visibile dopo match)",
-      "imageDescription": "descrizione dettagliata immagine A (per ricerca manuale)",
-      "imageDescriptionB": "descrizione dettagliata immagine B (il match)",
+      "label": "nome coppia in italiano (visibile dopo match, es. 'Torre Eiffel')",
+      "keyword": "parola chiave in inglese per ricerca immagine su Flickr (es. 'eiffel tower paris')",
       "hint": "suggerimento opzionale"
     }
   ]
 }
-Genera almeno 8 coppie tematiche su ${theme}. Le immagini devono essere facilmente trovabili online.`,
+Genera almeno 8 coppie tematiche su ${theme}. Il campo 'keyword' deve essere in inglese e specifico per trovare foto reali pertinenti (usa termini Flickr comuni: nomi propri, luoghi, oggetti, animali). Evita termini astratti.`,
   };
 
   const selectedInstructions = selectedGames
@@ -577,14 +576,20 @@ router.post("/jonny/items/:id/import", requireAuth, async (req: AuthedRequest, r
         }).returning();
         const pairs = (payload.pairs as Array<Record<string, unknown>>) || [];
         if (pairs.length > 0) {
-          for (const p of pairs) {
+          for (let pi = 0; pi < pairs.length; pi++) {
+            const p = pairs[pi]!;
             const label = (p.label as string) || "coppia";
+            const keyword = (p.keyword as string) || label;
             const pairId = Math.random().toString(36).slice(2, 10);
-            const seedA = encodeURIComponent(label + "-a").slice(0, 30);
-            const seedB = encodeURIComponent(label + "-b").slice(0, 30);
+            // loremflickr returns real thematic Flickr photos matching the keyword
+            // Different lock values guarantee two distinct photos of the same subject
+            const lockBase = Math.abs(
+              Array.from(label).reduce((h, c) => (h << 5) - h + c.charCodeAt(0), 0)
+            ) % 900 + pi * 2;
+            const kwEnc = encodeURIComponent(keyword.toLowerCase().replace(/\s+/g, '+'));
             await db.insert(cardsTable).values([
-              { cardSetId: set!.id, kind: "question" as const, prompts: { it: label }, imageUrl: `https://picsum.photos/seed/${seedA}/400/300`, pairId },
-              { cardSetId: set!.id, kind: "question" as const, prompts: { it: label }, imageUrl: `https://picsum.photos/seed/${seedB}/400/300`, pairId },
+              { cardSetId: set!.id, kind: "question" as const, prompts: { it: label }, imageUrl: `https://loremflickr.com/400/300/${kwEnc}?lock=${lockBase}`, pairId },
+              { cardSetId: set!.id, kind: "question" as const, prompts: { it: label }, imageUrl: `https://loremflickr.com/400/300/${kwEnc}?lock=${lockBase + 1}`, pairId },
             ]);
           }
         }
