@@ -305,6 +305,19 @@ paths:
   /players/{id}:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string } }
+    patch:
+      operationId: updatePlayer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdatePlayerBody" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Player" }
     delete:
       operationId: deletePlayer
       responses:
@@ -999,6 +1012,12 @@ components:
       properties:
         nickname: { type: string }
         avatarColor: { type: string }
+        teamId: { type: ["string", "null"] }
+
+    UpdatePlayerBody:
+      type: object
+      properties:
+        nickname: { type: string }
         teamId: { type: ["string", "null"] }
 
     Score:

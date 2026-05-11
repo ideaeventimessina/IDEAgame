@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Response } from "express";
 import { eq, and } from "drizzle-orm";
 import { db, playersTable, eventsTable, teamsTable } from "@workspace/db";
-import { ListPlayersResponse, JoinPlayerBody } from "@workspace/api-zod";
+import { ListPlayersResponse, JoinPlayerBody, UpdatePlayerBody } from "@workspace/api-zod";
 import { type AuthedRequest, requireAuth } from "../middlewares/auth";
 import { emitToEvent } from "../socket";
 import { playerJoinLimiter } from "../middlewares/rateLimit";
@@ -90,6 +90,30 @@ router.post("/events/:id/players", playerJoinLimiter, async (req: AuthedRequest,
   emitToEvent(eventId, "player:joined", p);
 
   res.status(201).json(p);
+});
+
+router.patch("/players/:id", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  const [existing] = await db.select().from(playersTable).where(eq(playersTable.id, id));
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+  if (!(await eventOwned(req, existing.eventId))) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const parsed = UpdatePlayerBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+
+  const patch: Partial<{ nickname: string; teamId: string | null }> = {};
+  if (parsed.data.nickname !== undefined) {
+    const nick = parsed.data.nickname.trim();
+    if (nick.length < 2 || nick.length > 24) { res.status(422).json({ error: "Nickname tra 2 e 24 caratteri" }); return; }
+    patch.nickname = nick;
+  }
+  if (parsed.data.teamId !== undefined) patch.teamId = parsed.data.teamId;
+
+  if (Object.keys(patch).length === 0) { res.json(existing); return; }
+
+  const [updated] = await db.update(playersTable).set(patch).where(eq(playersTable.id, id)).returning();
+  emitToEvent(existing.eventId, "player:joined", updated);
+  res.json(updated);
 });
 
 router.delete("/players/:id", requireAuth, async (req: AuthedRequest, res): Promise<void> => {

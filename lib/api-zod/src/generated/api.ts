@@ -381,6 +381,25 @@ export const JoinPlayerBody = zod.object({
   teamId: zod.string().nullish(),
 });
 
+export const UpdatePlayerParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const UpdatePlayerBody = zod.object({
+  nickname: zod.string().optional(),
+  teamId: zod.string().nullish(),
+});
+
+export const UpdatePlayerResponse = zod.object({
+  id: zod.string(),
+  eventId: zod.string(),
+  teamId: zod.string().nullish(),
+  nickname: zod.string(),
+  avatarColor: zod.string(),
+  isConnected: zod.boolean(),
+  createdAt: zod.coerce.date(),
+});
+
 export const DeletePlayerParams = zod.object({
   id: zod.coerce.string(),
 });

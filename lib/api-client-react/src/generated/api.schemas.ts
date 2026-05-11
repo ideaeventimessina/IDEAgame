@@ -254,6 +254,12 @@ export interface CreatePlayerBody {
   teamId?: string | null;
 }
 
+export interface UpdatePlayerBody {
+  nickname?: string;
+  /** @nullable */
+  teamId?: string | null;
+}
+
 export interface Score {
   id: string;
   eventId: string;
