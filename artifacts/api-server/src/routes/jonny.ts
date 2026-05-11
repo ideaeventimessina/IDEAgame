@@ -8,6 +8,7 @@ import {
   wordBackSetsTable, wordBackCardsTable, karaokeSetsTable, karaokeTracksTable,
   freestyleSetsTable, freestyleWordsTable,
   saraMusicaSetsTable, saraMusicaTracksTable,
+  cardSetsTable, cardsTable,
 } from "@workspace/db";
 import { type AuthedRequest, requireAuth } from "../middlewares/auth";
 import OpenAI from "openai";
@@ -563,9 +564,32 @@ router.post("/jonny/items/:id/import", requireAuth, async (req: AuthedRequest, r
       }
 
       case "gioco-delle-coppie": {
-        // No automatic import for coppie — images must be uploaded manually
-        res.json({ message: "Gioco delle Coppie richiede upload manuale delle immagini. Usa Admin → Deck di carte per creare il set.", item });
-        return;
+        // Create card set with auto-generated placeholder images (picsum seeds from label)
+        const slug = (payload.setTitle as string || item.title)
+          .toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "").slice(0, 48)
+          + "-" + Date.now().toString(36);
+        const [set] = await db.insert(cardSetsTable).values({
+          slug,
+          name: (payload.setTitle as string) || item.title,
+          description: (payload.description as string) || "",
+          adultOnly: "false",
+          tenantId: user.tenantId ?? undefined,
+        }).returning();
+        const pairs = (payload.pairs as Array<Record<string, unknown>>) || [];
+        if (pairs.length > 0) {
+          for (const p of pairs) {
+            const label = (p.label as string) || "coppia";
+            const pairId = Math.random().toString(36).slice(2, 10);
+            const seedA = encodeURIComponent(label + "-a").slice(0, 30);
+            const seedB = encodeURIComponent(label + "-b").slice(0, 30);
+            await db.insert(cardsTable).values([
+              { cardSetId: set!.id, kind: "question" as const, prompts: { it: label }, imageUrl: `https://picsum.photos/seed/${seedA}/400/300`, pairId },
+              { cardSetId: set!.id, kind: "question" as const, prompts: { it: label }, imageUrl: `https://picsum.photos/seed/${seedB}/400/300`, pairId },
+            ]);
+          }
+        }
+        targetEntityId = set!.id;
+        break;
       }
 
       default:

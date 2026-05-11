@@ -230,15 +230,14 @@ function PayloadPreview({ gameSlug, payload }: { gameSlug: string; payload: Reco
     const pairs = (payload.pairs as Array<Record<string, unknown>>) || [];
     return (
       <div className="space-y-2 mt-3">
-        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-400">
-          ⚠️ Le coppie richiedono upload manuale delle immagini. Usa Admin → Deck di carte dopo l'import.
+        <div className="rounded-xl border border-primary/30 bg-primary/8 px-3 py-2 text-xs text-primary/80">
+          ✅ Importa per creare il deck con <strong>{pairs.length} coppie</strong> — immagini placeholder incluse. Poi sostituiscile in Admin → Deck di carte.
         </div>
-        <div className="text-xs uppercase tracking-widest text-muted-foreground mt-2">{pairs.length} coppie:</div>
+        <div className="text-xs uppercase tracking-widest text-muted-foreground mt-2">{pairs.length} coppie generate:</div>
         {pairs.slice(0, expanded ? 999 : 4).map((p, i) => (
           <div key={i} className="rounded-lg border border-border/50 bg-card/40 p-2.5">
             <div className="text-sm font-bold">{p.label as string}</div>
-            <p className="mt-1 text-[11px] text-muted-foreground">📷 A: {p.imageDescription as string}</p>
-            <p className="text-[11px] text-muted-foreground">📷 B: {p.imageDescriptionB as string}</p>
+            {p.imageDescription && <p className="mt-1 text-[11px] text-muted-foreground">💡 {p.imageDescription as string}</p>}
           </div>
         ))}
         {pairs.length > 4 && <button onClick={() => setExpanded(e => !e)} className="text-xs text-primary hover:underline">{expanded ? '▲' : `+${pairs.length - 4} altre ▼`}</button>}
