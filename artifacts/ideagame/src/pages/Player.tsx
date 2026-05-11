@@ -613,7 +613,31 @@ export default function Player() {
                 placeholder="Marco" maxLength={24} autoFocus
                 className="mt-2 w-full rounded-2xl border border-border bg-card px-5 py-4 text-2xl font-bold text-foreground outline-none focus:border-primary" />
 
-              {/* Modalità individuale: nessuna selezione squadra */}
+              {teams.length > 0 && (
+                <>
+                  <label className="mt-8 block text-sm font-bold uppercase tracking-widest text-muted-foreground">
+                    Scegli la tua squadra
+                  </label>
+                  <div className="mt-3 grid grid-cols-2 gap-3">
+                    {teams.map(tm => (
+                      <button
+                        key={tm.id}
+                        type="button"
+                        onClick={() => setSelectedTeam(tm.id)}
+                        className="flex items-center gap-3 rounded-2xl border-2 px-4 py-3 text-left transition-all"
+                        style={{
+                          borderColor: selectedTeam === tm.id ? tm.color : 'transparent',
+                          background: selectedTeam === tm.id ? `${tm.color}22` : 'hsl(248 70% 8%)',
+                          boxShadow: selectedTeam === tm.id ? `0 0 16px ${tm.color}44` : 'none',
+                        }}
+                      >
+                        <div className="h-4 w-4 shrink-0 rounded-full" style={{ background: tm.color }} />
+                        <span className="font-bold leading-tight">{tm.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Sticky CTA — sempre visibile sopra il DemoSwitcher */}
