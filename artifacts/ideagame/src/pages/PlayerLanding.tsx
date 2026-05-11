@@ -98,7 +98,7 @@ function Hero({ onJoin, onHome, onAdmin, onScrollDown }: { onJoin: () => void; o
         initial={{ opacity: 0, scale: 1.04 }} animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 1.1, ease: 'easeOut' }}>
         <img src="/jonny-world-hero.png" alt="Jonny's World"
-          className="w-full h-full object-cover object-center"
+          className="w-full h-full object-cover object-top"
           style={{ filter: 'brightness(0.88) saturate(1.15)' }} />
         <div className="absolute inset-0"
           style={{ background: 'linear-gradient(to bottom, rgba(4,2,16,0.05) 0%, rgba(4,2,16,0.0) 35%, rgba(4,2,16,0.55) 60%, rgba(4,2,16,0.92) 78%, rgba(4,2,16,0.99) 100%)' }} />
