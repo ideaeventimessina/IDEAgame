@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { AdminLayout } from './AdminLayout';
 import { Trash2, Plus, Loader2, Music, Clock, Zap, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
+import { ProjectorPreview } from './ProjectorPreview';
 
 interface DanceChallenge {
   id: string;
@@ -290,6 +291,43 @@ export default function AdminBallo() {
               </div>
             ))}
           </div>
+        )}
+
+        {/* ─── Anteprima proiettore ──────────────────────────────── */}
+        {challenges.length > 0 && (
+          <ProjectorPreview total={challenges.length} accentColor="#f472b6">
+            {idx => {
+              const ch = challenges[idx]!;
+              const diffCls = ch.difficulty === 'easy' ? '#4ade80' : ch.difficulty === 'medium' ? '#fbbf24' : '#f472b6';
+              return (
+                <div className="flex flex-col items-center justify-center gap-6 px-8 py-10 text-center min-h-[260px]">
+                  <div className="flex items-center gap-3">
+                    <span className="text-4xl">💃</span>
+                    <span className="rounded-full border px-3 py-1 text-xs font-black uppercase tracking-widest"
+                      style={{ color: diffCls, borderColor: `${diffCls}55`, background: `${diffCls}18` }}>
+                      {DIFF_LABELS[ch.difficulty] ?? ch.difficulty}
+                    </span>
+                  </div>
+                  <div className="text-display text-4xl font-black text-white leading-tight">
+                    {ch.name}
+                  </div>
+                  {ch.description && (
+                    <div className="max-w-xl text-base text-white/70 leading-relaxed">{ch.description}</div>
+                  )}
+                  <div className="flex items-center gap-6 text-sm font-bold">
+                    {ch.musicHint && (
+                      <span className="flex items-center gap-2 text-pink-300">
+                        <Music className="h-4 w-4" /> {ch.musicHint}
+                      </span>
+                    )}
+                    <span className="flex items-center gap-2 text-white/60">
+                      <Clock className="h-4 w-4" /> {ch.duration}s
+                    </span>
+                  </div>
+                </div>
+              );
+            }}
+          </ProjectorPreview>
         )}
       </div>
     </AdminLayout>

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { AdminLayout } from './AdminLayout';
 import { Trash2, Plus, Loader2, BookOpen, Tag, Zap, Clock, Edit2, Check, X } from 'lucide-react';
 import { JonnyGenerateBanner } from '@/components/JonnyGenerateBanner';
+import { ProjectorPreview } from './ProjectorPreview';
 
 interface WordBackSet {
   id: string; title: string; description: string; language: string;
@@ -328,6 +329,44 @@ export default function AdminWordBack() {
               <div className="text-center text-sm text-muted-foreground py-8">
                 Nessuna parola — aggiungi la prima!
               </div>
+            )}
+
+            {/* ─── Anteprima proiettore ──────────────────────────── */}
+            {filteredCards.length > 0 && (
+              <ProjectorPreview total={filteredCards.length} accentColor="#F5B642">
+                {idx => {
+                  const card = filteredCards[idx]!;
+                  const diffCls = card.difficulty === 'easy' ? '#4ade80' : card.difficulty === 'medium' ? '#fbbf24' : '#f472b6';
+                  const catEmoji: Record<string, string> = {
+                    Sport: '⚽', Cinema: '🎬', Musica: '🎵', Cucina: '🍕', Storia: '📜',
+                    Scienza: '🔬', Natura: '🌿', Arte: '🎨', Tecnologia: '💻', Geografia: '🌍',
+                  };
+                  return (
+                    <div className="flex flex-col items-center justify-center gap-5 px-8 py-10 text-center min-h-[260px]">
+                      <div className="flex items-center gap-3">
+                        <span className="text-3xl">{catEmoji[card.category] ?? '🎯'}</span>
+                        <span className="rounded-full border px-3 py-1 text-xs font-black uppercase tracking-widest text-[#F5B642] border-[#F5B64255] bg-[#F5B64218]">
+                          {card.category}
+                        </span>
+                        <span className="rounded-full border px-2.5 py-0.5 text-xs font-bold"
+                          style={{ color: diffCls, borderColor: `${diffCls}55`, background: `${diffCls}18` }}>
+                          {card.difficulty}
+                        </span>
+                      </div>
+                      <div className="text-display font-black text-white leading-none" style={{ fontSize: 'clamp(3rem,8vw,5.5rem)' }}>
+                        {card.word}
+                      </div>
+                      {card.hint && (
+                        <div className="text-white/60 text-sm italic max-w-sm">💡 {card.hint}</div>
+                      )}
+                      <div className="flex items-center gap-6 text-sm font-bold text-white/60">
+                        <span className="flex items-center gap-1.5"><Zap className="h-4 w-4 text-[#F5B642]" /> {card.points} pt</span>
+                        <span className="flex items-center gap-1.5"><Clock className="h-4 w-4" /> {card.timeLimit}s</span>
+                      </div>
+                    </div>
+                  );
+                }}
+              </ProjectorPreview>
             )}
 
             <div className="space-y-2 max-h-[600px] overflow-y-auto">

@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Mic, Music, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import { AdminLayout } from './AdminLayout';
 import { JonnyGenerateBanner } from '@/components/JonnyGenerateBanner';
+import { ProjectorPreview } from './ProjectorPreview';
 
 const BASE = (import.meta.env.BASE_URL as string) ?? '/';
 async function apiFetch(path: string, opts?: RequestInit) {
@@ -244,6 +245,40 @@ function KaraokeTab() {
                               </div>
                             ))}
                           </div>
+                        )}
+
+                        {/* ─── Anteprima proiettore ────────────────────── */}
+                        {setTracks.length > 0 && (
+                          <ProjectorPreview total={setTracks.length} accentColor="#ec4899">
+                            {idx => {
+                              const track = [...setTracks].sort((a, b) => a.orderIndex - b.orderIndex)[idx]!;
+                              const diffCls = track.difficulty === 'easy' ? '#22c55e' : track.difficulty === 'medium' ? '#eab308' : '#ef4444';
+                              return (
+                                <div className="flex flex-col items-center justify-center gap-4 px-8 py-10 text-center min-h-[260px]">
+                                  <div className="flex items-center gap-3">
+                                    <span className="text-3xl">{CAT_EMOJI[track.category] ?? '🎵'}</span>
+                                    <span className="text-xs font-bold text-pink-300 uppercase tracking-widest">{track.category}</span>
+                                    <span className="rounded-full border px-2.5 py-0.5 text-xs font-bold"
+                                      style={{ color: diffCls, borderColor: `${diffCls}55`, background: `${diffCls}18` }}>
+                                      {track.difficulty}
+                                    </span>
+                                  </div>
+                                  <div className="text-white/50 text-sm uppercase tracking-widest font-bold">🎤 Canta il ritornello</div>
+                                  <div className="text-display font-black text-white text-4xl leading-tight">{track.title}</div>
+                                  <div className="text-white/60 text-lg font-medium">{track.artist}</div>
+                                  {track.lyricSnippet && (
+                                    <div className="max-w-lg text-white/50 text-sm italic border-l-2 border-pink-500/40 pl-4 text-left">
+                                      "{track.lyricSnippet}"
+                                    </div>
+                                  )}
+                                  <div className="flex items-center gap-5 text-sm font-bold text-white/50">
+                                    <span className="flex items-center gap-1.5"><Music className="h-4 w-4 text-pink-400" /> {track.durationSeconds}s</span>
+                                    <span className="text-pink-300">+{track.points} pt</span>
+                                  </div>
+                                </div>
+                              );
+                            }}
+                          </ProjectorPreview>
                         )}
 
                         {showTrackForm === set.id ? (

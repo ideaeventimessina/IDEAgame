@@ -6,6 +6,7 @@ import {
   Play, RefreshCw, BarChart3
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ProjectorPreview } from './ProjectorPreview';
 
 interface QuizRound {
   orderIndex: number;
@@ -428,6 +429,48 @@ function PackDetail({ pack, onApprove, onUpdateRound }: {
               </span>
             );
           })}
+        </div>
+      )}
+
+      {/* ─── Anteprima proiettore ──────────────────────────────── */}
+      {rounds.length > 0 && (
+        <div className="border-b border-border px-6 py-4 flex-shrink-0">
+          <ProjectorPreview total={rounds.length} accentColor="#60a5fa">
+            {idx => {
+              const r = rounds[idx]!;
+              const tl = TYPE_LABELS[r.type] ?? { label: r.type, color: 'text-muted-foreground bg-muted/20 border-border' };
+              const diffCls = r.difficulty === 'easy' ? '#4ade80' : r.difficulty === 'medium' ? '#fbbf24' : '#f87171';
+              const optColors = ['#3b82f6', '#a855f7', '#f59e0b', '#ef4444'];
+              return (
+                <div className="flex flex-col gap-5 px-8 py-8 min-h-[300px]">
+                  <div className="flex items-center gap-3">
+                    <span className={`rounded-full border px-3 py-1 text-xs font-black ${tl.color}`}>{tl.label}</span>
+                    <span className="rounded-full border px-2.5 py-0.5 text-xs font-bold"
+                      style={{ color: diffCls, borderColor: `${diffCls}55`, background: `${diffCls}18` }}>
+                      {r.difficulty}
+                    </span>
+                    <span className="ml-auto text-xs text-white/40 font-mono">{r.timeLimit}s · {r.points} pt</span>
+                  </div>
+                  <div className="text-display font-black text-white text-2xl leading-snug">{r.questionText}</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {r.answers.map((a, i) => (
+                      <div key={i} className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${i === r.correctAnswer ? 'border-green-500/50 bg-green-500/15' : 'border-white/10 bg-white/5'}`}>
+                        <span className="flex h-7 w-7 items-center justify-center rounded-full text-xs font-black flex-shrink-0"
+                          style={{ background: `${optColors[i] ?? '#666'}22`, color: optColors[i] ?? '#aaa', border: `1px solid ${optColors[i] ?? '#666'}55` }}>
+                          {String.fromCharCode(65 + i)}
+                        </span>
+                        <span className={`text-sm font-medium ${i === r.correctAnswer ? 'text-green-300 font-bold' : 'text-white/80'}`}>{a}</span>
+                        {i === r.correctAnswer && <span className="ml-auto text-green-400 text-base">✓</span>}
+                      </div>
+                    ))}
+                  </div>
+                  {r.explanation && (
+                    <div className="text-white/40 text-xs italic border-l-2 border-blue-400/30 pl-3">{r.explanation}</div>
+                  )}
+                </div>
+              );
+            }}
+          </ProjectorPreview>
         </div>
       )}
 

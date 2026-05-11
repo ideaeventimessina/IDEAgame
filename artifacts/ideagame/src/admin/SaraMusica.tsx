@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { PlusCircle, Trash2, Music2, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import { AdminLayout } from './AdminLayout';
 import { JonnyGenerateBanner } from '@/components/JonnyGenerateBanner';
+import { ProjectorPreview } from './ProjectorPreview';
 
 interface SaraMusicaSet {
   id: string; title: string; description: string; isActive: boolean; createdAt: string;
@@ -194,6 +195,38 @@ export default function AdminSaraMusica() {
                       </div>
                     ))}
                   </div>
+
+                  {/* ─── Anteprima proiettore ───────────────────────── */}
+                  {(tracks[set.id] ?? []).length > 0 && (
+                    <ProjectorPreview total={(tracks[set.id] ?? []).length} accentColor="#a78bfa">
+                      {idx => {
+                        const track = (tracks[set.id] ?? [])[idx]!;
+                        const typeIcon = track.challengeType === 'indovina' ? '🎵' : track.challengeType === 'canta' ? '🎤' : '📣';
+                        const typeLabel = CHALLENGE_LABELS[track.challengeType];
+                        return (
+                          <div className="flex flex-col items-center justify-center gap-4 px-8 py-10 text-center min-h-[260px]">
+                            <div className="flex items-center gap-3">
+                              <span className="text-3xl">{typeIcon}</span>
+                              <span className="rounded-full border border-violet-400/40 bg-violet-400/15 px-3 py-1 text-xs font-black text-violet-300 uppercase tracking-widest">
+                                {typeLabel}
+                              </span>
+                            </div>
+                            <div className="text-display font-black text-white text-4xl leading-tight">{track.title}</div>
+                            <div className="text-white/60 text-lg font-medium">{track.artist}</div>
+                            {track.snippetHint && (
+                              <div className="max-w-lg text-white/50 text-sm italic border-l-2 border-violet-500/40 pl-4 text-left">
+                                "{track.snippetHint}"
+                              </div>
+                            )}
+                            <div className="flex items-center gap-5 text-sm font-bold text-white/50">
+                              <span>{track.durationSeconds}s</span>
+                              <span className="text-violet-300">+{track.points} pt</span>
+                            </div>
+                          </div>
+                        );
+                      }}
+                    </ProjectorPreview>
+                  )}
 
                   {/* Add track form */}
                   <div className="rounded-xl border border-border bg-background/30 p-4 space-y-3">

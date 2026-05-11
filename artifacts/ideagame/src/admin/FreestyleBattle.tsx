@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Mic, Music } from "lucide-react";
 import { AdminLayout } from "@/admin/AdminLayout";
 import { JonnyGenerateBanner } from "@/components/JonnyGenerateBanner";
+import { ProjectorPreview } from "@/admin/ProjectorPreview";
 
 const apiFetch = (path: string, opts?: RequestInit) =>
   fetch(`${import.meta.env.BASE_URL}api${path}`, { credentials: "include", ...opts }).then(async (r) => {
@@ -216,6 +217,29 @@ export default function AdminFreestyleBattle() {
                     <div className="text-xs text-muted-foreground py-2">Nessuna parola ancora</div>
                   )}
                 </div>
+
+                {/* ─── Anteprima proiettore ──────────────────── */}
+                {words.length > 0 && (
+                  <ProjectorPreview total={words.length} accentColor="#fb923c">
+                    {idx => {
+                      const w = words[idx]!;
+                      return (
+                        <div className="flex flex-col items-center justify-center gap-6 px-8 py-10 text-center min-h-[260px]">
+                          <div className="flex items-center gap-2 text-orange-400 text-sm font-bold uppercase tracking-widest">
+                            <Mic className="h-5 w-5" /> Freestyle Battle
+                          </div>
+                          <div className="text-display font-black text-white leading-none"
+                            style={{ fontSize: 'clamp(3.5rem,10vw,6rem)' }}>
+                            {w.word}
+                          </div>
+                          <div className="text-white/40 text-xs font-mono">
+                            {selectedSet?.title} · {idx + 1}/{words.length}
+                          </div>
+                        </div>
+                      );
+                    }}
+                  </ProjectorPreview>
+                )}
               </div>
             )}
           </div>
