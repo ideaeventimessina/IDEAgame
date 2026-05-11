@@ -169,6 +169,23 @@ export default function Hub() {
     return () => { cancelled = true; clearInterval(id); };
   }, [user, publicEvent?.id, activeCode]);
 
+  // Poll active session in public projector mode
+  const [publicSessionActive, setPublicSessionActive] = useState(false);
+  useEffect(() => {
+    if (user || !publicEvent?.id) return;
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const r = await fetch(`/api/events/${publicEvent.id}/active-session`);
+        const data = r.ok ? await r.json() : null;
+        if (!cancelled) setPublicSessionActive(!!(data && data.status !== 'ended'));
+      } catch { /* ignore */ }
+    };
+    run();
+    const id = setInterval(run, 5_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [user, publicEvent?.id]);
+
   const [rosterOpen, setRosterOpen] = useState(false);
   const [introGame, setIntroGame] = useState<IntroGame | null>(null);
   const [projectorBlack, setProjectorBlack] = useState(false);
@@ -668,10 +685,17 @@ export default function Hub() {
             <img src="/logo.png" alt="IDEA Games" className="h-10 w-auto object-contain" />
           </div>
           <div className="flex items-center gap-3">
-            <div className="rounded-full border border-destructive px-3 py-1 text-xs font-black uppercase tracking-widest text-destructive">
-              <span className="mr-1.5 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-destructive align-middle" />
-              LIVE
-            </div>
+            {publicSessionActive ? (
+              <div className="rounded-full border border-amber-400 px-3 py-1 text-xs font-black uppercase tracking-widest text-amber-400">
+                <span className="mr-1.5 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400 align-middle" />
+                IN GIOCO
+              </div>
+            ) : (
+              <div className="rounded-full border border-green-400 px-3 py-1 text-xs font-black uppercase tracking-widest text-green-400">
+                <span className="mr-1.5 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-green-400 align-middle" />
+                IN ATTESA
+              </div>
+            )}
             <div className="text-display text-sm font-bold text-muted-foreground">{publicEvent.name}</div>
             {publicEvent.venue && <div className="hidden sm:block text-xs text-muted-foreground/60">— {publicEvent.venue}</div>}
           </div>
@@ -745,13 +769,14 @@ export default function Hub() {
           )}
         </div>
 
-        {/* Jonny floating */}
-        <div className="pointer-events-none absolute bottom-0 right-12 z-10 select-none hidden lg:block" style={{ width: 200, height: 310 }}>
-          <motion.img src="/jonny-master.jpg" alt="Jonny"
+        {/* Jonny floating — scontornato */}
+        <div className="pointer-events-none absolute bottom-0 right-10 z-10 select-none hidden lg:block" style={{ width: 220, height: 340 }}>
+          <motion.img src="/jonny-master-nobg.png" alt="Jonny"
             className="w-full h-full object-contain object-bottom"
-            style={{ filter: 'drop-shadow(0 0 40px rgba(245,182,66,0.4))' }}
-            animate={{ y: [0, -10, 0] }} transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }}
-            initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} />
+            style={{ filter: 'drop-shadow(0 0 40px rgba(245,182,66,0.45))' }}
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: [0, -12, 0] }}
+            transition={{ opacity: { duration: 0.6 }, y: { duration: 3.5, repeat: Infinity, ease: 'easeInOut', delay: 0.6 } }} />
         </div>
       </div>
     );
