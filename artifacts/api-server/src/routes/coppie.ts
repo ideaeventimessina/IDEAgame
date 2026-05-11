@@ -365,6 +365,10 @@ router.post(
                   .catch(() => {});
               }
             }
+            await db
+              .update(gameSessionsTable)
+              .set({ status: "ended", endedAt: new Date() })
+              .where(eq(gameSessionsTable.id, sessionId));
           }
 
           await db
