@@ -318,8 +318,9 @@ router.post("/jonny/generations", requireAuth, async (req: AuthedRequest, res: R
       // Support both {games: {slug: ...}} and direct payload
       const payload = (parsed.games as Record<string, unknown>)?.[slug] ?? parsed as Record<string, unknown>;
       allGames[slug] = payload;
-      const itemTitle = ((payload.setTitle || payload.packTitle || payload.deckTitle || payload.title) as string | undefined) ?? `${slug} — ${title}`;
-      itemInserts.push({ generationId: gen!.id, gameSlug: slug, itemType: "set", title: itemTitle, payload, status: "draft" });
+      const p = payload as Record<string, unknown>;
+      const itemTitle = ((p['setTitle'] || p['packTitle'] || p['deckTitle'] || p['title']) as string | undefined) ?? `${slug} — ${title}`;
+      itemInserts.push({ generationId: gen!.id, gameSlug: slug, itemType: "set", title: itemTitle, payload: p, status: "draft" });
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       errors.push(`${slug}: ${errMsg}`);

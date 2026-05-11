@@ -1,7 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, useRef, type ReactNode } from 'react';
 import { AdminLayout } from './AdminLayout';
 import { useT, LOCALES } from '@/i18n';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Upload, Music, Check, X } from 'lucide-react';
 import {
   useListSystemSettings, useUpsertSystemSetting, getListSystemSettingsQueryKey,
 } from '@workspace/api-client-react';
@@ -9,12 +9,20 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useJonny } from '@/contexts/JonnyContext';
 import { JonnyAvatar } from '@/components/JonnyAvatar';
 
+type MusicPaths = {
+  lobby: string;
+  quizzone: string;
+  'sfida-ballo': string;
+  'percorso-a-risate': string;
+  'gioco-coppie': string;
+};
+
 type SettingsValue = {
   brandColor: string;
   defaultLocale: string;
   projectionMode: boolean;
   offlineFirst: boolean;
-  bgMusicUrl: string;
+  musicPaths: MusicPaths;
 };
 
 const DEFAULTS: SettingsValue = {
@@ -22,8 +30,124 @@ const DEFAULTS: SettingsValue = {
   defaultLocale: 'it',
   projectionMode: true,
   offlineFirst: true,
-  bgMusicUrl: '',
+  musicPaths: { lobby: '', quizzone: '', 'sfida-ballo': '', 'percorso-a-risate': '', 'gioco-coppie': '' },
 };
+
+const MUSIC_SLOTS: { key: keyof MusicPaths; label: string; icon: string; fallback: string }[] = [
+  { key: 'lobby',            label: 'Lobby / Home (sottofondo principale)', icon: '🏠', fallback: '/audio/jonny-world/global/lobby_loop.mp3' },
+  { key: 'quizzone',         label: 'Quizzone',                             icon: '❓', fallback: '/audio/jonny-world/quizzone/round_loop.mp3' },
+  { key: 'sfida-ballo',      label: 'Sfida di Ballo',                       icon: '💃', fallback: '/audio/jonny-world/sfida-ballo/round_loop.mp3' },
+  { key: 'percorso-a-risate',label: 'Percorso a Risate',                    icon: '⚡', fallback: '/audio/jonny-world/percorso-a-risate/round_loop.mp3' },
+  { key: 'gioco-coppie',     label: 'Gioco delle Coppie',                   icon: '🃏', fallback: '/audio/jonny-world/gioco-coppie/tension_loop.mp3' },
+];
+
+// ── MusicUploader ─────────────────────────────────────────────────────────────
+
+function MusicUploader({
+  slotKey, label, icon, currentPath, fallback, onUploaded, onClear,
+}: {
+  slotKey: keyof MusicPaths;
+  label: string;
+  icon: string;
+  currentPath: string;
+  fallback: string;
+  onUploaded: (objectPath: string) => void;
+  onClear: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadDone, setUploadDone] = useState(false);
+
+  const audioSrc = currentPath ? `/api/storage${currentPath}` : fallback;
+
+  const handleFile = async (file: File) => {
+    if (!file.type.startsWith('audio/') && !file.name.match(/\.(mp3|ogg|wav|m4a|aac|flac)$/i)) {
+      setUploadError('Seleziona un file audio (mp3, ogg, wav…)');
+      return;
+    }
+    setUploading(true);
+    setUploadError(null);
+    setUploadDone(false);
+    try {
+      const urlRes = await fetch('/api/storage/uploads/request-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type || 'audio/mpeg' }),
+      });
+      if (!urlRes.ok) throw new Error('Errore generazione URL di caricamento');
+      const { uploadURL, objectPath } = await urlRes.json() as { uploadURL: string; objectPath: string };
+
+      const putRes = await fetch(uploadURL, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type || 'audio/mpeg' },
+      });
+      if (!putRes.ok) throw new Error('Errore caricamento file su storage');
+
+      onUploaded(objectPath);
+      setUploadDone(true);
+      setTimeout(() => setUploadDone(false), 3000);
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : 'Errore upload');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-xl">{icon}</span>
+          <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">{label}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {uploadDone && <span className="flex items-center gap-1 text-xs text-emerald-400"><Check className="h-3 w-3" /> Caricato!</span>}
+          {currentPath && (
+            <button onClick={onClear} className="flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs text-muted-foreground hover:border-destructive/60 hover:text-destructive">
+              <X className="h-3 w-3" /> Rimuovi
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Audio preview */}
+      <audio key={audioSrc} controls src={audioSrc} className="w-full h-8" style={{ colorScheme: 'dark' }} />
+
+      {/* Upload button */}
+      <div className="flex items-center gap-3">
+        <input
+          ref={inputRef}
+          type="file"
+          accept="audio/*,.mp3,.ogg,.wav,.m4a,.aac,.flac"
+          className="hidden"
+          onChange={e => { const f = e.target.files?.[0]; if (f) void handleFile(f); e.target.value = ''; }}
+        />
+        <button
+          onClick={() => inputRef.current?.click()}
+          disabled={uploading}
+          className="flex items-center gap-2 rounded-xl border border-primary/50 bg-primary/10 px-4 py-2 text-sm font-bold text-primary hover:bg-primary/20 disabled:opacity-40 transition-colors"
+        >
+          {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+          {uploading ? 'Caricamento…' : currentPath ? 'Sostituisci file' : 'Carica file audio'}
+        </button>
+        {currentPath && (
+          <span className="text-xs text-muted-foreground truncate max-w-[180px]" title={currentPath}>
+            {currentPath.split('/').pop()}
+          </span>
+        )}
+      </div>
+
+      {uploadError && (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">{uploadError}</div>
+      )}
+    </div>
+  );
+}
+
+// ── Main Settings ─────────────────────────────────────────────────────────────
 
 export default function Settings() {
   const t = useT();
@@ -38,7 +162,12 @@ export default function Settings() {
   useEffect(() => {
     const r = rows.find(r => r.key === 'tenant.settings');
     if (r && typeof r.value === 'object' && r.value !== null) {
-      setV({ ...DEFAULTS, ...(r.value as Partial<SettingsValue>) });
+      const stored = r.value as Partial<SettingsValue>;
+      setV({
+        ...DEFAULTS,
+        ...stored,
+        musicPaths: { ...DEFAULTS.musicPaths, ...(stored.musicPaths ?? {}) },
+      });
     }
   }, [rows]);
 
@@ -55,6 +184,19 @@ export default function Settings() {
     }
   };
 
+  const setMusic = async (key: keyof MusicPaths, objectPath: string) => {
+    const next = { ...v, musicPaths: { ...v.musicPaths, [key]: objectPath } };
+    setV(next);
+    try {
+      await upsert.mutateAsync({ data: { key: 'tenant.settings', value: next } });
+      await qc.invalidateQueries({ queryKey: getListSystemSettingsQueryKey() });
+    } catch { /* silently ignore — user can retry with save button */ }
+  };
+
+  const clearMusic = async (key: keyof MusicPaths) => {
+    setMusic(key, '');
+  };
+
   const Field = ({ label, children }: { label: string; children: ReactNode }) => (
     <div className="rounded-xl border border-border bg-card p-4">
       <div className="text-xs uppercase tracking-widest text-muted-foreground">{label}</div>
@@ -68,6 +210,7 @@ export default function Settings() {
         <div className="grid place-items-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
       ) : (
         <>
+          {/* ─── General settings ─────────────────────────────────────── */}
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="Brand color">
               <div className="flex items-center gap-3">
@@ -99,25 +242,35 @@ export default function Settings() {
                 <input type="checkbox" checked={v.offlineFirst} onChange={e => setV({ ...v, offlineFirst: e.target.checked })} className="h-5 w-10 cursor-pointer accent-primary" />
               </label>
             </Field>
-            <Field label="🎵 Musica di sottofondo (URL MP3)">
-              <input
-                type="url"
-                value={v.bgMusicUrl}
-                onChange={e => setV({ ...v, bgMusicUrl: e.target.value.trim() })}
-                placeholder="https://esempio.com/musica.mp3"
-                className="w-full rounded-md border border-border bg-background/40 px-3 py-2 text-sm outline-none focus:border-primary"
-              />
-              <div className="mt-1.5 text-xs text-muted-foreground">
-                Link diretto a un file .mp3 accessibile pubblicamente. Viene usato come musica di lobby in Modalità Home.
+          </div>
+
+          {/* ─── Music upload ─────────────────────────────────────────── */}
+          <div className="mt-8">
+            <div className="mb-4 flex items-center gap-3">
+              <Music className="h-5 w-5 text-primary" />
+              <div>
+                <div className="font-black uppercase tracking-widest text-sm text-primary">Musica per ogni gioco</div>
+                <div className="text-xs text-muted-foreground mt-0.5">Carica un file MP3/OGG/WAV direttamente dal tuo computer — viene salvato sullo storage dell'app.</div>
               </div>
-              {v.bgMusicUrl && (
-                <audio key={v.bgMusicUrl} controls src={v.bgMusicUrl} className="mt-2 w-full h-8 opacity-70" />
-              )}
-            </Field>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {MUSIC_SLOTS.map(slot => (
+                <MusicUploader
+                  key={slot.key}
+                  slotKey={slot.key}
+                  label={slot.label}
+                  icon={slot.icon}
+                  fallback={slot.fallback}
+                  currentPath={v.musicPaths[slot.key]}
+                  onUploaded={path => void setMusic(slot.key, path)}
+                  onClear={() => void clearMusic(slot.key)}
+                />
+              ))}
+            </div>
           </div>
 
           {/* ─── Jonny Co-Host ──────────────────────────────────────────── */}
-          <div className="mt-6 rounded-2xl border border-border bg-card overflow-hidden">
+          <div className="mt-8 rounded-2xl border border-border bg-card overflow-hidden">
             <div className="flex items-center gap-4 px-5 py-4" style={{ background: 'linear-gradient(135deg, rgba(212,175,55,0.08), rgba(20,15,40,0.5))' }}>
               <JonnyAvatar mood={isHostedByJonny ? 'excited' : 'idle'} size={56} />
               <div className="flex-1">
@@ -146,7 +299,6 @@ export default function Settings() {
             </div>
             {isHostedByJonny && (
               <div className="border-t border-border/50 px-5 py-4 space-y-3">
-                {/* Mode selector */}
                 <div>
                   <div className="mb-2 text-[10px] font-bold tracking-widest" style={{ color: '#D4AF37' }}>MODALITÀ</div>
                   <div className="flex gap-2">
@@ -171,7 +323,6 @@ export default function Settings() {
                       : 'Jonny è il game master autonomo (placeholder — AI automation non ancora attiva).'}
                   </div>
                 </div>
-                {/* URL tip */}
                 <div className="text-[11px] text-muted-foreground border-t border-border/30 pt-3">
                   Attivabile via URL: <code className="rounded bg-card/80 px-1 py-0.5 font-mono" style={{ color: '#D4AF37' }}>?jonny=1</code>
                 </div>

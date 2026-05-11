@@ -177,16 +177,22 @@ export default function HomeGame() {
   const { on } = useHomeSocket(session?.id ?? null);
   const { on: socketOn } = useEventSocket(null);
 
-  // ── System settings — custom bg music URL ────────────────────────────────
+  // ── System settings — custom music paths ─────────────────────────────────
   const { data: settingsRows = [] } = useListSystemSettings();
-  const bgMusicUrl = useMemo(() => {
+  const musicPaths = useMemo(() => {
     const r = settingsRows.find(r => r.key === 'tenant.settings');
     if (r && typeof r.value === 'object' && r.value !== null) {
-      const url = (r.value as Record<string, unknown>).bgMusicUrl;
-      if (typeof url === 'string' && url.trim()) return url.trim();
+      const mp = (r.value as Record<string, unknown>).musicPaths;
+      if (mp && typeof mp === 'object') return mp as Record<string, string>;
     }
-    return '/audio/jonny-world/global/lobby_loop.mp3';
+    return {} as Record<string, string>;
   }, [settingsRows]);
+
+  const bgMusicUrl = useMemo(() => {
+    const custom = musicPaths['lobby'];
+    if (custom) return `/api/storage${custom}`;
+    return '/audio/jonny-world/global/lobby_loop.mp3';
+  }, [musicPaths]);
 
   // ── Audio unlock state ────────────────────────────────────────────────────
   // PlayStation and many mobile browsers block Audio.play() until a real
@@ -333,7 +339,10 @@ export default function HomeGame() {
       setRevealed(false);
       startTimer(Number(updated.roundPayload?.timeLimit ?? 15));
       setJonnyMood('thinking');
-      const gameSrc = GAME_AUDIO[selectedGame.slug] ?? '/audio/jonny-world/global/round_loop.mp3';
+      const customPath = musicPaths[selectedGame.slug];
+      const gameSrc = customPath
+        ? `/api/storage${customPath}`
+        : (GAME_AUDIO[selectedGame.slug] ?? '/audio/jonny-world/global/round_loop.mp3');
       unlockAudio(gameSrc);
     } finally {
       setLoading(false);
