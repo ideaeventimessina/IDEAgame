@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import { AudioManager, DEFAULT_AUDIO_SETTINGS, type AudioSettings } from '@/audio/AudioManager';
 
 const LS_KEY = 'ideagame:audio:settings';
@@ -44,16 +44,26 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     AudioManager.applySettings(settings);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const value: AudioCtx = {
+  // Stable function references — only recreated when `update` changes (never)
+  const setMasterVolume = useCallback((v: number) => update({ masterVolume: Math.max(0, Math.min(1, v)) }), [update]);
+  const setMusicVolume  = useCallback((v: number) => update({ musicVolume:  Math.max(0, Math.min(1, v)) }), [update]);
+  const setSfxVolume    = useCallback((v: number) => update({ sfxVolume:    Math.max(0, Math.min(1, v)) }), [update]);
+  const toggleMusic     = useCallback(() => update({ musicEnabled: !settings.musicEnabled }), [update, settings.musicEnabled]);
+  const toggleSfx       = useCallback(() => update({ sfxEnabled:   !settings.sfxEnabled   }), [update, settings.sfxEnabled]);
+  const toggleMute      = useCallback(() => update({ muted:        !settings.muted        }), [update, settings.muted]);
+  const resetDefaults   = useCallback(() => update({ ...DEFAULT_AUDIO_SETTINGS }), [update]);
+
+  // Memoize the context value so consumers only re-render when settings actually change
+  const value = useMemo<AudioCtx>(() => ({
     settings,
-    setMasterVolume: v => update({ masterVolume: Math.max(0, Math.min(1, v)) }),
-    setMusicVolume:  v => update({ musicVolume:  Math.max(0, Math.min(1, v)) }),
-    setSfxVolume:    v => update({ sfxVolume:    Math.max(0, Math.min(1, v)) }),
-    toggleMusic:     () => update({ musicEnabled: !settings.musicEnabled }),
-    toggleSfx:       () => update({ sfxEnabled:   !settings.sfxEnabled }),
-    toggleMute:      () => update({ muted: !settings.muted }),
-    resetDefaults:   () => update({ ...DEFAULT_AUDIO_SETTINGS }),
-  };
+    setMasterVolume,
+    setMusicVolume,
+    setSfxVolume,
+    toggleMusic,
+    toggleSfx,
+    toggleMute,
+    resetDefaults,
+  }), [settings, setMasterVolume, setMusicVolume, setSfxVolume, toggleMusic, toggleSfx, toggleMute, resetDefaults]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
