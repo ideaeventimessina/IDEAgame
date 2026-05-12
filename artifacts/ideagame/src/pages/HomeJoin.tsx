@@ -1068,15 +1068,76 @@ function KaraokeController({ payload, sessionId: _sessionId }: {
 // ── FreestyleController ───────────────────────────────────────────────────────
 
 function FreestyleController({ payload, timeLeft }: { payload: Record<string,unknown>; timeLeft: number | null }) {
+  const targetWord = String(payload.word ?? '').toLowerCase().trim();
+  const [recognized, setRecognized] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [micError, setMicError] = useState('');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null);
+
+  const startListening = useCallback(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any;
+    const SR = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+    if (!SR) { setMicError('Il tuo browser non supporta il riconoscimento vocale'); return; }
+    const r = new SR();
+    r.lang = 'it-IT';
+    r.continuous = true;
+    r.interimResults = true;
+    r.onresult = (ev: { resultIndex: number; results: { transcript: string; isFinal: boolean }[][] }) => {
+      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+        const transcript = (ev.results[i]![0]?.transcript ?? '').toLowerCase();
+        if (targetWord && transcript.includes(targetWord)) setRecognized(true);
+      }
+    };
+    r.onend = () => { try { r.start(); } catch { setListening(false); } };
+    r.onerror = (ev: { error: string }) => {
+      if (ev.error !== 'aborted' && ev.error !== 'no-speech') {
+        setMicError(`Errore: ${ev.error}`); setListening(false);
+      }
+    };
+    recognitionRef.current = r;
+    r.start();
+    setListening(true);
+  }, [targetWord]);
+
+  const stopListening = useCallback(() => {
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    setListening(false);
+  }, []);
+
+  useEffect(() => () => recognitionRef.current?.stop(), []);
+
+  // Reset when word changes
+  useEffect(() => { setRecognized(false); }, [targetWord]);
+
   return (
     <div className="flex flex-col items-center gap-5 py-4 text-center">
       <div className="text-6xl">🎙️</div>
       <div className="text-xl font-black text-white">FREESTYLE RAP</div>
-      <div className="rounded-2xl px-6 py-4 w-full"
-        style={{background:'rgba(251,146,60,0.12)',border:'2px solid rgba(251,146,60,0.45)',boxShadow:'0 0 30px rgba(251,146,60,0.2)'}}>
+
+      {/* Word chip — illuminates when recognized */}
+      <motion.div
+        animate={recognized ? { scale: [1, 1.15, 1], boxShadow: ['0 0 0px #FB923C', '0 0 40px #FB923C', '0 0 20px #FB923C'] } : {}}
+        transition={{ duration: 0.5 }}
+        className="rounded-2xl px-6 py-4 w-full"
+        style={{
+          background: recognized ? 'rgba(251,146,60,0.28)' : 'rgba(251,146,60,0.12)',
+          border: `2px solid ${recognized ? '#FB923C' : 'rgba(251,146,60,0.45)'}`,
+          boxShadow: recognized ? '0 0 50px rgba(251,146,60,0.5)' : '0 0 30px rgba(251,146,60,0.2)',
+        }}>
         <div className="text-xs font-black uppercase tracking-widest mb-2" style={{color:'rgba(251,146,60,0.8)'}}>LA PAROLA</div>
-        <div className="text-4xl font-black" style={{color:'#FB923C'}}>{String(payload.word ?? '?')}</div>
-      </div>
+        <div className="text-4xl font-black" style={{color:'#FB923C'}}>
+          {String(payload.word ?? '?')}
+          {recognized && <span className="ml-2 text-green-400">✓</span>}
+        </div>
+        {recognized && (
+          <div className="mt-1 text-xs font-bold text-green-400 animate-pulse">🎉 Parola riconosciuta!</div>
+        )}
+      </motion.div>
+
+      {/* Timer */}
       {timeLeft !== null && (
         <div className="flex items-center gap-2 rounded-xl px-5 py-2"
           style={{background:'rgba(251,146,60,0.18)',border:'1px solid rgba(251,146,60,0.45)',color:'#FB923C'}}>
@@ -1084,7 +1145,25 @@ function FreestyleController({ payload, timeLeft }: { payload: Record<string,unk
           <span className="text-2xl font-black tabular-nums">{timeLeft}s</span>
         </div>
       )}
-      <div className="text-base text-white/60">Improvvisa un rap su questa parola!</div>
+
+      {/* Mic button */}
+      {!listening ? (
+        <button onClick={startListening}
+          className="flex items-center gap-2 rounded-2xl px-6 py-3 text-sm font-black"
+          style={{background:'linear-gradient(135deg,#FB923C,#ea580c)',color:'#fff',boxShadow:'0 0 24px rgba(251,146,60,0.45)'}}>
+          <Mic className="h-4 w-4"/> Attiva il microfono
+        </button>
+      ) : (
+        <motion.button onClick={stopListening}
+          animate={{ scale: [1, 1.04, 1] }} transition={{ repeat: Infinity, duration: 1.2 }}
+          className="flex items-center gap-2 rounded-2xl px-6 py-3 text-sm font-black bg-red-500 text-white shadow-lg shadow-red-500/40">
+          <span className="h-2 w-2 rounded-full bg-white animate-pulse" />
+          🎙️ In ascolto… (tocca per stop)
+        </motion.button>
+      )}
+      {micError && <div className="text-xs text-red-400">{micError}</div>}
+
+      <div className="text-sm text-white/60">Improvvisa un rap e di' la parola ad alta voce!</div>
     </div>
   );
 }

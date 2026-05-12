@@ -1123,6 +1123,123 @@ const PERCORSO_EMOJIS: Record<string, string> = {
   veloce: '🏃', coppia: '👫', reazione: '😱', fantasia: '🌟',
 };
 
+// ── PercorsoBalloSensor — accelerometro per sfida ballo nel percorso ─────────
+function PercorsoBalloSensor({ teamColor }: { teamColor: string }) {
+  const [energy, setEnergy] = useState(0);
+  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  const accHandlerRef = useRef<((e: DeviceMotionEvent) => void) | null>(null);
+
+  const startSensor = useCallback(() => {
+    const handler = (e: DeviceMotionEvent) => {
+      const a = e.accelerationIncludingGravity;
+      if (!a) return;
+      const mag = Math.sqrt((a.x ?? 0) ** 2 + (a.y ?? 0) ** 2 + (a.z ?? 0) ** 2);
+      const raw = Math.min(100, (mag / 25) * 100);
+      setEnergy(prev => Math.min(100, Math.max(0, prev * 0.7 + raw * 0.3)));
+    };
+    accHandlerRef.current = handler;
+    window.addEventListener('devicemotion', handler);
+    setHasPermission(true);
+  }, []);
+
+  // Decay energy when still
+  useEffect(() => {
+    const id = setInterval(() => setEnergy(prev => Math.max(0, prev - 2)), 80);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    // Android auto-starts; iOS 13+ needs requestPermission
+    const DM = DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> };
+    if (typeof DM.requestPermission !== 'function') {
+      startSensor();
+    } else {
+      setHasPermission(false);
+    }
+    return () => { if (accHandlerRef.current) window.removeEventListener('devicemotion', accHandlerRef.current); };
+  }, [startSensor]);
+
+  const barColor = energy > 70 ? '#22c55e' : energy > 35 ? '#eab308' : teamColor;
+
+  return (
+    <div className="space-y-3 w-full">
+      <div className="text-5xl text-center">💃</div>
+      <div className="text-display text-xl font-black text-yellow-400 text-center">Stai ballando!</div>
+      <div className="text-sm text-white/60 text-center">Muoviti con il telefono in mano!</div>
+
+      {hasPermission === false ? (
+        <button onClick={async () => {
+          const DM = DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> };
+          if (typeof DM.requestPermission === 'function') {
+            const r = await DM.requestPermission();
+            if (r === 'granted') startSensor();
+          }
+        }} className="w-full rounded-2xl py-3 text-sm font-black text-white"
+           style={{ background: 'linear-gradient(135deg,#eab308,#ca8a04)' }}>
+          🎯 Attiva il sensore di movimento
+        </button>
+      ) : (
+        <div className="space-y-1">
+          <div className="flex items-center justify-between text-xs font-bold text-white/60">
+            <span>Energia</span>
+            <span className="tabular-nums" style={{ color: barColor }}>{energy}%</span>
+          </div>
+          <div className="relative h-10 w-full overflow-hidden rounded-2xl bg-white/10">
+            <motion.div className="absolute inset-y-0 left-0 rounded-2xl"
+              animate={{ width: `${energy}%` }} transition={{ duration: 0.08 }}
+              style={{ background: `linear-gradient(90deg, ${barColor}88, ${barColor})`, boxShadow: `0 0 20px ${barColor}66` }} />
+            <div className="absolute inset-0 flex items-center justify-center text-sm font-black text-white">
+              {energy > 75 ? '🔥 Che energia!' : energy > 40 ? '💪 Continua!' : '🎭 Muoviti!'}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── PercorsoPerformingContent — blocco dinamico per sfida in corso ────────────
+function PercorsoPerformingContent({ step, teamColor }: {
+  step: PercorsoStepInfo;
+  teamColor: string;
+}) {
+  if (step.challengeType === 'ballo') {
+    return <PercorsoBalloSensor teamColor={teamColor} />;
+  }
+
+  if (step.challengeType === 'domanda') {
+    return (
+      <div className="space-y-3 text-center">
+        <div className="text-4xl">❓</div>
+        <div className="text-display text-xl font-black text-yellow-400">Rispondi!</div>
+        <div className="rounded-xl bg-white/10 px-4 py-3 text-base font-bold leading-snug text-white">
+          {step.title}
+        </div>
+        <motion.div animate={{ scale: [1, 1.08, 1] }} transition={{ repeat: Infinity, duration: 1.8 }}
+          className="text-2xl">🎤</motion.div>
+      </div>
+    );
+  }
+
+  // All other types (mimo, sfida, veloce, coppia, reazione, fantasia)
+  const emoji = PERCORSO_EMOJIS[step.challengeType] ?? '🎯';
+  const goLabel: Record<string, string> = {
+    mimo: '🎭 Recita!', sfida: '⚡ Vai!', veloce: '🏃 Corri!',
+    coppia: '👫 Insieme!', reazione: '😱 Reagisci!', fantasia: '🌟 Improvvisa!',
+  };
+  return (
+    <div className="space-y-3 text-center">
+      <div className="text-5xl">{emoji}</div>
+      <div className="text-display text-xl font-black text-yellow-400">Stai esibendo!</div>
+      <div className="text-display text-base font-bold leading-snug text-white">{step.title}</div>
+      <motion.div animate={{ scale: [1, 1.06, 1] }} transition={{ repeat: Infinity, duration: 1.4 }}
+        className="rounded-xl bg-yellow-500/20 px-5 py-2 text-xl font-black text-yellow-300">
+        {goLabel[step.challengeType] ?? '💪 Forza!'}
+      </motion.div>
+    </div>
+  );
+}
+
 const BASE_P = (import.meta.env.BASE_URL as string) ?? '/';
 async function apiFetchP(path: string, opts?: RequestInit) {
   const url = `${BASE_P}api${path}`.replace(/\/\//g, '/');
@@ -1243,17 +1360,14 @@ function PercorsoPhoneController({ state, teamId, teamColor }: {
             </div>
           )}
 
-          {/* PERFORMING: team is on stage */}
+          {/* PERFORMING: team is on stage — dynamic per challenge type */}
           {isPerforming && (
             <motion.div key={`performing-${state.currentStepIdx}`}
               initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
-              className="rounded-2xl border-2 border-yellow-500/50 bg-yellow-500/10 px-5 py-6 text-center space-y-3">
-              <div className="text-5xl">🎭</div>
-              <div className="text-display text-xl font-black text-yellow-400">Stai esibendo!</div>
-              <div className="text-sm text-white/60">Il pubblico ti sta guardando…</div>
-              <div className="text-display text-lg font-black leading-snug text-white">{currentStep.title}</div>
+              className="rounded-2xl border-2 border-yellow-500/50 bg-yellow-500/10 px-5 py-6 space-y-3">
+              <PercorsoPerformingContent step={currentStep} teamColor={teamColor} />
               {state.votingOpen && (
-                <div className="rounded-full border border-purple-500/40 bg-purple-500/15 px-4 py-1.5 text-xs font-bold text-purple-300 animate-pulse">
+                <div className="rounded-full border border-purple-500/40 bg-purple-500/15 px-4 py-1.5 text-xs font-bold text-purple-300 animate-pulse text-center">
                   🗳️ Il pubblico sta votando…
                 </div>
               )}
