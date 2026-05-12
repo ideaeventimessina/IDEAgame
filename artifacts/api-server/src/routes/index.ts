@@ -39,6 +39,7 @@ import panicRouter from "./panic";
 import networkRouter from "./network";
 import homeRouter from "./home";
 import storageRouter from "./storage";
+import setupRouter from "./setup";
 
 const router: IRouter = Router();
 
@@ -86,5 +87,6 @@ router.use(jonnyRouter);
 router.use(panicRouter);
 router.use(homeRouter);
 router.use(storageRouter);
+router.use(setupRouter);
 
 export default router;
