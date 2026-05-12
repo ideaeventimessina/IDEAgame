@@ -1,20 +1,17 @@
 /**
- * HomeJoin — pagina per i telefoni in modalità HOME
+ * HomeJoin — Pagina telefono per Modalità HOME
  *
- * URL: /home/join?s=CODE  (code = join code, non session ID)
+ * URL: /home/join?s=CODE
  *
- * Flusso:
- * 1. Inserisci codice (se non nell'URL)
- * 2. Inserisci nickname
- * 3. Sala d'attesa → controller di gioco (aggiornato via socket)
+ * Flusso: code → nickname → lobby → playing (controller per ogni gioco) → ended
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Loader2, Check, ChevronRight, Timer, SkipForward,
-  Home, Zap, Music, Laugh, Star, Sparkles
+  Loader2, Check, ChevronRight, Home, Star, Music,
+  Laugh, Zap, ShieldAlert, MessageSquare, Mic, Timer,
 } from 'lucide-react';
 import { useEventSocket } from '@/hooks/useEventSocket';
 
@@ -24,6 +21,7 @@ interface HomeSession {
   id: string;
   joinCode: string;
   gameSlug: string | null;
+  gameConfig: Record<string, unknown>;
   status: 'lobby' | 'playing' | 'ended';
   currentRound: number;
   totalRounds: number;
@@ -38,19 +36,23 @@ interface HomePlayer {
   isConnected: boolean;
 }
 
+// ── Constants ─────────────────────────────────────────────────────────────────
+
 const AVATAR_COLORS = ['#F5B642','#FF69B4','#60A5FA','#A78BFA','#34D399','#F87171','#F472B6','#FB923C','#22D3EE','#4ADE80'];
 
-const GAME_ICONS: Record<string, React.ReactNode> = {
-  'quizzone': <Star className="h-6 w-6" />,
-  'sfida-ballo': <Music className="h-6 w-6" />,
-  'sfida-di-ballo': <Music className="h-6 w-6" />,
-  'percorso-a-risate': <Laugh className="h-6 w-6" />,
-  'gioco-coppie': <Zap className="h-6 w-6" />,
+const GAME_INFO: Record<string, { name: string; emoji: string; color: string; icon: React.ReactNode }> = {
+  'percorso-a-risate':  { name:'Percorso a Risate',   emoji:'😂', color:'#34D399', icon:<Laugh className="h-5 w-5"/> },
+  'gioco-coppie':       { name:'Gioco delle Coppie',  emoji:'💞', color:'#F472B6', icon:<Zap className="h-5 w-5"/> },
+  'quizzone':           { name:'Quizzone',             emoji:'⭐', color:'#F5B642', icon:<Star className="h-5 w-5"/> },
+  'saramusica':         { name:'SaraMusica',           emoji:'🎵', color:'#60A5FA', icon:<Music className="h-5 w-5"/> },
+  'adult-only':         { name:'Adult Only',           emoji:'🔞', color:'#F87171', icon:<ShieldAlert className="h-5 w-5"/> },
+  'sfida-ballo':        { name:'Sfida di Ballo',       emoji:'💃', color:'#A78BFA', icon:<span>💃</span> },
+  'parola-alle-spalle': { name:'Parola alle Spalle',   emoji:'💬', color:'#22D3EE', icon:<MessageSquare className="h-5 w-5"/> },
+  'karaoke-battle':     { name:'Karaoke Battle',       emoji:'🎤', color:'#FB923C', icon:<Mic className="h-5 w-5"/> },
 };
 
-// ── Main ──────────────────────────────────────────────────────────────────────
+// ── localStorage ─────────────────────────────────────────────────────────────
 
-// ── localStorage persistence ────────────────────────────────────────────────
 const STORAGE_KEY = 'ideagame:home:player';
 function saveJoin(sessionId: string, joinCode: string, playerId: string, nick: string) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ sessionId, joinCode, playerId, nickname: nick })); } catch { /* ignore */ }
@@ -59,6 +61,8 @@ function clearJoin() { try { localStorage.removeItem(STORAGE_KEY); } catch { /* 
 function getSavedJoin(): { sessionId: string; joinCode: string; playerId: string; nickname: string } | null {
   try { const r = localStorage.getItem(STORAGE_KEY); return r ? JSON.parse(r) as { sessionId: string; joinCode: string; playerId: string; nickname: string } : null; } catch { return null; }
 }
+
+// ── Main ──────────────────────────────────────────────────────────────────────
 
 export default function HomeJoin() {
   const [, navigate] = useLocation();
@@ -80,8 +84,7 @@ export default function HomeJoin() {
 
   const { on, emit } = useEventSocket(null);
 
-  // Restore saved session on mount (e.g. after page refresh)
-  // Priority: URL code > localStorage > code entry screen
+  // Restore saved session on mount
   useEffect(() => {
     if (urlCode) {
       lookupSession(urlCode);
@@ -103,7 +106,7 @@ export default function HomeJoin() {
           setPhase('playing');
           setAnswered(null);
           setRevealed(false);
-          startTimer(Number(d.session.roundPayload?.timeLimit ?? 15));
+          startTimer(Number(d.session.roundPayload?.timeLimit ?? 30));
         } else {
           setPhase('lobby');
         }
@@ -112,15 +115,14 @@ export default function HomeJoin() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Join home socket room when we have a session
+  // Join home socket room
   useEffect(() => {
     if (!session?.id) return;
     emit('join:home', session.id);
     return () => { emit('leave:home', session.id); };
   }, [session?.id, emit]);
 
-  // Polling fallback: every 2s in lobby, refresh state AND detect when game starts
-  // (socket may drop on mobile/PS networks — this ensures the transition always fires)
+  // Polling fallback in lobby
   useEffect(() => {
     if (phase !== 'lobby' || !session?.id) return;
     const sid = session.id;
@@ -135,11 +137,13 @@ export default function HomeJoin() {
             setPhase('playing');
             setAnswered(null);
             setRevealed(false);
-            startTimer(Number(data.session.roundPayload?.timeLimit ?? 15));
+            startTimer(Number(data.session.roundPayload?.timeLimit ?? 30));
           } else if (data.session.status === 'ended') {
             setSession(data.session);
             setPhase('ended');
             clearJoin();
+          } else {
+            setSession(data.session);
           }
         })
         .catch(() => {});
@@ -150,38 +154,72 @@ export default function HomeJoin() {
 
   // Socket listeners
   useEffect(() => {
-    const u1 = on<{ session: HomeSession; players: HomePlayer[] }>('home:state', (data) => {
-      setSession(data.session);
-      setPlayers(data.players);
-      if (data.session.status === 'playing' && phase === 'lobby') {
+    const u1 = on<{ session: HomeSession; players: HomePlayer[] }>('home:state', (d) => {
+      setSession(d.session);
+      setPlayers(d.players);
+      // Update self
+      if (player) {
+        const me = d.players.find(p => p.id === player.id);
+        if (me) setPlayer(me);
+      }
+      if (d.session.status === 'playing' && phase === 'lobby') {
         setPhase('playing');
         setAnswered(null);
         setRevealed(false);
-        startTimer(Number(data.session.roundPayload?.timeLimit ?? 15));
+        startTimer(Number(d.session.roundPayload?.timeLimit ?? 30));
       }
-      if (data.session.status === 'ended') {
-        setPhase('ended');
-      }
+      if (d.session.status === 'ended') setPhase('ended');
     });
-    const u2 = on<{ round: number; payload: Record<string, unknown> }>('home:round', (data) => {
-      setSession(prev => prev ? { ...prev, currentRound: data.round, roundPayload: data.payload } : prev);
+
+    const u2 = on<{ session: HomeSession; players: HomePlayer[] }>('home:board', (d) => {
+      setSession(d.session);
+      setPlayers(d.players);
+      // Stay in lobby — TV picks the next game
+      setPhase('lobby');
+    });
+
+    const u3 = on<{ session: HomeSession; players: HomePlayer[]; payload: Record<string,unknown> }>('home:game_started', (d) => {
+      setSession(d.session);
+      setPlayers(d.players);
+      setPhase('playing');
       setAnswered(null);
       setRevealed(false);
-      startTimer(Number(data.payload?.timeLimit ?? 15));
+      startTimer(Number(d.payload?.timeLimit ?? 30));
     });
-    const u3 = on<{ session: HomeSession; players: HomePlayer[] }>('home:ended', (data) => {
-      setSession(data.session);
-      setPlayers(data.players);
+
+    const u4 = on<{ round: number; payload: Record<string,unknown> }>('home:round', (d) => {
+      setSession(prev => prev ? { ...prev, currentRound: d.round, roundPayload: d.payload } : prev);
+      setAnswered(null);
+      setRevealed(false);
+      startTimer(Number(d.payload?.timeLimit ?? 30));
+    });
+
+    const u5 = on<{ session: HomeSession; players: HomePlayer[]; gameSlug: string }>('home:game_ended', (d) => {
+      setSession(d.session);
+      setPlayers(d.players);
+      if (player) { const me = d.players.find(p => p.id === player.id); if (me) setPlayer(me); }
+      setPhase('lobby');
+    });
+
+    const u6 = on<{ session: HomeSession; players: HomePlayer[] }>('home:champion', (d) => {
+      setSession(d.session);
+      setPlayers(d.players);
+      if (player) { const me = d.players.find(p => p.id === player.id); if (me) setPlayer(me); }
       setPhase('ended');
       clearJoin();
     });
-    const u4 = on<{ payload: Record<string, unknown>; players: HomePlayer[] }>('home:card_flip', (data) => {
-      setSession(prev => prev ? { ...prev, roundPayload: data.payload } : prev);
-      if (data.players) setPlayers(data.players);
+
+    const u7 = on<{ payload: Record<string,unknown>; players: HomePlayer[] }>('home:card_flip', (d) => {
+      setSession(prev => prev ? { ...prev, roundPayload: d.payload } : prev);
+      if (d.players) {
+        setPlayers(d.players);
+        if (player) { const me = d.players.find(p => p.id === player.id); if (me) setPlayer(me); }
+      }
     });
-    return () => { u1?.(); u2?.(); u3?.(); u4?.(); };
+
+    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [on, phase]);
+  }, [on, phase, player]);
 
   const startTimer = useCallback((seconds: number) => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -190,34 +228,25 @@ export default function HomeJoin() {
     timerRef.current = setInterval(() => {
       t -= 1;
       setTimeLeft(t);
-      if (t <= 0) {
-        clearInterval(timerRef.current!);
-        setRevealed(true);
-      }
+      if (t <= 0) { clearInterval(timerRef.current!); setRevealed(true); }
     }, 1000);
   }, []);
 
   useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
 
-  // ── API ────────────────────────────────────────────────────────────────────
+  // ── API ───────────────────────────────────────────────────────────────────────
 
   const lookupSession = async (c: string) => {
     setLoading(true); setError('');
     try {
       const r = await fetch(`/api/home/sessions/by-code/${c}`);
-      if (!r.ok) {
-        setError(r.status === 404 ? 'Codice non trovato' : 'Sessione non disponibile');
-        return;
-      }
+      if (!r.ok) { setError(r.status === 404 ? 'Codice non trovato' : 'Sessione non disponibile'); return; }
       const data = await r.json() as { session: HomeSession; players: HomePlayer[] };
       setSession(data.session);
       setPlayers(data.players);
       setPhase('nickname');
-    } catch {
-      setError('Errore di rete — riprova');
-    } finally {
-      setLoading(false);
-    }
+    } catch { setError('Errore di rete — riprova'); }
+    finally { setLoading(false); }
   };
 
   const joinSession = async () => {
@@ -225,243 +254,212 @@ export default function HomeJoin() {
     setLoading(true); setError('');
     try {
       const r = await fetch(`/api/home/sessions/${session.id}/join`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: {'Content-Type':'application/json'},
         body: JSON.stringify({ nickname: nickname.trim() }),
       });
-      if (!r.ok) {
-        const err = await r.json() as { error: string };
-        setError(err.error ?? 'Errore');
-        return;
-      }
+      if (!r.ok) { const err = await r.json() as { error: string }; setError(err.error ?? 'Errore'); return; }
       const p: HomePlayer = await r.json();
       setPlayer(p);
-
-      // Persist to localStorage so refresh restores the player
       saveJoin(session.id, session.joinCode, p.id, nickname.trim());
 
-      // Fetch updated player list immediately (socket may not be in room yet)
+      // Fetch updated state
       try {
-        const stateR = await fetch(`/api/home/sessions/${session.id}`);
-        if (stateR.ok) {
-          const stateData = await stateR.json() as { session: HomeSession; players: HomePlayer[] };
-          setPlayers(stateData.players);
+        const sr = await fetch(`/api/home/sessions/${session.id}`);
+        if (sr.ok) {
+          const sd = await sr.json() as { session: HomeSession; players: HomePlayer[] };
+          setPlayers(sd.players);
+          setSession(sd.session);
         }
-      } catch { /* ignore — socket will sync soon */ }
+      } catch { /* ignore */ }
 
       if (session.status === 'playing') {
         setPhase('playing');
-        setAnswered(null);
-        setRevealed(false);
-        startTimer(Number(session.roundPayload?.timeLimit ?? 15));
+        setAnswered(null); setRevealed(false);
+        startTimer(Number(session.roundPayload?.timeLimit ?? 30));
       } else {
         setPhase('lobby');
       }
-    } catch {
-      setError('Errore di rete — riprova');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const skipRound = async () => {
-    if (!session || !player) return;
-    await fetch(`/api/home/sessions/${session.id}/next`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-    });
+    } catch { setError('Errore di rete — riprova'); }
+    finally { setLoading(false); }
   };
 
   const addScore = async (points: number) => {
     if (!session || !player) return;
+    const newScore = player.score + points;
     await fetch(`/api/home/sessions/${session.id}/score`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playerId: player.id, points: (player.score) + points }),
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ playerId: player.id, points: newScore }),
     });
-    setPlayer(prev => prev ? { ...prev, score: prev.score + points } : prev);
+    setPlayer(prev => prev ? {...prev, score: newScore} : prev);
+  };
+
+  const flipCard = async (cardId: string) => {
+    if (!session || !player) return;
+    await fetch(`/api/home/sessions/${session.id}/flip`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ cardId, playerId: player.id }),
+    });
   };
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <div className="relative flex min-h-screen w-full flex-col items-center justify-center overflow-hidden px-4 py-8"
-      style={{ background:'linear-gradient(-45deg,#07061a,#1d0545,#0a1845,#1a0800,#07061a)', backgroundSize:'500% 500%', animation:'hjAurora 18s ease infinite' }}>
+      style={{background:'linear-gradient(-45deg,#07061a,#1d0545,#0a1845,#1a0800,#07061a)',backgroundSize:'500% 500%',animation:'hjAurora 18s ease infinite'}}>
 
       <style>{`
-        @keyframes hjAurora {
-          0%   { background-position: 0% 50%; }
-          50%  { background-position: 100% 50%; }
-          100% { background-position: 0% 50%; }
-        }
-        @keyframes hjPulse {
-          0%,100% { transform: scale(1); box-shadow: 0 0 20px var(--ac, #F5B642); }
-          50%     { transform: scale(1.04); box-shadow: 0 0 40px var(--ac, #F5B642); }
-        }
-        @keyframes hjRing {
-          0%,100% { box-shadow: 0 0 0 4px rgba(245,182,66,0.25), 0 0 40px rgba(245,182,66,0.2); }
-          50%     { box-shadow: 0 0 0 8px rgba(245,182,66,0.15), 0 0 70px rgba(245,182,66,0.3); }
-        }
-        .hj-ring { animation: hjRing 2.5s ease infinite; }
+        @keyframes hjAurora { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
+        @keyframes hjPulse { 0%,100%{box-shadow:0 0 20px var(--ac,#F5B642)} 50%{box-shadow:0 0 40px var(--ac,#F5B642)} }
+        .hj-ring{animation:hjPulse 2.5s ease infinite}
       `}</style>
 
-      {/* Coloured starfield */}
+      {/* Stars */}
       <div className="pointer-events-none absolute inset-0 z-0">
-        {Array.from({ length: 35 }).map((_, i) => {
-          const cs = ['#ffffff','#F5B642','#A855F7','#22D3EE','#F472B6'];
-          return <div key={i} className="absolute rounded-full"
-            style={{ left:`${(i*47+13)%100}%`, top:`${(i*59+7)%100}%`, width:1+(i%2), height:1+(i%2), background:cs[i%cs.length], opacity:0.09+(i%4)*0.04 }} />;
-        })}
+        {Array.from({length:30}).map((_,i)=>{const cs=['#fff','#F5B642','#A855F7','#22D3EE','#F472B6'];return<div key={i} className="absolute rounded-full" style={{left:`${(i*47+13)%100}%`,top:`${(i*59+7)%100}%`,width:1+(i%2),height:1+(i%2),background:cs[i%cs.length],opacity:0.09+(i%4)*0.04}}/>;})}
       </div>
 
       <AnimatePresence mode="wait">
 
-        {/* ── ENTER CODE ── */}
+        {/* ── CODE ── */}
         {phase === 'code' && (
-          <motion.div key="code" initial={{ opacity:0, y:24 }} animate={{ opacity:1, y:0 }} exit={{ opacity:0, y:-20 }}
+          <motion.div key="code" initial={{opacity:0,y:24}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-20}}
             className="relative z-10 flex w-full max-w-sm flex-col items-center gap-7 text-center">
-            <img src="/logo.png" alt="IDEA Games" className="h-14 w-auto object-contain opacity-90"
-              style={{ filter:'drop-shadow(0 0 20px rgba(245,182,66,0.4))' }} />
+            <img src="/jonny-world-hero.png" alt="" className="h-28 w-auto object-contain"
+              style={{filter:'drop-shadow(0 0 30px rgba(245,182,66,0.5))'}}/>
             <div>
               <div className="text-display text-4xl font-black text-white">Entra nel Gioco</div>
               <div className="mt-2 text-sm text-white/45">Inserisci il codice che vedi sullo schermo</div>
             </div>
-            <input
-              type="text" value={code}
-              onChange={e => setCode(e.target.value.toUpperCase().trim())}
-              onKeyDown={e => e.key==='Enter' && code.length===6 && lookupSession(code)}
+            <input type="text" value={code} onChange={e => setCode(e.target.value.toUpperCase().trim())}
+              onKeyDown={e => e.key==='Enter' && code.length>=4 && lookupSession(code)}
               placeholder="CODICE" maxLength={6}
               className="w-full rounded-2xl px-6 py-5 text-center text-3xl font-black uppercase tracking-[0.5em] focus:outline-none"
-              style={{ background:'rgba(255,255,255,0.07)', border:'2px solid rgba(245,182,66,0.55)', color:'#F5B642', caretColor:'#F5B642' }}
-            />
-            {error && (
-              <div className="rounded-2xl px-4 py-3 text-sm font-bold"
-                style={{ background:'rgba(239,68,68,0.18)', border:'1px solid rgba(239,68,68,0.4)', color:'#f87171' }}>
-                {error}
-              </div>
-            )}
-            <button onClick={() => lookupSession(code)} disabled={loading||code.length<6}
+              style={{background:'rgba(255,255,255,0.07)',border:'2px solid rgba(245,182,66,0.55)',color:'#F5B642',caretColor:'#F5B642'}}/>
+            {error && <div className="rounded-2xl px-4 py-3 text-sm font-bold"
+              style={{background:'rgba(239,68,68,0.18)',border:'1px solid rgba(239,68,68,0.4)',color:'#f87171'}}>{error}</div>}
+            <button onClick={() => lookupSession(code)} disabled={loading||code.length<4}
               className="flex w-full items-center justify-center gap-3 rounded-2xl py-5 text-xl font-black text-black disabled:opacity-40"
-              style={{ background:'linear-gradient(135deg,#F5B642,#FF8C00)', boxShadow:'0 0 50px rgba(245,182,66,0.45)' }}>
-              {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : <ChevronRight className="h-6 w-6" />}
-              Avanti
+              style={{background:'linear-gradient(135deg,#F5B642,#FF8C00)',boxShadow:'0 0 50px rgba(245,182,66,0.45)'}}>
+              {loading ? <Loader2 className="h-6 w-6 animate-spin"/> : <ChevronRight className="h-6 w-6"/>} Avanti
             </button>
             <button onClick={() => navigate('/')}
-              className="flex items-center gap-1.5 text-xs text-white/25 transition-colors hover:text-white/50">
-              <Home className="h-3 w-3" /> Torna all'Hub
+              className="flex items-center gap-1.5 text-xs text-white/25 hover:text-white/50">
+              <Home className="h-3 w-3"/> Torna all'Hub
             </button>
-          </motion.div>
-        )}
-
-        {/* ── LOADING ── */}
-        {phase === 'nickname' && !session && (
-          <motion.div key="loading-qr" initial={{ opacity:0 }} animate={{ opacity:1 }}
-            className="relative z-10 flex flex-col items-center gap-6 text-center">
-            <img src="/jonny-master-nobg.png" alt="Jonny" className="h-32 w-auto object-contain"
-              style={{ filter:'drop-shadow(0 0 40px rgba(245,182,66,0.4))' }} />
-            <Loader2 className="h-9 w-9 animate-spin" style={{ color:'#F5B642' }} />
-            <div className="text-white/55">Caricamento partita...</div>
           </motion.div>
         )}
 
         {/* ── NICKNAME ── */}
         {phase === 'nickname' && session && (
-          <motion.div key="nickname" initial={{ opacity:0, y:24 }} animate={{ opacity:1, y:0 }} exit={{ opacity:0, y:-20 }}
+          <motion.div key="nickname" initial={{opacity:0,y:24}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-20}}
             className="relative z-10 flex w-full max-w-sm flex-col items-center gap-7 text-center">
-            <img src="/jonny-master-nobg.png" alt="Jonny" className="h-32 w-auto object-contain"
-              style={{ filter:'drop-shadow(0 0 50px rgba(245,182,66,0.45))' }} />
+            <img src="/jonny-master-nobg.png" alt="Jonny" className="h-28 w-auto object-contain"
+              style={{filter:'drop-shadow(0 0 40px rgba(245,182,66,0.45))'}}/>
             <div>
               <div className="text-display text-4xl font-black text-white">Come ti chiami?</div>
               <div className="mt-2 text-sm text-white/45">
-                {session.joinCode} — {players.length} giocator{players.length!==1?'i':'e'} già dentro
+                {session.joinCode} — {players.length} giocator{players.length!==1?'i':'e'} dentro
               </div>
             </div>
-            <input
-              type="text" value={nickname}
-              onChange={e => setNickname(e.target.value.slice(0,20))}
+            <input type="text" value={nickname} onChange={e => setNickname(e.target.value.slice(0,20))}
               onKeyDown={e => e.key==='Enter' && nickname.trim() && joinSession()}
               placeholder="Il tuo nome..." autoFocus
               className="w-full rounded-2xl px-6 py-5 text-center text-xl font-black focus:outline-none"
-              style={{ background:'rgba(255,255,255,0.07)', border:'2px solid rgba(168,85,247,0.55)', color:'#fff', caretColor:'#A855F7' }}
-            />
-            {error && (
-              <div className="rounded-2xl px-4 py-3 text-sm font-bold"
-                style={{ background:'rgba(239,68,68,0.18)', border:'1px solid rgba(239,68,68,0.4)', color:'#f87171' }}>
-                {error}
-              </div>
-            )}
+              style={{background:'rgba(255,255,255,0.07)',border:'2px solid rgba(168,85,247,0.55)',color:'#fff',caretColor:'#A855F7'}}/>
+            {error && <div className="rounded-2xl px-4 py-3 text-sm font-bold"
+              style={{background:'rgba(239,68,68,0.18)',border:'1px solid rgba(239,68,68,0.4)',color:'#f87171'}}>{error}</div>}
             <button onClick={joinSession} disabled={loading||!nickname.trim()}
               className="flex w-full items-center justify-center gap-3 rounded-2xl py-5 text-xl font-black text-black disabled:opacity-40"
-              style={{ background:'linear-gradient(135deg,#A855F7,#7c3aed)', boxShadow:'0 0 50px rgba(168,85,247,0.5)' }}>
-              {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : <Check className="h-6 w-6" />}
-              Entra!
+              style={{background:'linear-gradient(135deg,#A855F7,#7c3aed)',boxShadow:'0 0 50px rgba(168,85,247,0.5)'}}>
+              {loading ? <Loader2 className="h-6 w-6 animate-spin"/> : <Check className="h-6 w-6"/>} Entra!
             </button>
           </motion.div>
         )}
 
-        {/* ── LOBBY ── */}
+        {/* ── LOBBY (attesa gioco) ── */}
         {phase === 'lobby' && player && session && (
-          <motion.div key="lobby" initial={{ opacity:0, scale:0.92 }} animate={{ opacity:1, scale:1 }} exit={{ opacity:0 }}
-            className="relative z-10 flex w-full max-w-sm flex-col items-center gap-8 text-center">
+          <motion.div key="lobby" initial={{opacity:0,scale:0.92}} animate={{opacity:1,scale:1}} exit={{opacity:0}}
+            className="relative z-10 flex w-full max-w-sm flex-col items-center gap-6 text-center">
 
-            {/* Avatar ring */}
+            {/* Avatar */}
             <div className="hj-ring flex h-24 w-24 items-center justify-center rounded-3xl text-2xl font-black text-black"
-              style={{ background:`linear-gradient(135deg,${player.avatarColor},${player.avatarColor}aa)` }}>
+              style={{background:`linear-gradient(135deg,${player.avatarColor},${player.avatarColor}aa)`}}>
               {player.nickname.slice(0,2).toUpperCase()}
             </div>
 
             <div>
-              <div className="text-display text-4xl font-black text-white">{player.nickname}</div>
-              <div className="mt-2 text-lg font-black" style={{ color:'#F5B642' }}>Sei dentro! 🎉</div>
+              <div className="text-display text-3xl font-black text-white">{player.nickname}</div>
+              <div className="mt-1 text-lg font-black" style={{color:'#F5B642'}}>Sei dentro! 🎉</div>
             </div>
 
-            <div className="flex w-full flex-col items-center gap-4 rounded-3xl p-7"
-              style={{ background:'rgba(255,255,255,0.05)', border:'1px solid rgba(168,85,247,0.35)', backdropFilter:'blur(12px)' }}>
-              <div className="flex items-center gap-3">
-                <Loader2 className="h-7 w-7 animate-spin" style={{ color:'#A855F7' }} />
-                <div className="font-bold text-white/75">Aspettiamo il gioco...</div>
-              </div>
-              <div className="text-sm text-white/35">{players.length} giocator{players.length!==1?'i':'e'} connessi</div>
+            {/* Score */}
+            <div className="rounded-2xl px-6 py-3"
+              style={{background:'rgba(245,182,66,0.15)',border:'1px solid rgba(245,182,66,0.4)'}}>
+              <div className="text-xs font-black uppercase tracking-widest text-white/50">Punteggio</div>
+              <div className="text-3xl font-black" style={{color:'#F5B642'}}>{player.score} pt</div>
+            </div>
 
-              {/* Mini player list */}
-              {players.length > 0 && (
-                <div className="flex flex-wrap justify-center gap-2 pt-1">
-                  {players.map((p, i) => (
-                    <div key={p.id} className="rounded-full px-3 py-1 text-xs font-black"
-                      style={{ background:`${AVATAR_COLORS[i%AVATAR_COLORS.length]}30`, border:`1px solid ${AVATAR_COLORS[i%AVATAR_COLORS.length]}55`, color:AVATAR_COLORS[i%AVATAR_COLORS.length] }}>
-                      {p.nickname}
+            {/* Scoreboard mini */}
+            {players.length > 1 && (
+              <div className="w-full rounded-3xl p-4"
+                style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(168,85,247,0.3)'}}>
+                <div className="mb-2 text-xs font-black uppercase tracking-widest text-white/40">Classifica</div>
+                <div className="flex flex-col gap-1.5">
+                  {[...players].sort((a,b)=>b.score-a.score).slice(0,5).map((p,i)=>(
+                    <div key={p.id} className="flex items-center gap-2 rounded-xl px-3 py-1.5 text-sm"
+                      style={p.id===player.id
+                        ? {background:`${player.avatarColor}22`,border:`1px solid ${player.avatarColor}55`}
+                        : {background:'rgba(255,255,255,0.04)'}}>
+                      <span className="w-5 text-xs">{i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`}</span>
+                      <span className={`flex-1 truncate text-left font-bold ${p.id===player.id?'text-white':'text-white/60'}`}>{p.nickname}</span>
+                      <span className="text-xs font-black" style={{color:'#F5B642'}}>{p.score}pt</span>
                     </div>
                   ))}
                 </div>
-              )}
+              </div>
+            )}
+
+            <div className="flex w-full flex-col items-center gap-3 rounded-3xl p-5"
+              style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(168,85,247,0.3)'}}>
+              <div className="flex items-center gap-3">
+                <Loader2 className="h-6 w-6 animate-spin" style={{color:'#A855F7'}}/>
+                <div className="font-bold text-white/75">La TV sta scegliendo il gioco…</div>
+              </div>
+              <div className="text-sm text-white/35">{players.length} giocator{players.length!==1?'i':'e'} connessi</div>
             </div>
 
-            <img src="/jonny-master-nobg.png" alt="Jonny" className="h-24 w-auto object-contain"
-              style={{ filter:'drop-shadow(0 0 30px rgba(245,182,66,0.35))', opacity:0.85 }} />
+            <img src="/jonny-master-nobg.png" alt="" className="h-20 w-auto object-contain opacity-80"
+              style={{filter:'drop-shadow(0 0 30px rgba(245,182,66,0.35))'}}/>
           </motion.div>
         )}
 
         {/* ── PLAYING ── */}
         {phase === 'playing' && player && session && (
-          <motion.div key="playing" initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
+          <motion.div key="playing" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
             className="relative z-10 flex w-full max-w-sm flex-col gap-4">
 
-            {/* Header bar */}
+            {/* Header */}
             <div className="flex items-center justify-between rounded-2xl px-4 py-3"
-              style={{ background:'rgba(0,0,0,0.45)', backdropFilter:'blur(14px)', border:'1px solid rgba(255,255,255,0.08)' }}>
+              style={{background:'rgba(0,0,0,0.5)',backdropFilter:'blur(14px)',border:'1px solid rgba(255,255,255,0.08)'}}>
               <div className="flex items-center gap-2">
-                {session.gameSlug && GAME_ICONS[session.gameSlug]}
+                {session.gameSlug && GAME_INFO[session.gameSlug] && (
+                  <span style={{color:GAME_INFO[session.gameSlug].color}}>
+                    {GAME_INFO[session.gameSlug].icon}
+                  </span>
+                )}
                 <div>
-                  <div className="text-xs text-white/35">Round {session.currentRound+1}/{session.totalRounds}</div>
+                  <div className="text-xs text-white/35">
+                    {GAME_INFO[session.gameSlug??'']?.name ?? session.gameSlug} — Round {session.currentRound+1}/{session.totalRounds}
+                  </div>
                   <div className="text-sm font-black text-white">{player.nickname}</div>
                 </div>
               </div>
               <div className="rounded-xl px-4 py-2 text-center transition-all"
                 style={timeLeft!==null&&timeLeft<=5
-                  ? { background:'rgba(239,68,68,0.22)', border:'2px solid rgba(239,68,68,0.65)', boxShadow:'0 0 25px rgba(239,68,68,0.4)' }
-                  : { background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.14)' }}>
+                  ? {background:'rgba(239,68,68,0.22)',border:'2px solid rgba(239,68,68,0.65)'}
+                  : {background:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.14)'}}>
                 <div className="text-2xl font-black tabular-nums"
-                  style={{ color:timeLeft!==null&&timeLeft<=5?'#F87171':'#fff' }}>
+                  style={{color:timeLeft!==null&&timeLeft<=5?'#F87171':'#fff'}}>
                   {timeLeft ?? '—'}
                 </div>
               </div>
@@ -470,63 +468,69 @@ export default function HomeJoin() {
             {/* Score */}
             <div className="flex justify-center">
               <div className="rounded-full px-5 py-1.5 text-base font-black"
-                style={{ background:'rgba(245,182,66,0.18)', border:'1px solid rgba(245,182,66,0.45)', color:'#F5B642' }}>
+                style={{background:'rgba(245,182,66,0.18)',border:'1px solid rgba(245,182,66,0.45)',color:'#F5B642'}}>
                 {player.score} punti
               </div>
             </div>
 
-            {/* Controller */}
-            <PhoneController session={session} revealed={revealed} answered={answered} player={player}
+            {/* Game controller */}
+            <PhoneController
+              session={session}
+              player={player}
+              players={players}
+              revealed={revealed}
+              answered={answered}
+              timeLeft={timeLeft}
               onAnswer={(idx) => {
                 setAnswered(idx);
                 if (timerRef.current) clearInterval(timerRef.current);
                 setRevealed(true);
-                const payload = session.roundPayload;
-                if (String(payload.mode)==='home-quiz' && idx===Number(payload.correctIndex)) {
-                  void addScore(Number(payload.points ?? 200));
+                const p = session.roundPayload;
+                if (String(p.mode)==='home-quiz' && idx===Number(p.correctIndex)) {
+                  void addScore(Number(p.points ?? 200));
                 }
               }}
-              onSkip={skipRound}
+              onFlip={flipCard}
+              onScore={addScore}
             />
           </motion.div>
         )}
 
-        {/* ── ENDED ── */}
+        {/* ── ENDED (champion) ── */}
         {phase === 'ended' && player && (
-          <motion.div key="ended" initial={{ opacity:0, scale:0.9 }} animate={{ opacity:1, scale:1 }}
+          <motion.div key="ended" initial={{opacity:0,scale:0.9}} animate={{opacity:1,scale:1}}
             className="relative z-10 flex w-full max-w-sm flex-col items-center gap-6 text-center">
-            <img src="/jonny-master-nobg.png" alt="Jonny" className="h-32 w-auto object-contain"
-              style={{ filter:'drop-shadow(0 0 50px rgba(245,182,66,0.5))' }} />
+            <img src="/jonny-world-hero.png" alt="" className="h-32 w-auto object-contain"
+              style={{filter:'drop-shadow(0 0 50px rgba(245,182,66,0.5))'}}/>
             <div>
-              <div className="text-display text-4xl font-black text-white">Partita finita!</div>
-              <div className="mt-2 text-2xl font-black" style={{ color:'#F5B642' }}>{player.score} punti!</div>
+              <div className="text-display text-5xl font-black text-white">🏆 Fine!</div>
+              <div className="mt-2 text-2xl font-black" style={{color:'#F5B642'}}>{player.score} punti totali!</div>
             </div>
-
             <div className="flex w-full flex-col gap-2">
-              {[...players].sort((a,b)=>b.score-a.score).map((p,i) => {
-                const MEDALS = ['🥇','🥈','🥉'];
-                const isSelf = p.id === player.id;
+              {[...players].sort((a,b)=>b.score-a.score).map((p,i)=>{
+                const MEDALS=['🥇','🥈','🥉'];
+                const isSelf = p.id===player.id;
                 return (
-                  <div key={p.id} className="flex items-center gap-3 rounded-2xl px-4 py-3 transition-all"
+                  <div key={p.id} className="flex items-center gap-3 rounded-2xl px-4 py-3"
                     style={isSelf
-                      ? { background:'rgba(245,182,66,0.18)', border:'2px solid rgba(245,182,66,0.55)', boxShadow:'0 0 25px rgba(245,182,66,0.25)' }
-                      : { background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)' }}>
-                    <div className="text-xl w-7 text-center">{MEDALS[i] ?? `#${i+1}`}</div>
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-black text-black"
-                      style={{ background:`linear-gradient(135deg,${AVATAR_COLORS[i%AVATAR_COLORS.length]},${AVATAR_COLORS[(i+1)%AVATAR_COLORS.length]})` }}>
+                      ? {background:'linear-gradient(135deg,rgba(245,182,66,0.25),rgba(245,182,66,0.1))',border:'2px solid rgba(245,182,66,0.5)'}
+                      : {background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.1)'}}>
+                    <div className="text-2xl w-8 text-center">{MEDALS[i]??`#${i+1}`}</div>
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-black"
+                      style={{background:AVATAR_COLORS[i%AVATAR_COLORS.length],color:'#000'}}>
                       {p.nickname.slice(0,2).toUpperCase()}
                     </div>
-                    <div className="flex-1 text-left text-sm font-black" style={{ color:isSelf?'#F5B642':'#fff' }}>{p.nickname}</div>
-                    <div className="font-black" style={{ color:isSelf?'#F5B642':'rgba(255,255,255,0.6)' }}>{p.score}</div>
+                    <div className="flex-1 text-left">
+                      <div className={`text-sm font-black ${isSelf?'text-yellow-400':'text-white'}`}>{p.nickname}</div>
+                    </div>
+                    <div className={`text-lg font-black ${isSelf?'text-yellow-400':'text-white/60'}`}>{p.score}pt</div>
                   </div>
                 );
               })}
             </div>
-
-            <button onClick={() => navigate('/home')}
-              className="flex items-center gap-3 rounded-2xl px-8 py-4 font-black text-black"
-              style={{ background:'linear-gradient(135deg,#F5B642,#FF8C00)', boxShadow:'0 0 40px rgba(245,182,66,0.45)' }}>
-              <Sparkles className="h-5 w-5" /> Nuova Partita
+            <button onClick={() => { clearJoin(); navigate('/'); }}
+              className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-6 py-3 text-sm text-white/45 hover:text-white/70">
+              <Home className="h-4 w-4"/> Torna all'Hub
             </button>
           </motion.div>
         )}
@@ -538,187 +542,327 @@ export default function HomeJoin() {
 
 // ── PhoneController ────────────────────────────────────────────────────────────
 
-function PhoneController({ session, revealed, answered, onAnswer, onSkip, player }: {
+function PhoneController({
+  session, player, players, revealed, answered, timeLeft,
+  onAnswer, onFlip, onScore,
+}: {
   session: HomeSession;
+  player: HomePlayer;
+  players: HomePlayer[];
   revealed: boolean;
   answered: number | null;
+  timeLeft: number | null;
   onAnswer: (idx: number) => void;
-  onSkip: () => void;
-  player?: HomePlayer | null;
+  onFlip: (cardId: string) => void;
+  onScore: (pts: number) => Promise<void>;
 }) {
   const p = session.roundPayload;
   const mode = String(p.mode ?? 'home-quiz');
 
-  if (mode === 'home-quiz') {
-    const answers = (p.answers as string[]) ?? [];
-    const correct = Number(p.correctIndex ?? 0);
-    const BG_COLORS = ['#3B82F6','#EC4899','#EAB308','#10B981'];
-    const LETTERS   = ['A','B','C','D'];
+  if (mode === 'home-quiz')       return <QuizController payload={p} revealed={revealed} answered={answered} onAnswer={onAnswer}/>;
+  if (mode === 'home-coppie')     return <CoppieController payload={p} onFlip={onFlip} player={player}/>;
+  if (mode === 'home-percorso')   return <SimpleController payload={p} color="#34D399" emoji="😂" label="Sfida completata!" timeLeft={timeLeft}/>;
+  if (mode === 'home-saramusica') return <SaraMusicaController payload={p} players={players} player={player} onScore={onScore}/>;
+  if (mode === 'home-adult')      return <AdultController payload={p} timeLeft={timeLeft}/>;
+  if (mode === 'home-ballo')      return <BalloController payload={p} timeLeft={timeLeft}/>;
+  if (mode === 'home-wordback')   return <WordBackController payload={p} timeLeft={timeLeft}/>;
+  if (mode === 'home-karaoke')    return <KaraokeController payload={p}/>;
+  if (mode === 'home-freestyle')  return <FreestyleController payload={p} timeLeft={timeLeft}/>;
+  return <div className="text-center text-white/40 py-8">In attesa del gioco…</div>;
+}
 
-    return (
-      <div className="flex flex-col gap-3">
-        {/* Compact question */}
-        <div className="rounded-2xl p-4 text-center text-sm font-bold leading-snug text-white/85"
-          style={{ background:'linear-gradient(135deg,rgba(168,85,247,0.2),rgba(245,182,66,0.07))', border:'1px solid rgba(168,85,247,0.4)' }}>
-          {String(p.question ?? '')}
-        </div>
+// ── QuizController ─────────────────────────────────────────────────────────────
 
-        {/* Full-colour answer grid */}
-        <div className="grid grid-cols-2 gap-3">
-          {answers.map((ans, i) => {
-            const isCorrect = i === correct;
-            const isSelected = answered === i;
-            let bg: string, border: string, shadow: string, textCol: string;
-            if (revealed) {
-              if (isCorrect) { bg='linear-gradient(135deg,#22c55e,#16a34a)'; border='2px solid #4ade80'; shadow='0 0 30px rgba(34,197,94,0.5)'; textCol='#fff'; }
-              else if (isSelected) { bg='rgba(239,68,68,0.18)'; border='2px solid rgba(239,68,68,0.5)'; shadow='none'; textCol='rgba(239,68,68,0.8)'; }
-              else { bg='rgba(255,255,255,0.04)'; border='1px solid rgba(255,255,255,0.08)'; shadow='none'; textCol='rgba(255,255,255,0.25)'; }
-            } else if (isSelected) {
-              bg=`linear-gradient(135deg,${BG_COLORS[i]},${BG_COLORS[i]}cc)`; border=`2px solid ${BG_COLORS[i]}`; shadow=`0 0 24px ${BG_COLORS[i]}80`; textCol='#000';
-            } else {
-              bg=`linear-gradient(135deg,${BG_COLORS[i]},${BG_COLORS[i]}cc)`; border=`2px solid ${BG_COLORS[i]}`; shadow=`0 0 18px ${BG_COLORS[i]}55`; textCol='#fff';
-            }
-            return (
-              <motion.button key={i}
-                whileTap={!revealed && answered===null ? { scale:0.94 } : {}}
-                onClick={() => !revealed && answered===null && onAnswer(i)}
-                disabled={revealed || answered!==null}
-                className="flex flex-col items-center justify-center gap-2 rounded-2xl px-3 py-5 text-sm font-black leading-tight transition-all"
-                style={{ background:bg, border, boxShadow:shadow, color:textCol }}>
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg text-xs font-black"
-                  style={{ background:'rgba(0,0,0,0.28)', color:revealed&&isCorrect?'#4ade80':textCol }}>
-                  {LETTERS[i]}
-                </div>
-                <div className="text-center">{ans}</div>
-                {revealed && isCorrect && <Check className="h-4 w-4 text-green-300" />}
-              </motion.button>
-            );
-          })}
-        </div>
+function QuizController({ payload, revealed, answered, onAnswer }: {
+  payload: Record<string,unknown>;
+  revealed: boolean;
+  answered: number | null;
+  onAnswer: (idx: number) => void;
+}) {
+  const answers = (payload.answers as string[]) ?? [];
+  const correct = Number(payload.correctIndex ?? 0);
+  const LETTERS = ['A','B','C','D'];
+  const COLORS = ['#3B82F6','#EC4899','#EAB308','#10B981'];
 
-        <button onClick={onSkip}
-          className="flex items-center justify-center gap-1.5 rounded-2xl py-2.5 text-xs transition-colors"
-          style={{ background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', color:'rgba(255,255,255,0.3)' }}>
-          <SkipForward className="h-3 w-3" /> Salta round
-        </button>
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="rounded-2xl p-4 text-center"
+        style={{background:'rgba(168,85,247,0.12)',border:'1px solid rgba(168,85,247,0.35)'}}>
+        <div className="text-sm font-black leading-snug text-white">{String(payload.question??'')}</div>
       </div>
-    );
-  }
-
-  if (mode === 'home-ballo') {
-    return (
-      <div className="flex flex-col items-center gap-5 text-center">
-        <div className="flex h-20 w-20 items-center justify-center rounded-3xl text-5xl"
-          style={{ background:'linear-gradient(135deg,rgba(168,85,247,0.3),rgba(168,85,247,0.12))', border:'2px solid rgba(168,85,247,0.5)', boxShadow:'0 0 40px rgba(168,85,247,0.35)' }}>
-          💃
+      <div className="grid grid-cols-2 gap-2">
+        {answers.map((ans,i)=>{
+          const isCorrect = i===correct;
+          const isAnswered = answered===i;
+          let bg: string;
+          if (revealed) {
+            bg = isCorrect ? 'linear-gradient(135deg,#22c55e,#16a34a)' : 'rgba(255,255,255,0.04)';
+          } else if (isAnswered) {
+            bg = `linear-gradient(135deg,${COLORS[i]},${COLORS[i]}cc)`;
+          } else {
+            bg = `${COLORS[i]}22`;
+          }
+          return (
+            <button key={i} onClick={() => !revealed && answered===null && onAnswer(i)}
+              disabled={revealed || answered!==null}
+              className="flex items-center gap-2 rounded-xl p-3 text-left text-sm font-black transition-all disabled:opacity-70"
+              style={{background:bg,border:`1px solid ${COLORS[i]}55`,color:'#fff'}}>
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-black"
+                style={{background:'rgba(0,0,0,0.3)'}}>
+                {LETTERS[i]}
+              </span>
+              <span className="text-xs leading-tight">{ans}</span>
+              {revealed && isCorrect && <Check className="ml-auto h-4 w-4 shrink-0"/>}
+            </button>
+          );
+        })}
+      </div>
+      {revealed && (
+        <div className="rounded-xl p-3 text-center text-xs font-bold"
+          style={answered===correct
+            ? {background:'rgba(34,197,94,0.18)',color:'#4ade80',border:'1px solid rgba(34,197,94,0.35)'}
+            : {background:'rgba(239,68,68,0.18)',color:'#f87171',border:'1px solid rgba(239,68,68,0.35)'}}>
+          {answered===correct ? '✅ Risposta corretta!' : `❌ La risposta era: ${answers[correct]}`}
         </div>
-        <div className="text-display text-2xl font-black text-white">{String(p.name ?? 'Sfida di Ballo')}</div>
-        <div className="text-sm text-white/60">{String(p.description ?? '')}</div>
-        {!!p.musicHint && (
-          <div className="rounded-2xl px-4 py-2.5 text-sm font-bold"
-            style={{ background:'rgba(168,85,247,0.18)', border:'1px solid rgba(168,85,247,0.4)', color:'#c084fc' }}>
-            🎵 {String(p.musicHint)}
-          </div>
+      )}
+    </div>
+  );
+}
+
+// ── CoppieController ──────────────────────────────────────────────────────────
+
+interface CoppieCard { id: string; text: string; imageUrl?: string; pairId: number; flipped: boolean; matched: boolean; }
+
+function CoppieController({ payload, onFlip, player }: {
+  payload: Record<string,unknown>;
+  onFlip: (cardId: string) => void;
+  player: HomePlayer;
+}) {
+  const cards = (payload.cards as CoppieCard[]) ?? [];
+  const matched = Number(payload.matchedPairs ?? 0);
+  const total = Number(payload.totalPairs ?? 0);
+  const lastFlippedBy = payload.lastFlippedBy as string | null;
+  const isMyTurn = !lastFlippedBy || lastFlippedBy === player.id || (payload.currentFlipped as string[])?.length === 0;
+  const cols = Math.min(Math.ceil(Math.sqrt(cards.length)), 4);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between rounded-xl px-4 py-2"
+        style={{background:'rgba(244,114,182,0.12)',border:'1px solid rgba(244,114,182,0.35)'}}>
+        <span className="text-sm font-black" style={{color:'#F472B6'}}>💞 Coppie: {matched}/{total}</span>
+        <span className="text-xs text-white/50">{isMyTurn ? '🟢 Il tuo turno!' : '⏳ Aspetta...'}</span>
+      </div>
+      <div className="grid gap-2" style={{gridTemplateColumns:`repeat(${cols},minmax(0,1fr))`}}>
+        {cards.map(card=>(
+          <button key={card.id}
+            onClick={() => isMyTurn && !card.matched && !card.flipped && onFlip(card.id)}
+            disabled={!isMyTurn || card.matched || card.flipped}
+            className="flex min-h-14 items-center justify-center rounded-xl text-xs font-black transition-all disabled:opacity-60"
+            style={card.matched
+              ? {background:'rgba(34,197,94,0.25)',border:'1px solid rgba(34,197,94,0.55)',color:'#4ade80'}
+              : card.flipped
+              ? {background:'linear-gradient(135deg,rgba(244,114,182,0.4),rgba(244,114,182,0.2))',border:'2px solid #F472B6',color:'#fff'}
+              : {background:'rgba(255,255,255,0.05)',border:'1px solid rgba(244,114,182,0.3)',color:'rgba(255,255,255,0.5)'}}>
+            {card.matched || card.flipped ? (
+              card.imageUrl
+                ? <img src={card.imageUrl} alt={card.text} className="h-10 w-10 rounded-lg object-cover"/>
+                : <span className="px-1 text-center leading-tight">{card.text}</span>
+            ) : '?'}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── SimpleController (Percorso, Ballo, Adult, WordBack) ───────────────────────
+
+function SimpleController({ payload, color, emoji, label, timeLeft }: {
+  payload: Record<string,unknown>;
+  color: string;
+  emoji: string;
+  label: string;
+  timeLeft: number | null;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-5 py-4 text-center">
+      <div className="text-6xl">{emoji}</div>
+      <div className="text-xl font-black text-white">{String(payload.title ?? payload.name ?? label)}</div>
+      {!!payload.description && (
+        <div className="text-sm text-white/55 leading-relaxed px-2">{String(payload.description)}</div>
+      )}
+      {timeLeft !== null && (
+        <div className="flex items-center gap-2 rounded-xl px-5 py-2"
+          style={{background:`${color}18`,border:`1px solid ${color}45`,color}}>
+          <Timer className="h-4 w-4"/>
+          <span className="text-2xl font-black tabular-nums">{timeLeft}s</span>
+        </div>
+      )}
+      <div className="text-xs text-white/35">L'animatore assegna i punti dalla TV</div>
+    </div>
+  );
+}
+
+// ── BalloController ────────────────────────────────────────────────────────────
+
+function BalloController({ payload, timeLeft }: { payload: Record<string,unknown>; timeLeft: number | null }) {
+  return (
+    <div className="flex flex-col items-center gap-5 py-4 text-center">
+      <div className="text-6xl">💃</div>
+      <div className="text-xl font-black text-white">{String(payload.name ?? 'Sfida di Ballo')}</div>
+      <div className="text-sm text-white/55 leading-relaxed px-2">{String(payload.description ?? '')}</div>
+      {!!payload.musicHint && (
+        <div className="rounded-xl px-4 py-2 text-sm font-black" style={{background:'rgba(167,139,250,0.18)',color:'#c084fc',border:'1px solid rgba(167,139,250,0.4)'}}>
+          🎵 {String(payload.musicHint)}
+        </div>
+      )}
+      {timeLeft !== null && (
+        <div className="flex items-center gap-2 rounded-xl px-5 py-2"
+          style={{background:'rgba(167,139,250,0.18)',border:'1px solid rgba(167,139,250,0.45)',color:'#A78BFA'}}>
+          <Timer className="h-4 w-4"/>
+          <span className="text-2xl font-black tabular-nums">{timeLeft}s</span>
+        </div>
+      )}
+      <div className="text-2xl font-black" style={{color:'#A78BFA'}}>BALLA! 🕺</div>
+    </div>
+  );
+}
+
+// ── SaraMusicaController ──────────────────────────────────────────────────────
+
+function SaraMusicaController({ payload, players, player, onScore }: {
+  payload: Record<string,unknown>;
+  players: HomePlayer[];
+  player: HomePlayer;
+  onScore: (pts: number) => Promise<void>;
+}) {
+  const [guessed, setGuessed] = useState(false);
+  const pts = Number(payload.points ?? 100);
+  void players; // used for future features
+
+  return (
+    <div className="flex flex-col items-center gap-5 py-4 text-center">
+      <div className="text-6xl">🎵</div>
+      <div className="text-xl font-black text-white">Indovina la canzone!</div>
+      <div className="rounded-2xl p-4 w-full"
+        style={{background:'rgba(96,165,250,0.12)',border:'1px solid rgba(96,165,250,0.35)'}}>
+        <div className="text-xs font-black uppercase tracking-widest mb-2" style={{color:'rgba(96,165,250,0.8)'}}>SUGGERIMENTO</div>
+        <div className="text-sm text-white/75 italic leading-relaxed">"{String(payload.snippetHint??'...')}"</div>
+      </div>
+      {!guessed ? (
+        <button onClick={async () => {
+          setGuessed(true);
+          await onScore(pts);
+        }}
+          className="flex w-full items-center justify-center gap-3 rounded-2xl py-5 text-xl font-black text-black"
+          style={{background:'linear-gradient(135deg,#60A5FA,#2563eb)',boxShadow:'0 0 40px rgba(96,165,250,0.5)'}}>
+          🎵 L'ho indovinata! +{pts}pt
+        </button>
+      ) : (
+        <div className="rounded-2xl p-4 text-center w-full"
+          style={{background:'rgba(34,197,94,0.18)',border:'1px solid rgba(34,197,94,0.35)',color:'#4ade80'}}>
+          ✅ +{pts} punti assegnati! ({player.score + pts}pt totali)
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── AdultController ────────────────────────────────────────────────────────────
+
+function AdultController({ payload, timeLeft }: { payload: Record<string,unknown>; timeLeft: number | null }) {
+  return (
+    <div className="flex flex-col items-center gap-5 py-4 text-center">
+      <div className="text-6xl">🔞</div>
+      <div className="text-xl font-black text-white">{String(payload.title ?? 'Sfida Adult Only')}</div>
+      <div className="rounded-2xl p-4 w-full"
+        style={{background:'rgba(248,113,113,0.12)',border:'1px solid rgba(248,113,113,0.35)'}}>
+        <div className="text-sm text-white/75 leading-relaxed">{String(payload.body ?? '')}</div>
+      </div>
+      {timeLeft !== null && (
+        <div className="flex items-center gap-2 rounded-xl px-5 py-2"
+          style={{background:'rgba(248,113,113,0.18)',border:'1px solid rgba(248,113,113,0.45)',color:'#F87171'}}>
+          <Timer className="h-4 w-4"/>
+          <span className="text-2xl font-black tabular-nums">{timeLeft}s</span>
+        </div>
+      )}
+      <div className="text-xs text-white/35">L'animatore assegna i punti dalla TV</div>
+    </div>
+  );
+}
+
+// ── WordBackController ─────────────────────────────────────────────────────────
+
+function WordBackController({ payload, timeLeft }: { payload: Record<string,unknown>; timeLeft: number | null }) {
+  return (
+    <div className="flex flex-col items-center gap-5 py-4 text-center">
+      <div className="text-6xl">💬</div>
+      <div className="text-xl font-black text-white">Fai indovinare la parola!</div>
+      <div className="rounded-2xl p-5 w-full"
+        style={{background:'rgba(34,211,238,0.12)',border:'1px solid rgba(34,211,238,0.35)'}}>
+        <div className="text-xs font-black uppercase tracking-widest mb-2" style={{color:'rgba(34,211,238,0.8)'}}>CATEGORIA</div>
+        <div className="text-base text-white/70">{String(payload.category ?? '')} — {String(payload.difficulty ?? 'medium')}</div>
+        {!!payload.hint && (
+          <div className="mt-2 text-sm text-white/50 italic">💡 {String(payload.hint)}</div>
         )}
-        <button onClick={onSkip}
-          className="flex items-center gap-2 rounded-2xl px-6 py-3 text-sm transition-colors"
-          style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)', color:'rgba(255,255,255,0.4)' }}>
-          <SkipForward className="h-4 w-4" /> Salta
-        </button>
       </div>
-    );
-  }
-
-  if (mode === 'home-percorso') {
-    const TYPE_ICONS: Record<string, string> = { sfida:'⚡', domanda:'❓', mimo:'🎭', reazione:'😱', fantasia:'🌟' };
-    const icon = TYPE_ICONS[String(p.challengeType ?? 'sfida')] ?? '⚡';
-    return (
-      <div className="flex flex-col items-center gap-5 text-center">
-        <div className="text-6xl" style={{ filter:'drop-shadow(0 0 20px rgba(52,211,153,0.6))' }}>{icon}</div>
-        <div className="text-display text-2xl font-black text-white">{String(p.title ?? 'Sfida')}</div>
-        <div className="text-sm text-white/60 leading-relaxed">{String(p.description ?? '')}</div>
-        <div className="rounded-2xl px-5 py-2.5 text-sm font-black"
-          style={{ background:'rgba(52,211,153,0.18)', border:'1px solid rgba(52,211,153,0.45)', color:'#34D399' }}>
-          {Number(p.points ?? 150)} punti
+      <div className="text-base text-white/45">
+        Descrivi la parola sulla schiena con gesti o parole — senza dirla!
+      </div>
+      {timeLeft !== null && (
+        <div className="flex items-center gap-2 rounded-xl px-5 py-2"
+          style={{background:'rgba(34,211,238,0.18)',border:'1px solid rgba(34,211,238,0.45)',color:'#22D3EE'}}>
+          <Timer className="h-4 w-4"/>
+          <span className="text-2xl font-black tabular-nums">{timeLeft}s</span>
         </div>
-        <button onClick={onSkip}
-          className="flex items-center gap-2 rounded-2xl px-6 py-3 text-sm transition-colors"
-          style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)', color:'rgba(255,255,255,0.4)' }}>
-          <SkipForward className="h-4 w-4" /> Prossima sfida
-        </button>
-      </div>
-    );
-  }
+      )}
+      <div className="text-xs text-white/35">L'animatore assegna i punti dalla TV</div>
+    </div>
+  );
+}
 
-  if (mode === 'home-coppie') {
-    interface CC { id: string; text: string; pairId: number; flipped: boolean; matched: boolean; }
-    const cards = (p.cards as CC[]) ?? [];
-    const currentFlipped = (p.currentFlipped as string[]) ?? [];
-    const matchedPairs = Number(p.matchedPairs ?? 0);
-    const totalPairs = Number(p.totalPairs ?? 6);
-    const canFlip = currentFlipped.length < 2;
-    const allMatched = totalPairs > 0 && matchedPairs >= totalPairs;
+// ── KaraokeController ─────────────────────────────────────────────────────────
 
-    const handleFlip = async (cardId: string) => {
-      if (!canFlip || allMatched) return;
-      try {
-        await fetch(`/api/home/sessions/${session.id}/flip`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cardId, playerId: player?.id }),
-        });
-      } catch { /* silent */ }
-    };
-
-    return (
-      <div className="flex flex-col items-center gap-4">
-        <div className="flex w-full items-center justify-between">
-          <div className="text-sm text-white/60">{matchedPairs}/{totalPairs} coppie trovate</div>
-          <div className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
-            allMatched ? 'bg-green-500/20 text-green-400' :
-            canFlip ? 'bg-primary/20 text-primary' : 'bg-white/10 text-white/40'
-          }`}>
-            {allMatched ? '🎉 Tutte trovate!' : canFlip ? 'Tocca una carta' : 'Aspetta…'}
+function KaraokeController({ payload }: { payload: Record<string,unknown> }) {
+  return (
+    <div className="flex flex-col items-center gap-5 py-4 text-center">
+      <div className="text-6xl">🎤</div>
+      <div className="text-xl font-black text-white">{String(payload.title ?? 'Karaoke')}</div>
+      <div className="text-base font-bold" style={{color:'#FB923C'}}>— {String(payload.artist ?? '')}</div>
+      {!!payload.lyricSnippet && (
+        <div className="rounded-2xl p-4 w-full"
+          style={{background:'rgba(251,146,60,0.12)',border:'1px solid rgba(251,146,60,0.35)'}}>
+          <div className="text-sm text-white/70 italic leading-relaxed whitespace-pre-line">
+            "{String(payload.lyricSnippet)}"
           </div>
         </div>
+      )}
+      <div className="text-2xl font-black" style={{color:'#FB923C'}}>CANTA! 🎤</div>
+      <div className="text-xs text-white/35">Guarda i testi sulla TV</div>
+    </div>
+  );
+}
 
-        <div className="grid w-full grid-cols-4 gap-1.5">
-          {cards.map((card) => {
-            const isFlippable = !card.flipped && !card.matched && canFlip && !allMatched;
-            return (
-              <motion.button
-                key={card.id}
-                whileTap={isFlippable ? { scale: 0.88 } : {}}
-                onClick={() => isFlippable && void handleFlip(card.id)}
-                className={`flex aspect-square items-center justify-center rounded-xl border-2 p-1 text-center text-xs font-bold leading-tight transition-all ${
-                  card.matched
-                    ? 'border-green-400 bg-green-400/20 text-green-300'
-                    : card.flipped
-                      ? 'border-primary bg-primary/20 text-white'
-                      : isFlippable
-                        ? 'border-white/15 bg-white/5 text-white/0 active:bg-primary/10'
-                        : 'border-white/8 bg-white/3 text-white/0 cursor-not-allowed'
-                }`}
-              >
-                {(card.flipped || card.matched)
-                  ? card.text
-                  : <span className="text-white/25 text-base">?</span>
-                }
-              </motion.button>
-            );
-          })}
-        </div>
+// ── FreestyleController ───────────────────────────────────────────────────────
 
-        {allMatched && (
-          <motion.div
-            initial={{ scale: 0 }} animate={{ scale: 1 }}
-            className="rounded-2xl border border-green-400/30 bg-green-400/10 px-4 py-2 text-center text-sm font-bold text-green-400">
-            🎉 Tutte trovate! Aspetta che l'host vada avanti
-          </motion.div>
-        )}
+function FreestyleController({ payload, timeLeft }: { payload: Record<string,unknown>; timeLeft: number | null }) {
+  return (
+    <div className="flex flex-col items-center gap-5 py-4 text-center">
+      <div className="text-6xl">🎙️</div>
+      <div className="text-xl font-black text-white">FREESTYLE RAP</div>
+      <div className="rounded-2xl px-6 py-4 w-full"
+        style={{background:'rgba(251,146,60,0.12)',border:'2px solid rgba(251,146,60,0.45)',boxShadow:'0 0 30px rgba(251,146,60,0.2)'}}>
+        <div className="text-xs font-black uppercase tracking-widest mb-2" style={{color:'rgba(251,146,60,0.8)'}}>LA PAROLA</div>
+        <div className="text-4xl font-black" style={{color:'#FB923C'}}>{String(payload.word ?? '?')}</div>
       </div>
-    );
-  }
-
-  return null;
+      {timeLeft !== null && (
+        <div className="flex items-center gap-2 rounded-xl px-5 py-2"
+          style={{background:'rgba(251,146,60,0.18)',border:'1px solid rgba(251,146,60,0.45)',color:'#FB923C'}}>
+          <Timer className="h-4 w-4"/>
+          <span className="text-2xl font-black tabular-nums">{timeLeft}s</span>
+        </div>
+      )}
+      <div className="text-base text-white/60">Improvvisa un rap su questa parola!</div>
+    </div>
+  );
 }
