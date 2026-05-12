@@ -304,75 +304,123 @@ export default function HomeJoin() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="relative flex min-h-screen w-full flex-col items-center justify-center overflow-hidden px-4 py-8"
-      style={{background:'linear-gradient(-45deg,#07061a,#1d0545,#0a1845,#1a0800,#07061a)',backgroundSize:'500% 500%',animation:'hjAurora 18s ease infinite'}}>
+    <div className="relative flex min-h-screen w-full flex-col overflow-hidden"
+      style={{background:'#07061a'}}>
 
       <style>{`
         @keyframes hjAurora { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
         @keyframes hjPulse { 0%,100%{box-shadow:0 0 20px var(--ac,#F5B642)} 50%{box-shadow:0 0 40px var(--ac,#F5B642)} }
+        @keyframes hjFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
         .hj-ring{animation:hjPulse 2.5s ease infinite}
+        .hj-float{animation:hjFloat 3s ease-in-out infinite}
       `}</style>
-
-      {/* Stars */}
-      <div className="pointer-events-none absolute inset-0 z-0">
-        {Array.from({length:30}).map((_,i)=>{const cs=['#fff','#F5B642','#A855F7','#22D3EE','#F472B6'];return<div key={i} className="absolute rounded-full" style={{left:`${(i*47+13)%100}%`,top:`${(i*59+7)%100}%`,width:1+(i%2),height:1+(i%2),background:cs[i%cs.length],opacity:0.09+(i%4)*0.04}}/>;})}
-      </div>
 
       <AnimatePresence mode="wait">
 
         {/* ── CODE ── */}
         {phase === 'code' && (
-          <motion.div key="code" initial={{opacity:0,y:24}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-20}}
-            className="relative z-10 flex w-full max-w-sm flex-col items-center gap-7 text-center">
-            <img src="/jonny-world-hero.png" alt="" className="h-28 w-auto object-contain"
-              style={{filter:'drop-shadow(0 0 30px rgba(245,182,66,0.5))'}}/>
-            <div>
-              <div className="text-display text-4xl font-black text-white">Entra nel Gioco</div>
-              <div className="mt-2 text-sm text-white/45">Inserisci il codice che vedi sullo schermo</div>
+          <motion.div key="code" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0,y:-20}}
+            className="relative flex min-h-screen w-full flex-col">
+
+            {/* Hero image — top 55% */}
+            <div className="relative w-full overflow-hidden" style={{height:'55vh',minHeight:260}}>
+              <img src="/jonny-world-promo.jpg" alt="Jonny's World"
+                className="absolute inset-0 h-full w-full object-cover object-top"
+                style={{objectPosition:'center 15%'}}/>
+              {/* Bottom fade into form panel */}
+              <div className="absolute inset-x-0 bottom-0 h-28"
+                style={{background:'linear-gradient(to bottom,transparent,#07061a)'}}/>
+              {/* Top fade */}
+              <div className="absolute inset-x-0 top-0 h-12"
+                style={{background:'linear-gradient(to top,transparent,rgba(7,6,26,0.5))'}}/>
             </div>
-            <input type="text" value={code} onChange={e => setCode(e.target.value.toUpperCase().trim())}
-              onKeyDown={e => e.key==='Enter' && code.length>=4 && lookupSession(code)}
-              placeholder="CODICE" maxLength={6}
-              className="w-full rounded-2xl px-6 py-5 text-center text-3xl font-black uppercase tracking-[0.5em] focus:outline-none"
-              style={{background:'rgba(255,255,255,0.07)',border:'2px solid rgba(245,182,66,0.55)',color:'#F5B642',caretColor:'#F5B642'}}/>
-            {error && <div className="rounded-2xl px-4 py-3 text-sm font-bold"
-              style={{background:'rgba(239,68,68,0.18)',border:'1px solid rgba(239,68,68,0.4)',color:'#f87171'}}>{error}</div>}
-            <button onClick={() => lookupSession(code)} disabled={loading||code.length<4}
-              className="flex w-full items-center justify-center gap-3 rounded-2xl py-5 text-xl font-black text-black disabled:opacity-40"
-              style={{background:'linear-gradient(135deg,#F5B642,#FF8C00)',boxShadow:'0 0 50px rgba(245,182,66,0.45)'}}>
-              {loading ? <Loader2 className="h-6 w-6 animate-spin"/> : <ChevronRight className="h-6 w-6"/>} Avanti
-            </button>
-            <button onClick={() => navigate('/')}
-              className="flex items-center gap-1.5 text-xs text-white/25 hover:text-white/50">
-              <Home className="h-3 w-3"/> Torna all'Hub
-            </button>
+
+            {/* Form panel — bottom 45% */}
+            <div className="flex flex-1 flex-col items-center gap-5 px-5 pb-8 pt-2">
+              <div className="text-center">
+                <div className="text-display text-3xl font-black text-white">Entra nel Gioco</div>
+                <div className="mt-1 text-sm" style={{color:'rgba(245,182,66,0.7)'}}>Inserisci il codice che vedi sullo schermo</div>
+              </div>
+
+              <input type="text" value={code} onChange={e => setCode(e.target.value.toUpperCase().trim())}
+                onKeyDown={e => e.key==='Enter' && code.length>=4 && lookupSession(code)}
+                placeholder="CODICE" maxLength={6}
+                className="w-full max-w-sm rounded-2xl px-6 py-5 text-center text-3xl font-black uppercase tracking-[0.5em] focus:outline-none"
+                style={{background:'rgba(255,255,255,0.07)',border:'2px solid rgba(245,182,66,0.55)',color:'#F5B642',caretColor:'#F5B642'}}/>
+
+              {error && (
+                <div className="w-full max-w-sm rounded-2xl px-4 py-3 text-sm font-bold"
+                  style={{background:'rgba(239,68,68,0.18)',border:'1px solid rgba(239,68,68,0.4)',color:'#f87171'}}>
+                  {error}
+                </div>
+              )}
+
+              <button onClick={() => lookupSession(code)} disabled={loading||code.length<4}
+                className="flex w-full max-w-sm items-center justify-center gap-3 rounded-2xl py-5 text-xl font-black text-black disabled:opacity-40"
+                style={{background:'linear-gradient(135deg,#F5B642,#FF8C00)',boxShadow:'0 0 50px rgba(245,182,66,0.45)'}}>
+                {loading ? <Loader2 className="h-6 w-6 animate-spin"/> : <ChevronRight className="h-6 w-6"/>} Avanti
+              </button>
+
+              <button onClick={() => navigate('/')}
+                className="flex items-center gap-1.5 text-xs"
+                style={{color:'rgba(255,255,255,0.25)'}}>
+                <Home className="h-3 w-3"/> Torna all'Hub
+              </button>
+            </div>
           </motion.div>
         )}
 
         {/* ── NICKNAME ── */}
         {phase === 'nickname' && session && (
-          <motion.div key="nickname" initial={{opacity:0,y:24}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-20}}
-            className="relative z-10 flex w-full max-w-sm flex-col items-center gap-7 text-center">
-            <img src="/jonny-master-nobg.png" alt="Jonny" className="h-28 w-auto object-contain"
-              style={{filter:'drop-shadow(0 0 40px rgba(245,182,66,0.45))'}}/>
-            <div>
-              <div className="text-display text-4xl font-black text-white">Come ti chiami?</div>
-              <div className="mt-2 text-sm text-white/45">
-                {session.joinCode} — {players.length} giocator{players.length!==1?'i':'e'} dentro
+          <motion.div key="nickname" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0,y:-20}}
+            className="relative flex min-h-screen w-full flex-col">
+
+            {/* Hero image — compact top */}
+            <div className="relative w-full overflow-hidden" style={{height:'45vh',minHeight:220}}>
+              <img src="/jonny-world-promo.jpg" alt="Jonny's World"
+                className="absolute inset-0 h-full w-full object-cover"
+                style={{objectPosition:'center 10%'}}/>
+              <div className="absolute inset-x-0 bottom-0 h-24"
+                style={{background:'linear-gradient(to bottom,transparent,#07061a)'}}/>
+              <div className="absolute inset-x-0 top-0 h-10"
+                style={{background:'linear-gradient(to top,transparent,rgba(7,6,26,0.4))'}}/>
+              {/* Code badge overlay */}
+              <div className="absolute bottom-8 left-0 right-0 flex justify-center">
+                <div className="flex items-center gap-2 rounded-full px-5 py-2"
+                  style={{background:'rgba(7,6,26,0.75)',border:'1px solid rgba(245,182,66,0.5)',backdropFilter:'blur(8px)'}}>
+                  <span className="text-xs font-black uppercase tracking-widest" style={{color:'rgba(245,182,66,0.7)'}}>Codice</span>
+                  <span className="text-base font-black tracking-widest" style={{color:'#F5B642'}}>{session.joinCode}</span>
+                  <span className="text-xs" style={{color:'rgba(255,255,255,0.35)'}}>· {players.length} dentro</span>
+                </div>
               </div>
             </div>
-            <input type="text" value={nickname} onChange={e => setNickname(e.target.value.slice(0,20))}
-              onKeyDown={e => e.key==='Enter' && nickname.trim() && joinSession()}
-              placeholder="Il tuo nome..." autoFocus
-              className="w-full rounded-2xl px-6 py-5 text-center text-xl font-black focus:outline-none"
-              style={{background:'rgba(255,255,255,0.07)',border:'2px solid rgba(168,85,247,0.55)',color:'#fff',caretColor:'#A855F7'}}/>
-            {error && <div className="rounded-2xl px-4 py-3 text-sm font-bold"
-              style={{background:'rgba(239,68,68,0.18)',border:'1px solid rgba(239,68,68,0.4)',color:'#f87171'}}>{error}</div>}
-            <button onClick={joinSession} disabled={loading||!nickname.trim()}
-              className="flex w-full items-center justify-center gap-3 rounded-2xl py-5 text-xl font-black text-black disabled:opacity-40"
-              style={{background:'linear-gradient(135deg,#A855F7,#7c3aed)',boxShadow:'0 0 50px rgba(168,85,247,0.5)'}}>
-              {loading ? <Loader2 className="h-6 w-6 animate-spin"/> : <Check className="h-6 w-6"/>} Entra!
-            </button>
+
+            {/* Form panel */}
+            <div className="flex flex-1 flex-col items-center gap-5 px-5 pb-8 pt-3">
+              <div className="text-center">
+                <div className="text-display text-3xl font-black text-white">Come ti chiami?</div>
+                <div className="mt-1 text-sm" style={{color:'rgba(168,85,247,0.8)'}}>Scegli il tuo nome da guerriero 🔥</div>
+              </div>
+
+              <input type="text" value={nickname} onChange={e => setNickname(e.target.value.slice(0,20))}
+                onKeyDown={e => e.key==='Enter' && nickname.trim() && joinSession()}
+                placeholder="Il tuo nome..." autoFocus
+                className="w-full max-w-sm rounded-2xl px-6 py-5 text-center text-xl font-black focus:outline-none"
+                style={{background:'rgba(255,255,255,0.07)',border:'2px solid rgba(168,85,247,0.55)',color:'#fff',caretColor:'#A855F7'}}/>
+
+              {error && (
+                <div className="w-full max-w-sm rounded-2xl px-4 py-3 text-sm font-bold"
+                  style={{background:'rgba(239,68,68,0.18)',border:'1px solid rgba(239,68,68,0.4)',color:'#f87171'}}>
+                  {error}
+                </div>
+              )}
+
+              <button onClick={joinSession} disabled={loading||!nickname.trim()}
+                className="flex w-full max-w-sm items-center justify-center gap-3 rounded-2xl py-5 text-xl font-black text-black disabled:opacity-40"
+                style={{background:'linear-gradient(135deg,#A855F7,#7c3aed)',boxShadow:'0 0 50px rgba(168,85,247,0.5)'}}>
+                {loading ? <Loader2 className="h-6 w-6 animate-spin"/> : <Check className="h-6 w-6"/>} Entra!
+              </button>
+            </div>
           </motion.div>
         )}
 
