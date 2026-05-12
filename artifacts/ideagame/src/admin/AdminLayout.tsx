@@ -24,7 +24,7 @@ export function AdminLayout({ children, title }: { children: ReactNode; title: s
 
   const NavLinks = () => (
     <>
-      <nav className="flex-1 space-y-1 px-3">
+      <nav className="flex-1 min-h-0 overflow-y-auto space-y-1 px-3 pb-2">
         {ADMIN_NAV.filter(n => canSee(n.route, role)).map(n => {
           const Icon = ICONS[n.key];
           const active = location === n.route || (n.route !== '/admin' && location.startsWith(n.route));
