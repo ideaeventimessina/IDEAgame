@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEventSocket } from '@/hooks/useEventSocket';
 import { useProjectorNavigation } from '@/hooks/useProjectorNavigation';
@@ -45,9 +45,12 @@ export default function GameKaraoke() {
   const sessionId = params.get('s') ?? '';
   const eventId   = params.get('e') ?? '';
 
-  const [state, setState]   = useState<KaraokeState | null>(null);
+  const [state, setState]     = useState<KaraokeState | null>(null);
   const [flashMsg, setFlashMsg] = useState('');
-  const [elapsed, setElapsed] = useState(0);
+  const [elapsed, setElapsed]   = useState(0);
+  // Chrome/desktop blocks autoplay until user gesture — operator must click once on the PC
+  const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const { connected, on } = useEventSocket(eventId || null);
   useProjectorNavigation(eventId, on);
@@ -90,8 +93,46 @@ export default function GameKaraoke() {
     return () => clearInterval(i);
   }, [state?.trackStartedAt, state?.status]);
 
+  // When track changes and audio is already unlocked, force-play the video
+  useEffect(() => {
+    if (!audioUnlocked || !videoRef.current) return;
+    const v = videoRef.current;
+    v.load();
+    void v.play().catch(() => {/* ignore if src not ready yet */});
+  }, [state?.currentTrack?.id, audioUnlocked]);
+
+  // Unlock handler: user clicks overlay → play a silent audio to unlock the audio context,
+  // then immediately play the actual video if present
+  const handleUnlock = () => {
+    setAudioUnlocked(true);
+    if (videoRef.current) {
+      videoRef.current.muted = false;
+      void videoRef.current.play().catch(() => {});
+    }
+  };
+
   if (!state) {
-    return <ArenaBg theme={T}><JonnyWaitingScreen theme={T} label="Caricamento…" /></ArenaBg>;
+    return (
+      <ArenaBg theme={T}>
+        {!audioUnlocked && (
+          <div className="absolute inset-0 z-50 flex flex-col items-center justify-center cursor-pointer"
+            style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)' }}
+            onClick={handleUnlock}>
+            <motion.div animate={{ scale: [1, 1.08, 1] }} transition={{ repeat: Infinity, duration: 2 }}
+              className="flex flex-col items-center gap-4">
+              <div className="text-6xl">🔊</div>
+              <div className="text-display text-3xl font-black text-white text-center">
+                Clicca per attivare<br />l'audio del proiettore
+              </div>
+              <div className="text-sm text-white/50 text-center max-w-xs">
+                Apri questa pagina sul <strong className="text-white/80">PC della regia</strong> e clicca una volta per sbloccare l'audio
+              </div>
+            </motion.div>
+          </div>
+        )}
+        <JonnyWaitingScreen theme={T} label="Caricamento…" />
+      </ArenaBg>
+    );
   }
 
   if (state.status === 'ended') {
@@ -115,6 +156,22 @@ export default function GameKaraoke() {
   if (state.status === 'idle' || !track) {
     return (
       <ArenaBg theme={T}>
+        {!audioUnlocked && (
+          <div className="absolute inset-0 z-50 flex flex-col items-center justify-center cursor-pointer"
+            style={{ background: 'rgba(0,0,0,0.82)', backdropFilter: 'blur(8px)' }}
+            onClick={handleUnlock}>
+            <motion.div animate={{ scale: [1, 1.07, 1] }} transition={{ repeat: Infinity, duration: 2 }}
+              className="flex flex-col items-center gap-4">
+              <div className="text-6xl">🔊</div>
+              <div className="text-display text-3xl font-black text-white text-center">
+                Clicca per attivare<br />l'audio del proiettore
+              </div>
+              <div className="text-sm text-white/50 text-center max-w-xs">
+                Apri questa pagina sul <strong className="text-white/80">PC della regia</strong> e clicca una volta
+              </div>
+            </motion.div>
+          </div>
+        )}
         <ArenaHeader theme={T} right={<SocketBadge connected={connected} />} />
         <JonnyWaitingScreen theme={T} subtitle={state.setName} label="In attesa dell'animatore…" />
         {state.teams.length > 0 && (
@@ -183,23 +240,34 @@ export default function GameKaraoke() {
 
           {/* Video/audio — plays ONLY here on the projector (PC) */}
           {track.audioUrl && (() => {
-            // objectStorage returns /objects/uploads/uuid.ext → serve via /api/storage/objects/...
             const src = track.audioUrl.startsWith('/objects/')
               ? `/api/storage${track.audioUrl}`
-              : track.audioUrl; // already a full serving URL or external URL
+              : track.audioUrl;
             return (
               <motion.div key={`vid-${track.id}`} initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.15 }}
-                className="w-full rounded-2xl overflow-hidden border"
+                className="w-full rounded-2xl overflow-hidden border relative"
                 style={{ borderColor: `${T.accent}25`, maxHeight: '280px' }}>
                 <video
+                  ref={videoRef}
                   key={src}
                   src={src}
-                  autoPlay
+                  muted={!audioUnlocked}
+                  autoPlay={audioUnlocked}
                   controls
                   playsInline
                   className="w-full h-full object-contain bg-black"
                   style={{ maxHeight: '280px' }}
                 />
+                {!audioUnlocked && (
+                  <div className="absolute inset-0 flex items-center justify-center cursor-pointer"
+                    style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
+                    onClick={handleUnlock}>
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="text-4xl">🔊</div>
+                      <div className="text-white font-black text-sm">Clicca per attivare l'audio</div>
+                    </div>
+                  </div>
+                )}
               </motion.div>
             );
           })()}
