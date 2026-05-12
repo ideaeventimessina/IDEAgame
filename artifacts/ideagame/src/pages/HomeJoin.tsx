@@ -69,11 +69,11 @@ export default function HomeJoin() {
   const urlParams = new URLSearchParams(window.location.search);
   const urlCode = urlParams.get('s')?.toUpperCase().trim() ?? null;
 
-  const [phase, setPhase] = useState<'code' | 'nickname' | 'lobby' | 'playing' | 'ended'>(urlCode ? 'nickname' : 'code');
+  const [phase, _setPhase] = useState<'code' | 'nickname' | 'lobby' | 'playing' | 'ended'>(urlCode ? 'nickname' : 'code');
   const [code, setCode] = useState(urlCode ?? '');
   const [nickname, setNickname] = useState('');
   const [session, setSession] = useState<HomeSession | null>(null);
-  const [player, setPlayer] = useState<HomePlayer | null>(null);
+  const [player, _setPlayer] = useState<HomePlayer | null>(null);
   const [players, setPlayers] = useState<HomePlayer[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -81,8 +81,28 @@ export default function HomeJoin() {
   const [answered, setAnswered] = useState<number | null>(null);
   const [revealed, setRevealed] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const phaseRef = useRef<'code' | 'nickname' | 'lobby' | 'playing' | 'ended'>('code');
+  const playerRef = useRef<HomePlayer | null>(null);
 
   const { on, emit } = useEventSocket(null);
+
+  // Keep refs in sync with state so socket handlers always see current values
+  const setPhase = useCallback((p: 'code' | 'nickname' | 'lobby' | 'playing' | 'ended') => {
+    phaseRef.current = p;
+    _setPhase(p);
+  }, []);
+  const setPlayer = useCallback((fn: HomePlayer | null | ((prev: HomePlayer | null) => HomePlayer | null)) => {
+    if (typeof fn === 'function') {
+      _setPlayer(prev => {
+        const next = fn(prev);
+        playerRef.current = next;
+        return next;
+      });
+    } else {
+      playerRef.current = fn;
+      _setPlayer(fn);
+    }
+  }, []);
 
   // Restore saved session on mount
   useEffect(() => {
@@ -152,17 +172,16 @@ export default function HomeJoin() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, session?.id]);
 
-  // Socket listeners
+  // Socket listeners — registered once per `on` instance.
+  // Use phaseRef/playerRef (not state) to avoid re-registration on every phase change,
+  // which would cause missed events during the cleanup/setup window.
   useEffect(() => {
     const u1 = on<{ session: HomeSession; players: HomePlayer[] }>('home:state', (d) => {
       setSession(d.session);
       setPlayers(d.players);
-      // Update self
-      if (player) {
-        const me = d.players.find(p => p.id === player.id);
-        if (me) setPlayer(me);
-      }
-      if (d.session.status === 'playing' && phase === 'lobby') {
+      const cur = playerRef.current;
+      if (cur) { const me = d.players.find(p => p.id === cur.id); if (me) setPlayer(me); }
+      if (d.session.status === 'playing' && phaseRef.current === 'lobby') {
         setPhase('playing');
         setAnswered(null);
         setRevealed(false);
@@ -174,7 +193,6 @@ export default function HomeJoin() {
     const u2 = on<{ session: HomeSession; players: HomePlayer[] }>('home:board', (d) => {
       setSession(d.session);
       setPlayers(d.players);
-      // Stay in lobby — TV picks the next game
       setPhase('lobby');
     });
 
@@ -197,14 +215,16 @@ export default function HomeJoin() {
     const u5 = on<{ session: HomeSession; players: HomePlayer[]; gameSlug: string }>('home:game_ended', (d) => {
       setSession(d.session);
       setPlayers(d.players);
-      if (player) { const me = d.players.find(p => p.id === player.id); if (me) setPlayer(me); }
+      const cur = playerRef.current;
+      if (cur) { const me = d.players.find(p => p.id === cur.id); if (me) setPlayer(me); }
       setPhase('lobby');
     });
 
     const u6 = on<{ session: HomeSession; players: HomePlayer[] }>('home:champion', (d) => {
       setSession(d.session);
       setPlayers(d.players);
-      if (player) { const me = d.players.find(p => p.id === player.id); if (me) setPlayer(me); }
+      const cur = playerRef.current;
+      if (cur) { const me = d.players.find(p => p.id === cur.id); if (me) setPlayer(me); }
       setPhase('ended');
       clearJoin();
     });
@@ -213,13 +233,15 @@ export default function HomeJoin() {
       setSession(prev => prev ? { ...prev, roundPayload: d.payload } : prev);
       if (d.players) {
         setPlayers(d.players);
-        if (player) { const me = d.players.find(p => p.id === player.id); if (me) setPlayer(me); }
+        const cur = playerRef.current;
+        if (cur) { const me = d.players.find(p => p.id === cur.id); if (me) setPlayer(me); }
       }
     });
 
     return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); };
+  // Only re-register when the socket `on` function changes (new connection)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [on, phase, player]);
+  }, [on]);
 
   const startTimer = useCallback((seconds: number) => {
     if (timerRef.current) clearInterval(timerRef.current);
