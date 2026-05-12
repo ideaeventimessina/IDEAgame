@@ -131,6 +131,14 @@ export default function Hub() {
   // ── URL params (join code for public projector mode) ─────────────────────
   const urlParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
 
+  // ── Authenticated staff → Cockpit (unless projector mode with join code) ──
+  useEffect(() => {
+    if (user && !urlParams.get('e')) {
+      navigate('/cockpit');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
   // ── Audio unlock (browser autoplay policy) ─────────────────────────────────
   // Browsers block Audio.play() and Web Audio until a real user gesture.
   const [audioUnlocked, setAudioUnlocked] = useState(false);
@@ -222,7 +230,7 @@ export default function Hub() {
   const [creatingSession, setCreatingSession] = useState(false);
   const [sessionRunning, setSessionRunning] = useState(false);
   const [sessionEnded, setSessionEnded] = useState(false);
-  const [hubPhase, setHubPhase] = useState<'join' | 'gameboard'>('join');
+  const [hubPhase, setHubPhase] = useState<'join' | 'gameboard'>('gameboard');
   const [showCodeModal, setShowCodeModal] = useState(false);
   const [preloadedThemes, setPreloadedThemes] = useState<Record<string, { id: string; name: string } | null>>({});
 
@@ -378,8 +386,8 @@ export default function Hub() {
         const eid = payload?.eventId ?? liveEvent.id;
         navigate(`/scoreboard?e=${eid}`);
       }),
-      on('projector:go-hub', () => { setSessionRunning(false); navigate('/'); }),
-      on<{ session: unknown }>('game:ended', () => { setSessionRunning(false); setSessionEnded(true); }),
+      on('projector:go-hub', () => { setSessionRunning(false); setHubPhase('gameboard'); navigate(urlCode ? `/?e=${urlCode}` : '/'); }),
+      on<{ session: unknown }>('game:ended', () => { setSessionRunning(false); setSessionEnded(false); setHubPhase('gameboard'); }),
       on<{ phase: 'join' | 'gameboard' }>('hub:phase', ({ phase }) => setHubPhase(phase)),
       on<{ slug: string; theme: { id: string; name: string } | null }>('hub:game-preloaded', ({ slug, theme }) => {
         setPreloadedThemes(prev => ({ ...prev, [slug]: theme }));
@@ -789,6 +797,18 @@ export default function Hub() {
     return (
       <div className="relative h-screen w-full overflow-hidden select-none flex flex-col"
         style={{ background: 'radial-gradient(ellipse 160% 90% at 50% -10%, #2d0d52 0%, #130628 45%, #060213 100%)' }}>
+        <AnimatePresence>
+          {!audioUnlocked && (
+            <motion.button key="audio-unlock-join"
+              initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}
+              onClick={() => unlockAudio('hub', 'lobby_loop')}
+              className="fixed bottom-6 left-1/2 z-[200] -translate-x-1/2 flex items-center gap-2 rounded-full border border-amber-400/40 bg-black/60 px-5 py-2.5 text-sm font-bold text-amber-300 backdrop-blur-md"
+              style={{ boxShadow: '0 0 24px rgba(245,182,66,0.25)' }}>
+              <motion.span animate={{ scale: [1, 1.25, 1] }} transition={{ duration: 1.5, repeat: Infinity }}>🔊</motion.span>
+              Tocca per attivare audio
+            </motion.button>
+          )}
+        </AnimatePresence>
         <HubStars />
         <HubConfetti />
 
@@ -904,6 +924,18 @@ export default function Hub() {
     return (
       <div className="relative h-screen w-full overflow-hidden select-none flex flex-col"
         style={{ background: 'radial-gradient(ellipse 160% 90% at 50% -10%, #2d0d52 0%, #130628 45%, #060213 100%)' }}>
+        <AnimatePresence>
+          {!audioUnlocked && (
+            <motion.button key="audio-unlock-board"
+              initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}
+              onClick={() => unlockAudio('hub', 'lobby_loop')}
+              className="fixed bottom-6 left-1/2 z-[200] -translate-x-1/2 flex items-center gap-2 rounded-full border border-amber-400/40 bg-black/60 px-5 py-2.5 text-sm font-bold text-amber-300 backdrop-blur-md"
+              style={{ boxShadow: '0 0 24px rgba(245,182,66,0.25)' }}>
+              <motion.span animate={{ scale: [1, 1.25, 1] }} transition={{ duration: 1.5, repeat: Infinity }}>🔊</motion.span>
+              Tocca per attivare audio
+            </motion.button>
+          )}
+        </AnimatePresence>
         <HubStars />
         <header className="relative z-20 flex shrink-0 items-center justify-between px-8 py-5">
           <div className="flex items-center justify-center rounded-2xl bg-white px-3 py-1.5 shadow-xl">

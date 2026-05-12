@@ -726,6 +726,19 @@ export default function LiveControl() {
     qc.invalidateQueries({ queryKey: getListGameSessionsQueryKey(selectedEventId) });
     setSelectedSessionId(s.id);
     setShowNewSession(false);
+    // Tell projector: activate audio + show QR join screen
+    if (selectedEventId) {
+      await Promise.allSettled([
+        apiFetch(`/panic/events/${selectedEventId}/emit`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ event: 'projector:activate', payload: {} }),
+        }),
+        apiFetch(`/panic/events/${selectedEventId}/emit`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ event: 'hub:phase', payload: { phase: 'join' } }),
+        }),
+      ]);
+    }
   });
 
   const handleStart = () => withBusy(async () => {

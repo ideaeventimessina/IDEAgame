@@ -19,9 +19,8 @@ export default function Login() {
     setError(null);
     setBusy(true);
     try {
-      const u = await login(email, password);
-      if (u.role === 'entertainer' || u.role === 'game_manager') navigate('/');
-      else navigate('/admin');
+      await login(email, password);
+      navigate('/cockpit');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
