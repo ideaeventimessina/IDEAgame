@@ -722,6 +722,19 @@ export default function LiveControl() {
   const confirm = (dialog: ConfirmDialog) => setConfirmDialog(dialog);
 
   const handleCreateSession = () => withBusy(async () => {
+    // End any existing non-ended session first so the projector resets cleanly
+    if (selectedEventId) {
+      try {
+        const existing = await apiFetch(`/events/${selectedEventId}/active-session`) as { id: string; status: string } | null;
+        if (existing?.id && existing.status !== 'ended') {
+          await apiFetch(`/sessions/${existing.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'ended' }),
+          });
+          qc.invalidateQueries({ queryKey: getListGameSessionsQueryKey(selectedEventId) });
+        }
+      } catch { /* ignore */ }
+    }
     const s = await createSession.mutateAsync({ id: selectedEventId, data: { gameSlug, totalRounds } }) as { id: string };
     qc.invalidateQueries({ queryKey: getListGameSessionsQueryKey(selectedEventId) });
     setSelectedSessionId(s.id);

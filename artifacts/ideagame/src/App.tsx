@@ -54,10 +54,12 @@ import AdminCardSets from "@/admin/CardSets";
 import AdminQuizPacks from "@/admin/QuizPacks";
 import AdminAudioSettings from "@/admin/AudioSettings";
 import AdminAudit from "@/admin/Audit";
+import AdminJonnyPoses from "@/admin/JonnyPoses";
 import HomeGame from "@/pages/HomeGame";
 import HomeJoin from "@/pages/HomeJoin";
 import Cockpit from "@/pages/Cockpit";
 import { Guard } from "@/admin/Guard";
+import { AudioUnlockFab } from "@/components/AudioUnlockFab";
 import { JonnyProvider } from "@/contexts/JonnyContext";
 import { AudioProvider } from "@/contexts/AudioContext";
 import { AudioOrchestratorProvider } from "@/contexts/AudioOrchestrator";
@@ -121,6 +123,7 @@ function Router() {
       <Route path="/admin/saramusica"><Guard route="/admin/saramusica"><AdminSaraMusica /></Guard></Route>
       <Route path="/admin/audio"><Guard route="/admin/audio"><AdminAudioSettings /></Guard></Route>
       <Route path="/admin/audit"><Guard route="/admin/audit"><AdminAudit /></Guard></Route>
+      <Route path="/admin/jonny-poses"><Guard route="/admin/jonny-poses"><AdminJonnyPoses /></Guard></Route>
       <Route component={NotFound} />
     </Switch>
   );
@@ -141,6 +144,7 @@ function App() {
                 <Router />
                 {import.meta.env.DEV && <DemoSwitcher />}
                 <BackToCockpit />
+                <AudioUnlockFab />
               </WouterRouter>
               <Toaster />
             </TooltipProvider>

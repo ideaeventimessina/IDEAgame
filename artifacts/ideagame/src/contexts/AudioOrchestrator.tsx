@@ -6,7 +6,7 @@
  * – exposes startProjector / stopProjector / setActiveGameSlug
  */
 
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { AudioManager } from '@/audio/AudioManager';
 import { useAudioSettings } from '@/contexts/AudioContext';
 import { getSocket } from '@/hooks/useEventSocket';
@@ -16,18 +16,26 @@ const LS_SLUG   = 'ideagame:projector:slug';
 
 export interface AudioOrchestratorCtx {
   projectorActive: boolean;
+  audioUnlocked: boolean;
   activeGameSlug: string | null;
   startProjector: () => void;
   stopProjector: () => void;
   setActiveGameSlug: (slug: string | null) => void;
+  /** Call from a real user-gesture click to resume AudioContext and start music. */
+  unlockAudio: () => void;
+  /** Register the loop that should play when audio gets unlocked (called by game pages on mount). */
+  setPendingLoop: (slug: string, type: string) => void;
 }
 
 const Ctx = createContext<AudioOrchestratorCtx>({
   projectorActive: false,
+  audioUnlocked: false,
   activeGameSlug: null,
   startProjector: () => {},
   stopProjector: () => {},
   setActiveGameSlug: () => {},
+  unlockAudio: () => {},
+  setPendingLoop: () => {},
 });
 
 export function AudioOrchestratorProvider({ children }: { children: ReactNode }) {
@@ -37,6 +45,18 @@ export function AudioOrchestratorProvider({ children }: { children: ReactNode })
   const [activeGameSlug, setSlugState] = useState<string | null>(() => {
     try { const s = localStorage.getItem(LS_SLUG); return s || null; } catch { return null; }
   });
+  const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const pendingLoopRef = useRef<{ slug: string; type: string }>({ slug: 'hub', type: 'lobby_loop' });
+
+  const setPendingLoop = useCallback((slug: string, type: string) => {
+    pendingLoopRef.current = { slug, type };
+  }, []);
+
+  const unlockAudio = useCallback(() => {
+    setAudioUnlocked(true);
+    const { slug, type } = pendingLoopRef.current;
+    void AudioManager.playLoop(slug, type);
+  }, []);
 
   const { settings, setMasterVolume } = useAudioSettings();
 
@@ -89,7 +109,7 @@ export function AudioOrchestratorProvider({ children }: { children: ReactNode })
   }, [projectorActive]);
 
   return (
-    <Ctx.Provider value={{ projectorActive, activeGameSlug, startProjector, stopProjector, setActiveGameSlug }}>
+    <Ctx.Provider value={{ projectorActive, audioUnlocked, activeGameSlug, startProjector, stopProjector, setActiveGameSlug, unlockAudio, setPendingLoop }}>
       {children}
     </Ctx.Provider>
   );

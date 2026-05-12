@@ -14,7 +14,7 @@ export const ARENA: Record<ArenaKey, {
 }> = {
   quizzone: {
     bg: 'radial-gradient(ellipse 140% 80% at 50% -5%, #0d1f3c 0%, #060d1a 45%, #020609 100%)',
-    accent: '#60A5FA', glow: '#3B82F6', title: 'QUIZ ARENA',
+    accent: '#60A5FA', glow: '#3B82F6', title: 'QUIZZONE',
   },
   coppie: {
     bg: 'radial-gradient(ellipse 140% 80% at 50% -5%, #2d0a1a 0%, #150410 45%, #080206 100%)',
