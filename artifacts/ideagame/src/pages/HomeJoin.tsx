@@ -634,9 +634,9 @@ function PhoneController({
   if (mode === 'home-percorso')   return <SimpleController payload={p} color="#34D399" emoji="😂" label="Sfida completata!" timeLeft={timeLeft}/>;
   if (mode === 'home-saramusica') return <SaraMusicaController payload={p} players={players} player={player} onScore={onScore}/>;
   if (mode === 'home-adult')      return <AdultController payload={p} timeLeft={timeLeft}/>;
-  if (mode === 'home-ballo')      return <BalloController payload={p} timeLeft={timeLeft}/>;
+  if (mode === 'home-ballo')      return <BalloController payload={p} timeLeft={timeLeft} sessionId={session.id}/>;
   if (mode === 'home-wordback')   return <WordBackController payload={p} timeLeft={timeLeft}/>;
-  if (mode === 'home-karaoke')    return <KaraokeController payload={p}/>;
+  if (mode === 'home-karaoke')    return <KaraokeController payload={p} sessionId={session.id}/>;
   if (mode === 'home-freestyle')  return <FreestyleController payload={p} timeLeft={timeLeft}/>;
   return <div className="text-center text-white/40 py-8">In attesa del gioco…</div>;
 }
@@ -775,7 +775,50 @@ function SimpleController({ payload, color, emoji, label, timeLeft }: {
 
 // ── BalloController ────────────────────────────────────────────────────────────
 
-function BalloController({ payload, timeLeft }: { payload: Record<string,unknown>; timeLeft: number | null }) {
+function BalloController({ payload, timeLeft, sessionId: _sessionId }: {
+  payload: Record<string,unknown>;
+  timeLeft: number | null;
+  sessionId: string;
+}) {
+  const [energy, setEnergy] = useState(0);
+  const [motionPerm, setMotionPerm] = useState<'unknown'|'granted'|'denied'|'unsupported'>('unknown');
+  const magsRef = useRef<number[]>([]);
+
+  useEffect(() => {
+    if (typeof DeviceMotionEvent === 'undefined') { setMotionPerm('unsupported'); return; }
+    const dme = DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> };
+    if (typeof dme.requestPermission !== 'function') setMotionPerm('granted');
+  }, []);
+
+  const requestMotion = useCallback(async () => {
+    const dme = DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> };
+    if (typeof dme.requestPermission === 'function') {
+      try { const r = await dme.requestPermission(); setMotionPerm(r === 'granted' ? 'granted' : 'denied'); }
+      catch { setMotionPerm('denied'); }
+    } else { setMotionPerm('granted'); }
+  }, []);
+
+  useEffect(() => {
+    if (motionPerm !== 'granted') return;
+    const mags = magsRef.current;
+    const handleMotion = (e: DeviceMotionEvent) => {
+      const acc = e.accelerationIncludingGravity;
+      if (!acc) return;
+      const mag = Math.sqrt((acc.x ?? 0) ** 2 + (acc.y ?? 0) ** 2 + (acc.z ?? 0) ** 2);
+      mags.push(Math.min(100, Math.abs(mag - 9.81) * 8));
+    };
+    window.addEventListener('devicemotion', handleMotion);
+    const interval = setInterval(() => {
+      if (mags.length === 0) return;
+      const avg = mags.reduce((a, b) => a + b, 0) / mags.length;
+      mags.length = 0;
+      setEnergy(Math.min(100, Math.round(avg)));
+    }, 400);
+    return () => { window.removeEventListener('devicemotion', handleMotion); clearInterval(interval); };
+  }, [motionPerm]);
+
+  const energyColor = energy > 70 ? '#22c55e' : energy > 35 ? '#eab308' : '#A78BFA';
+
   return (
     <div className="flex flex-col items-center gap-5 py-4 text-center">
       <div className="text-6xl">💃</div>
@@ -786,6 +829,41 @@ function BalloController({ payload, timeLeft }: { payload: Record<string,unknown
           🎵 {String(payload.musicHint)}
         </div>
       )}
+
+      {/* ── Sensore movimento ── */}
+      {motionPerm === 'unknown' && (
+        <button onClick={() => void requestMotion()}
+          className="flex items-center gap-2 rounded-2xl px-6 py-3 text-sm font-black"
+          style={{background:'linear-gradient(135deg,#A78BFA,#7C3AED)',color:'#fff',boxShadow:'0 0 30px rgba(167,139,250,0.4)'}}>
+          📱 Attiva sensori movimento
+        </button>
+      )}
+      {motionPerm === 'denied' && (
+        <div className="rounded-xl px-4 py-2 text-xs text-white/40 border border-white/10">
+          Sensori negati — balla comunque! 🕺
+        </div>
+      )}
+      {motionPerm === 'unsupported' && (
+        <div className="rounded-xl px-4 py-2 text-xs text-white/40 border border-white/10">
+          Sensori non supportati su questo dispositivo
+        </div>
+      )}
+      {motionPerm === 'granted' && (
+        <div className="w-full space-y-2">
+          <div className="flex items-center justify-between text-xs font-bold" style={{color:'#A78BFA'}}>
+            <span>⚡ Energia</span><span className="tabular-nums">{energy}%</span>
+          </div>
+          <div className="relative h-8 w-full overflow-hidden rounded-full bg-white/10">
+            <motion.div className="absolute inset-y-0 left-0 rounded-full"
+              animate={{ width: `${energy}%` }} transition={{ duration: 0.2 }}
+              style={{ background: energyColor, boxShadow: `0 0 12px ${energyColor}80` }} />
+            <div className="absolute inset-0 flex items-center justify-center text-xs font-black text-white">
+              {energy > 60 ? '🔥 FUOCO!' : energy > 30 ? '💃 Bene!' : '📱 Muoviti!'}
+            </div>
+          </div>
+        </div>
+      )}
+
       {timeLeft !== null && (
         <div className="flex items-center gap-2 rounded-xl px-5 py-2"
           style={{background:'rgba(167,139,250,0.18)',border:'1px solid rgba(167,139,250,0.45)',color:'#A78BFA'}}>
@@ -893,7 +971,52 @@ function WordBackController({ payload, timeLeft }: { payload: Record<string,unkn
 
 // ── KaraokeController ─────────────────────────────────────────────────────────
 
-function KaraokeController({ payload }: { payload: Record<string,unknown> }) {
+function KaraokeController({ payload, sessionId: _sessionId }: {
+  payload: Record<string,unknown>;
+  sessionId: string;
+}) {
+  const [micActive, setMicActive] = useState(false);
+  const [micLevel, setMicLevel] = useState(0);
+  const [micError, setMicError] = useState('');
+  const micRef = useRef<MediaStream | null>(null);
+  const analyzerRef = useRef<AnalyserNode | null>(null);
+  const rafRef = useRef<number | null>(null);
+
+  const startMic = useCallback(async () => {
+    if (micActive) return;
+    setMicError('');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const ctx = new AudioContext();
+      const src = ctx.createMediaStreamSource(stream);
+      const analyzer = ctx.createAnalyser();
+      analyzer.fftSize = 256;
+      src.connect(analyzer);
+      micRef.current = stream;
+      analyzerRef.current = analyzer;
+      setMicActive(true);
+      const buf = new Uint8Array(analyzer.frequencyBinCount);
+      const tick = () => {
+        analyzer.getByteFrequencyData(buf);
+        const avg = buf.reduce((a, b) => a + b, 0) / buf.length;
+        setMicLevel(Math.round((avg / 255) * 100));
+        rafRef.current = requestAnimationFrame(tick);
+      };
+      rafRef.current = requestAnimationFrame(tick);
+    } catch { setMicError('Microfono non disponibile — controlla i permessi'); }
+  }, [micActive]);
+
+  const stopMic = useCallback(() => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    micRef.current?.getTracks().forEach(t => t.stop());
+    micRef.current = null; analyzerRef.current = null;
+    setMicActive(false); setMicLevel(0);
+  }, []);
+
+  useEffect(() => () => stopMic(), [stopMic]);
+
+  const micColor = micLevel > 70 ? '#22c55e' : micLevel > 35 ? '#eab308' : '#FB923C';
+
   return (
     <div className="flex flex-col items-center gap-5 py-4 text-center">
       <div className="text-6xl">🎤</div>
@@ -907,6 +1030,35 @@ function KaraokeController({ payload }: { payload: Record<string,unknown> }) {
           </div>
         </div>
       )}
+
+      {/* ── Microfono ── */}
+      {!micActive ? (
+        <button onClick={() => void startMic()}
+          className="flex items-center gap-2 rounded-2xl px-6 py-3 text-sm font-black"
+          style={{background:'linear-gradient(135deg,#FB923C,#ea580c)',color:'#fff',boxShadow:'0 0 30px rgba(251,146,60,0.45)'}}>
+          <Mic className="h-4 w-4"/> Attiva microfono
+        </button>
+      ) : (
+        <div className="w-full space-y-2">
+          <div className="flex items-center justify-between text-xs font-bold" style={{color:'#FB923C'}}>
+            <span className="flex items-center gap-1"><Mic className="h-3 w-3"/> Microfono attivo</span>
+            <span className="tabular-nums">{micLevel}%</span>
+          </div>
+          <div className="relative h-8 w-full overflow-hidden rounded-full bg-white/10">
+            <motion.div className="absolute inset-y-0 left-0 rounded-full"
+              animate={{ width: `${micLevel}%` }} transition={{ duration: 0.08 }}
+              style={{ background: micColor, boxShadow: `0 0 12px ${micColor}80` }} />
+            <div className="absolute inset-0 flex items-center justify-center text-xs font-black text-white">
+              {micLevel > 60 ? '🔥 Dai tutto!' : micLevel > 25 ? '🎤 Bene!' : '🔇 Canta più forte!'}
+            </div>
+          </div>
+          <button onClick={stopMic} className="text-xs text-white/30 hover:text-white/60 transition-colors mt-1">
+            Disattiva mic
+          </button>
+        </div>
+      )}
+      {micError && <div className="text-xs text-red-400">{micError}</div>}
+
       <div className="text-2xl font-black" style={{color:'#FB923C'}}>CANTA! 🎤</div>
       <div className="text-xs text-white/35">Guarda i testi sulla TV</div>
     </div>

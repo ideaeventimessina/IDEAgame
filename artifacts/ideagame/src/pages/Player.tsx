@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Zap, Check, Wifi, WifiOff, Loader2, AlertTriangle, RefreshCw, Clock } from 'lucide-react';
+import { Zap, Check, Wifi, WifiOff, Loader2, AlertTriangle, RefreshCw, Clock, Mic } from 'lucide-react';
 import { useT, useI18n, LOCALES } from '@/i18n';
 import { useEventSocket } from '@/hooks/useEventSocket';
 import { JonnyLayer } from '@/components/JonnyLayer';
@@ -1959,6 +1959,48 @@ function KaraokePhoneController({ state, sessionId, playerId, teamColor }: {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState('');
 
+  // ── Microfono (attivo solo quando è il turno del cantante) ─────────────────
+  const [micActive, setMicActive] = useState(false);
+  const [micLevel, setMicLevel] = useState(0);
+  const [micError, setMicError] = useState('');
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const micAnalyzerRef = useRef<AnalyserNode | null>(null);
+  const micRafRef = useRef<number | null>(null);
+
+  const startMic = useCallback(async () => {
+    if (micActive) return;
+    setMicError('');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const ctx = new AudioContext();
+      const src = ctx.createMediaStreamSource(stream);
+      const analyzer = ctx.createAnalyser();
+      analyzer.fftSize = 256;
+      src.connect(analyzer);
+      micStreamRef.current = stream;
+      micAnalyzerRef.current = analyzer;
+      setMicActive(true);
+      const buf = new Uint8Array(analyzer.frequencyBinCount);
+      const tick = () => {
+        analyzer.getByteFrequencyData(buf);
+        const avg = buf.reduce((a, b) => a + b, 0) / buf.length;
+        setMicLevel(Math.round((avg / 255) * 100));
+        micRafRef.current = requestAnimationFrame(tick);
+      };
+      micRafRef.current = requestAnimationFrame(tick);
+    } catch { setMicError('Microfono non disponibile — controlla i permessi'); }
+  }, [micActive]);
+
+  const stopMic = useCallback(() => {
+    if (micRafRef.current) cancelAnimationFrame(micRafRef.current);
+    micStreamRef.current?.getTracks().forEach(t => t.stop());
+    micStreamRef.current = null; micAnalyzerRef.current = null;
+    setMicActive(false); setMicLevel(0);
+  }, []);
+
+  useEffect(() => () => stopMic(), [stopMic]);
+  // ──────────────────────────────────────────────────────────────────────────
+
   useEffect(() => {
     if (!state) return;
     const b = state.bookings.find(b => b.playerId === playerId) ?? null;
@@ -2041,18 +2083,49 @@ function KaraokePhoneController({ state, sessionId, playerId, teamColor }: {
       {isActive && (
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
-          className="rounded-2xl border-2 px-6 py-6 text-center"
+          className="rounded-2xl border-2 px-6 py-6 space-y-4"
           style={{ borderColor: teamColor, background: `${teamColor}15` }}
         >
-          <div className="text-5xl mb-3">🎤</div>
-          <div className="text-display text-2xl font-black" style={{ color: teamColor }}>
-            Tocca a te cantare!
+          <div className="text-center">
+            <div className="text-5xl mb-3">🎤</div>
+            <div className="text-display text-2xl font-black" style={{ color: teamColor }}>
+              Tocca a te cantare!
+            </div>
+            <div className="mt-2 text-sm text-muted-foreground">
+              Sali sul palco e dai il massimo!
+            </div>
           </div>
-          <div className="mt-2 text-sm text-muted-foreground">
-            Sali sul palco e dai il massimo!
-          </div>
+
+          {/* ── Microfono live ── */}
+          {!micActive ? (
+            <button onClick={() => void startMic()}
+              className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-black"
+              style={{ background: 'linear-gradient(135deg,#FB923C,#ea580c)', color: '#fff', boxShadow: '0 0 20px rgba(251,146,60,0.4)' }}>
+              <Mic className="h-4 w-4" /> Attiva microfono
+            </button>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs font-bold" style={{ color: teamColor }}>
+                <span className="flex items-center gap-1"><Mic className="h-3 w-3" /> Live</span>
+                <span className="tabular-nums">{micLevel}%</span>
+              </div>
+              <div className="relative h-8 w-full overflow-hidden rounded-full bg-white/10">
+                <motion.div className="absolute inset-y-0 left-0 rounded-full"
+                  animate={{ width: `${micLevel}%` }} transition={{ duration: 0.08 }}
+                  style={{ background: micLevel > 70 ? '#22c55e' : micLevel > 35 ? '#eab308' : teamColor }} />
+                <div className="absolute inset-0 flex items-center justify-center text-xs font-black text-white">
+                  {micLevel > 60 ? '🔥 Dai tutto!' : micLevel > 25 ? '🎤 Ottimo!' : '🔇 Canta più forte!'}
+                </div>
+              </div>
+              <button onClick={stopMic} className="w-full text-xs text-white/30 hover:text-white/60 transition-colors">
+                Disattiva mic
+              </button>
+            </div>
+          )}
+          {micError && <div className="text-xs text-center text-red-400">{micError}</div>}
+
           <motion.div animate={{ scale: [1, 1.05, 1] }} transition={{ repeat: Infinity, duration: 1.5 }}
-            className="mt-4 rounded-xl bg-white/10 px-4 py-3 text-lg font-black text-white">
+            className="rounded-xl bg-white/10 px-4 py-3 text-center text-lg font-black text-white">
             🌟 Buona fortuna!
           </motion.div>
         </motion.div>
