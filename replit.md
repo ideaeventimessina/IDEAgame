@@ -177,12 +177,17 @@ Pagine intenzionalmente lasciate mock perché fuori dallo scope del wiring backe
 
 ## Test accounts (password: `ideagame`)
 
-- `ideaeventime@gmail.com` — super_admin (no tenant) ← account principale
-- `admin@ideagame.app` — super_admin (no tenant)
+- `ideaeventime@gmail.com` — tenant_owner (IDEAeventime) ← account principale
+- `admin@ideagame.app` — super_admin (no tenant) ← accesso globale
 - `owner@mango.events` — tenant_owner (Mango Events)
-- `manager@mango.events` — game_manager
-- `host@mango.events` — entertainer
-- `host@aurora.events` — entertainer (Aurora Cruise Lines)
+- `manager@mango.events` — game_manager (Mango Events)
+- `host@mango.events` — entertainer (Mango Events)
+- `host@aurora.events` — entertainer (Aurora Wedding Studio)
+
+Tenant demo:
+- **IDEAeventime** (slug: `ideaeventime`) — tenant di `ideaeventime@gmail.com`, evento demo "Demo IDEAeventime" join code `IDEA01`
+- **Mango Events** (slug: `mango`) — tenant demo con evento live "Compleanno Sorrento 40" join code `SORR40`
+- **Aurora Wedding Studio** (slug: `aurora`) — tenant demo con evento draft
 
 ## Architecture decisions
 
