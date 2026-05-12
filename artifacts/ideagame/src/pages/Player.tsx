@@ -515,7 +515,8 @@ export default function Player() {
          }}>
       <header className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <img src="/logo.png" alt="IDEAgame" className="h-9 w-auto" />
+          <img src="/jonny-world-hero.png" alt="Jonny's World" className="h-10 w-auto object-contain"
+            style={{ filter: 'drop-shadow(0 0 10px rgba(245,182,66,0.5))' }} />
         </div>
         <div className="flex items-center gap-2">
           {step === 'play' && (
@@ -564,20 +565,11 @@ export default function Player() {
           <motion.div key="enter-code" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
             className="flex flex-1 flex-col">
             <div className="flex flex-1 flex-col items-center justify-center gap-4">
-              {/* Jonny's World hero banner */}
-              <div className="relative w-full max-w-xs overflow-hidden rounded-2xl"
-                style={{ height: 160 }}>
+              {/* Jonny's World logo */}
+              <div className="flex items-center justify-center w-full max-w-xs py-2">
                 <img src="/jonny-world-hero.png" alt="Jonny's World"
-                  className="absolute inset-0 w-full h-full object-cover object-top"
-                  style={{ filter: 'brightness(0.82) saturate(1.1)' }} />
-                <div className="absolute inset-0"
-                  style={{ background: 'linear-gradient(to bottom, transparent 40%, rgba(4,2,20,0.92) 100%)' }} />
-                <div className="absolute bottom-3 left-0 right-0 text-center">
-                  <div className="text-display text-sm font-black tracking-[0.2em] uppercase"
-                    style={{ color: '#F5B642', textShadow: '0 0 20px rgba(245,182,66,0.6)' }}>
-                    Jonny&apos;s World
-                  </div>
-                </div>
+                  className="w-auto object-contain"
+                  style={{ height: 140, filter: 'drop-shadow(0 0 28px rgba(245,182,66,0.65)) drop-shadow(0 4px 16px rgba(0,0,0,0.7))' }} />
               </div>
               <div className="text-center">
                 <div className="text-display text-3xl font-black">Unisciti all&apos;evento</div>

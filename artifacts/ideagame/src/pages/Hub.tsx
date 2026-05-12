@@ -437,9 +437,9 @@ export default function Hub() {
         >
           <div className="relative flex items-center justify-center" style={{ width: oct * 0.72, height: oct * 0.72 }}>
             <div className="absolute inset-0 oct-clip bg-gradient-to-br from-primary via-accent to-primary opacity-90" />
-            <div className="absolute inset-1.5 oct-clip bg-white" />
-            <div className="relative z-10 flex items-center justify-center" style={{ width: oct * 0.52, height: oct * 0.52 }}>
-              <img src="/logo.png" alt="IDEA Games" className="w-full h-full object-contain" style={{ padding: oct * 0.04 }} />
+            <div className="absolute inset-1.5 oct-clip" style={{ background: 'rgba(14,5,32,0.92)' }} />
+            <div className="relative z-10 flex items-center justify-center" style={{ width: oct * 0.66, height: oct * 0.66 }}>
+              <img src="/jonny-world-hero.png" alt="Jonny's World" className="w-full h-full object-contain drop-shadow-[0_0_18px_rgba(245,182,66,0.7)]" />
             </div>
           </div>
         </motion.div>
@@ -695,8 +695,9 @@ export default function Hub() {
                   <X className="h-4 w-4" />
                 </button>
 
-                <div className="mx-auto flex items-center justify-center rounded-2xl bg-white px-3 py-1.5 shadow-xl mb-5" style={{ width: 120 }}>
-                  <img src="/logo.png" alt="IDEA Games" className="h-10 w-auto object-contain" />
+                <div className="mx-auto flex items-center justify-center mb-5">
+                  <img src="/jonny-world-hero.png" alt="Jonny's World" className="h-16 w-auto object-contain"
+                    style={{ filter: 'drop-shadow(0 0 16px rgba(245,182,66,0.55))' }} />
                 </div>
 
                 <div className="text-display text-xl font-black mb-1">Entra in un evento</div>
@@ -752,9 +753,8 @@ export default function Hub() {
         style={{ background: 'radial-gradient(ellipse 160% 90% at 50% -10%, #1a0830 0%, #0a0318 50%, #030110 100%)' }}>
         <HubStars />
         <div className="relative z-10 flex flex-col items-center gap-8 text-center px-8">
-          <div className="flex items-center justify-center rounded-2xl bg-white px-4 py-2 shadow-xl">
-            <img src="/logo.png" alt="IDEA Games" className="h-12 w-auto object-contain" />
-          </div>
+          <img src="/jonny-world-hero.png" alt="Jonny's World" className="h-16 w-auto object-contain"
+            style={{ filter: 'drop-shadow(0 0 20px rgba(245,182,66,0.55))' }} />
           <div>
             <div className="text-display text-5xl sm:text-6xl font-black"
               style={{ background: 'linear-gradient(135deg, #F5B642 0%, #fff8e8 60%, #F5B642 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
@@ -793,9 +793,8 @@ export default function Hub() {
 
         {/* Header */}
         <header className="relative z-20 flex shrink-0 items-center justify-between px-8 py-5">
-          <div className="flex items-center justify-center rounded-2xl bg-white px-3 py-1.5 shadow-xl">
-            <img src="/logo.png" alt="IDEA Games" className="h-10 w-auto object-contain" />
-          </div>
+          <img src="/jonny-world-hero.png" alt="Jonny's World" className="h-14 w-auto object-contain"
+            style={{ filter: 'drop-shadow(0 0 16px rgba(245,182,66,0.55))' }} />
           <div className="flex items-center gap-3">
             {publicSessionActive ? (
               <div className="rounded-full border border-amber-400 px-3 py-1 text-xs font-black uppercase tracking-widest text-amber-400">
@@ -822,14 +821,13 @@ export default function Hub() {
         {/* Main content — QR gigante + titolo */}
         <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-8 px-8 pb-10">
 
-          {/* Title */}
+          {/* Title — Jonny's World logo */}
           <motion.div initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-            className="text-center">
-            <div className="text-display text-5xl sm:text-6xl lg:text-7xl font-black leading-none"
-              style={{ background: 'linear-gradient(135deg, #F5B642 0%, #fff8e8 50%, #F5B642 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-              Unisciti alla serata!
-            </div>
-            <div className="mt-3 text-lg sm:text-xl text-muted-foreground">
+            className="flex flex-col items-center gap-3">
+            <img src="/jonny-world-hero.png" alt="Jonny's World"
+              className="w-auto object-contain"
+              style={{ height: 'clamp(120px, 18vh, 200px)', filter: 'drop-shadow(0 0 40px rgba(245,182,66,0.6)) drop-shadow(0 4px 24px rgba(0,0,0,0.7))' }} />
+            <div className="text-lg sm:text-xl text-muted-foreground">
               Scansiona il QR o inserisci il codice sul telefono
             </div>
           </motion.div>
@@ -901,9 +899,8 @@ export default function Hub() {
         style={{ background: 'radial-gradient(ellipse 160% 90% at 50% -10%, #2d0d52 0%, #130628 45%, #060213 100%)' }}>
         <HubStars />
         <header className="relative z-20 flex shrink-0 items-center justify-between px-8 py-5">
-          <div className="flex items-center justify-center rounded-2xl bg-white px-3 py-1.5 shadow-xl">
-            <img src="/logo.png" alt="IDEA Games" className="h-10 w-auto object-contain" />
-          </div>
+          <img src="/jonny-world-hero.png" alt="Jonny's World" className="h-14 w-auto object-contain"
+            style={{ filter: 'drop-shadow(0 0 16px rgba(245,182,66,0.55))' }} />
           <div className="flex items-center gap-3">
             <div className="rounded-full border border-destructive px-3 py-1 text-xs font-black uppercase tracking-widest text-destructive">
               <span className="mr-1.5 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-destructive align-middle" />LIVE
@@ -1210,12 +1207,9 @@ export default function Hub() {
       {/* ── Header ────────────────────────────────────────────────── */}
       <header className="relative z-20 flex shrink-0 items-center justify-between px-4 py-3 sm:px-8 sm:py-4 lg:px-10 lg:py-5">
         <div className="flex items-center gap-3 sm:gap-5 min-w-0">
-          <div className="flex shrink-0 items-center justify-center rounded-xl bg-white px-2 py-1 shadow-md sm:rounded-2xl sm:px-3 sm:py-1.5">
-            <img src="/logo.png" alt="IDEA Games" className="h-8 w-auto object-contain sm:h-11" />
-          </div>
-          <div className="min-w-0">
-            <div className="hidden text-xs text-muted-foreground sm:block sm:text-sm">{t('app.tagline')}</div>
-          </div>
+          <img src="/jonny-world-hero.png" alt="Jonny's World"
+            className="h-10 w-auto object-contain sm:h-14 shrink-0"
+            style={{ filter: 'drop-shadow(0 0 14px rgba(245,182,66,0.55))' }} />
         </div>
         <div className="flex items-center gap-2 sm:gap-4">
           {lan.localMode ? (
