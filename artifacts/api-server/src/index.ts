@@ -2,7 +2,9 @@ import { createServer } from "node:http";
 import app from "./app";
 import { initSocket } from "./socket";
 import { logger } from "./lib/logger";
-import { db, playersTable } from "@workspace/db";
+import { db, playersTable, tenantsTable, usersTable, eventsTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
+import bcrypt from "bcryptjs";
 
 const rawPort = process.env["PORT"];
 
@@ -16,6 +18,41 @@ const port = Number(rawPort);
 
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
+}
+
+// On startup, ensure critical users exist (idempotent — safe to run every boot)
+async function ensureUsers(): Promise<void> {
+  try {
+    const existing = await db.select().from(usersTable)
+      .where(eq(usersTable.email, "ideaeventime@gmail.com")).limit(1);
+    if (existing.length > 0) return;
+
+    // Create tenant
+    const [tenant] = await db.insert(tenantsTable).values({
+      slug: "ideaeventime", name: "IDEAeventime", plan: "pro",
+      brandColor: "#F5B642", locale: "it", mrr: 0,
+    }).returning();
+
+    // Create user
+    const pwd = await bcrypt.hash("ideagame", 10);
+    await db.insert(usersTable).values({
+      email: "ideaeventime@gmail.com", name: "IDEAeventime Owner",
+      role: "tenant_owner", locale: "it", passwordHash: pwd, tenantId: tenant!.id,
+    });
+
+    // Create demo event
+    await db.insert(eventsTable).values({
+      tenantId: tenant!.id, name: "Demo IDEAeventime", venue: "Demo Venue",
+      startsAt: new Date(), status: "live", brandColor: "#F5B642",
+      expectedPlayers: 20,
+      enabledGames: ["percorso-a-risate", "gioco-delle-coppie", "quizzone"],
+      joinCode: "IDEA01",
+    });
+
+    logger.info("startup: created ideaeventime tenant + user");
+  } catch (err) {
+    logger.error({ err }, "startup: ensureUsers failed (non-fatal)");
+  }
 }
 
 // On startup, mark all players as disconnected.
@@ -51,8 +88,8 @@ server.on("request", (req, res) => {
   // /socket.io/* requests are already handled by socket.io's listener (registered above)
 });
 
-// Reset stale connections then start listening
-resetStaleConnections().finally(() => {
+// Ensure critical users exist, reset stale connections, then start listening
+ensureUsers().then(() => resetStaleConnections()).finally(() => {
   server.listen(port, () => {
     logger.info({ port }, "Server listening");
   });
