@@ -112,6 +112,14 @@ const ALL_GAMES = [
 
 const AVATAR_RING = ['#F5B642','#FF69B4','#60A5FA','#A78BFA','#34D399','#F87171','#F472B6','#FB923C','#22D3EE','#4ADE80'];
 
+const FREESTYLE_TRACKS = [
+  'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
+  'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3',
+  'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-7.mp3',
+  'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-11.mp3',
+  'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-14.mp3',
+] as const;
+
 // ── Audio (Web Audio API synthesizer — no mp3 files needed) ──────────────────
 
 type AudioTheme = 'lobby' | 'round' | 'podium';
@@ -684,17 +692,22 @@ export default function HomeGame() {
 
             {/* Top bar */}
             <div className="flex items-center justify-between px-6 py-3 shrink-0"
-              style={{background:'rgba(0,0,0,0.5)',backdropFilter:'blur(14px)',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
-              <div className="flex items-center gap-3">
-                <img src="/jonny-world-hero.png" alt="" className="h-10 w-auto object-contain"
-                  style={{filter:'drop-shadow(0 0 12px #F5B64250)'}}/>
-                <div className="text-sm font-bold text-white/50">
-                  {gamesPlayed.length}/{ALL_GAMES.length} giochi completati
+              style={{background:'rgba(0,0,0,0.6)',backdropFilter:'blur(18px)',borderBottom:'1px solid rgba(245,182,66,0.12)'}}>
+              <div className="flex items-center gap-4">
+                <img src="/jonny-master-nobg.png" alt="Jonny" className="h-12 w-auto object-contain"
+                  style={{filter:'drop-shadow(0 0 18px #F5B64265)'}}/>
+                <div>
+                  <img src="/jonny-world-hero.png" alt="Jonny's World" className="h-7 w-auto object-contain"
+                    style={{filter:'drop-shadow(0 0 10px #F5B64255)'}}/>
+                  <div className="text-[11px] font-bold tracking-widest uppercase"
+                    style={{color:'rgba(168,85,247,0.75)'}}>
+                    Modalità Home · {gamesPlayed.length}/{ALL_GAMES.length} completati
+                  </div>
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <JonnyAvatar mood={jonnyMood} size={38}/>
-                <div className="text-sm text-white/50">"{jonnyMsg}"</div>
+                <JonnyAvatar mood={jonnyMood} size={36}/>
+                <div className="max-w-[220px] text-sm italic text-white/45">"{jonnyMsg}"</div>
               </div>
               <div className="flex items-center gap-3">
                 <div className="rounded-xl px-3 py-1.5 text-sm font-black"
@@ -702,11 +715,12 @@ export default function HomeGame() {
                   <Users className="inline h-4 w-4 mr-1"/>{players.length}
                 </div>
                 {allDone && (
-                  <button onClick={goToChampion} disabled={loading}
+                  <motion.button onClick={goToChampion} disabled={loading}
+                    whileHover={{scale:1.05}} whileTap={{scale:0.97}}
                     className="flex items-center gap-2 rounded-2xl px-5 py-2 text-sm font-black text-black"
                     style={{background:'linear-gradient(135deg,#F5B642,#FF8C00)',boxShadow:'0 0 30px #F5B64255'}}>
                     <Trophy className="h-4 w-4"/> Classifica Finale
-                  </button>
+                  </motion.button>
                 )}
               </div>
             </div>
@@ -735,63 +749,58 @@ export default function HomeGame() {
               </div>
             )}
 
-            {/* 8 game tiles */}
+            {/* 8 game tiles — ottagonali */}
             <div className="flex-1 overflow-y-auto px-4 py-4">
-              <div className="grid grid-cols-4 gap-4 max-w-6xl mx-auto">
+              <div className="grid grid-cols-4 gap-3 max-w-5xl mx-auto">
                 {ALL_GAMES.map(g => {
                   const done = gamesPlayed.includes(g.slug);
                   const isLoading = selectingGame === g.slug;
                   return (
-                    <motion.button key={g.slug}
-                      whileHover={done ? {} : {scale:1.04,y:-6}}
-                      whileTap={done ? {} : {scale:0.97}}
-                      onClick={() => !done && !selectingGame && selectGame(g.slug)}
-                      disabled={done || !!selectingGame}
-                      className="relative flex flex-col items-start gap-3 rounded-3xl p-5 text-left transition-all"
-                      style={done
-                        ? {background:'rgba(255,255,255,0.03)',border:'2px solid rgba(255,255,255,0.08)',opacity:0.45}
-                        : {background:`linear-gradient(135deg,${g.color}1a,${g.color}08)`,border:`2px solid ${g.color}55`,boxShadow:`0 0 35px ${g.color}18`}}>
+                    <div key={g.slug} style={{filter: done ? 'none' : `drop-shadow(0 0 22px ${g.color}50)`}}>
+                      <motion.button
+                        whileHover={done ? {} : {scale:1.06}}
+                        whileTap={done ? {} : {scale:0.95}}
+                        onClick={() => !done && !selectingGame && selectGame(g.slug)}
+                        disabled={done || !!selectingGame}
+                        className="relative w-full flex flex-col items-center justify-center gap-2 transition-all"
+                        style={{
+                          clipPath:'polygon(30% 0%,70% 0%,100% 30%,100% 70%,70% 100%,30% 100%,0% 70%,0% 30%)',
+                          aspectRatio:'1/1',
+                          ...(done
+                            ? {background:'rgba(255,255,255,0.04)',opacity:0.5}
+                            : {background:`linear-gradient(145deg,${g.color}28,${g.color}10)`}),
+                        }}>
 
-                      {/* Done overlay */}
-                      {done && (
-                        <div className="absolute inset-0 flex items-center justify-center rounded-3xl"
-                          style={{background:'rgba(0,0,0,0.55)'}}>
-                          <div className="flex flex-col items-center gap-1">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-500">
-                              <Check className="h-6 w-6 text-white"/>
+                        {/* Done overlay */}
+                        {done && (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1"
+                            style={{background:'rgba(0,0,0,0.45)'}}>
+                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500">
+                              <Check className="h-5 w-5 text-white"/>
                             </div>
-                            <span className="text-xs font-black text-green-400">Completato</span>
+                            <span className="text-[10px] font-black text-green-400">Fatto</span>
                           </div>
-                        </div>
-                      )}
+                        )}
 
-                      {/* Loading overlay */}
-                      {isLoading && (
-                        <div className="absolute inset-0 flex items-center justify-center rounded-3xl"
-                          style={{background:'rgba(0,0,0,0.65)'}}>
-                          <Loader2 className="h-8 w-8 animate-spin" style={{color:g.color}}/>
-                        </div>
-                      )}
+                        {/* Loading overlay */}
+                        {isLoading && (
+                          <div className="absolute inset-0 flex items-center justify-center"
+                            style={{background:'rgba(0,0,0,0.65)'}}>
+                            <Loader2 className="h-7 w-7 animate-spin" style={{color:g.color}}/>
+                          </div>
+                        )}
 
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl"
-                          style={{background:`linear-gradient(135deg,${g.color}30,${g.color}15)`,border:`1px solid ${g.color}55`,color:g.color,boxShadow:`0 0 20px ${g.color}35`}}>
-                          {g.icon}
-                        </div>
-                        <div className="text-3xl">{g.emoji}</div>
-                      </div>
-
-                      <div className="text-display text-lg font-black leading-tight" style={{color:g.color,textShadow:`0 0 20px ${g.color}55`}}>
-                        {g.name}
-                      </div>
-                      <div className="text-xs leading-relaxed text-white/55">{g.description}</div>
-
-                      {!done && (
-                        <div className="mt-auto flex items-center gap-1 text-xs font-black" style={{color:g.color}}>
-                          <ChevronRight className="h-3 w-3"/> Gioca
-                        </div>
-                      )}
-                    </motion.button>
+                        {!done && !isLoading && (
+                          <>
+                            <div className="text-4xl leading-none">{g.emoji}</div>
+                            <div className="text-display text-xs font-black leading-tight text-center px-4"
+                              style={{color:g.color,textShadow:`0 0 16px ${g.color}80`}}>
+                              {g.name}
+                            </div>
+                          </>
+                        )}
+                      </motion.button>
+                    </div>
                   );
                 })}
               </div>
@@ -1109,9 +1118,65 @@ function PercorsoBoard({ payload, onReveal }: { payload: Record<string,unknown>;
   );
 }
 
+// ── AudioPlayer (shared) ──────────────────────────────────────────────────────
+
+function AudioPlayer({ src, label = 'Riproduci', color = '#60A5FA' }: { src: string | null; label?: string; color?: string }) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => { return () => { audioRef.current?.pause(); }; }, []);
+
+  useEffect(() => {
+    if (audioRef.current) { audioRef.current.pause(); setPlaying(false); }
+  }, [src]);
+
+  if (!src) return (
+    <div className="flex items-center gap-2 rounded-xl px-5 py-2.5"
+      style={{background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.12)'}}>
+      <span className="text-sm text-white/35">🔇 Nessun file audio — aggiorna URL in /admin/sara-musica</span>
+    </div>
+  );
+
+  const toggle = async () => {
+    if (!audioRef.current) {
+      audioRef.current = new Audio(src);
+      audioRef.current.loop = true;
+      audioRef.current.onended = () => setPlaying(false);
+    }
+    if (playing) { audioRef.current.pause(); setPlaying(false); }
+    else {
+      setLoading(true);
+      try { await audioRef.current.play(); setPlaying(true); } catch { /* autoplay blocked */ }
+      finally { setLoading(false); }
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-3">
+      <motion.button onClick={toggle} whileHover={{scale:1.05}} whileTap={{scale:0.95}}
+        className="flex items-center gap-3 rounded-2xl px-8 py-4 text-lg font-black text-white"
+        style={{background:`linear-gradient(135deg,${color}cc,${color}77)`,boxShadow:`0 0 40px ${color}66`}}>
+        {loading ? <Loader2 className="h-6 w-6 animate-spin"/> : playing ? '⏸ Pausa' : `▶ ${label}`}
+      </motion.button>
+      {playing && (
+        <div className="flex items-center gap-1.5">
+          {[1,2,3,4,5].map(i => (
+            <motion.div key={i} className="w-1.5 rounded-full"
+              style={{background:color,height:24}}
+              animate={{scaleY:[0.2,1,0.2]}}
+              transition={{duration:0.7,repeat:Infinity,delay:i*0.11}}/>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── SaraMusicaBoard ───────────────────────────────────────────────────────────
 
 function SaraMusicaBoard({ payload, revealed, onReveal }: { payload: Record<string,unknown>; revealed: boolean; onReveal: () => void }) {
+  const audioUrl = payload.audioUrl ? String(payload.audioUrl) : null;
   return (
     <motion.div key={String(payload.roundIndex)} initial={{scale:0.9,opacity:0}} animate={{scale:1,opacity:1}}
       className="flex w-full max-w-2xl flex-col items-center gap-7 text-center">
@@ -1122,6 +1187,7 @@ function SaraMusicaBoard({ payload, revealed, onReveal }: { payload: Record<stri
       {!revealed ? (
         <>
           <div className="text-display text-4xl font-black text-white">Indovina la Canzone!</div>
+          <AudioPlayer src={audioUrl} label="Riproduci canzone" color="#60A5FA"/>
           <div className="max-w-lg rounded-3xl p-6"
             style={{background:'rgba(96,165,250,0.12)',border:'1px solid rgba(96,165,250,0.4)'}}>
             <div className="text-xs font-black uppercase tracking-widest mb-2" style={{color:'rgba(96,165,250,0.8)'}}>SUGGERIMENTO</div>
@@ -1136,6 +1202,7 @@ function SaraMusicaBoard({ payload, revealed, onReveal }: { payload: Record<stri
         <>
           <div className="text-display text-5xl font-black text-white">{String(payload.title??'?')}</div>
           <div className="text-2xl font-bold" style={{color:'#60A5FA'}}>— {String(payload.artist??'')}</div>
+          <AudioPlayer src={audioUrl} label="Riproduci ancora" color="#60A5FA"/>
           <div className="rounded-2xl px-5 py-2" style={{background:'rgba(96,165,250,0.18)',border:'1px solid rgba(96,165,250,0.45)',color:'#60A5FA'}}>
             <span className="text-xl font-black">{Number(payload.points??100)} punti a chi l'ha indovinata!</span>
           </div>
@@ -1264,6 +1331,8 @@ function KaraokeBoard({ payload, onReveal }: { payload: Record<string,unknown>; 
 // ── FreestyleBoard ────────────────────────────────────────────────────────────
 
 function FreestyleBoard({ payload, onReveal }: { payload: Record<string,unknown>; onReveal: () => void }) {
+  const trackIdx = Number(payload.roundIndex ?? 0) % FREESTYLE_TRACKS.length;
+  const trackUrl = FREESTYLE_TRACKS[trackIdx] ?? FREESTYLE_TRACKS[0];
   return (
     <motion.div key={String(payload.roundIndex)} initial={{scale:0.9,opacity:0}} animate={{scale:1,opacity:1}}
       className="flex w-full max-w-2xl flex-col items-center gap-7 text-center">
@@ -1279,6 +1348,7 @@ function FreestyleBoard({ payload, onReveal }: { payload: Record<string,unknown>
         </div>
       </div>
       <div className="text-lg text-white/55">Improvvisa un freestyle su questa parola — {Number(payload.timeLimit??30)} secondi!</div>
+      <AudioPlayer src={trackUrl} label="Avvia base musicale" color="#FB923C"/>
       <button onClick={onReveal} className="flex items-center gap-3 rounded-2xl px-10 py-5 text-xl font-black text-white"
         style={{background:'linear-gradient(135deg,#FB923C,#ea580c)',boxShadow:'0 0 50px rgba(251,146,60,0.55)'}}>
         🎙️ Freestyle fatto!
@@ -1330,11 +1400,20 @@ function CoppieBoard({ payload, onNext }: { payload: Record<string,unknown>; onN
               : card.flipped
               ? {background:'linear-gradient(135deg,#F472B6,#ec4899)',border:'2px solid #F472B6',boxShadow:'0 0 25px rgba(244,114,182,0.5)',color:'#fff'}
               : {background:'rgba(255,255,255,0.05)',border:'2px solid rgba(244,114,182,0.3)',color:'rgba(255,255,255,0.5)'}}>
-            {card.matched || card.flipped ? (
+            {card.matched ? (
               card.imageUrl
-                ? <img src={card.imageUrl} alt={card.text} className="h-14 w-14 rounded-xl object-cover"/>
-                : <span className="px-2 text-center">{card.text}</span>
-            ) : <span>?</span>}
+                ? <img src={card.imageUrl} alt={card.text} className="h-16 w-16 rounded-xl object-cover"/>
+                : <span className="px-2 text-center text-sm font-black">{card.text}</span>
+            ) : card.flipped ? (
+              card.imageUrl
+                ? <img src={card.imageUrl} alt={card.text} className="h-16 w-16 rounded-xl object-cover"/>
+                : <span className="px-2 text-center text-sm font-black">{card.text}</span>
+            ) : (
+              card.imageUrl
+                ? <img src={card.imageUrl} alt="" className="h-16 w-16 rounded-xl object-cover opacity-0 blur-md"
+                    style={{filter:'blur(8px)',opacity:0.15}}/>
+                : <span className="text-2xl text-white/25">?</span>
+            )}
           </motion.button>
         ))}
       </div>
