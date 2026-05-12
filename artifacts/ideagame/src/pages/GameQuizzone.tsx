@@ -211,9 +211,9 @@ export default function GameQuizzone() {
           </motion.div>
         </AnimatePresence>
 
-        {/* Answers */}
+        {/* Answers — pointer-events-none: TV/projector is display-only, not interactive */}
         {type !== 'fast_answer' && (
-          <div className={`grid w-full max-w-5xl gap-3 grid-cols-2`}>
+          <div className="grid w-full max-w-5xl gap-3 grid-cols-2 pointer-events-none select-none">
             {answers.map((ans, i) => {
               const isRevealed = reveal !== null && reveal.roundIndex === roundIndex;
               const isCorrect  = isRevealed && i === reveal!.correctAnswer;

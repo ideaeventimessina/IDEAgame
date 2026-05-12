@@ -372,6 +372,12 @@ export default function LiveControl() {
       on<{ count: number }>('quiz:answer_received', ({ count }) => {
         setQuizzoneResponseCount(count);
       }),
+      on<{ sessionId: string; roundIndex: number }>('quiz:question', ({ roundIndex }) => {
+        setQuizzoneRoundIdx(roundIndex);
+        setQuizzoneRevealed(false);
+        setQuizzoneActive(true);
+        setQuizzoneResponseCount(0);
+      }),
       on('quiz:reveal', () => {
         setQuizzoneRevealed(true);
         qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) });

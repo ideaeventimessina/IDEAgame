@@ -44,7 +44,7 @@ async function getCurrentRound(sessionId: string): Promise<{
 }> {
   const rows = await db.select().from(roundsTable)
     .where(eq(roundsTable.gameSessionId, sessionId))
-    .orderBy(desc(roundsTable.createdAt))
+    .orderBy(desc(roundsTable.index), desc(roundsTable.createdAt))
     .limit(1);
   const round = rows[0] ?? null;
   if (!round?.payload || (round.payload as { mode?: string }).mode !== "quizzone") {
@@ -67,6 +67,97 @@ function publicQuestion(payload: QuizzoneRoundPayload, sessionId: string) {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { correctAnswer, ...pub } = payload;
   return { ...pub, sessionId };
+}
+
+// ─── Shared reveal helper ─────────────────────────────────────────────────────
+// Used by both the manual /reveal endpoint and the auto-reveal on all-answered.
+// Returns null if already revealed or no active round.
+async function runReveal(sessionId: string): Promise<null | {
+  roundIndex: number; correctAnswer: number; explanation: string;
+  scores: { teamId: string; name: string; color: string; roundPoints: number; total: number }[];
+}> {
+  const session = await getSession(sessionId);
+  if (!session) return null;
+
+  const { round, payload } = await getCurrentRound(sessionId);
+  if (!payload || !round || payload.revealed) return null;
+
+  const { roundIndex, correctAnswer, points: roundPoints } = payload;
+
+  // Load responses for this round
+  const responses = await db.select().from(quizzoneResponsesTable)
+    .where(and(
+      eq(quizzoneResponsesTable.sessionId, sessionId),
+      eq(quizzoneResponsesTable.roundIndex, roundIndex),
+    ));
+
+  const questionStarted = new Date(payload.questionStartedAt).getTime();
+  const teamPointsMap = new Map<string, number>();
+
+  for (const resp of responses) {
+    const elapsedMs = resp.submittedAt.getTime() - questionStarted;
+    const inTime = elapsedMs <= (payload.timeLimit + 2) * 1000;
+    const correct = resp.selectedAnswer === correctAnswer;
+    const earned = correct && inTime ? roundPoints : 0;
+
+    await db.update(quizzoneResponsesTable)
+      .set({ isCorrect: correct, points: earned })
+      .where(eq(quizzoneResponsesTable.id, resp.id));
+
+    if (resp.teamId && earned > 0) {
+      teamPointsMap.set(resp.teamId, (teamPointsMap.get(resp.teamId) ?? 0) + earned);
+    }
+  }
+
+  // Write score entries per team
+  for (const [teamId, pts] of teamPointsMap) {
+    await db.insert(scoresTable).values({
+      eventId: session.eventId,
+      teamId,
+      gameSlug: "quizzone",
+      round: roundIndex + 1,
+      points: pts,
+    });
+  }
+
+  // Mark round revealed + completed
+  await db.update(roundsTable)
+    .set({
+      payload: { ...payload, revealed: true } as Record<string, unknown>,
+      status: "completed",
+      endedAt: new Date(),
+    })
+    .where(eq(roundsTable.id, round.id));
+
+  // Build scoreboard
+  const teams = await db.select().from(teamsTable).where(eq(teamsTable.eventId, session.eventId));
+  const scoreRows = await db.select({
+    teamId: scoresTable.teamId,
+    total: sql<number>`SUM(${scoresTable.points})`,
+  }).from(scoresTable)
+    .where(and(eq(scoresTable.eventId, session.eventId), eq(scoresTable.gameSlug, "quizzone")))
+    .groupBy(scoresTable.teamId);
+
+  const scoreMap = new Map(scoreRows.map(r => [r.teamId, Number(r.total)]));
+  const scores = teams.map(t => ({
+    teamId: t.id,
+    name: t.name,
+    color: t.color,
+    roundPoints: teamPointsMap.get(t.id) ?? 0,
+    total: scoreMap.get(t.id) ?? 0,
+  }));
+
+  emitToEvent(session.eventId, "quiz:reveal", {
+    sessionId,
+    roundIndex,
+    correctAnswer,
+    explanation: payload.explanation,
+    packId: payload.packId,
+    scores,
+  });
+  emitToEvent(session.eventId, "score:updated", { eventId: session.eventId });
+
+  return { roundIndex, correctAnswer, explanation: payload.explanation, scores };
 }
 
 // ─── POST /quizzone/sessions/:id/init ─────────────────────────────────────────
@@ -277,11 +368,18 @@ router.post("/quizzone/sessions/:id/answer", async (req: AuthedRequest, res: Res
     throw err;
   }
 
-  // Zero out points if out of time (we'll recalc at reveal)
   const responseCount = await getResponseCount(id, payload.roundIndex);
   emitToEvent(session.eventId, "quiz:answer_received", {
     sessionId: id, roundIndex: payload.roundIndex, count: responseCount,
   });
+
+  // Auto-reveal if all connected players have answered
+  const [{ n: playerCount }] = await db.select({ n: count() }).from(playersTable)
+    .where(and(eq(playersTable.eventId, session.eventId), eq(playersTable.isConnected, true)));
+  if (responseCount >= playerCount && playerCount > 0) {
+    // Fire-and-forget: don't block the player response
+    void runReveal(id).catch(() => { /* already revealed or no round — ignore */ });
+  }
 
   res.json({ saved: true, inTime, roundIndex: payload.roundIndex, responseCount });
 });
@@ -301,98 +399,12 @@ router.post("/quizzone/sessions/:id/reveal", requireAuth, async (req: AuthedRequ
     if (!ev || ev.tenantId !== me.tenantId) { res.status(403).json({ error: "Forbidden" }); return; }
   }
 
-  const { round, payload } = await getCurrentRound(id);
-  if (!payload || !round) { res.status(409).json({ error: "Nessuna domanda attiva" }); return; }
-  if (payload.revealed) { res.status(409).json({ error: "Già rivelata" }); return; }
-
-  const { roundIndex, correctAnswer, points: roundPoints, packId } = payload;
-
-  // Load all responses for this round
-  const responses = await db.select().from(quizzoneResponsesTable)
-    .where(and(
-      eq(quizzoneResponsesTable.sessionId, id),
-      eq(quizzoneResponsesTable.roundIndex, roundIndex),
-    ));
-
-  // Check time limit for each response
-  const questionStarted = new Date(payload.questionStartedAt).getTime();
-
-  // Mark responses correct/incorrect and assign points
-  const teamPointsMap = new Map<string, number>(); // teamId → earned points
-
-  for (const resp of responses) {
-    const elapsedMs = resp.submittedAt.getTime() - questionStarted;
-    const inTime = elapsedMs <= (payload.timeLimit + 2) * 1000;
-    const correct = resp.selectedAnswer === correctAnswer;
-    const earned = correct && inTime ? roundPoints : 0;
-
-    await db.update(quizzoneResponsesTable)
-      .set({ isCorrect: correct, points: earned })
-      .where(eq(quizzoneResponsesTable.id, resp.id));
-
-    if (resp.teamId && earned > 0) {
-      teamPointsMap.set(resp.teamId, (teamPointsMap.get(resp.teamId) ?? 0) + earned);
-    }
-  }
-
-  // Write score entries per team
-  for (const [teamId, pts] of teamPointsMap) {
-    await db.insert(scoresTable).values({
-      eventId: session.eventId,
-      teamId,
-      gameSlug: "quizzone",
-      round: roundIndex + 1,
-      points: pts,
-    });
-  }
-
-  // Update round: mark revealed + completed
-  await db.update(roundsTable)
-    .set({
-      payload: { ...payload, revealed: true } as Record<string, unknown>,
-      status: "completed",
-      endedAt: new Date(),
-    })
-    .where(eq(roundsTable.id, round.id));
-
-  // Build scoreboard for broadcast
-  const teams = await db.select().from(teamsTable).where(eq(teamsTable.eventId, session.eventId));
-  const scoreRows = await db.select({
-    teamId: scoresTable.teamId,
-    total: sql<number>`SUM(${scoresTable.points})`,
-  }).from(scoresTable)
-    .where(and(eq(scoresTable.eventId, session.eventId), eq(scoresTable.gameSlug, "quizzone")))
-    .groupBy(scoresTable.teamId);
-
-  const scoreMap = new Map(scoreRows.map(r => [r.teamId, r.total]));
-  const scores = teams.map(t => ({
-    teamId: t.id,
-    name: t.name,
-    color: t.color,
-    roundPoints: teamPointsMap.get(t.id) ?? 0,
-    total: scoreMap.get(t.id) ?? 0,
-  }));
-
-  // Emit reveal event
-  emitToEvent(session.eventId, "quiz:reveal", {
-    sessionId: id,
-    roundIndex,
-    correctAnswer,
-    explanation: payload.explanation,
-    packId,
-    scores,
-  });
-
-  emitToEvent(session.eventId, "score:updated", { eventId: session.eventId });
-
-  res.json({
-    roundIndex,
-    correctAnswer,
-    explanation: payload.explanation,
-    scores,
-    responseCount: responses.length,
-  });
+  // Use shared reveal helper (idempotent if already revealed)
+  const result = await runReveal(id);
+  if (!result) { res.status(409).json({ error: "Nessuna domanda attiva o già rivelata" }); return; }
+  res.json({ ...result, responseCount: result.scores.reduce((s, t) => s + (t.roundPoints > 0 ? 1 : 0), 0) });
 });
+
 
 // ─── POST /quizzone/sessions/:id/end ──────────────────────────────────────────
 // Auth — host ends quiz
