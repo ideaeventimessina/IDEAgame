@@ -99,7 +99,7 @@ export default function Cockpit() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-background">
+    <div className="relative min-h-screen overflow-x-hidden bg-background">
       {/* Hex grid bg */}
       <div className="pointer-events-none absolute inset-0 z-0 opacity-[0.04]"
         style={{ backgroundImage: 'url("/hex-grid.svg")', backgroundSize: '80px' }} />
