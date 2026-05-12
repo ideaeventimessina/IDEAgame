@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { AdminLayout } from './AdminLayout';
-import { Save, Trash2, Upload, Link2, ChevronDown, X } from 'lucide-react';
+import { Save, Trash2, Upload, Link2, ChevronDown, X, RefreshCw, CheckCircle2 } from 'lucide-react';
 
 const BASE = (import.meta.env.BASE_URL as string) ?? '/';
 async function apiFetch(path: string, opts?: RequestInit) {
@@ -52,6 +52,15 @@ const GAMES: { slug: string; label: string }[] = [
   { slug: 'freestyle-battle',   label: '🎙 Freestyle Battle' },
 ];
 
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error('Lettura file fallita'));
+    reader.readAsDataURL(file);
+  });
+}
+
 // ── PoseCard ─────────────────────────────────────────────────────────────────
 function PoseCard({
   gameSlug,
@@ -96,26 +105,21 @@ function PoseCard({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Local preview
     const objectUrl = URL.createObjectURL(file);
     setPreviewSrc(objectUrl);
     setImgError(false);
 
     setUploading(true);
     try {
-      const form = new FormData();
-      form.append('image', file);
-      const apiUrl = `${BASE}api/jonny-poses/upload`.replace(/\/\//g, '/');
-      const r = await fetch(apiUrl, { method: 'POST', credentials: 'include', body: form });
-      const data = await r.json() as { url?: string; error?: string };
-      if (!r.ok || !data.url) throw new Error(data.error ?? 'Upload fallito');
-      setUrl(data.url);
-      await handleSave(data.url);
+      // Convert to base64 data URI — stored directly in DB, never lost on server restart
+      const dataUri = await fileToBase64(file);
+      setUrl(dataUri);
+      setPreviewSrc(dataUri);
+      await handleSave(dataUri);
     } catch (err) {
       alert((err as Error).message);
     } finally {
       setUploading(false);
-      // Reset input so same file can be re-selected
       if (fileRef.current) fileRef.current.value = '';
     }
   };
@@ -194,10 +198,10 @@ function PoseCard({
         {inputMode === 'url' && (
           <input
             type="url"
-            value={url}
+            value={url.startsWith('data:') ? '' : url}
             onChange={e => { setUrl(e.target.value); setPreviewSrc(e.target.value); setImgError(false); }}
             onKeyDown={e => { if (e.key === 'Enter') void handleSave(); }}
-            placeholder="https://..."
+            placeholder={url.startsWith('data:') ? '(immagine caricata ✓)' : 'https://…'}
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs font-mono text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
           />
         )}
@@ -209,7 +213,7 @@ function PoseCard({
             disabled={uploading}
             className="w-full rounded-lg border border-dashed border-primary/40 py-3 text-xs text-primary/70 hover:bg-primary/5 transition-colors disabled:opacity-50"
           >
-            {uploading ? 'Caricamento…' : '📂 Scegli immagine dal dispositivo'}
+            {uploading ? 'Salvataggio nel DB…' : '📂 Scegli immagine dal dispositivo'}
           </button>
         )}
 
@@ -227,7 +231,7 @@ function PoseCard({
               }}
             >
               <Save className="h-3.5 w-3.5" />
-              {saving ? 'Salvo…' : saved ? 'Salvato ✓' : 'Salva'}
+              {saving ? 'Salvo…' : saved ? 'Salvato ✓' : 'Salva nel DB'}
             </button>
           )}
           {pose?.id && (
@@ -262,6 +266,8 @@ export default function JonnyPosesPage() {
   const [poses, setPoses] = useState<JonnyPose[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [savingAll, setSavingAll] = useState(false);
+  const [savedAllMsg, setSavedAllMsg] = useState<string | null>(null);
 
   const loadPoses = useCallback(async () => {
     setLoading(true);
@@ -296,9 +302,40 @@ export default function JonnyPosesPage() {
     setPoses(prev => prev.filter(p => p.id !== id));
   };
 
+  // ── "Salva tutto nel DB" — force-upsert all poses that have an imageUrl ──
+  const handleSaveAll = async () => {
+    const toSave = poses.filter(p => p.imageUrl);
+    if (toSave.length === 0) {
+      setSavedAllMsg('Nessuna posa da salvare.');
+      setTimeout(() => setSavedAllMsg(null), 3000);
+      return;
+    }
+    setSavingAll(true);
+    setSavedAllMsg(null);
+    let ok = 0;
+    let fail = 0;
+    for (const p of toSave) {
+      try {
+        await apiFetch('/jonny-poses', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameSlug: p.gameSlug, mood: p.mood, imageUrl: p.imageUrl }),
+        });
+        ok++;
+      } catch { fail++; }
+    }
+    setSavingAll(false);
+    setSavedAllMsg(fail === 0
+      ? `✅ ${ok} pose salvate nel DB con successo!`
+      : `⚠️ ${ok} salvate, ${fail} errori`
+    );
+    setTimeout(() => setSavedAllMsg(null), 5000);
+  };
+
   const currentPoses = poses.filter(p => p.gameSlug === selectedGame);
   const getPose = (moodKey: string) => currentPoses.find(p => p.mood === moodKey);
   const selectedGameLabel = GAMES.find(g => g.slug === selectedGame)?.label ?? selectedGame;
+  const totalPoses = poses.filter(p => p.imageUrl).length;
 
   return (
     <AdminLayout title="Jonny — Pose per Gioco">
@@ -307,17 +344,59 @@ export default function JonnyPosesPage() {
         {/* Header */}
         <div className="rounded-2xl border border-border bg-card p-5"
           style={{ background: 'linear-gradient(135deg, rgba(212,175,55,0.08) 0%, rgba(10,7,20,0.95) 100%)' }}>
-          <div className="flex items-start gap-4">
-            <div className="text-4xl">🎭</div>
-            <div>
-              <h2 className="text-lg font-black text-foreground">Action Figure di Jonny per Mood</h2>
-              <p className="text-sm text-muted-foreground mt-1">
-                Carica un'immagine (foto/render) per ogni mood di Jonny, per gioco specifico o globale.<br />
-                Puoi <strong>caricare un file</strong> direttamente dal tuo dispositivo oppure incollare un <strong>URL</strong>.
-                Le immagini vengono salvate sul server e funzionano anche <strong>offline</strong>.
-              </p>
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="flex items-start gap-4">
+              <div className="text-4xl">🎭</div>
+              <div>
+                <h2 className="text-lg font-black text-foreground">Action Figure di Jonny per Mood</h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Carica un'immagine per ogni mood. Le immagini vengono <strong>salvate direttamente nel DB</strong> e non si perdono mai al riavvio del server.<br />
+                  <span className="text-amber-400 font-bold">{totalPoses} pose salvate nel DB.</span>
+                </p>
+              </div>
+            </div>
+
+            {/* ── SALVA TUTTO NEL DB ─────────────────────────────── */}
+            <div className="flex flex-col items-end gap-2 shrink-0">
+              <button
+                onClick={() => void handleSaveAll()}
+                disabled={savingAll || poses.length === 0}
+                className="flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-black transition-all disabled:opacity-40"
+                style={{
+                  background: 'linear-gradient(135deg, #D4AF37 0%, #F5B642 100%)',
+                  color: '#0a0714',
+                  boxShadow: '0 4px 20px rgba(212,175,55,0.4)',
+                }}
+              >
+                {savingAll
+                  ? <><RefreshCw className="h-4 w-4 animate-spin" /> Salvataggio…</>
+                  : <><Save className="h-4 w-4" /> Salva tutto nel DB</>
+                }
+              </button>
+              <button
+                onClick={() => void loadPoses()}
+                disabled={loading}
+                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold border border-border hover:bg-accent transition-colors disabled:opacity-40"
+              >
+                <RefreshCw className={`h-3 w-3 ${loading ? 'animate-spin' : ''}`} /> Ricarica
+              </button>
             </div>
           </div>
+
+          {/* Feedback "Salva tutto" */}
+          {savedAllMsg && (
+            <div className="mt-3 flex items-center gap-2 rounded-xl border border-green-500/40 bg-green-500/10 px-4 py-2.5 text-sm font-bold text-green-300">
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              {savedAllMsg}
+            </div>
+          )}
+        </div>
+
+        {/* Info box — persistenza */}
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-300/80">
+          <strong className="text-amber-400">💾 Persistenza garantita:</strong> le immagini caricate via &quot;Upload&quot; vengono convertite in base64 e salvate direttamente nel database —
+          non dipendono da file su disco e <strong>non si perdono mai</strong> al riavvio del server.
+          Per le immagini esterne usa la modalità <strong>URL</strong> e clicca <strong>Salva nel DB</strong>.
         </div>
 
         {/* Game selector */}
@@ -364,11 +443,6 @@ export default function JonnyPosesPage() {
           </div>
         )}
 
-        <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs text-muted-foreground">
-          <strong className="text-primary">Upload locale:</strong> le immagini caricate vengono salvate sul server e servite
-          all'indirizzo <code>/api/jonny-poses/files/…</code> — funzionano anche senza connessione a internet durante le partite live.
-          Usa PNG con sfondo trasparente per i migliori risultati.
-        </div>
       </div>
     </AdminLayout>
   );
