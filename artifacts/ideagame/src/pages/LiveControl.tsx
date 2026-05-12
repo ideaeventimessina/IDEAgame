@@ -344,6 +344,7 @@ export default function LiveControl() {
   const lan = useLocalMode();
   const BASE_URL = (import.meta.env.BASE_URL as string) ?? '/';
   const joinUrl = `${lan.effectiveOrigin}${BASE_URL}play?e=${joinCode}`.replace(/([^:])\/\//g, '$1/');
+  const projectorUrl = `${lan.effectiveOrigin}${BASE_URL}?e=${joinCode}`.replace(/([^:])\/\//g, '$1/');
 
   useEffect(() => {
     if (!selectedEventId && events.length > 0) setSelectedEventId(events[0]!.id);
@@ -1797,6 +1798,7 @@ export default function LiveControl() {
         eventId={selectedEventId}
         joinCode={joinCode}
         joinUrl={joinUrl}
+        projectorUrl={projectorUrl}
         session={session ? { id: session.id, gameSlug: session.gameSlug, status: session.status } : undefined}
       />
 
@@ -2109,6 +2111,15 @@ export default function LiveControl() {
                 {hubPhase === 'gameboard' ? '🎮 Game Board' : '📱 QR Accesso'}
               </div>
             </div>
+            {joinCode && (
+              <div className="flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2">
+                <span className="text-xs text-muted-foreground flex-1 truncate font-mono">{projectorUrl}</span>
+                <a href={projectorUrl} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-[11px] font-black text-primary-foreground hover:bg-primary/90 transition-colors whitespace-nowrap">
+                  <ExternalLink className="h-3 w-3" /> Apri Proiettore
+                </a>
+              </div>
+            )}
 
             {/* Phase toggle */}
             <div className="flex gap-2">

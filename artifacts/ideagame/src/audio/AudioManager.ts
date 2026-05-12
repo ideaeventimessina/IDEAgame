@@ -39,9 +39,13 @@ export const DEFAULT_AUDIO_SETTINGS: AudioSettings = {
   muted: false,
 };
 
-const BASE_PATH = '/audio/jonny-world';
 const CROSSFADE_DURATION = 1200;
 const FADE_STEPS = 20;
+
+function apiAudioUrl(slug: string, type: string): string {
+  const base = (import.meta.env.BASE_URL as string | undefined) ?? '/';
+  return `${base}api/audio/files/${slug}/${type}`.replace(/([^:])\/\//g, '$1/');
+}
 
 async function fileExists(url: string): Promise<boolean> {
   try {
@@ -80,12 +84,8 @@ class _AudioManager {
     return Math.min(1, masterVolume * sfxVolume);
   }
 
-  private url(slug: AudioSlug | string, type: AudioType | string): string {
-    return `${BASE_PATH}/${slug}/${type}.mp3`;
-  }
-
   private async resolveUrl(slug: AudioSlug | string, type: AudioType | string): Promise<string | null> {
-    const primary = this.url(slug, type);
+    const primary = apiAudioUrl(slug, type);
     if (this.knownFiles.has(primary)) {
       return this.knownFiles.get(primary) ? primary : null;
     }
@@ -94,7 +94,7 @@ class _AudioManager {
     if (exists) return primary;
 
     if (slug !== 'global') {
-      const fallback = this.url('global', type);
+      const fallback = apiAudioUrl('global', type);
       if (this.knownFiles.has(fallback)) {
         return this.knownFiles.get(fallback) ? fallback : null;
       }
@@ -241,6 +241,10 @@ class _AudioManager {
     await this.playStinger(nextSlug, 'intro_5s');
     await this.preload(nextSlug);
     setTimeout(() => { void this.playLoop(nextSlug, 'lobby_loop'); }, 5500);
+  }
+
+  clearCache() {
+    this.knownFiles.clear();
   }
 
   get isLoopPlaying(): boolean {

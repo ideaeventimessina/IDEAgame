@@ -36,10 +36,11 @@ interface Props {
   eventId: string;
   joinCode: string;
   joinUrl: string;
+  projectorUrl?: string;
   session: Session | undefined;
 }
 
-export function PanicPanel({ open, onClose, eventId, joinCode, joinUrl, session }: Props) {
+export function PanicPanel({ open, onClose, eventId, joinCode, joinUrl, projectorUrl, session }: Props) {
   const [, navigate] = useLocation();
   const [showQR, setShowQR] = useState(false);
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
