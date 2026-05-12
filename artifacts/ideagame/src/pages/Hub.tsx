@@ -1,7 +1,7 @@
 import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Wifi, WifiOff, Users, Radio, Loader2, ChevronDown, ChevronUp, Sparkles, SlidersHorizontal, CalendarPlus, X } from 'lucide-react';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Octagon } from '@/components/Octagon';
 import { GameIcon } from '@/components/GameIcon';
 import { QrPlaceholder } from '@/components/QrPlaceholder';
@@ -140,14 +140,29 @@ export default function Hub() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, hasJoinCode, forceProject]);
 
+  // ── Audio unlock (browser autoplay policy) ─────────────────────────────────
+  // Browsers block Audio.play() and Web Audio until a real user gesture.
+  const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const pendingLoopRef = useRef<{ slug: string; type: string } | null>(null);
+
+  const unlockAudio = useCallback((slug = 'hub', type = 'lobby_loop') => {
+    setAudioUnlocked(true);
+    void AudioManager.playLoop(slug, type);
+    pendingLoopRef.current = null;
+  }, []);
+
   // ── Audio: return to hub loop whenever this page mounts ─────────────────
   const { projectorActive, setActiveGameSlug, startProjector } = useAudioOrchestrator();
   useEffect(() => {
     if (!projectorActive) return;
     setActiveGameSlug(null); // null = back to hub lobby_loop
-    void AudioManager.playLoop('hub', 'lobby_loop');
+    if (audioUnlocked) {
+      void AudioManager.playLoop('hub', 'lobby_loop');
+    } else {
+      pendingLoopRef.current = { slug: 'hub', type: 'lobby_loop' };
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectorActive]);
+  }, [projectorActive, audioUnlocked]);
 
   // ── Public (unauthenticated) projector mode ─────────────────────────────
   const urlCode = urlParams.get('e')?.toUpperCase().trim() ?? null;
@@ -219,7 +234,6 @@ export default function Hub() {
   const [hubPhase, setHubPhase] = useState<'join' | 'gameboard'>('join');
   const [showCodeModal, setShowCodeModal] = useState(false);
   const [preloadedThemes, setPreloadedThemes] = useState<Record<string, { id: string; name: string } | null>>({});
-  // Audio rimosso dall'Hub — suono solo da LiveControl/admin
 
   // Navigate to a game — READY games NEVER go to /game/:slug mock
   const handleGameClick = async (slug: string, name: string, accentColor: string) => {
@@ -382,15 +396,20 @@ export default function Hub() {
       // Audio commands — must be played on the projector page (Hub/PC), not on the controller device
       on('projector:activate', () => {
         startProjector();
-        void AudioManager.playLoop('hub', 'lobby_loop');
+        if (audioUnlocked) {
+          void AudioManager.playLoop('hub', 'lobby_loop');
+        } else {
+          pendingLoopRef.current = { slug: 'hub', type: 'lobby_loop' };
+        }
       }),
       on('projector:deactivate', () => { AudioManager.stopAll(); }),
       on<{ type: string }>('audio:stinger', ({ type }) => {
-        void AudioManager.playStinger('global', type);
+        if (audioUnlocked) void AudioManager.playStinger('global', type);
       }),
       on('audio:stop', () => { AudioManager.stopAll(); }),
       on<{ slug: string; type: string }>('audio:loop', ({ slug, type }) => {
-        void AudioManager.playLoop(slug, type);
+        if (audioUnlocked) void AudioManager.playLoop(slug, type);
+        else pendingLoopRef.current = { slug, type };
       }),
     ];
     return () => { unsubs.forEach(u => u?.()); };
@@ -1081,6 +1100,24 @@ export default function Hub() {
   return (
     <div className="relative h-screen w-full flex flex-col overflow-hidden"
       style={{ background: 'radial-gradient(ellipse 160% 80% at 50% -5%, #2d0d52 0%, #130628 40%, #060213 100%)' }}>
+
+      {/* ── Audio unlock overlay — shown until first user tap ── */}
+      <AnimatePresence>
+        {!audioUnlocked && (
+          <motion.button
+            key="audio-unlock"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            onClick={() => unlockAudio(pendingLoopRef.current?.slug ?? 'hub', pendingLoopRef.current?.type ?? 'lobby_loop')}
+            className="fixed bottom-6 left-1/2 z-[200] -translate-x-1/2 flex items-center gap-2 rounded-full border border-amber-400/40 bg-black/60 px-5 py-2.5 text-sm font-bold text-amber-300 backdrop-blur-md"
+            style={{ boxShadow: '0 0 24px rgba(245,182,66,0.25)' }}
+          >
+            <motion.span animate={{ scale: [1, 1.25, 1] }} transition={{ duration: 1.5, repeat: Infinity }}>🔊</motion.span>
+            Tocca per attivare audio
+          </motion.button>
+        )}
+      </AnimatePresence>
 
       {/* ── Jonny's World ambient layers ── */}
       <HubStars />
