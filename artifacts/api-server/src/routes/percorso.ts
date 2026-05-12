@@ -13,6 +13,7 @@ import {
 import type { PercorsoState, PercorsoStepInState, PercorsoTeam } from "@workspace/db";
 import { type AuthedRequest, requireAuth } from "../middlewares/auth";
 import { emitToEvent } from "../socket";
+import { uploadBufferToStorage } from "../lib/objectStorage";
 
 const router: IRouter = Router();
 
@@ -202,6 +203,139 @@ router.delete("/percorso/steps/:id", requireAuth, async (req: AuthedRequest, res
   if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
   await db.delete(laughingPathStepsTable).where(eq(laughingPathStepsTable.id, id));
   res.json({ ok: true });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+   AI IMAGE GENERATION (contextual, per-step)
+══════════════════════════════════════════════════════════════════════════ */
+
+const CHALLENGE_LABELS: Record<string, string> = {
+  sfida: "Sfida fisica ⚡",
+  domanda: "Domanda ❓",
+  mimo: "Mimo 🎭",
+  ballo: "Ballo 💃",
+  veloce: "Veloce 🏃",
+  coppia: "Coppia 👫",
+  reazione: "Reazione 😱",
+  fantasia: "Fantasia 🌟",
+};
+
+function buildImagePrompt(title: string, description: string, challengeType: string): string {
+  const typeLabel = CHALLENGE_LABELS[challengeType] ?? challengeType;
+  const descPart = description?.trim() ? ` Descrizione: ${description.trim()}.` : "";
+  return (
+    `Cartoon party game illustration. Style: flat design, vibrant, dark hexagonal background with gold accents, bold outlines. ` +
+    `Character: fun cartoon host with black pompadour hair, black thick-rimmed glasses, gold tie. ` +
+    `Show this challenge visually and clearly: "${title}".${descPart} ` +
+    `Challenge type: ${typeLabel}. ` +
+    `The image must instantly communicate what participants should do. ` +
+    `Bold, energetic, fun, suitable for a big party game projector screen. ` +
+    `No text in the image. Landscape orientation feel, centered composition.`
+  );
+}
+
+async function callOpenAIImage(prompt: string): Promise<Buffer> {
+  const baseUrl = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+  const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+  if (!baseUrl || !apiKey) throw new Error("OpenAI integration not configured");
+
+  const response = await fetch(`${baseUrl}/images/generations`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "gpt-image-1",
+      prompt,
+      size: "1024x1024",
+      n: 1,
+    }),
+    signal: AbortSignal.timeout(90_000),
+  });
+
+  if (!response.ok) {
+    const err = await response.text().catch(() => "unknown");
+    throw new Error(`OpenAI image error ${response.status}: ${err}`);
+  }
+
+  const data = await response.json() as { data: { b64_json?: string; url?: string }[] };
+  const item = data.data[0];
+  if (!item) throw new Error("No image returned from OpenAI");
+
+  if (item.b64_json) return Buffer.from(item.b64_json, "base64");
+
+  if (item.url) {
+    const imgRes = await fetch(item.url, { signal: AbortSignal.timeout(30_000) });
+    if (!imgRes.ok) throw new Error("Failed to download generated image");
+    return Buffer.from(await imgRes.arrayBuffer());
+  }
+
+  throw new Error("OpenAI returned neither b64_json nor url");
+}
+
+/* POST /percorso/steps/:id/generate-image */
+router.post("/percorso/steps/:id/generate-image", requireAuth, async (req: AuthedRequest, res: Response): Promise<void> => {
+  const { id } = req.params as { id: string };
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+
+  const [step] = await db.select().from(laughingPathStepsTable).where(eq(laughingPathStepsTable.id, id));
+  if (!step) { res.status(404).json({ error: "Step non trovato" }); return; }
+
+  try {
+    const prompt = buildImagePrompt(step.title, step.description ?? "", step.challengeType);
+    const buffer = await callOpenAIImage(prompt);
+    const objectPath = await uploadBufferToStorage(buffer, "image/png", "png");
+    const mediaUrl = `/api/storage/objects/uploads/${objectPath.split("/").pop()}`;
+
+    const [updated] = await db
+      .update(laughingPathStepsTable)
+      .set({ optionalMediaUrl: mediaUrl })
+      .where(eq(laughingPathStepsTable.id, id))
+      .returning();
+
+    res.json({ step: updated, mediaUrl });
+  } catch (e) {
+    req.log.error({ err: e }, "generate-image failed");
+    res.status(500).json({ error: (e as Error).message ?? "Generazione fallita" });
+  }
+});
+
+/* POST /percorso/sets/:id/generate-images  (batch all active steps) */
+router.post("/percorso/sets/:id/generate-images", requireAuth, async (req: AuthedRequest, res: Response): Promise<void> => {
+  const { id } = req.params as { id: string };
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+
+  const dbSteps = await db
+    .select()
+    .from(laughingPathStepsTable)
+    .where(eq(laughingPathStepsTable.setId, id))
+    .orderBy(asc(laughingPathStepsTable.orderIndex));
+
+  if (dbSteps.length === 0) { res.status(422).json({ error: "Il set non ha step" }); return; }
+
+  const results: { id: string; ok: boolean; mediaUrl?: string; error?: string }[] = [];
+
+  for (const step of dbSteps) {
+    try {
+      const prompt = buildImagePrompt(step.title, step.description ?? "", step.challengeType);
+      const buffer = await callOpenAIImage(prompt);
+      const objectPath = await uploadBufferToStorage(buffer, "image/png", "png");
+      const mediaUrl = `/api/storage/objects/uploads/${objectPath.split("/").pop()}`;
+
+      await db
+        .update(laughingPathStepsTable)
+        .set({ optionalMediaUrl: mediaUrl })
+        .where(eq(laughingPathStepsTable.id, step.id));
+
+      results.push({ id: step.id, ok: true, mediaUrl });
+    } catch (e) {
+      req.log.error({ err: e, stepId: step.id }, "batch generate-image failed for step");
+      results.push({ id: step.id, ok: false, error: (e as Error).message });
+    }
+  }
+
+  res.json({ results });
 });
 
 /* ══════════════════════════════════════════════════════════════════════════

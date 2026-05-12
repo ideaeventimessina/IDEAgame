@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { PlusCircle, Trash2, ChevronUp, ChevronDown, Edit2, Check, X, Loader2, ImageIcon, Grid, Link } from 'lucide-react';
+import { PlusCircle, Trash2, ChevronUp, ChevronDown, Edit2, Check, X, Loader2, ImageIcon, Grid, Link, Sparkles, Wand2 } from 'lucide-react';
 import { AdminLayout } from './AdminLayout';
 import { useAuth } from '@/auth/roles';
 import { JonnyGenerateBanner } from '@/components/JonnyGenerateBanner';
@@ -169,6 +169,11 @@ export default function PercorsoRisate() {
   const [deletingSetId, setDeletingSetId] = useState<string | null>(null);
   const [deletingStepId, setDeletingStepId] = useState<string | null>(null);
 
+  // AI image generation
+  const [generatingImageId, setGeneratingImageId] = useState<string | null>(null);
+  const [generatingSetImages, setGeneratingSetImages] = useState(false);
+  const [generateMsg, setGenerateMsg] = useState('');
+
   /* ── Load sets ──────────────────────────────────────────────────────── */
   const loadSets = useCallback(async () => {
     setLoadingSets(true); setSetsError('');
@@ -298,6 +303,40 @@ export default function PercorsoRisate() {
       ]);
       setSteps(s => s.map(x => x.id === step.id ? { ...x, orderIndex: b } : x.id === other.id ? { ...x, orderIndex: a } : x).sort((x, y) => x.orderIndex - y.orderIndex));
     } catch { /* silent */ }
+  };
+
+  /* ── AI: generate image per step ───────────────────────────────────── */
+  const handleGenerateImage = async (step: PathStep) => {
+    setGeneratingImageId(step.id);
+    setGenerateMsg('');
+    try {
+      const data = await apiFetch(`/percorso/steps/${step.id}/generate-image`, { method: 'POST' }) as { step: PathStep };
+      setSteps(s => s.map(x => x.id === data.step.id ? data.step : x));
+      setGenerateMsg(`✓ Illustrazione generata per "${step.title}"`);
+      setTimeout(() => setGenerateMsg(''), 4000);
+    } catch (e) {
+      setGenerateMsg(`✗ ${(e as Error).message}`);
+      setTimeout(() => setGenerateMsg(''), 5000);
+    } finally { setGeneratingImageId(null); }
+  };
+
+  /* ── AI: generate images for entire set ────────────────────────────── */
+  const handleGenerateSetImages = async () => {
+    if (!selectedSet) return;
+    setGeneratingSetImages(true);
+    setGenerateMsg('');
+    try {
+      const data = await apiFetch(`/percorso/sets/${selectedSet.id}/generate-images`, { method: 'POST' }) as { results: { id: string; ok: boolean; mediaUrl?: string }[] };
+      const updatedMap = new Map(data.results.filter(r => r.ok && r.mediaUrl).map(r => [r.id, r.mediaUrl!]));
+      setSteps(s => s.map(step => updatedMap.has(step.id) ? { ...step, optionalMediaUrl: updatedMap.get(step.id)! } : step));
+      const ok = data.results.filter(r => r.ok).length;
+      const fail = data.results.filter(r => !r.ok).length;
+      setGenerateMsg(`✓ ${ok} illustrazioni generate${fail > 0 ? ` · ${fail} fallite` : ''}`);
+      setTimeout(() => setGenerateMsg(''), 5000);
+    } catch (e) {
+      setGenerateMsg(`✗ ${(e as Error).message}`);
+      setTimeout(() => setGenerateMsg(''), 5000);
+    } finally { setGeneratingSetImages(false); }
   };
 
   /* ── Toggle active ──────────────────────────────────────────────────── */
@@ -500,16 +539,37 @@ export default function PercorsoRisate() {
             </div>
           ) : (
             <div className="rounded-2xl border border-border bg-card p-5 space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <div className="text-display text-xl font-black">{selectedSet.name}</div>
                   {selectedSet.description && <div className="text-xs text-muted-foreground mt-0.5">{selectedSet.description}</div>}
                 </div>
-                <button onClick={openCreate}
-                  className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground hover-elevate">
-                  <PlusCircle className="h-4 w-4" /> Nuova sfida
-                </button>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {steps.length > 0 && (
+                    <button onClick={() => void handleGenerateSetImages()} disabled={generatingSetImages}
+                      title="Genera illustrazioni AI contestuali per tutte le sfide"
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-violet-500/40 bg-violet-500/10 px-3 py-2 text-xs font-bold text-violet-300 hover:bg-violet-500/20 disabled:opacity-40 transition-all">
+                      {generatingSetImages
+                        ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generando…</>
+                        : <><Wand2 className="h-3.5 w-3.5" /> Genera tutto il set</>}
+                    </button>
+                  )}
+                  <button onClick={openCreate}
+                    className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground hover-elevate">
+                    <PlusCircle className="h-4 w-4" /> Nuova sfida
+                  </button>
+                </div>
               </div>
+
+              {/* AI generate message */}
+              <AnimatePresence>
+                {generateMsg && (
+                  <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                    className={`rounded-xl border px-4 py-2.5 text-sm font-bold ${generateMsg.startsWith('✓') ? 'border-green-500/40 bg-green-500/10 text-green-400' : 'border-destructive/40 bg-destructive/10 text-destructive'}`}>
+                    {generateMsg}
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {stepsError && (
                 <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-2.5 text-sm text-destructive">{stepsError}</div>
@@ -570,6 +630,18 @@ export default function PercorsoRisate() {
 
                         {/* Actions */}
                         <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {/* AI generate image */}
+                          <button onClick={() => void handleGenerateImage(step)} disabled={generatingImageId === step.id || generatingSetImages}
+                            title={step.optionalMediaUrl ? "Rigenera illustrazione AI" : "Genera illustrazione AI contestuale"}
+                            className={`rounded-lg border p-1.5 transition-all disabled:opacity-40 ${
+                              step.optionalMediaUrl
+                                ? 'border-violet-500/40 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20'
+                                : 'border-violet-500/30 bg-violet-500/5 text-violet-400 hover:bg-violet-500/15'
+                            }`}>
+                            {generatingImageId === step.id
+                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              : <Sparkles className="h-3.5 w-3.5" />}
+                          </button>
                           {/* Active toggle */}
                           <button onClick={() => void handleToggleActive(step)}
                             className={`rounded-lg border px-2 py-1 text-xs font-bold transition-all ${

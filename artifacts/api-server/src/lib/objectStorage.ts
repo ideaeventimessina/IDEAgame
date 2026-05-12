@@ -227,6 +227,37 @@ function parseObjectPath(path: string): {
   };
 }
 
+/* ── Direct server-side buffer upload ────────────────────────────────────── */
+/**
+ * Upload a Buffer directly to object storage from server code.
+ * Returns the objectPath (e.g. /objects/uploads/uuid.ext) that can be used
+ * to derive the serving URL: /api/storage/objects/uploads/uuid.ext
+ */
+export async function uploadBufferToStorage(
+  buffer: Buffer,
+  contentType: string,
+  ext: string
+): Promise<string> {
+  const privateObjectDir = process.env.PRIVATE_OBJECT_DIR;
+  if (!privateObjectDir) throw new Error("PRIVATE_OBJECT_DIR not set");
+
+  const { randomUUID } = await import("crypto");
+  const uuid = randomUUID();
+  const fullPath = `${privateObjectDir}/uploads/${uuid}.${ext}`;
+
+  // Parse bucket + object name (same logic as parseObjectPath)
+  const normalised = fullPath.startsWith("/") ? fullPath : `/${fullPath}`;
+  const parts = normalised.split("/");
+  const bucketName = parts[1]!;
+  const objectName = parts.slice(2).join("/");
+
+  const bucket = objectStorageClient.bucket(bucketName);
+  const file = bucket.file(objectName);
+  await file.save(buffer, { contentType, resumable: false });
+
+  return `/objects/uploads/${uuid}.${ext}`;
+}
+
 async function signObjectURL({
   bucketName,
   objectName,

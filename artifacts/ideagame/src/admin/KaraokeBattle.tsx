@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Mic, Music, ChevronDown, ChevronUp, ExternalLink, Loader2, X, Video } from 'lucide-react';
+import { Plus, Trash2, Mic, Music, ChevronDown, ChevronUp, ExternalLink, Loader2, X, Video, Sparkles, Download, Search } from 'lucide-react';
 import { AdminLayout } from './AdminLayout';
 import { JonnyGenerateBanner } from '@/components/JonnyGenerateBanner';
 import { ProjectorPreview } from './ProjectorPreview';
@@ -75,8 +75,13 @@ async function apiFetch(path: string, opts?: RequestInit) {
 interface KaraokeSet { id: string; title: string; description: string; language: string; isActive: boolean; }
 interface KaraokeTrack {
   id: string; setId: string; title: string; artist: string; lyricSnippet: string;
-  audioUrl: string | null; youtubeUrl: string | null; durationSeconds: number; points: number;
+  audioUrl: string | null; durationSeconds: number; points: number;
   category: string; difficulty: string; orderIndex: number; isActive: boolean;
+}
+interface SuggestedTrack {
+  title: string; artist: string; category: string; difficulty: string;
+  lyricSnippet: string; youtubeSearchQuery: string;
+  chorusStartSeconds: number; chorusEndSeconds: number;
 }
 
 const CATEGORIES = ['pop','rock','dance','classica','anni80','anni90','italiana','internazionale'];
@@ -101,9 +106,17 @@ function KaraokeTab() {
   const [newTitle, setNewTitle] = useState('');
   const [showNewSet, setShowNewSet] = useState(false);
   const [newTrack, setNewTrack] = useState({
-    title: '', artist: '', lyricSnippet: '', audioUrl: '', youtubeUrl: '',
+    title: '', artist: '', lyricSnippet: '', audioUrl: '',
     durationSeconds: 60, points: 150, category: 'pop', difficulty: 'medium', orderIndex: 0,
   });
+
+  // AI suggest
+  const [showSuggest, setShowSuggest] = useState<string | null>(null);
+  const [suggestTheme, setSuggestTheme] = useState('');
+  const [suggestLoading, setSuggestLoading] = useState(false);
+  const [suggestResults, setSuggestResults] = useState<SuggestedTrack[]>([]);
+  const [downloadingIdx, setDownloadingIdx] = useState<number | null>(null);
+  const [downloadMsg, setDownloadMsg] = useState('');
   const [showTrackForm, setShowTrackForm] = useState<string | null>(null);
 
   const flash = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 3000); };
@@ -159,9 +172,9 @@ function KaraokeTab() {
     try {
       await apiFetch(`/karaoke/sets/${setId}/tracks`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...newTrack, audioUrl: newTrack.audioUrl.trim() || undefined, youtubeUrl: newTrack.youtubeUrl.trim() || undefined }),
+        body: JSON.stringify({ ...newTrack, audioUrl: newTrack.audioUrl.trim() || undefined }),
       });
-      setNewTrack({ title: '', artist: '', lyricSnippet: '', audioUrl: '', youtubeUrl: '', durationSeconds: 60, points: 150, category: 'pop', difficulty: 'medium', orderIndex: 0 });
+      setNewTrack({ title: '', artist: '', lyricSnippet: '', audioUrl: '', durationSeconds: 60, points: 150, category: 'pop', difficulty: 'medium', orderIndex: 0 });
       setShowTrackForm(null);
       await loadTracks(setId);
       flash('✓ Brano aggiunto!');
@@ -174,6 +187,58 @@ function KaraokeTab() {
       setTracks(prev => prev.filter(t => t.id !== trackId));
       flash('✓ Brano eliminato');
     } catch (e) { flash((e as Error).message); }
+  };
+
+  const handleSuggestTracks = async (setId: string) => {
+    if (!suggestTheme.trim()) return;
+    setSuggestLoading(true); setSuggestResults([]); setDownloadMsg('');
+    try {
+      const data = await apiFetch('/karaoke/suggest-tracks', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ theme: suggestTheme.trim(), count: 6 }),
+      }) as SuggestedTrack[];
+      setSuggestResults(data);
+    } catch (e) { flash((e as Error).message); }
+    finally { setSuggestLoading(false); }
+  };
+
+  const handleDownloadAndAdd = async (s: SuggestedTrack, idx: number, setId: string) => {
+    const youtubeUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(s.youtubeSearchQuery)}`;
+    const url = prompt(
+      `Apri YouTube e cerca: "${s.youtubeSearchQuery}"\n\nIncolla qui l'URL YouTube del video ufficiale:`,
+      ''
+    );
+    if (!url?.trim()) return;
+    setDownloadingIdx(idx); setDownloadMsg('⏳ Download in corso (può richiedere 1-3 min)…');
+    try {
+      const res = await apiFetch('/karaoke/download-video', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          youtubeUrl: url.trim(),
+          startSeconds: s.chorusStartSeconds,
+          endSeconds: s.chorusEndSeconds,
+        }),
+      }) as { mediaUrl: string; durationSeconds: number };
+
+      await apiFetch(`/karaoke/sets/${setId}/tracks`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: s.title, artist: s.artist, lyricSnippet: s.lyricSnippet,
+          category: s.category, difficulty: s.difficulty,
+          audioUrl: res.mediaUrl,
+          durationSeconds: res.durationSeconds,
+          points: DIFF_POINTS[s.difficulty] ?? 150,
+        }),
+      });
+
+      await loadTracks(setId);
+      setDownloadMsg(`✓ "${s.title}" aggiunto offline!`);
+      setSuggestResults(r => r.filter((_, i) => i !== idx));
+      setTimeout(() => setDownloadMsg(''), 4000);
+    } catch (e) {
+      setDownloadMsg(`✗ ${(e as Error).message}`);
+      setTimeout(() => setDownloadMsg(''), 6000);
+    } finally { setDownloadingIdx(null); }
   };
 
   const handleToggleTrack = async (track: KaraokeTrack) => {
@@ -254,6 +319,11 @@ function KaraokeTab() {
                       </div>
                     </div>
                     {isOpen ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                  </button>
+                  <button onClick={() => { setShowSuggest(v => v === set.id ? null : set.id); setSuggestResults([]); setSuggestTheme(''); }}
+                    title="Suggerisci brani AI per tema"
+                    className={`rounded-lg border p-2 transition-colors ${showSuggest === set.id ? 'border-pink-500/60 bg-pink-500/20 text-pink-400' : 'border-pink-500/30 text-pink-400/60 hover:border-pink-500/50 hover:text-pink-400'}`}>
+                    <Sparkles className="h-4 w-4" />
                   </button>
                   <button onClick={() => window.open(`${BASE}karaoke-battle`, '_blank')} title="Apri proiettore"
                     className="rounded-lg border border-border p-2 text-muted-foreground hover:text-primary">
@@ -337,6 +407,68 @@ function KaraokeTab() {
                           </ProjectorPreview>
                         )}
 
+                        {/* ── AI suggest panel ─────────────────────────── */}
+                        {showSuggest === set.id && (
+                          <div className="rounded-xl border border-pink-500/30 bg-pink-500/5 p-4 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-pink-400">
+                                <Sparkles className="h-3.5 w-3.5" /> Suggerimenti AI per tema
+                              </div>
+                              <button onClick={() => { setShowSuggest(null); setSuggestResults([]); setSuggestTheme(''); }}
+                                className="text-muted-foreground hover:text-foreground">
+                                <X className="h-4 w-4" />
+                              </button>
+                            </div>
+                            <div className="flex gap-2">
+                              <input value={suggestTheme} onChange={e => setSuggestTheme(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && void handleSuggestTracks(set.id)}
+                                placeholder="es. Anni 80 italiani, Rock anni 90, Estate…"
+                                className="flex-1 rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-pink-500" />
+                              <button onClick={() => void handleSuggestTracks(set.id)} disabled={suggestLoading || !suggestTheme.trim()}
+                                className="flex items-center gap-1.5 rounded-xl bg-pink-500/20 px-3 py-2 text-sm font-bold text-pink-400 hover:bg-pink-500/30 disabled:opacity-40">
+                                {suggestLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                                {suggestLoading ? 'Cerco…' : 'Suggerisci'}
+                              </button>
+                            </div>
+                            {downloadMsg && (
+                              <div className={`rounded-xl border px-3 py-2 text-xs font-bold ${downloadMsg.startsWith('✓') ? 'border-green-500/40 bg-green-500/10 text-green-400' : downloadMsg.startsWith('✗') ? 'border-destructive/40 bg-destructive/10 text-destructive' : 'border-primary/40 bg-primary/10 text-primary'}`}>
+                                {downloadMsg}
+                              </div>
+                            )}
+                            {suggestResults.length > 0 && (
+                              <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                                {suggestResults.map((s, idx) => (
+                                  <div key={idx} className="flex items-start gap-3 rounded-xl border border-border bg-background/60 p-3">
+                                    <div className="flex-1 min-w-0">
+                                      <div className="font-bold text-sm truncate">{s.title}</div>
+                                      <div className="text-xs text-muted-foreground">{s.artist} · {s.category} · {s.difficulty}</div>
+                                      {s.lyricSnippet && <div className="mt-1 text-xs text-muted-foreground/70 italic truncate">"{s.lyricSnippet}"</div>}
+                                      <div className="mt-1 text-[10px] text-muted-foreground/50">
+                                        ✂ Ritornello: {Math.floor(s.chorusStartSeconds / 60)}:{String(s.chorusStartSeconds % 60).padStart(2, '0')} → {Math.floor(s.chorusEndSeconds / 60)}:{String(s.chorusEndSeconds % 60).padStart(2, '0')}
+                                        ({s.chorusEndSeconds - s.chorusStartSeconds}s)
+                                      </div>
+                                    </div>
+                                    <button onClick={() => void handleDownloadAndAdd(s, idx, set.id)}
+                                      disabled={downloadingIdx === idx}
+                                      title="Scarica da YouTube, taglia il ritornello e aggiungi offline"
+                                      className="shrink-0 flex items-center gap-1.5 rounded-xl border border-pink-500/40 bg-pink-500/10 px-3 py-2 text-xs font-bold text-pink-400 hover:bg-pink-500/20 disabled:opacity-40">
+                                      {downloadingIdx === idx
+                                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                        : <Download className="h-3.5 w-3.5" />}
+                                      {downloadingIdx === idx ? 'Scarico…' : '↓ Scarica'}
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {suggestResults.length === 0 && !suggestLoading && suggestTheme && (
+                              <div className="text-center text-xs text-muted-foreground py-3">
+                                Inserisci un tema e premi "Suggerisci"
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                         {showTrackForm === set.id ? (
                           <div className="rounded-xl border border-border bg-background/60 p-4 space-y-3">
                             <div className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Nuovo brano</div>
@@ -352,8 +484,8 @@ function KaraokeTab() {
                             <input value={newTrack.audioUrl} onChange={e => setNewTrack(p => ({ ...p, audioUrl: e.target.value }))}
                               placeholder="URL audio (opzionale)" className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
                             <VideoUploadField
-                              value={newTrack.youtubeUrl}
-                              onChange={url => setNewTrack(p => ({ ...p, youtubeUrl: url }))}
+                              value={newTrack.audioUrl}
+                              onChange={url => setNewTrack(p => ({ ...p, audioUrl: url }))}
                             />
                             <div className="grid grid-cols-3 gap-3">
                               <select value={newTrack.category} onChange={e => setNewTrack(p => ({ ...p, category: e.target.value }))}

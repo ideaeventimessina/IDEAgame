@@ -1,5 +1,10 @@
 import { Router, type IRouter } from "express";
 import { eq, asc, and, or, isNull } from "drizzle-orm";
+import { execFile } from "child_process";
+import { promisify } from "util";
+import { mkdtemp, rm, readFile } from "fs/promises";
+import { join } from "path";
+import os from "os";
 import {
   db,
   karaokeSetsTable,
@@ -13,6 +18,10 @@ import {
 import type { KaraokeState, KaraokeBooking, KaraokeTeam } from "@workspace/db";
 import { type AuthedRequest, requireAuth, loadUser } from "../middlewares/auth";
 import { emitToEvent } from "../socket";
+import { uploadBufferToStorage } from "../lib/objectStorage";
+
+const execFileAsync = promisify(execFile);
+const YT_DLP = "/home/runner/workspace/.pythonlibs/bin/yt-dlp";
 
 const router: IRouter = Router();
 
@@ -192,6 +201,120 @@ router.patch("/karaoke/tracks/:id", requireAuth, async (req, res) => {
 router.delete("/karaoke/tracks/:id", requireAuth, async (req, res) => {
   await db.delete(karaokeTracksTable).where(eq(karaokeTracksTable.id, req.params.id as string));
   res.status(204).end();
+});
+
+/* ── AI: suggest tracks by theme ─────────────────────────────────────── */
+
+router.post("/karaoke/suggest-tracks", requireAuth, async (req, res) => {
+  const { theme, count = 6 } = req.body as { theme?: string; count?: number };
+  if (!theme?.trim()) { res.status(400).json({ error: "theme obbligatorio" }); return; }
+
+  const baseUrl = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+  const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+  if (!baseUrl || !apiKey) { res.status(500).json({ error: "OpenAI non configurato" }); return; }
+
+  const prompt = `Sei un esperto musicale per serate karaoke italiane. Per il tema "${theme.trim()}", suggerisci esattamente ${count} brani perfetti per karaoke.
+Rispondi SOLO con un array JSON valido senza markdown, senza testo aggiuntivo prima o dopo:
+[
+  {
+    "title": "Titolo canzone",
+    "artist": "Artista",
+    "category": "pop|rock|dance|classica|anni80|anni90|italiana|internazionale",
+    "difficulty": "easy|medium|hard",
+    "lyricSnippet": "frase del ritornello più iconico (10-20 parole)",
+    "youtubeSearchQuery": "artista titolo canzone karaoke official",
+    "chorusStartSeconds": 65,
+    "chorusEndSeconds": 95
+  }
+]
+Il campo chorusStartSeconds/chorusEndSeconds indica l'inizio e la fine del ritornello principale (stima in secondi dall'inizio del video ufficiale). Durata target: 30-45 secondi.`;
+
+  try {
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5-mini",
+        messages: [{ role: "user", content: prompt }],
+        max_completion_tokens: 2000,
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+
+    if (!response.ok) {
+      const err = await response.text().catch(() => "");
+      res.status(500).json({ error: `OpenAI error ${response.status}: ${err}` }); return;
+    }
+
+    const data = await response.json() as { choices: { message: { content: string } }[] };
+    const text = data.choices[0]?.message?.content ?? "[]";
+
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    const suggestions = JSON.parse(jsonMatch ? jsonMatch[0] : text) as unknown[];
+    res.json(suggestions);
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message ?? "Errore AI" });
+  }
+});
+
+/* ── YouTube download + trim + store ─────────────────────────────────── */
+
+router.post("/karaoke/download-video", requireAuth, async (req, res) => {
+  const { youtubeUrl, startSeconds, endSeconds, trackId } = req.body as {
+    youtubeUrl?: string; startSeconds?: number; endSeconds?: number; trackId?: string;
+  };
+
+  if (!youtubeUrl?.trim()) { res.status(400).json({ error: "youtubeUrl obbligatorio" }); return; }
+  if (startSeconds === undefined || endSeconds === undefined) {
+    res.status(400).json({ error: "startSeconds e endSeconds obbligatori" }); return;
+  }
+  if (endSeconds <= startSeconds) {
+    res.status(400).json({ error: "endSeconds deve essere maggiore di startSeconds" }); return;
+  }
+
+  const tmpDir = await mkdtemp(join(os.tmpdir(), "ytdlp-"));
+  const videoPath = join(tmpDir, "video.mp4");
+  const trimmedPath = join(tmpDir, "trimmed.mp4");
+
+  try {
+    await execFileAsync(YT_DLP, [
+      "-f", "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]/best",
+      "--merge-output-format", "mp4",
+      "-o", videoPath,
+      "--no-playlist",
+      "--no-warnings",
+      youtubeUrl.trim(),
+    ], { timeout: 180_000 });
+
+    await execFileAsync("ffmpeg", [
+      "-i", videoPath,
+      "-ss", String(startSeconds),
+      "-to", String(endSeconds),
+      "-c:v", "libx264", "-c:a", "aac",
+      "-preset", "fast",
+      "-movflags", "+faststart",
+      "-y",
+      trimmedPath,
+    ], { timeout: 120_000 });
+
+    const buffer = await readFile(trimmedPath);
+    const objectPath = await uploadBufferToStorage(buffer, "video/mp4", "mp4");
+    const mediaUrl = `/api/storage/objects/uploads/${objectPath.split("/").pop()}`;
+
+    if (trackId) {
+      await db
+        .update(karaokeTracksTable)
+        .set({ audioUrl: mediaUrl, durationSeconds: Math.round(endSeconds - startSeconds) })
+        .where(eq(karaokeTracksTable.id, trackId));
+    }
+
+    res.json({ objectPath, mediaUrl, durationSeconds: Math.round(endSeconds - startSeconds) });
+  } catch (e) {
+    const msg = (e as Error).message ?? "Download fallito";
+    res.status(500).json({ error: msg });
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+  }
 });
 
 /* ── Session: init (select playlist) ────────────────────────────────── */
