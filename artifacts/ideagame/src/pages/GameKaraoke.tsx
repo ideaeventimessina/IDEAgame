@@ -7,11 +7,9 @@ import {
   ArenaBg, ArenaHeader, JonnyWaitingScreen, ArenaScoreBar, WinPodium,
   SocketBadge, NeonTimerBar, ARENA,
 } from '@/components/JonnyWorldTheme';
-import { useGameAudio } from '@/hooks/useGameAudio';
-
 interface KaraokeTrack {
   id: string; title: string; artist: string; lyricSnippet: string;
-  audioUrl: string | null; youtubeUrl: string | null; durationSeconds: number; points: number;
+  audioUrl: string | null; durationSeconds: number; points: number;
   category: string; difficulty: string;
 }
 interface KaraokeBooking {
@@ -53,7 +51,6 @@ export default function GameKaraoke() {
 
   const { connected, on } = useEventSocket(eventId || null);
   useProjectorNavigation(eventId, on);
-  const { playLoop, playStinger } = useGameAudio('karaoke-battle', { autoLoop: 'lobby_loop' });
 
   const loadState = useCallback(async () => {
     if (!sessionId) return;
@@ -184,47 +181,31 @@ export default function GameKaraoke() {
             <div className="mt-2 text-xl text-white/50 font-bold">{track.artist}</div>
           </div>
 
-          {/* Video (stored offline) or YouTube fallback */}
-          {track.youtubeUrl && (() => {
-            const isStorage = track.youtubeUrl.startsWith('/objects/');
-            if (isStorage) {
-              return (
-                <motion.div key={`vid-${track.id}`} initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.15 }}
-                  className="w-full rounded-2xl overflow-hidden border"
-                  style={{ borderColor: `${T.accent}25`, maxHeight: '260px' }}>
-                  <video
-                    key={track.youtubeUrl}
-                    src={`/api/storage${track.youtubeUrl}`}
-                    autoPlay
-                    loop
-                    controls
-                    playsInline
-                    className="w-full h-full object-contain"
-                    style={{ maxHeight: '260px' }}
-                  />
-                </motion.div>
-              );
-            }
-            const ytId = track.youtubeUrl.match(/(?:v=|youtu\.be\/|embed\/)([^&?/]+)/)?.[1];
-            if (!ytId) return null;
+          {/* Video/audio — plays ONLY here on the projector (PC) */}
+          {track.audioUrl && (() => {
+            // objectStorage returns /objects/uploads/uuid.ext → serve via /api/storage/objects/...
+            const src = track.audioUrl.startsWith('/objects/')
+              ? `/api/storage${track.audioUrl}`
+              : track.audioUrl; // already a full serving URL or external URL
             return (
-              <motion.div key={`yt-${track.id}`} initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.15 }}
+              <motion.div key={`vid-${track.id}`} initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.15 }}
                 className="w-full rounded-2xl overflow-hidden border"
-                style={{ borderColor: `${T.accent}25`, aspectRatio: '16/9', maxHeight: '260px' }}>
-                <iframe
-                  key={ytId}
-                  src={`https://www.youtube.com/embed/${ytId}?autoplay=1&rel=0&modestbranding=1&controls=1`}
-                  title={track.title}
-                  className="w-full h-full"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
+                style={{ borderColor: `${T.accent}25`, maxHeight: '280px' }}>
+                <video
+                  key={src}
+                  src={src}
+                  autoPlay
+                  controls
+                  playsInline
+                  className="w-full h-full object-contain bg-black"
+                  style={{ maxHeight: '280px' }}
                 />
               </motion.div>
             );
           })()}
 
-          {/* Lyrics (show only if no video media) */}
-          {track.lyricSnippet && !track.youtubeUrl && (
+          {/* Lyrics (show only if no audio/video attached) */}
+          {track.lyricSnippet && !track.audioUrl && (
             <motion.div key={`lyrics-${track.id}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}
               className="rounded-3xl border px-8 py-6"
               style={{ borderColor: `${T.accent}25`, background: `${T.accent}08` }}>
