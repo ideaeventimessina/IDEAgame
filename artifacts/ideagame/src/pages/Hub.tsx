@@ -128,17 +128,8 @@ export default function Hub() {
   const [, navigate] = useLocation();
   const { user } = useAuth();
 
-  // ── Authenticated staff → redirect to Cockpit unless projector mode ──────
-  // Projector mode: URL has ?e=CODE or ?projector=1
+  // ── URL params (join code for public projector mode) ─────────────────────
   const urlParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
-  const hasJoinCode  = !!urlParams.get('e');
-  const forceProject = urlParams.get('projector') === '1';
-  useEffect(() => {
-    if (user && !hasJoinCode && !forceProject) {
-      navigate('/cockpit');
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, hasJoinCode, forceProject]);
 
   // ── Audio unlock (browser autoplay policy) ─────────────────────────────────
   // Browsers block Audio.play() and Web Audio until a real user gesture.
@@ -1262,10 +1253,10 @@ export default function Hub() {
           )}
           <LocaleSwitcher />
           {user && (
-            <button onClick={() => navigate('/control')}
-              className="hidden lg:flex items-center gap-1.5 rounded-xl border border-border bg-card/60 px-3 py-1.5 text-xs font-bold text-muted-foreground hover:text-foreground transition-colors sm:px-4 sm:py-2 sm:text-sm">
+            <button onClick={() => navigate('/cockpit')}
+              className="hidden lg:flex items-center gap-1.5 rounded-xl border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/20 transition-colors sm:px-4 sm:py-2 sm:text-sm">
               <SlidersHorizontal className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-              Cockpit
+              Regia →
             </button>
           )}
         </div>
