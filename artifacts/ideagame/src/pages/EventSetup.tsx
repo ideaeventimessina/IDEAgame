@@ -1,21 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
-import { Building2, Calendar, MapPin, Users, Palette, Save, ArrowRight, Loader2, Plus, Trash2 } from 'lucide-react';
+import { Building2, Calendar, MapPin, Users, Palette, Save, ArrowRight, Loader2 } from 'lucide-react';
 import {
   useListGames,
   useCreateEvent,
   useUpdateEvent,
-  useCreateTeam,
   useGetMe,
   useListTenants,
   getListEventsQueryKey,
   getGetCurrentEventQueryKey,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
-
-const DEFAULT_TEAM_COLORS = ['#F5B642', '#9B5DE5', '#00BBF9', '#FF69B4', '#00F5A0', '#FF4D4D'];
-
-interface TeamDraft { name: string; color: string }
 
 export default function EventSetup() {
   const [, navigate] = useLocation();
@@ -26,21 +21,15 @@ export default function EventSetup() {
   const { data: tenants = [] } = useListTenants({ query: { queryKey: ['tenants'], enabled: isSuperAdmin } });
   const createEvent = useCreateEvent();
   const updateEvent = useUpdateEvent();
-  const createTeam = useCreateTeam();
 
   const [name, setName] = useState('');
   const [venue, setVenue] = useState('');
+  const [joinCode, setJoinCode] = useState(() => Math.random().toString(36).slice(2, 8).toUpperCase());
   const [date, setDate] = useState(() => new Date(Date.now() + 24 * 3600 * 1000).toISOString().slice(0, 16));
-  const [players, setPlayers] = useState(2);
+  const [players, setPlayers] = useState(20);
   const [color, setColor] = useState('#F5B642');
   const [enabled, setEnabled] = useState<string[]>([]);
   const [tenantId, setTenantId] = useState('');
-  const [teams, setTeams] = useState<TeamDraft[]>([
-    { name: 'Squadra Oro', color: '#F5B642' },
-    { name: 'Squadra Viola', color: '#9B5DE5' },
-    { name: 'Squadra Azzurra', color: '#00BBF9' },
-    { name: 'Squadra Rosa', color: '#FF69B4' },
-  ]);
   const [error, setError] = useState<string | null>(null);
   const initRef = useRef(false);
 
@@ -54,15 +43,6 @@ export default function EventSetup() {
   const toggle = (slug: string) =>
     setEnabled(e => e.includes(slug) ? e.filter(x => x !== slug) : [...e, slug]);
 
-  const addTeam = () => {
-    const idx = teams.length % DEFAULT_TEAM_COLORS.length;
-    setTeams(t => [...t, { name: `Squadra ${t.length + 1}`, color: DEFAULT_TEAM_COLORS[idx] }]);
-  };
-
-  const removeTeam = (i: number) => setTeams(t => t.filter((_, idx) => idx !== i));
-  const updateTeam = (i: number, patch: Partial<TeamDraft>) =>
-    setTeams(t => t.map((tm, idx) => idx === i ? { ...tm, ...patch } : tm));
-
   const onSave = async (then: 'admin' | 'lobby') => {
     setError(null);
     if (isSuperAdmin && !tenantId) {
@@ -74,6 +54,7 @@ export default function EventSetup() {
         data: {
           name,
           venue,
+          joinCode: joinCode.trim().toUpperCase() || undefined,
           startsAt: new Date(date).toISOString(),
           brandColor: color,
           expectedPlayers: players,
@@ -82,13 +63,6 @@ export default function EventSetup() {
         },
       });
       const id = (created as { id: string }).id;
-
-      // Create teams
-      for (const team of teams.filter(t => t.name.trim())) {
-        try {
-          await createTeam.mutateAsync({ id, data: { name: team.name.trim(), color: team.color } });
-        } catch { /* non-blocking: team errors don't abort event creation */ }
-      }
 
       if (then === 'lobby') {
         await updateEvent.mutateAsync({ id, data: { status: 'live' } });
@@ -101,7 +75,7 @@ export default function EventSetup() {
     }
   };
 
-  const isSaving = createEvent.isPending || updateEvent.isPending || createTeam.isPending;
+  const isSaving = createEvent.isPending || updateEvent.isPending;
 
   return (
     <div className="min-h-screen overflow-y-auto bg-background">
@@ -151,6 +125,21 @@ export default function EventSetup() {
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Codice QR join" icon={<span className="text-[10px] font-black">QR</span>}>
+              <div className="flex items-center gap-2">
+                <input
+                  value={joinCode}
+                  onChange={e => setJoinCode(e.target.value.toUpperCase().slice(0, 10))}
+                  placeholder="es. FESTA01"
+                  className="flex-1 bg-transparent text-sm font-black tracking-widest outline-none placeholder:text-muted-foreground/50"
+                />
+                <button
+                  type="button"
+                  onClick={() => setJoinCode(Math.random().toString(36).slice(2, 8).toUpperCase())}
+                  className="text-[10px] text-muted-foreground hover:text-primary transition-colors"
+                >↺ rigenera</button>
+              </div>
+            </Field>
             <Field label="Data e ora" icon={<Calendar className="h-3.5 w-3.5" />}>
               <input
                 type="datetime-local"
@@ -159,6 +148,9 @@ export default function EventSetup() {
                 className="w-full bg-transparent text-sm outline-none"
               />
             </Field>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
             <Field label={`Giocatori previsti: ${players}`} icon={<Users className="h-3.5 w-3.5" />}>
               <input
                 type="range"
@@ -172,58 +164,17 @@ export default function EventSetup() {
                 <span>2</span><span>200</span>
               </div>
             </Field>
-          </div>
-
-          <Field label="Colore brand" icon={<Palette className="h-3.5 w-3.5" />}>
-            <div className="flex items-center gap-3">
-              <input
-                type="color"
-                value={color}
-                onChange={e => setColor(e.target.value)}
-                className="h-8 w-14 cursor-pointer rounded border border-border bg-transparent"
-              />
-              <code className="text-sm text-muted-foreground">{color}</code>
-            </div>
-          </Field>
-
-          {/* Teams */}
-          <div className="rounded-xl border border-border bg-card p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <div className="text-xs uppercase tracking-widest text-muted-foreground">Squadre — {teams.length}</div>
-              <button
-                type="button"
-                onClick={addTeam}
-                className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs hover-elevate"
-              >
-                <Plus className="h-3 w-3" /> Aggiungi
-              </button>
-            </div>
-            <div className="space-y-2">
-              {teams.map((team, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <input
-                    type="color"
-                    value={team.color}
-                    onChange={e => updateTeam(i, { color: e.target.value })}
-                    className="h-8 w-8 shrink-0 cursor-pointer rounded border border-border bg-transparent p-0.5"
-                  />
-                  <input
-                    value={team.name}
-                    onChange={e => updateTeam(i, { name: e.target.value })}
-                    placeholder={`Squadra ${i + 1}`}
-                    className="min-w-0 flex-1 rounded-lg border border-border bg-background/40 px-3 py-1.5 text-sm outline-none focus:border-primary placeholder:text-muted-foreground/50"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removeTeam(i)}
-                    disabled={teams.length <= 1}
-                    className="rounded-lg border border-border p-1.5 text-destructive hover-elevate disabled:opacity-30"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
+            <Field label="Colore brand" icon={<Palette className="h-3.5 w-3.5" />}>
+              <div className="flex items-center gap-3">
+                <input
+                  type="color"
+                  value={color}
+                  onChange={e => setColor(e.target.value)}
+                  className="h-8 w-14 cursor-pointer rounded border border-border bg-transparent"
+                />
+                <code className="text-sm text-muted-foreground">{color}</code>
+              </div>
+            </Field>
           </div>
 
           <div className="rounded-xl border border-border bg-card p-4">
@@ -242,6 +193,10 @@ export default function EventSetup() {
                 );
               })}
             </div>
+          </div>
+
+          <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-3 text-xs text-amber-400/80">
+            💡 Le squadre si creano da <strong>/admin/teams</strong> dopo aver creato l'evento. I giocatori si uniscono scannerizzando il QR con il codice <strong>{joinCode || '…'}</strong>.
           </div>
         </div>
 

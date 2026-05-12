@@ -69,6 +69,29 @@ export default function Presenter() {
   const qc = useQueryClient();
   const { projectorActive, startProjector, stopProjector, setActiveGameSlug } = useAudioOrchestrator();
 
+  // Activate projector audio on the PC/projector device via socket, not locally
+  const handleProjectorActivate = async () => {
+    startProjector(); // update local state/localStorage
+    if (selectedEventId) {
+      apiFetch(`/panic/events/${selectedEventId}/emit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event: 'projector:activate', payload: {} }),
+      }).catch(() => null);
+    }
+  };
+
+  const handleProjectorDeactivate = async () => {
+    stopProjector(); // update local state/localStorage
+    if (selectedEventId) {
+      apiFetch(`/panic/events/${selectedEventId}/emit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event: 'audio:stop', payload: {} }),
+      }).catch(() => null);
+    }
+  };
+
   const [selectedEventId, setSelectedEventId] = useState<string>('');
   const [selectedSessionId, setSelectedSessionId] = useState<string>('');
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
@@ -244,7 +267,7 @@ export default function Presenter() {
         <div className="flex items-center gap-2">
           {/* Avvia Proiettore — in header per accesso rapido */}
           <button
-            onClick={projectorActive ? stopProjector : startProjector}
+            onClick={projectorActive ? handleProjectorDeactivate : handleProjectorActivate}
             title={projectorActive ? 'Spegni audio proiettore' : 'Avvia audio proiettore'}
             className="h-8 w-8 rounded-xl flex items-center justify-center border transition-all active:scale-90"
             style={projectorActive ? {
@@ -496,7 +519,7 @@ export default function Presenter() {
         {/* Avvia Proiettore full card — visible when not yet active */}
         {!projectorActive && (
           <button
-            onClick={startProjector}
+            onClick={handleProjectorActivate}
             className="w-full rounded-2xl px-5 py-5 font-black text-base flex items-center justify-center gap-3 active:scale-95 transition-all"
             style={{ background: 'rgba(245,182,66,0.12)', border: '1px solid rgba(245,182,66,0.35)' }}
           >
@@ -506,7 +529,7 @@ export default function Presenter() {
         )}
         {projectorActive && (
           <button
-            onClick={stopProjector}
+            onClick={handleProjectorDeactivate}
             className="w-full rounded-2xl px-5 py-4 font-bold text-sm flex items-center justify-center gap-3 active:scale-95 transition-all"
             style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)' }}
           >

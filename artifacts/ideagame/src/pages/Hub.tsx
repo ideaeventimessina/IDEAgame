@@ -129,7 +129,7 @@ export default function Hub() {
   const { user } = useAuth();
 
   // ── Audio: return to hub loop whenever this page mounts ─────────────────
-  const { projectorActive, setActiveGameSlug } = useAudioOrchestrator();
+  const { projectorActive, setActiveGameSlug, startProjector } = useAudioOrchestrator();
   useEffect(() => {
     if (!projectorActive) return;
     setActiveGameSlug(null); // null = back to hub lobby_loop
@@ -368,9 +368,22 @@ export default function Hub() {
       on<{ slug: string; theme: { id: string; name: string } | null }>('hub:game-preloaded', ({ slug, theme }) => {
         setPreloadedThemes(prev => ({ ...prev, [slug]: theme }));
       }),
+      // Audio commands — must be played on the projector page (Hub/PC), not on the controller device
+      on('projector:activate', () => {
+        startProjector();
+        void AudioManager.playLoop('hub', 'lobby_loop');
+      }),
+      on('projector:deactivate', () => { AudioManager.stopAll(); }),
+      on<{ type: string }>('audio:stinger', ({ type }) => {
+        void AudioManager.playStinger('global', type);
+      }),
+      on('audio:stop', () => { AudioManager.stopAll(); }),
+      on<{ slug: string; type: string }>('audio:loop', ({ slug, type }) => {
+        void AudioManager.playLoop(slug, type);
+      }),
     ];
     return () => { unsubs.forEach(u => u?.()); };
-  }, [liveEvent?.id, on, navigate]);
+  }, [liveEvent?.id, on, navigate, startProjector]);
 
   // Canonical 3-2-3 slot order: flagship games first, adult-only last in middle row
   const SLUG_ORDER = [

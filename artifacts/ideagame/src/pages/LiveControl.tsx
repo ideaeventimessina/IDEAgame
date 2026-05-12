@@ -2029,7 +2029,7 @@ export default function LiveControl() {
             <span className="text-xs tabular-nums text-muted-foreground w-8 text-right">{Math.round(audioSettings.masterVolume * 100)}%</span>
           </div>
 
-          {/* Quick stinger buttons */}
+          {/* Quick stinger buttons — emit via socket so audio plays on the PROJECTOR device */}
           <div className="flex flex-wrap gap-2">
             {[
               { label: '👏 Applausi',   stinger: 'applause' },
@@ -2038,15 +2038,30 @@ export default function LiveControl() {
               { label: '💫 Transizione',stinger: 'transition_whoosh' },
             ].map(({ label, stinger }) => (
               <button key={stinger}
-                onClick={() => AudioManager.playGlobalStinger(stinger)}
-                disabled={!audioSettings.sfxEnabled}
+                onClick={() => {
+                  if (!selectedEventId) return;
+                  apiFetch(`/panic/events/${selectedEventId}/emit`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ event: 'audio:stinger', payload: { type: stinger } }),
+                  }).catch(() => null);
+                }}
+                disabled={!audioSettings.sfxEnabled || !selectedEventId}
                 className="rounded-xl border border-border px-3 py-1.5 text-xs font-bold hover:bg-secondary/30 disabled:opacity-40 transition-all">
                 {label}
               </button>
             ))}
             <button
-              onClick={() => AudioManager.stopAll()}
-              className="rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-1.5 text-xs font-bold text-destructive hover:bg-destructive/20 transition-all">
+              onClick={() => {
+                if (!selectedEventId) return;
+                apiFetch(`/panic/events/${selectedEventId}/emit`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ event: 'audio:stop', payload: {} }),
+                }).catch(() => null);
+              }}
+              disabled={!selectedEventId}
+              className="rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-1.5 text-xs font-bold text-destructive hover:bg-destructive/20 disabled:opacity-40 transition-all">
               <Mic2 className="h-3 w-3 inline mr-1" />Stop tutto
             </button>
           </div>

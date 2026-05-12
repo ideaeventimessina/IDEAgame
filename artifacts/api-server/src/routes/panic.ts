@@ -16,6 +16,11 @@ const ALLOWED_EVENTS = new Set([
   "players:force-refresh",
   "hub:phase",
   "hub:game-preloaded",
+  // Audio control — played on projector device, not controller device
+  "audio:stinger",
+  "audio:stop",
+  "audio:loop",
+  "projector:activate",
 ]);
 
 function guardEvent(req: AuthedRequest, event: { tenantId: string | null }): boolean {

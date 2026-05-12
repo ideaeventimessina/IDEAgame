@@ -238,6 +238,10 @@ export const ListEventsResponse = zod.array(ListEventsResponseItem);
 export const CreateEventBody = zod.object({
   name: zod.string(),
   venue: zod.string().optional(),
+  joinCode: zod
+    .string()
+    .optional()
+    .describe("Custom join code (auto-generated if omitted)"),
   startsAt: zod.coerce.date().optional(),
   brandColor: zod.string().optional(),
   expectedPlayers: zod.number().optional(),

@@ -134,36 +134,33 @@ class _AudioManager {
     await Promise.all(types.map(t => this.resolveUrl(slug, t)));
   }
 
-  /** Play a loop. Loop types handled by ProceduralMusicEngine; others use MP3. */
+  /**
+   * Play a loop. MP3 file always has priority; ProceduralMusicEngine is
+   * fallback only when no MP3 exists for the requested slug/type.
+   */
   async playLoop(slug: AudioSlug | string, type: AudioType | string = 'round_loop') {
     if (!this.settings.musicEnabled || this.settings.muted) return;
+    if (this.currentLoopSlug === slug && this.currentLoopType === type) return;
 
-    const mood = LOOP_TYPE_TO_MOOD[type];
+    // 1️⃣ Try uploaded MP3 first (slug-specific, then global/ fallback)
+    this._stopProceduralLoop();
+    const src = await this.resolveUrl(slug, type);
 
-    if (mood) {
-      // Stop any MP3 loop that may be running
-      this._stopMp3Loop();
-
-      if (this.currentLoopSlug === slug && this.currentLoopType === type && this.proceduralActive) {
-        // Already playing this mood — just make sure volume is right
-        ProceduralMusicEngine.setVolume(this.loopVol());
-        return;
+    // 2️⃣ No MP3 — fall back to procedural engine if a mood mapping exists
+    if (!src) {
+      const mood = LOOP_TYPE_TO_MOOD[type];
+      if (mood) {
+        this._stopMp3Loop();
+        this.currentLoopSlug  = slug;
+        this.currentLoopType  = type;
+        this.proceduralActive = true;
+        ProceduralMusicEngine.play(mood, this.loopVol());
       }
-
-      this.currentLoopSlug  = slug;
-      this.currentLoopType  = type;
-      this.proceduralActive = true;
-      ProceduralMusicEngine.play(mood, this.loopVol());
       return;
     }
 
-    // Non-procedural type → fall back to MP3
-    if (this.currentLoopSlug === slug && this.currentLoopType === type) return;
-    this._stopProceduralLoop();
-
-    const src = await this.resolveUrl(slug, type);
-    if (!src) return;
-
+    // 3️⃣ MP3 found — play it with crossfade
+    this._stopMp3Loop();
     const audio = new Audio(src);
     audio.loop   = true;
     audio.volume = 0;

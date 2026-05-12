@@ -975,6 +975,7 @@ components:
       properties:
         name: { type: string }
         venue: { type: string }
+        joinCode: { type: string, description: "Custom join code (auto-generated if omitted)" }
         startsAt: { type: string, format: date-time }
         brandColor: { type: string }
         expectedPlayers: { type: integer }

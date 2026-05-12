@@ -189,6 +189,8 @@ export interface Event {
 export interface CreateEventBody {
   name: string;
   venue?: string;
+  /** Custom join code (auto-generated if omitted) */
+  joinCode?: string;
   startsAt?: string;
   brandColor?: string;
   expectedPlayers?: number;

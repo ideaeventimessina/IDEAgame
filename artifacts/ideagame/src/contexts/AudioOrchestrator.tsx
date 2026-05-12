@@ -62,7 +62,8 @@ export function AudioOrchestratorProvider({ children }: { children: ReactNode })
     try { localStorage.setItem(LS_ACTIVE, 'true'); } catch { /* ignore */ }
     setSlugState(null);
     try { localStorage.setItem(LS_SLUG, ''); } catch { /* ignore */ }
-    void AudioManager.playLoop('hub', 'lobby_loop');
+    // Audio is played by the projector page itself (Hub) via socket event or
+    // its own projectorActive useEffect — never played on the controller device.
   }, []);
 
   const stopProjector = useCallback(() => {
