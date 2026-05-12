@@ -56,6 +56,7 @@ import AdminAudioSettings from "@/admin/AudioSettings";
 import AdminAudit from "@/admin/Audit";
 import HomeGame from "@/pages/HomeGame";
 import HomeJoin from "@/pages/HomeJoin";
+import Cockpit from "@/pages/Cockpit";
 import { Guard } from "@/admin/Guard";
 import { JonnyProvider } from "@/contexts/JonnyContext";
 import { AudioProvider } from "@/contexts/AudioContext";
@@ -70,6 +71,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Hub} />
+      <Route path="/cockpit" component={Cockpit} />
       <Route path="/splash" component={Splash} />
       <Route path="/language" component={LanguageSelect} />
       <Route path="/tenant" component={TenantSelect} />

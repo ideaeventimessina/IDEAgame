@@ -128,6 +128,18 @@ export default function Hub() {
   const [, navigate] = useLocation();
   const { user } = useAuth();
 
+  // ── Authenticated staff → redirect to Cockpit unless projector mode ──────
+  // Projector mode: URL has ?e=CODE or ?projector=1
+  const urlParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+  const hasJoinCode  = !!urlParams.get('e');
+  const forceProject = urlParams.get('projector') === '1';
+  useEffect(() => {
+    if (user && !hasJoinCode && !forceProject) {
+      navigate('/cockpit');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, hasJoinCode, forceProject]);
+
   // ── Audio: return to hub loop whenever this page mounts ─────────────────
   const { projectorActive, setActiveGameSlug, startProjector } = useAudioOrchestrator();
   useEffect(() => {
@@ -138,7 +150,6 @@ export default function Hub() {
   }, [projectorActive]);
 
   // ── Public (unauthenticated) projector mode ─────────────────────────────
-  const urlParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
   const urlCode = urlParams.get('e')?.toUpperCase().trim() ?? null;
   const [inputCode, setInputCode] = useState('');
   const [activeCode, setActiveCode] = useState<string | null>(urlCode);
