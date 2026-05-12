@@ -47,6 +47,12 @@ function apiAudioUrl(slug: string, type: string): string {
   return `${base}api/audio/files/${slug}/${type}`.replace(/([^:])\/\//g, '$1/');
 }
 
+/** Static Vite asset — bundled permanently in public/audio/jonny-world/ */
+function staticAudioUrl(slug: string, type: string): string {
+  const base = (import.meta.env.BASE_URL as string | undefined) ?? '/';
+  return `${base}audio/jonny-world/${slug}/${type}.mp3`.replace(/([^:])\/\//g, '$1/');
+}
+
 async function fileExists(url: string): Promise<boolean> {
   try {
     const r = await fetch(url, { method: 'HEAD' });
@@ -54,6 +60,19 @@ async function fileExists(url: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+async function resolveFirst(urls: string[], cache: Map<string, boolean>): Promise<string | null> {
+  for (const url of urls) {
+    if (cache.has(url)) {
+      if (cache.get(url)) return url;
+      continue;
+    }
+    const exists = await fileExists(url);
+    cache.set(url, exists);
+    if (exists) return url;
+  }
+  return null;
 }
 
 class _AudioManager {
@@ -85,24 +104,15 @@ class _AudioManager {
   }
 
   private async resolveUrl(slug: AudioSlug | string, type: AudioType | string): Promise<string | null> {
-    const primary = apiAudioUrl(slug, type);
-    if (this.knownFiles.has(primary)) {
-      return this.knownFiles.get(primary) ? primary : null;
-    }
-    const exists = await fileExists(primary);
-    this.knownFiles.set(primary, exists);
-    if (exists) return primary;
-
-    if (slug !== 'global') {
-      const fallback = apiAudioUrl('global', type);
-      if (this.knownFiles.has(fallback)) {
-        return this.knownFiles.get(fallback) ? fallback : null;
-      }
-      const fExists = await fileExists(fallback);
-      this.knownFiles.set(fallback, fExists);
-      return fExists ? fallback : null;
-    }
-    return null;
+    // Priority: 1) static Vite asset (bundled, permanent in prod)
+    //           2) API-uploaded override (dev/manual uploads)
+    //           3) global/ fallback for both sources
+    const result = await resolveFirst([
+      staticAudioUrl(slug, type),
+      apiAudioUrl(slug, type),
+      ...(slug !== 'global' ? [staticAudioUrl('global', type), apiAudioUrl('global', type)] : []),
+    ], this.knownFiles);
+    return result;
   }
 
   async preload(slug: AudioSlug | string) {

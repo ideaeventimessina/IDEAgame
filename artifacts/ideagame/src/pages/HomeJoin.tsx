@@ -631,7 +631,7 @@ function PhoneController({
 
   if (mode === 'home-quiz')       return <QuizController payload={p} revealed={revealed} answered={answered} onAnswer={onAnswer}/>;
   if (mode === 'home-coppie')     return <CoppieController payload={p} onFlip={onFlip} player={player}/>;
-  if (mode === 'home-percorso')   return <SimpleController payload={p} color="#34D399" emoji="😂" label="Sfida completata!" timeLeft={timeLeft}/>;
+  if (mode === 'home-percorso')   return <PercorsoHomeController payload={p} timeLeft={timeLeft}/>;
   if (mode === 'home-saramusica') return <SaraMusicaController payload={p} players={players} player={player} onScore={onScore}/>;
   if (mode === 'home-adult')      return <AdultController payload={p} timeLeft={timeLeft}/>;
   if (mode === 'home-ballo')      return <BalloController payload={p} timeLeft={timeLeft} sessionId={session.id}/>;
@@ -745,7 +745,125 @@ function CoppieController({ payload, onFlip, player }: {
   );
 }
 
-// ── SimpleController (Percorso, Ballo, Adult, WordBack) ───────────────────────
+// ── PercorsoHomeController — sfida dinamica per home-percorso ─────────────────
+
+const HOME_PERCORSO_EMOJIS: Record<string, string> = {
+  sfida: '⚡', domanda: '❓', mimo: '🎭', ballo: '💃',
+  veloce: '🏃', coppia: '👫', reazione: '😱', fantasia: '🌟',
+};
+
+function PercorsoHomeBallo({ timeLeft }: { timeLeft: number | null }) {
+  const [energy, setEnergy] = useState(0);
+  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  const handlerRef = useRef<((e: DeviceMotionEvent) => void) | null>(null);
+
+  const startSensor = useCallback(() => {
+    const h = (e: DeviceMotionEvent) => {
+      const a = e.accelerationIncludingGravity;
+      if (!a) return;
+      const mag = Math.sqrt((a.x ?? 0) ** 2 + (a.y ?? 0) ** 2 + (a.z ?? 0) ** 2);
+      setEnergy(prev => Math.min(100, Math.max(0, prev * 0.7 + Math.min(100, (mag / 25) * 100) * 0.3)));
+    };
+    handlerRef.current = h;
+    window.addEventListener('devicemotion', h);
+    setHasPermission(true);
+  }, []);
+
+  useEffect(() => {
+    const DM = DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> };
+    if (typeof DM.requestPermission !== 'function') { startSensor(); }
+    else { setHasPermission(false); }
+    return () => { if (handlerRef.current) window.removeEventListener('devicemotion', handlerRef.current); };
+  }, [startSensor]);
+
+  useEffect(() => {
+    const id = setInterval(() => setEnergy(prev => Math.max(0, prev - 2)), 80);
+    return () => clearInterval(id);
+  }, []);
+
+  const color = energy > 70 ? '#22c55e' : energy > 35 ? '#eab308' : '#34D399';
+
+  return (
+    <div className="flex flex-col items-center gap-4 py-2 text-center w-full">
+      <div className="text-5xl">💃</div>
+      <div className="text-xl font-black text-white">BALLA!</div>
+      {timeLeft !== null && (
+        <div className="flex items-center gap-2 rounded-xl px-5 py-2"
+          style={{background:'rgba(52,211,153,0.18)',border:'1px solid rgba(52,211,153,0.45)',color:'#34D399'}}>
+          <Timer className="h-4 w-4"/>
+          <span className="text-2xl font-black tabular-nums">{timeLeft}s</span>
+        </div>
+      )}
+      {hasPermission === false ? (
+        <button onClick={async () => {
+          const DM = DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> };
+          if (typeof DM.requestPermission === 'function') {
+            const r = await DM.requestPermission();
+            if (r === 'granted') startSensor();
+          }
+        }} className="w-full rounded-2xl py-3 text-sm font-black text-white"
+           style={{background:'linear-gradient(135deg,#34D399,#059669)'}}>
+          🎯 Attiva sensore di movimento
+        </button>
+      ) : (
+        <div className="w-full space-y-1">
+          <div className="flex justify-between text-xs font-bold text-white/60">
+            <span>Energia</span>
+            <span className="tabular-nums" style={{color}}>{energy}%</span>
+          </div>
+          <div className="relative h-10 overflow-hidden rounded-2xl bg-white/10">
+            <motion.div className="absolute inset-y-0 left-0 rounded-2xl"
+              animate={{width:`${energy}%`}} transition={{duration:0.08}}
+              style={{background:`linear-gradient(90deg,${color}88,${color})`,boxShadow:`0 0 20px ${color}66`}}/>
+            <div className="absolute inset-0 flex items-center justify-center text-sm font-black text-white">
+              {energy > 75 ? '🔥 Che energia!' : energy > 40 ? '💪 Continua!' : '🎭 Muoviti!'}
+            </div>
+          </div>
+        </div>
+      )}
+      <div className="text-xs text-white/35">L'animatore assegna i punti dalla TV</div>
+    </div>
+  );
+}
+
+function PercorsoHomeController({ payload, timeLeft }: {
+  payload: Record<string, unknown>;
+  timeLeft: number | null;
+}) {
+  const ct = String(payload.challengeType ?? 'sfida');
+  const emoji = HOME_PERCORSO_EMOJIS[ct] ?? '🎯';
+  const goLabel: Record<string, string> = {
+    mimo: '🎭 Recita!', sfida: '⚡ Forza!', veloce: '🏃 Corri!',
+    coppia: '👫 Insieme!', reazione: '😱 Reagisci!', fantasia: '🌟 Improvvisa!', domanda: '❓ Rispondi!',
+  };
+
+  if (ct === 'ballo') return <PercorsoHomeBallo timeLeft={timeLeft} />;
+
+  return (
+    <div className="flex flex-col items-center gap-4 py-2 text-center">
+      <div className="text-5xl">{emoji}</div>
+      <div className="text-xl font-black text-white">{String(payload.title ?? 'Sfida!')}</div>
+      {!!payload.description && (
+        <div className="text-sm text-white/55 leading-relaxed px-2">{String(payload.description)}</div>
+      )}
+      {timeLeft !== null && (
+        <div className="flex items-center gap-2 rounded-xl px-5 py-2"
+          style={{background:'rgba(52,211,153,0.18)',border:'1px solid rgba(52,211,153,0.45)',color:'#34D399'}}>
+          <Timer className="h-4 w-4"/>
+          <span className="text-2xl font-black tabular-nums">{timeLeft}s</span>
+        </div>
+      )}
+      <motion.div animate={{scale:[1,1.06,1]}} transition={{repeat:Infinity,duration:1.5}}
+        className="rounded-xl px-6 py-2 text-xl font-black text-white"
+        style={{background:'rgba(52,211,153,0.2)',border:'1px solid rgba(52,211,153,0.45)'}}>
+        {goLabel[ct] ?? '💪 Forza!'}
+      </motion.div>
+      <div className="text-xs text-white/35">L'animatore assegna i punti dalla TV</div>
+    </div>
+  );
+}
+
+// ── SimpleController (Ballo, Adult, WordBack) ──────────────────────────────────
 
 function SimpleController({ payload, color, emoji, label, timeLeft }: {
   payload: Record<string,unknown>;
