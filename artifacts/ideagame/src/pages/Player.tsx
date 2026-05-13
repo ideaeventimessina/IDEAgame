@@ -287,10 +287,15 @@ export default function Player() {
     } catch { /* silent */ }
   }, []);
 
-  // Detect active session on mount when player enters play step
+  // Detect active session on mount when player enters play step.
+  // Phones can miss a socket update, so keep them aligned with the active game.
   useEffect(() => {
     if (step !== 'play' || !event || !player) return;
     void fetchActiveSession(event.id, player.id);
+    const interval = window.setInterval(() => {
+      void fetchActiveSession(event.id, player.id);
+    }, 2500);
+    return () => window.clearInterval(interval);
   }, [step, event?.id, player?.id, fetchActiveSession]);
 
   // Re-detect on socket reconnect (catches mid-game joins)
@@ -341,7 +346,14 @@ export default function Player() {
         setQuizzoneQuestion(data);
         setQuizzoneReveal(null);
         setBuzzed(false);
-        setGameState(p => ({ ...p, status: 'running', sessionId: data.sessionId }));
+        setGameState(p => ({
+          ...p,
+          status: 'running',
+          sessionId: data.sessionId,
+          gameSlug: 'quizzone',
+          currentRound: data.roundIndex + 1,
+          totalRounds: data.totalRounds,
+        }));
       }),
       on<QuizzoneReveal & { sessionId: string }>('quiz:reveal', (data) => {
         setQuizzoneReveal(data);

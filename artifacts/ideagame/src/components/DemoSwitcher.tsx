@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { useLocation } from 'wouter';
-import { Tv, Smartphone, ShieldCheck, Rocket, LayoutGrid, X } from 'lucide-react';
+import { Tv, Smartphone, ShieldCheck, Rocket, LayoutGrid, X, MonitorPlay } from 'lucide-react';
 import { useT } from '@/i18n';
 import { useAuth } from '@/auth/roles';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -18,10 +18,11 @@ export function DemoSwitcher() {
   // Unauthenticated projector viewers and players must never see it.
   if (!user || !ADMIN_ROLES.includes(role as typeof ADMIN_ROLES[number])) return null;
 
-  const isAdmin = location.startsWith('/admin');
-  const isPlay  = location.startsWith('/play');
-  const isDemo  = location.startsWith('/demo');
-  const isStage = !isAdmin && !isPlay && !isDemo;
+  const isAdmin     = location.startsWith('/admin');
+  const isPlay      = location.startsWith('/play');
+  const isDemo      = location.startsWith('/demo');
+  const isPresenter = location.startsWith('/presenter');
+  const isStage     = !isAdmin && !isPlay && !isDemo && !isPresenter;
 
   const item = (active: boolean, icon: ReactNode, label: string, to: string) => (
     <button
@@ -61,10 +62,11 @@ export function DemoSwitcher() {
           >
             <div className="flex items-center gap-1 rounded-full border border-border bg-card/90 p-1 shadow-2xl backdrop-blur-md">
               <span className="px-3 text-xs uppercase tracking-widest text-muted-foreground">{t('demo.switcher')}</span>
-              {item(isStage, <Tv className="h-4 w-4" />, t('demo.stage'), '/')}
-              {item(isPlay,  <Smartphone className="h-4 w-4" />, t('demo.player'), '/play')}
-              {item(isAdmin, <ShieldCheck className="h-4 w-4" />, t('demo.admin'), '/admin')}
-              {item(isDemo,  <Rocket className="h-4 w-4" />, 'Demo', '/demo')}
+              {item(isStage,     <Tv className="h-4 w-4" />,          t('demo.stage'),  '/')}
+              {item(isPlay,      <Smartphone className="h-4 w-4" />,   t('demo.player'), '/play')}
+              {item(isPresenter, <MonitorPlay className="h-4 w-4" />,  'Presentatore',   '/presenter')}
+              {item(isAdmin,     <ShieldCheck className="h-4 w-4" />,  t('demo.admin'),  '/admin')}
+              {item(isDemo,      <Rocket className="h-4 w-4" />,       'Demo',           '/demo')}
             </div>
           </motion.div>
         )}
