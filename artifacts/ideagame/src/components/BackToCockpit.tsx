@@ -38,7 +38,7 @@ export function BackToCockpit() {
           exit={{ opacity: 0, x: -16 }}
           transition={{ duration: 0.2 }}
           onClick={() => navigate('/control')}
-          className="fixed left-4 top-4 z-[100] flex items-center gap-2 rounded-2xl border border-border bg-card/80 px-4 py-2.5 text-sm font-bold text-muted-foreground shadow-xl backdrop-blur-md transition-colors hover:text-foreground"
+          className="fixed left-4 top-20 z-[100] flex items-center gap-2 rounded-2xl border border-border bg-card/80 px-4 py-2.5 text-sm font-bold text-muted-foreground shadow-xl backdrop-blur-md transition-colors hover:text-foreground"
         >
           <SlidersHorizontal className="h-4 w-4 shrink-0 text-primary" />
           Cockpit

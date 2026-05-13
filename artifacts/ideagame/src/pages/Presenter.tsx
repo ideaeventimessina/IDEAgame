@@ -63,8 +63,12 @@ interface ActiveSession {
 
 export default function Presenter() {
   const [, navigate] = useLocation();
-  const { user, role } = useAuth();
+  const { user, role, isLoading } = useAuth();
   const { setMode } = usePresenterMode();
+
+  useEffect(() => {
+    if (!isLoading && !user) navigate('/login');
+  }, [isLoading, user, navigate]);
   const { toast } = useToast();
   const qc = useQueryClient();
   const { projectorActive, startProjector, stopProjector, setActiveGameSlug } = useAudioOrchestrator();

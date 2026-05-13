@@ -903,6 +903,20 @@ export default function LiveControl() {
       await updateSession.mutateAsync({ id: newSession.id, data: { status: 'running' } });
       qc.invalidateQueries({ queryKey: getListGameSessionsQueryKey(selectedEventId) });
       await initGameWithPreloadedTheme(slug, newSession.id, theme.id);
+      if (slug === 'quizzone') {
+        setSelectedPackId(theme.id);
+        setQuizzoneRoundIdx(0);
+        setQuizzoneRevealed(false);
+        setQuizzoneActive(true);
+        setQuizzoneResponseCount(0);
+        setRevealAnswer(false);
+        await apiFetch(`/quizzone/sessions/${newSession.id}/question`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ packId: theme.id, roundIndex: 0 }),
+        });
+        setQuizzoneMsg('✓ Domanda 1 inviata!');
+      }
 
       // Test rapido: in Quizzone il tasto Avvia deve mandare subito la prima domanda.
       if (slug === 'quizzone') {

@@ -98,7 +98,7 @@ function Router() {
       <Route path="/play/permissions" component={Permissions} />
       <Route path="/home" component={HomeGame} />
       <Route path="/home/join" component={HomeJoin} />
-      <Route path="/presenter"><Guard route="/admin"><Presenter /></Guard></Route>
+      <Route path="/presenter" component={Presenter} />
       <Route path="/admin"><Guard route="/admin"><AdminDashboard /></Guard></Route>
       <Route path="/admin/games"><Guard route="/admin/games"><AdminGames /></Guard></Route>
       <Route path="/admin/quizzes"><Guard route="/admin/quizzes"><AdminQuizzes /></Guard></Route>
