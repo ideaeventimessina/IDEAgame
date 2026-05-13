@@ -49,6 +49,7 @@ router.post("/events/:id/sessions", requireAuth, async (req: AuthedRequest, res:
     totalRounds: parsed.data.totalRounds ?? 1,
   }).returning();
   await audit(req, "game_session.create", "game_session", s!.id, { gameSlug: s!.gameSlug });
+  emitToEvent(eventId, "game:session_created", { session: s, eventId });
   res.status(201).json(s);
 });
 

@@ -218,7 +218,7 @@ export default function Hub() {
   const [creatingSession, setCreatingSession] = useState(false);
   const [sessionRunning, setSessionRunning] = useState(false);
   const [sessionEnded, setSessionEnded] = useState(false);
-  const [hubPhase, setHubPhase] = useState<'join' | 'gameboard'>('gameboard');
+  const [hubPhase, setHubPhase] = useState<'join' | 'gameboard'>('join');
   const [showCodeModal, setShowCodeModal] = useState(false);
   const [preloadedThemes, setPreloadedThemes] = useState<Record<string, { id: string; name: string } | null>>({});
 

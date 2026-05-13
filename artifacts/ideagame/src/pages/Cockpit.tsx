@@ -1,8 +1,8 @@
 import { useLocation } from 'wouter';
 import { motion } from 'framer-motion';
 import {
-  Gamepad2, Settings2, Users, LogOut, Loader2,
-  CalendarDays, Tv2, Copy, Check, ArrowLeft, ExternalLink, AlertCircle,
+  Gamepad2, LogOut, Loader2, ShieldCheck, AlertCircle,
+  CalendarDays, Tv2, Copy, Check, ArrowLeft, ExternalLink, Mic2,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/auth/roles';
@@ -39,6 +39,7 @@ export default function Cockpit() {
   const { user, isLoading } = useAuth();
   const [copied, setCopied] = useState(false);
   const [events, setEvents] = useState<EventRow[]>([]);
+  const [eventsLoaded, setEventsLoaded] = useState(false);
   const [selectedEventIdx, setSelectedEventIdx] = useState(0);
 
   useEffect(() => {
@@ -47,20 +48,26 @@ export default function Cockpit() {
       .then((data: unknown) => {
         const rows = (Array.isArray(data) ? data : []) as EventRow[];
         setEvents(rows);
+        setEventsLoaded(true);
         // Auto-select: prefer live first, then most recent
         const liveIdx = rows.findIndex(e => e.status === 'live');
         setSelectedEventIdx(liveIdx >= 0 ? liveIdx : 0);
       })
-      .catch(() => {});
+      .catch(() => setEventsLoaded(true));
   }, [user]);
+
+  useEffect(() => {
+    if (!eventsLoaded || events.length > 0) return;
+    if (user?.role === 'super_admin' || user?.role === 'tenant_owner' || user?.role === 'game_manager') {
+      navigate('/admin/events');
+    }
+  }, [eventsLoaded, events.length, user?.role, navigate]);
 
   const selectedEvent = events[selectedEventIdx] ?? null;
   const joinCode = selectedEvent?.joinCode ?? null;
   const eventName = selectedEvent?.name ?? null;
 
-  const projectorUrl = joinCode
-    ? `${window.location.origin}${BASE}?e=${joinCode}`.replace(/([^:])\/\//g, '$1/')
-    : null;
+  const projectorUrl = `${window.location.origin}${BASE}projector`.replace(/([^:])\/\//g, '$1/');
 
   const copyUrl = () => {
     if (!projectorUrl) return;
@@ -77,25 +84,24 @@ export default function Cockpit() {
 
   const NAV_CARDS: NavCard[] = [
     {
+      icon: <Tv2 className="h-8 w-8" />,
+      label: 'Proiettore',
+      sub: 'Schermo pubblico in attesa evento',
+      href: '/projector',
+      accent: '#F59E0B',
+    },
+    {
       icon: <Gamepad2 className="h-8 w-8" />,
-      label: 'Sala Controllo',
+      label: 'Regia',
       sub: 'Gestisci sessioni e punteggi',
       href: '/control',
       accent: '#60A5FA',
     },
     {
-      icon: <Settings2 className="h-8 w-8" />,
-      label: 'Admin',
-      sub: 'Dashboard & impostazioni',
-      href: '/admin',
-      accent: '#A78BFA',
-      roles: ['super_admin', 'tenant_owner', 'game_manager'],
-    },
-    {
-      icon: <Users className="h-8 w-8" />,
-      label: 'Giocatore',
-      sub: joinCode ? `Entra con codice ${joinCode}` : 'Unisciti come giocatore',
-      href: joinCode ? `/play?e=${joinCode}` : '/play',
+      icon: <Mic2 className="h-8 w-8" />,
+      label: 'Presentatore',
+      sub: 'Controllo mobile della serata',
+      href: '/presenter-live',
       accent: '#34D399',
     },
   ];
@@ -128,6 +134,13 @@ export default function Cockpit() {
           className="absolute left-4 top-4 flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-muted-foreground hover:text-white transition-colors"
         >
           <ArrowLeft className="h-3.5 w-3.5" /> Hub
+        </motion.button>
+        <motion.button
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+          onClick={() => navigate('/admin/events')}
+          className="absolute right-4 top-4 flex items-center gap-1.5 rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs font-bold text-amber-300 hover:bg-amber-400/20 transition-colors"
+        >
+          <ShieldCheck className="h-3.5 w-3.5" /> Admin eventi
         </motion.button>
 
         {/* Header */}
@@ -254,6 +267,14 @@ export default function Cockpit() {
             </motion.button>
           ))}
         </div>
+
+        <motion.button
+          initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.42 }}
+          onClick={() => navigate('/dev-test')}
+          className="mt-6 rounded-2xl border border-blue-400/30 bg-blue-400/10 px-5 py-3 text-sm font-black text-blue-200 transition-colors hover:bg-blue-400/20"
+        >
+          Test sviluppo: regia + proiettore insieme
+        </motion.button>
 
         {/* Logout */}
         <motion.div

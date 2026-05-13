@@ -69,7 +69,7 @@ export default function EventSetup() {
       }
       await qc.invalidateQueries({ queryKey: getListEventsQueryKey() });
       await qc.invalidateQueries({ queryKey: getGetCurrentEventQueryKey() });
-      navigate(then === 'lobby' ? `/lobby?e=${id}` : '/admin');
+      navigate(then === 'lobby' ? `/control?e=${id}` : '/admin');
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Errore salvataggio');
     }
@@ -218,7 +218,7 @@ export default function EventSetup() {
             className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-[0_0_24px_rgba(245,182,66,0.35)] hover-elevate disabled:opacity-40"
           >
             {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
-            Salva e apri lobby
+            Salva e vai in regia
           </button>
         </div>
       </div>

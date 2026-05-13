@@ -4,7 +4,6 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { I18nProvider } from "@/i18n";
 import { AuthProvider } from "@/auth/roles";
-import { DemoSwitcher } from "@/components/DemoSwitcher";
 import { BackToCockpit } from "@/components/BackToCockpit";
 import NotFound from "@/pages/not-found";
 import Hub from "@/pages/Hub";
@@ -66,6 +65,9 @@ import { AudioOrchestratorProvider } from "@/contexts/AudioOrchestrator";
 import { PresenterModeProvider } from "@/contexts/PresenterModeContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import Presenter from "@/pages/Presenter";
+import PresenterLive from "@/pages/PresenterLive";
+import ProjectorStandby from "@/pages/ProjectorStandby";
+import DevTest from "@/pages/DevTest";
 
 const queryClient = new QueryClient();
 
@@ -73,6 +75,8 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Hub} />
+      <Route path="/projector" component={ProjectorStandby} />
+      <Route path="/dev-test" component={DevTest} />
       <Route path="/cockpit" component={Cockpit} />
       <Route path="/splash" component={Splash} />
       <Route path="/language" component={LanguageSelect} />
@@ -98,7 +102,8 @@ function Router() {
       <Route path="/play/permissions" component={Permissions} />
       <Route path="/home" component={HomeGame} />
       <Route path="/home/join" component={HomeJoin} />
-      <Route path="/presenter" component={Presenter} />
+      <Route path="/presenter-live" component={PresenterLive} />
+      <Route path="/presenter" component={PresenterLive} />
       <Route path="/admin"><Guard route="/admin"><AdminDashboard /></Guard></Route>
       <Route path="/admin/games"><Guard route="/admin/games"><AdminGames /></Guard></Route>
       <Route path="/admin/quizzes"><Guard route="/admin/quizzes"><AdminQuizzes /></Guard></Route>
@@ -142,7 +147,6 @@ function App() {
             <TooltipProvider>
               <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
                 <Router />
-                {import.meta.env.DEV && <DemoSwitcher />}
                 <BackToCockpit />
                 <AudioUnlockFab />
               </WouterRouter>

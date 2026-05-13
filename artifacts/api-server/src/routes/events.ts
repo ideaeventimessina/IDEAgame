@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Response } from "express";
 import { eq, desc, and } from "drizzle-orm";
-import { db, eventsTable } from "@workspace/db";
+import { db, eventsTable, playersTable } from "@workspace/db";
 import {
   ListEventsResponse, CreateEventBody,
   UpdateEventBody, UpdateEventResponse, GetEventResponse,
@@ -30,6 +30,14 @@ router.get("/events/current", requireAuth, async (req: AuthedRequest, res): Prom
   res.json(row ?? null);
 });
 
+router.get("/events/public/current", async (_req, res): Promise<void> => {
+  const [row] = await db.select().from(eventsTable)
+    .where(eq(eventsTable.status, "live"))
+    .orderBy(desc(eventsTable.startsAt))
+    .limit(1);
+  res.json(row ?? null);
+});
+
 async function loadOwnedEvent(req: AuthedRequest, id: string) {
   const [e] = await db.select().from(eventsTable).where(eq(eventsTable.id, id));
   if (!e) return { e: null as null, status: 404 as const };
@@ -38,6 +46,21 @@ async function loadOwnedEvent(req: AuthedRequest, id: string) {
   }
   return { e, status: 200 as const };
 }
+
+router.get("/events/public/live-state", async (_req, res): Promise<void> => {
+  const [event] = await db.select().from(eventsTable)
+    .where(eq(eventsTable.status, "live"))
+    .orderBy(desc(eventsTable.startsAt))
+    .limit(1);
+
+  if (!event) {
+    res.json({ event: null, players: [] });
+    return;
+  }
+
+  const players = await db.select().from(playersTable).where(eq(playersTable.eventId, event.id));
+  res.json({ event, players });
+});
 
 router.get("/events/:id", requireAuth, async (req: AuthedRequest, res: Response): Promise<void> => {
   const id = String(req.params["id"]);

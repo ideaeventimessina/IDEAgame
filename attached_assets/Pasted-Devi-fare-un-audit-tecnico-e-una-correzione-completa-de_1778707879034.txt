@@ -1,0 +1,125 @@
+Devi fare un audit tecnico e una correzione completa del flusso Live IDEAgame. Non fare modifiche decorative. Prima leggi il codice, poi applica patch piccole e verificabili.
+
+CONTESTO
+Il progetto è un monorepo PNPM.
+Backend: artifacts/api-server, Express, porta 8080, API sotto /api.
+Frontend: artifacts/ideagame, React/Vite.
+Il flusso Live deve avere tre ruoli separati:
+
+1. REGIA (/control)
+- È l’unico cervello della serata.
+- Crea/seleziona evento.
+- Ha un pulsante chiaro “Avvia partita”.
+- “Avvia partita” NON deve creare subito una sessione Quizzone.
+- Deve solo mettere l’evento in status live e portare il proiettore alla fase QR/lobby.
+- Deve sbloccare il Presentatore.
+- Dopo l’avvio serata, la Regia può restare come controllo tecnico/admin, ma non deve essere il telecomando principale dei giochi.
+
+2. PROIETTORE (/projector e poi Hub pubblico)
+- Prima dell’evento live mostra solo standby con wallpaper Jonny.
+- Quando esiste evento live, deve andare automaticamente al palco pubblico con joinCode: /?e=JOINCODE.
+- La prima fase del palco deve essere QR accesso giocatori, NON dashboard giochi.
+- Deve mostrare QR/code e giocatori che entrano.
+- Solo quando il Presentatore clicca “Avvia partita”, deve passare alla dashboard con tutti i giochi disponibili.
+- Anche se c’è un solo gioco disponibile, deve passare comunque prima dalla dashboard giochi.
+- Non deve partire automaticamente Quizzone.
+
+3. PRESENTATORE (/presenter o /presenter-live)
+- Non deve passare da AdminLayout/Guard admin.
+- Non deve mostrare dashboard admin, eventi admin, “Nuovo evento”, menu admin, ecc.
+- Prima dell’evento live mostra “Presentatore in attesa”.
+- Quando la Regia avvia la partita/live lobby, si aggancia automaticamente all’evento live.
+- Deve mostrare:
+  - nome evento
+  - joinCode
+  - lista giocatori collegati
+  - pulsante “Avvia partita”
+- Quando il Presentatore clicca “Avvia partita”, deve inviare comando al proiettore per mostrare dashboard giochi.
+- Dopo dashboard, il Presentatore deve mostrare i giochi disponibili. Cliccando Quizzone parte il flusso Quizzone su proiettore e telefoni.
+- Il Presentatore è il telecomando della serata, ma la Regia resta sorgente dello stato/evento.
+
+PROBLEMI ATTUALI
+- Piovono 404 in console.
+- /api/events/public/live-state risulta 404 anche con backend attivo su porta 8080.
+- /api/healthz risponde 200, quindi Express è attivo.
+- Probabile endpoint mancante, route non montata, patch non applicata, build non aggiornata o frontend che chiama URL sbagliati.
+- Il proiettore resta in standby anche dopo “Avvia partita”.
+- Il presentatore resta in attesa anche dopo “Avvia partita”.
+- Regia sta ancora mostrando controlli tecnici Quizzone troppo presto.
+- Il tasto “Inizializza con questo pack” non deve esistere nel flusso principale.
+- Se il pack Quizzone è già caricato, deve essere mostrato subito sotto Quizzone come tema disponibile, es. “Serata Disney da Grandi”.
+- Non voglio dropdown tecnico in fondo pagina per scegliere pack quando il contesto è già Quizzone.
+- Non voglio “Serata completa”, sistema vecchio da rimuovere/nascondere dal flusso live principale.
+- Non voglio pulsanti manuali “Invia/Apri a proiettore”, “QR Accesso”, “Game Board” nella Regia principale: il proiettore deve sincronizzarsi da solo.
+
+COSA DEVI FARE
+1. Verifica le route backend reali:
+   - /api/healthz deve dare 200.
+   - Aggiungi o correggi /api/events/public/live-state.
+   - /api/events/public/live-state deve rispondere SEMPRE 200:
+     - se non c’è evento live: { event: null, players: [] }
+     - se c’è evento live: { event, players }
+   - Deve stare PRIMA di /events/:id per evitare collisioni.
+   - Deve essere montata dal router principale.
+
+2. Verifica che Vite proxy inoltri:
+   - /api -> http://127.0.0.1:8080
+   - /socket.io -> http://127.0.0.1:8080 con ws true
+   Se manca, aggiungilo in artifacts/ideagame/vite.config.ts.
+
+3. Correggi /projector:
+   - Polling ogni 1-2 secondi su /api/events/public/live-state.
+   - Se event null: standby Jonny.
+   - Se event live: naviga a /?e=JOINCODE oppure renderizza direttamente Hub pubblico.
+   - Non deve restare in standby dopo evento live.
+
+4. Correggi Hub pubblico:
+   - Con ?e=JOINCODE parte in fase QR/join.
+   - hubPhase iniziale deve essere join.
+   - Deve ascoltare comando socket hub:phase gameboard per passare alla dashboard giochi.
+   - Deve mostrare dashboard giochi solo dopo comando del Presentatore.
+
+5. Correggi Presentatore:
+   - Crea/usa pagina separata PresenterLive.
+   - Non usare AdminLayout, non usare Guard admin.
+   - Usa /api/events/public/live-state per sapere se esiste evento live e i giocatori collegati.
+   - Se event null: mostra “Presentatore in attesa”.
+   - Se event live: mostra evento, joinCode, players, pulsante “Avvia partita”.
+   - “Avvia partita” deve emettere hub:phase gameboard via endpoint backend o socket.
+   - Dopo “Avvia partita”, mostra lista giochi disponibili.
+   - Clic su Quizzone deve creare/avviare sessione solo allora, non prima.
+
+6. Correggi Regia:
+   - “Avvia partita” deve solo:
+     - PATCH evento status live se necessario
+     - emettere hub:phase join
+     - non creare sessione Quizzone
+   - Nascondi o rimuovi dal flusso principale:
+     - Serata completa
+     - Inizializza pack
+     - pannelli tecnici Quizzone prima della scelta del gioco
+     - invii manuali a proiettore
+
+7. Verifica con comandi reali:
+   - pnpm --filter @workspace/api-server run build
+   - pnpm --filter @workspace/ideagame run typecheck
+   - curl -i http://localhost:8080/api/healthz
+   - curl -i http://localhost:8080/api/events/public/live-state
+   - Quest’ultimo deve dare 200, mai 404.
+
+8. Alla fine dammi un report chiaro:
+   - file modificati
+   - cosa è stato sistemato
+   - comandi eseguiti
+   - risultato dei curl
+   - eventuali problemi residui
+
+IMPORTANTE
+Non fare refactor enorme.
+Non aggiungere nuove feature decorative.
+Non generare altri sistemi paralleli.
+Non lasciare il Presentatore dentro l’admin.
+Non lasciare il Proiettore fermo in standby dopo evento live.
+Non far partire Quizzone automaticamente dalla Regia.
+Il flusso corretto è:
+Regia Avvia partita -> Proiettore QR + Presentatore sbloccato -> Presentatore Avvia partita -> Proiettore dashboard giochi -> Presentatore sceglie Quizzone -> parte Quizzone.

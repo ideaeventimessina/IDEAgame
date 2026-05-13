@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
 import { Tv, Smartphone, ShieldCheck, Rocket, LayoutGrid, X, MonitorPlay } from 'lucide-react';
 import { useT } from '@/i18n';
@@ -13,6 +13,21 @@ export function DemoSwitcher() {
   const [open, setOpen] = useState(false);
   const t = useT();
   const { user, role } = useAuth();
+  const urlParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+  const urlJoinCode = urlParams.get('e')?.toUpperCase() ?? '';
+  const [projectorJoinCode, setProjectorJoinCode] = useState(urlJoinCode);
+
+  useEffect(() => {
+    if (urlJoinCode || !user) return;
+    fetch('/api/events/current', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(ev => {
+        if (ev?.joinCode) setProjectorJoinCode(String(ev.joinCode).toUpperCase());
+      })
+      .catch(() => {});
+  }, [urlJoinCode, user]);
+
+  const projectorPath = projectorJoinCode ? `/?e=${projectorJoinCode}` : '/cockpit';
 
   // Only show the Navigator to authenticated admin/staff users.
   // Unauthenticated projector viewers and players must never see it.

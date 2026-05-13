@@ -298,6 +298,7 @@ export default function LiveControl() {
 
   // Focus mode (hides setup panels, shows only active game controls)
   const [focusMode, setFocusMode] = useState(false);
+  const [advancedControls, setAdvancedControls] = useState(false);
 
   // ─── Hub Game Board pre-load system ────────────────────────────────────────
   const [hubPhase, setHubPhase] = useState<'join' | 'gameboard'>('join');
@@ -325,7 +326,7 @@ export default function LiveControl() {
   const { connected: socketConnected, on } = useEventSocket(selectedEventId || null);
   const { data: events = [] } = useListEvents();
   const { data: sessions = [] } = useListGameSessions(selectedEventId, {
-    query: { queryKey: getListGameSessionsQueryKey(selectedEventId), enabled: !!selectedEventId, refetchInterval: 5000 },
+    query: { queryKey: getListGameSessionsQueryKey(selectedEventId), enabled: !!selectedEventId, refetchInterval: 1000 },
   });
   const { data: teams = [] } = useListTeams(selectedEventId, {
     query: { queryKey: getListTeamsQueryKey(selectedEventId), enabled: !!selectedEventId },
@@ -344,7 +345,7 @@ export default function LiveControl() {
   const lan = useLocalMode();
   const BASE_URL = (import.meta.env.BASE_URL as string) ?? '/';
   const joinUrl = `${lan.effectiveOrigin}${BASE_URL}play?e=${joinCode}`.replace(/([^:])\/\//g, '$1/');
-  const projectorUrl = `${lan.effectiveOrigin}${BASE_URL}?e=${joinCode}`.replace(/([^:])\/\//g, '$1/');
+  const projectorUrl = `${lan.effectiveOrigin}${BASE_URL}projector`.replace(/([^:])\/\//g, '$1/');
 
   useEffect(() => {
     if (!selectedEventId && events.length > 0) setSelectedEventId(events[0]!.id);
@@ -362,14 +363,18 @@ export default function LiveControl() {
 
   useEffect(() => {
     if (!selectedEventId) return;
+    const refreshSessions = () => qc.invalidateQueries({ queryKey: getListGameSessionsQueryKey(selectedEventId) });
     const unsubs = [
       on('score:updated', () => {
         qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) });
       }),
       on('team:updated', () => qc.invalidateQueries({ queryKey: getListTeamsQueryKey(selectedEventId) })),
-      on('game:started', () => qc.invalidateQueries({ queryKey: getListGameSessionsQueryKey(selectedEventId) })),
-      on('game:ended', () => qc.invalidateQueries({ queryKey: getListGameSessionsQueryKey(selectedEventId) })),
-      on('game:paused', () => qc.invalidateQueries({ queryKey: getListGameSessionsQueryKey(selectedEventId) })),
+      on('game:session_created', refreshSessions),
+      on('game:started', refreshSessions),
+      on('game:resumed', refreshSessions),
+      on('game:ended', refreshSessions),
+      on('game:paused', refreshSessions),
+      on('round:changed', refreshSessions),
       on<{ count: number }>('quiz:answer_received', ({ count }) => {
         setQuizzoneResponseCount(count);
       }),
@@ -621,6 +626,23 @@ export default function LiveControl() {
     setPreloadedThemes(restored);
   }, [selectedEventId]);
 
+  // If a safe game has exactly one available theme, preload it automatically.
+  // Adult-only stays manual because it needs an explicit host choice/confirmation.
+  useEffect(() => {
+    if (!selectedEventId || !selectedEvent) return;
+    const enabled = (selectedEvent.enabledGames as string[] | undefined) ?? [];
+    enabled.forEach(slug => {
+      if (slug === 'adult-only') return;
+      if (preloadedThemes[slug]) return;
+      const sets = allGameSets[slug] ?? [];
+      if (sets.length === 1) {
+        const only = sets[0]!;
+        void preloadTheme(slug, only.id, only.name);
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEventId, selectedEvent?.id, allGameSets, preloadedThemes]);
+
   // Poll response count when question is active and not revealed
   useEffect(() => {
     if (!session?.id || !quizzoneActive || quizzoneRevealed) {
@@ -721,6 +743,31 @@ export default function LiveControl() {
   }, [toast]);
 
   const confirm = (dialog: ConfirmDialog) => setConfirmDialog(dialog);
+
+  const handleLaunchLobby = () => withBusy(async () => {
+    if (!selectedEventId) return;
+
+    await apiFetch(`/events/${selectedEventId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'live' }),
+    });
+
+    await Promise.allSettled([
+      apiFetch(`/panic/events/${selectedEventId}/emit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event: 'projector:activate', payload: {} }),
+      }),
+      apiFetch(`/panic/events/${selectedEventId}/emit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event: 'hub:phase', payload: { phase: 'join' } }),
+      }),
+    ]);
+
+    toast({ title: 'Serata avviata', description: 'Proiettore su QR e presentatore agganciato.' });
+  });
 
   const handleCreateSession = () => withBusy(async () => {
     // End any existing non-ended session first so the projector resets cleanly
@@ -1943,10 +1990,22 @@ export default function LiveControl() {
         <div className={`flex items-center justify-between ${focusMode ? 'pt-12' : ''}`}>
           <button onClick={() => navigate('/')} className="rounded-full border border-border p-2 hover-elevate"><X className="h-4 w-4" /></button>
           <div className="flex items-center gap-2">
-            <div className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Cockpit animatore</div>
+            <div className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Regia live</div>
             {socketConnected ? <Wifi className="h-3 w-3 text-green-400" /> : <WifiOff className="h-3 w-3 text-amber-400 animate-pulse" />}
+            <button
+              onClick={() => setAdvancedControls(v => !v)}
+              className={`rounded-full border px-3 py-1 text-[10px] font-black transition-all ${advancedControls ? 'border-primary bg-primary text-primary-foreground' : 'border-border text-muted-foreground hover:text-foreground'}`}
+            >
+              {advancedControls ? 'Semplice' : 'Avanzate'}
+            </button>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate('/admin/events')}
+              title="Admin eventi"
+              className="rounded-full border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-xs font-black text-amber-300 hover:bg-amber-400/20">
+              Admin
+            </button>
             {session && session.status === 'running' && (
               <button
                 onClick={() => setFocusMode(f => !f)}
@@ -2013,7 +2072,7 @@ export default function LiveControl() {
             </div>
           )}
 
-          {selectedEventId && (
+          {selectedEventId && advancedControls && (
             <div>
               <div className="flex items-center justify-between mb-1">
                 <div className="text-xs uppercase tracking-widest text-muted-foreground">Sessione di gioco</div>
@@ -2070,268 +2129,6 @@ export default function LiveControl() {
             </div>
           )}
         </div>}
-
-        {/* ─── Audio Live panel ─── */}
-        {!focusMode && <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <Music className="h-4 w-4 text-primary" />
-            <div className="text-xs uppercase tracking-widest text-muted-foreground flex-1">Audio Live</div>
-            <button
-              onClick={() => toggleSfx()}
-              className={`rounded-full border px-2.5 py-0.5 text-xs font-bold transition-all ${audioSettings.sfxEnabled ? 'border-green-500/40 bg-green-500/10 text-green-400' : 'border-border text-muted-foreground'}`}>
-              {audioSettings.sfxEnabled ? '🔊 ON' : '🔇 OFF'}
-            </button>
-          </div>
-
-          {/* Master volume */}
-          <div className="flex items-center gap-3">
-            <VolumeX className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-            <input type="range" min={0} max={1} step={0.05} value={audioSettings.masterVolume}
-              onChange={e => setMasterVolume(parseFloat(e.target.value))}
-              className="flex-1 accent-primary" />
-            <Volume2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-            <span className="text-xs tabular-nums text-muted-foreground w-8 text-right">{Math.round(audioSettings.masterVolume * 100)}%</span>
-          </div>
-
-          {/* Quick stinger buttons — emit via socket so audio plays on the PROJECTOR device */}
-          <div className="flex flex-wrap gap-2">
-            {[
-              { label: '👏 Applausi',   stinger: 'applause' },
-              { label: '🥁 Suspense',   stinger: 'tension_loop' },
-              { label: '🏆 Vincitore',  stinger: 'winner_stinger' },
-              { label: '💫 Transizione',stinger: 'transition_whoosh' },
-            ].map(({ label, stinger }) => (
-              <button key={stinger}
-                onClick={() => {
-                  if (!selectedEventId) return;
-                  apiFetch(`/panic/events/${selectedEventId}/emit`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ event: 'audio:stinger', payload: { type: stinger } }),
-                  }).catch(() => null);
-                }}
-                disabled={!audioSettings.sfxEnabled || !selectedEventId}
-                className="rounded-xl border border-border px-3 py-1.5 text-xs font-bold hover:bg-secondary/30 disabled:opacity-40 transition-all">
-                {label}
-              </button>
-            ))}
-            <button
-              onClick={() => {
-                if (!selectedEventId) return;
-                apiFetch(`/panic/events/${selectedEventId}/emit`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ event: 'audio:stop', payload: {} }),
-                }).catch(() => null);
-              }}
-              disabled={!selectedEventId}
-              className="rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-1.5 text-xs font-bold text-destructive hover:bg-destructive/20 disabled:opacity-40 transition-all">
-              <Mic2 className="h-3 w-3 inline mr-1" />Stop tutto
-            </button>
-          </div>
-        </div>}
-
-        {/* ─── Hub Game Board panel ─── */}
-        {selectedEventId && !focusMode && (
-          <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
-            <div className="flex items-center gap-2">
-              <span className="text-base">📺</span>
-              <div className="text-xs uppercase tracking-widest text-muted-foreground flex-1">Hub · Schermo Proiettore</div>
-              <div className={`text-[10px] font-bold rounded-full px-2 py-0.5 border ${hubPhase === 'gameboard' ? 'border-green-500/40 bg-green-500/10 text-green-400' : 'border-border text-muted-foreground'}`}>
-                {hubPhase === 'gameboard' ? '🎮 Game Board' : '📱 QR Accesso'}
-              </div>
-            </div>
-            {joinCode && (
-              <div className="flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2">
-                <span className="text-xs text-muted-foreground flex-1 truncate font-mono">{projectorUrl}</span>
-                <a href={projectorUrl} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-[11px] font-black text-primary-foreground hover:bg-primary/90 transition-colors whitespace-nowrap">
-                  <ExternalLink className="h-3 w-3" /> Apri Proiettore
-                </a>
-              </div>
-            )}
-
-            {/* Phase toggle */}
-            <div className="flex gap-2">
-              <button
-                onClick={() => void emitHubPhase('join')}
-                disabled={hubPhase === 'join' || hubPhaseBusy}
-                className={`flex-1 rounded-xl border py-2 text-xs font-bold transition-all disabled:opacity-50 ${hubPhase === 'join' ? 'border-primary/60 bg-primary/15 text-primary' : 'border-border text-muted-foreground hover:bg-secondary/30'}`}
-              >📱 QR Accesso</button>
-              <button
-                onClick={() => void emitHubPhase('gameboard')}
-                disabled={hubPhase === 'gameboard' || hubPhaseBusy}
-                className={`flex-1 rounded-xl border py-2 text-xs font-bold transition-all disabled:opacity-50 ${hubPhase === 'gameboard' ? 'border-green-500/60 bg-green-500/15 text-green-400' : 'border-border text-muted-foreground hover:bg-secondary/30'}`}
-              >🎮 Game Board</button>
-            </div>
-
-            {/* Per-game preload rows */}
-            <div className="space-y-2">
-              <div className="text-[10px] uppercase tracking-widest text-muted-foreground/60">Pre-carica tema per ogni gioco</div>
-              {(selectedEvent?.enabledGames as string[] | undefined ?? [])
-                .map(slug => ({ slug, game: games.find((g: { slug: string }) => g.slug === slug) }))
-                .filter(({ game }) => !!game)
-                .map(({ slug, game }) => {
-                  const sets = allGameSets[slug] ?? [];
-                  const loaded = preloadedThemes[slug] ?? null;
-                  const busy = preloadBusy[slug] ?? false;
-                  const canLaunch = !!loaded && !!selectedEventId;
-                  return (
-                    <div key={slug} className="rounded-xl border border-border bg-background/40 p-2.5 space-y-2">
-                      <div className="flex items-center gap-2">
-                        <div className="text-xs font-black truncate flex-1" style={{ color: (game as { accentColor: string }).accentColor }}>
-                          {(game as { name: string }).name}
-                        </div>
-                        {loaded ? (
-                          <div className="flex items-center gap-1 rounded-full border border-green-500/40 bg-green-500/10 px-2 py-0.5 text-[10px] font-bold text-green-400">
-                            <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
-                            {loaded.name}
-                          </div>
-                        ) : (
-                          <div className="rounded-full border border-amber-500/30 bg-amber-500/8 px-2 py-0.5 text-[10px] font-bold text-amber-400/70">
-                            Nessun tema
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex gap-1.5">
-                        <select
-                          value={loaded?.id ?? ''}
-                          onChange={e => {
-                            const opt = sets.find(s => s.id === e.target.value);
-                            if (opt) void preloadTheme(slug, opt.id, opt.name);
-                          }}
-                          className="flex-1 rounded-lg border border-border bg-background px-2 py-1.5 text-[11px] text-foreground"
-                        >
-                          <option value="">{sets.length === 0 ? 'Nessun set disponibile' : '— Seleziona tema —'}</option>
-                          {sets.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                        </select>
-                        {loaded && (
-                          <button
-                            onClick={() => void clearPreloadTheme(slug)}
-                            className="rounded-lg border border-border px-2 text-xs text-muted-foreground hover:text-destructive hover:border-destructive/40 transition-colors"
-                            title="Rimuovi tema"
-                          >✕</button>
-                        )}
-                        <button
-                          onClick={() => void handleAvviaSolo(slug)}
-                          disabled={!canLaunch || busy}
-                          className="flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-[11px] font-black text-primary-foreground disabled:opacity-40 transition-all hover:bg-primary/90"
-                          title={!loaded ? 'Seleziona prima un tema' : 'Avvia sessione con questo tema'}
-                        >
-                          {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
-                          Avvia
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              {(selectedEvent?.enabledGames as string[] | undefined ?? []).length === 0 && (
-                <div className="text-xs text-muted-foreground italic">Nessun gioco abilitato per questo evento.</div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ─── Serata Completa panel ─── */}
-        {selectedEventId && (
-          <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
-            <div className="flex items-center gap-2">
-              <span className="text-base">✨</span>
-              <div className="text-xs uppercase tracking-widest text-muted-foreground flex-1">Serata Completa</div>
-              {eveningMode && (
-                <a href={`${BASE}serata-completa?e=${selectedEventId}`} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-xs text-primary hover:underline">
-                  <ExternalLink className="h-3 w-3" /> Scoreboard
-                </a>
-              )}
-            </div>
-
-            {eveningMode && (
-              <>
-                {/* Status */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className={`rounded-full border px-2.5 py-0.5 text-xs font-bold ${
-                    eveningMode.status === 'running' ? 'border-green-500/40 bg-green-500/10 text-green-400' :
-                    eveningMode.status === 'ended'   ? 'border-primary/40 bg-primary/10 text-primary' :
-                    'border-border text-muted-foreground'
-                  }`}>
-                    {eveningMode.status === 'idle'    ? '⏳ In attesa' :
-                     eveningMode.status === 'running' ? '⚡ In corso' : '🏁 Terminata'}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {eveningMode.playlist.filter(g => g.status === 'done').length}/{eveningMode.playlist.length} completati
-                  </span>
-                  <button onClick={() => void handleEveningReset()} disabled={eveningBusy}
-                    className="ml-auto text-xs text-muted-foreground hover:text-destructive disabled:opacity-40">↺</button>
-                </div>
-
-                {/* Playlist mini */}
-                <div className="flex gap-2">
-                  {eveningMode.playlist.map((g) => (
-                    <div key={g.slug} className={`flex-1 flex flex-col items-center gap-1 rounded-xl border py-2 text-center ${
-                      g.status === 'running' ? 'border-green-500/40 bg-green-500/10' :
-                      g.status === 'done'    ? 'border-border/30 opacity-50'         :
-                      'border-border/20 opacity-30'
-                    }`}>
-                      <span className="text-lg">{g.emoji}</span>
-                      <span className={`text-[9px] font-black uppercase tracking-widest ${
-                        g.status === 'running' ? 'text-green-400' :
-                        g.status === 'done'    ? 'text-muted-foreground' : 'text-muted-foreground/40'
-                      }`}>
-                        {g.status === 'running' ? '⚡' : g.status === 'done' ? '✓' : '·'}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Action */}
-                {eveningMode.status !== 'ended' && (
-                  <button onClick={() => void handleEveningAdvance()} disabled={eveningBusy}
-                    className="w-full flex items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-black text-primary-foreground disabled:opacity-40">
-                    {eveningBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
-                    {eveningMode.playlist.findIndex(g => g.status === 'pending') >= 0
-                      ? `Prossimo: ${eveningMode.playlist.find(g => g.status === 'pending')?.label ?? ''}`
-                      : 'Fine serata →'}
-                  </button>
-                )}
-                {eveningMode.status === 'ended' && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <button onClick={() => navigate(`/serata-completa?e=${selectedEventId}`)}
-                      className="flex items-center justify-center gap-2 rounded-xl border border-primary/40 bg-primary/10 py-2.5 text-sm font-bold text-primary">
-                      <Trophy className="h-4 w-4" /> Podio globale
-                    </button>
-                    <button onClick={() => void handleEveningReset()} disabled={eveningBusy}
-                      className="flex items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-sm font-bold disabled:opacity-40">
-                      {eveningBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : '↺'} Ricomincia
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-
-            {!eveningMode && (
-              <div className="space-y-3">
-                {/* Adult Only toggle */}
-                <div className="flex items-center gap-3 rounded-xl border border-border bg-background/40 px-4 py-3">
-                  <button
-                    onClick={() => setEveningIncludeAdult(v => !v)}
-                    className={`relative h-6 w-11 shrink-0 rounded-full border-2 transition-colors ${eveningIncludeAdult ? 'border-pink-500 bg-pink-500' : 'border-border bg-muted/30'}`}>
-                    <span className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${eveningIncludeAdult ? 'translate-x-5' : 'translate-x-0'}`} />
-                  </button>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs font-bold">Includi Adult Only 🔞</div>
-                    <div className="text-[10px] text-muted-foreground">Sequenza: Percorso → Coppie → Quizzone → Adult Only</div>
-                  </div>
-                </div>
-                <button onClick={() => void handleEveningInit()} disabled={eveningBusy}
-                  className="w-full flex items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-black text-primary-foreground disabled:opacity-40">
-                  {eveningBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                  Inizia serata completa
-                </button>
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Game controls */}
         {session && (
@@ -4048,8 +3845,19 @@ export default function LiveControl() {
         )}
 
         {!session && sessions.length === 0 && selectedEventId && (
-          <div className="rounded-2xl border border-dashed border-border bg-card/40 p-8 text-center text-muted-foreground text-sm">
-            Crea una sessione di gioco per iniziare
+          <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 p-6 text-center">
+            <div className="text-xs uppercase tracking-widest text-amber-300/80">Partita non ancora avviata</div>
+            <div className="mt-2 text-lg font-black text-white">Avvia la partita dalla Regia</div>
+            <p className="mt-2 text-sm text-white/55">
+              Il proiettore mostrerà il QR code e il presentatore si aggancerà alla serata.
+            </p>
+            <button
+              onClick={handleLaunchLobby}
+              disabled={busy}
+              className="mt-5 w-full rounded-2xl bg-primary px-5 py-4 text-base font-black text-primary-foreground disabled:opacity-40"
+            >
+              {busy ? 'Avvio in corso...' : 'Avvia partita'}
+            </button>
           </div>
         )}
       </div>

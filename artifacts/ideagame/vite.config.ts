@@ -59,6 +59,17 @@ export default defineConfig({
     strictPort: true,
     host: "0.0.0.0",
     allowedHosts: true,
+    proxy: {
+      "/api": {
+        target: "http://127.0.0.1:8080",
+        changeOrigin: true,
+      },
+      "/socket.io": {
+        target: "http://127.0.0.1:8080",
+        ws: true,
+        changeOrigin: true,
+      },
+    },
     headers: {
       "Cache-Control": "no-store, no-cache, must-revalidate",
       "Pragma": "no-cache",
