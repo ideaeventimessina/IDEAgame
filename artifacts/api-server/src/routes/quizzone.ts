@@ -62,6 +62,36 @@ async function getResponseCount(sessionId: string, roundIndex: number): Promise<
   return row?.n ?? 0;
 }
 
+async function buildRevealScores(eventId: string, roundIndex: number) {
+  const teams = await db.select().from(teamsTable).where(eq(teamsTable.eventId, eventId));
+  const scoreRows = await db.select({
+    teamId: scoresTable.teamId,
+    total: sql<number>`SUM(${scoresTable.points})`,
+  }).from(scoresTable)
+    .where(and(eq(scoresTable.eventId, eventId), eq(scoresTable.gameSlug, "quizzone")))
+    .groupBy(scoresTable.teamId);
+  const roundRows = await db.select({
+    teamId: scoresTable.teamId,
+    total: sql<number>`SUM(${scoresTable.points})`,
+  }).from(scoresTable)
+    .where(and(
+      eq(scoresTable.eventId, eventId),
+      eq(scoresTable.gameSlug, "quizzone"),
+      eq(scoresTable.round, roundIndex + 1),
+    ))
+    .groupBy(scoresTable.teamId);
+
+  const scoreMap = new Map(scoreRows.map(r => [r.teamId, Number(r.total)]));
+  const roundMap = new Map(roundRows.map(r => [r.teamId, Number(r.total)]));
+  return teams.map(t => ({
+    teamId: t.id,
+    name: t.name,
+    color: t.color,
+    roundPoints: roundMap.get(t.id) ?? 0,
+    total: scoreMap.get(t.id) ?? 0,
+  }));
+}
+
 // Strip correctAnswer for public broadcast
 function publicQuestion(payload: QuizzoneRoundPayload, sessionId: string) {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -225,8 +255,17 @@ router.get("/quizzone/sessions/:id/state", async (req: AuthedRequest, res): Prom
   const responseCount = await getResponseCount(id, payload.roundIndex);
 
   const base = publicQuestion(payload, id);
+  const revealData = payload.revealed
+    ? {
+        correctAnswer: payload.correctAnswer,
+        explanation: payload.explanation,
+        scores: await buildRevealScores(session.eventId, payload.roundIndex),
+      }
+    : {};
+
   res.json({
     ...base,
+    ...revealData,
     hasQuestion: true,
     status: session.status,
     roundId: round!.id,
