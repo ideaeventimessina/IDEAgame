@@ -87,19 +87,21 @@ export default function GameQuizzone() {
   useEffect(() => { void fetchState(); }, [fetchState]);
 
   useEffect(() => {
-    if (!sessionId) return;
+    if (!eventId) return;
     const unsubs = [
       on<QuizzoneState & { sessionId: string }>('quiz:question', (data) => {
-        if (data.sessionId !== sessionId) return;
         setReveal(null);
         setState(prev => ({ ...prev!, ...data, hasQuestion: true }));
         if (data.questionStartedAt && data.timeLimit) startCountdown(data.questionStartedAt, data.timeLimit);
         setResponseCount(0);
+        setGameEnded(false);
         playLoop('tension_loop');
+      }),
+      on<{ sessionId: string }>('quiz:started', () => {
+        setState(prev => prev ? { ...prev, status: 'running' } : null);
       }),
       on<{ sessionId: string; roundIndex: number; correctAnswer: number; explanation: string; scores: RevealState['scores'] }>(
         'quiz:reveal', (data) => {
-          if (data.sessionId !== sessionId) return;
           setReveal({ roundIndex: data.roundIndex, correctAnswer: data.correctAnswer, explanation: data.explanation, scores: data.scores });
           if (timerRef.current) clearInterval(timerRef.current);
           setTimeLeft(0);
@@ -107,18 +109,16 @@ export default function GameQuizzone() {
           playLoop('round_loop');
         }),
       on<{ count: number; sessionId: string }>('quiz:answer_received', (data) => {
-        if (data.sessionId !== sessionId) return;
         setResponseCount(data.count);
       }),
-      on<{ sessionId: string }>('quiz:ended', (data) => {
-        if (data.sessionId !== sessionId) return;
+      on<{ sessionId: string }>('quiz:ended', () => {
         setGameEnded(true);
         if (timerRef.current) clearInterval(timerRef.current);
         playStinger('winner_stinger');
       }),
     ];
     return () => { unsubs.forEach(u => u()); };
-  }, [sessionId, on, startCountdown]);
+  }, [eventId, on, startCountdown]);
 
   useEffect(() => {
     pollRef.current = setInterval(() => { void fetchState(); }, 5000);

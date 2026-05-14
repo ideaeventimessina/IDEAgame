@@ -376,6 +376,10 @@ export default function LiveControl() {
       on('game:ended', refreshSessions),
       on('game:paused', refreshSessions),
       on('round:changed', refreshSessions),
+      on<{ slug: string; sessionId: string; eventId: string }>('hub:start-game', ({ sessionId }) => {
+        setSelectedSessionId(sessionId);
+        refreshSessions();
+      }),
       on<{ count: number }>('quiz:answer_received', ({ count }) => {
         setQuizzoneResponseCount(count);
       }),
@@ -1721,7 +1725,21 @@ export default function LiveControl() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ packId: selectedPackId }),
       });
-      setQuizzoneMsg('✓ Pack inizializzato!');
+      // Auto-start first question immediately after init
+      await apiFetch(`/quizzone/sessions/${session.id}/question`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ packId: selectedPackId, roundIndex: 0 }),
+      });
+      const round = packDetail?.generatedJson?.[0];
+      setTime(round?.timeLimit ?? 30);
+      setTimerPaused(false);
+      setQuizzoneRoundIdx(0);
+      setQuizzoneRevealed(false);
+      setQuizzoneActive(true);
+      setQuizzoneResponseCount(0);
+      setRevealAnswer(false);
+      setQuizzoneMsg('✓ Domanda 1 avviata!');
     } catch (e) {
       const msg = (e as Error).message;
       setError(msg);
