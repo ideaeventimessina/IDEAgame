@@ -1,14 +1,20 @@
 import { useState, useEffect, useRef } from 'react';
 import { AdminLayout } from './AdminLayout';
-import { Volume2, VolumeX, Music, Zap, RotateCcw, Play, Square, Upload, Trash2, CheckCircle2, XCircle } from 'lucide-react';
+import { Volume2, VolumeX, Music, Zap, RotateCcw, Play, Square, Upload, Trash2, CheckCircle2, XCircle, Check, X, Loader2 } from 'lucide-react';
 import { useAudioSettings } from '@/contexts/AudioContext';
 import { AudioManager, type AudioSlug, type AudioType } from '@/audio/AudioManager';
+import {
+  useListSystemSettings, useUpsertSystemSetting, getListSystemSettingsQueryKey,
+} from '@workspace/api-client-react';
+import { useQueryClient } from '@tanstack/react-query';
 
 const BASE = (import.meta.env.BASE_URL as string) ?? '/';
 function apiFetch(path: string, opts?: RequestInit) {
   const url = `${BASE}api${path}`.replace(/([^:])\/\//g, '$1/');
   return fetch(url, { credentials: 'include', ...opts });
 }
+
+// ── Audio Engine ────────────────────────────────────────────────────────────
 
 const SLUGS: { slug: AudioSlug | string; label: string }[] = [
   { slug: 'global', label: 'Globale (fallback per tutti)' },
@@ -54,6 +60,155 @@ const TYPES: { type: AudioType | string; label: string; category: 'loop' | 'stin
 
 interface UploadedFile { slug: string; type: string; filename: string; size: number }
 
+// ── Music Slots (sottofondo per gioco — object storage) ─────────────────────
+
+type MusicPaths = {
+  lobby: string;
+  quizzone: string;
+  'sfida-ballo': string;
+  'percorso-a-risate': string;
+  'gioco-coppie': string;
+  'percorso-sfida': string;
+  'percorso-domanda': string;
+  'percorso-mimo': string;
+  'percorso-ballo': string;
+  'percorso-veloce': string;
+  'percorso-coppia': string;
+  'percorso-reazione': string;
+  'percorso-fantasia': string;
+};
+
+const MUSIC_DEFAULTS: MusicPaths = {
+  lobby: '', quizzone: '', 'sfida-ballo': '', 'percorso-a-risate': '', 'gioco-coppie': '',
+  'percorso-sfida': '', 'percorso-domanda': '', 'percorso-mimo': '', 'percorso-ballo': '',
+  'percorso-veloce': '', 'percorso-coppia': '', 'percorso-reazione': '', 'percorso-fantasia': '',
+};
+
+const MUSIC_SLOTS: { key: keyof MusicPaths; label: string; icon: string; fallback: string }[] = [
+  { key: 'lobby',             label: 'Lobby / Home (sottofondo principale)', icon: '🏠', fallback: '/audio/jonny-world/global/lobby_loop.mp3' },
+  { key: 'quizzone',          label: 'Quizzone',                             icon: '❓', fallback: '/audio/jonny-world/quizzone/round_loop.mp3' },
+  { key: 'sfida-ballo',       label: 'Sfida di Ballo',                       icon: '💃', fallback: '/audio/jonny-world/sfida-ballo/round_loop.mp3' },
+  { key: 'percorso-a-risate', label: 'Percorso a Risate (generale)',          icon: '⚡', fallback: '/audio/jonny-world/percorso-a-risate/round_loop.mp3' },
+  { key: 'gioco-coppie',      label: 'Gioco delle Coppie',                   icon: '🃏', fallback: '/audio/jonny-world/gioco-coppie/tension_loop.mp3' },
+];
+
+const PERCORSO_CHALLENGE_SLOTS: { key: keyof MusicPaths; label: string; icon: string }[] = [
+  { key: 'percorso-sfida',    label: 'Sfida fisica',  icon: '⚡' },
+  { key: 'percorso-domanda',  label: 'Domanda',       icon: '❓' },
+  { key: 'percorso-mimo',     label: 'Mimo',          icon: '🎭' },
+  { key: 'percorso-ballo',    label: 'Ballo',         icon: '💃' },
+  { key: 'percorso-veloce',   label: 'Veloce',        icon: '🏃' },
+  { key: 'percorso-coppia',   label: 'Coppia',        icon: '👫' },
+  { key: 'percorso-reazione', label: 'Reazione',      icon: '😱' },
+  { key: 'percorso-fantasia', label: 'Fantasia',      icon: '🌟' },
+];
+
+// ── MusicUploader (object-storage presigned URL upload) ─────────────────────
+
+function MusicUploader({
+  slotKey, label, icon, currentPath, fallback, onUploaded, onClear,
+}: {
+  slotKey: keyof MusicPaths;
+  label: string;
+  icon: string;
+  currentPath: string;
+  fallback: string;
+  onUploaded: (objectPath: string) => void;
+  onClear: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadDone, setUploadDone] = useState(false);
+
+  const audioSrc = currentPath ? `/api/storage${currentPath}` : fallback;
+
+  const handleFile = async (file: File) => {
+    if (!file.type.startsWith('audio/') && !file.name.match(/\.(mp3|ogg|wav|m4a|aac|flac)$/i)) {
+      setUploadError('Seleziona un file audio (mp3, ogg, wav…)');
+      return;
+    }
+    setUploading(true);
+    setUploadError(null);
+    setUploadDone(false);
+    try {
+      const urlRes = await fetch('/api/storage/uploads/request-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type || 'audio/mpeg' }),
+      });
+      if (!urlRes.ok) throw new Error('Errore generazione URL di caricamento');
+      const { uploadURL, objectPath } = await urlRes.json() as { uploadURL: string; objectPath: string };
+
+      const putRes = await fetch(uploadURL, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type || 'audio/mpeg' },
+      });
+      if (!putRes.ok) throw new Error('Errore caricamento file su storage');
+
+      onUploaded(objectPath);
+      setUploadDone(true);
+      setTimeout(() => setUploadDone(false), 3000);
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : 'Errore upload');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-xl">{icon}</span>
+          <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">{label}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {uploadDone && <span className="flex items-center gap-1 text-xs text-emerald-400"><Check className="h-3 w-3" /> Caricato!</span>}
+          {currentPath && (
+            <button onClick={onClear} className="flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs text-muted-foreground hover:border-destructive/60 hover:text-destructive">
+              <X className="h-3 w-3" /> Rimuovi
+            </button>
+          )}
+        </div>
+      </div>
+
+      <audio key={audioSrc} controls src={audioSrc} className="w-full h-8" style={{ colorScheme: 'dark' }} />
+
+      <div className="flex items-center gap-3">
+        <input
+          ref={inputRef}
+          type="file"
+          accept="audio/*,.mp3,.ogg,.wav,.m4a,.aac,.flac"
+          className="hidden"
+          onChange={e => { const f = e.target.files?.[0]; if (f) void handleFile(f); e.target.value = ''; }}
+        />
+        <button
+          onClick={() => inputRef.current?.click()}
+          disabled={uploading}
+          className="flex items-center gap-2 rounded-xl border border-primary/50 bg-primary/10 px-4 py-2 text-sm font-bold text-primary hover:bg-primary/20 disabled:opacity-40 transition-colors"
+        >
+          {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+          {uploading ? 'Caricamento…' : currentPath ? 'Sostituisci file' : 'Carica file audio'}
+        </button>
+        {currentPath && (
+          <span className="text-xs text-muted-foreground truncate max-w-[180px]" title={currentPath}>
+            {currentPath.split('/').pop()}
+          </span>
+        )}
+      </div>
+
+      {uploadError && (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">{uploadError}</div>
+      )}
+    </div>
+  );
+}
+
+// ── Sub-components ──────────────────────────────────────────────────────────
+
 function Slider({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
   return (
     <div className="flex items-center gap-4">
@@ -82,11 +237,14 @@ function Toggle({ label, description, enabled, onToggle }: { label: string; desc
   );
 }
 
+// ── Main Component ──────────────────────────────────────────────────────────
+
 export default function AudioSettingsPage() {
   const { settings, setMasterVolume, setMusicVolume, setSfxVolume, toggleMusic, toggleSfx, toggleMute, resetDefaults } = useAudioSettings();
   const [testPlaying, setTestPlaying] = useState(false);
   const [testMsg, setTestMsg] = useState('');
 
+  // Audio Engine upload (multipart, per slug/type)
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [uploadSlug, setUploadSlug] = useState<string>('global');
   const [uploadType, setUploadType] = useState<string>('lobby_loop');
@@ -94,6 +252,34 @@ export default function AudioSettingsPage() {
   const [uploadMsg, setUploadMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Sottofondo per gioco (object-storage presigned URL, saved in tenant.settings)
+  const qc = useQueryClient();
+  const { data: rows = [] } = useListSystemSettings();
+  const upsert = useUpsertSystemSetting();
+  const [musicPaths, setMusicPaths] = useState<MusicPaths>(MUSIC_DEFAULTS);
+  const [fullSettings, setFullSettings] = useState<Record<string, unknown>>({});
+
+  useEffect(() => {
+    const r = rows.find(r => r.key === 'tenant.settings');
+    if (r && typeof r.value === 'object' && r.value !== null) {
+      const stored = r.value as Record<string, unknown>;
+      setFullSettings(stored);
+      const mp = (stored.musicPaths ?? {}) as Partial<MusicPaths>;
+      setMusicPaths({ ...MUSIC_DEFAULTS, ...mp });
+    }
+  }, [rows]);
+
+  const saveMusic = async (key: keyof MusicPaths, objectPath: string) => {
+    const next: MusicPaths = { ...musicPaths, [key]: objectPath };
+    setMusicPaths(next);
+    try {
+      await upsert.mutateAsync({ data: { key: 'tenant.settings', value: { ...fullSettings, musicPaths: next } } });
+      await qc.invalidateQueries({ queryKey: getListSystemSettingsQueryKey() });
+    } catch { /* silently ignore */ }
+  };
+
+  const clearMusic = (key: keyof MusicPaths) => void saveMusic(key, '');
 
   async function loadList() {
     try {
@@ -160,7 +346,7 @@ export default function AudioSettingsPage() {
     <AdminLayout title="Audio Engine">
       <div className="mx-auto max-w-2xl space-y-8">
 
-        {/* Mute globale */}
+        {/* ── Mute globale ─────────────────────────────────────────────────── */}
         <section className="rounded-2xl border border-border bg-card p-6 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-display text-xl font-black flex items-center gap-2">
@@ -179,7 +365,7 @@ export default function AudioSettingsPage() {
           </div>
         </section>
 
-        {/* Toggle canali */}
+        {/* ── Toggle canali ─────────────────────────────────────────────────── */}
         <section className="space-y-3">
           <h2 className="text-display text-lg font-black flex items-center gap-2">
             <Music className="h-4 w-4 text-primary" /> Canali
@@ -188,13 +374,69 @@ export default function AudioSettingsPage() {
           <Toggle label="Effetti sonori" description="Stinger per match, risposte, countdown" enabled={settings.sfxEnabled} onToggle={toggleSfx} />
         </section>
 
-        {/* Upload tracce audio */}
+        {/* ── Sottofondo per gioco (object storage) ────────────────────────── */}
+        <section className="space-y-4">
+          <div className="flex items-center gap-3">
+            <Music className="h-5 w-5 text-primary" />
+            <div>
+              <div className="font-black uppercase tracking-widest text-sm text-primary">Sottofondo per gioco</div>
+              <div className="text-xs text-muted-foreground mt-0.5">
+                Carica un MP3/OGG/WAV per ogni gioco — viene salvato sullo storage dell'app e riprodotto automaticamente durante la partita.
+              </div>
+            </div>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {MUSIC_SLOTS.map(slot => (
+              <MusicUploader
+                key={slot.key}
+                slotKey={slot.key}
+                label={slot.label}
+                icon={slot.icon}
+                fallback={slot.fallback}
+                currentPath={musicPaths[slot.key]}
+                onUploaded={path => void saveMusic(slot.key, path)}
+                onClear={() => clearMusic(slot.key)}
+              />
+            ))}
+          </div>
+        </section>
+
+        {/* ── Percorso a Risate — sfide ─────────────────────────────────────── */}
+        <section className="space-y-4">
+          <div className="flex items-center gap-3">
+            <span className="text-xl">⚡</span>
+            <div>
+              <div className="font-black uppercase tracking-widest text-sm" style={{ color: '#F5B642' }}>
+                Percorso a Risate — per tipo di sfida
+              </div>
+              <div className="text-xs text-muted-foreground mt-0.5">
+                Musica personalizzata per ogni tipo di sfida. Lascia vuoto per usare il sottofondo generale del Percorso.
+              </div>
+            </div>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {PERCORSO_CHALLENGE_SLOTS.map(slot => (
+              <MusicUploader
+                key={slot.key}
+                slotKey={slot.key}
+                label={slot.label}
+                icon={slot.icon}
+                fallback=""
+                currentPath={musicPaths[slot.key] ?? ''}
+                onUploaded={path => void saveMusic(slot.key, path)}
+                onClear={() => clearMusic(slot.key)}
+              />
+            ))}
+          </div>
+        </section>
+
+        {/* ── Carica Tracce Audio (multipart, per slug/type) ───────────────── */}
         <section className="rounded-2xl border border-border bg-card p-6 space-y-5">
           <h2 className="text-display text-lg font-black flex items-center gap-2">
-            <Upload className="h-4 w-4 text-primary" /> Carica Tracce Audio
+            <Upload className="h-4 w-4 text-primary" /> Carica Tracce Audio (Effetti & Loop)
           </h2>
           <div className="text-xs text-muted-foreground">
-            I file caricati sopravvivono ai reset del database. Seleziona gioco e tipo di traccia, poi carica il tuo MP3.
+            Carica effetti e loop per l'Audio Engine (stinger, whoosh, countdown…). I file sopravvivono ai reset del DB.
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -239,7 +481,7 @@ export default function AudioSettingsPage() {
           )}
         </section>
 
-        {/* Tracce caricate */}
+        {/* ── Tracce caricate ──────────────────────────────────────────────── */}
         <section className="rounded-2xl border border-border bg-card p-6 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-display text-lg font-black flex items-center gap-2">
@@ -279,7 +521,7 @@ export default function AudioSettingsPage() {
           )}
         </section>
 
-        {/* Test audio */}
+        {/* ── Test audio ───────────────────────────────────────────────────── */}
         <section className="rounded-2xl border border-border bg-card p-6 space-y-4">
           <h2 className="text-display text-lg font-black flex items-center gap-2">
             <Zap className="h-4 w-4 text-yellow-400" /> Test Audio
@@ -316,7 +558,7 @@ export default function AudioSettingsPage() {
           </button>
         </section>
 
-        {/* Reset */}
+        {/* ── Reset volumi ─────────────────────────────────────────────────── */}
         <div className="flex justify-end">
           <button onClick={resetDefaults}
             className="flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-sm font-bold hover:bg-accent transition-colors">
