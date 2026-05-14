@@ -109,13 +109,36 @@ export default function PresenterLive() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { on } = useEventSocket(event?.id ?? null);
 
+  // Refs used to avoid setState when data hasn't changed (prevents spurious re-renders)
+  const eventSnapRef   = useRef<string>('');   // "<id>|<status>|<name>"
+  const playersSnapRef = useRef<string>('');   // comma-joined IDs
+
+  // Ref for quizzoneQuestion — lets refreshSession read the current value
+  // without being recreated every time the state changes
+  const quizzoneQuestionRef = useRef<QuizzoneQuestion | null>(null);
+  useEffect(() => { quizzoneQuestionRef.current = quizzoneQuestion; }, [quizzoneQuestion]);
+
   // ── polling: event state ────────────────────────────────────────────────────
   const refreshEvent = useCallback(async () => {
     try {
       const state = await apiFetch('/events/public/live-state') as { event: LiveEvent | null; players: Player[] };
-      setEvent(state.event);
-      setPlayers(Array.isArray(state.players) ? state.players : []);
-      if (!state.event) { setDashboardLive(false); setActiveSession(null); }
+      const newEvent   = state.event ?? null;
+      const newPlayers = Array.isArray(state.players) ? state.players : [];
+
+      // Only call setState when something meaningful changed (avoids re-render storm)
+      const eventSnap = newEvent ? `${newEvent.id}|${newEvent.status}|${newEvent.name}` : '';
+      if (eventSnap !== eventSnapRef.current) {
+        eventSnapRef.current = eventSnap;
+        setEvent(newEvent);
+        if (!newEvent) { setDashboardLive(false); setActiveSession(null); }
+      }
+
+      const playersSnap = newPlayers.map(p => p.id).join(',');
+      if (playersSnap !== playersSnapRef.current) {
+        playersSnapRef.current = playersSnap;
+        setPlayers(newPlayers);
+      }
+
       setConnected(true);
     } catch (e) {
       setConnected(false);
@@ -127,11 +150,13 @@ export default function PresenterLive() {
 
   useEffect(() => {
     void refreshEvent();
-    const id = setInterval(refreshEvent, 1500);
+    const id = setInterval(refreshEvent, 5000);
     return () => clearInterval(id);
   }, [refreshEvent]);
 
   // ── polling: active session ─────────────────────────────────────────────────
+  // refreshSession uses quizzoneQuestionRef (not state) so this callback is
+  // stable — it never needs to be recreated when a question arrives via socket.
   const refreshSession = useCallback(async (eventId: string) => {
     try {
       const sessions = await apiFetch(`/events/${eventId}/sessions`) as ActiveSession[];
@@ -141,7 +166,7 @@ export default function PresenterLive() {
       if (running) {
         setActiveSession(running);
         // If it's quizzone and we don't have a question yet, fetch state
-        if (running.gameSlug === 'quizzone' && !quizzoneQuestion) {
+        if (running.gameSlug === 'quizzone' && !quizzoneQuestionRef.current) {
           try {
             const state = await apiFetch(`/quizzone/sessions/${running.id}/state`) as {
               hasQuestion?: boolean; questionText?: string; answers?: string[];
@@ -167,7 +192,7 @@ export default function PresenterLive() {
         }
       }
     } catch { /* silent */ }
-  }, [quizzoneQuestion]);
+  }, []);  // stable — reads quizzoneQuestion via ref, no deps needed
 
   useEffect(() => {
     if (!event?.id) return;

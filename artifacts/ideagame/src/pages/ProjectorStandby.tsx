@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 
 const BASE = (import.meta.env.BASE_URL as string) ?? '/';
@@ -18,16 +18,20 @@ function appPath(path: string) {
 
 export default function ProjectorStandby() {
   const [checked, setChecked] = useState(false);
+  // Guard: prevent double-navigation if two poll ticks land a live event simultaneously
+  const redirectingRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
 
     const check = async () => {
+      if (redirectingRef.current) return;
       try {
         const r = await fetch(appPath('/api/events/public/live-state'), { credentials: 'include' });
         const data = r.ok ? await r.json() as LiveState : null;
 
         if (!cancelled && data?.event?.joinCode) {
+          redirectingRef.current = true;
           window.location.href = appPath(`/?e=${String(data.event.joinCode).toUpperCase()}`);
           return;
         }
@@ -35,16 +39,19 @@ export default function ProjectorStandby() {
         // resta in attesa
       }
 
-      if (!cancelled) setChecked(true);
+      // setChecked(true) is a no-op if already true (React bails out), but the
+      // explicit guard avoids even scheduling the reconciler work.
+      if (!cancelled && !checked) setChecked(true);
     };
 
     void check();
-    const id = window.setInterval(check, 1500);
+    const id = window.setInterval(check, 3000);
 
     return () => {
       cancelled = true;
       window.clearInterval(id);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
