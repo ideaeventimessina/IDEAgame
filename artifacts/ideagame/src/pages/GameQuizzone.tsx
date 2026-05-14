@@ -124,6 +124,7 @@ export default function GameQuizzone() {
         if (timerRef.current) clearInterval(timerRef.current);
         navigate('/');
       }),
+      on('debug:reload-projector', () => { window.location.reload(); }),
     ];
     return () => { unsubs.forEach(u => u()); };
   }, [eventId, on, startCountdown, navigate]);

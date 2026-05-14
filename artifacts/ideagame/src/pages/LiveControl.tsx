@@ -2043,6 +2043,23 @@ export default function LiveControl() {
               className="rounded-full border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-xs font-black text-amber-300 hover:bg-amber-400/20">
               Admin
             </button>
+            {selectedEventId && (
+              <div className="flex items-center gap-1 rounded-full border border-border bg-card px-2 py-1" title="Ricarica singolo dispositivo">
+                <span className="text-[9px] uppercase tracking-widest text-muted-foreground pr-1">↺</span>
+                <button onClick={() => apiFetch(`/panic/events/${selectedEventId}/emit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event: 'debug:reload-projector', payload: {} }) }).catch(() => null)}
+                  className="rounded px-2 py-0.5 text-[10px] font-bold text-blue-400 hover:bg-blue-400/10" title="Ricarica proiettore">
+                  Proj
+                </button>
+                <button onClick={() => apiFetch(`/panic/events/${selectedEventId}/emit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event: 'debug:reload-presenter', payload: {} }) }).catch(() => null)}
+                  className="rounded px-2 py-0.5 text-[10px] font-bold text-purple-400 hover:bg-purple-400/10" title="Ricarica presentatore">
+                  Pres
+                </button>
+                <button onClick={() => window.location.reload()}
+                  className="rounded px-2 py-0.5 text-[10px] font-bold text-amber-400 hover:bg-amber-400/10" title="Ricarica regia">
+                  Regia
+                </button>
+              </div>
+            )}
             {session && session.status === 'running' && (
               <button
                 onClick={() => setFocusMode(f => !f)}

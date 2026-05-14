@@ -23,6 +23,9 @@ const ALLOWED_EVENTS = new Set([
   "audio:stop",
   "audio:loop",
   "projector:activate",
+  // Debug reload — useful for testing after fixes
+  "debug:reload-projector",
+  "debug:reload-presenter",
 ]);
 
 function guardEvent(req: AuthedRequest, event: { tenantId: string | null }): boolean {

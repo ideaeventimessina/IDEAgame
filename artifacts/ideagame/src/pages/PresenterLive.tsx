@@ -263,6 +263,7 @@ export default function PresenterLive() {
         setGameEnded(true);
         if (timerRef.current) clearInterval(timerRef.current);
       }),
+      on('debug:reload-presenter', () => { window.location.reload(); }),
     ];
     return () => unsubs.forEach(u => u?.());
   }, [event?.id, on, startTimer, refreshSession]);
