@@ -95,7 +95,6 @@ export default function GameQuizzone() {
         if (data.questionStartedAt && data.timeLimit) startCountdown(data.questionStartedAt, data.timeLimit);
         setResponseCount(0);
         setGameEnded(false);
-        playLoop('tension_loop');
       }),
       on<{ sessionId: string }>('quiz:started', () => {
         setState(prev => prev ? { ...prev, status: 'running' } : null);
@@ -106,7 +105,6 @@ export default function GameQuizzone() {
           if (timerRef.current) clearInterval(timerRef.current);
           setTimeLeft(0);
           playStinger('score_stinger');
-          playLoop('round_loop');
         }),
       on<{ count: number; sessionId: string }>('quiz:answer_received', (data) => {
         setResponseCount(data.count);

@@ -397,7 +397,7 @@ export default function Hub() {
         navigate(`/scoreboard?e=${eid}`);
       }),
       on('projector:go-hub', () => { setSessionRunning(false); setHubPhase('join'); navigate(urlCode ? `/?e=${urlCode}` : '/'); }),
-      on<{ session: unknown }>('game:ended', () => { setSessionRunning(false); setSessionEnded(true); setHubPhase('join'); }),
+      on<{ session: unknown }>('game:ended', () => { setSessionRunning(false); setSessionEnded(true); setHubPhase('join'); setActiveGameSlug(null); }),
       on<{ phase: 'join' | 'gameboard' }>('hub:phase', ({ phase }) => setHubPhase(phase)),
       on<{ slug: string; sessionId: string; eventId: string }>('hub:start-game', ({ slug, sessionId, eventId }) => {
         const boardPath = SLUG_TO_BOARD[slug];
@@ -423,9 +423,19 @@ export default function Hub() {
         setPendingLoop(slug, type);
         if (audioUnlocked) void AudioManager.playLoop(slug, type);
       }),
+      // Game audio: switch music when a game session starts/ends (covers case where Hub doesn't navigate to board)
+      on<{ sessionId: string; packId?: string; packTitle?: string; totalRounds?: number }>('quiz:started', () => {
+        setActiveGameSlug('quizzone');
+      }),
+      on('quiz:ended', () => {
+        setActiveGameSlug(null);
+      }),
+      on<{ session: { gameSlug: string } }>('game:started', ({ session }) => {
+        if (session?.gameSlug) setActiveGameSlug(session.gameSlug);
+      }),
     ];
     return () => { unsubs.forEach(u => u?.()); };
-  }, [liveEvent?.id, on, navigate, startProjector]);
+  }, [liveEvent?.id, on, navigate, startProjector, setActiveGameSlug]);
 
   // Canonical 3-2-3 slot order: flagship games first, adult-only last in middle row
   const SLUG_ORDER = [
