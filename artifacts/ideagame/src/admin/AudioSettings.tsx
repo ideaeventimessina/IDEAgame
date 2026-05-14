@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { AdminLayout } from './AdminLayout';
-import { Volume2, VolumeX, Music, Zap, RotateCcw, Play, Square, Upload, Trash2, CheckCircle2, XCircle, Check, X, Loader2 } from 'lucide-react';
+import { Volume2, VolumeX, Music, RotateCcw, Upload, Trash2, CheckCircle2, XCircle, Check, X, Loader2 } from 'lucide-react';
 import { useAudioSettings } from '@/contexts/AudioContext';
 import { AudioManager, type AudioSlug, type AudioType } from '@/audio/AudioManager';
 import {
@@ -241,8 +241,6 @@ function Toggle({ label, description, enabled, onToggle }: { label: string; desc
 
 export default function AudioSettingsPage() {
   const { settings, setMasterVolume, setMusicVolume, setSfxVolume, toggleMusic, toggleSfx, toggleMute, resetDefaults } = useAudioSettings();
-  const [testPlaying, setTestPlaying] = useState(false);
-  const [testMsg, setTestMsg] = useState('');
 
   // Audio Engine upload (multipart, per slug/type)
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
@@ -324,20 +322,6 @@ export default function AudioSettingsPage() {
       const r = await apiFetch(`/audio/files/${slug}/${type}`, { method: 'DELETE' });
       if (r.ok) { await loadList(); AudioManager.clearCache(); }
     } finally { setDeleting(null); }
-  }
-
-  async function testSound(type: string, label: string) {
-    setTestMsg(`Test: ${label}…`);
-    setTestPlaying(true);
-    await AudioManager.playStinger('global', type);
-    setTimeout(() => { setTestPlaying(false); setTestMsg(''); }, 3000);
-  }
-
-  function testLoop(slug: string, type: string, label: string) {
-    setTestMsg(`Loop test: ${label}`);
-    setTestPlaying(true);
-    void AudioManager.playLoop(slug, type);
-    setTimeout(() => { AudioManager.stopLoop(); setTestPlaying(false); setTestMsg(''); }, 5000);
   }
 
   const uploadedSet = new Set(uploadedFiles.map(f => `${f.slug}/${f.type}`));
@@ -519,43 +503,6 @@ export default function AudioSettingsPage() {
                 })}
             </div>
           )}
-        </section>
-
-        {/* ── Test audio ───────────────────────────────────────────────────── */}
-        <section className="rounded-2xl border border-border bg-card p-6 space-y-4">
-          <h2 className="text-display text-lg font-black flex items-center gap-2">
-            <Zap className="h-4 w-4 text-yellow-400" /> Test Audio
-          </h2>
-          {testMsg && (
-            <div className="rounded-lg border border-primary/30 bg-primary/10 px-4 py-2 text-sm font-bold text-primary">{testMsg}</div>
-          )}
-          <div className="text-xs text-muted-foreground">
-            I test usano le tracce caricate. Se una traccia non è stata caricata, il test è silenzioso.
-          </div>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {[
-              { label: 'Applausi', slug: 'global', type: 'applause', loop: false },
-              { label: 'Suspense', slug: 'global', type: 'suspense', loop: false },
-              { label: 'Vincitore', slug: 'global', type: 'winner_stinger', loop: false },
-              { label: 'Corretto ✓', slug: 'global', type: 'correct_stinger', loop: false },
-              { label: 'Sbagliato ✗', slug: 'global', type: 'wrong_stinger', loop: false },
-              { label: 'Whoosh →', slug: 'global', type: 'transition_whoosh', loop: false },
-              { label: 'Hub loop', slug: 'hub', type: 'lobby_loop', loop: true },
-              { label: 'Quizzone loop', slug: 'quizzone', type: 'round_loop', loop: true },
-              { label: 'Ballo loop', slug: 'sfida-ballo', type: 'round_loop', loop: true },
-            ].map(({ label, slug, type, loop }) => (
-              <button key={`${slug}-${type}`} disabled={testPlaying}
-                onClick={() => loop ? testLoop(slug, type, label) : void testSound(type, label)}
-                className={`relative flex items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-xs font-bold hover:bg-accent disabled:opacity-50 transition-colors ${uploadedSet.has(`${slug}/${type}`) ? 'border-green-500/40 bg-green-500/5 text-green-300' : 'border-border bg-background text-muted-foreground'}`}>
-                <Play className="h-3 w-3" /> {label}
-                {uploadedSet.has(`${slug}/${type}`) && <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-green-400" />}
-              </button>
-            ))}
-          </div>
-          <button disabled={!testPlaying} onClick={() => { AudioManager.stopAll(); setTestPlaying(false); setTestMsg(''); }}
-            className="flex items-center gap-2 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-2 text-sm font-bold text-destructive disabled:opacity-30 hover:bg-destructive/20 transition-colors">
-            <Square className="h-3.5 w-3.5" /> Stop tutto
-          </button>
         </section>
 
         {/* ── Reset volumi ─────────────────────────────────────────────────── */}
