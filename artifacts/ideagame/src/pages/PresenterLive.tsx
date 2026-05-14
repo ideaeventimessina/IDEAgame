@@ -412,7 +412,20 @@ export default function PresenterLive() {
           <div className="flex items-center gap-2 text-sm font-black text-amber-300">
             <Mic2 className="h-4 w-4" /> PRESENTATORE
           </div>
-          {connected ? <Wifi className="h-4 w-4 text-green-400" /> : <WifiOff className="h-4 w-4 text-red-400" />}
+          <div className="flex items-center gap-2">
+            {connected ? <Wifi className="h-4 w-4 text-green-400" /> : <WifiOff className="h-4 w-4 text-red-400" />}
+            {event?.id && (
+              <div className="flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-1">
+                <span className="text-[9px] text-white/30 pr-0.5">↺</span>
+                <button onClick={() => apiFetch(`/panic/events/${event.id}/emit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event: 'debug:reload-projector', payload: {} }) }).catch(() => null)}
+                  className="rounded px-1.5 py-0.5 text-[10px] font-bold text-blue-400 hover:bg-blue-400/10" title="Ricarica proiettore">Proj</button>
+                <button onClick={() => apiFetch(`/panic/events/${event.id}/emit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event: 'debug:reload-presenter', payload: {} }) }).catch(() => null)}
+                  className="rounded px-1.5 py-0.5 text-[10px] font-bold text-purple-400 hover:bg-purple-400/10" title="Ricarica presentatore">Pres</button>
+                <button onClick={() => window.location.reload()}
+                  className="rounded px-1.5 py-0.5 text-[10px] font-bold text-amber-400 hover:bg-amber-400/10" title="Ricarica regia">Regia</button>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="mx-4 mb-4 rounded-2xl border border-violet-400/25 bg-violet-500/10 px-4 py-3">
