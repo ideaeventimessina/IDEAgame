@@ -222,9 +222,10 @@ export default function Hub() {
   const [preloadedThemes, setPreloadedThemes] = useState<Record<string, { id: string; name: string } | null>>({});
 
   // Navigate to a game — READY games NEVER go to /game/:slug mock
+  /** True when the Hub is running unauthenticated (projector/live mode) */
+  const isProjector = !user;
+
   const handleGameClick = async (slug: string, name: string, accentColor: string) => {
-    // Projector/live mode: buttons are display-only, no interaction
-    if (!user) return;
     const isReady = READY_SLUGS.has(slug);
     const boardPath = SLUG_TO_BOARD[slug];
 
@@ -482,7 +483,7 @@ export default function Hub() {
                 top:  ch / 2 + pos.y * oy - oct / 2,
               }}>
               <Octagon color={g.accentColor} size={oct} delay={i * 0.035}
-                onClick={() => handleGameClick(g.slug, g.name, g.accentColor)}>
+                onClick={isProjector ? undefined : () => handleGameClick(g.slug, g.name, g.accentColor)}>
                 <div className="mb-2 flex items-center justify-center rounded-xl"
                   style={{ width: oct * 0.38, height: oct * 0.38, background: `${g.accentColor}22`, color: g.accentColor }}>
                   <GameIcon name={g.icon as IconName} style={{ width: oct * 0.24, height: oct * 0.24 }} />
@@ -659,12 +660,12 @@ export default function Hub() {
     return (
       <motion.button
         type="button"
-        onClick={() => handleGameClick(g.slug, g.name, g.accentColor)}
+        onClick={isProjector ? undefined : () => handleGameClick(g.slug, g.name, g.accentColor)}
         initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.05 + i * 0.06, type: 'spring', stiffness: 120 }}
-        whileTap={{ scale: 0.97 }}
+        whileTap={isProjector ? undefined : { scale: 0.97 }}
         className="relative flex flex-col items-center gap-2 rounded-2xl border bg-card/60 p-4 text-center backdrop-blur-sm hover-elevate"
-        style={{ borderColor: `${g.accentColor}44` }}
+        style={{ borderColor: `${g.accentColor}44`, cursor: isProjector ? 'default' : undefined }}
       >
         <div className="absolute inset-0 rounded-2xl opacity-10"
           style={{ background: `radial-gradient(ellipse at top, ${g.accentColor} 0%, transparent 70%)` }} />
@@ -1064,17 +1065,18 @@ export default function Hub() {
               <motion.button
                 key={g.id}
                 type="button"
-                onClick={() => handleGameClick(g.slug, g.name, g.accentColor)}
+                onClick={isProjector ? undefined : () => handleGameClick(g.slug, g.name, g.accentColor)}
                 initial={{ opacity: 0, scale: 0.85 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: i * 0.07, type: 'spring', stiffness: 120, damping: 16 }}
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.97 }}
+                whileHover={isProjector ? undefined : { scale: 1.03 }}
+                whileTap={isProjector ? undefined : { scale: 0.97 }}
                 className="relative flex flex-col items-center gap-3 rounded-3xl border-2 p-5 text-center transition-shadow hover:shadow-xl"
                 style={{
                   borderColor: isReady ? g.accentColor : 'rgba(255,255,255,0.08)',
                   background: isReady ? `${g.accentColor}18` : 'rgba(255,255,255,0.03)',
                   boxShadow: isReady ? `0 0 40px ${g.accentColor}22` : undefined,
+                  cursor: isProjector ? 'default' : undefined,
                 }}
               >
                 <div className="absolute inset-0 rounded-3xl opacity-5"
