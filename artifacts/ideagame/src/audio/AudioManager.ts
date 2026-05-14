@@ -82,6 +82,27 @@ class _AudioManager {
   private currentLoopType: string | null = null;
   private knownFiles = new Map<string, boolean>();
   private activeStingers = new Set<HTMLAudioElement>();
+  /** Tenant-uploaded music overrides: `slug/type` → full URL. Checked before static assets. */
+  private loopOverrides = new Map<string, string>();
+
+  /**
+   * Register a tenant-uploaded track URL for a specific slot.
+   * Pass `null` to remove an override and fall back to static/api assets.
+   */
+  setLoopOverride(slug: string, type: string, url: string | null) {
+    const key = `${slug}/${type}`;
+    if (url) {
+      this.loopOverrides.set(key, url);
+    } else {
+      this.loopOverrides.delete(key);
+    }
+    // Bust the existence cache so the new URL is tried next time
+    this.knownFiles.delete(url ?? '');
+  }
+
+  clearLoopOverrides() {
+    this.loopOverrides.clear();
+  }
 
   applySettings(s: AudioSettings) {
     this.settings = { ...s };
@@ -104,13 +125,17 @@ class _AudioManager {
   }
 
   private async resolveUrl(slug: AudioSlug | string, type: AudioType | string): Promise<string | null> {
-    // Priority: 1) static Vite asset (bundled, permanent in prod)
-    //           2) API-uploaded override (dev/manual uploads)
-    //           3) global/ fallback for both sources
+    // Priority: 1) tenant-uploaded override (object storage — highest priority)
+    //           2) API-uploaded stinger override (audio engine uploads)
+    //           3) static Vite asset (bundled jonny-world fallback)
+    //           4) global/ fallback for both api + static
+    const override = this.loopOverrides.get(`${slug}/${type}`);
+    if (override) return override;
+
     const result = await resolveFirst([
-      staticAudioUrl(slug, type),
       apiAudioUrl(slug, type),
-      ...(slug !== 'global' ? [staticAudioUrl('global', type), apiAudioUrl('global', type)] : []),
+      staticAudioUrl(slug, type),
+      ...(slug !== 'global' ? [apiAudioUrl('global', type), staticAudioUrl('global', type)] : []),
     ], this.knownFiles);
     return result;
   }

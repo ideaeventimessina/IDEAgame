@@ -11,6 +11,41 @@ import { AudioManager } from '@/audio/AudioManager';
 import { useAudioSettings } from '@/contexts/AudioContext';
 import { getSocket } from '@/hooks/useEventSocket';
 
+const BASE = (import.meta.env.BASE_URL as string) ?? '/';
+
+/**
+ * Maps tenant musicPaths keys to the AudioManager slug/type pairs.
+ * The value stored in DB is an object-storage path like `/uploads/...`.
+ * The playback URL is `/api/storage${objectPath}`.
+ */
+const MUSIC_PATH_MAP: Record<string, { slug: string; type: string }> = {
+  lobby:              { slug: 'hub',               type: 'lobby_loop'   },
+  quizzone:           { slug: 'quizzone',          type: 'round_loop'   },
+  'sfida-ballo':      { slug: 'sfida-ballo',       type: 'round_loop'   },
+  'percorso-a-risate':{ slug: 'percorso-a-risate', type: 'round_loop'   },
+  'gioco-coppie':     { slug: 'gioco-coppie',      type: 'tension_loop' },
+};
+
+async function loadMusicOverrides() {
+  try {
+    const url = `${BASE}api/system-settings`.replace(/([^:])\/\//g, '$1/');
+    const r = await fetch(url, { credentials: 'include' });
+    if (!r.ok) return;
+    const rows = await r.json() as Array<{ key: string; value: unknown }>;
+    const tenantRow = rows.find((r: { key: string }) => r.key === 'tenant.settings');
+    if (!tenantRow || typeof tenantRow.value !== 'object' || !tenantRow.value) return;
+    const musicPaths = (tenantRow.value as Record<string, unknown>).musicPaths as Record<string, string> | undefined;
+    if (!musicPaths) return;
+    AudioManager.clearLoopOverrides();
+    for (const [key, objectPath] of Object.entries(musicPaths)) {
+      const mapping = MUSIC_PATH_MAP[key];
+      if (!mapping || !objectPath) continue;
+      const playbackUrl = `${BASE}api/storage${objectPath}`.replace(/([^:])\/\//g, '$1/');
+      AudioManager.setLoopOverride(mapping.slug, mapping.type, playbackUrl);
+    }
+  } catch { /* silent */ }
+}
+
 const LS_ACTIVE = 'ideagame:projector:active';
 const LS_SLUG   = 'ideagame:projector:slug';
 
@@ -59,6 +94,13 @@ export function AudioOrchestratorProvider({ children }: { children: ReactNode })
   }, []);
 
   const { settings, setMasterVolume } = useAudioSettings();
+
+  // Load tenant music overrides from DB on mount (and every 30s to pick up changes)
+  useEffect(() => {
+    void loadMusicOverrides();
+    const id = setInterval(() => { void loadMusicOverrides(); }, 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   // Keep AudioManager in sync with AudioContext settings
   useEffect(() => {
