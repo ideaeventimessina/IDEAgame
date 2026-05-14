@@ -168,9 +168,10 @@ class _AudioManager {
    * Play a loop. Loads from MP3 file.
    * If no file exists for the slug, tries global/ fallback, then stays silent.
    */
-  async playLoop(slug: AudioSlug | string, type: AudioType | string = 'round_loop') {
-    if (!this.settings.musicEnabled || this.settings.muted) return;
-    if (this.currentLoopSlug === slug && this.currentLoopType === type) return;
+  /** Returns true if the loop started, false if blocked by browser autoplay policy or settings. */
+  async playLoop(slug: AudioSlug | string, type: AudioType | string = 'round_loop'): Promise<boolean> {
+    if (!this.settings.musicEnabled || this.settings.muted) return false;
+    if (this.currentLoopSlug === slug && this.currentLoopType === type) return true;
 
     const src = await this.resolveUrl(slug, type);
 
@@ -179,11 +180,13 @@ class _AudioManager {
       this._stopMp3Loop();
       this.currentLoopSlug = slug;
       this.currentLoopType = type;
-      return;
+      return true; // "success" — intentionally silent
     }
 
     // MP3 found — crossfade in
-    const prev = this.currentLoop;
+    const prev     = this.currentLoop;
+    const prevSlug = this.currentLoopSlug;
+    const prevType = this.currentLoopType;
     const audio = new Audio(src);
     audio.loop   = true;
     audio.volume = 0;
@@ -195,8 +198,11 @@ class _AudioManager {
     try {
       await audio.play();
     } catch {
-      this.currentLoop = prev;
-      return;
+      // Browser blocked autoplay — restore previous state
+      this.currentLoop     = prev;
+      this.currentLoopSlug = prevSlug;
+      this.currentLoopType = prevType;
+      return false;
     }
 
     const targetVol = this.loopVol();
@@ -211,6 +217,7 @@ class _AudioManager {
         if (prev) { prev.pause(); prev.src = ''; }
       }
     }, CROSSFADE_DURATION / FADE_STEPS);
+    return true;
   }
 
   private _stopMp3Loop(immediate = false) {

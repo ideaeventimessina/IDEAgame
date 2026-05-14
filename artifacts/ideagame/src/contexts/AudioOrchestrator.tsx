@@ -48,8 +48,9 @@ async function loadMusicOverrides() {
   } catch { /* silent */ }
 }
 
-const LS_ACTIVE = 'ideagame:projector:active';
-const LS_SLUG   = 'ideagame:projector:slug';
+const LS_ACTIVE    = 'ideagame:projector:active';
+const LS_SLUG      = 'ideagame:projector:slug';
+const LS_UNLOCKED  = 'ideagame:audio:unlocked';
 
 export interface AudioOrchestratorCtx {
   projectorActive: boolean;
@@ -82,8 +83,15 @@ export function AudioOrchestratorProvider({ children }: { children: ReactNode })
   const [activeGameSlug, setSlugState] = useState<string | null>(() => {
     try { const s = localStorage.getItem(LS_SLUG); return s || null; } catch { return null; }
   });
-  const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const [audioUnlocked, setAudioUnlockedState] = useState<boolean>(() => {
+    try { return localStorage.getItem(LS_UNLOCKED) === 'true'; } catch { return false; }
+  });
   const pendingLoopRef = useRef<{ slug: string; type: string }>({ slug: 'hub', type: 'lobby_loop' });
+
+  const setAudioUnlocked = useCallback((v: boolean) => {
+    try { localStorage.setItem(LS_UNLOCKED, v ? 'true' : 'false'); } catch { /* ignore */ }
+    setAudioUnlockedState(v);
+  }, []);
 
   const setPendingLoop = useCallback((slug: string, type: string) => {
     pendingLoopRef.current = { slug, type };
@@ -93,6 +101,22 @@ export function AudioOrchestratorProvider({ children }: { children: ReactNode })
     setAudioUnlocked(true);
     const { slug, type } = pendingLoopRef.current;
     void AudioManager.playLoop(slug, type);
+  }, [setAudioUnlocked]);
+
+  // On mount: if audio was previously unlocked AND projector is active, attempt to resume.
+  // This covers HMR reloads, page refreshes, and socket-driven starts where Hub had
+  // a prior user gesture but state was lost.
+  useEffect(() => {
+    if (!audioUnlocked || !projectorActive) return;
+    const { slug, type } = pendingLoopRef.current;
+    void (async () => {
+      const ok = await AudioManager.playLoop(slug, type);
+      if (!ok) {
+        // Browser still blocking — clear persisted unlock so the fab re-appears
+        setAudioUnlocked(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const { settings, setMasterVolume } = useAudioSettings();
