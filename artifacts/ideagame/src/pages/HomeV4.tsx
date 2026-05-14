@@ -607,60 +607,267 @@ function Classifica() {
 }
 
 /* ─── screen: SHOW ───────────────────────────────── */
+/* ─── Park background SVG — theme-park depth layers ─── */
+function ParkBg() {
+  return (
+    <svg className="absolute inset-0 w-full h-full pointer-events-none select-none" viewBox="0 0 1280 720" preserveAspectRatio="xMidYMid slice" aria-hidden>
+      <defs>
+        {/* sky gradient */}
+        <radialGradient id="sky" cx="50%" cy="30%" r="70%">
+          <stop offset="0%"  stopColor="#1a0040"/>
+          <stop offset="60%" stopColor="#0a0020"/>
+          <stop offset="100%" stopColor="#030010"/>
+        </radialGradient>
+        {/* ground glow */}
+        <radialGradient id="gnd" cx="50%" cy="100%" r="60%">
+          <stop offset="0%"  stopColor="#7C3AED" stopOpacity="0.35"/>
+          <stop offset="100%" stopColor="#030010" stopOpacity="0"/>
+        </radialGradient>
+        {/* spotlight cone filter */}
+        <filter id="pk-soft"><feGaussianBlur stdDeviation="8"/></filter>
+        <filter id="pk-glow"><feGaussianBlur stdDeviation="3"/></filter>
+        <filter id="neon-blur"><feGaussianBlur stdDeviation="5"/></filter>
+      </defs>
+
+      {/* ── sky ── */}
+      <rect width="1280" height="720" fill="url(#sky)"/>
+
+      {/* ── stars ── */}
+      {[
+        [80,60],[200,35],[340,90],[480,20],[620,50],[760,30],[900,70],[1050,45],[1180,25],
+        [140,110],[380,130],[550,80],[720,120],[1000,100],[1150,140],[60,180],[300,160],
+        [660,170],[850,150],[1200,175],[420,200],[990,210],[240,220],[700,55],[1100,190],
+      ].map(([x,y],i)=>(
+        <motion.circle key={i} cx={x} cy={y} r={i%3===0?1.8:1.1}
+          fill="white" opacity={0.4+((i*17)%30)/100}
+          animate={{ opacity:[0.3,0.9,0.3] }}
+          transition={{ duration:2+((i*7)%4), repeat:Infinity, delay:((i*13)%30)/10, ease:'easeInOut' as const }}/>
+      ))}
+
+      {/* ── deep background: distant castle silhouette ── */}
+      <g opacity="0.18" fill="#A855F7">
+        {/* left tower */}
+        <rect x="60" y="260" width="40" height="200"/>
+        <polygon points="60,260 80,210 100,260"/>
+        <rect x="50" y="290" width="15" height="80"/>
+        <rect x="95" y="290" width="15" height="80"/>
+        {/* right tower */}
+        <rect x="1180" y="280" width="40" height="180"/>
+        <polygon points="1180,280 1200,225 1220,280"/>
+        <rect x="1170" y="310" width="15" height="80"/>
+        <rect x="1215" y="310" width="15" height="80"/>
+        {/* center spire far */}
+        <rect x="590" y="200" width="25" height="260"/>
+        <polygon points="580,205 602,140 625,205"/>
+        <rect x="570" y="230" width="20" height="120"/>
+        <rect x="615" y="230" width="20" height="120"/>
+      </g>
+
+      {/* ── mid layer: roller coaster track ── */}
+      <g opacity="0.22" stroke="#F5B642" strokeWidth="2" fill="none">
+        <path d="M0,400 Q80,350 160,400 Q200,420 240,370 Q280,310 340,360 Q400,410 450,370 Q510,320 570,380"/>
+        {/* support pillars */}
+        {[80,160,240,340,450].map((x,i)=>(
+          <line key={i} x1={x} y1={360+((i%3)*15)} x2={x} y2={480}/>
+        ))}
+      </g>
+
+      {/* ── mid layer: ferris wheel right ── */}
+      <g transform="translate(1090,330)" opacity="0.25">
+        <circle cx="0" cy="0" r="110" stroke="#A855F7" strokeWidth="2.5" fill="none"/>
+        <circle cx="0" cy="0" r="18" fill="#1a0040" stroke="#A855F7" strokeWidth="2"/>
+        {Array.from({length:8},(_,i)=>{
+          const a=(i/8)*Math.PI*2; const r=108;
+          return <line key={i} x1={0} y1={0} x2={Math.cos(a)*r} y2={Math.sin(a)*r} stroke="#7C3AED" strokeWidth="1.5"/>;
+        })}
+        {Array.from({length:8},(_,i)=>{
+          const a=(i/8)*Math.PI*2; const r=110;
+          return <circle key={i} cx={Math.cos(a)*r} cy={Math.sin(a)*r} r="7" fill="#F5B642" opacity="0.8"/>;
+        })}
+        {/* pole */}
+        <line x1="0" y1="110" x2="0" y2="220" stroke="#A855F7" strokeWidth="3"/>
+      </g>
+
+      {/* ── spotlight cones from above (behind content) ── */}
+      {([
+        { x:250, col:'rgba(168,85,247,0.12)' },
+        { x:640, col:'rgba(245,182,66,0.1)'  },
+        { x:1030,col:'rgba(100,180,255,0.1)' },
+      ] as {x:number;col:string}[]).map(({x,col},i)=>(
+        <polygon key={i} points={`${x-8},0 ${x+8},0 ${x+120},720 ${x-120},720`}
+          fill={col} filter="url(#pk-soft)"/>
+      ))}
+
+      {/* ── neon signs mid-layer ── */}
+      {/* sign left: GAMES */}
+      <g transform="translate(110,310)">
+        <rect x="-52" y="-18" width="104" height="36" rx="8" fill="none" stroke="#F472B6" strokeWidth="2" opacity="0.8" filter="url(#pk-glow)"/>
+        <text x="0" y="6" textAnchor="middle" fill="#F472B6" fontSize="16" fontWeight="900" fontFamily="monospace" opacity="0.9">GAMES</text>
+        <rect x="-52" y="-18" width="104" height="36" rx="8" fill="none" stroke="#F472B6" strokeWidth="4" opacity="0.25" filter="url(#neon-blur)"/>
+      </g>
+      {/* sign right: LIVE */}
+      <g transform="translate(1150,295)">
+        <rect x="-38" y="-16" width="76" height="32" rx="7" fill="none" stroke="#F5B642" strokeWidth="2" opacity="0.85" filter="url(#pk-glow)"/>
+        <text x="0" y="6" textAnchor="middle" fill="#F5B642" fontSize="15" fontWeight="900" fontFamily="monospace" opacity="0.9">LIVE</text>
+        <rect x="-38" y="-16" width="76" height="32" rx="7" fill="none" stroke="#F5B642" strokeWidth="5" opacity="0.2" filter="url(#neon-blur)"/>
+      </g>
+      {/* sign top-center: TONIGHT */}
+      <g transform="translate(640,140)">
+        <rect x="-70" y="-16" width="140" height="32" rx="7" fill="rgba(80,0,160,0.6)" stroke="#A855F7" strokeWidth="1.5" opacity="0.9"/>
+        <text x="0" y="6" textAnchor="middle" fill="#E9D5FF" fontSize="13" fontWeight="700" fontFamily="monospace" letterSpacing="4" opacity="0.9">TONIGHT</text>
+        {/* pulsing ring */}
+        <motion.rect x="-70" y="-16" width="140" height="32" rx="7" fill="none" stroke="#A855F7" strokeWidth="3"
+          animate={{ opacity:[0.2,0.8,0.2] }}
+          transition={{ duration:1.8, repeat:Infinity, ease:'easeInOut' as const }}/>
+      </g>
+
+      {/* ── string lights ── */}
+      {Array.from({length:18},(_,i)=>{
+        const x = i*(1280/17); const y = 220 + Math.sin(i*0.9)*28;
+        const colors=['#F5B642','#F472B6','#A855F7','#60A5FA','#34D399'];
+        return <circle key={i} cx={x} cy={y} r="4" fill={colors[i%5]} opacity="0.75"/>;
+      })}
+      <path d={Array.from({length:18},(_,i)=>{
+        const x=i*(1280/17); const y=220+Math.sin(i*0.9)*28;
+        return (i===0?`M${x},${y}`:`L${x},${y}`);
+      }).join(' ')} stroke="rgba(255,255,255,0.12)" strokeWidth="1" fill="none"/>
+
+      {/* ── foreground stage floor ── */}
+      <rect x="0" y="600" width="1280" height="120" fill="rgba(20,5,50,0.7)"/>
+      <rect x="0" y="598" width="1280" height="4" fill="rgba(168,85,247,0.5)"/>
+      {/* floor grid lines */}
+      {Array.from({length:12},(_,i)=>(
+        <line key={i} x1={i*120} y1="600" x2={i*120+60} y2="720" stroke="rgba(168,85,247,0.12)" strokeWidth="1"/>
+      ))}
+
+      {/* ── ground glow ── */}
+      <rect width="1280" height="720" fill="url(#gnd)"/>
+    </svg>
+  );
+}
+
 function ShowLanding({ onArena }: { onArena:()=>void }) {
   return (
-    <motion.div key="show" className="absolute inset-0 flex items-center justify-center"
+    <motion.div key="show" className="absolute inset-0 overflow-hidden"
       initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0, scale:1.03 }}
       transition={{ duration:0.5 }}>
-      {/* center */}
-      <div className="relative z-10 flex flex-col items-center text-center" style={{ maxWidth:'58vw' }}>
-        <motion.div initial={{ y:-28, opacity:0 }} animate={{ y:0, opacity:1 }} transition={{ delay:0.1, duration:0.6, ease:'easeOut' as const }}>
-          {/* Real logo PNG — no HTML text recreation */}
-          <img src={pub('/jonny-world-hero.png')} alt="Jonny's World"
-            className="object-contain mx-auto mb-4 block"
-            style={{ height:'clamp(9rem,18vh,16rem)',
-              filter:'drop-shadow(0 0 60px rgba(168,85,247,0.7)) drop-shadow(0 0 120px rgba(245,182,66,0.35))' }}/>
-          <p className="mb-9 mt-1" style={{ fontSize:'clamp(0.85rem,1.3vw,1.05rem)', color:'rgba(255,255,255,0.5)', lineHeight:1.6 }}>
-            8 mondi di gioco · Un palco · Fino a 20 giocatori
-          </p>
+
+      {/* ── park background ── */}
+      <ParkBg/>
+
+      {/* ── center content ── */}
+      <div className="absolute inset-0 flex flex-col items-center justify-center z-10"
+        style={{ paddingRight:'30vw' }}>
+
+        {/* logo mark */}
+        <motion.img src={pub('/logo.png')} alt="IDEAgame"
+          initial={{ y:-20, opacity:0 }} animate={{ y:0, opacity:1 }}
+          transition={{ delay:0.1, duration:0.6, ease:'easeOut' as const }}
+          style={{ height:'clamp(2.2rem,3.8vh,3.2rem)', objectFit:'contain', marginBottom:'1rem',
+            filter:'brightness(1.5) drop-shadow(0 0 24px rgba(245,182,66,1)) drop-shadow(0 0 60px rgba(168,85,247,0.6))' }}/>
+
+        {/* big title */}
+        <motion.div initial={{ y:-15, opacity:0 }} animate={{ y:0, opacity:1 }}
+          transition={{ delay:0.18, duration:0.65, ease:'easeOut' as const }}
+          className="text-center leading-none mb-1"
+          style={{ fontFamily:"'Outfit','Arial Black',sans-serif" }}>
+          <div style={{ fontSize:'clamp(4.5rem,10vw,9.5rem)', fontWeight:900, color:'white', lineHeight:0.9,
+            textShadow:'0 0 80px rgba(168,85,247,1),0 0 160px rgba(168,85,247,0.5),0 8px 40px rgba(0,0,0,0.9)' }}>
+            JONNY'S
+          </div>
+          <div style={{ fontSize:'clamp(5.5rem,12.5vw,12rem)', fontWeight:900, lineHeight:0.88, marginTop:'-0.02em',
+            background:'linear-gradient(135deg,#FFD700 0%,#F5B642 40%,#FF9500 100%)',
+            WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent',
+            filter:'drop-shadow(0 0 60px rgba(245,182,66,0.9)) drop-shadow(0 0 120px rgba(245,182,66,0.4))',
+            WebkitTextStroke:'0px transparent' }}>
+            WORLD
+          </div>
         </motion.div>
-        <motion.div initial={{ y:20, opacity:0 }} animate={{ y:0, opacity:1 }} transition={{ delay:0.45, duration:0.5 }}>
-          <ArcadeBtn onClick={onArena}
-            bg="linear-gradient(135deg,#F5B642 0%,#FF6B35 100%)"
-            glow="#F5B642" border="#FFD700">
-            <span style={{ color:'#000', fontSize:'1.4em' }}>&#9654;</span>
-            <span style={{ color:'#000' }}>INIZIA IL SHOW</span>
-          </ArcadeBtn>
+
+        {/* tagline */}
+        <motion.p initial={{ opacity:0 }} animate={{ opacity:1 }}
+          transition={{ delay:0.35, duration:0.5 }}
+          className="uppercase tracking-widest text-center mb-8"
+          style={{ fontSize:'clamp(0.6rem,0.9vw,0.78rem)', letterSpacing:'0.35em',
+            color:'rgba(255,255,255,0.42)', fontWeight:600 }}>
+          Il Parco del Divertimento Intelligente
+        </motion.p>
+
+        {/* main CTA */}
+        <motion.div initial={{ y:18, opacity:0 }} animate={{ y:0, opacity:1 }}
+          transition={{ delay:0.48, duration:0.5 }}>
+          <motion.button onClick={onArena}
+            whileHover={{ scale:1.06 }} whileTap={{ scale:0.97 }}
+            style={{
+              display:'flex', alignItems:'center', gap:'0.7rem',
+              padding:'1.1rem 3.2rem',
+              background:'linear-gradient(135deg,#F5B642 0%,#FF8C00 55%,#FF5500 100%)',
+              border:'2px solid #FFD700',
+              borderRadius:'100px',
+              fontFamily:"'Outfit','Arial Black',sans-serif",
+              fontWeight:900,
+              fontSize:'clamp(1.1rem,1.8vw,1.55rem)',
+              color:'#000',
+              letterSpacing:'0.05em',
+              boxShadow:'0 0 50px rgba(245,182,66,0.7),0 0 100px rgba(245,182,66,0.3),0 8px 32px rgba(0,0,0,0.6)',
+              cursor:'pointer',
+            }}>
+            <motion.span
+              animate={{ scale:[1,1.2,1] }}
+              transition={{ duration:1.2, repeat:Infinity, ease:'easeInOut' as const }}
+              style={{ fontSize:'1.3em' }}>▶</motion.span>
+            INIZIA LO SHOW
+          </motion.button>
+        </motion.div>
+
+        {/* mode buttons */}
+        <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }}
+          transition={{ delay:0.65, duration:0.5 }}
+          className="flex gap-4 mt-5">
+          {['🏠 Modalità Casa','🎪 Modalità Evento'].map(label=>(
+            <button key={label}
+              style={{
+                padding:'0.6rem 1.6rem',
+                background:'rgba(255,255,255,0.06)',
+                border:'1.5px solid rgba(255,255,255,0.2)',
+                borderRadius:'100px',
+                color:'rgba(255,255,255,0.7)',
+                fontSize:'clamp(0.72rem,1.1vw,0.9rem)',
+                fontWeight:700,
+                letterSpacing:'0.04em',
+                cursor:'pointer',
+                backdropFilter:'blur(8px)',
+              }}>
+              {label}
+            </button>
+          ))}
         </motion.div>
       </div>
-      {/* Jonny left — transparent PNG, no blend mode */}
+
+      {/* ── JONNY — single scenic element, right side ── */}
       <motion.div className="absolute pointer-events-none select-none"
-        style={{ left:'-2%', bottom:0, zIndex:5 }}
-        initial={{ x:-60, opacity:0 }} animate={{ x:0, opacity:1 }}
-        transition={{ delay:0.3, duration:0.9, ease:'easeOut' as const }}>
-        {/* violet glow behind */}
-        <div style={{ position:'absolute', inset:0, background:'radial-gradient(ellipse 70% 80% at 50% 85%,rgba(168,85,247,0.45) 0%,transparent 70%)', pointerEvents:'none' }}/>
-        {/* floor shadow */}
-        <div style={{ position:'absolute', bottom:0, left:'10%', right:'10%', height:18, background:'rgba(0,0,0,0.55)', borderRadius:'50%', filter:'blur(12px)' }}/>
-        <motion.img src={pub('/jonny-master-nobg.png')} alt="Jonny"
-          style={{ height:'80vh', display:'block', objectFit:'contain',
-            filter:'drop-shadow(0 0 50px rgba(168,85,247,0.7)) drop-shadow(4px 0 20px rgba(168,85,247,0.3))' }}
-          animate={{ y:[0,-8,0] }}
-          transition={{ duration:4, repeat:Infinity, ease:'easeInOut' as const }}/>
+        style={{ right:'-1%', bottom:0, zIndex:15 }}
+        initial={{ x:80, opacity:0 }} animate={{ x:0, opacity:1 }}
+        transition={{ delay:0.25, duration:1.0, ease:'easeOut' as const }}>
+        {/* ambient glow backdrop */}
+        <div style={{ position:'absolute', bottom:'5%', left:'-40%', right:'-10%', top:'10%',
+          background:'radial-gradient(ellipse 75% 80% at 55% 75%,rgba(168,85,247,0.35) 0%,rgba(245,182,66,0.12) 50%,transparent 75%)',
+          pointerEvents:'none', filter:'blur(4px)' }}/>
+        {/* floor shadow ellipse */}
+        <div style={{ position:'absolute', bottom:2, left:'8%', right:'8%', height:24,
+          background:'rgba(0,0,0,0.6)', borderRadius:'50%', filter:'blur(18px)' }}/>
+        {/* pedestal light */}
+        <div style={{ position:'absolute', bottom:4, left:'15%', right:'15%', height:10,
+          background:'linear-gradient(90deg,transparent,rgba(168,85,247,0.7),rgba(245,182,66,0.5),transparent)',
+          borderRadius:'50%', filter:'blur(6px)' }}/>
+        {/* Jonny */}
+        <motion.img src={pub('/jonny-master-nobg.png')} alt="Jonny host"
+          style={{ height:'88vh', display:'block', objectFit:'contain',
+            filter:'drop-shadow(0 0 60px rgba(168,85,247,0.75)) drop-shadow(0 0 120px rgba(168,85,247,0.3)) drop-shadow(-4px 0 30px rgba(245,182,66,0.35))' }}
+          animate={{ y:[0,-10,0] }}
+          transition={{ duration:3.8, repeat:Infinity, ease:'easeInOut' as const }}/>
       </motion.div>
-      {/* Jonny right — flipped */}
-      <motion.div className="absolute pointer-events-none select-none"
-        style={{ right:'-2%', bottom:0, zIndex:5, transform:'scaleX(-1)' }}
-        initial={{ x:60, opacity:0 }} animate={{ x:0, opacity:1 }}
-        transition={{ delay:0.4, duration:0.9, ease:'easeOut' as const }}>
-        <div style={{ position:'absolute', inset:0, background:'radial-gradient(ellipse 70% 80% at 50% 85%,rgba(245,182,66,0.35) 0%,transparent 70%)', pointerEvents:'none' }}/>
-        <div style={{ position:'absolute', bottom:0, left:'10%', right:'10%', height:18, background:'rgba(0,0,0,0.55)', borderRadius:'50%', filter:'blur(12px)' }}/>
-        <motion.img src={pub('/jonny-master-nobg.png')} alt="Jonny"
-          style={{ height:'78vh', display:'block', objectFit:'contain',
-            filter:'drop-shadow(0 0 50px rgba(245,182,66,0.6)) drop-shadow(-4px 0 20px rgba(245,182,66,0.3))' }}
-          animate={{ y:[0,-6,0] }}
-          transition={{ duration:3.7, repeat:Infinity, ease:'easeInOut' as const, delay:0.5 }}/>
-      </motion.div>
+
     </motion.div>
   );
 }
