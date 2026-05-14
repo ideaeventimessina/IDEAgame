@@ -749,63 +749,79 @@ export default function LiveControl() {
 
   const confirm = (dialog: ConfirmDialog) => setConfirmDialog(dialog);
 
-  const handleLaunchLobby = () => withBusy(async () => {
-    if (!selectedEventId) return;
+  const handleLaunchLobby = () => {
+    // resumeContext() must be called synchronously during the click gesture so the
+    // browser unlocks audio for this tab — withBusy is async and loses the gesture window.
+    AudioManager.resumeContext();
+    void withBusy(async () => {
+      if (!selectedEventId) return;
 
-    await apiFetch(`/events/${selectedEventId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'live' }),
-    });
-
-    await Promise.allSettled([
-      apiFetch(`/panic/events/${selectedEventId}/emit`, {
-        method: 'POST',
+      await apiFetch(`/events/${selectedEventId}`, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ event: 'projector:activate', payload: {} }),
-      }),
-      apiFetch(`/panic/events/${selectedEventId}/emit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ event: 'hub:phase', payload: { phase: 'join' } }),
-      }),
-    ]);
+        body: JSON.stringify({ status: 'live' }),
+      });
 
-    toast({ title: 'Serata avviata', description: 'Proiettore su QR e presentatore agganciato.' });
-  });
-
-  const handleCreateSession = () => withBusy(async () => {
-    // End any existing non-ended session first so the projector resets cleanly
-    if (selectedEventId) {
-      try {
-        const existing = await apiFetch(`/events/${selectedEventId}/active-session`) as { id: string; status: string } | null;
-        if (existing?.id && existing.status !== 'ended') {
-          await apiFetch(`/sessions/${existing.id}`, {
-            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: 'ended' }),
-          });
-          qc.invalidateQueries({ queryKey: getListGameSessionsQueryKey(selectedEventId) });
-        }
-      } catch { /* ignore */ }
-    }
-    const s = await createSession.mutateAsync({ id: selectedEventId, data: { gameSlug, totalRounds } }) as { id: string };
-    qc.invalidateQueries({ queryKey: getListGameSessionsQueryKey(selectedEventId) });
-    setSelectedSessionId(s.id);
-    setShowNewSession(false);
-    // Tell projector: activate audio + show QR join screen
-    if (selectedEventId) {
       await Promise.allSettled([
         apiFetch(`/panic/events/${selectedEventId}/emit`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ event: 'projector:activate', payload: {} }),
         }),
         apiFetch(`/panic/events/${selectedEventId}/emit`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ event: 'hub:phase', payload: { phase: 'join' } }),
         }),
       ]);
-    }
-  });
+
+      // Play lobby music directly in the regia tab (audio context already unlocked above).
+      // Also persist the unlocked state so Hub auto-plays when it opens.
+      try { localStorage.setItem('ideagame:audio:unlocked', 'true'); } catch { /* ignore */ }
+      void AudioManager.playLoop('hub', 'lobby_loop');
+
+      toast({ title: 'Serata avviata', description: 'Proiettore su QR e presentatore agganciato.' });
+    });
+  };
+
+  const handleCreateSession = () => {
+    AudioManager.resumeContext();
+    void withBusy(async () => {
+      // End any existing non-ended session first so the projector resets cleanly
+      if (selectedEventId) {
+        try {
+          const existing = await apiFetch(`/events/${selectedEventId}/active-session`) as { id: string; status: string } | null;
+          if (existing?.id && existing.status !== 'ended') {
+            await apiFetch(`/sessions/${existing.id}`, {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: 'ended' }),
+            });
+            qc.invalidateQueries({ queryKey: getListGameSessionsQueryKey(selectedEventId) });
+          }
+        } catch { /* ignore */ }
+      }
+      const s = await createSession.mutateAsync({ id: selectedEventId, data: { gameSlug, totalRounds } }) as { id: string };
+      qc.invalidateQueries({ queryKey: getListGameSessionsQueryKey(selectedEventId) });
+      setSelectedSessionId(s.id);
+      setShowNewSession(false);
+      // Tell projector: activate audio + show QR join screen
+      if (selectedEventId) {
+        await Promise.allSettled([
+          apiFetch(`/panic/events/${selectedEventId}/emit`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ event: 'projector:activate', payload: {} }),
+          }),
+          apiFetch(`/panic/events/${selectedEventId}/emit`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ event: 'hub:phase', payload: { phase: 'join' } }),
+          }),
+        ]);
+      }
+      // Start lobby loop in the regia tab (context was unlocked synchronously above)
+      try { localStorage.setItem('ideagame:audio:unlocked', 'true'); } catch { /* ignore */ }
+      void AudioManager.playLoop('hub', 'lobby_loop');
+    });
+  };
 
   const handleStart = () => withBusy(async () => {
     if (!session) return;

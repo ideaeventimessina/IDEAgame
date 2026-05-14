@@ -105,6 +105,21 @@ class _AudioManager {
   }
 
   /**
+   * Call this SYNCHRONOUSLY inside a user-gesture handler (e.g. button onClick) to
+   * unlock browser autoplay for this tab. Safe to call multiple times.
+   * After this, AudioManager.playLoop() will succeed even after awaits.
+   */
+  resumeContext() {
+    // A tiny silent WAV (1 sample) played synchronously during the gesture
+    // convinces the browser this tab has had user interaction with audio.
+    const a = new Audio(
+      'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA',
+    );
+    a.volume = 0;
+    void a.play().catch(() => {});
+  }
+
+  /**
    * If a loop is currently playing and now has a tenant override registered,
    * restart it so the override URL is used immediately.
    */
