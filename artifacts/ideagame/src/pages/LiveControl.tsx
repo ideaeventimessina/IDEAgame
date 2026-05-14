@@ -2095,7 +2095,22 @@ export default function LiveControl() {
                   onConfirm: async () => {
                     try {
                       await apiFetch(`/events/${selectedEventId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'ended' }) });
-                      toast({ title: 'Serata chiusa', description: 'Il proiettore ora mostra la schermata di fine serata.' });
+                      // Reset projector to waiting state (same as PresenterLive on session end)
+                      await Promise.allSettled([
+                        apiFetch(`/panic/events/${selectedEventId}/emit`, {
+                          method: 'POST', headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ event: 'projector:deactivate', payload: {} }),
+                        }),
+                        apiFetch(`/panic/events/${selectedEventId}/emit`, {
+                          method: 'POST', headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ event: 'hub:phase', payload: { phase: 'join' } }),
+                        }),
+                        apiFetch(`/panic/events/${selectedEventId}/emit`, {
+                          method: 'POST', headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ event: 'audio:stop', payload: {} }),
+                        }),
+                      ]);
+                      toast({ title: 'Serata chiusa', description: 'Il proiettore è tornato in attesa.' });
                       navigate('/cockpit');
                     } catch (e) { toast({ title: 'Errore', description: (e as Error).message, variant: 'destructive' }); }
                   },
