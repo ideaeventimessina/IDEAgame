@@ -1,0 +1,86 @@
+HOME V3 — DIREZIONE GRAFICA GAME SHOW 16:9.
+
+Non modificare /home-v2.
+Non toccare backend.
+Non toccare player.
+Non toccare presenter.
+Non toccare regia.
+Non toccare giochi esistenti.
+
+Crea nuova pagina isolata:
+
+/home-v3
+
+Obiettivo:
+creare una schermata/prototipo desktop fullscreen 16:9 ispirata a un game show televisivo tipo Trivial Pursuit Live, non una dashboard SaaS.
+
+Questa pagina deve essere pensata per:
+- proiettore
+- schermo grande
+- regia desktop
+- impatto visivo da party game
+
+NON mobile-first.
+
+Layout richiesto:
+1. Canvas fullscreen 16:9.
+2. Sfondo scenografico con:
+   - palco luminoso
+   - fasci di luce
+   - pavimento lucido
+   - forme geometriche colorate
+   - atmosfera TV show.
+3. Logo/titolo grande IDEAgame / Jonny’s World.
+4. Grande ruota centrale o arena circolare con 8 spicchi/giochi.
+5. Jonny host grande laterale, non piccolo.
+6. Card giocatori come avatar/pedane, non box SaaS.
+7. Bottoni grandi stile game console, non bottoni web.
+8. Effetti:
+   - glow
+   - neon
+   - riflessi
+   - gradienti
+   - depth
+   - ombre 3D
+   - confetti/particles leggeri
+
+Crea anche 3 stati navigabili nella stessa pagina:
+- landing show
+- selezione giochi arena
+- classifica/podio
+
+Vincoli:
+- nessuna chiamata API
+- nessun socket
+- nessun polling
+- solo frontend mock
+- usa CSS/Tailwind/Framer Motion
+- usa asset esistenti se disponibili
+- se Jonny asset esiste, usalo grande
+- se manca, usa placeholder silhouette elegante
+
+File consentiti:
+- crea artifacts/ideagame/src/pages/HomeV3.tsx
+- modifica App.tsx solo per import e route /home-v3
+
+Divieto assoluto:
+- niente card piatte da SaaS
+- niente layout stretto mobile
+- niente colonna centrale piccola
+- niente bottoni grigi
+- niente schermata “app gestionale”
+- niente stile dashboard
+
+Deve occupare tutto lo schermo e sembrare una schermata da gioco televisivo.
+
+Test:
+- aprire /home-v3
+- typecheck pulito
+- nessuna API chiamata
+- nessun errore console
+
+Alla fine dammi:
+A. file creati/modificati
+B. URL
+C. conferma no backend
+D. descrizione visiva della scena
