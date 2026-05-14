@@ -14,6 +14,18 @@ process.on("unhandledRejection", (reason) => {
   logger.error({ reason }, "unhandledRejection — server kept alive");
 });
 
+// Graceful shutdown: release port immediately on SIGTERM/SIGINT so that a
+// rapid restart (e.g. Replit workflow restart) never hits EADDRINUSE.
+function shutdown(signal: string) {
+  logger.info({ signal }, "shutdown signal received — closing server");
+  server.close(() => {
+    logger.info("server closed cleanly");
+    process.exit(0);
+  });
+  // Force-exit after 3 s if connections are still draining
+  setTimeout(() => process.exit(1), 3000).unref();
+}
+
 const rawPort = process.env["PORT"];
 
 if (!rawPort) {
@@ -83,6 +95,10 @@ async function resetStaleConnections(): Promise<void> {
 // We then add a separate "request" listener that routes non-socket.io traffic to Express.
 // This avoids Express's synchronous 404 handler racing with socket.io's async response.
 const server = createServer();
+
+// Register graceful-shutdown handlers now that `server` is in scope
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT",  () => shutdown("SIGINT"));
 
 // socket.io attaches itself (sets io.engine, registers request + upgrade listeners)
 initSocket(server);
