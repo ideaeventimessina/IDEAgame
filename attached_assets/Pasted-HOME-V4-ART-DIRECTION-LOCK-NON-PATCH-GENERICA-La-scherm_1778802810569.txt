@@ -1,0 +1,102 @@
+HOME V4 — ART DIRECTION LOCK, NON PATCH GENERICA.
+
+La schermata attuale non è accettabile come qualità finale.
+Non rifare da zero, ma correggi la direzione artistica in modo drastico.
+
+PROBLEMI OGGETTIVI:
+1. Il logo Jonny’s World è troppo piccolo.
+2. I testi sembrano scritti da una dashboard SaaS.
+3. Le icone sono deboli.
+4. Jonny non ha presenza da presentatore.
+5. La pagina non comunica “show televisivo”.
+6. La gerarchia è sbilanciata.
+7. Il linguaggio visivo sembra prototipo PowerPoint.
+
+LAVORA SOLO SU:
+artifacts/ideagame/src/pages/HomeV4.tsx
+
+NON toccare backend, socket, player, presenter, regia.
+
+NUOVA GERARCHIA OBBLIGATORIA:
+
+1. LOGO
+Il logo reale Jonny’s World deve essere enorme e dominante.
+Deve occupare circa 18–22% della larghezza schermo.
+Posizione: alto centro.
+Non usare wallpaper come logo.
+Non usare testo fake.
+Usa solo asset logo reale.
+
+2. RUOTA
+La ruota resta centrale ma deve stare sotto il logo.
+Deve essere grande, chiara, protagonista.
+
+3. JONNY
+Jonny deve essere grande e scenico.
+Non deve essere coperto dalla card.
+Non deve sembrare incollato.
+Deve stare su una pedana o luce palco.
+Deve avere glow e ombra.
+
+4. COPY
+Sostituisci microtesti generici con linguaggio da show.
+
+NO:
+“Creatività senza limiti”
+“Scopri di più”
+“Per tutti”
+“Divertimento garantito”
+
+SÌ:
+“Che lo show abbia inizio”
+“Gira la ruota”
+“Entra nell’arena”
+“Sfida aperta”
+“Classifica live”
+“6 concorrenti in gioco”
+
+5. BOTTONI
+I bottoni devono sembrare comandi arcade:
+- grandi
+- luminosi
+- testo enorme
+- bordo glow
+- icona forte
+- niente micro badge inutili sotto
+
+6. ICONE
+Rimuovi icone sottili/cheap.
+Meglio badge testuali grandi che icone brutte.
+Ogni spicchio deve essere leggibile da lontano.
+
+7. SFONDO
+Non deve sembrare sfondo piatto.
+Aggiungi:
+- palco
+- luce centrale
+- pubblico silhouette
+- profondità
+- pavimento riflettente
+
+8. ELIMINA ELEMENTI INUTILI
+Rimuovi:
+- logo IDEA Games duplicato
+- micro badge sotto i bottoni
+- linee decorative sui bordi
+- footer morto
+- testi piccoli decorativi non leggibili
+
+OBIETTIVO QUALITÀ:
+Deve sembrare una schermata da:
+Trivial Pursuit Live + Mario Party + game show televisivo.
+
+NON deve sembrare:
+dashboard SaaS, PowerPoint, landing web, gestionale.
+
+Output richiesto:
+A. asset logo usato con path esatto
+B. conferma logo 18–22% screen width
+C. conferma rimozione testi SaaS
+D. conferma rimozione micro badge inutili
+E. screenshot/descrizione
+F. typecheck pulito

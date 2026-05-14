@@ -16,14 +16,14 @@ interface Player { id:number; name:string; score:number; delta:number; }
 
 /* ─── data ──────────────────────────────────────── */
 const GAMES: Game[] = [
-  { slug:'freestyle', label:'Freestyle Battle',   short:'FREESTYLE', color:'#E6A800', glow:'#FFD040', desc:'Creatività senza limiti — ogni risposta vale',          players:'2-20', diff:'Facile'  },
-  { slug:'percorso',  label:'Percorso a Risate',  short:'PERCORSO',  color:'#7C3AED', glow:'#A855F7', desc:'Sfide a tappe — supera ogni livello del percorso',      players:'4-20', diff:'Media'   },
-  { slug:'coppie',    label:'Gioco delle Coppie', short:'COPPIE',    color:'#CC2244', glow:'#F472B6', desc:'Memory visivo per squadre — trova la coppia giusta',    players:'4-16', diff:'Media'   },
-  { slug:'quizzone',  label:'Quizzone',           short:'QUIZZONE',  color:'#E87E04', glow:'#FBBF24', desc:'Quiz rapido — chi risponde prima vince il punto',       players:'2-20', diff:'Media'   },
-  { slug:'adult',     label:'Adult Only 🔥',      short:'ADULT',     color:'#CC3300', glow:'#F97316', desc:'Sfide piccanti — solo per adulti 18+',                  players:'4-16', diff:'Alta'    },
-  { slug:'sfida',     label:'Sfida di Ballo',     short:'SFIDA',     color:'#1A8F3C', glow:'#34D399', desc:'Muoviti — il telefono misura i tuoi movimenti',         players:'2-12', diff:'Alta'    },
-  { slug:'parola',    label:'Parola alle Spalle', short:'PAROLA',    color:'#0055CC', glow:'#60A5FA', desc:'Indovina senza guardare — il team ti aiuta',            players:'4-20', diff:'Facile'  },
-  { slug:'karaoke',   label:'Karaoke Battle',     short:'KARAOKE',   color:'#6633CC', glow:'#C084FC', desc:'Canta e vinci — chi stona di più perde un punto',      players:'2-16', diff:'Facile'  },
+  { slug:'freestyle', label:'Freestyle Battle',   short:'FREESTYLE', color:'#E6A800', glow:'#FFD040', desc:'Sfida aperta — ogni risposta vale. Chi osa vince.',     players:'2-20', diff:'Facile'  },
+  { slug:'percorso',  label:'Percorso a Risate',  short:'PERCORSO',  color:'#7C3AED', glow:'#A855F7', desc:'Tappa dopo tappa — sopravvivi o esci di scena.',        players:'4-20', diff:'Media'   },
+  { slug:'coppie',    label:'Gioco delle Coppie', short:'COPPIE',    color:'#CC2244', glow:'#F472B6', desc:'Trova la coppia. Occhi aperti, mente svelta.',           players:'4-16', diff:'Media'   },
+  { slug:'quizzone',  label:'Quizzone',           short:'QUIZZONE',  color:'#E87E04', glow:'#FBBF24', desc:'Chi risponde primo prende tutto. Classifica live.',     players:'2-20', diff:'Media'   },
+  { slug:'adult',     label:'Adult Only 🔥',      short:'ADULT',     color:'#CC3300', glow:'#F97316', desc:'Per soli adulti. Niente censura. Tutto in gioco.',       players:'4-16', diff:'Alta'    },
+  { slug:'sfida',     label:'Sfida di Ballo',     short:'SFIDA',     color:'#1A8F3C', glow:'#34D399', desc:'Il telefono giudica. Il palco è tuo. Entra nell\'arena.',players:'2-12', diff:'Alta'    },
+  { slug:'parola',    label:'Parola alle Spalle', short:'PAROLA',    color:'#0055CC', glow:'#60A5FA', desc:'Non puoi guardare. Il team ti salva — o ti tradisce.',   players:'4-20', diff:'Facile'  },
+  { slug:'karaoke',   label:'Karaoke Battle',     short:'KARAOKE',   color:'#6633CC', glow:'#C084FC', desc:'Canta, stona, vinci. Il pubblico decide tutto.',        players:'2-16', diff:'Facile'  },
 ];
 
 const PLAYERS: Player[] = [
@@ -739,13 +739,13 @@ function ShowLanding({ onArena }: { onArena:()=>void }) {
           style={{ width:'clamp(22rem,38vw,34rem)', objectFit:'contain', marginBottom:'0.5rem',
             filter:'drop-shadow(0 0 50px rgba(245,182,66,0.6)) drop-shadow(0 0 100px rgba(168,85,247,0.35))' }}/>
 
-        {/* tagline */}
+        {/* tagline — show language */}
         <motion.p initial={{ opacity:0 }} animate={{ opacity:1 }}
           transition={{ delay:0.35, duration:0.5 }}
           className="uppercase tracking-widest text-center mb-8"
-          style={{ fontSize:'clamp(0.6rem,0.9vw,0.78rem)', letterSpacing:'0.35em',
-            color:'rgba(255,255,255,0.42)', fontWeight:600 }}>
-          Il Parco del Divertimento Intelligente
+          style={{ fontSize:'clamp(0.65rem,1vw,0.85rem)', letterSpacing:'0.32em',
+            color:'rgba(255,255,255,0.5)', fontWeight:700 }}>
+          Che lo show abbia inizio
         </motion.p>
 
         {/* main CTA */}
@@ -855,13 +855,13 @@ function Arena({ onPodium }: { onPodium:()=>void }) {
             filter:'brightness(1.3) drop-shadow(0 0 12px rgba(245,182,66,0.7)) drop-shadow(0 0 25px rgba(168,85,247,0.4))' }}/>
       </div>
 
-      {/* title top-center — real logo PNG (mix-blend-mode:screen rimuove lo sfondo scuro) */}
+      {/* title top-center — logo dominante 18–22% screen width */}
       <motion.div className="flex flex-col items-center justify-center pt-1 pb-0 z-20"
         initial={{ y:-20, opacity:0 }} animate={{ y:0, opacity:1 }} transition={{ delay:0.1 }}>
         <img src={pub('/jonny-world-logo.png')} alt="Jonny's World"
           className="object-contain block"
-          style={{ height:'clamp(3.5rem,7vh,6.5rem)',
-            filter:'drop-shadow(0 0 20px rgba(245,182,66,0.5))' }}/>
+          style={{ width:'clamp(12rem,20vw,18rem)',
+            filter:'drop-shadow(0 0 30px rgba(245,182,66,0.7)) drop-shadow(0 0 70px rgba(168,85,247,0.4))' }}/>
       </motion.div>
 
       {/* top-right: empty spacer (QR appartiene solo alla fase attesa giocatori) */}
@@ -897,24 +897,28 @@ function Arena({ onPodium }: { onPodium:()=>void }) {
         <GameCard game={selected}/>
       </div>
 
-      {/* Jonny — alzato di ~150px dal basso, centrato verticalmente rispetto alla ruota */}
+      {/* Jonny — presenza scenica grande, pedana illuminata */}
       <div className="absolute pointer-events-none select-none"
-        style={{ right:0, bottom:'14vh', zIndex:12, width:'21%' }}>
-        {/* floor shadow */}
-        <div style={{ position:'absolute', bottom:-8, left:'10%', right:'10%', height:18,
-          background:'rgba(0,0,0,0.55)', borderRadius:'50%', filter:'blur(14px)' }}/>
-        {/* pedestal glow */}
-        <div style={{ position:'absolute', bottom:-4, left:'15%', right:'15%', height:8,
-          background:'linear-gradient(90deg,transparent,rgba(168,85,247,0.6),rgba(245,182,66,0.4),transparent)',
-          borderRadius:'50%', filter:'blur(5px)' }}/>
-        {/* ambient glow */}
-        <div style={{ position:'absolute', bottom:0, left:'-20%', right:'-5%', top:'10%',
-          background:`radial-gradient(ellipse 70% 75% at 55% 70%,${selected.glow}28 0%,transparent 70%)`,
+        style={{ right:'-1%', bottom:'10vh', zIndex:12, width:'24%' }}>
+        {/* pedana spotlight cone */}
+        <div style={{ position:'absolute', bottom:-6, left:'-30%', right:'-30%', height:'80%',
+          background:'radial-gradient(ellipse 80% 100% at 50% 100%,rgba(245,182,66,0.18) 0%,rgba(168,85,247,0.12) 50%,transparent 80%)',
+          pointerEvents:'none' }}/>
+        {/* floor shadow ellipse */}
+        <div style={{ position:'absolute', bottom:-4, left:'8%', right:'8%', height:22,
+          background:'rgba(0,0,0,0.65)', borderRadius:'50%', filter:'blur(18px)' }}/>
+        {/* pedestal glow bar */}
+        <div style={{ position:'absolute', bottom:2, left:'5%', right:'5%', height:10,
+          background:'linear-gradient(90deg,transparent,rgba(168,85,247,0.8),rgba(245,182,66,0.6),rgba(168,85,247,0.8),transparent)',
+          borderRadius:'50%', filter:'blur(6px)' }}/>
+        {/* ambient body halo */}
+        <div style={{ position:'absolute', bottom:0, left:'-25%', right:'-10%', top:'5%',
+          background:`radial-gradient(ellipse 65% 75% at 52% 65%,${selected.glow}30 0%,rgba(168,85,247,0.15) 55%,transparent 80%)`,
           pointerEvents:'none' }}/>
         <motion.img src={pub('/jonny-master-nobg.png')} alt="Jonny host"
-          style={{ height:'min(46vh,385px)', display:'block', objectFit:'contain', width:'100%',
-            filter:`drop-shadow(0 0 40px ${selected.glow}aa) drop-shadow(-3px 0 18px rgba(168,85,247,0.4))` }}
-          animate={{ y:[0,-6,0] }}
+          style={{ height:'min(58vh,480px)', display:'block', objectFit:'contain', width:'100%',
+            filter:`drop-shadow(0 0 55px ${selected.glow}cc) drop-shadow(-5px 0 25px rgba(168,85,247,0.55)) drop-shadow(0 10px 35px rgba(0,0,0,0.7))` }}
+          animate={{ y:[0,-8,0] }}
           transition={{ duration:3.5, repeat:Infinity, ease:'easeInOut' as const }}/>
       </div>
 
@@ -923,28 +927,18 @@ function Arena({ onPodium }: { onPodium:()=>void }) {
       {/* bottom-left: spacer — logo rimosso (duplicato, rimane solo top-left) */}
       <div className="z-20"/>
 
-      {/* bottom-center: CTA + stats */}
-      <div className="flex flex-col items-center gap-1.5 pb-2 z-20">
-        <div className="flex gap-4">
-          <ArcadeBtn onClick={handleSpin}
-            bg="linear-gradient(135deg,#5B21B6 0%,#7C3AED 100%)"
-            glow="#7C3AED" border="#A855F7">
-            <Zap size={18} fill="white"/> GIRA LA RUOTA
-          </ArcadeBtn>
-          <ArcadeBtn onClick={onPodium}
-            bg="linear-gradient(135deg,#92400E 0%,#D97706 100%)"
-            glow="#F5B642" border="#F5B642">
-            <Trophy size={18} fill="white"/> CLASSIFICA
-          </ArcadeBtn>
-        </div>
-        <div className="flex gap-3">
-          {['★ 8 Giochi','◎ Per Tutti','♦ Divertimento','⚡ Live'].map(s=>(
-            <div key={s} className="flex items-center gap-1.5 rounded-full px-3 py-1"
-              style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)' }}>
-              <span className="font-bold text-white/55" style={{ fontSize:'0.62rem', letterSpacing:'0.04em' }}>{s}</span>
-            </div>
-          ))}
-        </div>
+      {/* bottom-center: comandi arcade — niente micro badge */}
+      <div className="flex items-center justify-center gap-5 pb-3 z-20">
+        <ArcadeBtn onClick={handleSpin}
+          bg="linear-gradient(135deg,#5B21B6 0%,#7C3AED 100%)"
+          glow="#7C3AED" border="#A855F7">
+          <Zap size={22} fill="white"/> GIRA LA RUOTA
+        </ArcadeBtn>
+        <ArcadeBtn onClick={onPodium}
+          bg="linear-gradient(135deg,#92400E 0%,#D97706 100%)"
+          glow="#F5B642" border="#F5B642">
+          <Trophy size={22} fill="white"/> CLASSIFICA LIVE
+        </ArcadeBtn>
       </div>
 
       <div className="z-20"/>
