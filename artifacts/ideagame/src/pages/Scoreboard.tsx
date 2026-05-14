@@ -58,6 +58,30 @@ export default function Scoreboard() {
     return () => unsubs.forEach(u => u());
   }, [joinCodeFromUrl, on, fetchPublic]);
 
+  // Projector navigation: respond to commands from regia
+  useEffect(() => {
+    if (!eventId) return;
+    const target = joinCodeFromUrl ? `/?e=${joinCodeFromUrl}` : '/';
+    const unsubs = [
+      // Regia sends "go-hub" after showing podium — return projector to waiting screen
+      on('projector:go-hub', () => navigate(target)),
+      // If the event is ended/deleted while projector is on scoreboard
+      on('event:ended', () => navigate(target)),
+      // Safety: if another game starts while on scoreboard, follow it
+      on<{ slug: string; sessionId: string; eventId: string }>('hub:start-game', ({ slug, sessionId, eventId: eid }) => {
+        const SLUG_TO_BOARD: Record<string, string> = {
+          'percorso-a-risate': '/percorso-risate',
+          'gioco-delle-coppie': '/coppie',
+          'gioco-coppie': '/coppie',
+          'quizzone': '/quizzone',
+        };
+        const boardPath = SLUG_TO_BOARD[slug];
+        if (boardPath) navigate(`${boardPath}?s=${sessionId}&e=${eid}`);
+      }),
+    ];
+    return () => unsubs.forEach(u => u?.());
+  }, [eventId, joinCodeFromUrl, on, navigate]);
+
   // Auth scoreboard (requires session)
   const { data: authRows = [], isLoading: authLoading } = useGetScoreboard(eventId, {
     query: {

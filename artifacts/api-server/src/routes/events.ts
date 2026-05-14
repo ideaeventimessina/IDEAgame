@@ -6,6 +6,7 @@ import {
   UpdateEventBody, UpdateEventResponse, GetEventResponse,
 } from "@workspace/api-zod";
 import { type AuthedRequest, requireAuth } from "../middlewares/auth";
+import { emitToEvent } from "../socket";
 
 const router: IRouter = Router();
 
@@ -96,6 +97,9 @@ router.patch("/events/:id", requireAuth, async (req: AuthedRequest, res: Respons
   const owned = await loadOwnedEvent(req, id);
   if (!owned.e) { res.status(owned.status).json({ error: owned.status === 404 ? "Not found" : "Forbidden" }); return; }
   const [e] = await db.update(eventsTable).set(parsed.data).where(eq(eventsTable.id, id)).returning();
+  if (parsed.data.status === "ended") {
+    emitToEvent(id, "event:ended", { eventId: id });
+  }
   res.json(UpdateEventResponse.parse(e));
 });
 
@@ -103,6 +107,7 @@ router.delete("/events/:id", requireAuth, async (req: AuthedRequest, res: Respon
   const id = String(req.params["id"]);
   const owned = await loadOwnedEvent(req, id);
   if (!owned.e) { res.status(owned.status).json({ error: owned.status === 404 ? "Not found" : "Forbidden" }); return; }
+  emitToEvent(id, "event:ended", { eventId: id });
   await db.delete(eventsTable).where(eq(eventsTable.id, id));
   res.sendStatus(204);
 });

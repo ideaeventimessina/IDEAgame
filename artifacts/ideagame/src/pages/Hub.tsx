@@ -396,8 +396,8 @@ export default function Hub() {
         const eid = payload?.eventId ?? liveEvent.id;
         navigate(`/scoreboard?e=${eid}`);
       }),
-      on('projector:go-hub', () => { setSessionRunning(false); setHubPhase('gameboard'); navigate(urlCode ? `/?e=${urlCode}` : '/'); }),
-      on<{ session: unknown }>('game:ended', () => { setSessionRunning(false); setSessionEnded(false); setHubPhase('gameboard'); }),
+      on('projector:go-hub', () => { setSessionRunning(false); setHubPhase('join'); navigate(urlCode ? `/?e=${urlCode}` : '/'); }),
+      on<{ session: unknown }>('game:ended', () => { setSessionRunning(false); setSessionEnded(true); setHubPhase('join'); }),
       on<{ phase: 'join' | 'gameboard' }>('hub:phase', ({ phase }) => setHubPhase(phase)),
       on<{ slug: string; sessionId: string; eventId: string }>('hub:start-game', ({ slug, sessionId, eventId }) => {
         const boardPath = SLUG_TO_BOARD[slug];
