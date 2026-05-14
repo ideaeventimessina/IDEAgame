@@ -687,13 +687,19 @@ export default function PresenterLive() {
               <Zap className="h-3.5 w-3.5 text-amber-300" />
               <div className="text-xs font-black uppercase tracking-widest text-amber-300">Scegli gioco</div>
             </div>
+            {players.length === 0 && (
+              <div className="flex items-center gap-2.5 rounded-2xl border border-orange-400/40 bg-orange-400/10 px-4 py-3 text-sm text-orange-300">
+                <Users className="h-4 w-4 shrink-0" />
+                Nessun giocatore connesso — attendi che almeno un giocatore entri prima di avviare il gioco.
+              </div>
+            )}
             <div className="grid gap-2">
               {enabledGames.map((slug) => (
                 <button
                   key={slug}
                   onClick={() => startGame(slug)}
-                  disabled={busy}
-                  className="rounded-2xl border border-amber-400/30 bg-amber-400/10 px-4 py-4 text-left font-black text-amber-100 disabled:opacity-40 active:bg-amber-400/20"
+                  disabled={busy || players.length === 0}
+                  className="rounded-2xl border border-amber-400/30 bg-amber-400/10 px-4 py-4 text-left font-black text-amber-100 disabled:opacity-40 disabled:cursor-not-allowed active:bg-amber-400/20"
                 >
                   {GAME_LABELS[slug] ?? slug}
                 </button>
