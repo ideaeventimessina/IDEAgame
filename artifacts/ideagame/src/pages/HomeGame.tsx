@@ -18,6 +18,7 @@ import {
 import { QrPlaceholder } from '@/components/QrPlaceholder';
 import { JonnyAvatar } from '@/components/JonnyAvatar';
 import { useEventSocket } from '@/hooks/useEventSocket';
+import { AudioManager } from '@/audio/AudioManager';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -120,117 +121,7 @@ const FREESTYLE_TRACKS = [
   'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-14.mp3',
 ] as const;
 
-// ── Audio (Web Audio API synthesizer — no mp3 files needed) ──────────────────
 
-type AudioTheme = 'lobby' | 'round' | 'podium';
-
-function themeFromSrc(src: string): AudioTheme {
-  if (src.includes('podium') || src.includes('champion')) return 'podium';
-  if (src.includes('round') || src.includes('playing')) return 'round';
-  return 'lobby';
-}
-
-function useBgAudio() {
-  const ctxRef = useRef<AudioContext | null>(null);
-  const masterRef = useRef<GainNode | null>(null);
-  const nodesRef = useRef<(OscillatorNode | GainNode)[]>([]);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const currentThemeRef = useRef<AudioTheme | null>(null);
-
-  const getCtx = useCallback((): AudioContext => {
-    if (!ctxRef.current || ctxRef.current.state === 'closed') {
-      const ctx = new AudioContext();
-      const master = ctx.createGain();
-      master.gain.value = 0;
-      master.connect(ctx.destination);
-      ctxRef.current = ctx;
-      masterRef.current = master;
-    }
-    if (ctxRef.current.state === 'suspended') void ctxRef.current.resume();
-    return ctxRef.current;
-  }, []);
-
-  const playNote = useCallback((
-    ctx: AudioContext, freq: number, start: number,
-    dur: number, vol: number, type: OscillatorType = 'sine',
-  ) => {
-    const osc = ctx.createOscillator();
-    const g = ctx.createGain();
-    osc.type = type;
-    osc.frequency.value = freq;
-    g.gain.setValueAtTime(0, start);
-    g.gain.linearRampToValueAtTime(vol, start + Math.min(0.06, dur * 0.2));
-    g.gain.setValueAtTime(vol, start + dur - Math.min(0.12, dur * 0.3));
-    g.gain.linearRampToValueAtTime(0, start + dur);
-    osc.connect(g);
-    g.connect(masterRef.current!);
-    osc.start(start);
-    osc.stop(start + dur + 0.05);
-    nodesRef.current.push(osc, g);
-  }, []);
-
-  const scheduleTheme = useCallback((theme: AudioTheme) => {
-    const ctx = getCtx();
-    const t = ctx.currentTime + 0.05;
-
-    if (theme === 'lobby') {
-      // Am – F – C – G soft arpeggio, 4 s loop
-      const mel = [220, 261.6, 329.6, 261.6, 174.6, 220, 261.6, 220,
-                   196,  261.6, 329.6, 392,  261.6, 329.6, 392, 261.6];
-      mel.forEach((f, i) => playNote(ctx, f, t + i * 0.25, 0.3, 0.12, 'sine'));
-      [110, 87.3, 130.8, 98].forEach((f, i) => playNote(ctx, f, t + i * 1, 0.9, 0.14, 'triangle'));
-    } else if (theme === 'round') {
-      // Energetic ostinato, 2.4 s loop
-      const mel = [523.3, 659.3, 783.9, 659.3, 880, 783.9, 659.3, 523.3];
-      mel.forEach((f, i) => playNote(ctx, f, t + i * 0.3, 0.22, 0.11, 'triangle'));
-      [0, 0.3, 0.6, 0.9, 1.2, 1.5, 1.8, 2.1].forEach(d => playNote(ctx, 55, t + d, 0.08, 0.25, 'square'));
-      [0.15, 0.45, 0.75, 1.05, 1.35, 1.65, 1.95].forEach(d => playNote(ctx, 110, t + d, 0.08, 0.12, 'sawtooth'));
-    } else {
-      // Podium fanfare, 3.5 s, plays once then soft loop
-      const fanfare = [523.3, 523.3, 523.3, 659.3, 523.3, 659.3, 783.9];
-      fanfare.forEach((f, i) => playNote(ctx, f, t + i * 0.35, 0.4, 0.15, 'sine'));
-      playNote(ctx, 1046.5, t + 7 * 0.35, 1.0, 0.18, 'sine');
-      const harmony = [392, 392, 392, 493.9, 392, 493.9, 587.3, 783.9];
-      harmony.forEach((f, i) => playNote(ctx, f, t + i * 0.35, 0.38, 0.08, 'triangle'));
-    }
-  }, [getCtx, playNote]);
-
-  const stopAll = useCallback(() => {
-    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
-    nodesRef.current.forEach(n => { try { (n as OscillatorNode).stop?.(); n.disconnect(); } catch { /* ok */ } });
-    nodesRef.current = [];
-    currentThemeRef.current = null;
-  }, []);
-
-  const play = useCallback((src: string, loop = true) => {
-    const theme = themeFromSrc(src);
-    if (currentThemeRef.current === theme) return;
-    stopAll();
-    currentThemeRef.current = theme;
-    const ctx = getCtx();
-    const master = masterRef.current!;
-    const now = ctx.currentTime;
-    master.gain.cancelScheduledValues(now);
-    master.gain.linearRampToValueAtTime(0.55, now + 0.6);
-    scheduleTheme(theme);
-    if (loop) {
-      const loopMs = theme === 'lobby' ? 4000 : theme === 'round' ? 2400 : 3500;
-      timerRef.current = setInterval(() => scheduleTheme(theme), loopMs);
-    }
-  }, [stopAll, getCtx, scheduleTheme]);
-
-  const stop = useCallback(() => {
-    stopAll();
-    if (ctxRef.current && masterRef.current) {
-      const now = ctxRef.current.currentTime;
-      masterRef.current.gain.cancelScheduledValues(now);
-      masterRef.current.gain.linearRampToValueAtTime(0, now + 0.4);
-    }
-  }, [stopAll]);
-
-  useEffect(() => () => { stopAll(); ctxRef.current?.close().catch(() => {}); }, [stopAll]);
-  return { play, stop };
-}
 
 // ── Socket ─────────────────────────────────────────────────────────────────────
 
@@ -263,7 +154,6 @@ export default function HomeGame() {
   const [jonnyMood, setJonnyMood] = useState<'idle' | 'excited' | 'thinking' | 'winner' | 'scoreboard' | 'correct'>('excited');
   const [jonnyMsg, setJonnyMsg] = useState('Benvenuti a JONNY\'S WORLD!');
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const { play: playBg, stop: stopBg } = useBgAudio();
   const [audioUnlocked, setAudioUnlocked] = useState(false);
 
   const { on } = useHomeSocket(session?.id ?? null);
@@ -280,10 +170,10 @@ export default function HomeGame() {
   }, [session]);
 
   // ── Audio unlock ────────────────────────────────────────────────────────────
-  const unlockAudio = useCallback((src?: string) => {
+  const unlockAudio = useCallback((_src?: string) => {
     setAudioUnlocked(true);
-    playBg(src ?? '/audio/jonny-world/global/lobby_loop.mp3');
-  }, [playBg]);
+    void AudioManager.playLoop('global', 'lobby_loop');
+  }, []);
 
   // ── Load session from URL ────────────────────────────────────────────────────
   useEffect(() => {
@@ -344,14 +234,14 @@ export default function HomeGame() {
       setPhase('board');
       setJonnyMood('winner');
       setJonnyMsg(`${ALL_GAMES.find(g => g.slug === d.gameSlug)?.name ?? 'Gioco'} completato! 🎉`);
-      stopBg();
+      AudioManager.stopLoop();
     });
     const u6 = on<{ session: HomeSession; players: HomePlayer[] }>('home:champion', (d) => {
       setSession(d.session);
       setPlayers(d.players);
       setPhase('champion');
       setJonnyMood('winner');
-      playBg('/audio/jonny-world/global/podium_theme.mp3', false);
+      void AudioManager.playStinger('global', 'podium_theme');
     });
     const u7 = on<{ payload: Record<string, unknown>; players: HomePlayer[] }>('home:card_flip', (d) => {
       setSession(prev => prev ? { ...prev, roundPayload: d.payload } : prev);
@@ -457,7 +347,7 @@ export default function HomeGame() {
       setJonnyMood('thinking');
       const game = ALL_GAMES.find(g => g.slug === slug);
       setJonnyMsg(`${game?.name ?? slug} iniziato!`);
-      playBg(`/audio/jonny-world/${slug}/round_loop.mp3`);
+      void AudioManager.playLoop(slug, 'round_loop');
     } finally { setSelectingGame(null); }
   };
 
@@ -473,7 +363,7 @@ export default function HomeGame() {
         if (d.players) setPlayers(d.players);
         setPhase('board');
         setJonnyMood('winner');
-        stopBg();
+        AudioManager.stopLoop();
       } else {
         setSession(d.session);
         setRevealed(false);
@@ -494,7 +384,7 @@ export default function HomeGame() {
       setPlayers(d.players);
       setPhase('board');
       setJonnyMood('winner');
-      stopBg();
+      AudioManager.stopLoop();
     } finally { setLoading(false); }
   };
 
@@ -508,7 +398,7 @@ export default function HomeGame() {
       setPlayers(d.players);
       setPhase('champion');
       setJonnyMood('winner');
-      playBg('/audio/jonny-world/global/podium_theme.mp3', false);
+      void AudioManager.playStinger('global', 'podium_theme');
     } finally { setLoading(false); }
   };
 

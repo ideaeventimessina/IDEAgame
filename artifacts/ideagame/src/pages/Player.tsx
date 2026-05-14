@@ -199,12 +199,24 @@ export default function Player() {
     try {
       const session = await apiFetch(`/events/${eventId}/active-session`) as ActiveSession | null;
       if (!session) return;
-      setGameState({
-        sessionId: session.id,
-        currentRound: session.currentRound,
-        totalRounds: session.totalRounds,
-        status: session.status as GameState['status'],
-        gameSlug: session.gameSlug,
+      setGameState(prev => {
+        // Session changed — full reset
+        if (prev.sessionId !== session.id) {
+          return {
+            sessionId: session.id,
+            currentRound: session.currentRound,
+            totalRounds: session.totalRounds,
+            status: session.status as GameState['status'],
+            gameSlug: session.gameSlug,
+          };
+        }
+        // Same session — only sync status/totals; don't regress currentRound already updated by socket
+        return {
+          ...prev,
+          status: session.status as GameState['status'],
+          totalRounds: session.totalRounds,
+          gameSlug: session.gameSlug,
+        };
       });
       // If coppie board is already initialized, fetch its state
       if (session.gameSlug === 'gioco-coppie') {
@@ -444,7 +456,7 @@ export default function Player() {
       }),
     ];
     return () => unsubs.forEach(u => u());
-  }, [event, on]);
+  }, [event?.id, on]);
 
   useEffect(() => {
     if (!connected || !player || !event) return;
