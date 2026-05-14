@@ -463,69 +463,42 @@ function GameCard({ game }: { game: Game }) {
   const DIFF_COLORS: Record<string,string> = { Facile:'#34D399', Media:'#F5B642', Alta:'#F87171' };
   return (
     <AnimatePresence mode="wait">
-      <motion.div key={game.slug} className="rounded-2xl overflow-hidden"
-        style={{ border:`2px solid ${game.color}cc`, boxShadow:`0 0 40px ${game.color}55,0 0 80px ${game.color}22` }}
-        initial={{ opacity:0, y:10 }} animate={{ opacity:1, y:0 }} exit={{ opacity:0, y:-10 }}
-        transition={{ duration:0.25 }}>
-        {/* preview area — abstract art */}
-        <div className="relative overflow-hidden" style={{ height:'9vh',
-          background:`linear-gradient(135deg,${game.color}55 0%,${game.glow}33 50%,${game.color}22 100%)` }}>
-          {/* animated pattern */}
-          <svg className="absolute inset-0 w-full h-full" viewBox="0 0 280 80" preserveAspectRatio="xMidYMid slice">
-            <defs>
-              <radialGradient id={`cg-${game.slug}`} cx="50%" cy="50%" r="70%">
-                <stop offset="0%" stopColor={game.glow} stopOpacity="0.5"/>
-                <stop offset="100%" stopColor={game.color} stopOpacity="0"/>
-              </radialGradient>
-            </defs>
-            {Array.from({length:6},(_,i)=>(
-              <motion.circle key={i} cx={20+i*50} cy={40} r={15+i*4}
-                fill="none" stroke={i%2===0?game.glow:game.color} strokeWidth="1" opacity="0.4"
-                animate={{ opacity:[0.4,0.7,0.4] }}
-                transition={{ duration:2+i*0.4, repeat:Infinity, delay:i*0.3, ease:'easeInOut' as const }}/>
-            ))}
-            <rect width="280" height="80" fill={`url(#cg-${game.slug})`}/>
-            <text x="140" y="45" textAnchor="middle" dominantBaseline="middle"
-              fontSize="22" fontWeight="900" fontFamily="'Outfit','Arial Black',sans-serif"
-              fill="white" opacity="0.18" style={{ userSelect:'none', letterSpacing:'0.12em' }}>
-              {game.short}
-            </text>
-          </svg>
-          {/* IN EVIDENZA badge */}
-          <div className="absolute top-2 left-3 rounded-full px-2.5 py-0.5 font-black text-white uppercase"
-            style={{ background:`${game.color}cc`, fontSize:'0.5rem', letterSpacing:'0.2em',
-              boxShadow:`0 0 12px ${game.color}88` }}>
-            In Evidenza
-          </div>
-        </div>
-        {/* card body */}
-        <div className="px-3.5 py-3" style={{ background:`${game.color}14` }}>
-          <div className="font-black text-white mb-1" style={{ fontSize:'clamp(0.88rem,1.3vw,1.05rem)', fontFamily:"'Outfit','Arial Black',sans-serif" }}>
+      <motion.div key={game.slug} className="rounded-2xl"
+        style={{ background:`rgba(8,2,24,0.88)`, border:`1.5px solid ${game.color}99`,
+          boxShadow:`0 0 30px ${game.color}44,0 0 60px ${game.color}18` }}
+        initial={{ opacity:0, y:8 }} animate={{ opacity:1, y:0 }} exit={{ opacity:0, y:-8 }}
+        transition={{ duration:0.22 }}>
+        <div className="px-4 py-3.5">
+          {/* title */}
+          <div className="font-black text-white mb-1"
+            style={{ fontSize:'clamp(0.95rem,1.4vw,1.15rem)', fontFamily:"'Outfit','Arial Black',sans-serif",
+              textShadow:`0 0 20px ${game.glow}88` }}>
             {game.label}
           </div>
-          <div className="mb-2.5" style={{ fontSize:'0.72rem', color:'rgba(255,255,255,0.5)', lineHeight:1.45 }}>
+          {/* subtitle */}
+          <div className="mb-3" style={{ fontSize:'0.72rem', color:'rgba(255,255,255,0.48)', lineHeight:1.45 }}>
             {game.desc}
           </div>
           {/* badges */}
           <div className="flex gap-2 mb-3 flex-wrap">
             <span className="flex items-center gap-1 rounded-full px-2.5 py-0.5 font-bold"
-              style={{ background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.14)', fontSize:'0.62rem', color:'rgba(255,255,255,0.7)' }}>
-              <Users size={9}/> {game.players} giocatori
+              style={{ background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.12)',
+                fontSize:'0.6rem', color:'rgba(255,255,255,0.65)' }}>
+              <Users size={8}/> {game.players} giocatori
             </span>
             <span className="flex items-center gap-1 rounded-full px-2.5 py-0.5 font-bold"
-              style={{ background:`${DIFF_COLORS[game.diff] ?? '#F5B642'}22`,
-                border:`1px solid ${DIFF_COLORS[game.diff] ?? '#F5B642'}55`,
-                color:DIFF_COLORS[game.diff] ?? '#F5B642', fontSize:'0.62rem' }}>
-              <Star size={9}/> {game.diff}
+              style={{ background:`${DIFF_COLORS[game.diff] ?? '#F5B642'}18`,
+                border:`1px solid ${DIFF_COLORS[game.diff] ?? '#F5B642'}44`,
+                color:DIFF_COLORS[game.diff] ?? '#F5B642', fontSize:'0.6rem' }}>
+              <Star size={8}/> {game.diff}
             </span>
           </div>
           {/* CTA */}
-          <motion.button className="w-full rounded-xl py-2 font-black text-white text-sm flex items-center justify-center gap-1.5 relative overflow-hidden"
+          <motion.button className="w-full rounded-xl py-2 font-black text-white flex items-center justify-center gap-1.5"
             style={{ background:`linear-gradient(135deg,${game.color} 0%,${game.glow} 100%)`,
-              boxShadow:`0 0 22px ${game.color}66`, border:'none' }}
+              boxShadow:`0 0 18px ${game.color}55`, border:'none', fontSize:'0.8rem' }}
             whileHover={{ scale:1.02 }} whileTap={{ scale:0.97 }}>
-            <div className="absolute inset-0 opacity-0 hover:opacity-20 bg-white transition-opacity rounded-xl"/>
-            Scopri di più <ChevronRight size={14} className="ml-0.5"/>
+            Gioca ora <ChevronRight size={13}/>
           </motion.button>
         </div>
       </motion.div>
@@ -759,30 +732,12 @@ function ShowLanding({ onArena }: { onArena:()=>void }) {
       <div className="absolute inset-0 flex flex-col items-center justify-center z-10"
         style={{ paddingRight:'30vw' }}>
 
-        {/* logo mark */}
-        <motion.img src={pub('/logo.png')} alt="IDEAgame"
+        {/* real logo PNG — sfondo rimosso, nessun blend mode */}
+        <motion.img src={pub('/jonny-world-logo.png')} alt="Jonny's World"
           initial={{ y:-20, opacity:0 }} animate={{ y:0, opacity:1 }}
-          transition={{ delay:0.1, duration:0.6, ease:'easeOut' as const }}
-          style={{ height:'clamp(2.2rem,3.8vh,3.2rem)', objectFit:'contain', marginBottom:'1rem',
-            filter:'brightness(1.5) drop-shadow(0 0 24px rgba(245,182,66,1)) drop-shadow(0 0 60px rgba(168,85,247,0.6))' }}/>
-
-        {/* big title */}
-        <motion.div initial={{ y:-15, opacity:0 }} animate={{ y:0, opacity:1 }}
-          transition={{ delay:0.18, duration:0.65, ease:'easeOut' as const }}
-          className="text-center leading-none mb-1"
-          style={{ fontFamily:"'Outfit','Arial Black',sans-serif" }}>
-          <div style={{ fontSize:'clamp(4.5rem,10vw,9.5rem)', fontWeight:900, color:'white', lineHeight:0.9,
-            textShadow:'0 0 80px rgba(168,85,247,1),0 0 160px rgba(168,85,247,0.5),0 8px 40px rgba(0,0,0,0.9)' }}>
-            JONNY'S
-          </div>
-          <div style={{ fontSize:'clamp(5.5rem,12.5vw,12rem)', fontWeight:900, lineHeight:0.88, marginTop:'-0.02em',
-            background:'linear-gradient(135deg,#FFD700 0%,#F5B642 40%,#FF9500 100%)',
-            WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent',
-            filter:'drop-shadow(0 0 60px rgba(245,182,66,0.9)) drop-shadow(0 0 120px rgba(245,182,66,0.4))',
-            WebkitTextStroke:'0px transparent' }}>
-            WORLD
-          </div>
-        </motion.div>
+          transition={{ delay:0.1, duration:0.65, ease:'easeOut' as const }}
+          style={{ width:'clamp(22rem,38vw,34rem)', objectFit:'contain', marginBottom:'0.5rem',
+            filter:'drop-shadow(0 0 50px rgba(245,182,66,0.6)) drop-shadow(0 0 100px rgba(168,85,247,0.35))' }}/>
 
         {/* tagline */}
         <motion.p initial={{ opacity:0 }} animate={{ opacity:1 }}
@@ -900,33 +855,17 @@ function Arena({ onPodium }: { onPodium:()=>void }) {
             filter:'brightness(1.3) drop-shadow(0 0 12px rgba(245,182,66,0.7)) drop-shadow(0 0 25px rgba(168,85,247,0.4))' }}/>
       </div>
 
-      {/* title top-center — real logo PNG */}
+      {/* title top-center — real logo PNG (mix-blend-mode:screen rimuove lo sfondo scuro) */}
       <motion.div className="flex flex-col items-center justify-center pt-1 pb-0 z-20"
         initial={{ y:-20, opacity:0 }} animate={{ y:0, opacity:1 }} transition={{ delay:0.1 }}>
-        <img src={pub('/jonny-world-hero.png')} alt="Jonny's World"
+        <img src={pub('/jonny-world-logo.png')} alt="Jonny's World"
           className="object-contain block"
           style={{ height:'clamp(3.5rem,7vh,6.5rem)',
-            filter:'drop-shadow(0 0 30px rgba(168,85,247,0.6)) drop-shadow(0 0 60px rgba(245,182,66,0.25))' }}/>
+            filter:'drop-shadow(0 0 20px rgba(245,182,66,0.5))' }}/>
       </motion.div>
 
-      {/* QR top-right */}
-      <motion.div className="flex justify-end items-start pr-4 pt-3 z-20"
-        initial={{ x:20, opacity:0 }} animate={{ x:0, opacity:1 }} transition={{ delay:0.2 }}>
-        <div className="rounded-2xl px-3.5 py-2.5 flex items-center gap-3"
-          style={{ background:'rgba(8,2,24,0.9)', border:'2px solid rgba(245,182,66,0.5)',
-            boxShadow:'0 0 30px rgba(245,182,66,0.25),inset 0 1px 0 rgba(255,255,255,0.08)' }}>
-          <div>
-            <div className="font-black uppercase mb-0.5" style={{ fontSize:'0.52rem', letterSpacing:'0.22em', color:'rgba(255,255,255,0.45)' }}>Codice Partita</div>
-            <div className="font-black tracking-[0.12em]" style={{ fontSize:'clamp(1.2rem,2vw,1.8rem)', color:'#F5B642', textShadow:'0 0 20px rgba(245,182,66,0.9)' }}>CASA42</div>
-            <div className="mt-0.5" style={{ fontSize:'0.5rem', color:'rgba(255,255,255,0.3)', lineHeight:1.4 }}>
-              Vai su ideagame.app<br/>e inserisci il codice
-            </div>
-          </div>
-          <div className="rounded-xl overflow-hidden shrink-0" style={{ border:'2px solid rgba(245,182,66,0.45)' }}>
-            <QRMock size={68}/>
-          </div>
-        </div>
-      </motion.div>
+      {/* top-right: empty spacer (QR appartiene solo alla fase attesa giocatori) */}
+      <div className="z-20"/>
 
       {/* ── MAIN ── */}
 
@@ -953,33 +892,30 @@ function Arena({ onPodium }: { onPodium:()=>void }) {
         </motion.div>
       </div>
 
-      {/* right: Jonny absolute + game card */}
-      <div className="flex flex-col pr-4 pl-1 pb-1 z-20 relative">
-        {/* presenter platform + shadow */}
-        <div className="absolute pointer-events-none" style={{ right:'4%', bottom:'27%', zIndex:25 }}>
-          {/* floor shadow ellipse */}
-          <div style={{ position:'absolute', bottom:'-2%', left:'-35%', right:'-35%', height:22,
-            background:'rgba(0,0,0,0.65)', borderRadius:'50%', filter:'blur(16px)' }}/>
-          {/* pedestal */}
-          <div style={{ position:'absolute', bottom:'-2%', left:'5%', right:'5%', height:8,
-            background:'linear-gradient(180deg,rgba(168,85,247,0.35) 0%,rgba(80,20,160,0.6) 100%)',
-            borderRadius:'50%', boxShadow:'0 0 20px rgba(168,85,247,0.5),0 4px 16px rgba(0,0,0,0.6)' }}/>
-          {/* violet glow behind jonny */}
-          <div style={{ position:'absolute', bottom:'10%', left:'-30%', right:'-30%', height:'70%',
-            background:`radial-gradient(ellipse 80% 100% at 50% 80%,${selected.glow}33 0%,transparent 70%)`,
-            pointerEvents:'none' }}/>
-          {/* jonny — transparent PNG, no blend mode, scenic absolute */}
-          <motion.img src={pub('/jonny-master-nobg.png')} alt="Jonny host"
-            style={{ height:'min(56vh,520px)', display:'block', objectFit:'contain',
-              filter:`drop-shadow(0 0 50px ${selected.glow}cc) drop-shadow(0 0 100px ${selected.glow}44) drop-shadow(0 -8px 24px rgba(168,85,247,0.5))` }}
-            animate={{ y:[0,-7,0] }}
-            transition={{ duration:3.5, repeat:Infinity, ease:'easeInOut' as const }}/>
-        </div>
+      {/* right: game card — Jonny è outside/absolute separato */}
+      <div className="flex flex-col pr-3 pl-1 pb-1 z-20 relative justify-end">
+        <GameCard game={selected}/>
+      </div>
 
-        {/* game card */}
-        <div className="mt-auto relative z-10">
-          <GameCard game={selected}/>
-        </div>
+      {/* Jonny — assoluto su tutto lo schermo arena, non dentro la colonna destra */}
+      <div className="absolute pointer-events-none select-none"
+        style={{ right:0, bottom:0, zIndex:12, width:'22%' }}>
+        {/* floor shadow */}
+        <div style={{ position:'absolute', bottom:2, left:'10%', right:'10%', height:18,
+          background:'rgba(0,0,0,0.55)', borderRadius:'50%', filter:'blur(14px)' }}/>
+        {/* pedestal glow */}
+        <div style={{ position:'absolute', bottom:4, left:'15%', right:'15%', height:8,
+          background:'linear-gradient(90deg,transparent,rgba(168,85,247,0.6),rgba(245,182,66,0.4),transparent)',
+          borderRadius:'50%', filter:'blur(5px)' }}/>
+        {/* ambient glow */}
+        <div style={{ position:'absolute', bottom:'5%', left:'-20%', right:'-5%', top:'15%',
+          background:`radial-gradient(ellipse 70% 75% at 55% 70%,${selected.glow}28 0%,transparent 70%)`,
+          pointerEvents:'none' }}/>
+        <motion.img src={pub('/jonny-master-nobg.png')} alt="Jonny host"
+          style={{ height:'min(48vh,400px)', display:'block', objectFit:'contain', width:'100%',
+            filter:`drop-shadow(0 0 40px ${selected.glow}aa) drop-shadow(-3px 0 18px rgba(168,85,247,0.4))` }}
+          animate={{ y:[0,-6,0] }}
+          transition={{ duration:3.5, repeat:Infinity, ease:'easeInOut' as const }}/>
       </div>
 
       {/* ── BOTTOM ── */}
