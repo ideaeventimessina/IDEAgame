@@ -1,0 +1,121 @@
+STOP.
+
+Non rigenerare HomeV4 da zero.
+Il layout generale va bene.
+
+Il problema è SOLO l'integrazione degli asset reali.
+
+Stai sbagliando tecnicamente due cose:
+
+1) JONNY
+2) LOGO
+
+-----------------------------------
+JONNY FIX
+-----------------------------------
+
+Attualmente Jonny è dentro un semplice box immagine nero.
+Sembra incollato sopra l'interfaccia.
+
+Rimuovi COMPLETAMENTE quel sistema.
+
+NON usare:
+
+<div>
+ <img />
+</div>
+
+standard.
+
+Devi trattarlo come elemento scenico assoluto.
+
+Implementazione richiesta:
+
+- position absolute
+- background trasparente
+- object-contain
+- nessun background nero
+- nessun card container
+- nessun bordo
+
+Deve stare sul lato destro come mascotte dello show.
+
+Aggiungi:
+
+- glow viola dietro
+- glow oro secondario
+- drop shadow morbida
+- base/platform sotto i piedi
+- floating animation lentissima
+- deve sembrare sul palco
+
+Esempio concettuale:
+
+right side:
+Jonny stands directly in scene
+NOT inside a rectangular card
+
+-----------------------------------
+LOGO FIX
+-----------------------------------
+
+SMETTI di scrivere:
+
+JONNY'S WORLD
+
+come testo HTML.
+
+Devi usare il logo PNG reale che ti ho fornito.
+
+Usa:
+
+/public/assets/jonny-logo.png
+
+(o path reale presente nel progetto)
+
+Implementazione:
+
+- logo assoluto top center
+- object-contain
+- no text recreation
+- no font replacement
+- no css fake logo
+
+Il logo originale ha già:
+- proporzioni corrette
+- branding corretto
+- identità
+
+-----------------------------------
+DO NOT TOUCH
+-----------------------------------
+
+- ruota
+- classifica
+- CTA
+- layout generale
+- backend
+- socket
+- logiche
+
+-----------------------------------
+TECHNICAL GOAL
+-----------------------------------
+
+HomeV4 deve sembrare:
+
+Disney/Pixar host standing in a live TV game arena
+
+NOT:
+
+dashboard with image attachments
+
+-----------------------------------
+RETURN
+-----------------------------------
+
+A. file modificati
+B. exact asset paths used
+C. confirm logo is real PNG
+D. confirm Jonny is no longer inside any card/container
+E. typecheck result

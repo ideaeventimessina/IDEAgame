@@ -6,11 +6,8 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence, useAnimation } from 'framer-motion';
 import { RotateCcw, Users, Trophy, Zap, Star, ChevronRight } from 'lucide-react';
 
-/* ─── Jonny poses (mix-blend-mode screen su palco scuro) */
-import jonnyWave    from '@assets/m5QIT_1778798043986.jpg';
-import jonnyPresent from '@assets/Efo0J_1778798043990.jpg';
-import jonnyWin     from '@assets/C1Eoc_1778798043990.jpg';
-import jonnyPoint   from '@assets/pff8V_1778798043988.jpg';
+/* ─── Jonny poses: PNG transparent — no blend mode needed */
+/* jonnyNobg = /public/jonny-master-nobg.png (already no background) */
 
 /* ─── types ─────────────────────────────────────── */
 type Screen = 'show' | 'arena' | 'podium';
@@ -484,7 +481,7 @@ function GameCard({ game }: { game: Game }) {
             {Array.from({length:6},(_,i)=>(
               <motion.circle key={i} cx={20+i*50} cy={40} r={15+i*4}
                 fill="none" stroke={i%2===0?game.glow:game.color} strokeWidth="1" opacity="0.4"
-                animate={{ r:[15+i*4, 25+i*4, 15+i*4], opacity:[0.4,0.7,0.4] }}
+                animate={{ opacity:[0.4,0.7,0.4] }}
                 transition={{ duration:2+i*0.4, repeat:Infinity, delay:i*0.3, ease:'easeInOut' as const }}/>
             ))}
             <rect width="280" height="80" fill={`url(#cg-${game.slug})`}/>
@@ -618,19 +615,12 @@ function ShowLanding({ onArena }: { onArena:()=>void }) {
       {/* center */}
       <div className="relative z-10 flex flex-col items-center text-center" style={{ maxWidth:'58vw' }}>
         <motion.div initial={{ y:-28, opacity:0 }} animate={{ y:0, opacity:1 }} transition={{ delay:0.1, duration:0.6, ease:'easeOut' as const }}>
-          <img src={pub('/logo.png')} alt="IDEAgame" className="object-contain mx-auto mb-5"
-            style={{ height:'clamp(2rem,3.5vh,3rem)',
-              filter:'brightness(1.4) drop-shadow(0 0 20px rgba(245,182,66,0.9)) drop-shadow(0 0 40px rgba(168,85,247,0.5))' }}/>
-          <div className="font-black uppercase mb-2" style={{ fontSize:'clamp(0.55rem,0.8vw,0.7rem)', letterSpacing:'0.35em', color:'#F5B642' }}>
-            Il Parco del Divertimento Intelligente
-          </div>
-          <h1 className="font-black leading-[0.85] mb-4"
-            style={{ fontSize:'clamp(3.5rem,8vw,7.5rem)', fontFamily:"'Outfit','Arial Black',sans-serif",
-              color:'white', textShadow:'0 0 60px rgba(168,85,247,0.9),0 6px 30px rgba(0,0,0,0.9)' }}>
-            JONNY'S<br/>
-            <span style={{ color:'#F5B642', textShadow:'0 0 80px rgba(245,182,66,1),0 0 160px rgba(245,182,66,0.5)' }}>WORLD</span>
-          </h1>
-          <p className="mb-9" style={{ fontSize:'clamp(0.85rem,1.3vw,1.05rem)', color:'rgba(255,255,255,0.5)', lineHeight:1.6 }}>
+          {/* Real logo PNG — no HTML text recreation */}
+          <img src={pub('/jonny-world-hero.png')} alt="Jonny's World"
+            className="object-contain mx-auto mb-4 block"
+            style={{ height:'clamp(9rem,18vh,16rem)',
+              filter:'drop-shadow(0 0 60px rgba(168,85,247,0.7)) drop-shadow(0 0 120px rgba(245,182,66,0.35))' }}/>
+          <p className="mb-9 mt-1" style={{ fontSize:'clamp(0.85rem,1.3vw,1.05rem)', color:'rgba(255,255,255,0.5)', lineHeight:1.6 }}>
             8 mondi di gioco · Un palco · Fino a 20 giocatori
           </p>
         </motion.div>
@@ -643,20 +633,34 @@ function ShowLanding({ onArena }: { onArena:()=>void }) {
           </ArcadeBtn>
         </motion.div>
       </div>
-      {/* Jonny left — screen blend */}
-      <motion.img src={jonnyWave} alt="Jonny"
-        className="absolute pointer-events-none select-none"
-        style={{ left:'-3%', bottom:0, height:'82vh', mixBlendMode:'screen',
-          filter:'drop-shadow(20px 0 40px rgba(168,85,247,0.6))' }}
+      {/* Jonny left — transparent PNG, no blend mode */}
+      <motion.div className="absolute pointer-events-none select-none"
+        style={{ left:'-2%', bottom:0, zIndex:5 }}
         initial={{ x:-60, opacity:0 }} animate={{ x:0, opacity:1 }}
-        transition={{ delay:0.3, duration:0.9, ease:'easeOut' as const }}/>
-      {/* Jonny right */}
-      <motion.img src={jonnyPoint} alt="Jonny"
-        className="absolute pointer-events-none select-none"
-        style={{ right:'-3%', bottom:0, height:'80vh', mixBlendMode:'screen', transform:'scaleX(-1)',
-          filter:'drop-shadow(-20px 0 40px rgba(245,182,66,0.5))' }}
+        transition={{ delay:0.3, duration:0.9, ease:'easeOut' as const }}>
+        {/* violet glow behind */}
+        <div style={{ position:'absolute', inset:0, background:'radial-gradient(ellipse 70% 80% at 50% 85%,rgba(168,85,247,0.45) 0%,transparent 70%)', pointerEvents:'none' }}/>
+        {/* floor shadow */}
+        <div style={{ position:'absolute', bottom:0, left:'10%', right:'10%', height:18, background:'rgba(0,0,0,0.55)', borderRadius:'50%', filter:'blur(12px)' }}/>
+        <motion.img src={pub('/jonny-master-nobg.png')} alt="Jonny"
+          style={{ height:'80vh', display:'block', objectFit:'contain',
+            filter:'drop-shadow(0 0 50px rgba(168,85,247,0.7)) drop-shadow(4px 0 20px rgba(168,85,247,0.3))' }}
+          animate={{ y:[0,-8,0] }}
+          transition={{ duration:4, repeat:Infinity, ease:'easeInOut' as const }}/>
+      </motion.div>
+      {/* Jonny right — flipped */}
+      <motion.div className="absolute pointer-events-none select-none"
+        style={{ right:'-2%', bottom:0, zIndex:5, transform:'scaleX(-1)' }}
         initial={{ x:60, opacity:0 }} animate={{ x:0, opacity:1 }}
-        transition={{ delay:0.4, duration:0.9, ease:'easeOut' as const }}/>
+        transition={{ delay:0.4, duration:0.9, ease:'easeOut' as const }}>
+        <div style={{ position:'absolute', inset:0, background:'radial-gradient(ellipse 70% 80% at 50% 85%,rgba(245,182,66,0.35) 0%,transparent 70%)', pointerEvents:'none' }}/>
+        <div style={{ position:'absolute', bottom:0, left:'10%', right:'10%', height:18, background:'rgba(0,0,0,0.55)', borderRadius:'50%', filter:'blur(12px)' }}/>
+        <motion.img src={pub('/jonny-master-nobg.png')} alt="Jonny"
+          style={{ height:'78vh', display:'block', objectFit:'contain',
+            filter:'drop-shadow(0 0 50px rgba(245,182,66,0.6)) drop-shadow(-4px 0 20px rgba(245,182,66,0.3))' }}
+          animate={{ y:[0,-6,0] }}
+          transition={{ duration:3.7, repeat:Infinity, ease:'easeInOut' as const, delay:0.5 }}/>
+      </motion.div>
     </motion.div>
   );
 }
@@ -689,23 +693,13 @@ function Arena({ onPodium }: { onPodium:()=>void }) {
             filter:'brightness(1.3) drop-shadow(0 0 12px rgba(245,182,66,0.7)) drop-shadow(0 0 25px rgba(168,85,247,0.4))' }}/>
       </div>
 
-      {/* title top-center */}
+      {/* title top-center — real logo PNG */}
       <motion.div className="flex flex-col items-center justify-center pt-1 pb-0 z-20"
         initial={{ y:-20, opacity:0 }} animate={{ y:0, opacity:1 }} transition={{ delay:0.1 }}>
-        <div className="font-black leading-none text-center"
-          style={{ fontSize:'clamp(1.8rem,3.2vw,2.8rem)', fontFamily:"'Outfit','Arial Black',sans-serif",
-            color:'white', textShadow:'0 0 40px rgba(168,85,247,0.9),0 3px 18px rgba(0,0,0,0.9)' }}>
-          JONNY'S
-        </div>
-        <div className="font-black leading-none text-center"
-          style={{ fontSize:'clamp(2.2rem,4.2vw,3.8rem)', fontFamily:"'Outfit','Arial Black',sans-serif",
-            color:'#F5B642', textShadow:'0 0 60px rgba(245,182,66,1),0 0 120px rgba(245,182,66,0.45)',
-            WebkitTextStroke:'1.5px rgba(180,100,0,0.35)', marginTop:'-0.05em' }}>
-          WORLD
-        </div>
-        <div className="font-black uppercase mt-0.5" style={{ fontSize:'clamp(0.4rem,0.6vw,0.55rem)', letterSpacing:'0.32em', color:'rgba(255,255,255,0.38)' }}>
-          Il Parco del Divertimento Intelligente
-        </div>
+        <img src={pub('/jonny-world-hero.png')} alt="Jonny's World"
+          className="object-contain block"
+          style={{ height:'clamp(3.5rem,7vh,6.5rem)',
+            filter:'drop-shadow(0 0 30px rgba(168,85,247,0.6)) drop-shadow(0 0 60px rgba(245,182,66,0.25))' }}/>
       </motion.div>
 
       {/* QR top-right */}
@@ -767,10 +761,10 @@ function Arena({ onPodium }: { onPodium:()=>void }) {
           <div style={{ position:'absolute', bottom:'10%', left:'-30%', right:'-30%', height:'70%',
             background:`radial-gradient(ellipse 80% 100% at 50% 80%,${selected.glow}33 0%,transparent 70%)`,
             pointerEvents:'none' }}/>
-          {/* jonny */}
-          <motion.img src={jonnyPresent} alt="Jonny host"
-            style={{ height:'min(56vh, 520px)', mixBlendMode:'screen', display:'block',
-              filter:`drop-shadow(0 0 40px ${selected.glow}bb) drop-shadow(0 -5px 20px rgba(168,85,247,0.4))` }}
+          {/* jonny — transparent PNG, no blend mode, scenic absolute */}
+          <motion.img src={pub('/jonny-master-nobg.png')} alt="Jonny host"
+            style={{ height:'min(56vh,520px)', display:'block', objectFit:'contain',
+              filter:`drop-shadow(0 0 50px ${selected.glow}cc) drop-shadow(0 0 100px ${selected.glow}44) drop-shadow(0 -8px 24px rgba(168,85,247,0.5))` }}
             animate={{ y:[0,-7,0] }}
             transition={{ duration:3.5, repeat:Infinity, ease:'easeInOut' as const }}/>
         </div>
@@ -783,13 +777,11 @@ function Arena({ onPodium }: { onPodium:()=>void }) {
 
       {/* ── BOTTOM ── */}
 
-      {/* bottom-left: IDEA GAME wordmark */}
-      <div className="flex items-end pb-3 pl-5 z-20">
-        <div>
-          <div className="font-black" style={{ fontSize:'clamp(0.75rem,1.3vw,1.1rem)', color:'#F5B642', lineHeight:1 }}>IDEA</div>
-          <div className="font-black" style={{ fontSize:'clamp(0.75rem,1.3vw,1.1rem)', color:'white', lineHeight:1 }}>GAME</div>
-          <div className="font-black" style={{ fontSize:'clamp(0.4rem,0.6vw,0.5rem)', color:'#A855F7', letterSpacing:'0.14em' }}>JONNY'S WORLD</div>
-        </div>
+      {/* bottom-left: real logo */}
+      <div className="flex items-end pb-3 pl-4 z-20">
+        <img src={pub('/logo.png')} alt="IDEAgame"
+          style={{ height:'clamp(1.4rem,2.4vh,2rem)', objectFit:'contain',
+            filter:'brightness(1.3) drop-shadow(0 0 10px rgba(245,182,66,0.6))' }}/>
       </div>
 
       {/* bottom-center: CTA + stats */}
@@ -835,9 +827,16 @@ function Podium({ onRestart }: { onRestart:()=>void }) {
       initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
       transition={{ duration:0.5 }}>
       <Confetti/>
-      <img src={jonnyWin} alt="Jonny festeggia" className="absolute pointer-events-none select-none"
-        style={{ right:'-1%', bottom:0, height:'68vh', mixBlendMode:'screen', zIndex:5,
-          filter:'drop-shadow(0 0 50px rgba(245,182,66,0.7))' }}/>
+      {/* Jonny podio — transparent PNG, scenic absolute */}
+      <motion.div className="absolute pointer-events-none select-none" style={{ right:'-1%', bottom:0, zIndex:5 }}>
+        <div style={{ position:'absolute', inset:0, background:'radial-gradient(ellipse 80% 90% at 50% 90%,rgba(245,182,66,0.45) 0%,transparent 70%)', pointerEvents:'none' }}/>
+        <div style={{ position:'absolute', bottom:0, left:'5%', right:'5%', height:20, background:'rgba(0,0,0,0.5)', borderRadius:'50%', filter:'blur(14px)' }}/>
+        <motion.img src={pub('/jonny-master-nobg.png')} alt="Jonny festeggia"
+          style={{ height:'68vh', display:'block', objectFit:'contain',
+            filter:'drop-shadow(0 0 60px rgba(245,182,66,0.8)) drop-shadow(0 0 120px rgba(245,182,66,0.35))' }}
+          animate={{ y:[0,-10,0], rotate:[-1,1,-1] }}
+          transition={{ duration:2.2, repeat:Infinity, ease:'easeInOut' as const }}/>
+      </motion.div>
       {/* header */}
       <div className="flex items-center justify-between px-10 pt-6 shrink-0 z-10">
         <motion.div initial={{ x:-25, opacity:0 }} animate={{ x:0, opacity:1 }} transition={{ delay:0.2 }}>
