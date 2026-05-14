@@ -23,8 +23,11 @@ export function useProjectorNavigation(
   useEffect(() => {
     if (!eventId) return;
     const unsubs = [
-      on<{ session: { id: string }; eventId: string }>('game:ended', () => {
-        navigate('/');
+      on<{ session: { id: string }; eventId?: string }>('game:ended', (data) => {
+        // Navigate directly to scoreboard so we don't hit a race condition where
+        // Hub mounts and misses the projector:go-scoreboard event that follows.
+        const eid = (data as { eventId?: string })?.eventId ?? eventId;
+        navigate(eid ? `/scoreboard?e=${eid}` : '/');
       }),
       on<{ eventId?: string }>('projector:go-scoreboard', (payload) => {
         const eid = (payload as { eventId?: string })?.eventId ?? eventId;

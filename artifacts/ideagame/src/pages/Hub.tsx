@@ -454,7 +454,7 @@ export default function Hub() {
     const cw = Math.ceil(2 * (1.5 * ox + oct / 2)) + 10;
     const ch = Math.ceil(2 * (1.15 * oy + oct / 2)) + 10;
     return (
-      <div className="relative mx-auto" style={{ width: cw, height: ch }}>
+      <div className="relative mx-auto" style={{ width: cw, height: ch, pointerEvents: isProjector ? 'none' : undefined }}>
         {/* Centre logo badge */}
         <motion.div
           initial={{ opacity: 0, scale: 0.7 }} animate={{ opacity: 1, scale: 1 }}

@@ -11,6 +11,7 @@ const ALLOWED_EVENTS = new Set([
   "projector:black-off",
   "projector:close-overlays",
   "projector:go-scoreboard",
+  "projector:go-hub",
   "game:freeze-timer",
   "game:unfreeze-timer",
   "players:force-refresh",

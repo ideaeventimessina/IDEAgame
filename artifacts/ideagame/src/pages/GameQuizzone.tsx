@@ -116,6 +116,11 @@ export default function GameQuizzone() {
         if (timerRef.current) clearInterval(timerRef.current);
         playStinger('winner_stinger');
       }),
+      // Also handle force-end from LiveControl (PATCH session → status:ended emits game:ended)
+      on('game:ended', () => {
+        setGameEnded(true);
+        if (timerRef.current) clearInterval(timerRef.current);
+      }),
     ];
     return () => { unsubs.forEach(u => u()); };
   }, [eventId, on, startCountdown]);
