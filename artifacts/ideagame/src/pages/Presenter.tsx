@@ -80,17 +80,20 @@ export default function Presenter() {
   const [panicOpen, setPanicOpen] = useState(false);
   const [scoreDelta, setScoreDelta] = useState<Record<string, number>>({});
   const [addingScore, setAddingScore] = useState(false);
+  // Blocks session polling when the API returns 403/404 for the selected event
+  const [sessionsAccessDenied, setSessionsAccessDenied] = useState(false);
 
   const { data: events = [] } = useListEvents();
 
   const projectorUrl = selectedEventId ? `${window.location.origin}${BASE}?e=${events.find(e => e.id === selectedEventId)?.joinCode ?? ''}`.replace(/([^:])\/\//g, '$1/') : `${window.location.origin}${BASE}`;
   const liveEvents = events.filter(e => e.status === 'live');
   const liveEvent = liveEvents[0] ?? null;
-  const { data: sessions = [] } = useListGameSessions(selectedEventId, {
+  const { data: sessions = [], isError: sessionsIsError } = useListGameSessions(selectedEventId, {
     query: {
       queryKey: getListGameSessionsQueryKey(selectedEventId),
-      enabled: !!selectedEventId,
-      refetchInterval: 1000,
+      enabled: !!selectedEventId && !sessionsAccessDenied,
+      refetchInterval: sessionsAccessDenied ? false : 1000,
+      retry: false,
     },
   });
   const { data: teams = [] } = useListTeams(selectedEventId, {
@@ -118,13 +121,36 @@ export default function Presenter() {
       setSelectedEventId(liveEvent.id);
       setSelectedSessionId('');
       setActiveSession(null);
+      setSessionsAccessDenied(false);
     }
     if (!liveEvent && selectedEventId) {
       setSelectedEventId('');
       setSelectedSessionId('');
       setActiveSession(null);
+      setSessionsAccessDenied(false);
     }
   }, [liveEvent?.id, selectedEventId]);
+
+  // Guard: se selectedEventId non esiste nella lista eventi reale → reset.
+  // Cattura stato fantasma da cache stale o da eventi eliminati dal DB.
+  useEffect(() => {
+    if (!selectedEventId || events.length === 0) return;
+    const stillExists = events.some(e => e.id === selectedEventId);
+    if (!stillExists) {
+      setSelectedEventId('');
+      setSelectedSessionId('');
+      setActiveSession(null);
+      setSessionsAccessDenied(false);
+    }
+  }, [selectedEventId, events]);
+
+  // Guard: se /sessions risponde 403/404 → blocca polling e pulisce la sessione attiva.
+  useEffect(() => {
+    if (!sessionsIsError || !selectedEventId) return;
+    setSessionsAccessDenied(true);
+    setActiveSession(null);
+    setSelectedSessionId('');
+  }, [sessionsIsError, selectedEventId]);
 
   // Auto-select running session
   useEffect(() => {
