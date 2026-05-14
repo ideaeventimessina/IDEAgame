@@ -104,6 +104,22 @@ class _AudioManager {
     this.loopOverrides.clear();
   }
 
+  /**
+   * If a loop is currently playing and now has a tenant override registered,
+   * restart it so the override URL is used immediately.
+   */
+  async reloadCurrentLoop() {
+    const slug = this.currentLoopSlug;
+    const type = this.currentLoopType;
+    if (!slug || !type) return;
+    // Only reload if there is actually an override for this slot
+    if (!this.loopOverrides.has(`${slug}/${type}`)) return;
+    // Reset the guard so playLoop doesn't short-circuit
+    this.currentLoopSlug = null;
+    this.currentLoopType = null;
+    await this.playLoop(slug, type);
+  }
+
   applySettings(s: AudioSettings) {
     this.settings = { ...s };
     if (this.currentLoop) {

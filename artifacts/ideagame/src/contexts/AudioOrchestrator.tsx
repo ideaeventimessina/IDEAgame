@@ -43,6 +43,8 @@ async function loadMusicOverrides() {
       const playbackUrl = `${BASE}api/storage${objectPath}`.replace(/([^:])\/\//g, '$1/');
       AudioManager.setLoopOverride(mapping.slug, mapping.type, playbackUrl);
     }
+    // If a loop is already playing with a now-overridden slot, switch to the custom track
+    await AudioManager.reloadCurrentLoop();
   } catch { /* silent */ }
 }
 
