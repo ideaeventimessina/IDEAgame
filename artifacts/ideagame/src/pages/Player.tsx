@@ -275,25 +275,36 @@ export default function Player() {
           scores?: QuizzoneReveal['scores'];
         } | null;
         if (state?.hasQuestion && state.questionText) {
-          setQuizzoneQuestion({
-            sessionId: state.sessionId ?? session.id,
-            roundIndex: state.roundIndex ?? 0,
-            type: state.type ?? 'multiple_choice',
-            questionText: state.questionText,
-            answers: state.answers ?? [],
-            timeLimit: state.timeLimit ?? 30,
-            points: state.points ?? 100,
-            difficulty: state.difficulty ?? 'medium',
-            questionStartedAt: state.questionStartedAt ?? new Date().toISOString(),
-            totalRounds: state.totalRounds ?? session.totalRounds,
+          const incomingRound = state.roundIndex ?? 0;
+          // Functional update: never let a stale poll response regress to a lower roundIndex
+          // than what a socket event may have already set.
+          setQuizzoneQuestion(prev => {
+            if (prev !== null && prev.roundIndex > incomingRound) return prev;
+            return {
+              sessionId: state.sessionId ?? session.id,
+              roundIndex: incomingRound,
+              type: state.type ?? 'multiple_choice',
+              questionText: state.questionText!,
+              answers: state.answers ?? [],
+              timeLimit: state.timeLimit ?? 30,
+              points: state.points ?? 100,
+              difficulty: state.difficulty ?? 'medium',
+              questionStartedAt: state.questionStartedAt ?? new Date().toISOString(),
+              totalRounds: state.totalRounds ?? session.totalRounds,
+            };
           });
           if (state.revealed && state.correctAnswer !== undefined) {
             setQuizzoneReveal({
-              roundIndex: state.roundIndex ?? 0,
+              roundIndex: incomingRound,
               correctAnswer: state.correctAnswer,
               explanation: state.explanation ?? '',
               scores: state.scores ?? [],
             });
+          } else {
+            // Clear a stale reveal that belongs to a round earlier than what we just polled
+            setQuizzoneReveal(prev =>
+              prev !== null && prev.roundIndex < incomingRound ? null : prev
+            );
           }
         }
       }
@@ -461,7 +472,7 @@ export default function Player() {
       }),
     ];
     return () => unsubs.forEach(u => u());
-  }, [event?.id, on]);
+  }, [event?.id, on, player]);
 
   useEffect(() => {
     if (!connected || !player || !event) return;

@@ -185,7 +185,13 @@ async function runReveal(sessionId: string): Promise<null | {
     packId: payload.packId,
     scores,
   });
-  emitToEvent(session.eventId, "score:updated", { eventId: session.eventId });
+  for (const s of scores) {
+    emitToEvent(session.eventId, "score:updated", {
+      teamId: s.teamId,
+      points: s.roundPoints,
+      total: s.total,
+    });
+  }
 
   return { roundIndex, correctAnswer, explanation: payload.explanation, scores };
 }
