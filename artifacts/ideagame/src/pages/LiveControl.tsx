@@ -870,6 +870,7 @@ export default function LiveControl() {
   const handleWinnerClose = (goToScoreboard: boolean) => {
     setWinnerOverlay(null);
     if (goToScoreboard) navigate(`/scoreboard?e=${selectedEventId}`);
+    else navigate('/cockpit');
   };
 
   // Used by ScorePanel — must throw on error so ScorePanel can show inline feedback
@@ -2081,6 +2082,7 @@ export default function LiveControl() {
                     try {
                       await apiFetch(`/events/${selectedEventId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'ended' }) });
                       toast({ title: 'Serata chiusa', description: 'Il proiettore ora mostra la schermata di fine serata.' });
+                      navigate('/cockpit');
                     } catch (e) { toast({ title: 'Errore', description: (e as Error).message, variant: 'destructive' }); }
                   },
                 })}
