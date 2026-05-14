@@ -5,7 +5,6 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Octagon } from '@/components/Octagon';
 import { GameIcon } from '@/components/GameIcon';
 import { QrPlaceholder } from '@/components/QrPlaceholder';
-import { LocaleSwitcher } from '@/components/LocaleSwitcher';
 import { GameIntroOverlay } from '@/components/GameIntroOverlay';
 import { useT } from '@/i18n';
 import { useListGames, useGetCurrentEvent, getGetCurrentEventQueryKey, useListPlayers, getListPlayersQueryKey } from '@workspace/api-client-react';
@@ -1248,7 +1247,6 @@ export default function Hub() {
               <span className="text-muted-foreground">{t('hub.network_local')}</span>
             </div>
           )}
-          <LocaleSwitcher />
           {user && (
             <button onClick={() => navigate('/cockpit')}
               className="hidden lg:flex items-center gap-1.5 rounded-xl border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/20 transition-colors sm:px-4 sm:py-2 sm:text-sm">
