@@ -445,6 +445,80 @@ router.post("/quizzone/sessions/:id/reveal", requireAuth, async (req: AuthedRequ
 });
 
 
+// ─── POST /quizzone/sessions/:id/next ─────────────────────────────────────────
+// Auth — auto-advance to next question; used by Presenter (doesn't know packId/roundIndex)
+router.post("/quizzone/sessions/:id/next", requireAuth, async (req: AuthedRequest, res: Response): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Sessione non trovata" }); return; }
+
+  const me = req.user!;
+  if (me.role !== "super_admin") {
+    const [ev] = await db.select().from(eventsTable).where(eq(eventsTable.id, session.eventId));
+    if (!ev || ev.tenantId !== me.tenantId) { res.status(403).json({ error: "Forbidden" }); return; }
+  }
+
+  const settings = (session.gameSettings ?? {}) as { packId?: string };
+  const packId = settings.packId;
+  if (!packId) { res.status(400).json({ error: "Sessione non inizializzata (packId mancante)" }); return; }
+
+  const [pack] = await db.select().from(quizPacksTable).where(eq(quizPacksTable.id, packId));
+  if (!pack) { res.status(404).json({ error: "Quiz pack non trovato" }); return; }
+  if (!Array.isArray(pack.generatedJson)) { res.status(400).json({ error: "Pack senza domande generate" }); return; }
+
+  const rounds = pack.generatedJson as QuizRound[];
+
+  // Determine next round index from the latest round
+  const { payload: currentPayload } = await getCurrentRound(id);
+  const nextIdx = currentPayload ? currentPayload.roundIndex + 1 : 0;
+
+  if (nextIdx >= rounds.length) {
+    res.status(409).json({ error: "Nessuna domanda successiva — quiz completato" }); return;
+  }
+
+  const qr = rounds[nextIdx]!;
+  const questionStartedAt = new Date().toISOString();
+
+  // Complete any still-running rounds
+  await db.update(roundsTable)
+    .set({ status: "completed", endedAt: new Date() })
+    .where(and(eq(roundsTable.gameSessionId, id), eq(roundsTable.status, "running")));
+
+  const payload: QuizzoneRoundPayload = {
+    mode: "quizzone",
+    packId,
+    roundIndex: nextIdx,
+    revealed: false,
+    questionStartedAt,
+    type: qr.type,
+    questionText: qr.questionText,
+    answers: qr.answers,
+    correctAnswer: qr.correctAnswer,
+    explanation: qr.explanation,
+    points: qr.points,
+    timeLimit: qr.timeLimit,
+    totalRounds: rounds.length,
+  };
+
+  const [newRound] = await db.insert(roundsTable).values({
+    gameSessionId: id,
+    index: nextIdx,
+    status: "running",
+    payload: payload as unknown as Record<string, unknown>,
+    startedAt: new Date(),
+  }).returning();
+
+  await db.update(gameSessionsTable)
+    .set({ currentRound: nextIdx + 1, status: "running" })
+    .where(eq(gameSessionsTable.id, id));
+
+  emitToEvent(session.eventId, "quiz:question", publicQuestion(payload, id));
+
+  res.status(201).json({ roundId: newRound!.id, ...publicQuestion(payload, id) });
+});
+
 // ─── POST /quizzone/sessions/:id/end ──────────────────────────────────────────
 // Auth — host ends quiz
 router.post("/quizzone/sessions/:id/end", requireAuth, async (req: AuthedRequest, res: Response): Promise<void> => {
