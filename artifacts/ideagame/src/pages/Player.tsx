@@ -210,7 +210,9 @@ export default function Player() {
             gameSlug: session.gameSlug,
           };
         }
-        // Same session — only sync status/totals; don't regress currentRound already updated by socket
+        // Same session — only sync status/totals; don't regress currentRound already updated by socket.
+        // Also don't let a stale HTTP poll revert a socket-driven terminal state.
+        if (prev.status === 'ended' || prev.status === 'paused') return prev;
         return {
           ...prev,
           status: session.status as GameState['status'],

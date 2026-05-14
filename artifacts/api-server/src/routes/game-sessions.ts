@@ -75,6 +75,11 @@ router.patch("/sessions/:id", requireAuth, async (req: AuthedRequest, res: Respo
     emitToEvent(s.eventId, eventName, { session: u, eventId: s.eventId });
   } else if (parsed.data.status === "ended") {
     emitToEvent(s.eventId, "game:ended", { session: u, eventId: s.eventId });
+    // For quizzone sessions also emit quiz:ended so the projector and player
+    // phone quizzone handlers fire (they listen to quiz:ended, not just game:ended)
+    if (s.gameSlug === "quizzone") {
+      emitToEvent(s.eventId, "quiz:ended", { sessionId: id, podium: [] });
+    }
   } else if (parsed.data.status === "paused") {
     emitToEvent(s.eventId, "game:paused", { session: u, eventId: s.eventId });
   } else if (parsed.data.currentRound !== undefined) {
