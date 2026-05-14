@@ -107,15 +107,22 @@ export default function PresenterLive() {
     if (!event?.id) return;
     setBusy(true);
     try {
-      await apiFetch(`/events/${event.id}/sessions`, {
+      const sessions = await apiFetch(`/events/${event.id}/sessions`) as Array<{ id: string; gameSlug: string; status: string }>;
+      const existing = Array.isArray(sessions)
+        ? sessions.find(s => s.gameSlug === slug && s.status !== 'ended')
+        : null;
+      const session = existing ?? await apiFetch(`/events/${event.id}/sessions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ gameSlug: slug, totalRounds: slug === 'quizzone' ? 20 : 1 }),
-      });
+      }) as { id: string };
       await apiFetch(`/panic/events/${event.id}/emit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ event: 'hub:phase', payload: { phase: 'gameboard' } }),
+        body: JSON.stringify({
+          event: 'hub:start-game',
+          payload: { slug, sessionId: session.id, eventId: event.id },
+        }),
       });
     } catch (e) {
       if (!handleAuthError(e)) console.error(e);

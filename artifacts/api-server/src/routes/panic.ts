@@ -16,6 +16,7 @@ const ALLOWED_EVENTS = new Set([
   "players:force-refresh",
   "hub:phase",
   "hub:game-preloaded",
+  "hub:start-game",
   // Audio control — played on projector device, not controller device
   "audio:stinger",
   "audio:stop",

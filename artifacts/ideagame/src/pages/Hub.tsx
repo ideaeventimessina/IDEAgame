@@ -377,6 +377,10 @@ export default function Hub() {
       on('projector:go-hub', () => { setSessionRunning(false); setHubPhase('gameboard'); navigate(urlCode ? `/?e=${urlCode}` : '/'); }),
       on<{ session: unknown }>('game:ended', () => { setSessionRunning(false); setSessionEnded(false); setHubPhase('gameboard'); }),
       on<{ phase: 'join' | 'gameboard' }>('hub:phase', ({ phase }) => setHubPhase(phase)),
+      on<{ slug: string; sessionId: string; eventId: string }>('hub:start-game', ({ slug, sessionId, eventId }) => {
+        const boardPath = SLUG_TO_BOARD[slug];
+        if (boardPath) navigate(`${boardPath}?s=${sessionId}&e=${eventId}`);
+      }),
       on<{ slug: string; theme: { id: string; name: string } | null }>('hub:game-preloaded', ({ slug, theme }) => {
         setPreloadedThemes(prev => ({ ...prev, [slug]: theme }));
       }),
@@ -421,7 +425,7 @@ export default function Hub() {
     ? sortedGames.filter(g => (liveEvent.enabledGames as string[]).includes(g.slug)).slice(0, 8)
     : sortedGames.slice(0, 8);
 
-  const joinUrl = `${lan.effectiveOrigin}/play${liveEvent ? `?e=${liveEvent.joinCode}` : ''}`;
+  const joinUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/play${liveEvent ? `?e=${liveEvent.joinCode}` : ''}`;
 
   // ── Octagon grid ────────────────────────────────────────────────────────
   function OctGrid({ oct, ox, oy }: { oct: number; ox: number; oy: number }) {
@@ -559,7 +563,7 @@ export default function Hub() {
                 />
               )}
               <div className="rounded-lg bg-orange-500/10 px-3 py-1.5 text-[10px] font-mono text-orange-300 truncate">
-                QR → {lan.effectiveOrigin}/play
+                QR → {(typeof window !== 'undefined' ? window.location.origin : '')}/play
               </div>
             </div>
           )}
@@ -780,7 +784,7 @@ export default function Hub() {
 
   // ── Public projector: evento live, fase raccolta giocatori ──────────
   if (!user && publicEvent && hubPhase === 'join') {
-    const publicJoinUrl = `${lan.effectiveOrigin}/play?e=${publicEvent.joinCode}`;
+    const publicJoinUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/play?e=${publicEvent.joinCode}`;
     return (
       <div className="relative h-screen w-full overflow-hidden select-none flex flex-col"
         style={{ background: 'radial-gradient(ellipse 160% 90% at 50% -10%, #2d0d52 0%, #130628 45%, #060213 100%)' }}>
@@ -849,7 +853,7 @@ export default function Hub() {
                 {publicEvent.joinCode}
               </div>
               <div className="mt-2 text-sm text-muted-foreground/70">
-                vai su <span className="font-black text-foreground">{lan.effectiveOrigin.replace(/^https?:\/\//, '')}/play</span>
+                vai su <span className="font-black text-foreground">{(typeof window !== 'undefined' ? window.location.origin : '').replace(/^https?:\/\//, '')}/play</span>
               </div>
             </div>
           </motion.div>

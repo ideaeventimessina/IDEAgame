@@ -344,8 +344,9 @@ export default function LiveControl() {
   const joinCode = selectedEvent?.joinCode ?? '';
   const lan = useLocalMode();
   const BASE_URL = (import.meta.env.BASE_URL as string) ?? '/';
-  const joinUrl = `${lan.effectiveOrigin}${BASE_URL}play?e=${joinCode}`.replace(/([^:])\/\//g, '$1/');
-  const projectorUrl = `${lan.effectiveOrigin}${BASE_URL}projector`.replace(/([^:])\/\//g, '$1/');
+  const publicOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+  const joinUrl = `${publicOrigin}${BASE_URL}play?e=${joinCode}`.replace(/([^:])\/\//g, '$1/');
+  const projectorUrl = `${publicOrigin}${BASE_URL}projector`.replace(/([^:])\/\//g, '$1/');
 
   useEffect(() => {
     if (!selectedEventId && events.length > 0) setSelectedEventId(events[0]!.id);
