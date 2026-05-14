@@ -80,6 +80,8 @@ class _AudioManager {
   private currentLoop: HTMLAudioElement | null = null;
   private currentLoopSlug: string | null = null;
   private currentLoopType: string | null = null;
+  /** The resolved src URL currently playing — used to skip redundant reloads. */
+  private currentLoopSrc: string | null = null;
   private knownFiles = new Map<string, boolean>();
   private activeStingers = new Set<HTMLAudioElement>();
   /** Tenant-uploaded music overrides: `slug/type` → full URL. Checked before static assets. */
@@ -129,6 +131,10 @@ class _AudioManager {
     if (!slug || !type) return;
     // Only reload if there is actually an override for this slot
     if (!this.loopOverrides.has(`${slug}/${type}`)) return;
+    // Resolve the URL that would play — if it's already playing, do nothing.
+    // This prevents the 30-second interval from causing repeated crossfade cycles.
+    const newSrc = await this.resolveUrl(slug, type);
+    if (!newSrc || newSrc === this.currentLoopSrc) return;
     // Reset the guard so playLoop doesn't short-circuit
     this.currentLoopSlug = null;
     this.currentLoopType = null;
@@ -202,6 +208,7 @@ class _AudioManager {
     const prev     = this.currentLoop;
     const prevSlug = this.currentLoopSlug;
     const prevType = this.currentLoopType;
+    const prevSrc  = this.currentLoopSrc;
     const audio = new Audio(src);
     audio.loop   = true;
     audio.volume = 0;
@@ -209,6 +216,7 @@ class _AudioManager {
     this.currentLoop     = audio;
     this.currentLoopSlug = slug;
     this.currentLoopType = type;
+    this.currentLoopSrc  = src;
 
     try {
       await audio.play();
@@ -217,6 +225,7 @@ class _AudioManager {
       this.currentLoop     = prev;
       this.currentLoopSlug = prevSlug;
       this.currentLoopType = prevType;
+      this.currentLoopSrc  = prevSrc;
       return false;
     }
 
@@ -237,7 +246,8 @@ class _AudioManager {
 
   private _stopMp3Loop(immediate = false) {
     const prev = this.currentLoop;
-    this.currentLoop = null;
+    this.currentLoop    = null;
+    this.currentLoopSrc = null;
     if (!prev) return;
 
     if (immediate) {

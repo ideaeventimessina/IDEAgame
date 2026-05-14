@@ -223,6 +223,8 @@ export default function Hub() {
 
   // Navigate to a game — READY games NEVER go to /game/:slug mock
   const handleGameClick = async (slug: string, name: string, accentColor: string) => {
+    // Projector/live mode: buttons are display-only, no interaction
+    if (!user) return;
     const isReady = READY_SLUGS.has(slug);
     const boardPath = SLUG_TO_BOARD[slug];
 

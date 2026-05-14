@@ -6,6 +6,14 @@ import { db, playersTable, tenantsTable, usersTable, eventsTable } from "@worksp
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 
+// Keep the process alive on unhandled errors — log and continue rather than crash
+process.on("uncaughtException", (err) => {
+  logger.error({ err }, "uncaughtException — server kept alive");
+});
+process.on("unhandledRejection", (reason) => {
+  logger.error({ reason }, "unhandledRejection — server kept alive");
+});
+
 const rawPort = process.env["PORT"];
 
 if (!rawPort) {
