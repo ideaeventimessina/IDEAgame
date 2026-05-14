@@ -1,0 +1,111 @@
+HOME V3 — APPLICA STILE MOCKUP CON ASSET REALI JONNY.
+
+Usa l’immagine mockup come riferimento visivo principale.
+Usa però SOLO il vero Jonny che ti ho fornito negli asset, non ricrearlo, non ridisegnarlo, non generarne uno nuovo.
+
+Lavora SOLO su:
+artifacts/ideagame/src/pages/HomeV3.tsx
+
+Non toccare:
+- backend
+- socket
+- Player
+- Presenter
+- Regia
+- Quizzone
+- HomeV2
+- App.tsx, se la route /home-v3 esiste già
+
+OBIETTIVO:
+HomeV3 deve diventare una schermata game show fullscreen 16:9, stile Jonny’s World, con impatto da proiettore/TV.
+
+RIFERIMENTO VISIVO:
+Segui il mockup allegato per:
+- composizione
+- energia
+- luci
+- palco
+- profondità
+- ruota centrale
+- classifica laterale
+- QR/codice partita
+- card gioco in evidenza
+- bottoni arcade
+- atmosfera neon/oro/viola
+
+ASSET OBBLIGATORI:
+1. Usa il logo reale “Jonny’s World” fornito.
+2. Usa il vero Jonny PNG/immagine fornito.
+3. Se esistono più pose, usa:
+   - Jonny con microfono/entusiasta per landing e arena
+   - Jonny pensieroso solo per stati vuoti/errore
+4. Non usare emoji come icone principali.
+5. Non usare immagini di Jonny generate da te.
+6. Non usare immagini con stile diverso dal Jonny reale.
+
+LAYOUT RICHIESTO:
+- Canvas fullscreen 16:9.
+- Sfondo da palco TV/game show:
+  luci, neon, riflessi, pubblico sfocato, pavimento lucido, profondità.
+- Logo grande in alto.
+- Ruota centrale grande a 8 spicchi.
+- Jonny grande a destra, almeno 35–45% dell’altezza schermo.
+- Classifica live a sinistra, leggibile da lontano.
+- Box codice partita/QR in alto a destra.
+- Card “gioco in evidenza” sotto Jonny.
+- Bottoni grandi in basso:
+  “GIRA LA RUOTA”
+  “CLASSIFICA”
+
+RUOTA:
+- deve essere più grande e tridimensionale
+- bordo oro luminoso
+- separatori ben visibili
+- testo bianco molto leggibile con ombra/glow
+- massimo una parola per spicchio:
+  PERCORSO
+  COPPIE
+  QUIZZONE
+  ADULT
+  SFIDA
+  PAROLA
+  KARAOKE
+  FREESTYLE
+- niente testo piccolo
+- niente emoji brutte
+- usare simboli semplici 3D/flat premium coerenti, oppure badge con iniziale
+
+STILE:
+- non SaaS
+- non dashboard
+- non mobile app
+- non minimal
+- deve sembrare un videogioco televisivo
+- energia alta
+- colori saturi
+- glow controllato
+- oro, viola, blu elettrico, fucsia, verde neon
+- testi enormi e leggibili
+
+VINCOLI TECNICI:
+- nessuna API
+- nessun socket
+- nessun polling
+- nessun backend
+- solo mock frontend
+- React + Tailwind + Framer Motion
+- typecheck pulito
+- nessun errore console
+
+IMPORTANTE:
+Questa pagina è per proiettore e schermo grande.
+Non ottimizzarla per mobile.
+Non stringere tutto al centro.
+Deve riempire lo schermo.
+
+Alla fine dammi:
+A. file modificati
+B. asset reali usati
+C. conferma che non hai usato backend
+D. conferma typecheck
+E. descrizione visiva finale
