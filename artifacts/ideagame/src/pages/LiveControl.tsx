@@ -5,13 +5,12 @@ import {
   Pause, Play, SkipForward, Plus, Minus,
   Power, MonitorOff, X, Loader2, Wifi, WifiOff, ExternalLink,
   Sparkles, Eye, EyeOff, CheckCircle2, Clock, BarChart3, Users,
-  ChevronRight, Zap, AlertTriangle, PlusCircle, Trophy, Siren,
+  ChevronRight, Zap, AlertTriangle, PlusCircle, Trophy,
   Volume2, VolumeX, Music, Mic2,
 } from 'lucide-react';
 import { AudioManager } from '@/audio/AudioManager';
 import { useAudioSettings } from '@/contexts/AudioContext';
 import { MissingLoopBanner } from '@/components/MissingLoopBanner';
-import { PanicPanel } from '@/components/PanicPanel';
 import { ScorePanel } from '@/components/ScorePanel';
 import { useLocalMode } from '@/hooks/useLocalMode';
 import { useEventSocket } from '@/hooks/useEventSocket';
@@ -287,9 +286,6 @@ export default function LiveControl() {
   const [saraMusicaState, setSaraMusicaState] = useState<SaraMusicaStateLC | null>(null);
   const [saraMusicaBusy, setSaraMusicaBusy] = useState(false);
   const [saraMusicaMsg, setSaraMusicaMsg] = useState('');
-
-  // Panic panel
-  const [panicOpen, setPanicOpen] = useState(false);
 
   // Evening mode state
   const [eveningMode, setEveningMode] = useState<EveningMode | null>(null);
@@ -1840,16 +1836,6 @@ export default function LiveControl() {
       {/* Blackout overlay */}
       {black && <div className="fixed inset-0 z-50 bg-black" onClick={() => setBlack(false)} />}
 
-      {/* ── EMERGENZA floating button ─────────────────────────────────────── */}
-      <button
-        onClick={() => setPanicOpen(true)}
-        className="fixed top-4 right-4 z-[90] flex items-center gap-2 rounded-xl border border-red-700/70 bg-red-900/80 px-4 py-2.5 text-sm font-black uppercase tracking-widest text-red-200 backdrop-blur-md shadow-lg shadow-red-950/60 hover:bg-red-800/90 hover:border-red-600/80 transition-all active:scale-95"
-        title="Pannello Emergenza"
-      >
-        <Siren className="h-4 w-4 text-red-400" />
-        EMERGENZA
-      </button>
-
       {/* ── Focus Mode sticky bar ─────────────────────────────────────────── */}
       {session && session.status === 'running' && focusMode && (
         <div className="fixed top-0 left-0 right-0 z-[80] flex items-center justify-between gap-3 border-b border-border bg-background/95 px-4 py-2.5 backdrop-blur-md">
@@ -1904,17 +1890,6 @@ export default function LiveControl() {
           </button>
         </div>
       )}
-
-      {/* ── Panic Panel overlay ───────────────────────────────────────────── */}
-      <PanicPanel
-        open={panicOpen}
-        onClose={() => setPanicOpen(false)}
-        eventId={selectedEventId}
-        joinCode={joinCode}
-        joinUrl={joinUrl}
-        projectorUrl={projectorUrl}
-        session={session ? { id: session.id, gameSlug: session.gameSlug, status: session.status } : undefined}
-      />
 
       {/* ── Winner overlay ───────────────────────────────────────────────── */}
       {winnerOverlay && (

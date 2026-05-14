@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   SkipForward, Pause, Play, Plus, Minus, Trophy, Mic2,
   MonitorPlay, Loader2, WifiOff, Wifi,
-  ArrowLeft, RotateCcw, Users, Clock,
+  ArrowLeft, RotateCcw, Users, Clock, Siren,
 } from 'lucide-react';
 import { useAuth } from '@/auth/roles';
 import { useEventSocket } from '@/hooks/useEventSocket';
@@ -19,6 +19,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAudioOrchestrator } from '@/contexts/AudioOrchestrator';
 import { MissingLoopBanner } from '@/components/MissingLoopBanner';
 import { VolumeFab } from '@/components/VolumeFab';
+import { PanicPanel } from '@/components/PanicPanel';
 
 const BASE = (import.meta.env.BASE_URL as string) ?? '/';
 async function apiFetch(path: string, opts?: RequestInit) {
@@ -73,10 +74,13 @@ export default function Presenter() {
   const { projectorActive, setActiveGameSlug } = useAudioOrchestrator();
 
 
+  const projectorUrl = selectedEventId ? `${window.location.origin}${BASE}?e=${events.find(e => e.id === selectedEventId)?.joinCode ?? ''}`.replace(/([^:])\/\//g, '$1/') : `${window.location.origin}${BASE}`;
+
   const [selectedEventId, setSelectedEventId] = useState<string>('');
   const [selectedSessionId, setSelectedSessionId] = useState<string>('');
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
   const [sessionBusy, setSessionBusy] = useState(false);
+  const [panicOpen, setPanicOpen] = useState(false);
   const [scoreDelta, setScoreDelta] = useState<Record<string, number>>({});
   const [addingScore, setAddingScore] = useState(false);
 
@@ -506,6 +510,25 @@ export default function Presenter() {
       </div>
 
       {/* Volume FAB — fixed floating, always accessible */}
+      <button
+        onClick={() => setPanicOpen(true)}
+        className="fixed top-4 right-4 z-[9999] flex items-center gap-2 rounded-xl border border-red-400 bg-red-600 px-4 py-3 text-sm font-black uppercase tracking-widest text-white shadow-2xl active:scale-95"
+        title="Pannello Emergenza"
+      >
+        <Siren className="h-4 w-4 text-red-300" />
+        EMERGENZA
+      </button>
+
+      <PanicPanel
+        open={panicOpen}
+        onClose={() => setPanicOpen(false)}
+        eventId={selectedEventId}
+        joinCode={events.find(e => e.id === selectedEventId)?.joinCode ?? ''}
+        joinUrl={events.find(e => e.id === selectedEventId)?.joinCode ? `${window.location.origin}${BASE}play?e=${events.find(e => e.id === selectedEventId)?.joinCode}`.replace(/([^:])\/\//g, '$1/') : ''}
+        projectorUrl={projectorUrl}
+        session={activeSession ? { id: activeSession.id, gameSlug: activeSession.gameSlug, status: activeSession.status } : undefined}
+      />
+
       <VolumeFab emit={emit} on={on} />
     </div>
   );
