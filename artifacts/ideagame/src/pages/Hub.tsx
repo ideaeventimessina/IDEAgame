@@ -337,6 +337,26 @@ export default function Hub() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveEvent?.id, connected]);
 
+  // Periodic polling every 4 s — catches sessions that started while Hub was already
+  // connected (socket hub:start-game may be missed if the projector tab reconnects late).
+  useEffect(() => {
+    if (!liveEventId) return;
+    const check = async () => {
+      try {
+        const r = await fetch(`/api/events/${liveEventId}/active-session`, { credentials: 'include' });
+        if (!r.ok) return;
+        const session = await r.json() as { id: string; gameSlug: string; status: string } | null;
+        if (session?.status === 'running') {
+          const boardPath = SLUG_TO_BOARD[session.gameSlug];
+          if (boardPath) navigate(`${boardPath}?s=${session.id}&e=${liveEventId}`);
+        }
+      } catch { /* silent */ }
+    };
+    const id = setInterval(check, 4000);
+    return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveEventId]);
+
   // Listen for game:started / game:resumed → show intro overlay then navigate
   // Secondary trigger: for sessions that start while the Hub is already connected
   useEffect(() => {
@@ -1336,8 +1356,8 @@ export default function Hub() {
           )}
         </div>
 
-        {/* Serata Completa CTA — admin only */}
-        {user && (
+        {/* Serata Completa CTA — admin only, hidden in projector mode (?e=code) */}
+        {user && !urlCode && (
           <motion.button type="button" onClick={() => navigate('/control')}
             initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
             whileTap={{ scale: 0.97 }}

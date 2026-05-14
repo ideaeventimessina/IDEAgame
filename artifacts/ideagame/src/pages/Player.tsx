@@ -685,7 +685,7 @@ export default function Player() {
 
         {step === 'play' && player && (
           <motion.div key="play" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
-            className="flex flex-1 flex-col">
+            className="flex flex-1 flex-col overflow-y-auto">
             <div className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-full text-background text-display font-black"
                    style={{ background: player.avatarColor }}>{player.nickname[0]?.toUpperCase()}</div>
@@ -1037,9 +1037,9 @@ function QuizzonePhoneController({ question, reveal, sessionId, playerId, teamCo
   const didntAnswer = isRevealed && myAnswer === null && !submitted;
 
   return (
-    <div className="mt-4 flex flex-col gap-3">
+    <div className="flex flex-col gap-2">
       {/* Type badge + timer */}
-      <div className="flex items-center justify-between rounded-xl border border-border bg-card/60 px-3 py-2">
+      <div className="flex items-center justify-between rounded-xl border border-border bg-card/60 px-3 py-1.5">
         <span className="text-xs font-bold text-primary">{TYPE_LABELS[question.type] ?? question.type}</span>
         <div className="flex items-center gap-1.5">
           <Clock className="h-3.5 w-3.5" style={{ color: timerColor }} />
@@ -1056,9 +1056,9 @@ function QuizzonePhoneController({ question, reveal, sessionId, playerId, teamCo
       </div>
 
       {/* Question text */}
-      <div className="rounded-2xl border border-border bg-card/40 px-4 py-4">
-        <div className="text-display text-lg font-black leading-snug">{question.questionText}</div>
-        <div className="mt-1 text-xs text-muted-foreground">{question.points} pt • {question.difficulty}</div>
+      <div className="rounded-2xl border border-border bg-card/40 px-4 py-3">
+        <div className="text-display text-base font-black leading-snug">{question.questionText}</div>
+        <div className="mt-0.5 text-xs text-muted-foreground">{question.points} pt • {question.difficulty}</div>
       </div>
 
       {/* Reveal result banner */}
@@ -1090,7 +1090,7 @@ function QuizzonePhoneController({ question, reveal, sessionId, playerId, teamCo
             : <div className="text-muted-foreground text-sm">Risposta libera — digita sul proiettore</div>}
         </div>
       ) : (
-        <div className="grid gap-2.5">
+        <div className="grid gap-1.5">
           {question.answers.map((ans, i) => {
             const isSelected = myAnswer === i;
             const showCorrect = isRevealed && i === reveal!.correctAnswer;
@@ -1100,7 +1100,7 @@ function QuizzonePhoneController({ question, reveal, sessionId, playerId, teamCo
                 onClick={() => void submitAnswer(i)}
                 disabled={submitted || submitting || timeLeft <= 0 || isRevealed}
                 whileTap={{ scale: 0.97 }}
-                className={`flex items-center gap-4 rounded-2xl border-2 px-4 py-4 text-left font-bold transition-all disabled:cursor-not-allowed ${
+                className={`flex items-center gap-3 rounded-2xl border-2 px-3 py-2.5 text-left font-bold transition-all disabled:cursor-not-allowed ${
                   showCorrect
                     ? 'border-green-500 bg-green-500/20 text-green-300'
                     : showWrong
@@ -1113,10 +1113,10 @@ function QuizzonePhoneController({ question, reveal, sessionId, playerId, teamCo
                 }`}
                 style={isSelected && !isRevealed ? { borderColor: teamColor, background: `${teamColor}20` } : {}}
               >
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-current text-display text-sm font-black opacity-70">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-current text-display text-xs font-black opacity-70">
                   {LETTER[i]}
                 </span>
-                <span className="text-base leading-snug">{ans}</span>
+                <span className="text-sm leading-snug">{ans}</span>
                 {submitting && isSelected && <Loader2 className="ml-auto h-4 w-4 animate-spin" />}
               </motion.button>
             );
