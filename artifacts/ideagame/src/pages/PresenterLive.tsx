@@ -100,6 +100,12 @@ export default function PresenterLive() {
   const [gameEnded, setGameEnded] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
 
+  // quizzone init panel
+  const [quizPacks, setQuizPacks] = useState<{ id: string; title: string }[]>([]);
+  const [selectedPackId, setSelectedPackId] = useState('');
+  const [initBusy, setInitBusy] = useState(false);
+  const [initMsg, setInitMsg] = useState('');
+
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { on } = useEventSocket(event?.id ?? null);
 
@@ -169,6 +175,42 @@ export default function PresenterLive() {
     const id = setInterval(() => { void refreshSession(event!.id); }, 4000);
     return () => clearInterval(id);
   }, [event?.id, refreshSession]);
+
+  // ── load quiz packs when quizzone session is waiting for init ───────────────
+  useEffect(() => {
+    if (activeSession?.gameSlug !== 'quizzone' || quizzoneQuestion) return;
+    apiFetch('/quiz-packs')
+      .then(d => {
+        const packs = (d as { id: string; title: string; status: string }[])
+          .filter(p => p.status === 'approved' || p.status === 'generated');
+        setQuizPacks(packs);
+        if (packs.length > 0) setSelectedPackId(prev => prev || packs[0].id);
+      })
+      .catch(() => {});
+  }, [activeSession?.gameSlug, activeSession?.id, quizzoneQuestion]);
+
+  const handleInitQuizzone = async () => {
+    if (!activeSession || !selectedPackId || initBusy) return;
+    setInitBusy(true);
+    setInitMsg('');
+    try {
+      await apiFetch(`/quizzone/sessions/${activeSession.id}/init`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ packId: selectedPackId }),
+      });
+      await apiFetch(`/quizzone/sessions/${activeSession.id}/question`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ packId: selectedPackId, roundIndex: 0 }),
+      });
+      // quiz:question socket event will fire → quizzoneQuestion set automatically
+    } catch (e) {
+      setInitMsg(e instanceof Error ? e.message : 'Errore inizializzazione');
+    } finally {
+      setInitBusy(false);
+    }
+  };
 
   // ── timer countdown ─────────────────────────────────────────────────────────
   const startTimer = useCallback((questionStartedAt: string, timeLimit: number) => {
@@ -352,6 +394,71 @@ export default function PresenterLive() {
             {connected ? <Wifi className="h-3.5 w-3.5 text-green-400" /> : <WifiOff className="h-3.5 w-3.5 text-destructive" />}
             {connected ? 'Collegato' : 'Disconnesso'}
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── render: quizzone init (session active, pack not yet started) ────────────
+  if (activeSession?.gameSlug === 'quizzone' && !quizzoneQuestion && !gameEnded) {
+    return (
+      <div className="min-h-screen select-none pb-8 text-white"
+        style={{ background: 'radial-gradient(ellipse 160% 90% at 50% -10%, #1a0535 0%, #0d0220 55%, #040110 100%)' }}>
+        <div className="flex items-center justify-between px-4 pt-5 pb-3">
+          <button onClick={handleBackToGames} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-bold text-white/60">
+            <ArrowLeft className="inline h-4 w-4" /> Giochi
+          </button>
+          <div className="flex items-center gap-2 text-sm font-black text-amber-300">
+            <Mic2 className="h-4 w-4" /> PRESENTATORE
+          </div>
+          {connected ? <Wifi className="h-4 w-4 text-green-400" /> : <WifiOff className="h-4 w-4 text-red-400" />}
+        </div>
+
+        <div className="mx-4 mb-4 rounded-2xl border border-violet-400/25 bg-violet-500/10 px-4 py-3">
+          <div className="text-[10px] uppercase tracking-widest text-violet-300/80">Quizzone</div>
+          <div className="text-sm font-black text-white mt-0.5">Seleziona il pack e inizializza</div>
+        </div>
+
+        <div className="mx-4 space-y-3">
+          {quizPacks.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-white/15 px-4 py-6 text-center text-sm text-white/50">
+              Nessun quiz pack approvato.<br />
+              <span className="text-xs text-white/35">Generane uno in Admin → Quiz AI</span>
+            </div>
+          ) : (
+            <>
+              <div className="text-[10px] uppercase tracking-widest text-white/40">Quiz Pack</div>
+              <select
+                value={selectedPackId}
+                onChange={e => setSelectedPackId(e.target.value)}
+                className="w-full rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm font-bold text-white focus:outline-none focus:border-violet-400/60"
+              >
+                {quizPacks.map(p => (
+                  <option key={p.id} value={p.id} style={{ background: '#1a0535' }}>{p.title}</option>
+                ))}
+              </select>
+            </>
+          )}
+
+          {initMsg && (
+            <div className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-2.5 text-sm text-red-300">{initMsg}</div>
+          )}
+
+          <button
+            onClick={() => void handleInitQuizzone()}
+            disabled={!selectedPackId || initBusy}
+            className="w-full rounded-2xl bg-violet-500 py-4 text-base font-black text-white disabled:opacity-40 active:bg-violet-600"
+          >
+            {initBusy ? (
+              <span className="flex items-center justify-center gap-2">
+                <Clock className="h-4 w-4 animate-spin" /> Inizializzazione…
+              </span>
+            ) : (
+              <span className="flex items-center justify-center gap-2">
+                <Play className="h-5 w-5" /> Inizializza con questo pack
+              </span>
+            )}
+          </button>
         </div>
       </div>
     );
