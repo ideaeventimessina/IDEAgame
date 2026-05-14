@@ -73,9 +73,6 @@ export default function Presenter() {
   const qc = useQueryClient();
   const { projectorActive, setActiveGameSlug } = useAudioOrchestrator();
 
-
-  const projectorUrl = selectedEventId ? `${window.location.origin}${BASE}?e=${events.find(e => e.id === selectedEventId)?.joinCode ?? ''}`.replace(/([^:])\/\//g, '$1/') : `${window.location.origin}${BASE}`;
-
   const [selectedEventId, setSelectedEventId] = useState<string>('');
   const [selectedSessionId, setSelectedSessionId] = useState<string>('');
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
@@ -85,6 +82,8 @@ export default function Presenter() {
   const [addingScore, setAddingScore] = useState(false);
 
   const { data: events = [] } = useListEvents();
+
+  const projectorUrl = selectedEventId ? `${window.location.origin}${BASE}?e=${events.find(e => e.id === selectedEventId)?.joinCode ?? ''}`.replace(/([^:])\/\//g, '$1/') : `${window.location.origin}${BASE}`;
   const liveEvents = events.filter(e => e.status === 'live');
   const liveEvent = liveEvents[0] ?? null;
   const { data: sessions = [] } = useListGameSessions(selectedEventId, {
