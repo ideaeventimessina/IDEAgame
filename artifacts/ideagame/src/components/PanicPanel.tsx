@@ -4,9 +4,10 @@ import { useLocation } from 'wouter';
 import {
   X, QrCode, Home, Trophy, Monitor, Snowflake, SkipForward,
   RotateCcw, Wifi, Layers, PowerOff, AlertTriangle, Loader2,
-  Sun,
+  Sun, VolumeX,
 } from 'lucide-react';
 import { QrPlaceholder } from './QrPlaceholder';
+import { AudioManager } from '@/audio/AudioManager';
 
 const BASE = (import.meta.env.BASE_URL as string) ?? '/';
 async function apiFetch(path: string, opts?: RequestInit) {
@@ -162,6 +163,19 @@ export function PanicPanel({ open, onClose, eventId, joinCode, joinUrl, projecto
       action: async () => {
         await emit('projector:close-overlays');
         flash('Overlay chiusi sul proiettore');
+      },
+    },
+    {
+      key: 'stopMusic',
+      label: 'Stop Musica',
+      icon: VolumeX,
+      color: 'border-rose-500/60 bg-rose-500/15 text-rose-300',
+      description: 'Ferma tutta la musica su proiettore e dispositivi',
+      confirm: false,
+      action: async () => {
+        await emit('audio:stop');
+        AudioManager.stopAll();
+        flash('Musica fermata');
       },
     },
     // ── Giocatori ─────────────────────────────────────────
