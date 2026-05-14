@@ -222,42 +222,67 @@ class _AudioManager {
     if (!this.settings.musicEnabled || this.settings.muted) return false;
     if (this.currentLoopSlug === slug && this.currentLoopType === type) return true;
 
-    const src = await this.resolveUrl(slug, type);
-
-    // No MP3 found — stop current loop and stay silent.
-    // For loop types, record the missing track so regia/presenter can warn the user.
-    if (!src) {
-      this._stopMp3Loop();
-      this.currentLoopSlug = slug;
-      this.currentLoopType = type;
-      this.currentLoopSrc  = null;
-      if (LOOP_TYPES.has(String(type))) {
-        this.missingLoop = { slug: String(slug), type: String(type) };
-      }
-      return true; // "success" — intentionally silent
-    }
-
-    // Track found — clear any previous missing-loop warning
-    this.missingLoop = null;
-
-    // MP3 found — crossfade in
+    // Snapshot previous state so we can restore on autoplay block.
     const prev     = this.currentLoop;
     const prevSlug = this.currentLoopSlug;
     const prevType = this.currentLoopType;
     const prevSrc  = this.currentLoopSrc;
+    const prevVol  = prev?.volume ?? 0;
+
+    // Claim the slot immediately so concurrent calls don't race.
+    this.currentLoopSlug = slug;
+    this.currentLoopType = type;
+    this.currentLoop     = null;
+    this.currentLoopSrc  = null;
+
+    // ── Fade-out the old loop NOW — don't wait for URL resolution ──────────
+    // We track the interval so we can cancel it if autoplay is later blocked.
+    let fadeOutInterval: ReturnType<typeof setInterval> | null = null;
+    if (prev) {
+      let step = 0;
+      fadeOutInterval = setInterval(() => {
+        step++;
+        prev.volume = Math.max(0, prevVol * (1 - step / FADE_STEPS));
+        if (step >= FADE_STEPS) {
+          clearInterval(fadeOutInterval!);
+          fadeOutInterval = null;
+          prev.pause();
+          prev.src = '';
+        }
+      }, CROSSFADE_DURATION / FADE_STEPS);
+    }
+
+    // ── Resolve the new URL concurrently with the fade-out ─────────────────
+    const src = await this.resolveUrl(slug, type);
+
+    if (!src) {
+      // No file — fade-out already running, just record missing state.
+      this.currentLoopSrc = null;
+      if (LOOP_TYPES.has(String(type))) {
+        this.missingLoop = { slug: String(slug), type: String(type) };
+      }
+      return true; // intentionally silent
+    }
+
+    this.missingLoop = null;
+
+    // ── New track: create element and attempt play ─────────────────────────
     const audio = new Audio(src);
     audio.loop   = true;
     audio.volume = 0;
 
-    this.currentLoop     = audio;
-    this.currentLoopSlug = slug;
-    this.currentLoopType = type;
-    this.currentLoopSrc  = src;
+    this.currentLoop    = audio;
+    this.currentLoopSrc = src;
 
     try {
       await audio.play();
     } catch {
-      // Browser blocked autoplay — restore previous state
+      // Browser blocked autoplay — cancel the fade-out and restore old loop.
+      if (fadeOutInterval) {
+        clearInterval(fadeOutInterval);
+        fadeOutInterval = null;
+      }
+      if (prev) prev.volume = prevVol;
       this.currentLoop     = prev;
       this.currentLoopSlug = prevSlug;
       this.currentLoopType = prevType;
@@ -265,18 +290,15 @@ class _AudioManager {
       return false;
     }
 
+    // ── Fade in new track ──────────────────────────────────────────────────
     const targetVol = this.loopVol();
-    let step = 0;
-    const interval = setInterval(() => {
-      step++;
-      const t = step / FADE_STEPS;
-      audio.volume = Math.min(targetVol, targetVol * t);
-      if (prev) prev.volume = Math.max(0, (1 - t) * prev.volume);
-      if (step >= FADE_STEPS) {
-        clearInterval(interval);
-        if (prev) { prev.pause(); prev.src = ''; }
-      }
+    let fadeInStep = 0;
+    const fadeInInterval = setInterval(() => {
+      fadeInStep++;
+      audio.volume = Math.min(targetVol, targetVol * (fadeInStep / FADE_STEPS));
+      if (fadeInStep >= FADE_STEPS) clearInterval(fadeInInterval);
     }, CROSSFADE_DURATION / FADE_STEPS);
+
     return true;
   }
 
