@@ -389,9 +389,11 @@ export default function LiveControl() {
         setQuizzoneRevealed(false);
         setQuizzoneActive(true);
         setQuizzoneResponseCount(0);
+        setQuizzoneBusy(false);
       }),
       on('quiz:reveal', () => {
         setQuizzoneRevealed(true);
+        setQuizzoneBusy(false);
         qc.invalidateQueries({ queryKey: getGetScoreboardQueryKey(selectedEventId) });
       }),
       on<{ state: PercorsoStateLC }>('path:started', ({ state }) => setPercorsoState(state)),
