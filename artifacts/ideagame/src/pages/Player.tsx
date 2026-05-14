@@ -344,7 +344,10 @@ export default function Player() {
         }
       }),
       on('game:paused', () => setGameState(p => ({ ...p, status: 'paused' }))),
-      on('game:ended', () => setGameState(p => ({ ...p, status: 'ended' }))),
+      on('game:ended', () => {
+        setGameState(p => ({ ...p, status: 'ended' }));
+        setQuizzoneQuestion(null);
+      }),
       on<{ teamId: string; points: number; total: number }>('score:updated', (data) => {
         if (player && data.teamId === player.teamId) {
           setScoreFlash({ points: data.points, total: data.total, ts: Date.now() });

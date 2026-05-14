@@ -870,7 +870,7 @@ export default function LiveControl() {
     const allZero = maxScore === 0;
     // Send projector to scoreboard (or back to hub if no scores)
     if (selectedEventId) {
-      const projectorEvent = allZero ? 'projector:go-hub' : 'projector:go-scoreboard';
+      const projectorEvent = 'projector:go-hub';
       apiFetch(`/panic/events/${selectedEventId}/emit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

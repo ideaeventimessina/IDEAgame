@@ -74,7 +74,11 @@ export default function GameQuizzone() {
     try {
       const s = await apiFetch(`/quizzone/sessions/${sessionId}/state`) as QuizzoneState & { status: string };
       setState(s);
-      if (s.status === 'ended') setGameEnded(true);
+      if (s.status === 'ended') {
+        setGameEnded(true);
+        navigate('/');
+        return;
+      }
       if (!eventId && eventIdParam) setEventId(eventIdParam);
       if (s.hasQuestion && s.questionStartedAt && s.timeLimit && !reveal) {
         startCountdown(s.questionStartedAt, s.timeLimit);
@@ -82,7 +86,7 @@ export default function GameQuizzone() {
       if (s.responseCount !== undefined) setResponseCount(s.responseCount);
     } catch { /* silent */ }
     finally { setLoading(false); }
-  }, [sessionId, eventId, eventIdParam, reveal, startCountdown]);
+  }, [sessionId, eventId, eventIdParam, reveal, startCountdown, navigate]);
 
   useEffect(() => { void fetchState(); }, [fetchState]);
 
@@ -113,15 +117,16 @@ export default function GameQuizzone() {
         setGameEnded(true);
         if (timerRef.current) clearInterval(timerRef.current);
         playStinger('winner_stinger');
+        navigate('/');
       }),
-      // Also handle force-end from LiveControl (PATCH session → status:ended emits game:ended)
       on('game:ended', () => {
         setGameEnded(true);
         if (timerRef.current) clearInterval(timerRef.current);
+        navigate('/');
       }),
     ];
     return () => { unsubs.forEach(u => u()); };
-  }, [eventId, on, startCountdown]);
+  }, [eventId, on, startCountdown, navigate]);
 
   useEffect(() => {
     pollRef.current = setInterval(() => { void fetchState(); }, 5000);
