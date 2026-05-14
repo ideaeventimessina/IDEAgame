@@ -841,8 +841,7 @@ export default function LiveControl() {
     setRevealAnswer(false);
   });
 
-  // Single unified "end game" flow: end session immediately, then show winner overlay.
-  // The winner overlay then navigates to scoreboard on confirm.
+  // Single unified "end game" flow: end session → projector shows scoreboard → Regia → cockpit.
   const handleEnd = () => withBusy(async () => {
     if (!session) return;
     await updateSession.mutateAsync({ id: session.id, data: { status: 'ended' } });
@@ -850,7 +849,7 @@ export default function LiveControl() {
     const rows = [...scoreboardRows].sort((a, b) => b.total - a.total);
     const maxScore = rows.length > 0 ? (rows[0]?.total ?? 0) : 0;
     const allZero = maxScore === 0;
-    // Tell the projector to navigate: scoreboard if there are scores, Hub default if zero
+    // Send projector to scoreboard (or back to hub if no scores)
     if (selectedEventId) {
       const projectorEvent = allZero ? 'projector:go-hub' : 'projector:go-scoreboard';
       apiFetch(`/panic/events/${selectedEventId}/emit`, {
@@ -859,9 +858,8 @@ export default function LiveControl() {
         body: JSON.stringify({ event: projectorEvent, payload: { eventId: selectedEventId } }),
       }).catch(() => null);
     }
-    const allTied = !allZero && rows.length > 1 && rows.every(r => r.total === maxScore);
-    const winners = allZero ? [] : rows.filter(r => r.total === maxScore);
-    setWinnerOverlay({ winners, allZero, allTied, sessionId: session.id });
+    // Regia goes back to cockpit — scoreboard is on the projector
+    navigate('/cockpit');
   });
 
   // Kept for backward compat — delegates to handleEnd
