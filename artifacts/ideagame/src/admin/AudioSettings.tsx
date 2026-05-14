@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { AdminLayout } from './AdminLayout';
-import { Volume2, VolumeX, Music, RotateCcw, Upload, Trash2, CheckCircle2, XCircle, Check, X, Loader2 } from 'lucide-react';
+import { Volume2, VolumeX, Music, RotateCcw, Upload, Trash2, Check, X, Loader2, Play } from 'lucide-react';
 import { useAudioSettings } from '@/contexts/AudioContext';
-import { AudioManager, type AudioSlug, type AudioType } from '@/audio/AudioManager';
+import { AudioManager } from '@/audio/AudioManager';
 import {
   useListSystemSettings, useUpsertSystemSetting, getListSystemSettingsQueryKey,
 } from '@workspace/api-client-react';
@@ -14,51 +14,31 @@ function apiFetch(path: string, opts?: RequestInit) {
   return fetch(url, { credentials: 'include', ...opts });
 }
 
-// ── Audio Engine ────────────────────────────────────────────────────────────
+// ── Effect Slots (stinger per tipo) ─────────────────────────────────────────
 
-const SLUGS: { slug: AudioSlug | string; label: string }[] = [
-  { slug: 'global', label: 'Globale (fallback per tutti)' },
-  { slug: 'hub', label: 'Hub / Lobby' },
-  { slug: 'quizzone', label: 'Quizzone' },
-  { slug: 'gioco-coppie', label: 'Gioco delle Coppie' },
-  { slug: 'percorso-a-risate', label: 'Percorso a Risate' },
-  { slug: 'sfida-ballo', label: 'Sfida di Ballo' },
-  { slug: 'adult-only', label: 'Adult Only' },
-  { slug: 'parola-alle-spalle', label: 'Parola alle Spalle' },
-  { slug: 'karaoke-battle', label: 'Karaoke Battle' },
-  { slug: 'freestyle-battle', label: 'Freestyle Battle' },
-  { slug: 'saramusica', label: 'Sara Musica' },
+const EFFECT_SLOTS: { type: string; label: string; icon: string }[] = [
+  { type: 'applause',          label: 'Applausi',              icon: '👏' },
+  { type: 'success_applause',  label: 'Applausi successo',     icon: '🎉' },
+  { type: 'crowd_hype',        label: 'Crowd Hype',            icon: '🔥' },
+  { type: 'correct_stinger',   label: 'Risposta Corretta',     icon: '✅' },
+  { type: 'wrong_stinger',     label: 'Risposta Sbagliata',    icon: '❌' },
+  { type: 'winner_stinger',    label: 'Vincitore',             icon: '🏆' },
+  { type: 'winner_drop',       label: 'Drop Vincitore',        icon: '💫' },
+  { type: 'podium_theme',      label: 'Tema Podio',            icon: '🥇' },
+  { type: 'suspense',          label: 'Suspense',              icon: '😰' },
+  { type: 'score_stinger',     label: 'Punteggio',             icon: '⭐' },
+  { type: 'countdown_10s',     label: 'Conto alla Rovescia',   icon: '⏱️' },
+  { type: 'transition_whoosh', label: 'Transizione Whoosh',    icon: '💨' },
+  { type: 'intro_5s',          label: 'Intro 5s',              icon: '🎬' },
+  { type: 'stage_intro',       label: 'Stage Intro',           icon: '🎤' },
+  { type: 'flip_card',         label: 'Flip Carta',            icon: '🃏' },
+  { type: 'match_correct',     label: 'Match Corretto',        icon: '🎯' },
+  { type: 'match_wrong',       label: 'Match Sbagliato',       icon: '💀' },
+  { type: 'panic_blackout',    label: 'Panico / Blackout',     icon: '🚨' },
+  { type: 'booking_ding',      label: 'Ding Prenotazione',     icon: '🔔' },
+  { type: 'energy_rise',       label: 'Energy Rise',           icon: '⚡' },
+  { type: 'boo_soft',          label: 'Boo Soft',              icon: '😒' },
 ];
-
-const TYPES: { type: AudioType | string; label: string; category: 'loop' | 'stinger' }[] = [
-  { type: 'lobby_loop', label: 'Loop Lobby', category: 'loop' },
-  { type: 'round_loop', label: 'Loop Round/Gioco', category: 'loop' },
-  { type: 'tension_loop', label: 'Loop Tensione', category: 'loop' },
-  { type: 'intro_5s', label: 'Intro 5s', category: 'stinger' },
-  { type: 'stage_intro', label: 'Stage Intro', category: 'stinger' },
-  { type: 'correct_stinger', label: 'Risposta Corretta ✓', category: 'stinger' },
-  { type: 'wrong_stinger', label: 'Risposta Sbagliata ✗', category: 'stinger' },
-  { type: 'score_stinger', label: 'Punteggio', category: 'stinger' },
-  { type: 'winner_stinger', label: 'Vincitore', category: 'stinger' },
-  { type: 'winner_drop', label: 'Drop Vincitore', category: 'stinger' },
-  { type: 'applause', label: 'Applausi', category: 'stinger' },
-  { type: 'success_applause', label: 'Applausi Successo', category: 'stinger' },
-  { type: 'crowd_hype', label: 'Crowd Hype', category: 'stinger' },
-  { type: 'transition_whoosh', label: 'Transizione Whoosh', category: 'stinger' },
-  { type: 'podium_theme', label: 'Tema Podio', category: 'stinger' },
-  { type: 'countdown_10s', label: 'Conto alla Rovescia 10s', category: 'stinger' },
-  { type: 'suspense', label: 'Suspense', category: 'stinger' },
-  { type: 'flip_card', label: 'Flip Carta', category: 'stinger' },
-  { type: 'match_correct', label: 'Match Corretto', category: 'stinger' },
-  { type: 'match_wrong', label: 'Match Sbagliato', category: 'stinger' },
-  { type: 'panic_blackout', label: 'Panico / Blackout', category: 'stinger' },
-  { type: 'booking_ding', label: 'Ding Prenotazione', category: 'stinger' },
-  { type: 'energy_rise', label: 'Energy Rise', category: 'stinger' },
-  { type: 'boo_soft', label: 'Boo Soft', category: 'stinger' },
-  { type: 'karaoke_bed', label: 'Karaoke Bed', category: 'loop' },
-];
-
-interface UploadedFile { slug: string; type: string; filename: string; size: number }
 
 // ── Music Slots (sottofondo per gioco — object storage) ─────────────────────
 
@@ -103,6 +83,116 @@ const PERCORSO_CHALLENGE_SLOTS: { key: keyof MusicPaths; label: string; icon: st
   { key: 'percorso-fantasia', label: 'Fantasia',      icon: '🌟' },
 ];
 
+interface UploadedFile { slug: string; type: string; filename: string; size: number }
+
+// ── EffectUploader — individual box per stinger ──────────────────────────────
+
+function EffectUploader({ type, label, icon, uploaded, onRefresh }: {
+  type: string;
+  label: string;
+  icon: string;
+  uploaded: UploadedFile | undefined;
+  onRefresh: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+  const [playing, setPlaying] = useState(false);
+
+  const streamUrl = `${BASE}api/audio/files/global/${type}`.replace(/([^:])\/\//g, '$1/');
+
+  const handleFile = async (file: File) => {
+    setUploading(true);
+    setError(null);
+    setDone(false);
+    const form = new FormData();
+    form.append('slug', 'global');
+    form.append('type', type);
+    form.append('file', file);
+    try {
+      const r = await apiFetch('/audio/upload', { method: 'POST', body: form });
+      if (r.ok) {
+        setDone(true);
+        AudioManager.clearCache();
+        onRefresh();
+        setTimeout(() => setDone(false), 3000);
+      } else {
+        const e = await r.json() as { error?: string };
+        setError(e.error ?? 'Errore upload');
+      }
+    } catch { setError('Errore di rete'); }
+    finally { setUploading(false); }
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      const r = await apiFetch(`/audio/files/global/${type}`, { method: 'DELETE' });
+      if (r.ok) { AudioManager.clearCache(); onRefresh(); }
+    } finally { setDeleting(false); }
+  };
+
+  const handlePlay = async () => {
+    if (playing) { AudioManager.stopAll(); setPlaying(false); return; }
+    setPlaying(true);
+    try { await AudioManager.playStinger('global', type); }
+    catch { /* no file loaded, silent */ }
+    finally { setTimeout(() => setPlaying(false), 4000); }
+  };
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">{icon}</span>
+          <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">{label}</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          {done && <span className="flex items-center gap-1 text-xs text-emerald-400"><Check className="h-3 w-3" /> OK</span>}
+          {uploaded && (
+            <span className="h-2 w-2 rounded-full bg-green-400 shrink-0" title="Traccia caricata" />
+          )}
+          {uploaded && (
+            <button onClick={handleDelete} disabled={deleting}
+              className="flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs text-muted-foreground hover:border-destructive/60 hover:text-destructive disabled:opacity-40">
+              {deleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Audio player / test */}
+      {uploaded ? (
+        <audio key={streamUrl} controls src={streamUrl} className="w-full h-8" style={{ colorScheme: 'dark' }} />
+      ) : (
+        <button onClick={() => void handlePlay()} disabled={playing}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border/60 py-2 text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors disabled:opacity-40">
+          <Play className="h-3 w-3" /> {playing ? 'In riproduzione…' : 'Nessuna traccia — carica un file'}
+        </button>
+      )}
+
+      {/* Upload */}
+      <div className="flex items-center gap-2">
+        <input ref={inputRef} type="file" accept="audio/mpeg,.mp3"
+          className="hidden"
+          onChange={e => { const f = e.target.files?.[0]; if (f) void handleFile(f); e.target.value = ''; }} />
+        <button onClick={() => inputRef.current?.click()} disabled={uploading}
+          className="flex items-center gap-2 rounded-xl border border-primary/50 bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/20 disabled:opacity-40 transition-colors">
+          {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+          {uploading ? 'Caricamento…' : uploaded ? 'Sostituisci' : 'Carica MP3'}
+        </button>
+        {uploaded && (
+          <span className="text-[10px] text-muted-foreground truncate">{uploaded.filename} · {(uploaded.size / 1024).toFixed(0)} KB</span>
+        )}
+      </div>
+
+      {error && <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-1.5 text-xs text-destructive">{error}</div>}
+    </div>
+  );
+}
+
 // ── MusicUploader (object-storage presigned URL upload) ─────────────────────
 
 function MusicUploader({
@@ -140,22 +230,14 @@ function MusicUploader({
       });
       if (!urlRes.ok) throw new Error('Errore generazione URL di caricamento');
       const { uploadURL, objectPath } = await urlRes.json() as { uploadURL: string; objectPath: string };
-
-      const putRes = await fetch(uploadURL, {
-        method: 'PUT',
-        body: file,
-        headers: { 'Content-Type': file.type || 'audio/mpeg' },
-      });
+      const putRes = await fetch(uploadURL, { method: 'PUT', body: file, headers: { 'Content-Type': file.type || 'audio/mpeg' } });
       if (!putRes.ok) throw new Error('Errore caricamento file su storage');
-
       onUploaded(objectPath);
       setUploadDone(true);
       setTimeout(() => setUploadDone(false), 3000);
     } catch (e) {
       setUploadError(e instanceof Error ? e.message : 'Errore upload');
-    } finally {
-      setUploading(false);
-    }
+    } finally { setUploading(false); }
   };
 
   return (
@@ -174,22 +256,12 @@ function MusicUploader({
           )}
         </div>
       </div>
-
       <audio key={audioSrc} controls src={audioSrc} className="w-full h-8" style={{ colorScheme: 'dark' }} />
-
       <div className="flex items-center gap-3">
-        <input
-          ref={inputRef}
-          type="file"
-          accept="audio/*,.mp3,.ogg,.wav,.m4a,.aac,.flac"
-          className="hidden"
-          onChange={e => { const f = e.target.files?.[0]; if (f) void handleFile(f); e.target.value = ''; }}
-        />
-        <button
-          onClick={() => inputRef.current?.click()}
-          disabled={uploading}
-          className="flex items-center gap-2 rounded-xl border border-primary/50 bg-primary/10 px-4 py-2 text-sm font-bold text-primary hover:bg-primary/20 disabled:opacity-40 transition-colors"
-        >
+        <input ref={inputRef} type="file" accept="audio/*,.mp3,.ogg,.wav,.m4a,.aac,.flac" className="hidden"
+          onChange={e => { const f = e.target.files?.[0]; if (f) void handleFile(f); e.target.value = ''; }} />
+        <button onClick={() => inputRef.current?.click()} disabled={uploading}
+          className="flex items-center gap-2 rounded-xl border border-primary/50 bg-primary/10 px-4 py-2 text-sm font-bold text-primary hover:bg-primary/20 disabled:opacity-40 transition-colors">
           {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
           {uploading ? 'Caricamento…' : currentPath ? 'Sostituisci file' : 'Carica file audio'}
         </button>
@@ -199,10 +271,7 @@ function MusicUploader({
           </span>
         )}
       </div>
-
-      {uploadError && (
-        <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">{uploadError}</div>
-      )}
+      {uploadError && <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">{uploadError}</div>}
     </div>
   );
 }
@@ -242,16 +311,10 @@ function Toggle({ label, description, enabled, onToggle }: { label: string; desc
 export default function AudioSettingsPage() {
   const { settings, setMasterVolume, setMusicVolume, setSfxVolume, toggleMusic, toggleSfx, toggleMute, resetDefaults } = useAudioSettings();
 
-  // Audio Engine upload (multipart, per slug/type)
+  // Stinger list (for EffectUploader)
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
-  const [uploadSlug, setUploadSlug] = useState<string>('global');
-  const [uploadType, setUploadType] = useState<string>('lobby_loop');
-  const [uploading, setUploading] = useState(false);
-  const [uploadMsg, setUploadMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [deleting, setDeleting] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
 
-  // Sottofondo per gioco (object-storage presigned URL, saved in tenant.settings)
+  // Sottofondo per gioco (object-storage, saved in tenant.settings)
   const qc = useQueryClient();
   const { data: rows = [] } = useListSystemSettings();
   const upsert = useUpsertSystemSetting();
@@ -279,58 +342,20 @@ export default function AudioSettingsPage() {
 
   const clearMusic = (key: keyof MusicPaths) => void saveMusic(key, '');
 
-  async function loadList() {
+  const loadList = async () => {
     try {
       const r = await apiFetch('/audio/list');
       if (r.ok) setUploadedFiles(await r.json() as UploadedFile[]);
     } catch {}
-  }
+  };
 
   useEffect(() => { void loadList(); }, []);
-
-  async function handleUpload() {
-    if (!fileRef.current?.files?.[0]) { setUploadMsg({ ok: false, text: 'Seleziona un file MP3' }); return; }
-    const file = fileRef.current.files[0];
-    const form = new FormData();
-    form.append('slug', uploadSlug);
-    form.append('type', uploadType);
-    form.append('file', file);
-    setUploading(true);
-    setUploadMsg(null);
-    try {
-      const r = await apiFetch('/audio/upload', { method: 'POST', body: form });
-      if (r.ok) {
-        setUploadMsg({ ok: true, text: `Caricato: ${uploadSlug} / ${uploadType}` });
-        if (fileRef.current) fileRef.current.value = '';
-        await loadList();
-        AudioManager.clearCache();
-      } else {
-        const e = await r.json() as { error?: string };
-        setUploadMsg({ ok: false, text: e.error ?? 'Errore upload' });
-      }
-    } catch {
-      setUploadMsg({ ok: false, text: 'Errore di rete' });
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  async function handleDelete(slug: string, type: string) {
-    const key = `${slug}/${type}`;
-    setDeleting(key);
-    try {
-      const r = await apiFetch(`/audio/files/${slug}/${type}`, { method: 'DELETE' });
-      if (r.ok) { await loadList(); AudioManager.clearCache(); }
-    } finally { setDeleting(null); }
-  }
-
-  const uploadedSet = new Set(uploadedFiles.map(f => `${f.slug}/${f.type}`));
 
   return (
     <AdminLayout title="Audio Engine">
       <div className="mx-auto max-w-2xl space-y-8">
 
-        {/* ── Mute globale ─────────────────────────────────────────────────── */}
+        {/* ── Controllo Master ─────────────────────────────────────────────── */}
         <section className="rounded-2xl border border-border bg-card p-6 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-display text-xl font-black flex items-center gap-2">
@@ -349,7 +374,7 @@ export default function AudioSettingsPage() {
           </div>
         </section>
 
-        {/* ── Toggle canali ─────────────────────────────────────────────────── */}
+        {/* ── Canali ───────────────────────────────────────────────────────── */}
         <section className="space-y-3">
           <h2 className="text-display text-lg font-black flex items-center gap-2">
             <Music className="h-4 w-4 text-primary" /> Canali
@@ -358,14 +383,39 @@ export default function AudioSettingsPage() {
           <Toggle label="Effetti sonori" description="Stinger per match, risposte, countdown" enabled={settings.sfxEnabled} onToggle={toggleSfx} />
         </section>
 
-        {/* ── Sottofondo per gioco (object storage) ────────────────────────── */}
+        {/* ── Effetti Sonori — box per stinger ─────────────────────────────── */}
+        <section className="space-y-4">
+          <div className="flex items-center gap-3">
+            <span className="text-xl">⚡</span>
+            <div>
+              <div className="font-black uppercase tracking-widest text-sm text-primary">Effetti Sonori</div>
+              <div className="text-xs text-muted-foreground mt-0.5">
+                Carica un MP3 per ogni effetto. Il pallino verde indica che la traccia è già caricata.
+              </div>
+            </div>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {EFFECT_SLOTS.map(slot => (
+              <EffectUploader
+                key={slot.type}
+                type={slot.type}
+                label={slot.label}
+                icon={slot.icon}
+                uploaded={uploadedFiles.find(f => f.slug === 'global' && f.type === slot.type)}
+                onRefresh={() => void loadList()}
+              />
+            ))}
+          </div>
+        </section>
+
+        {/* ── Sottofondo per gioco ─────────────────────────────────────────── */}
         <section className="space-y-4">
           <div className="flex items-center gap-3">
             <Music className="h-5 w-5 text-primary" />
             <div>
               <div className="font-black uppercase tracking-widest text-sm text-primary">Sottofondo per gioco</div>
               <div className="text-xs text-muted-foreground mt-0.5">
-                Carica un MP3/OGG/WAV per ogni gioco — viene salvato sullo storage dell'app e riprodotto automaticamente durante la partita.
+                Loop ambientale riprodotto durante ogni gioco.
               </div>
             </div>
           </div>
@@ -412,97 +462,6 @@ export default function AudioSettingsPage() {
               />
             ))}
           </div>
-        </section>
-
-        {/* ── Carica Tracce Audio (multipart, per slug/type) ───────────────── */}
-        <section className="rounded-2xl border border-border bg-card p-6 space-y-5">
-          <h2 className="text-display text-lg font-black flex items-center gap-2">
-            <Upload className="h-4 w-4 text-primary" /> Carica Tracce Audio (Effetti & Loop)
-          </h2>
-          <div className="text-xs text-muted-foreground">
-            Carica effetti e loop per l'Audio Engine (stinger, whoosh, countdown…). I file sopravvivono ai reset del DB.
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Gioco</label>
-              <select value={uploadSlug} onChange={e => setUploadSlug(e.target.value)}
-                className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground">
-                {SLUGS.map(s => <option key={s.slug} value={s.slug}>{s.label}</option>)}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Tipo Traccia</label>
-              <select value={uploadType} onChange={e => setUploadType(e.target.value)}
-                className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground">
-                <optgroup label="Loop">
-                  {TYPES.filter(t => t.category === 'loop').map(t => <option key={t.type} value={t.type}>{t.label}</option>)}
-                </optgroup>
-                <optgroup label="Stinger">
-                  {TYPES.filter(t => t.category === 'stinger').map(t => <option key={t.type} value={t.type}>{t.label}</option>)}
-                </optgroup>
-              </select>
-            </div>
-          </div>
-
-          <div className="flex gap-3 items-end flex-wrap">
-            <div className="flex-1 space-y-1">
-              <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">File MP3</label>
-              <input ref={fileRef} type="file" accept="audio/mpeg,.mp3"
-                className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-3 file:py-1 file:text-xs file:font-bold file:text-primary-foreground cursor-pointer" />
-            </div>
-            <button onClick={() => void handleUpload()} disabled={uploading}
-              className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-black text-primary-foreground disabled:opacity-50 hover:bg-primary/90 transition-colors whitespace-nowrap">
-              {uploading ? '…' : <><Upload className="h-4 w-4" /> Carica</>}
-            </button>
-          </div>
-
-          {uploadMsg && (
-            <div className={`flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-bold ${uploadMsg.ok ? 'border border-green-500/40 bg-green-500/10 text-green-300' : 'border border-red-500/40 bg-red-500/10 text-red-300'}`}>
-              {uploadMsg.ok ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <XCircle className="h-4 w-4 shrink-0" />}
-              {uploadMsg.text}
-            </div>
-          )}
-        </section>
-
-        {/* ── Tracce caricate ──────────────────────────────────────────────── */}
-        <section className="rounded-2xl border border-border bg-card p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-display text-lg font-black flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-green-400" /> Tracce Caricate
-            </h2>
-            <span className="rounded-full border border-green-500/30 bg-green-500/10 px-2.5 py-0.5 text-xs font-bold text-green-400">
-              {uploadedFiles.length} file
-            </span>
-          </div>
-
-          {uploadedFiles.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border/50 px-6 py-8 text-center text-sm text-muted-foreground/60">
-              Nessuna traccia caricata. Usa il pannello sopra per aggiungere le tue tracce MP3.
-            </div>
-          ) : (
-            <div className="space-y-1 max-h-80 overflow-y-auto pr-1">
-              {uploadedFiles
-                .sort((a, b) => `${a.slug}/${a.type}`.localeCompare(`${b.slug}/${b.type}`))
-                .map(f => {
-                  const key = `${f.slug}/${f.type}`;
-                  const slugLabel = SLUGS.find(s => s.slug === f.slug)?.label ?? f.slug;
-                  const typeLabel = TYPES.find(t => t.type === f.type)?.label ?? f.type;
-                  return (
-                    <div key={key} className="flex items-center gap-3 rounded-xl border border-border bg-background/40 px-3 py-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs font-bold truncate">{slugLabel}</div>
-                        <div className="text-[10px] text-muted-foreground">{typeLabel} · {(f.size / 1024).toFixed(0)} KB</div>
-                      </div>
-                      <button onClick={() => void handleDelete(f.slug, f.type)} disabled={deleting === key}
-                        className="text-muted-foreground hover:text-destructive transition-colors disabled:opacity-40">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  );
-                })}
-            </div>
-          )}
         </section>
 
         {/* ── Reset volumi ─────────────────────────────────────────────────── */}
