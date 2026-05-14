@@ -705,12 +705,12 @@ function ParkBg() {
         return (i===0?`M${x},${y}`:`L${x},${y}`);
       }).join(' ')} stroke="rgba(255,255,255,0.12)" strokeWidth="1" fill="none"/>
 
-      {/* ── foreground stage floor ── */}
-      <rect x="0" y="600" width="1280" height="120" fill="rgba(20,5,50,0.7)"/>
-      <rect x="0" y="598" width="1280" height="4" fill="rgba(168,85,247,0.5)"/>
+      {/* ── foreground stage floor — altezza ridotta del 50% ── */}
+      <rect x="0" y="660" width="1280" height="60" fill="rgba(20,5,50,0.7)"/>
+      <rect x="0" y="658" width="1280" height="4" fill="rgba(168,85,247,0.5)"/>
       {/* floor grid lines */}
       {Array.from({length:12},(_,i)=>(
-        <line key={i} x1={i*120} y1="600" x2={i*120+60} y2="720" stroke="rgba(168,85,247,0.12)" strokeWidth="1"/>
+        <line key={i} x1={i*120} y1="660" x2={i*120+60} y2="720" stroke="rgba(168,85,247,0.12)" strokeWidth="1"/>
       ))}
 
       {/* ── ground glow ── */}
@@ -897,22 +897,22 @@ function Arena({ onPodium }: { onPodium:()=>void }) {
         <GameCard game={selected}/>
       </div>
 
-      {/* Jonny — assoluto su tutto lo schermo arena, non dentro la colonna destra */}
+      {/* Jonny — alzato di ~150px dal basso, centrato verticalmente rispetto alla ruota */}
       <div className="absolute pointer-events-none select-none"
-        style={{ right:0, bottom:0, zIndex:12, width:'22%' }}>
+        style={{ right:0, bottom:'14vh', zIndex:12, width:'21%' }}>
         {/* floor shadow */}
-        <div style={{ position:'absolute', bottom:2, left:'10%', right:'10%', height:18,
+        <div style={{ position:'absolute', bottom:-8, left:'10%', right:'10%', height:18,
           background:'rgba(0,0,0,0.55)', borderRadius:'50%', filter:'blur(14px)' }}/>
         {/* pedestal glow */}
-        <div style={{ position:'absolute', bottom:4, left:'15%', right:'15%', height:8,
+        <div style={{ position:'absolute', bottom:-4, left:'15%', right:'15%', height:8,
           background:'linear-gradient(90deg,transparent,rgba(168,85,247,0.6),rgba(245,182,66,0.4),transparent)',
           borderRadius:'50%', filter:'blur(5px)' }}/>
         {/* ambient glow */}
-        <div style={{ position:'absolute', bottom:'5%', left:'-20%', right:'-5%', top:'15%',
+        <div style={{ position:'absolute', bottom:0, left:'-20%', right:'-5%', top:'10%',
           background:`radial-gradient(ellipse 70% 75% at 55% 70%,${selected.glow}28 0%,transparent 70%)`,
           pointerEvents:'none' }}/>
         <motion.img src={pub('/jonny-master-nobg.png')} alt="Jonny host"
-          style={{ height:'min(48vh,400px)', display:'block', objectFit:'contain', width:'100%',
+          style={{ height:'min(46vh,385px)', display:'block', objectFit:'contain', width:'100%',
             filter:`drop-shadow(0 0 40px ${selected.glow}aa) drop-shadow(-3px 0 18px rgba(168,85,247,0.4))` }}
           animate={{ y:[0,-6,0] }}
           transition={{ duration:3.5, repeat:Infinity, ease:'easeInOut' as const }}/>
@@ -920,15 +920,11 @@ function Arena({ onPodium }: { onPodium:()=>void }) {
 
       {/* ── BOTTOM ── */}
 
-      {/* bottom-left: real logo */}
-      <div className="flex items-end pb-3 pl-4 z-20">
-        <img src={pub('/logo.png')} alt="IDEAgame"
-          style={{ height:'clamp(1.4rem,2.4vh,2rem)', objectFit:'contain',
-            filter:'brightness(1.3) drop-shadow(0 0 10px rgba(245,182,66,0.6))' }}/>
-      </div>
+      {/* bottom-left: spacer — logo rimosso (duplicato, rimane solo top-left) */}
+      <div className="z-20"/>
 
       {/* bottom-center: CTA + stats */}
-      <div className="flex flex-col items-center gap-2.5 pb-3 z-20">
+      <div className="flex flex-col items-center gap-1.5 pb-2 z-20">
         <div className="flex gap-4">
           <ArcadeBtn onClick={handleSpin}
             bg="linear-gradient(135deg,#5B21B6 0%,#7C3AED 100%)"
