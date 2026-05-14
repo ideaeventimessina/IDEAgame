@@ -42,6 +42,17 @@ export const DEFAULT_AUDIO_SETTINGS: AudioSettings = {
 const CROSSFADE_DURATION = 1200;
 const FADE_STEPS = 20;
 
+/**
+ * Loop types are continuous background music.
+ * For these, we NEVER fall back to static bundled files —
+ * either a tenant-uploaded track plays, or there is silence.
+ * Stingers/SFX keep their static fallback so gameplay feedback always works.
+ */
+const LOOP_TYPES = new Set([
+  'lobby_loop', 'round_loop', 'tension_loop',
+  'podium_theme', 'suspense', 'karaoke_bed',
+]);
+
 function apiAudioUrl(slug: string, type: string): string {
   const base = (import.meta.env.BASE_URL as string | undefined) ?? '/';
   return `${base}api/audio/files/${slug}/${type}`.replace(/([^:])\/\//g, '$1/');
@@ -82,6 +93,8 @@ class _AudioManager {
   private currentLoopType: string | null = null;
   /** The resolved src URL currently playing — used to skip redundant reloads. */
   private currentLoopSrc: string | null = null;
+  /** Set when the requested loop has no URL (no tenant upload, no API file). */
+  private missingLoop: { slug: string; type: string } | null = null;
   private knownFiles = new Map<string, boolean>();
   private activeStingers = new Set<HTMLAudioElement>();
   /** Tenant-uploaded music overrides: `slug/type` → full URL. Checked before static assets. */
@@ -161,20 +174,35 @@ class _AudioManager {
     return Math.min(1, masterVolume * sfxVolume);
   }
 
+  /** Read the currently-missing loop (for regia/presenter warning UI). */
+  getMissingLoop(): { slug: string; type: string } | null {
+    return this.missingLoop;
+  }
+
   private async resolveUrl(slug: AudioSlug | string, type: AudioType | string): Promise<string | null> {
     // Priority: 1) tenant-uploaded override (object storage — highest priority)
-    //           2) API-uploaded stinger override (audio engine uploads)
-    //           3) static Vite asset (bundled jonny-world fallback)
-    //           4) global/ fallback for both api + static
+    //           2) API-uploaded file (audio engine uploads)
+    //           3) static Vite asset — ONLY for stingers/SFX, NEVER for loops
+    //           4) global/ fallback — same rule: static only for stingers
     const override = this.loopOverrides.get(`${slug}/${type}`);
     if (override) return override;
 
-    const result = await resolveFirst([
+    const isLoop = LOOP_TYPES.has(String(type));
+
+    if (isLoop) {
+      // Loops: no static fallback — tenant upload or silence.
+      return resolveFirst([
+        apiAudioUrl(slug, type),
+        ...(slug !== 'global' ? [apiAudioUrl('global', type)] : []),
+      ], this.knownFiles);
+    }
+
+    // Stingers / SFX: full chain including static bundled files.
+    return resolveFirst([
       apiAudioUrl(slug, type),
       staticAudioUrl(slug, type),
       ...(slug !== 'global' ? [apiAudioUrl('global', type), staticAudioUrl('global', type)] : []),
     ], this.knownFiles);
-    return result;
   }
 
   async preload(slug: AudioSlug | string) {
@@ -196,13 +224,21 @@ class _AudioManager {
 
     const src = await this.resolveUrl(slug, type);
 
-    // No MP3 found — stop current loop and stay silent
+    // No MP3 found — stop current loop and stay silent.
+    // For loop types, record the missing track so regia/presenter can warn the user.
     if (!src) {
       this._stopMp3Loop();
       this.currentLoopSlug = slug;
       this.currentLoopType = type;
+      this.currentLoopSrc  = null;
+      if (LOOP_TYPES.has(String(type))) {
+        this.missingLoop = { slug: String(slug), type: String(type) };
+      }
       return true; // "success" — intentionally silent
     }
+
+    // Track found — clear any previous missing-loop warning
+    this.missingLoop = null;
 
     // MP3 found — crossfade in
     const prev     = this.currentLoop;

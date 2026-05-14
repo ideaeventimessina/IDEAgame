@@ -17,6 +17,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { useAudioOrchestrator } from '@/contexts/AudioOrchestrator';
+import { MissingLoopBanner } from '@/components/MissingLoopBanner';
 import { VolumeFab } from '@/components/VolumeFab';
 
 const BASE = (import.meta.env.BASE_URL as string) ?? '/';
@@ -298,6 +299,8 @@ export default function Presenter() {
       </header>
 
       <div className="px-4 py-4 space-y-4 pb-24">
+
+        <MissingLoopBanner />
 
         {/* Live event badge */}
         <div className="rounded-2xl border border-green-500/25 bg-green-500/10 px-4 py-3">

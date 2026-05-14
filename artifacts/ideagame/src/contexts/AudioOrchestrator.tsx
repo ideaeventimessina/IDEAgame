@@ -17,13 +17,18 @@ const BASE = (import.meta.env.BASE_URL as string) ?? '/';
  * Maps tenant musicPaths keys to the AudioManager slug/type pairs.
  * The value stored in DB is an object-storage path like `/uploads/...`.
  * The playback URL is `/api/storage${objectPath}`.
+ *
+ * All game entries use `lobby_loop` so the tenant-uploaded track plays
+ * immediately on game mount (useGameAudio autoLoop default = 'lobby_loop').
+ * Socket events (quiz:question, etc.) switch to tension_loop/round_loop
+ * on the fly; those also resolve against overrides first.
  */
 const MUSIC_PATH_MAP: Record<string, { slug: string; type: string }> = {
-  lobby:              { slug: 'hub',               type: 'lobby_loop'   },
-  quizzone:           { slug: 'quizzone',          type: 'round_loop'   },
-  'sfida-ballo':      { slug: 'sfida-ballo',       type: 'round_loop'   },
-  'percorso-a-risate':{ slug: 'percorso-a-risate', type: 'round_loop'   },
-  'gioco-coppie':     { slug: 'gioco-coppie',      type: 'tension_loop' },
+  lobby:              { slug: 'hub',               type: 'lobby_loop' },
+  quizzone:           { slug: 'quizzone',          type: 'lobby_loop' },
+  'sfida-ballo':      { slug: 'sfida-ballo',       type: 'lobby_loop' },
+  'percorso-a-risate':{ slug: 'percorso-a-risate', type: 'lobby_loop' },
+  'gioco-coppie':     { slug: 'gioco-coppie',      type: 'lobby_loop' },
 };
 
 async function loadMusicOverrides() {
@@ -63,6 +68,11 @@ export interface AudioOrchestratorCtx {
   unlockAudio: () => void;
   /** Register the loop that should play when audio gets unlocked (called by game pages on mount). */
   setPendingLoop: (slug: string, type: string) => void;
+  /**
+   * Set when a loop was requested but no tenant-uploaded track exists.
+   * Shown only in regia / presenter UI as a non-blocking warning.
+   */
+  missingLoopTrack: { slug: string; type: string } | null;
 }
 
 const Ctx = createContext<AudioOrchestratorCtx>({
@@ -74,6 +84,7 @@ const Ctx = createContext<AudioOrchestratorCtx>({
   setActiveGameSlug: () => {},
   unlockAudio: () => {},
   setPendingLoop: () => {},
+  missingLoopTrack: null,
 });
 
 export function AudioOrchestratorProvider({ children }: { children: ReactNode }) {
@@ -87,6 +98,7 @@ export function AudioOrchestratorProvider({ children }: { children: ReactNode })
     try { return localStorage.getItem(LS_UNLOCKED) === 'true'; } catch { return false; }
   });
   const pendingLoopRef = useRef<{ slug: string; type: string }>({ slug: 'hub', type: 'lobby_loop' });
+  const [missingLoopTrack, setMissingLoopTrack] = useState<{ slug: string; type: string } | null>(null);
 
   const setAudioUnlocked = useCallback((v: boolean) => {
     try { localStorage.setItem(LS_UNLOCKED, v ? 'true' : 'false'); } catch { /* ignore */ }
@@ -125,6 +137,15 @@ export function AudioOrchestratorProvider({ children }: { children: ReactNode })
   useEffect(() => {
     void loadMusicOverrides();
     const id = setInterval(() => { void loadMusicOverrides(); }, 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Poll AudioManager every 2s for missing-loop warnings (regia/presenter only).
+  // This is cheap — it's a synchronous getter on a singleton field.
+  useEffect(() => {
+    const id = setInterval(() => {
+      setMissingLoopTrack(AudioManager.getMissingLoop());
+    }, 2_000);
     return () => clearInterval(id);
   }, []);
 
@@ -177,7 +198,7 @@ export function AudioOrchestratorProvider({ children }: { children: ReactNode })
   }, [projectorActive]);
 
   return (
-    <Ctx.Provider value={{ projectorActive, audioUnlocked, activeGameSlug, startProjector, stopProjector, setActiveGameSlug, unlockAudio, setPendingLoop }}>
+    <Ctx.Provider value={{ projectorActive, audioUnlocked, activeGameSlug, startProjector, stopProjector, setActiveGameSlug, unlockAudio, setPendingLoop, missingLoopTrack }}>
       {children}
     </Ctx.Provider>
   );

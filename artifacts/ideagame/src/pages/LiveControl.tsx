@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { AudioManager } from '@/audio/AudioManager';
 import { useAudioSettings } from '@/contexts/AudioContext';
+import { MissingLoopBanner } from '@/components/MissingLoopBanner';
 import { PanicPanel } from '@/components/PanicPanel';
 import { ScorePanel } from '@/components/ScorePanel';
 import { useLocalMode } from '@/hooks/useLocalMode';
@@ -2063,6 +2064,8 @@ export default function LiveControl() {
         </div>
 
         {error && <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>}
+
+        <MissingLoopBanner />
 
         {/* Event & session selector */}
         {!focusMode && <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
