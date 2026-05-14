@@ -68,6 +68,7 @@ import Presenter from "@/pages/Presenter";
 import PresenterLive from "@/pages/PresenterLive";
 import ProjectorStandby from "@/pages/ProjectorStandby";
 import DevTest from "@/pages/DevTest";
+import HomeV2 from "@/pages/HomeV2";
 
 const queryClient = new QueryClient();
 
@@ -77,6 +78,7 @@ function Router() {
       <Route path="/" component={Hub} />
       <Route path="/projector" component={ProjectorStandby} />
       <Route path="/dev-test" component={DevTest} />
+      <Route path="/home-v2" component={HomeV2} />
       <Route path="/cockpit" component={Cockpit} />
       <Route path="/splash" component={Splash} />
       <Route path="/language" component={LanguageSelect} />
