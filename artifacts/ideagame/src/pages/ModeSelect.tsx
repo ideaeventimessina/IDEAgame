@@ -36,7 +36,7 @@ const MODES: Mode[] = [
     tags: ['2–20 giocatori', 'Casual & fun', 'Senza allestimento'],
     color: '#F5B642',
     glow: '#FFD040',
-    bgSolid: 'rgba(28,14,2,0.90)',
+    bgSolid: 'rgba(24,10,2,0.88)',
     border: 'rgba(245,182,66,0.55)',
     cta: "ENTRA NELL'ARENA",
     route: '/home-room',
@@ -51,7 +51,7 @@ const MODES: Mode[] = [
     tags: ['20–200 ospiti', 'Show professionale', 'Con presentatore'],
     color: '#A855F7',
     glow: '#C084FC',
-    bgSolid: 'rgba(18,5,40,0.90)',
+    bgSolid: 'rgba(14,4,34,0.88)',
     border: 'rgba(168,85,247,0.55)',
     cta: 'INIZIA LO SHOW',
     route: '/home-v4?mode=live',
@@ -68,7 +68,7 @@ function ModeCard({ mode, delay }: { mode: Mode; delay: number }) {
 
   return (
     <motion.div
-      initial={{ y: 30, opacity: 0 }}
+      initial={{ y: 28, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ delay, duration: 0.55, ease: 'easeOut' as const }}
       onHoverStart={() => setHovered(true)}
@@ -77,12 +77,12 @@ function ModeCard({ mode, delay }: { mode: Mode; delay: number }) {
       style={{
         position: 'relative',
         cursor: 'pointer',
-        borderRadius: 24,
+        borderRadius: 22,
         background: mode.bgSolid,
         border: `2px solid ${hovered ? mode.color : mode.border}`,
         boxShadow: hovered
-          ? `0 0 55px ${mode.glow}55, 0 0 110px ${mode.glow}22, inset 0 1px 0 rgba(255,255,255,0.1)`
-          : `0 0 25px ${mode.glow}20, inset 0 1px 0 rgba(255,255,255,0.06)`,
+          ? `0 0 50px ${mode.glow}50, 0 0 100px ${mode.glow}1e, inset 0 1px 0 rgba(255,255,255,0.1)`
+          : `0 0 22px ${mode.glow}1e, inset 0 1px 0 rgba(255,255,255,0.05)`,
         transition: 'border-color 0.25s, box-shadow 0.25s',
         overflow: 'hidden',
         display: 'flex',
@@ -90,79 +90,73 @@ function ModeCard({ mode, delay }: { mode: Mode; delay: number }) {
         alignItems: 'center',
         width: '100%',
         height: '100%',
-        padding: '0 0 24px 0',
+        padding: '0 0 20px 0',
       }}
     >
-      {/* accent tint */}
       <div style={{
         position: 'absolute', inset: 0,
-        background: `radial-gradient(ellipse 80% 55% at 50% 0%,${mode.color}12 0%,transparent 65%)`,
+        background: `radial-gradient(ellipse 80% 50% at 50% 0%,${mode.color}10 0%,transparent 60%)`,
         pointerEvents: 'none',
       }}/>
-      {/* top glow band */}
       <div style={{
-        position: 'absolute', top: 0, left: 0, right: 0, height: 4,
+        position: 'absolute', top: 0, left: 0, right: 0, height: 3,
         background: `linear-gradient(90deg,transparent,${mode.color},transparent)`,
-        opacity: hovered ? 1 : 0.5,
-        transition: 'opacity 0.25s',
+        opacity: hovered ? 1 : 0.45, transition: 'opacity 0.25s',
       }}/>
 
       {/* icon */}
       <motion.div
-        animate={hovered ? { scale: 1.1, y: -3 } : { scale: 1, y: 0 }}
+        animate={hovered ? { scale: 1.1, y: -2 } : { scale: 1, y: 0 }}
         transition={{ duration: 0.3 }}
         style={{
-          marginTop: 28,
-          width: 80, height: 80,
-          borderRadius: '50%',
-          background: `radial-gradient(circle,${mode.color}2e 0%,${mode.color}0e 70%)`,
-          border: `2.5px solid ${mode.color}99`,
+          marginTop: 22, width: 66, height: 66, borderRadius: '50%',
+          background: `radial-gradient(circle,${mode.color}28 0%,${mode.color}0a 70%)`,
+          border: `2px solid ${mode.color}88`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: `0 0 32px ${mode.glow}44`,
-          flexShrink: 0,
+          boxShadow: `0 0 26px ${mode.glow}3c`, flexShrink: 0,
         }}
       >
-        <div style={{ color: mode.color, display: 'flex' }}><Icon size={36} strokeWidth={1.5} /></div>
+        <div style={{ color: mode.color, display: 'flex' }}><Icon size={30} strokeWidth={1.5} /></div>
       </motion.div>
 
       <div style={{
-        marginTop: 16, fontFamily: "'Outfit','Arial Black',sans-serif",
-        fontWeight: 900, fontSize: '1.1rem', letterSpacing: '0.08em',
-        color: mode.color, textAlign: 'center', paddingInline: 20, flexShrink: 0,
+        marginTop: 12, fontFamily: "'Outfit','Arial Black',sans-serif",
+        fontWeight: 900, fontSize: '1rem', letterSpacing: '0.08em',
+        color: mode.color, textAlign: 'center', paddingInline: 16, flexShrink: 0,
       }}>{mode.title}</div>
 
       <div style={{
-        marginTop: 6, fontFamily: "'Outfit',sans-serif",
-        fontWeight: 600, fontSize: '0.8rem',
+        marginTop: 5, fontFamily: "'Outfit',sans-serif",
+        fontWeight: 600, fontSize: '0.74rem',
         color: 'rgba(255,255,255,0.78)',
-        textAlign: 'center', paddingInline: 20, lineHeight: 1.4, flexShrink: 0,
+        textAlign: 'center', paddingInline: 16, lineHeight: 1.35, flexShrink: 0,
       }}>{mode.subtitle}</div>
 
       <div style={{
-        marginTop: 10, fontFamily: "'Outfit',sans-serif",
-        fontWeight: 400, fontSize: '0.72rem',
-        color: 'rgba(255,255,255,0.45)',
-        textAlign: 'center', paddingInline: 24, lineHeight: 1.5, flexShrink: 0,
+        marginTop: 8, fontFamily: "'Outfit',sans-serif",
+        fontWeight: 400, fontSize: '0.67rem',
+        color: 'rgba(255,255,255,0.42)',
+        textAlign: 'center', paddingInline: 18, lineHeight: 1.45, flexShrink: 0,
       }}>{mode.desc}</div>
 
       <div style={{
-        display: 'flex', flexDirection: 'column', gap: 6,
-        marginTop: 14, paddingInline: 18, width: '100%', flexShrink: 0,
+        display: 'flex', flexDirection: 'column', gap: 5,
+        marginTop: 12, paddingInline: 14, width: '100%', flexShrink: 0,
       }}>
         {mode.tags.map((tag, i) => {
           const TagIcon = TagIcons[i];
           return (
             <div key={tag} style={{
-              display: 'flex', alignItems: 'center', gap: 8,
+              display: 'flex', alignItems: 'center', gap: 7,
               background: 'rgba(255,255,255,0.05)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: 100, padding: '4px 12px',
+              border: '1px solid rgba(255,255,255,0.09)',
+              borderRadius: 100, padding: '3px 10px',
             }}>
-              <div style={{ color: mode.color, display: 'flex', flexShrink: 0 }}><TagIcon size={11} /></div>
+              <div style={{ color: mode.color, display: 'flex', flexShrink: 0 }}><TagIcon size={10} /></div>
               <span style={{
                 fontFamily: "'Outfit',sans-serif", fontWeight: 700,
-                fontSize: '0.67rem', letterSpacing: '0.04em',
-                color: 'rgba(255,255,255,0.65)',
+                fontSize: '0.62rem', letterSpacing: '0.04em',
+                color: 'rgba(255,255,255,0.62)',
               }}>{tag}</span>
             </div>
           );
@@ -175,16 +169,16 @@ function ModeCard({ mode, delay }: { mode: Mode; delay: number }) {
         animate={hovered ? { scale: 1.04 } : { scale: 1 }}
         transition={{ duration: 0.2 }}
         style={{
-          padding: '0.8rem 1.8rem',
+          padding: '0.7rem 1.4rem',
           background: `linear-gradient(135deg,${mode.color} 0%,${mode.glow} 100%)`,
           border: `2px solid ${mode.color}`,
           borderRadius: 100,
           fontFamily: "'Outfit','Arial Black',sans-serif",
-          fontWeight: 900, fontSize: '0.9rem', letterSpacing: '0.07em',
+          fontWeight: 900, fontSize: '0.82rem', letterSpacing: '0.07em',
           color: mode.id === 'home' ? '#000' : '#fff',
           cursor: 'pointer',
-          boxShadow: `0 0 28px ${mode.glow}55`,
-          width: 'calc(100% - 36px)', flexShrink: 0,
+          boxShadow: `0 0 24px ${mode.glow}50`,
+          width: 'calc(100% - 28px)', flexShrink: 0,
         }}
         whileTap={{ scale: 0.97 }}
         onClick={e => { e.stopPropagation(); navigate(mode.route); }}
@@ -197,112 +191,89 @@ function ModeCard({ mode, delay }: { mode: Mode; delay: number }) {
 export default function ModeSelect() {
   const [, navigate] = useLocation();
 
-  const CARD_X   = 220;
-  const TITLE_Y  = 52;
-  const CARD_Y   = 148;
-  const CARD_W   = 420;
-  const CARD_H   = 490;
-  const CARD_GAP = 60;
+  /*
+   * New background: 1538×1023 artwork with a clear central pathway.
+   * Logo occupies top ~32% of image height → at 720px = ~230px.
+   * Jonny occupies right ~35% → at 1280px starts at ~832px.
+   *
+   * Cards sit below the logo and to the left of Jonny:
+   *   CARD_X = 180px (left edge)
+   *   Two 280px cards + 40px gap → right edge = 180+280+40+280 = 780px (52px clear of Jonny)
+   *   Title centered over that 600px span at x=480px
+   *   CARD_Y = 258px (below logo, small breathing room)
+   *   CARD_H = 370px → cards end at 628px, back button at 646px < 720 ✓
+   */
+  const CARD_X   = 180;
+  const CARD_W   = 280;
+  const CARD_H   = 370;
+  const CARD_GAP = 40;
+  const TITLE_Y  = 218;
+  const CARD_Y   = 262;
+  const CARDS_TOTAL_W = CARD_W * 2 + CARD_GAP;   /* 600 */
 
   return (
     <div className="fixed inset-0 overflow-hidden"
       style={{
-        background: '#0a041a',   /* deep purple base — shows where image is masked */
+        background: '#050210',
         fontFamily: "'Outfit','Space Grotesk','Arial Black',sans-serif",
       }}>
 
-      {/*
-       * ── LEFT WING: neon signs + audience, ~0–22% width ──
-       * Shows only the left slice of the artwork.
-       */}
+      {/* ── fullscreen background ── */}
       <div className="absolute inset-0" style={{
         backgroundImage: `url(${pub('/mode-select-bg.png')})`,
         backgroundSize: 'cover',
-        backgroundPosition: 'left center',
+        backgroundPosition: 'center center',
+        zIndex: 0,
+      }}/>
+
+      {/* ── 20% dark veil ── */}
+      <div className="absolute inset-0" style={{
+        background: 'rgba(0,0,0,0.20)',
         zIndex: 1,
-        maskImage: 'linear-gradient(to right, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 14%, rgba(0,0,0,0) 22%)',
-        WebkitMaskImage: 'linear-gradient(to right, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 14%, rgba(0,0,0,0) 22%)',
+        pointerEvents: 'none',
       }}/>
 
       {/*
-       * ── RIGHT WING: Jonny + right attractions, ~70–100% width ──
-       * Shows only the right slice of the artwork.
+       * Gradient mask that darkens the center column where the pathway is,
+       * providing contrast for card readability without hiding the artwork.
+       * Fades naturally into the sides so park elements stay vivid.
        */}
       <div className="absolute inset-0" style={{
-        backgroundImage: `url(${pub('/mode-select-bg.png')})`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'right center',
-        zIndex: 1,
-        maskImage: 'linear-gradient(to left, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 22%, rgba(0,0,0,0) 32%)',
-        WebkitMaskImage: 'linear-gradient(to left, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 22%, rgba(0,0,0,0) 32%)',
-      }}/>
-
-      {/*
-       * ── BOTTOM BAND: stage floor + front-row audience ──
-       * Shows the lower 28% of the image so the stage doesn't disappear.
-       */}
-      <div className="absolute inset-0" style={{
-        backgroundImage: `url(${pub('/mode-select-bg.png')})`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center bottom',
-        zIndex: 1,
-        maskImage: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.85) 14%, rgba(0,0,0,0) 28%)',
-        WebkitMaskImage: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.85) 14%, rgba(0,0,0,0) 28%)',
-      }}/>
-
-      {/*
-       * ── TOP BAND: sky + fireworks, hidden behind center ──
-       * Shows only the top 18% where baked logo does NOT overlap left/right edges.
-       */}
-      <div className="absolute inset-0" style={{
-        backgroundImage: `url(${pub('/mode-select-bg.png')})`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center top',
-        zIndex: 1,
-        maskImage: [
-          'linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.7) 8%, rgba(0,0,0,0) 18%)',
-          'linear-gradient(to right, rgba(0,0,0,1) 0%, rgba(0,0,0,0) 18%, rgba(0,0,0,0) 72%, rgba(0,0,0,1) 88%)',
+        background: [
+          /* darkens just the center vertical strip for card readability */
+          'radial-gradient(ellipse 52% 72% at 42% 62%, rgba(5,2,16,0.52) 0%, transparent 70%)',
         ].join(','),
-        WebkitMaskImage: [
-          'linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.7) 8%, rgba(0,0,0,0) 18%)',
-          'linear-gradient(to right, rgba(0,0,0,1) 0%, rgba(0,0,0,0) 18%, rgba(0,0,0,0) 72%, rgba(0,0,0,1) 88%)',
-        ].join(','),
-        WebkitMaskComposite: 'source-in',
-        maskComposite: 'intersect',
-      }}/>
-
-      {/* ── subtle vignette on the center dark zone ── */}
-      <div className="absolute inset-0" style={{
-        background: 'radial-gradient(ellipse 55% 65% at 48% 50%, rgba(20,8,50,0.0) 0%, rgba(10,4,26,0.55) 70%, rgba(10,4,26,0.0) 100%)',
         zIndex: 2,
         pointerEvents: 'none',
       }}/>
 
-      {/* ── title block ── */}
+      {/* ── title — centered over card span ── */}
       <motion.div
-        initial={{ opacity: 0, y: -12 }}
+        initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.08, duration: 0.5, ease: 'easeOut' as const }}
         style={{
           position: 'absolute',
-          left: CARD_X, top: TITLE_Y,
-          width: CARD_W * 2 + CARD_GAP,
+          left: CARD_X,
+          top: TITLE_Y,
+          width: CARDS_TOTAL_W,
+          textAlign: 'center',
           zIndex: 20,
         }}
       >
         <div style={{
           fontFamily: "'Outfit','Arial Black',sans-serif",
-          fontWeight: 900, fontSize: '1.95rem', letterSpacing: '0.05em',
+          fontWeight: 900, fontSize: '1.65rem', letterSpacing: '0.05em',
           color: '#fff', lineHeight: 1.1,
-          textShadow: '0 2px 14px rgba(0,0,0,0.9)',
+          textShadow: '0 2px 16px rgba(0,0,0,0.95), 0 0 40px rgba(0,0,0,0.7)',
         }}>
           SCEGLI LA TUA MODALITÀ
         </div>
         <div style={{
-          marginTop: 7, fontSize: '0.78rem', letterSpacing: '0.24em',
-          color: 'rgba(255,255,255,0.6)', fontWeight: 600,
+          marginTop: 6, fontSize: '0.72rem', letterSpacing: '0.22em',
+          color: 'rgba(255,255,255,0.58)', fontWeight: 600,
           textTransform: 'uppercase',
-          textShadow: '0 1px 8px rgba(0,0,0,0.9)',
+          textShadow: '0 1px 10px rgba(0,0,0,0.95)',
         }}>
           Due esperienze. Un solo show.
         </div>
@@ -315,7 +286,7 @@ export default function ModeSelect() {
         width: CARD_W, height: CARD_H,
         zIndex: 20,
       }}>
-        <ModeCard mode={MODES[0]} delay={0.28} />
+        <ModeCard mode={MODES[0]} delay={0.26} />
       </div>
 
       {/* ── Live card ── */}
@@ -325,27 +296,29 @@ export default function ModeSelect() {
         width: CARD_W, height: CARD_H,
         zIndex: 20,
       }}>
-        <ModeCard mode={MODES[1]} delay={0.40} />
+        <ModeCard mode={MODES[1]} delay={0.38} />
       </div>
 
       {/* ── Back button ── */}
       <motion.button
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ delay: 0.58, duration: 0.35 }}
+        transition={{ delay: 0.55, duration: 0.35 }}
         onClick={() => navigate('/home-v4')}
         style={{
           position: 'absolute',
-          left: CARD_X,
+          /* center the button under the two cards */
+          left: CARD_X + CARDS_TOTAL_W / 2,
+          transform: 'translateX(-50%)',
           top: CARD_Y + CARD_H + 14,
           zIndex: 20,
-          display: 'flex', alignItems: 'center', gap: '0.45rem',
-          padding: '0.5rem 1.3rem',
-          background: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', gap: '0.4rem',
+          padding: '0.45rem 1.2rem',
+          background: 'rgba(0,0,0,0.55)',
           border: '1.5px solid rgba(255,255,255,0.2)',
           borderRadius: 100,
-          color: 'rgba(255,255,255,0.6)',
-          fontSize: '0.78rem', fontWeight: 700, letterSpacing: '0.05em',
+          color: 'rgba(255,255,255,0.58)',
+          fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.05em',
           cursor: 'pointer',
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
