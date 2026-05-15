@@ -106,11 +106,39 @@ export default function HomeJoin() {
 
   // Restore saved session on mount
   useEffect(() => {
+    const saved = getSavedJoin();
+
     if (urlCode) {
+      // If we have a saved join for this exact code, restore directly — skip nickname prompt
+      if (saved && saved.joinCode === urlCode) {
+        fetch(`/api/home/sessions/${saved.sessionId}`)
+          .then(r => r.ok ? r.json() : null)
+          .then((d: { session: HomeSession; players: HomePlayer[] } | null) => {
+            if (!d || d.session.status === 'ended') { clearJoin(); lookupSession(urlCode); return; }
+            const p = d.players.find(pl => pl.id === saved.playerId);
+            if (!p) { clearJoin(); lookupSession(urlCode); return; }
+            setSession(d.session);
+            setPlayers(d.players);
+            setPlayer(p);
+            setNickname(saved.nickname);
+            if (d.session.status === 'playing') {
+              setPhase('playing');
+              setAnswered(null);
+              setRevealed(false);
+              startTimer(Number(d.session.roundPayload?.timeLimit ?? 30));
+            } else {
+              setPhase('lobby');
+            }
+          })
+          .catch(() => { clearJoin(); lookupSession(urlCode); });
+        return;
+      }
+      // No matching saved join — ask for nickname as before
       lookupSession(urlCode);
       return;
     }
-    const saved = getSavedJoin();
+
+    // No urlCode in URL — try restoring from any saved join
     if (!saved) return;
     fetch(`/api/home/sessions/${saved.sessionId}`)
       .then(r => r.ok ? r.json() : null)

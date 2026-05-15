@@ -74,6 +74,15 @@ export default function JoinPage() {
         setError(msg.error ?? 'Errore durante il join.');
         return;
       }
+      const player = await r.json() as { id: string };
+      try {
+        localStorage.setItem('ideagame:home:player', JSON.stringify({
+          sessionId: session.id,
+          joinCode: session.joinCode,
+          playerId: player.id,
+          nickname: nickname.trim(),
+        }));
+      } catch { /* ignore storage errors */ }
       navigate(`/home/join?s=${session.joinCode}`);
     } catch {
       setError('Errore di rete. Riprova.');
