@@ -909,6 +909,10 @@ function Arena({ onPodium }: { onPodium:()=>void }) {
       transition={{ duration:0.45 }}
       style={{ display:'grid', gridTemplateColumns:'22% 1fr 30%', gridTemplateRows:'auto 1fr auto', position:'relative' }}>
 
+      {/* scenic stage background — lives here so ShowLanding is unaffected */}
+      <Stage/>
+      <Sparks/>
+
       {/* ── TOP ── */}
 
       {/* logo top-left */}
@@ -1152,8 +1156,7 @@ export default function HomeV4() {
   return (
     <div className="fixed inset-0 overflow-hidden"
       style={{ background:'#030010', fontFamily:"'Outfit','Space Grotesk','Arial Black',sans-serif" }}>
-      <Stage/>
-      <Sparks/>
+      {/* Stage/Sparks moved into Arena — ShowLanding has its own official bg image */}
       <AnimatePresence mode="wait">
         {screen==='show'   && <ShowLanding onArena={()=>navigate('/mode-select')}/>}
         {screen==='arena'  && <Arena       onPodium={()=>setScreen('podium')}/>}

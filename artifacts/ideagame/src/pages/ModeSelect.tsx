@@ -222,17 +222,23 @@ export default function ModeSelect() {
   return (
     <div className="fixed inset-0 overflow-hidden"
       style={{
-        background: '#050210',
         fontFamily: "'Outfit','Space Grotesk','Arial Black',sans-serif",
       }}>
 
-      {/* ── fullscreen background ── */}
-      <div className="absolute inset-0" style={{
-        backgroundImage: `url(${pub('/mode-select-bg.png')})`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center center',
-        zIndex: 0,
-      }}/>
+      {/* ── fullscreen background — only official uploaded image ── */}
+      <img
+        src={pub('/mode-select-bg.png')}
+        alt=""
+        aria-hidden
+        style={{
+          position: 'absolute', inset: 0,
+          width: '100%', height: '100%',
+          objectFit: 'cover',
+          zIndex: 0,
+          pointerEvents: 'none',
+          userSelect: 'none',
+        }}
+      />
 
       {/* ── 20% dark veil ── */}
       <div className="absolute inset-0" style={{
