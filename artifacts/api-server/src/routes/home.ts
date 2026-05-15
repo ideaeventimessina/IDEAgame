@@ -248,9 +248,20 @@ async function loadQuizRounds(): Promise<RoundPayload[]> {
 }
 
 function fallbackQuiz(): RoundPayload[] {
-  return [
-    { mode: "home-quiz", roundIndex: 0, category: "Quiz", question: "Chi era il sindaco di Gotham City?", answers: ["Batman", "Robin", "James Gordon", "Il Pinguino"], correctIndex: 2, explanation: "James Gordon era il commissario di polizia!", points: 200, timeLimit: 15, revealed: false },
+  const qs = [
+    { question: "Chi era il sindaco di Gotham City?",          answers: ["Batman","Robin","James Gordon","Il Pinguino"],   correctIndex: 2, explanation: "James Gordon era il commissario di polizia!" },
+    { question: "Quante strisce ha la bandiera italiana?",      answers: ["2","3","4","5"],                                 correctIndex: 1, explanation: "Verde, bianco e rosso: tre strisce verticali!" },
+    { question: "Quale pianeta è il più grande del sistema solare?", answers: ["Saturno","Marte","Giove","Nettuno"],      correctIndex: 2, explanation: "Giove è così grande che ci entrerebbero 1.300 Terre!" },
+    { question: "In quale città si trova la Torre Eiffel?",    answers: ["Roma","Berlino","Parigi","Madrid"],               correctIndex: 2, explanation: "Parigi, costruita nel 1889 da Gustave Eiffel." },
+    { question: "Quante zampe ha un ragno?",                    answers: ["4","6","8","10"],                                correctIndex: 2, explanation: "I ragni hanno sempre 8 zampe, sono aracnidi!" },
+    { question: "Qual è la capitale dell'Australia?",          answers: ["Sydney","Melbourne","Brisbane","Canberra"],       correctIndex: 3, explanation: "Molti pensano Sydney, ma la capitale è Canberra!" },
+    { question: "Chi ha dipinto la Gioconda?",                 answers: ["Michelangelo","Leonardo da Vinci","Raffaello","Botticelli"], correctIndex: 1, explanation: "Leonardo la dipinse tra il 1503 e il 1519." },
   ];
+  return qs.map((q, i) => ({
+    mode: "home-quiz", roundIndex: i, category: "Quiz",
+    question: q.question, answers: q.answers, correctIndex: q.correctIndex,
+    explanation: q.explanation, points: 200, timeLimit: 15, revealed: false,
+  }));
 }
 
 /** 4. SaraMusica — carica tracce dal DB */

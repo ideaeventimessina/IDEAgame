@@ -83,6 +83,7 @@ export default function HomeJoin() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const phaseRef = useRef<'code' | 'nickname' | 'lobby' | 'playing' | 'ended'>('code');
   const playerRef = useRef<HomePlayer | null>(null);
+  const prevGameSlugRef = useRef<string | null>(null);
 
   const { on, emit } = useEventSocket(null);
 
@@ -200,6 +201,40 @@ export default function HomeJoin() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, session?.id]);
 
+  // Polling fallback in playing phase — recovers from missed home:game_started / home:game_ended
+  useEffect(() => {
+    if (phase !== 'playing' || !session?.id) return;
+    const sid = session.id;
+    const knownSlug = session.gameSlug;
+    const interval = setInterval(() => {
+      fetch(`/api/home/sessions/${sid}`)
+        .then(r => r.ok ? r.json() : null)
+        .then((data: { session: HomeSession; players: HomePlayer[] } | null) => {
+          if (!data) return;
+          setPlayers(data.players);
+          const cur = playerRef.current;
+          if (cur) { const me = data.players.find(p => p.id === cur.id); if (me) setPlayer(me); }
+          if (data.session.gameSlug !== knownSlug || data.session.status !== 'playing') {
+            setSession(data.session);
+            if (data.session.status === 'lobby') {
+              setPhase('lobby');
+            } else if (data.session.status === 'ended') {
+              setPhase('ended');
+              clearJoin();
+            } else if (data.session.status === 'playing' && data.session.gameSlug !== knownSlug) {
+              prevGameSlugRef.current = data.session.gameSlug;
+              setAnswered(null);
+              setRevealed(false);
+              startTimer(Number(data.session.roundPayload?.timeLimit ?? 30));
+            }
+          }
+        })
+        .catch(() => {});
+    }, 5000);
+    return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, session?.id, session?.gameSlug]);
+
   // Socket listeners — registered once per `on` instance.
   // Use phaseRef/playerRef (not state) to avoid re-registration on every phase change,
   // which would cause missed events during the cleanup/setup window.
@@ -209,11 +244,19 @@ export default function HomeJoin() {
       setPlayers(d.players);
       const cur = playerRef.current;
       if (cur) { const me = d.players.find(p => p.id === cur.id); if (me) setPlayer(me); }
-      if (d.session.status === 'playing' && phaseRef.current === 'lobby') {
-        setPhase('playing');
-        setAnswered(null);
-        setRevealed(false);
-        startTimer(Number(d.session.roundPayload?.timeLimit ?? 30));
+      if (d.session.status === 'playing') {
+        if (phaseRef.current === 'lobby') {
+          setPhase('playing');
+          setAnswered(null);
+          setRevealed(false);
+          startTimer(Number(d.session.roundPayload?.timeLimit ?? 30));
+        } else if (phaseRef.current === 'playing' && d.session.gameSlug !== prevGameSlugRef.current) {
+          // Game changed while phone was already playing — missed home:game_ended + home:game_started
+          setAnswered(null);
+          setRevealed(false);
+          startTimer(Number(d.session.roundPayload?.timeLimit ?? 30));
+        }
+        prevGameSlugRef.current = d.session.gameSlug;
       }
       if (d.session.status === 'ended') setPhase('ended');
     });
@@ -225,6 +268,7 @@ export default function HomeJoin() {
     });
 
     const u3 = on<{ session: HomeSession; players: HomePlayer[]; payload: Record<string,unknown> }>('home:game_started', (d) => {
+      prevGameSlugRef.current = d.session.gameSlug;
       setSession(d.session);
       setPlayers(d.players);
       setPhase('playing');
