@@ -494,6 +494,10 @@ export default function HomeGame() {
   type HomeMediaItem = { id: string; name: string; kind: string; url: string; tags: string[] };
   const [homeMedia, setHomeMedia] = useState<HomeMediaItem[]>([]);
   const [introVideo, setIntroVideo] = useState<{ url: string; slug: string; timeLimit: number } | null>(null);
+  const [videoLoading, setVideoLoading] = useState(false);
+  const introStartedRef    = useRef(false);
+  const introMaxTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const introStallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { on } = useHomeSocket(session?.id ?? null);
 
@@ -701,6 +705,43 @@ export default function HomeGame() {
     const tag = `home_intro_${slug}`;
     return homeMedia.find(m => m.tags?.includes(tag))?.url ?? null;
   }, [homeMedia]);
+
+  /**
+   * Single protected entry-point for starting the game after the intro video.
+   * Idempotent: uses introStartedRef so it fires at most once per intro, regardless
+   * of how many failsafe paths (onEnded, timeout, stall, error) converge.
+   */
+  const safeStartGame = useCallback((video: { url: string; slug: string; timeLimit: number }) => {
+    if (introStartedRef.current) return;
+    introStartedRef.current = true;
+    if (introMaxTimerRef.current)   { clearTimeout(introMaxTimerRef.current);   introMaxTimerRef.current   = null; }
+    if (introStallTimerRef.current) { clearTimeout(introStallTimerRef.current); introStallTimerRef.current = null; }
+    setIntroVideo(null);
+    setVideoLoading(false);
+    setPhase('playing');
+    setRevealed(false);
+    setJonnyMood('thinking');
+    startTimer(video.timeLimit);
+    AudioManager.stopLoop(true);
+    void AudioManager.playLoop(video.slug, 'round_loop');
+  }, [startTimer]);
+
+  // ── Intro-video lifecycle: reset guard, start 20 s max-duration failsafe ─────
+  useEffect(() => {
+    if (!introVideo) return;
+    introStartedRef.current = false;
+    setVideoLoading(true);
+    const snapshot = introVideo;
+    introMaxTimerRef.current = setTimeout(() => {
+      console.warn('[IntroVideo] 20 s timeout — force-starting game');
+      safeStartGame(snapshot);
+    }, 20_000);
+    return () => {
+      if (introMaxTimerRef.current)   { clearTimeout(introMaxTimerRef.current);   introMaxTimerRef.current   = null; }
+      if (introStallTimerRef.current) { clearTimeout(introStallTimerRef.current); introStallTimerRef.current = null; }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [introVideo?.url]);
 
   // ── API ───────────────────────────────────────────────────────────────────────
 
@@ -1276,44 +1317,54 @@ export default function HomeGame() {
           key="intro-video"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black">
+
+          {/* Loading state — shown until onLoadedMetadata fires */}
+          {videoLoading && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 z-10 pointer-events-none">
+              <div className="h-10 w-10 animate-spin rounded-full border-4 border-white/20 border-t-[#F5B642]"/>
+              <span className="text-sm font-bold tracking-widest text-white/50 uppercase">
+                Prepariamo lo spettacolo…
+              </span>
+            </div>
+          )}
+
           <video
             key={introVideo.url}
             src={introVideo.url}
             autoPlay
             playsInline
-            className="h-full w-full object-contain"
-            onEnded={() => {
-              const { slug, timeLimit } = introVideo;
-              setIntroVideo(null);
-              setPhase('playing');
-              setRevealed(false);
-              setJonnyMood('thinking');
-              startTimer(timeLimit);
-              AudioManager.stopLoop(true);
-              void AudioManager.playLoop(slug, 'round_loop');
+            className={`h-full w-full object-contain transition-opacity duration-300 ${videoLoading ? 'opacity-0' : 'opacity-100'}`}
+            onLoadedMetadata={(e) => {
+              const dur = (e.target as HTMLVideoElement).duration;
+              // Metadata validation: invalid duration → skip intro immediately
+              if (!isFinite(dur) || isNaN(dur) || dur === 0) {
+                safeStartGame(introVideo);
+                return;
+              }
+              setVideoLoading(false);
             }}
-            onError={() => {
-              const { slug, timeLimit } = introVideo;
-              setIntroVideo(null);
-              setPhase('playing');
-              setRevealed(false);
-              setJonnyMood('thinking');
-              startTimer(timeLimit);
-              AudioManager.stopLoop(true);
-              void AudioManager.playLoop(slug, 'round_loop');
+            onEnded={() => safeStartGame(introVideo)}
+            onError={() => safeStartGame(introVideo)}
+            onStalled={() => {
+              // Clear any existing stall timer before setting a new one
+              if (introStallTimerRef.current) clearTimeout(introStallTimerRef.current);
+              introStallTimerRef.current = setTimeout(() => safeStartGame(introVideo), 3000);
+            }}
+            onWaiting={() => {
+              if (!introStallTimerRef.current) {
+                introStallTimerRef.current = setTimeout(() => safeStartGame(introVideo), 3000);
+              }
+            }}
+            onPlaying={() => {
+              if (introStallTimerRef.current) { clearTimeout(introStallTimerRef.current); introStallTimerRef.current = null; }
+            }}
+            onCanPlay={() => {
+              if (introStallTimerRef.current) { clearTimeout(introStallTimerRef.current); introStallTimerRef.current = null; }
             }}
           />
+
           <button
-            onClick={() => {
-              const { slug, timeLimit } = introVideo;
-              setIntroVideo(null);
-              setPhase('playing');
-              setRevealed(false);
-              setJonnyMood('thinking');
-              startTimer(timeLimit);
-              AudioManager.stopLoop(true);
-              void AudioManager.playLoop(slug, 'round_loop');
-            }}
+            onClick={() => safeStartGame(introVideo)}
             className="absolute bottom-8 right-8 rounded-2xl border border-white/20 bg-white/10 px-5 py-3 text-sm font-black text-white/60 backdrop-blur-sm transition-colors hover:text-white/90">
             Salta ▶
           </button>
