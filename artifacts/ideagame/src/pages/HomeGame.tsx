@@ -155,6 +155,7 @@ export default function HomeGame() {
   const [jonnyMsg, setJonnyMsg] = useState('Benvenuti a JONNY\'S WORLD!');
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const [postGame, setPostGame] = useState<{gameSlug:string;players:HomePlayer[]}|null>(null);
 
   const { on } = useHomeSocket(session?.id ?? null);
 
@@ -238,10 +239,10 @@ export default function HomeGame() {
     const u5 = on<{ session: HomeSession; players: HomePlayer[]; gameSlug: string }>('home:game_ended', (d) => {
       setSession(d.session);
       setPlayers(d.players);
-      setPhase('board');
       setJonnyMood('winner');
       setJonnyMsg(`${ALL_GAMES.find(g => g.slug === d.gameSlug)?.name ?? 'Gioco'} completato! 🎉`);
       AudioManager.stopLoop();
+      setPostGame({ gameSlug: d.gameSlug, players: d.players });
     });
     const u6 = on<{ session: HomeSession; players: HomePlayer[] }>('home:champion', (d) => {
       setSession(d.session);
@@ -360,6 +361,7 @@ export default function HomeGame() {
 
   const nextRound = async () => {
     if (!session) return;
+    const finishedSlug = session.gameSlug;
     setLoading(true);
     if (timerRef.current) clearInterval(timerRef.current);
     try {
@@ -372,9 +374,9 @@ export default function HomeGame() {
       if (d.gameEnded) {
         setSession(d.session);
         if (d.players) setPlayers(d.players);
-        setPhase('board');
         setJonnyMood('winner');
         AudioManager.stopLoop();
+        setPostGame({ gameSlug: finishedSlug ?? '', players: d.players ?? players });
       } else {
         setSession(d.session);
         setRevealed(false);
@@ -386,6 +388,7 @@ export default function HomeGame() {
 
   const endGame = async () => {
     if (!session) return;
+    const finishedSlug = session.gameSlug;
     setLoading(true);
     if (timerRef.current) clearInterval(timerRef.current);
     try {
@@ -393,9 +396,9 @@ export default function HomeGame() {
       const d = await r.json() as { session: HomeSession; players: HomePlayer[] };
       setSession(d.session);
       setPlayers(d.players);
-      setPhase('board');
       setJonnyMood('winner');
       AudioManager.stopLoop();
+      setPostGame({ gameSlug: finishedSlug ?? '', players: d.players });
     } finally { setLoading(false); }
   };
 
@@ -415,6 +418,34 @@ export default function HomeGame() {
 
   const joinUrl = session ? `${window.location.origin}/home/join?s=${session.joinCode}` : '';
   const allDone = gamesPlayed.length >= visibleGames.length;
+
+  // ── Post-game overlay: 5 s then board or champion ────────────────────────────
+  useEffect(() => {
+    if (!postGame) return;
+    const sid = session?.id;
+    const done = gamesPlayed.length >= visibleGames.length;
+    const timer = setTimeout(async () => {
+      setPostGame(null);
+      if (done && sid) {
+        setLoading(true);
+        try {
+          const r = await fetch(`/api/home/sessions/${sid}/champion`, { method: 'POST' });
+          const d = await r.json() as { session: HomeSession; players: HomePlayer[] };
+          setSession(d.session);
+          setPlayers(d.players);
+          setPhase('champion');
+          setJonnyMood('winner');
+          void AudioManager.playStinger('global', 'podium_theme');
+        } finally { setLoading(false); }
+      } else {
+        setPhase('board');
+        setJonnyMood('excited');
+        setJonnyMsg('Scegli il gioco!');
+      }
+    }, 5000);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [postGame]);
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
@@ -650,58 +681,84 @@ export default function HomeGame() {
               </div>
             )}
 
-            {/* 8 game tiles — ottagonali */}
-            <div className="flex-1 overflow-y-auto px-4 py-4">
-              <div className="grid grid-cols-4 gap-3 max-w-5xl mx-auto">
+            {/* Game cards — premium */}
+            <div className="flex-1 overflow-y-auto px-5 py-5">
+              <div className="grid grid-cols-2 gap-4 max-w-5xl mx-auto lg:grid-cols-4">
                 {visibleGames.map(g => {
                   const done = gamesPlayed.includes(g.slug);
                   const isLoading = selectingGame === g.slug;
+                  const gameScores = (session?.gameConfig?.gameScores as Record<string, Record<string,number>> | undefined) ?? {};
+                  const scoreMap = gameScores[g.slug] ?? {};
+                  const scoreVals = Object.values(scoreMap);
+                  const topScore = scoreVals.length > 0 ? Math.max(...scoreVals) : 0;
                   return (
-                    <div key={g.slug} style={{filter: done ? 'none' : `drop-shadow(0 0 22px ${g.color}50)`}}>
-                      <motion.button
-                        whileHover={done ? {} : {scale:1.06}}
-                        whileTap={done ? {} : {scale:0.95}}
-                        onClick={() => !done && !selectingGame && selectGame(g.slug)}
-                        disabled={done || !!selectingGame}
-                        className="relative w-full flex flex-col items-center justify-center gap-2 transition-all"
+                    <motion.button
+                      key={g.slug}
+                      whileHover={done || !!selectingGame ? {} : {scale:1.04, y:-5}}
+                      whileTap={done || !!selectingGame ? {} : {scale:0.97}}
+                      onClick={() => !done && !selectingGame && selectGame(g.slug)}
+                      disabled={done || !!selectingGame}
+                      className="relative flex flex-col items-center gap-3 rounded-3xl p-5 text-center transition-all"
+                      style={{
+                        background: done
+                          ? 'linear-gradient(135deg,rgba(52,211,153,0.12),rgba(52,211,153,0.04))'
+                          : `linear-gradient(145deg,${g.color}22,${g.color}08)`,
+                        border: done
+                          ? '1px solid rgba(52,211,153,0.45)'
+                          : `1px solid ${g.color}50`,
+                        boxShadow: done
+                          ? '0 0 0 1px rgba(52,211,153,0.08) inset'
+                          : `0 0 32px ${g.color}22, 0 4px 20px rgba(0,0,0,0.4)`,
+                        opacity: (!!selectingGame && !isLoading) ? 0.45 : 1,
+                      }}>
+
+                      {/* Status badge */}
+                      <div className="absolute right-3 top-3 rounded-lg px-2 py-1 text-[9px] font-black tracking-widest"
+                        style={done
+                          ? {background:'rgba(52,211,153,0.22)',color:'#34D399',border:'1px solid rgba(52,211,153,0.45)'}
+                          : {background:`${g.color}18`,color:g.color,border:`1px solid ${g.color}40`}}>
+                        {done ? '✓ FATTO' : 'GIOCA'}
+                      </div>
+
+                      {/* Icon box */}
+                      <div className="flex h-16 w-16 items-center justify-center rounded-2xl text-4xl mt-2"
                         style={{
-                          clipPath:'polygon(30% 0%,70% 0%,100% 30%,100% 70%,70% 100%,30% 100%,0% 70%,0% 30%)',
-                          aspectRatio:'1/1',
-                          ...(done
-                            ? {background:'rgba(255,255,255,0.04)',opacity:0.5}
-                            : {background:`linear-gradient(145deg,${g.color}28,${g.color}10)`}),
+                          background: done ? 'rgba(52,211,153,0.18)' : `${g.color}1a`,
+                          border: done ? '1px solid rgba(52,211,153,0.4)' : `1px solid ${g.color}35`,
+                          boxShadow: done ? 'none' : `0 0 20px ${g.color}30`,
                         }}>
+                        {isLoading
+                          ? <Loader2 className="h-8 w-8 animate-spin" style={{color:g.color}}/>
+                          : g.emoji}
+                      </div>
 
-                        {/* Done overlay */}
-                        {done && (
-                          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1"
-                            style={{background:'rgba(0,0,0,0.45)'}}>
-                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500">
-                              <Check className="h-5 w-5 text-white"/>
-                            </div>
-                            <span className="text-[10px] font-black text-green-400">Fatto</span>
-                          </div>
-                        )}
+                      {/* Name */}
+                      <div className="text-sm font-black leading-tight text-white px-1"
+                        style={{textShadow: done ? 'none' : `0 0 18px ${g.color}55`}}>
+                        {g.name}
+                      </div>
 
-                        {/* Loading overlay */}
-                        {isLoading && (
-                          <div className="absolute inset-0 flex items-center justify-center"
-                            style={{background:'rgba(0,0,0,0.65)'}}>
-                            <Loader2 className="h-7 w-7 animate-spin" style={{color:g.color}}/>
-                          </div>
-                        )}
+                      {/* Description (when not done) */}
+                      {!done && (
+                        <div className="text-[11px] leading-snug text-white/35 line-clamp-2 px-1">{g.description}</div>
+                      )}
 
-                        {!done && !isLoading && (
-                          <>
-                            <div className="text-4xl leading-none">{g.emoji}</div>
-                            <div className="text-display text-xs font-black leading-tight text-center px-4"
-                              style={{color:g.color,textShadow:`0 0 16px ${g.color}80`}}>
-                              {g.name}
-                            </div>
-                          </>
-                        )}
-                      </motion.button>
-                    </div>
+                      {/* Top score (when done and data available) */}
+                      {done && topScore > 0 && (
+                        <div className="text-xs font-black" style={{color:'#34D399'}}>🏆 {topScore} pt</div>
+                      )}
+                      {done && topScore === 0 && (
+                        <div className="text-xs text-white/30">Completato</div>
+                      )}
+
+                      {/* CTA (when playable) */}
+                      {!done && !isLoading && (
+                        <div className="mt-auto flex items-center gap-1.5 rounded-xl px-4 py-1.5 text-xs font-black"
+                          style={{background:`${g.color}22`,color:g.color,border:`1px solid ${g.color}45`}}>
+                          <Play className="h-3 w-3"/> Inizia
+                        </div>
+                      )}
+                    </motion.button>
                   );
                 })}
               </div>
@@ -744,7 +801,9 @@ export default function HomeGame() {
               </div>
 
               <div className="flex gap-2">
-                <button onClick={nextRound} disabled={loading}
+                <button onClick={nextRound}
+                  disabled={loading || (session?.gameSlug === 'sfida-ballo' && !revealed)}
+                  title={session?.gameSlug === 'sfida-ballo' && !revealed ? 'Assegna prima i punti ballo' : undefined}
                   className="flex items-center gap-2 rounded-2xl px-5 py-2 text-sm font-bold disabled:opacity-40"
                   style={{background:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.14)',color:'rgba(255,255,255,0.65)'}}>
                   {loading ? <Loader2 className="h-4 w-4 animate-spin"/> : <SkipForward className="h-4 w-4"/>} Avanti
@@ -766,7 +825,7 @@ export default function HomeGame() {
                     method:'POST', headers:{'Content-Type':'application/json'},
                     body: JSON.stringify({ playerId:pid, points:pts }),
                   });
-                  setPlayers(prev => prev.map(p => p.id===pid ? {...p,score:pts} : p));
+                  // Socket broadcastState updates players authoritatively
                 }}/>
             </div>
 
@@ -862,6 +921,82 @@ export default function HomeGame() {
           </motion.div>
         )}
 
+      </AnimatePresence>
+
+      {/* ══ POST-GAME LEADERBOARD OVERLAY ══ */}
+      <AnimatePresence>
+        {postGame && (
+          <motion.div
+            key="postGame"
+            initial={{opacity:0, scale:0.92}}
+            animate={{opacity:1, scale:1}}
+            exit={{opacity:0, scale:0.92}}
+            transition={{type:'spring', stiffness:220, damping:28}}
+            className="fixed inset-0 z-50 flex items-center justify-center"
+            style={{background:'rgba(4,2,20,0.9)', backdropFilter:'blur(22px)'}}>
+
+            <div className="flex w-full max-w-lg flex-col items-center gap-6 px-8 text-center">
+
+              {/* Game completed header */}
+              <motion.div initial={{y:-20,opacity:0}} animate={{y:0,opacity:1}} transition={{delay:0.1}}>
+                <div className="text-5xl mb-2">
+                  {ALL_GAMES.find(g => g.slug === postGame.gameSlug)?.emoji ?? '🎮'}
+                </div>
+                <div className="text-xl font-black tracking-wide text-white">
+                  {ALL_GAMES.find(g => g.slug === postGame.gameSlug)?.name ?? postGame.gameSlug}
+                </div>
+                <div className="mt-1 text-xs font-black tracking-[0.3em] uppercase"
+                  style={{color:'#F5B642'}}>completato!</div>
+              </motion.div>
+
+              <div className="text-[10px] font-black tracking-[0.35em] uppercase text-white/30">
+                — Classifica Parziale —
+              </div>
+
+              {/* Ranking rows */}
+              <div className="flex w-full flex-col gap-2">
+                {[...postGame.players].sort((a,b) => b.score - a.score).map((p, i) => (
+                  <motion.div
+                    key={p.id}
+                    initial={{x:-30,opacity:0}}
+                    animate={{x:0,opacity:1}}
+                    transition={{delay: 0.15 + i * 0.07}}
+                    className="flex items-center gap-4 rounded-2xl px-5 py-3"
+                    style={{
+                      background: i === 0
+                        ? 'linear-gradient(135deg,rgba(245,182,66,0.22),rgba(245,182,66,0.06))'
+                        : i === 1
+                        ? 'linear-gradient(135deg,rgba(203,213,225,0.14),rgba(203,213,225,0.04))'
+                        : i === 2
+                        ? 'linear-gradient(135deg,rgba(205,127,50,0.14),rgba(205,127,50,0.04))'
+                        : 'rgba(255,255,255,0.04)',
+                      border: i === 0
+                        ? '1px solid rgba(245,182,66,0.38)'
+                        : '1px solid rgba(255,255,255,0.08)',
+                    }}>
+                    <div className="w-8 text-center text-2xl font-black">
+                      {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : <span className="text-base text-white/30">{i+1}</span>}
+                    </div>
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-black text-black"
+                      style={{background:`linear-gradient(135deg,${AVATAR_RING[i%AVATAR_RING.length]},${AVATAR_RING[(i+1)%AVATAR_RING.length]})`}}>
+                      {p.nickname.slice(0,2).toUpperCase()}
+                    </div>
+                    <div className="flex-1 text-left">
+                      <div className="font-black text-white">{p.nickname}</div>
+                    </div>
+                    <div className="text-xl font-black tabular-nums" style={{color:'#F5B642'}}>{p.score}<span className="text-xs text-white/40 ml-1">pt</span></div>
+                  </motion.div>
+                ))}
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center gap-2 text-xs text-white/25">
+                <Loader2 className="h-3 w-3 animate-spin"/>
+                {allDone ? 'Preparando classifica finale…' : 'Torno alla lavagna tra 5 secondi…'}
+              </div>
+            </div>
+          </motion.div>
+        )}
       </AnimatePresence>
     </div>
   );

@@ -1,0 +1,87 @@
+HOME MODE — BOARD UX + RANKING AUDIT/PATCH.
+
+Do not touch routes.
+Do not touch live mode.
+Do not touch backend schema.
+Do not redesign the whole app.
+
+Current situation:
+Home Mode mechanics are mostly synced, but the board/lobby screen after games is ugly and functionally incomplete.
+
+Problems observed:
+1. After each challenge there is no clear partial leaderboard.
+2. After all selected games are completed, final ranking does not auto-open.
+3. Ballo sensor works on phones but:
+   - no live scores appear on TV
+   - no points are assigned automatically at the end
+4. The board background has flat dark hexagons and ugly empty space.
+5. Completed games appear as tiny green "Fatto" dots floating in the middle. This is unacceptable.
+
+Patch only Home Mode board UX and ranking logic.
+
+FILES ALLOWED:
+- artifacts/ideagame/src/pages/HomeGame.tsx
+- artifacts/ideagame/src/pages/HomeJoin.tsx only if needed for Ballo iPhone blur/cleanup
+
+PART A — BOARD VISUAL CLEANUP
+
+Replace the current board grid with a premium game board layout.
+
+Requirements:
+- No flat dark hexagon grid.
+- No tiny floating "Fatto" icons.
+- Show selected games as large premium cards.
+- Each card must show:
+  - game icon
+  - game title
+  - status: DA GIOCARE / COMPLETATO
+  - points earned in that game if available
+- Completed games should look like completed premium tiles, not green dots.
+- Use current Jonny/World mood:
+  dark purple, gold, neon accents, glass cards.
+- Keep it readable on TV.
+
+PART B — PARTIAL LEADERBOARD AFTER EACH GAME
+
+When a game ends:
+- show an intermediate overlay/screen for 5 seconds:
+  "Classifica Parziale"
+- show players ordered by score
+- show last game completed
+- show points earned if available
+- then return to board automatically
+
+Do not require the host to click.
+
+PART C — FINAL RANKING AUTO START
+
+When all selectedGames are completed:
+- do not just show a "Classifica Finale" button
+- automatically open final ranking / champion screen
+- include a short delay max 2 seconds after last game completion
+
+PART D — BALLO SCORE SAFE PATCH
+
+Do not build full Guitar Hero live scoring yet.
+
+For now:
+- keep phone accelerometer local
+- keep host scoring buttons on TV
+- make sure after host awards points in Ballo, the points are written and visible in board/classifica
+- do not allow "Avanti" to skip Ballo scoring accidentally without warning
+
+PART E — iPhone Shake Popup mitigation
+
+When entering BalloController:
+- blur any active input
+- clear/avoid focused text inputs
+- make sure no nickname input remains focused
+This should reduce iOS Shake to Undo popup.
+
+OUTPUT:
+A. files modified
+B. board visual changes
+C. partial leaderboard behavior
+D. final ranking auto behavior
+E. Ballo scoring behavior
+F. typecheck result

@@ -985,6 +985,12 @@ function BalloController({ payload, timeLeft, sessionId: _sessionId }: {
   const [motionPerm, setMotionPerm] = useState<'unknown'|'granted'|'denied'|'unsupported'>('unknown');
   const magsRef = useRef<number[]>([]);
 
+  // Blur any focused input to prevent iOS "Shake to Undo" popup during dancing
+  useEffect(() => {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement) active.blur();
+  }, []);
+
   useEffect(() => {
     if (typeof DeviceMotionEvent === 'undefined') { setMotionPerm('unsupported'); return; }
     const dme = DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> };
