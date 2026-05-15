@@ -84,6 +84,7 @@ export default function HomeJoin() {
   const phaseRef = useRef<'code' | 'nickname' | 'lobby' | 'playing' | 'ended'>('code');
   const playerRef = useRef<HomePlayer | null>(null);
   const prevGameSlugRef = useRef<string | null>(null);
+  const prevCurrentRoundRef = useRef<number>(-1);
 
   const { on, emit } = useEventSocket(null);
 
@@ -201,11 +202,12 @@ export default function HomeJoin() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, session?.id]);
 
-  // Polling fallback in playing phase — recovers from missed home:game_started / home:game_ended
+  // Polling fallback in playing phase — recovers from missed home:game_started / home:game_ended / home:round
   useEffect(() => {
     if (phase !== 'playing' || !session?.id) return;
     const sid = session.id;
     const knownSlug = session.gameSlug;
+    const knownRound = session.currentRound;
     const interval = setInterval(() => {
       fetch(`/api/home/sessions/${sid}`)
         .then(r => r.ok ? r.json() : null)
@@ -214,15 +216,19 @@ export default function HomeJoin() {
           setPlayers(data.players);
           const cur = playerRef.current;
           if (cur) { const me = data.players.find(p => p.id === cur.id); if (me) setPlayer(me); }
-          if (data.session.gameSlug !== knownSlug || data.session.status !== 'playing') {
+          const slugChanged = data.session.gameSlug !== knownSlug;
+          const roundChanged = data.session.currentRound !== knownRound;
+          const notPlaying = data.session.status !== 'playing';
+          if (slugChanged || roundChanged || notPlaying) {
             setSession(data.session);
             if (data.session.status === 'lobby') {
               setPhase('lobby');
             } else if (data.session.status === 'ended') {
               setPhase('ended');
               clearJoin();
-            } else if (data.session.status === 'playing' && data.session.gameSlug !== knownSlug) {
+            } else if (data.session.status === 'playing' && (slugChanged || roundChanged)) {
               prevGameSlugRef.current = data.session.gameSlug;
+              prevCurrentRoundRef.current = data.session.currentRound;
               setAnswered(null);
               setRevealed(false);
               startTimer(Number(data.session.roundPayload?.timeLimit ?? 30));
@@ -233,7 +239,7 @@ export default function HomeJoin() {
     }, 5000);
     return () => clearInterval(interval);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, session?.id, session?.gameSlug]);
+  }, [phase, session?.id, session?.gameSlug, session?.currentRound]);
 
   // Socket listeners — registered once per `on` instance.
   // Use phaseRef/playerRef (not state) to avoid re-registration on every phase change,
@@ -250,13 +256,17 @@ export default function HomeJoin() {
           setAnswered(null);
           setRevealed(false);
           startTimer(Number(d.session.roundPayload?.timeLimit ?? 30));
-        } else if (phaseRef.current === 'playing' && d.session.gameSlug !== prevGameSlugRef.current) {
-          // Game changed while phone was already playing — missed home:game_ended + home:game_started
+        } else if (phaseRef.current === 'playing' && (
+          d.session.gameSlug !== prevGameSlugRef.current ||
+          d.session.currentRound !== prevCurrentRoundRef.current
+        )) {
+          // Game changed OR round advanced — missed home:game_started / home:round event
           setAnswered(null);
           setRevealed(false);
           startTimer(Number(d.session.roundPayload?.timeLimit ?? 30));
         }
         prevGameSlugRef.current = d.session.gameSlug;
+        prevCurrentRoundRef.current = d.session.currentRound;
       }
       if (d.session.status === 'ended') setPhase('ended');
     });
@@ -278,6 +288,7 @@ export default function HomeJoin() {
     });
 
     const u4 = on<{ round: number; payload: Record<string,unknown> }>('home:round', (d) => {
+      prevCurrentRoundRef.current = d.round;
       setSession(prev => prev ? { ...prev, currentRound: d.round, roundPayload: d.payload } : prev);
       setAnswered(null);
       setRevealed(false);
