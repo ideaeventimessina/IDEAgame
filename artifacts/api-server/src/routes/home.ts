@@ -629,7 +629,8 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
 
   // Load all rounds from DB for this game
   const preloadedRounds = await loadGameRounds(gameSlug);
-  const firstRound = preloadedRounds[0] ?? {};
+  // Stamp authoritative start time so phones can calculate remaining time on restore
+  const firstRound = { ...(preloadedRounds[0] ?? {}), roundStartedAt: new Date().toISOString() };
 
   const newCfg = {
     ...cfg,
@@ -670,7 +671,7 @@ router.post("/home/sessions/:id/start", async (req, res): Promise<void> => {
 
   const gameSlug = body.gameSlug ?? "quizzone";
   const preloadedRounds = await loadGameRounds(gameSlug);
-  const firstRound = preloadedRounds[0] ?? {};
+  const firstRound = { ...(preloadedRounds[0] ?? {}), roundStartedAt: new Date().toISOString() };
   const cfg = (session.gameConfig ?? {}) as Record<string, unknown>;
   const gamesPlayed = (cfg.gamesPlayed as string[]) ?? [];
 
@@ -732,8 +733,8 @@ router.post("/home/sessions/:id/next", async (req, res): Promise<void> => {
     return;
   }
 
-  // Next round within current game
-  const nextPayload = preloadedRounds[nextRound] ?? { mode: "unknown", roundIndex: nextRound };
+  // Next round within current game — stamp authoritative start time
+  const nextPayload = { ...(preloadedRounds[nextRound] ?? { mode: "unknown", roundIndex: nextRound }), roundStartedAt: new Date().toISOString() };
 
   const [updated] = await db.update(homeSessionsTable).set({
     currentRound: nextRound,
@@ -788,6 +789,17 @@ router.post("/home/sessions/:id/score", async (req, res): Promise<void> => {
   const { playerId, points } = req.body as { playerId: string; points: number };
   if (!playerId || typeof points !== "number") {
     res.status(400).json({ error: "playerId e points obbligatori" }); return;
+  }
+
+  // Server-side timer validation — reject late submissions (anti-cheat)
+  const payload = (session.roundPayload ?? {}) as Record<string, unknown>;
+  const rsa = payload.roundStartedAt as string | null;
+  const tl = Number(payload.timeLimit ?? 0);
+  if (rsa && tl > 0) {
+    const elapsedMs = Date.now() - new Date(rsa).getTime();
+    if (elapsedMs > (tl + 3) * 1000) {  // 3 s grace for network latency
+      res.status(409).json({ error: "Tempo scaduto" }); return;
+    }
   }
 
   await db.update(homePlayersTable).set({

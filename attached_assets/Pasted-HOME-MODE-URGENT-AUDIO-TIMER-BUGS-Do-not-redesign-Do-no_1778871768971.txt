@@ -1,0 +1,83 @@
+HOME MODE — URGENT AUDIO + TIMER BUGS.
+
+Do not redesign.
+Do not touch video intro.
+Do not touch scoring except timer validation.
+Do not touch live mode.
+
+Fix these three issues.
+
+1. GLOBAL MUSIC STOP BUTTON IN HOME LOBBY
+
+File:
+HomeLobbyPage.tsx
+
+Add visible button:
+"Stop musica"
+
+Behavior:
+- calls AudioManager.stopLoop(true)
+- optional toggle text:
+  if music playing: "Stop musica"
+  if stopped: "Avvia musica"
+- must not affect room logic, QR, players.
+
+2. BOARD MUSIC DOES NOT START AFTER LEAVING LOBBY
+
+Problem:
+Lobby music stops when entering the room/arena, but board/wheel music does not start.
+
+Audit:
+HomeGame.tsx board phase audio logic.
+Find why AudioManager.playLoop('hub','lobby_loop') or board music is not triggered after redirect from /home-lobby/:code to /home?s=ID.
+
+Patch:
+- when HomeGame loads a session and resolves phase === 'board':
+  AudioManager.stopLoop(true)
+  AudioManager.playLoop('hub','lobby_loop')
+- also when socket home:board fires
+- also after postGame returns to board
+- do not use fade/crossfade.
+
+3. PHONE TIMER SECURITY BUG
+
+Critical:
+If a player refreshes the phone screen during a round, their local countdown restarts.
+They can answer after the real time expired and still gain points.
+
+Required behavior:
+Round timer must be server-authoritative.
+
+Audit:
+- HomeJoin.tsx timer/startTimer logic
+- HomeGame.tsx round payload
+- /api/home/sessions/:id/answer or submit endpoint
+- session.roundStartedAt / questionStartedAt / currentRound timestamps
+
+Patch:
+A. Backend must reject late answers.
+Do not trust phone timer.
+When phone submits an answer/action:
+- compare server now against roundStartedAt + timeLimit
+- if expired: reject with 409/400 "Tempo scaduto"
+- do not award points.
+
+B. Phone timer must derive remaining time from server timestamp:
+remaining = roundStartedAt + timeLimit - Date.now()
+not fresh timeLimit on reload.
+
+C. When HomeJoin restores session after reload:
+- it must calculate remaining time from server time
+- if expired: show "Tempo scaduto" and disable answer buttons.
+
+Output:
+A. files modified
+B. music stop button behavior
+C. board music fix
+D. timer security fix
+E. typecheck frontend/backend
+F. manual test steps:
+   - lobby stop music
+   - enter board and hear board music
+   - reload phone during round and verify timer does not restart
+   - try answering after expiry and verify no points

@@ -743,6 +743,14 @@ export default function HomeGame() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [introVideo?.url]);
 
+  // ── Board phase audio catchall — covers all paths to board (session load,
+  //    socket, post-game, goToBoard) with a single reactive trigger ──────────────
+  useEffect(() => {
+    if (phase !== 'board' || !session?.id) return;
+    AudioManager.stopLoop(true);
+    void AudioManager.playLoop('hub', 'lobby_loop');
+  }, [phase, session?.id]);
+
   // ── API ───────────────────────────────────────────────────────────────────────
 
   const createSession = async () => {

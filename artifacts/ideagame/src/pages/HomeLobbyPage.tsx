@@ -75,6 +75,7 @@ export default function HomeLobbyPage() {
   const [players, setPlayers]   = useState<HomePlayer[]>([]);
   const [notFound, setNotFound] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [musicPlaying, setMusicPlaying] = useState(true);
 
   const joinUrl = typeof window !== 'undefined'
     ? `${window.location.origin}${BASE.replace(/\/$/, '')}/join/${code}`
@@ -107,6 +108,15 @@ export default function HomeLobbyPage() {
     void AudioManager.playLoop('global', 'lobby_loop');
     return () => { AudioManager.stopLoop(true); };
   }, []);
+
+  const toggleMusic = () => {
+    if (musicPlaying) {
+      AudioManager.stopLoop(true);
+    } else {
+      void AudioManager.playLoop('global', 'lobby_loop');
+    }
+    setMusicPlaying(m => !m);
+  };
 
   const handleStart = async () => {
     if (!session) return;
@@ -161,22 +171,42 @@ export default function HomeLobbyPage() {
       {/* top bar */}
       <div className="relative z-10 flex items-center justify-between"
         style={{ padding: 'clamp(10px,1.5vh,18px) clamp(16px,2.5vw,32px) 4px' }}>
-        <motion.button
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-          onClick={() => navigate('/home-setup')}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '0.45rem 1.1rem',
-            background: 'rgba(255,255,255,0.05)',
-            border: '1.5px solid rgba(255,255,255,0.12)',
-            borderRadius: 100, color: 'rgba(255,255,255,0.5)',
-            fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.05em', cursor: 'pointer',
-            backdropFilter: 'blur(8px)',
-          }}
-          whileHover={{ borderColor: 'rgba(255,255,255,0.3)', color: 'rgba(255,255,255,0.8)' }}
-          whileTap={{ scale: 0.97 }}>
-          <ChevronLeft size={13}/> MODIFICA
-        </motion.button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <motion.button
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            onClick={() => navigate('/home-setup')}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '0.45rem 1.1rem',
+              background: 'rgba(255,255,255,0.05)',
+              border: '1.5px solid rgba(255,255,255,0.12)',
+              borderRadius: 100, color: 'rgba(255,255,255,0.5)',
+              fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.05em', cursor: 'pointer',
+              backdropFilter: 'blur(8px)',
+            }}
+            whileHover={{ borderColor: 'rgba(255,255,255,0.3)', color: 'rgba(255,255,255,0.8)' }}
+            whileTap={{ scale: 0.97 }}>
+            <ChevronLeft size={13}/> MODIFICA
+          </motion.button>
+          <motion.button
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            onClick={toggleMusic}
+            style={{
+              padding: '0.45rem 0.85rem',
+              background: musicPlaying ? 'rgba(245,182,66,0.1)' : 'rgba(255,255,255,0.04)',
+              border: musicPlaying
+                ? '1.5px solid rgba(245,182,66,0.4)'
+                : '1.5px solid rgba(255,255,255,0.1)',
+              borderRadius: 100,
+              color: musicPlaying ? '#F5B642' : 'rgba(255,255,255,0.35)',
+              fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.05em', cursor: 'pointer',
+              backdropFilter: 'blur(8px)',
+            }}
+            whileHover={{ scale: 1.04 }}
+            whileTap={{ scale: 0.96 }}>
+            {musicPlaying ? '♪ Stop' : '♪ Play'}
+          </motion.button>
+        </div>
 
         <motion.img src={pub('/jonny-world-logo.png')} alt="Jonny's World"
           initial={{ y: -10, opacity: 0 }} animate={{ y: 0, opacity: 1 }}

@@ -127,7 +127,7 @@ export default function HomeJoin() {
               setPhase('playing');
               setAnswered(null);
               setRevealed(false);
-              startTimer(Number(d.session.roundPayload?.timeLimit ?? 30));
+              startRoundTimer(d.session.roundPayload ?? {});
             } else {
               setPhase('lobby');
             }
@@ -156,7 +156,7 @@ export default function HomeJoin() {
           setPhase('playing');
           setAnswered(null);
           setRevealed(false);
-          startTimer(Number(d.session.roundPayload?.timeLimit ?? 30));
+          startRoundTimer(d.session.roundPayload ?? {});
         } else {
           setPhase('lobby');
         }
@@ -187,7 +187,7 @@ export default function HomeJoin() {
             setPhase('playing');
             setAnswered(null);
             setRevealed(false);
-            startTimer(Number(data.session.roundPayload?.timeLimit ?? 30));
+            startRoundTimer(data.session.roundPayload ?? {});
           } else if (data.session.status === 'ended') {
             setSession(data.session);
             setPhase('ended');
@@ -231,7 +231,7 @@ export default function HomeJoin() {
               prevCurrentRoundRef.current = data.session.currentRound;
               setAnswered(null);
               setRevealed(false);
-              startTimer(Number(data.session.roundPayload?.timeLimit ?? 30));
+              startRoundTimer(data.session.roundPayload ?? {});
             }
           }
         })
@@ -255,7 +255,7 @@ export default function HomeJoin() {
           setPhase('playing');
           setAnswered(null);
           setRevealed(false);
-          startTimer(Number(d.session.roundPayload?.timeLimit ?? 30));
+          startRoundTimer(d.session.roundPayload ?? {});
         } else if (phaseRef.current === 'playing' && (
           d.session.gameSlug !== prevGameSlugRef.current ||
           d.session.currentRound !== prevCurrentRoundRef.current
@@ -263,7 +263,7 @@ export default function HomeJoin() {
           // Game changed OR round advanced — missed home:game_started / home:round event
           setAnswered(null);
           setRevealed(false);
-          startTimer(Number(d.session.roundPayload?.timeLimit ?? 30));
+          startRoundTimer(d.session.roundPayload ?? {});
         }
         prevGameSlugRef.current = d.session.gameSlug;
         prevCurrentRoundRef.current = d.session.currentRound;
@@ -284,7 +284,7 @@ export default function HomeJoin() {
       setPhase('playing');
       setAnswered(null);
       setRevealed(false);
-      startTimer(Number(d.payload?.timeLimit ?? 30));
+      startRoundTimer(d.payload ?? {});
     });
 
     const u4 = on<{ round: number; payload: Record<string,unknown> }>('home:round', (d) => {
@@ -292,7 +292,7 @@ export default function HomeJoin() {
       setSession(prev => prev ? { ...prev, currentRound: d.round, roundPayload: d.payload } : prev);
       setAnswered(null);
       setRevealed(false);
-      startTimer(Number(d.payload?.timeLimit ?? 30));
+      startRoundTimer(d.payload ?? {});
     });
 
     const u5 = on<{ session: HomeSession; players: HomePlayer[]; gameSlug: string }>('home:game_ended', (d) => {
@@ -339,6 +339,23 @@ export default function HomeJoin() {
 
   useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
 
+  // Server-authoritative timer: derives remaining time from server-stamped roundStartedAt.
+  // Prevents timer reset on phone reload — phones join mid-round with the correct countdown.
+  const startRoundTimer = useCallback((payload: Record<string, unknown>) => {
+    const tl = Number(payload.timeLimit ?? 30);
+    const rsa = payload.roundStartedAt as string | null;
+    const remaining = rsa
+      ? Math.max(0, Math.ceil(tl - (Date.now() - new Date(rsa).getTime()) / 1000))
+      : tl;
+    if (remaining <= 0) {
+      if (timerRef.current) clearInterval(timerRef.current);
+      setTimeLeft(0);
+      setRevealed(true);
+    } else {
+      startTimer(remaining);
+    }
+  }, [startTimer]);
+
   // ── API ───────────────────────────────────────────────────────────────────────
 
   const lookupSession = async (c: string) => {
@@ -380,7 +397,7 @@ export default function HomeJoin() {
       if (session.status === 'playing') {
         setPhase('playing');
         setAnswered(null); setRevealed(false);
-        startTimer(Number(session.roundPayload?.timeLimit ?? 30));
+        startRoundTimer(session.roundPayload ?? {});
       } else {
         setPhase('lobby');
       }
@@ -391,10 +408,14 @@ export default function HomeJoin() {
   const addScore = async (points: number) => {
     if (!session || !player) return;
     const newScore = player.score + points;
-    await fetch(`/api/home/sessions/${session.id}/score`, {
+    const r = await fetch(`/api/home/sessions/${session.id}/score`, {
       method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ playerId: player.id, points: newScore }),
-    });
+    }).catch(() => null);
+    if (!r || r.status === 409) {
+      setError('Tempo scaduto!');
+      return;
+    }
     setPlayer(prev => prev ? {...prev, score: newScore} : prev);
   };
 
