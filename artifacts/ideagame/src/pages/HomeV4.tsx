@@ -720,6 +720,14 @@ function ParkBg() {
   );
 }
 
+/* ── feature badge data ── */
+const FEATURES = [
+  { icon:'🎮', title:'8 Mondi',      sub:'di gioco',    color:'#F5B642', glow:'#FFD040', border:'rgba(245,182,66,0.45)' },
+  { icon:'👥', title:'Fino a 20',    sub:'giocatori',   color:'#A855F7', glow:'#C084FC', border:'rgba(168,85,247,0.45)' },
+  { icon:'🏠', title:'Casa',         sub:'o eventi',    color:'#34D399', glow:'#6EE7B7', border:'rgba(52,211,153,0.45)'  },
+  { icon:'⚡', title:'Show',         sub:'live',        color:'#F472B6', glow:'#FB7185', border:'rgba(244,114,182,0.45)' },
+];
+
 function ShowLanding({ onArena }: { onArena:()=>void }) {
   return (
     <motion.div key="show" className="absolute inset-0 overflow-hidden"
@@ -729,97 +737,143 @@ function ShowLanding({ onArena }: { onArena:()=>void }) {
       {/* ── park background ── */}
       <ParkBg/>
 
-      {/* ── center content ── */}
+      {/* ── depth vignette — draws eye to center-left ── */}
+      <div className="absolute inset-0 pointer-events-none" style={{
+        background:'radial-gradient(ellipse 70% 95% at 32% 52%, transparent 0%, rgba(3,0,16,0.52) 75%)',
+        zIndex:1,
+      }}/>
+
+      {/* ── content column — left/center, room for Jonny right ── */}
       <div className="absolute inset-0 flex flex-col items-center justify-center z-10"
-        style={{ paddingRight:'30vw' }}>
+        style={{ paddingRight:'32vw', paddingLeft:'1vw', gap:0 }}>
 
-        {/* real logo PNG — sfondo rimosso, nessun blend mode */}
+        {/* logo — dominant */}
         <motion.img src={pub('/jonny-world-logo.png')} alt="Jonny's World"
-          initial={{ y:-20, opacity:0 }} animate={{ y:0, opacity:1 }}
-          transition={{ delay:0.1, duration:0.65, ease:'easeOut' as const }}
-          style={{ width:'clamp(22rem,38vw,34rem)', objectFit:'contain', marginBottom:'0.5rem',
-            filter:'drop-shadow(0 0 50px rgba(245,182,66,0.6)) drop-shadow(0 0 100px rgba(168,85,247,0.35))' }}/>
+          initial={{ y:-24, opacity:0 }} animate={{ y:0, opacity:1 }}
+          transition={{ delay:0.08, duration:0.7, ease:'easeOut' as const }}
+          style={{
+            width:'clamp(20rem,34vw,30rem)', objectFit:'contain',
+            filter:'drop-shadow(0 0 55px rgba(245,182,66,0.65)) drop-shadow(0 0 110px rgba(168,85,247,0.4))',
+            marginBottom:'clamp(0.5rem,1.2vh,1rem)',
+          }}/>
 
-        {/* tagline — show language */}
-        <motion.p initial={{ opacity:0 }} animate={{ opacity:1 }}
-          transition={{ delay:0.35, duration:0.5 }}
-          className="uppercase tracking-widest text-center mb-8"
-          style={{ fontSize:'clamp(0.65rem,1vw,0.85rem)', letterSpacing:'0.32em',
-            color:'rgba(255,255,255,0.5)', fontWeight:700 }}>
-          Che lo show abbia inizio
+        {/* tagline */}
+        <motion.p
+          initial={{ opacity:0, y:8 }} animate={{ opacity:1, y:0 }}
+          transition={{ delay:0.28, duration:0.55 }}
+          style={{
+            fontFamily:"'Outfit','Arial Black',sans-serif",
+            fontWeight:800,
+            fontSize:'clamp(1rem,1.6vw,1.35rem)',
+            letterSpacing:'0.01em',
+            color:'rgba(255,255,255,0.92)',
+            textAlign:'center',
+            margin:0,
+            marginBottom:'clamp(0.8rem,1.8vh,1.4rem)',
+            textShadow:'0 2px 30px rgba(168,85,247,0.5)',
+          }}>
+          Trasforma ogni serata in uno spettacolo.
         </motion.p>
 
-        {/* main CTA */}
-        <motion.div initial={{ y:18, opacity:0 }} animate={{ y:0, opacity:1 }}
-          transition={{ delay:0.48, duration:0.5 }}>
+        {/* feature badges — 4 items in a row */}
+        <motion.div
+          initial={{ opacity:0, y:14 }} animate={{ opacity:1, y:0 }}
+          transition={{ delay:0.42, duration:0.55 }}
+          style={{
+            display:'flex', gap:'clamp(8px,1.2vw,16px)',
+            marginBottom:'clamp(1rem,2.2vh,1.8rem)',
+          }}>
+          {FEATURES.map((f,i)=>(
+            <motion.div key={f.title}
+              initial={{ opacity:0, y:12 }} animate={{ opacity:1, y:0 }}
+              transition={{ delay:0.44+i*0.07, duration:0.45, ease:'easeOut' as const }}
+              style={{
+                display:'flex', flexDirection:'column', alignItems:'center',
+                gap:5,
+                padding:'clamp(10px,1.4vh,16px) clamp(10px,1.3vw,18px)',
+                background:`linear-gradient(160deg,${f.glow}14 0%,${f.color}08 100%)`,
+                border:`1.5px solid ${f.border}`,
+                borderRadius:16,
+                backdropFilter:'blur(12px)',
+                boxShadow:`0 0 24px ${f.glow}22`,
+                minWidth:'clamp(72px,7.5vw,100px)',
+              }}>
+              <span style={{ fontSize:'clamp(1.4rem,2.2vw,1.9rem)', lineHeight:1 }}>{f.icon}</span>
+              <div style={{
+                fontFamily:"'Outfit','Arial Black',sans-serif",
+                fontWeight:900,
+                fontSize:'clamp(0.82rem,1.1vw,0.98rem)',
+                color:f.color,
+                letterSpacing:'0.02em',
+                textAlign:'center',
+                lineHeight:1.05,
+                textShadow:`0 0 14px ${f.glow}88`,
+              }}>{f.title}</div>
+              <div style={{
+                fontFamily:"'Outfit',sans-serif",
+                fontWeight:600,
+                fontSize:'clamp(0.58rem,0.75vw,0.68rem)',
+                color:'rgba(255,255,255,0.45)',
+                letterSpacing:'0.08em',
+                textTransform:'uppercase',
+                textAlign:'center',
+              }}>{f.sub}</div>
+            </motion.div>
+          ))}
+        </motion.div>
+
+        {/* single CTA */}
+        <motion.div initial={{ y:20, opacity:0 }} animate={{ y:0, opacity:1 }}
+          transition={{ delay:0.62, duration:0.5 }}>
           <motion.button onClick={onArena}
             whileHover={{ scale:1.06 }} whileTap={{ scale:0.97 }}
             style={{
-              display:'flex', alignItems:'center', gap:'0.7rem',
-              padding:'1.1rem 3.2rem',
+              display:'flex', alignItems:'center', gap:'0.75rem',
+              padding:'clamp(0.85rem,1.4vh,1.1rem) clamp(2rem,3.5vw,3.2rem)',
               background:'linear-gradient(135deg,#F5B642 0%,#FF8C00 55%,#FF5500 100%)',
               border:'2px solid #FFD700',
               borderRadius:'100px',
               fontFamily:"'Outfit','Arial Black',sans-serif",
               fontWeight:900,
-              fontSize:'clamp(1.1rem,1.8vw,1.55rem)',
+              fontSize:'clamp(1.1rem,1.7vw,1.45rem)',
               color:'#000',
               letterSpacing:'0.05em',
-              boxShadow:'0 0 50px rgba(245,182,66,0.7),0 0 100px rgba(245,182,66,0.3),0 8px 32px rgba(0,0,0,0.6)',
+              boxShadow:'0 0 55px rgba(245,182,66,0.75),0 0 110px rgba(245,182,66,0.3),0 8px 32px rgba(0,0,0,0.65)',
               cursor:'pointer',
             }}>
             <motion.span
-              animate={{ scale:[1,1.2,1] }}
-              transition={{ duration:1.2, repeat:Infinity, ease:'easeInOut' as const }}
-              style={{ fontSize:'1.3em' }}>▶</motion.span>
+              animate={{ scale:[1,1.22,1] }}
+              transition={{ duration:1.1, repeat:Infinity, ease:'easeInOut' as const }}
+              style={{ fontSize:'1.25em' }}>▶</motion.span>
             INIZIA LO SHOW
           </motion.button>
         </motion.div>
-
-        {/* mode buttons */}
-        <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }}
-          transition={{ delay:0.65, duration:0.5 }}
-          className="flex gap-4 mt-5">
-          {['🏠 Modalità Casa','🎪 Modalità Evento'].map(label=>(
-            <button key={label}
-              style={{
-                padding:'0.6rem 1.6rem',
-                background:'rgba(255,255,255,0.06)',
-                border:'1.5px solid rgba(255,255,255,0.2)',
-                borderRadius:'100px',
-                color:'rgba(255,255,255,0.7)',
-                fontSize:'clamp(0.72rem,1.1vw,0.9rem)',
-                fontWeight:700,
-                letterSpacing:'0.04em',
-                cursor:'pointer',
-                backdropFilter:'blur(8px)',
-              }}>
-              {label}
-            </button>
-          ))}
-        </motion.div>
       </div>
 
-      {/* ── JONNY — single scenic element, right side ── */}
+      {/* ── JONNY — scenic right, integrated into park world ── */}
       <motion.div className="absolute pointer-events-none select-none"
-        style={{ right:'-1%', bottom:0, zIndex:15 }}
-        initial={{ x:80, opacity:0 }} animate={{ x:0, opacity:1 }}
-        transition={{ delay:0.25, duration:1.0, ease:'easeOut' as const }}>
-        {/* ambient glow backdrop */}
-        <div style={{ position:'absolute', bottom:'5%', left:'-40%', right:'-10%', top:'10%',
-          background:'radial-gradient(ellipse 75% 80% at 55% 75%,rgba(168,85,247,0.35) 0%,rgba(245,182,66,0.12) 50%,transparent 75%)',
-          pointerEvents:'none', filter:'blur(4px)' }}/>
-        {/* floor shadow ellipse */}
-        <div style={{ position:'absolute', bottom:2, left:'8%', right:'8%', height:24,
-          background:'rgba(0,0,0,0.6)', borderRadius:'50%', filter:'blur(18px)' }}/>
-        {/* pedestal light */}
-        <div style={{ position:'absolute', bottom:4, left:'15%', right:'15%', height:10,
-          background:'linear-gradient(90deg,transparent,rgba(168,85,247,0.7),rgba(245,182,66,0.5),transparent)',
-          borderRadius:'50%', filter:'blur(6px)' }}/>
+        style={{ right:'-2%', bottom:0, zIndex:12, width:'clamp(260px,30vw,400px)' }}
+        initial={{ x:90, opacity:0 }} animate={{ x:0, opacity:1 }}
+        transition={{ delay:0.18, duration:1.1, ease:'easeOut' as const }}>
+        {/* wide stage cone light from above */}
+        <div style={{ position:'absolute', bottom:0, left:'-60%', right:'-20%', top:'-15%',
+          background:'radial-gradient(ellipse 80% 90% at 52% 98%,rgba(245,182,66,0.16) 0%,rgba(168,85,247,0.14) 45%,transparent 75%)',
+          pointerEvents:'none' }}/>
+        {/* rim light — left edge purple */}
+        <div style={{ position:'absolute', top:'5%', bottom:0, left:'-8%', width:'18%',
+          background:'linear-gradient(180deg,rgba(168,85,247,0.0) 0%,rgba(168,85,247,0.28) 60%,transparent 100%)',
+          filter:'blur(8px)', pointerEvents:'none' }}/>
+        {/* floor shadow */}
+        <div style={{ position:'absolute', bottom:-2, left:'5%', right:'5%', height:28,
+          background:'rgba(0,0,0,0.65)', borderRadius:'50%', filter:'blur(20px)' }}/>
+        {/* pedestal glow */}
+        <div style={{ position:'absolute', bottom:4, left:'8%', right:'8%', height:12,
+          background:'linear-gradient(90deg,transparent,rgba(168,85,247,0.85),rgba(245,182,66,0.55),rgba(168,85,247,0.85),transparent)',
+          borderRadius:'50%', filter:'blur(7px)' }}/>
         {/* Jonny */}
         <motion.img src={pub('/jonny-master-nobg.png')} alt="Jonny host"
-          style={{ height:'88vh', display:'block', objectFit:'contain',
-            filter:'drop-shadow(0 0 60px rgba(168,85,247,0.75)) drop-shadow(0 0 120px rgba(168,85,247,0.3)) drop-shadow(-4px 0 30px rgba(245,182,66,0.35))' }}
+          style={{ height:'92vh', display:'block', objectFit:'contain', width:'100%',
+            filter:'drop-shadow(0 0 65px rgba(168,85,247,0.8)) drop-shadow(0 0 130px rgba(168,85,247,0.3)) drop-shadow(-5px 0 32px rgba(245,182,66,0.4)) drop-shadow(0 10px 40px rgba(0,0,0,0.7))' }}
           animate={{ y:[0,-10,0] }}
           transition={{ duration:3.8, repeat:Infinity, ease:'easeInOut' as const }}/>
       </motion.div>
