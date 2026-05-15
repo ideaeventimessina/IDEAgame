@@ -164,6 +164,13 @@ export default function HomeGame() {
     return (cfg.gamesPlayed as string[]) ?? [];
   }, [session]);
 
+  const visibleGames = useMemo(() => {
+    const cfg = session?.gameConfig ?? {};
+    const selected = (cfg.selectedGames as string[] | undefined) ?? [];
+    if (selected.length > 0) return ALL_GAMES.filter(g => selected.includes(g.slug));
+    return ALL_GAMES;
+  }, [session]);
+
   const cfgPhase = useMemo(() => {
     const cfg = session?.gameConfig ?? {};
     return (cfg.phase as string) ?? 'join';
@@ -407,7 +414,7 @@ export default function HomeGame() {
   };
 
   const joinUrl = session ? `${window.location.origin}/home/join?s=${session.joinCode}` : '';
-  const allDone = gamesPlayed.length >= ALL_GAMES.length;
+  const allDone = gamesPlayed.length >= visibleGames.length;
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
@@ -595,7 +602,7 @@ export default function HomeGame() {
                     style={{filter:'drop-shadow(0 0 10px #F5B64255)'}}/>
                   <div className="text-[11px] font-bold tracking-widest uppercase"
                     style={{color:'rgba(168,85,247,0.75)'}}>
-                    Modalità Home · {gamesPlayed.length}/{ALL_GAMES.length} completati
+                    Modalità Home · {gamesPlayed.length}/{visibleGames.length} completati
                   </div>
                 </div>
               </div>
@@ -646,7 +653,7 @@ export default function HomeGame() {
             {/* 8 game tiles — ottagonali */}
             <div className="flex-1 overflow-y-auto px-4 py-4">
               <div className="grid grid-cols-4 gap-3 max-w-5xl mx-auto">
-                {ALL_GAMES.map(g => {
+                {visibleGames.map(g => {
                   const done = gamesPlayed.includes(g.slug);
                   const isLoading = selectingGame === g.slug;
                   return (
