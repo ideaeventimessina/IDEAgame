@@ -304,7 +304,7 @@ function HomeGameWheel({ selected, onSelect, spinning, games }:{
           <circle cx={cx} cy={cy} r={ri} fill="url(#hw-hub)" stroke="url(#hw-ring1)" strokeWidth="3"
             style={{filter:'drop-shadow(0 0 12px rgba(168,85,247,0.7))'}}/>
           <circle cx={cx} cy={cy} r={ri-6} fill="transparent" stroke="rgba(255,255,255,0.12)" strokeWidth="1"/>
-          <image href="/jonny-world-logo-new.jpg"
+          <image href="/jonny-world-logo-nobg.png"
             x={cx-50} y={cy-36} width={100} height={72}
             preserveAspectRatio="xMidYMid meet"
             style={{filter:'drop-shadow(0 0 8px rgba(245,182,66,0.6))'}}/>
@@ -876,7 +876,7 @@ export default function HomeGame() {
               <img src="/jonny-master-nobg.png" alt="Jonny" className="h-10 w-auto object-contain"
                 style={{filter:'drop-shadow(0 0 18px #F5B64265)'}}/>
               <div>
-                <img src="/jonny-world-logo-new.jpg" alt="Jonny's World" className="h-9 w-auto object-contain"
+                <img src="/jonny-world-logo-nobg.png" alt="Jonny's World" className="h-9 w-auto object-contain"
                   style={{filter:'drop-shadow(0 0 12px rgba(245,182,66,0.65))'}}/>
                 <div className="text-[10px] font-bold tracking-widest uppercase" style={{color:'rgba(168,85,247,0.75)'}}>
                   {gamesPlayed.length}/{visibleGames.length} completati
@@ -1159,7 +1159,7 @@ export default function HomeGame() {
 
             <motion.div initial={{scale:0,rotate:-20}} animate={{scale:1,rotate:0}}
               transition={{type:'spring',stiffness:180}}>
-              <img src="/jonny-world-logo-new.jpg" alt="Jonny's World" className="mx-auto mb-2 h-36 w-auto object-contain"
+              <img src="/jonny-world-logo-nobg.png" alt="Jonny's World" className="mx-auto mb-2 h-36 w-auto object-contain"
                 style={{filter:'drop-shadow(0 0 60px rgba(245,182,66,0.85))'}}/>
             </motion.div>
 
