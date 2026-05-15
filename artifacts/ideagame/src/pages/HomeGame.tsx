@@ -488,6 +488,7 @@ export default function HomeGame() {
   const [spinning, setSpinning] = useState(false);
   const [wheelSelected, setWheelSelected] = useState<string | null>(null);
   const [postSpinModal, setPostSpinModal] = useState(false);
+  const [postGameCountdown, setPostGameCountdown] = useState<number>(5);
 
   const { on } = useHomeSocket(session?.id ?? null);
 
@@ -789,12 +790,21 @@ export default function HomeGame() {
   const joinUrl = session ? `${window.location.origin}/home/join?s=${session.joinCode}` : '';
   const allDone = gamesPlayed.length >= visibleGames.length;
 
-  // ── Post-game overlay: 5 s then board or champion ────────────────────────────
+  // ── Post-game overlay: 2 s (last game → champion) or 5 s (→ board) ──────────
   useEffect(() => {
     if (!postGame) return;
     const sid = session?.id;
     const done = gamesPlayed.length >= visibleGames.length;
+    const totalSeconds = done ? 2 : 5;
+    setPostGameCountdown(totalSeconds);
+    let c = totalSeconds;
+    const countdown = setInterval(() => {
+      c -= 1;
+      setPostGameCountdown(c);
+      if (c <= 0) clearInterval(countdown);
+    }, 1000);
     const timer = setTimeout(async () => {
+      clearInterval(countdown);
       setPostGame(null);
       if (done && sid) {
         setLoading(true);
@@ -812,8 +822,8 @@ export default function HomeGame() {
         setJonnyMood('excited');
         setJonnyMsg('Scegli il gioco!');
       }
-    }, 5000);
-    return () => clearTimeout(timer);
+    }, totalSeconds * 1000);
+    return () => { clearTimeout(timer); clearInterval(countdown); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [postGame]);
 
@@ -1111,11 +1121,13 @@ export default function HomeGame() {
               <RoundBoard key={session.currentRound} session={session} revealed={revealed}
                 onReveal={() => { setRevealed(true); if(timerRef.current) clearInterval(timerRef.current); setJonnyMood('correct'); }}
                 onNext={nextRound} players={players} onScore={async (pid,pts) => {
+                  // Optimistic update — score appears immediately in bar + partial leaderboard
+                  setPlayers(prev => prev.map(p => p.id === pid ? { ...p, score: pts } : p));
                   await fetch(`/api/home/sessions/${session.id}/score`, {
                     method:'POST', headers:{'Content-Type':'application/json'},
                     body: JSON.stringify({ playerId:pid, points:pts }),
                   });
-                  // Socket broadcastState updates players authoritatively
+                  // Socket broadcastState reconciles with authoritative server state
                 }}/>
             </div>
 
@@ -1282,7 +1294,9 @@ export default function HomeGame() {
               {/* Footer */}
               <div className="flex items-center gap-2 text-xs text-white/25">
                 <Loader2 className="h-3 w-3 animate-spin"/>
-                {allDone ? 'Preparando classifica finale…' : 'Torno alla lavagna tra 5 secondi…'}
+                {allDone
+                  ? `Classifica finale in ${postGameCountdown}…`
+                  : `Torno alla lavagna in ${postGameCountdown}…`}
               </div>
             </div>
           </motion.div>
