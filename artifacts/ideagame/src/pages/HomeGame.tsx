@@ -555,7 +555,7 @@ export default function HomeGame() {
     fetch(`/api/home/sessions/${urlSessionId}`)
       .then(r => r.ok ? r.json() : null)
       .then((data: { session: HomeSession; players: HomePlayer[] } | null) => {
-        if (!data) { navigate('/home'); return; }
+        if (!data) { navigate('/home-setup'); return; }
         setSession(data.session);
         setPlayers(data.players);
         const cfg = data.session.gameConfig ?? {};
@@ -571,7 +571,7 @@ export default function HomeGame() {
           setPhase('join');
         }
       })
-      .catch(() => navigate('/home'));
+      .catch(() => navigate('/home-setup'));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlSessionId]);
 
@@ -1327,7 +1327,7 @@ export default function HomeGame() {
 
             <div className="flex gap-4">
               <motion.button whileHover={{scale:1.05}} whileTap={{scale:0.96}}
-                onClick={createSession} disabled={loading}
+                onClick={() => navigate('/home-setup')}
                 className="flex items-center gap-3 rounded-2xl px-8 py-4 font-black text-black"
                 style={{background:'linear-gradient(135deg,#F5B642,#FF8C00)',boxShadow:'0 0 45px #F5B64255'}}>
                 <Sparkles className="h-5 w-5"/> Nuova Serata
