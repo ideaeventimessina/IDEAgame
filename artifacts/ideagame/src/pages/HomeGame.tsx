@@ -471,7 +471,9 @@ export default function HomeGame() {
   const urlParams = new URLSearchParams(window.location.search);
   const urlSessionId = urlParams.get('s');
 
-  const [phase, setPhase] = useState<Phase>(urlSessionId ? 'join' : 'welcome');
+  // No sessionId → redirect to setup; sessionId present → wait for load effect to set real phase
+  const [phase, setPhase] = useState<Phase>('board');
+  useEffect(() => { if (!urlSessionId) navigate('/home-setup'); }, []);  // eslint-disable-line react-hooks/exhaustive-deps
   const [session, setSession] = useState<HomeSession | null>(null);
   const [players, setPlayers] = useState<HomePlayer[]>([]);
   const [loading, setLoading] = useState(false);
@@ -568,7 +570,9 @@ export default function HomeGame() {
         } else if (p === 'board') {
           setPhase('board');
         } else {
-          setPhase('join');
+          // Session is in lobby/waiting state — hand off to the lobby page
+          navigate(`/home-lobby/${data.session.joinCode}`);
+          return;
         }
       })
       .catch(() => navigate('/home-setup'));
@@ -849,139 +853,6 @@ export default function HomeGame() {
       )}
 
       <AnimatePresence mode="wait">
-
-        {/* ══ WELCOME ══ */}
-        {phase === 'welcome' && (
-          <motion.div key="welcome" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
-            className="relative z-10 flex flex-1 flex-col items-center justify-center gap-10 px-8 text-center">
-            <motion.div initial={{y:-30,opacity:0}} animate={{y:0,opacity:1}} transition={{type:'spring',stiffness:100}}>
-              <img src="/jonny-world-hero.png" alt="Jonny's World"
-                className="mx-auto mb-4 h-48 w-auto object-contain"
-                style={{filter:'drop-shadow(0 0 40px #F5B64250) drop-shadow(0 0 80px rgba(168,85,247,0.3))'}} />
-              <div className="mt-3 text-base font-black tracking-[0.4em] uppercase" style={{color:'#A855F7',textShadow:'0 0 24px #A855F770'}}>
-                Modalità Home — 8 Giochi
-              </div>
-            </motion.div>
-            <div className="flex items-end gap-8">
-              <div className="hg-float">
-                <img src="/jonny-master-nobg.png" alt="Jonny" className="h-52 w-auto object-contain"
-                  style={{filter:'drop-shadow(0 0 50px #F5B64255) drop-shadow(0 24px 40px rgba(0,0,0,0.7))'}} />
-              </div>
-              <motion.div initial={{x:30,opacity:0}} animate={{x:0,opacity:1}} transition={{delay:0.3}}
-                className="mb-10 max-w-xs rounded-3xl p-5 text-left"
-                style={{background:'linear-gradient(135deg,rgba(168,85,247,0.22),rgba(245,182,66,0.08))',border:'1px solid rgba(168,85,247,0.45)',backdropFilter:'blur(14px)'}}>
-                <div className="text-xs font-black tracking-widest" style={{color:'#F5B642'}}>JONNY DICE:</div>
-                <div className="mt-2 text-base leading-relaxed text-white/90">"{jonnyMsg}"</div>
-              </motion.div>
-            </div>
-            <motion.button whileHover={{scale:1.07}} whileTap={{scale:0.94}}
-              onClick={createSession} disabled={loading}
-              className="hg-pulse flex items-center gap-4 rounded-3xl px-14 py-6 text-2xl font-black text-black disabled:opacity-60"
-              style={{background:'linear-gradient(135deg,#F5B642,#FF8C00)',boxShadow:'0 0 70px #F5B64265,0 10px 32px rgba(0,0,0,0.5)'}}>
-              {loading ? <Loader2 className="h-7 w-7 animate-spin"/> : <Sparkles className="h-7 w-7"/>}
-              Gioca con Jonny
-            </motion.button>
-            <button onClick={() => navigate('/')}
-              className="flex items-center gap-2 text-sm text-white/30 hover:text-white/60">
-              <Home className="h-4 w-4"/> Torna all'Hub
-            </button>
-          </motion.div>
-        )}
-
-        {/* ══ JOIN (QR + players) ══ */}
-        {phase === 'join' && session && (
-          <motion.div key="join" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
-            className="relative z-10 flex flex-1 flex-col items-center gap-6 px-8 pt-8">
-
-            {/* Header */}
-            <div className="flex w-full max-w-5xl items-center justify-between">
-              <div className="flex items-center gap-4">
-                <img src="/jonny-master-nobg.png" alt="Jonny" className="h-14 w-auto object-contain"
-                  style={{filter:'drop-shadow(0 0 24px #F5B64250)'}}/>
-                <div>
-                  <img src="/jonny-world-hero.png" alt="Jonny's World" className="h-10 w-auto object-contain"
-                    style={{filter:'drop-shadow(0 0 16px #F5B64250)'}}/>
-                  <div className="text-sm font-semibold" style={{color:'#A855F7'}}>Sala d'Attesa — scansiona per unirti</div>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 rounded-2xl px-5 py-3"
-                style={{background:'rgba(245,182,66,0.15)',border:'1px solid rgba(245,182,66,0.45)'}}>
-                <Users className="h-5 w-5 text-yellow-400"/>
-                <span className="text-3xl font-black text-yellow-400">{players.length}</span>
-                <span className="text-sm text-white/50">giocatori</span>
-              </div>
-            </div>
-
-            <div className="flex w-full max-w-5xl flex-1 items-start gap-8 overflow-hidden">
-              {/* QR */}
-              <div className="hg-pulse flex flex-col items-center rounded-3xl p-7"
-                style={{background:'rgba(8,6,24,0.75)',border:'2px solid rgba(245,182,66,0.45)',backdropFilter:'blur(18px)'}}>
-                <div className="mb-3 text-xs font-black uppercase tracking-widest" style={{color:'rgba(245,182,66,0.8)'}}>Scansiona per unirti</div>
-                <div className="rounded-2xl bg-white p-3">
-                  <QrPlaceholder text={joinUrl} size={180}/>
-                </div>
-                <div className="mt-4 flex items-center gap-3 rounded-xl px-4 py-2"
-                  style={{background:'rgba(245,182,66,0.12)',border:'1px solid rgba(245,182,66,0.35)'}}>
-                  <QrCode className="h-4 w-4" style={{color:'rgba(245,182,66,0.8)'}}/>
-                  <span className="text-xs font-black tracking-widest" style={{color:'rgba(245,182,66,0.8)'}}>
-                    {window.location.origin}/home/join?s=<span style={{color:'#F5B642'}}>{session.joinCode}</span>
-                  </span>
-                </div>
-                <div className="mt-3 rounded-2xl px-6 py-2 text-center text-2xl font-black tracking-widest"
-                  style={{background:'linear-gradient(135deg,#F5B642,#FF8C00)',color:'#000'}}>
-                  {session.joinCode}
-                </div>
-              </div>
-
-              {/* Players + Jonny */}
-              <div className="flex flex-1 flex-col gap-5">
-                <div className="grid grid-cols-3 gap-3 overflow-y-auto" style={{maxHeight:'340px'}}>
-                  {players.map((p,i) => (
-                    <motion.div key={p.id}
-                      initial={{scale:0,opacity:0}} animate={{scale:1,opacity:1}} transition={{type:'spring',stiffness:200}}
-                      className="flex items-center gap-3 rounded-2xl px-4 py-3"
-                      style={{background:`linear-gradient(135deg,${AVATAR_RING[i%AVATAR_RING.length]}22,transparent)`,border:`1px solid ${AVATAR_RING[i%AVATAR_RING.length]}45`}}>
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-black text-black"
-                        style={{background:`linear-gradient(135deg,${AVATAR_RING[i%AVATAR_RING.length]},${AVATAR_RING[(i+1)%AVATAR_RING.length]})`}}>
-                        {p.nickname.slice(0,2).toUpperCase()}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-black text-white">{p.nickname}</div>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-
-                <div className="flex items-center gap-5">
-                  <div className="hg-float">
-                    <JonnyAvatar mood={jonnyMood} size={90}/>
-                  </div>
-                  <div className="rounded-2xl p-4"
-                    style={{background:'rgba(168,85,247,0.15)',border:'1px solid rgba(168,85,247,0.4)',backdropFilter:'blur(10px)'}}>
-                    <div className="text-xs font-black" style={{color:'#F5B642'}}>JONNY</div>
-                    <div className="mt-1 text-sm text-white/80">"{jonnyMsg}"</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex gap-4 pb-6">
-              {players.length >= 1 && (
-                <motion.button whileHover={{scale:1.05}} whileTap={{scale:0.96}}
-                  onClick={goToBoard} disabled={loading}
-                  className="flex items-center gap-3 rounded-2xl px-10 py-5 text-lg font-black text-black"
-                  style={{background:'linear-gradient(135deg,#F5B642,#FF8C00)',boxShadow:'0 0 55px #F5B64255'}}>
-                  {loading ? <Loader2 className="h-6 w-6 animate-spin"/> : <Play className="h-6 w-6"/>}
-                  Tutti pronti! Iniziamo ({players.length} giocator{players.length===1?'e':'i'})
-                </motion.button>
-              )}
-              <button onClick={() => navigate('/')}
-                className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-6 py-5 text-sm text-white/35 hover:text-white/60">
-                <X className="h-4 w-4"/> Esci
-              </button>
-            </div>
-          </motion.div>
-        )}
 
         {/* ══ BOARD — Wheel Arena ══ */}
         {phase === 'board' && session && (
