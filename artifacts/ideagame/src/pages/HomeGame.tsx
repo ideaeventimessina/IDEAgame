@@ -9,7 +9,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useLocation } from 'wouter';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useAnimation } from 'framer-motion';
 import {
   Sparkles, Users, QrCode, Trophy, Timer,
   Play, SkipForward, Home, Loader2, Check, X, Music,
@@ -123,6 +123,292 @@ const FREESTYLE_TRACKS = [
 
 
 
+// ── Wheel arena helpers ────────────────────────────────────────────────────────
+
+interface WheelGame {
+  slug: string;
+  label: string;
+  short: string;
+  color: string;
+  glow: string;
+  done: boolean;
+}
+
+const WHEEL_EXTRAS: Record<string, { short: string; glow: string }> = {
+  'percorso-a-risate':  { short: 'PERCORSO', glow: '#4ADE80' },
+  'gioco-coppie':       { short: 'COPPIE',   glow: '#F9A8D4' },
+  'quizzone':           { short: 'QUIZZONE', glow: '#FCD34D' },
+  'saramusica':         { short: 'SARA',     glow: '#93C5FD' },
+  'adult-only':         { short: 'ADULT',    glow: '#FCA5A5' },
+  'sfida-ballo':        { short: 'BALLO',    glow: '#C4B5FD' },
+  'parola-alle-spalle': { short: 'PAROLA',   glow: '#67E8F9' },
+  'karaoke-battle':     { short: 'KARAOKE',  glow: '#FDB175' },
+};
+
+function polarPt(cx:number,cy:number,r:number,deg:number){
+  const rad=((deg-90)*Math.PI)/180;
+  return{x:cx+r*Math.cos(rad),y:cy+r*Math.sin(rad)};
+}
+function sectorPath(cx:number,cy:number,r:number,ri:number,a1:number,a2:number){
+  const o1=polarPt(cx,cy,r,a1),o2=polarPt(cx,cy,r,a2);
+  const i1=polarPt(cx,cy,ri,a1),i2=polarPt(cx,cy,ri,a2);
+  const lg=a2-a1>180?1:0;
+  return`M${o1.x},${o1.y} A${r},${r},0,${lg},1,${o2.x},${o2.y} L${i2.x},${i2.y} A${ri},${ri},0,${lg},0,${i1.x},${i1.y} Z`;
+}
+function midPoint(cx:number,cy:number,r:number,a1:number,a2:number){
+  return polarPt(cx,cy,r,(a1+a2)/2);
+}
+
+const WHEEL_ICONS: Record<string,React.ReactNode> = {
+  'percorso-a-risate':  <><rect x="-9" y="-10" width="18" height="20" rx="3" fill="none" stroke="rgba(255,255,255,0.88)" strokeWidth="2.2"/><circle cx="-4" cy="-4" r="2" fill="white"/><circle cx="4" cy="0" r="2" fill="white"/><circle cx="-4" cy="4" r="2" fill="white"/></>,
+  'gioco-coppie':       <><rect x="-11" y="-9" width="13" height="18" rx="2" fill="rgba(255,255,255,0.28)" stroke="rgba(255,255,255,0.88)" strokeWidth="2"/><rect x="-2" y="-9" width="13" height="18" rx="2" fill="rgba(255,255,255,0.14)" stroke="rgba(255,255,255,0.88)" strokeWidth="2"/></>,
+  'quizzone':           <><circle cx="0" cy="0" r="11" fill="none" stroke="rgba(255,255,255,0.88)" strokeWidth="2.2"/><text textAnchor="middle" dominantBaseline="central" fontSize="15" fontWeight="900" fill="white">?</text></>,
+  'saramusica':         <><ellipse cx="0" cy="-6" rx="5.5" ry="8" fill="none" stroke="rgba(255,255,255,0.88)" strokeWidth="2.2"/><line x1="0" y1="2" x2="0" y2="10" stroke="rgba(255,255,255,0.88)" strokeWidth="2.2"/><path d="M-7,10 Q0,14 7,10" fill="none" stroke="rgba(255,255,255,0.88)" strokeWidth="2.2"/></>,
+  'adult-only':         <path d="M0,-13 C-3,-7 -10,-5 -7,2 C-5,7 -2,11 0,13 C2,11 5,7 7,2 C10,-5 3,-7 0,-13 Z" fill="rgba(255,255,255,0.9)"/>,
+  'sfida-ballo':        <path d="M3,-13 L-3,-1 L2,-1 L-4,13 L8,1 L2,1 Z" fill="rgba(255,255,255,0.92)"/>,
+  'parola-alle-spalle': <><path d="M-11,-9 Q-11,-13 -7,-13 L7,-13 Q11,-13 11,-9 L11,1 Q11,5 7,5 L2,5 L-1,11 L-3,5 L-7,5 Q-11,5 -11,1 Z" fill="none" stroke="rgba(255,255,255,0.88)" strokeWidth="2.2"/><circle cx="-3" cy="-4" r="1.8" fill="white"/><circle cx="0" cy="-4" r="1.8" fill="white"/><circle cx="3" cy="-4" r="1.8" fill="white"/></>,
+  'karaoke-battle':     <polygon points="0,-11 2.8,-3.5 11,-3.5 4.8,1.3 7.2,9 0,4.5 -7.2,9 -4.8,1.3 -11,-3.5 -2.8,-3.5" fill="rgba(255,255,255,0.92)"/>,
+};
+
+function WheelSectorIcon({ slug }:{ slug:string }) {
+  return <>{WHEEL_ICONS[slug] ?? <circle cx="0" cy="0" r="8" fill="rgba(255,255,255,0.7)"/>}</>;
+}
+
+function HomeGameWheel({ selected, onSelect, spinning, games }:{
+  selected: WheelGame; onSelect:(g:WheelGame)=>void; spinning:boolean; games:WheelGame[];
+}) {
+  const cx=220,cy=220,r=183,ri=60;
+  const controls = useAnimation();
+  const BULBS=48, bulbR=r+17;
+
+  useEffect(()=>{
+    if(spinning){
+      const idx=games.findIndex(g=>g.slug===selected.slug);
+      const sliceAngle=games.length>0?360/games.length:45;
+      void controls.start({rotate:[0,1620+idx*sliceAngle],transition:{duration:2.8,ease:'easeInOut' as const}});
+    }
+  },[spinning,selected,controls,games]);
+
+  return (
+    <div style={{width:'100%',height:'100%',transform:'perspective(900px) rotateX(6deg)',transformOrigin:'center bottom',position:'relative'}}>
+      <motion.div animate={controls} style={{transformOrigin:'center',width:'100%',height:'100%'}}>
+        <svg viewBox="0 0 440 440" width="100%" height="100%">
+          <defs>
+            {games.map(g=>(
+              <radialGradient key={g.slug} id={`hw-${g.slug}`} cx="38%" cy="28%" r="75%">
+                <stop offset="0%" stopColor={g.glow} stopOpacity="1"/>
+                <stop offset="55%" stopColor={g.color} stopOpacity="1"/>
+                <stop offset="100%" stopColor={g.color} stopOpacity="0.75"/>
+              </radialGradient>
+            ))}
+            <linearGradient id="hw-ring1" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#FFF4A0"/><stop offset="25%" stopColor="#F5B642"/>
+              <stop offset="50%" stopColor="#FFE066"/><stop offset="75%" stopColor="#C8810A"/>
+              <stop offset="100%" stopColor="#FFF4A0"/>
+            </linearGradient>
+            <linearGradient id="hw-ring2" x1="100%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#8B5E00"/><stop offset="50%" stopColor="#F5B642"/>
+              <stop offset="100%" stopColor="#8B5E00"/>
+            </linearGradient>
+            <radialGradient id="hw-hub" cx="40%" cy="30%" r="70%">
+              <stop offset="0%" stopColor="#3B1280"/><stop offset="100%" stopColor="#0A0320"/>
+            </radialGradient>
+            <filter id="hw-glow" x="-30%" y="-30%" width="160%" height="160%">
+              <feGaussianBlur stdDeviation="6" result="b"/>
+              <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+            <filter id="hw-bulbglow" x="-150%" y="-150%" width="400%" height="400%">
+              <feGaussianBlur stdDeviation="2.5" result="b"/>
+              <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+            <filter id="hw-txt">
+              <feDropShadow dx="0" dy="1" stdDeviation="2.5" floodColor="rgba(0,0,0,1)" floodOpacity="1"/>
+            </filter>
+          </defs>
+
+          <ellipse cx={cx} cy={cy+15} rx={r+40} ry={r+30} fill="rgba(0,0,0,0.55)" filter="url(#hw-glow)"/>
+          <circle cx={cx} cy={cy} r={r+22} fill="none" stroke="url(#hw-ring2)" strokeWidth="5"/>
+          <circle cx={cx} cy={cy} r={r+14} fill="rgba(0,0,0,0.6)" stroke="none"/>
+          <circle cx={cx} cy={cy} r={r+12} fill="none" stroke="url(#hw-ring1)" strokeWidth="11"
+            style={{filter:'drop-shadow(0 0 10px rgba(245,182,66,0.95))'}}/>
+          <circle cx={cx} cy={cy} r={r+5} fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="1.5"/>
+
+          {games.map((g,i)=>{
+            const sliceAng=360/games.length;
+            const a1=i*sliceAng,a2=(i+1)*sliceAng;
+            const isSel=g.slug===selected.slug;
+            const lbl=midPoint(cx,cy,r*0.70,a1,a2);
+            const iconPt=midPoint(cx,cy,r*0.52,a1,a2);
+            return (
+              <g key={g.slug} onClick={()=>!g.done&&onSelect(g)} style={{cursor:g.done?'default':'pointer',opacity:g.done?0.5:1}}>
+                <path d={sectorPath(cx,cy,r,ri,a1,a2)} fill="rgba(0,0,0,0.35)" style={{transform:'translate(2px,3px)'}}/>
+                <path d={sectorPath(cx,cy,r-(isSel?0:4),ri+(isSel?0:3),a1,a2)}
+                  fill={g.done?'rgba(52,211,153,0.4)':`url(#hw-${g.slug})`}
+                  stroke={isSel?'rgba(255,255,255,0.75)':g.done?'rgba(52,211,153,0.55)':'rgba(0,0,0,0.6)'}
+                  strokeWidth={isSel?2.5:1.5}
+                  filter={isSel&&!g.done?'url(#hw-glow)':undefined}/>
+                {g.done ? (
+                  <text x={lbl.x} y={lbl.y-6} textAnchor="middle" dominantBaseline="middle"
+                    fontSize="18" fill="rgba(52,211,153,0.95)" filter="url(#hw-txt)" style={{userSelect:'none'}}>✓</text>
+                ) : (
+                  <g transform={`translate(${iconPt.x},${iconPt.y}) scale(0.92)`}>
+                    <WheelSectorIcon slug={g.slug}/>
+                  </g>
+                )}
+                <text x={lbl.x} y={g.done?lbl.y+8:lbl.y} textAnchor="middle" dominantBaseline="middle"
+                  fontSize="11" fontWeight="900" fontFamily="'Outfit','Arial Black',sans-serif"
+                  fill={g.done?'rgba(52,211,153,0.75)':'white'}
+                  stroke="rgba(0,0,0,0.95)" strokeWidth="3" paintOrder="stroke"
+                  filter="url(#hw-txt)" style={{userSelect:'none',letterSpacing:'0.06em'}}>
+                  {g.short}
+                </text>
+              </g>
+            );
+          })}
+
+          {games.map((_,i)=>{
+            const sliceAng=360/games.length;
+            const p1=polarPt(cx,cy,ri+4,i*sliceAng),p2=polarPt(cx,cy,r-4,i*sliceAng);
+            return <line key={i} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="rgba(0,0,0,0.65)" strokeWidth="1.5"/>;
+          })}
+
+          {Array.from({length:BULBS},(_,i)=>{
+            const ang=i*(360/BULBS);
+            const pt=polarPt(cx,cy,bulbR,ang);
+            const lit=i%2===0;
+            return (
+              <motion.circle key={i} cx={pt.x} cy={pt.y} r={lit?5:3.5}
+                fill={lit?'#FFE55C':'#7A5200'}
+                style={{filter:lit?'url(#hw-bulbglow)':undefined}}
+                animate={lit?{opacity:[0.65,1,0.65]}:{}}
+                transition={lit?{duration:1.1+((i%7)*0.18),repeat:Infinity,delay:(i%9)*0.12,ease:'easeInOut' as const}:{}}/>
+            );
+          })}
+
+          <circle cx={cx} cy={cy} r={ri+5} fill="rgba(0,0,0,0.85)"/>
+          <circle cx={cx} cy={cy} r={ri} fill="url(#hw-hub)" stroke="url(#hw-ring1)" strokeWidth="3"
+            style={{filter:'drop-shadow(0 0 12px rgba(168,85,247,0.7))'}}/>
+          <circle cx={cx} cy={cy} r={ri-6} fill="transparent" stroke="rgba(255,255,255,0.12)" strokeWidth="1"/>
+          <text x={cx} y={cy-9} textAnchor="middle" dominantBaseline="middle"
+            fontSize="10.5" fontWeight="900" fontFamily="'Outfit','Arial Black',sans-serif"
+            fill="#F5B642" style={{userSelect:'none',letterSpacing:'0.14em'}}>SCEGLI</text>
+          <text x={cx} y={cy+8} textAnchor="middle" dominantBaseline="middle"
+            fontSize="10.5" fontWeight="900" fontFamily="'Outfit','Arial Black',sans-serif"
+            fill="#FFD700" style={{userSelect:'none',letterSpacing:'0.08em'}}>IL GIOCO</text>
+        </svg>
+      </motion.div>
+
+      <div style={{position:'absolute',top:'-3%',left:'50%',transform:'translateX(-50%)',zIndex:10,pointerEvents:'none'}}>
+        <svg width="28" height="38" viewBox="0 0 28 38">
+          <defs>
+            <linearGradient id="hw-ptr" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#FFE55C"/><stop offset="100%" stopColor="#D97706"/>
+            </linearGradient>
+          </defs>
+          <polygon points="14,36 0,6 28,6" fill="url(#hw-ptr)"
+            style={{filter:'drop-shadow(0 0 8px rgba(245,182,66,1)) drop-shadow(0 2px 4px rgba(0,0,0,0.8))'}}/>
+          <polygon points="14,36 3,9 25,9" fill="rgba(255,255,255,0.2)"/>
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+function HomeArenaClassifica({ players }:{ players: HomePlayer[] }) {
+  const COLORS = AVATAR_RING;
+  const sorted = useMemo(()=>[...players].sort((a,b)=>b.score-a.score),[players]);
+  const glowFor  = (i:number)=>i===0?'rgba(245,182,66,0.7)':i===1?'rgba(192,192,192,0.5)':i===2?'rgba(205,127,50,0.45)':undefined;
+  const borderFor= (i:number)=>i===0?'rgba(245,182,66,0.5)':i===1?'rgba(192,192,192,0.35)':i===2?'rgba(205,127,50,0.35)':'rgba(255,255,255,0.07)';
+  const bgFor    = (i:number)=>i===0?'linear-gradient(135deg,rgba(245,182,66,0.22),rgba(245,182,66,0.06))':i===1?'linear-gradient(135deg,rgba(192,192,192,0.12),rgba(192,192,192,0.04))':i===2?'linear-gradient(135deg,rgba(205,127,50,0.12),rgba(205,127,50,0.04))':'rgba(255,255,255,0.04)';
+  const rankLabel= (i:number)=>(['🥇','🥈','🥉'][i])??`${i+1}`;
+  return (
+    <div className="rounded-2xl overflow-hidden flex flex-col h-full"
+      style={{background:'rgba(12,4,32,0.82)',border:'1.5px solid rgba(255,255,255,0.11)',backdropFilter:'blur(12px)',boxShadow:'0 4px 40px rgba(0,0,0,0.6),inset 0 1px 0 rgba(255,255,255,0.08)'}}>
+      <div className="px-4 py-2.5 font-black uppercase shrink-0 flex items-center gap-2"
+        style={{background:'linear-gradient(135deg,rgba(245,182,66,0.3),rgba(245,182,66,0.08))',borderBottom:'1px solid rgba(245,182,66,0.25)'}}>
+        <Trophy className="h-3.5 w-3.5 text-yellow-400"/>
+        <span style={{fontSize:'0.6rem',letterSpacing:'0.22em',color:'#F5B642'}}>Classifica Live</span>
+        <motion.span className="ml-auto rounded-full px-2 py-0.5 font-black"
+          animate={{opacity:[1,0.5,1]}} transition={{duration:1.4,repeat:Infinity}}
+          style={{background:'rgba(245,182,66,0.2)',color:'#F5B642',fontSize:'0.55rem'}}>LIVE</motion.span>
+      </div>
+      <div className="flex flex-col p-2 gap-1.5 flex-1 overflow-hidden">
+        {sorted.length===0?(
+          <div className="flex-1 flex flex-col items-center justify-center gap-2 opacity-50">
+            <Users className="h-5 w-5 text-purple-400"/>
+            <span style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)',textAlign:'center'}}>Nessun giocatore<br/>connesso</span>
+          </div>
+        ):sorted.map((p,i)=>{
+          const color=COLORS[i%COLORS.length];
+          return (
+            <motion.div key={p.id} className="flex items-center gap-2 rounded-xl px-2.5 py-1.5"
+              initial={{x:-30,opacity:0}} animate={{x:0,opacity:1}}
+              transition={{delay:i*0.05,ease:'easeOut' as const}}
+              style={{background:bgFor(i),border:`1px solid ${borderFor(i)}`,boxShadow:glowFor(i)?`0 0 18px ${glowFor(i)}`:undefined}}>
+              <span className="shrink-0 text-center" style={{fontSize:i<3?'0.9rem':'0.7rem',width:i<3?20:16,lineHeight:1}}>{rankLabel(i)}</span>
+              <div className={`${i<3?'w-10 h-10':'w-8 h-8'} rounded-full flex items-center justify-center font-black shrink-0`}
+                style={{background:`${color}2A`,border:`2.5px solid ${color}${i<3?'cc':'66'}`,color,fontSize:i<3?'0.85rem':'0.72rem',boxShadow:i<3?`0 0 14px ${color}66`:undefined}}>
+                {p.nickname[0]?.toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-black text-white truncate" style={{fontSize:i<3?'0.85rem':'0.78rem'}}>{p.nickname}</div>
+              </div>
+              {p.score>0&&(
+                <div className="font-black shrink-0"
+                  style={{color:i===0?'#F5B642':i===1?'#C8C8C8':i===2?'#CD7F32':'rgba(255,255,255,0.55)',fontSize:i<3?'0.88rem':'0.78rem',textShadow:i<3?`0 0 12px ${color}`:undefined}}>
+                  {p.score}pt
+                </div>
+              )}
+            </motion.div>
+          );
+        })}
+      </div>
+      <div className="mx-3 mb-3 rounded-xl px-3 py-2 flex items-center gap-2 shrink-0"
+        style={{background:'rgba(124,58,237,0.2)',border:'1px solid rgba(124,58,237,0.35)'}}>
+        <Users className="h-3 w-3 text-purple-400 shrink-0"/>
+        <span className="font-black text-white" style={{fontSize:'0.72rem'}}>
+          <span style={{color:'#A855F7'}}>{sorted.length}</span> Giocatori
+        </span>
+        <motion.div className="ml-auto w-2 h-2 rounded-full bg-green-400 shrink-0"
+          animate={{opacity:[1,0,1]}} transition={{duration:1.2,repeat:Infinity}}/>
+      </div>
+    </div>
+  );
+}
+
+function HomeWheelGameCard({ game, onPlay, loading }:{
+  game: WheelGame; onPlay:()=>void; loading:boolean;
+}) {
+  return (
+    <AnimatePresence mode="wait">
+      <motion.div key={game.slug} className="rounded-2xl"
+        style={{background:'rgba(8,2,24,0.88)',border:`1.5px solid ${game.color}99`,boxShadow:`0 0 30px ${game.color}44,0 0 60px ${game.color}18`}}
+        initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-8}}
+        transition={{duration:0.22}}>
+        <div className="px-4 py-3.5">
+          <div className="font-black text-white mb-2"
+            style={{fontSize:'clamp(0.9rem,1.3vw,1.1rem)',fontFamily:"'Outfit','Arial Black',sans-serif",textShadow:`0 0 20px ${game.glow}88`}}>
+            {game.label}
+          </div>
+          {game.done ? (
+            <div className="rounded-xl px-3 py-2 text-center font-black"
+              style={{background:'rgba(52,211,153,0.15)',border:'1px solid rgba(52,211,153,0.45)',color:'#34D399',fontSize:'0.78rem'}}>
+              ✓ Completato
+            </div>
+          ) : (
+            <motion.button onClick={onPlay} disabled={loading}
+              className="w-full rounded-xl py-2.5 font-black text-white flex items-center justify-center gap-2 disabled:opacity-40"
+              style={{background:`linear-gradient(135deg,${game.color} 0%,${game.glow} 100%)`,boxShadow:`0 0 18px ${game.color}55`,border:'none',fontSize:'0.82rem'}}
+              whileHover={{scale:loading?1:1.02}} whileTap={{scale:loading?1:0.97}}>
+              {loading?<Loader2 className="h-4 w-4 animate-spin"/>:<><Play className="h-4 w-4"/> Inizia</>}
+            </motion.button>
+          )}
+        </div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
 // ── Socket ─────────────────────────────────────────────────────────────────────
 
 function useHomeSocket(sessionId: string | null) {
@@ -156,6 +442,8 @@ export default function HomeGame() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [postGame, setPostGame] = useState<{gameSlug:string;players:HomePlayer[]}|null>(null);
+  const [spinning, setSpinning] = useState(false);
+  const [wheelSelected, setWheelSelected] = useState<string | null>(null);
 
   const { on } = useHomeSocket(session?.id ?? null);
 
@@ -176,6 +464,36 @@ export default function HomeGame() {
     const cfg = session?.gameConfig ?? {};
     return (cfg.phase as string) ?? 'join';
   }, [session]);
+
+  // ── Wheel arena ─────────────────────────────────────────────────────────────
+  const wheelGames = useMemo<WheelGame[]>(() =>
+    visibleGames.map(g => ({
+      slug:  g.slug,
+      label: g.name,
+      short: WHEEL_EXTRAS[g.slug]?.short ?? g.name.split(' ')[0].toUpperCase().slice(0,7),
+      color: g.color,
+      glow:  WHEEL_EXTRAS[g.slug]?.glow ?? g.color,
+      done:  gamesPlayed.includes(g.slug),
+    }))
+  , [visibleGames, gamesPlayed]);
+
+  const wheelSelectedGame = useMemo<WheelGame>(() => {
+    const bySlug = wheelGames.find(g => g.slug === wheelSelected);
+    if (bySlug) return bySlug;
+    return wheelGames.find(g => !g.done) ?? wheelGames[0] ?? {
+      slug:'quizzone',label:'Quizzone',short:'QUIZZONE',color:'#F5B642',glow:'#FCD34D',done:false
+    };
+  }, [wheelGames, wheelSelected]);
+
+  const handleWheelSpin = useCallback(() => {
+    if (spinning || wheelGames.length === 0) return;
+    const available = wheelGames.filter(g => !g.done);
+    const pool = available.length > 0 ? available : wheelGames;
+    const rnd = pool[Math.floor(Math.random() * pool.length)];
+    setWheelSelected(rnd.slug);
+    setSpinning(true);
+    setTimeout(() => setSpinning(false), 3000);
+  }, [spinning, wheelGames]);
 
   // ── Audio unlock ────────────────────────────────────────────────────────────
   const unlockAudio = useCallback((_src?: string) => {
@@ -617,165 +935,140 @@ export default function HomeGame() {
           </motion.div>
         )}
 
-        {/* ══ BOARD (8 giochi) ══ */}
+        {/* ══ BOARD — Wheel Arena ══ */}
         {phase === 'board' && session && (
           <motion.div key="board" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
-            className="relative z-10 flex flex-1 flex-col overflow-hidden">
+            className="relative z-10 flex-1 overflow-hidden"
+            style={{display:'grid',gridTemplateColumns:'22% 1fr 26%',gridTemplateRows:'auto 1fr auto'}}>
 
-            {/* Top bar */}
-            <div className="flex items-center justify-between px-6 py-3 shrink-0"
-              style={{background:'rgba(0,0,0,0.6)',backdropFilter:'blur(18px)',borderBottom:'1px solid rgba(245,182,66,0.12)'}}>
-              <div className="flex items-center gap-4">
-                <img src="/jonny-master-nobg.png" alt="Jonny" className="h-12 w-auto object-contain"
-                  style={{filter:'drop-shadow(0 0 18px #F5B64265)'}}/>
-                <div>
-                  <img src="/jonny-world-hero.png" alt="Jonny's World" className="h-7 w-auto object-contain"
-                    style={{filter:'drop-shadow(0 0 10px #F5B64255)'}}/>
-                  <div className="text-[11px] font-bold tracking-widest uppercase"
-                    style={{color:'rgba(168,85,247,0.75)'}}>
-                    Modalità Home · {gamesPlayed.length}/{visibleGames.length} completati
-                  </div>
+            {/* TOP-LEFT: logo + status */}
+            <div className="flex items-center pl-5 pt-3 pb-1 z-20 gap-3">
+              <img src="/jonny-master-nobg.png" alt="Jonny" className="h-10 w-auto object-contain"
+                style={{filter:'drop-shadow(0 0 18px #F5B64265)'}}/>
+              <div>
+                <img src="/jonny-world-hero.png" alt="" className="h-6 w-auto object-contain"
+                  style={{filter:'drop-shadow(0 0 10px #F5B64255)'}}/>
+                <div className="text-[10px] font-bold tracking-widest uppercase" style={{color:'rgba(168,85,247,0.75)'}}>
+                  {gamesPlayed.length}/{visibleGames.length} completati
                 </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <JonnyAvatar mood={jonnyMood} size={36}/>
-                <div className="max-w-[220px] text-sm italic text-white/45">"{jonnyMsg}"</div>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="rounded-xl px-3 py-1.5 text-sm font-black"
-                  style={{background:'rgba(245,182,66,0.15)',border:'1px solid rgba(245,182,66,0.35)',color:'#F5B642'}}>
-                  <Users className="inline h-4 w-4 mr-1"/>{players.length}
-                </div>
-                {gamesPlayed.length > 0 && players.length > 0 && (
-                  <button
-                    disabled={loading}
-                    onClick={async () => {
-                      if (window.confirm('Vuoi chiudere la partita e mostrare la classifica con i punteggi attuali?')) {
-                        await goToChampion();
-                      }
-                    }}
-                    className="flex items-center gap-2 rounded-2xl px-4 py-2 text-xs font-black disabled:opacity-40"
-                    style={{background:'rgba(245,182,66,0.12)',border:'1px solid rgba(245,182,66,0.35)',color:'rgba(245,182,66,0.9)'}}>
-                    <Trophy className="h-3.5 w-3.5"/> Chiudi &amp; classifica
-                  </button>
-                )}
-                {allDone && (
-                  <motion.button onClick={goToChampion} disabled={loading}
-                    whileHover={{scale:1.05}} whileTap={{scale:0.97}}
-                    className="flex items-center gap-2 rounded-2xl px-5 py-2 text-sm font-black text-black"
-                    style={{background:'linear-gradient(135deg,#F5B642,#FF8C00)',boxShadow:'0 0 30px #F5B64255'}}>
-                    <Trophy className="h-4 w-4"/> Classifica Finale
-                  </motion.button>
-                )}
               </div>
             </div>
 
-            {/* Jonny message banner */}
-            {jonnyMsg !== 'Scegli il gioco!' && (
-              <motion.div initial={{y:-40,opacity:0}} animate={{y:0,opacity:1}} exit={{y:-40,opacity:0}}
-                className="mx-4 mt-3 flex items-center gap-3 rounded-2xl px-5 py-3 shrink-0"
-                style={{background:'linear-gradient(135deg,rgba(245,182,66,0.18),rgba(168,85,247,0.1))',border:'1px solid rgba(245,182,66,0.35)'}}>
-                <span className="text-2xl">🎉</span>
-                <span className="font-black text-white">{jonnyMsg}</span>
+            {/* TOP-CENTER: Jonny message */}
+            <div className="flex items-center justify-center pt-2 pb-0 z-20">
+              <div className="flex items-center gap-2 rounded-2xl px-4 py-1.5"
+                style={{background:'rgba(10,2,28,0.7)',border:'1px solid rgba(245,182,66,0.2)',backdropFilter:'blur(12px)'}}>
+                <JonnyAvatar mood={jonnyMood} size={28}/>
+                <div className="text-sm italic font-bold text-white/50 max-w-[260px] truncate">"{jonnyMsg}"</div>
+              </div>
+            </div>
+
+            {/* TOP-RIGHT: player count + actions */}
+            <div className="flex items-center justify-end pr-4 pt-2 pb-1 gap-2 z-20 flex-wrap">
+              <div className="rounded-xl px-3 py-1.5 text-sm font-black"
+                style={{background:'rgba(245,182,66,0.15)',border:'1px solid rgba(245,182,66,0.35)',color:'#F5B642'}}>
+                <Users className="inline h-4 w-4 mr-1"/>{players.length}
+              </div>
+              {gamesPlayed.length > 0 && players.length > 0 && (
+                <button disabled={loading}
+                  onClick={async()=>{
+                    if(window.confirm('Vuoi chiudere la partita e mostrare la classifica con i punteggi attuali?')){
+                      await goToChampion();
+                    }
+                  }}
+                  className="flex items-center gap-2 rounded-2xl px-3 py-1.5 text-xs font-black disabled:opacity-40"
+                  style={{background:'rgba(245,182,66,0.12)',border:'1px solid rgba(245,182,66,0.35)',color:'rgba(245,182,66,0.9)'}}>
+                  <Trophy className="h-3.5 w-3.5"/> Chiudi &amp; classifica
+                </button>
+              )}
+            </div>
+
+            {/* LEFT: live ranking */}
+            <div className="flex flex-col pl-4 pr-2 pb-2 z-20">
+              <HomeArenaClassifica players={players}/>
+            </div>
+
+            {/* CENTER: wheel */}
+            <div className="flex flex-col items-center justify-center relative z-10 py-1">
+              <motion.div className="relative"
+                style={{width:'min(44vw,60vh)',height:'min(44vw,60vh)'}}
+                animate={{y:[0,-6,0]}}
+                transition={{duration:4,repeat:Infinity,ease:'easeInOut' as const}}>
+                <div className="absolute inset-[-8%] rounded-full pointer-events-none"
+                  style={{background:`radial-gradient(circle,${wheelSelectedGame.color}18 0%,transparent 70%)`,boxShadow:`0 0 100px ${wheelSelectedGame.glow}55,0 0 200px ${wheelSelectedGame.glow}18`}}/>
+                <HomeGameWheel
+                  selected={wheelSelectedGame}
+                  onSelect={g => setWheelSelected(g.slug)}
+                  spinning={spinning}
+                  games={wheelGames}/>
+                <div className="absolute pointer-events-none"
+                  style={{bottom:'-12%',left:'15%',right:'15%',height:20,background:'rgba(0,0,0,0.6)',borderRadius:'50%',filter:'blur(14px)'}}/>
               </motion.div>
-            )}
-
-            {/* Score bar */}
-            {players.length > 0 && (
-              <div className="mx-4 mt-2 flex gap-2 overflow-x-auto shrink-0">
-                {[...players].sort((a,b)=>b.score-a.score).map((p,i)=>(
-                  <div key={p.id} className="flex shrink-0 items-center gap-2 rounded-xl px-3 py-1.5"
-                    style={{background:`${AVATAR_RING[i%AVATAR_RING.length]}22`,border:`1px solid ${AVATAR_RING[i%AVATAR_RING.length]}45`}}>
-                    <span className="text-xs">{i===0?'🥇':i===1?'🥈':i===2?'🥉':'·'}</span>
-                    <span className="text-xs font-black text-white">{p.nickname}</span>
-                    <span className="text-xs font-black" style={{color:'#F5B642'}}>{p.score}pt</span>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Game cards — premium */}
-            <div className="flex-1 overflow-y-auto px-5 py-5">
-              <div className="grid grid-cols-2 gap-4 max-w-5xl mx-auto lg:grid-cols-4">
-                {visibleGames.map(g => {
-                  const done = gamesPlayed.includes(g.slug);
-                  const isLoading = selectingGame === g.slug;
-                  const gameScores = (session?.gameConfig?.gameScores as Record<string, Record<string,number>> | undefined) ?? {};
-                  const scoreMap = gameScores[g.slug] ?? {};
-                  const scoreVals = Object.values(scoreMap);
-                  const topScore = scoreVals.length > 0 ? Math.max(...scoreVals) : 0;
-                  return (
-                    <motion.button
-                      key={g.slug}
-                      whileHover={done || !!selectingGame ? {} : {scale:1.04, y:-5}}
-                      whileTap={done || !!selectingGame ? {} : {scale:0.97}}
-                      onClick={() => !done && !selectingGame && selectGame(g.slug)}
-                      disabled={done || !!selectingGame}
-                      className="relative flex flex-col items-center gap-3 rounded-3xl p-5 text-center transition-all"
-                      style={{
-                        background: done
-                          ? 'linear-gradient(135deg,rgba(52,211,153,0.12),rgba(52,211,153,0.04))'
-                          : `linear-gradient(145deg,${g.color}22,${g.color}08)`,
-                        border: done
-                          ? '1px solid rgba(52,211,153,0.45)'
-                          : `1px solid ${g.color}50`,
-                        boxShadow: done
-                          ? '0 0 0 1px rgba(52,211,153,0.08) inset'
-                          : `0 0 32px ${g.color}22, 0 4px 20px rgba(0,0,0,0.4)`,
-                        opacity: (!!selectingGame && !isLoading) ? 0.45 : 1,
-                      }}>
-
-                      {/* Status badge */}
-                      <div className="absolute right-3 top-3 rounded-lg px-2 py-1 text-[9px] font-black tracking-widest"
-                        style={done
-                          ? {background:'rgba(52,211,153,0.22)',color:'#34D399',border:'1px solid rgba(52,211,153,0.45)'}
-                          : {background:`${g.color}18`,color:g.color,border:`1px solid ${g.color}40`}}>
-                        {done ? '✓ FATTO' : 'GIOCA'}
-                      </div>
-
-                      {/* Icon box */}
-                      <div className="flex h-16 w-16 items-center justify-center rounded-2xl text-4xl mt-2"
-                        style={{
-                          background: done ? 'rgba(52,211,153,0.18)' : `${g.color}1a`,
-                          border: done ? '1px solid rgba(52,211,153,0.4)' : `1px solid ${g.color}35`,
-                          boxShadow: done ? 'none' : `0 0 20px ${g.color}30`,
-                        }}>
-                        {isLoading
-                          ? <Loader2 className="h-8 w-8 animate-spin" style={{color:g.color}}/>
-                          : g.emoji}
-                      </div>
-
-                      {/* Name */}
-                      <div className="text-sm font-black leading-tight text-white px-1"
-                        style={{textShadow: done ? 'none' : `0 0 18px ${g.color}55`}}>
-                        {g.name}
-                      </div>
-
-                      {/* Description (when not done) */}
-                      {!done && (
-                        <div className="text-[11px] leading-snug text-white/35 line-clamp-2 px-1">{g.description}</div>
-                      )}
-
-                      {/* Top score (when done and data available) */}
-                      {done && topScore > 0 && (
-                        <div className="text-xs font-black" style={{color:'#34D399'}}>🏆 {topScore} pt</div>
-                      )}
-                      {done && topScore === 0 && (
-                        <div className="text-xs text-white/30">Completato</div>
-                      )}
-
-                      {/* CTA (when playable) */}
-                      {!done && !isLoading && (
-                        <div className="mt-auto flex items-center gap-1.5 rounded-xl px-4 py-1.5 text-xs font-black"
-                          style={{background:`${g.color}22`,color:g.color,border:`1px solid ${g.color}45`}}>
-                          <Play className="h-3 w-3"/> Inizia
-                        </div>
-                      )}
-                    </motion.button>
-                  );
-                })}
-              </div>
             </div>
+
+            {/* RIGHT: selected game card */}
+            <div className="flex flex-col pr-3 pl-1 pb-2 z-20 justify-end">
+              <HomeWheelGameCard
+                game={wheelSelectedGame}
+                onPlay={() => selectGame(wheelSelectedGame.slug)}
+                loading={!!selectingGame}/>
+            </div>
+
+            {/* Jonny — big scenic presence, overlapping right column */}
+            <div className="absolute pointer-events-none select-none"
+              style={{right:'-1%',bottom:'10vh',zIndex:12,width:'23%'}}>
+              <div style={{position:'absolute',bottom:-4,left:'8%',right:'8%',height:22,background:'rgba(0,0,0,0.65)',borderRadius:'50%',filter:'blur(18px)'}}/>
+              <div style={{position:'absolute',bottom:2,left:'5%',right:'5%',height:10,background:'linear-gradient(90deg,transparent,rgba(168,85,247,0.8),rgba(245,182,66,0.6),rgba(168,85,247,0.8),transparent)',borderRadius:'50%',filter:'blur(6px)'}}/>
+              <div style={{position:'absolute',bottom:0,left:'-25%',right:'-10%',top:'5%',background:`radial-gradient(ellipse 65% 75% at 52% 65%,${wheelSelectedGame.glow}30 0%,rgba(168,85,247,0.15) 55%,transparent 80%)`,pointerEvents:'none'}}/>
+              <motion.img src="/jonny-master-nobg.png" alt="Jonny host"
+                style={{height:'min(56vh,460px)',display:'block',objectFit:'contain',width:'100%',filter:`drop-shadow(0 0 55px ${wheelSelectedGame.glow}cc) drop-shadow(-5px 0 25px rgba(168,85,247,0.55)) drop-shadow(0 10px 35px rgba(0,0,0,0.7))`}}
+                animate={{y:[0,-8,0]}}
+                transition={{duration:3.5,repeat:Infinity,ease:'easeInOut' as const}}/>
+            </div>
+
+            {/* BOTTOM-LEFT: spacer */}
+            <div className="z-20"/>
+
+            {/* BOTTOM-CENTER: arcade buttons */}
+            <div className="flex items-center justify-center gap-4 pb-3 z-20">
+              {/* Spin */}
+              <motion.button onClick={handleWheelSpin} disabled={spinning || allDone}
+                className="relative overflow-hidden font-black rounded-full flex items-center justify-center gap-3 text-white disabled:opacity-40"
+                style={{background:'linear-gradient(135deg,#5B21B6 0%,#7C3AED 100%)',border:'3px solid #A855F7',boxShadow:'0 0 30px #7C3AED66,0 6px 0 rgba(0,0,0,0.5)',padding:'0 2.2vw',height:'7vh',fontSize:'clamp(0.8rem,1.4vw,1.1rem)',minWidth:'16vw'}}
+                whileHover={{scale:1.05}} whileTap={{scale:0.97,y:3}}>
+                <div className="absolute inset-0 opacity-25 pointer-events-none rounded-full" style={{background:'radial-gradient(ellipse 80% 40% at 50% 5%,rgba(255,255,255,0.7),transparent)'}}/>
+                <span className="relative z-10 flex items-center gap-2"><Zap className="h-5 w-5" style={{fill:'white'}}/> GIRA LA RUOTA</span>
+              </motion.button>
+
+              {/* Play selected / Classifica finale */}
+              {allDone ? (
+                <motion.button onClick={goToChampion} disabled={loading}
+                  className="relative overflow-hidden font-black rounded-full flex items-center justify-center gap-3 text-white disabled:opacity-40"
+                  style={{background:'linear-gradient(135deg,#92400E 0%,#D97706 100%)',border:'3px solid #F5B642',boxShadow:'0 0 30px #F5B64266,0 6px 0 rgba(0,0,0,0.5)',padding:'0 2.2vw',height:'7vh',fontSize:'clamp(0.8rem,1.4vw,1.1rem)',minWidth:'16vw'}}
+                  whileHover={{scale:1.05}} whileTap={{scale:0.97,y:3}}>
+                  <div className="absolute inset-0 opacity-25 pointer-events-none rounded-full" style={{background:'radial-gradient(ellipse 80% 40% at 50% 5%,rgba(255,255,255,0.7),transparent)'}}/>
+                  <span className="relative z-10 flex items-center gap-2"><Trophy className="h-5 w-5" style={{fill:'white'}}/> CLASSIFICA FINALE</span>
+                </motion.button>
+              ) : (
+                <motion.button
+                  onClick={() => { if (!wheelSelectedGame.done) void selectGame(wheelSelectedGame.slug); }}
+                  disabled={!!selectingGame || wheelSelectedGame.done || loading}
+                  className="relative overflow-hidden font-black rounded-full flex items-center justify-center gap-3 text-white disabled:opacity-40"
+                  style={{background:`linear-gradient(135deg,${wheelSelectedGame.color} 0%,${wheelSelectedGame.glow} 100%)`,border:`3px solid ${wheelSelectedGame.color}`,boxShadow:`0 0 30px ${wheelSelectedGame.color}66,0 6px 0 rgba(0,0,0,0.5)`,padding:'0 2.2vw',height:'7vh',fontSize:'clamp(0.8rem,1.4vw,1.1rem)',minWidth:'16vw'}}
+                  whileHover={{scale:1.05}} whileTap={{scale:0.97,y:3}}>
+                  <div className="absolute inset-0 opacity-25 pointer-events-none rounded-full" style={{background:'radial-gradient(ellipse 80% 40% at 50% 5%,rgba(255,255,255,0.7),transparent)'}}/>
+                  <span className="relative z-10 flex items-center gap-2">
+                    {selectingGame === wheelSelectedGame.slug
+                      ? <Loader2 className="h-5 w-5 animate-spin"/>
+                      : <Play className="h-5 w-5" style={{fill:'white'}}/>}
+                    {wheelSelectedGame.done ? '✓ COMPLETATO' : 'GIOCA ORA'}
+                  </span>
+                </motion.button>
+              )}
+            </div>
+
+            {/* BOTTOM-RIGHT: spacer */}
+            <div className="z-20"/>
           </motion.div>
         )}
 
