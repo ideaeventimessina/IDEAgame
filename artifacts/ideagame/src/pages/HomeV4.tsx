@@ -3,6 +3,7 @@
  * Zero backend · zero socket · zero polling.
  */
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useLocation } from 'wouter';
 import { motion, AnimatePresence, useAnimation } from 'framer-motion';
 import { RotateCcw, Users, Trophy, Zap, Star, ChevronRight } from 'lucide-react';
 
@@ -1048,13 +1049,14 @@ function Podium({ onRestart }: { onRestart:()=>void }) {
 /* ─── root ────────────────────────────────────────── */
 export default function HomeV4() {
   const [screen, setScreen] = useState<Screen>('show');
+  const [, navigate] = useLocation();
   return (
     <div className="fixed inset-0 overflow-hidden"
       style={{ background:'#030010', fontFamily:"'Outfit','Space Grotesk','Arial Black',sans-serif" }}>
       <Stage/>
       <Sparks/>
       <AnimatePresence mode="wait">
-        {screen==='show'   && <ShowLanding onArena={()=>setScreen('arena')}/>}
+        {screen==='show'   && <ShowLanding onArena={()=>navigate('/mode-select')}/>}
         {screen==='arena'  && <Arena       onPodium={()=>setScreen('podium')}/>}
         {screen==='podium' && <Podium      onRestart={()=>setScreen('show')}/>}
       </AnimatePresence>
