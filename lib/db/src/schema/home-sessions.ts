@@ -12,6 +12,7 @@ export const homeSessionsTable = pgTable("home_sessions", {
   id: uuid("id").primaryKey().defaultRandom(),
   joinCode: text("join_code").notNull().unique(),
   hostName: text("host_name").notNull().default("Casa"),
+  maxPlayers: integer("max_players").notNull().default(8),
   gameSlug: text("game_slug"),
   gameConfig: jsonb("game_config").$type<Record<string, unknown>>().default({}),
   status: homeSessionStatus("status").notNull().default("lobby"),

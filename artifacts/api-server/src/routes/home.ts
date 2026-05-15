@@ -469,7 +469,10 @@ async function loadGameRounds(gameSlug: string): Promise<RoundPayload[]> {
 
 // ── POST /home/sessions ────────────────────────────────────────────────────────
 router.post("/home/sessions", async (req, res): Promise<void> => {
-  const hostName = String(req.body?.hostName ?? "Casa").slice(0, 50);
+  const hostName      = String(req.body?.hostName ?? "Casa").slice(0, 50);
+  const maxPlayers    = Math.min(Math.max(Number(req.body?.maxPlayers ?? 8), 2), 50);
+  const selectedGames = Array.isArray(req.body?.selectedGames) ? req.body.selectedGames as string[] : [];
+  const matchDuration = String(req.body?.matchDuration ?? "normal");
 
   let joinCode = makeJoinCode();
   for (let i = 0; i < 5; i++) {
@@ -483,8 +486,15 @@ router.post("/home/sessions", async (req, res): Promise<void> => {
   const [session] = await db.insert(homeSessionsTable).values({
     joinCode,
     hostName,
+    maxPlayers,
     expiresAt,
-    gameConfig: { phase: "join", gamesPlayed: [], preloadedRounds: [] },
+    gameConfig: {
+      phase: "join",
+      gamesPlayed: [],
+      preloadedRounds: [],
+      selectedGames,
+      matchDuration,
+    },
   }).returning();
 
   res.status(201).json(session);

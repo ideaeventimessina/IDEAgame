@@ -56,6 +56,9 @@ import AdminAudit from "@/admin/Audit";
 import AdminJonnyPoses from "@/admin/JonnyPoses";
 import HomeGame from "@/pages/HomeGame";
 import HomeJoin from "@/pages/HomeJoin";
+import HomeSetupPage from "@/pages/HomeSetupPage";
+import HomeLobbyPage from "@/pages/HomeLobbyPage";
+import JoinPage from "@/pages/JoinPage";
 import Cockpit from "@/pages/Cockpit";
 import { Guard } from "@/admin/Guard";
 import { AudioUnlockFab } from "@/components/AudioUnlockFab";
@@ -112,6 +115,9 @@ function Router() {
       <Route path="/scoreboard" component={Scoreboard} />
       <Route path="/play" component={Player} />
       <Route path="/play/permissions" component={Permissions} />
+      <Route path="/home-setup" component={HomeSetupPage} />
+      <Route path="/home-lobby/:code" component={HomeLobbyPage} />
+      <Route path="/join/:code" component={JoinPage} />
       <Route path="/home" component={HomeGame} />
       <Route path="/home/join" component={HomeJoin} />
       <Route path="/presenter-live" component={PresenterLive} />

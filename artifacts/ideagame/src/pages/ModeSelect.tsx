@@ -39,7 +39,7 @@ const MODES: Mode[] = [
     bgSolid: 'rgba(24,10,2,0.88)',
     border: 'rgba(245,182,66,0.55)',
     cta: "ENTRA NELL'ARENA",
-    route: '/home-room',
+    route: '/home-setup',
     Icon: Home,
     tagIcons: [Users, Star, Zap],
   },
