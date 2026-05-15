@@ -73,6 +73,7 @@ import HomeV3 from "@/pages/HomeV3";
 import HomeV4 from "@/pages/HomeV4";
 import HomeV5 from "@/pages/HomeV5";
 import ModeSelect from "@/pages/ModeSelect";
+import HomeRoom from "@/pages/HomeRoom";
 
 const queryClient = new QueryClient();
 
@@ -87,6 +88,7 @@ function Router() {
       <Route path="/home-v4" component={HomeV4} />
       <Route path="/home-v5" component={HomeV5} />
       <Route path="/mode-select" component={ModeSelect} />
+      <Route path="/home-room" component={HomeRoom} />
       <Route path="/cockpit" component={Cockpit} />
       <Route path="/splash" component={Splash} />
       <Route path="/language" component={LanguageSelect} />

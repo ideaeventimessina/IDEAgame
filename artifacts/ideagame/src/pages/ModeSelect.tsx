@@ -39,7 +39,7 @@ const MODES: Mode[] = [
     bg: 'linear-gradient(145deg,rgba(245,182,66,0.18) 0%,rgba(180,90,10,0.08) 100%)',
     border: 'rgba(245,182,66,0.5)',
     cta: "ENTRA NELL'ARENA",
-    route: '/home-v4?mode=home',
+    route: '/home-room',
     Icon: Home,
     tagIcons: [Users, Star, Zap],
   },
