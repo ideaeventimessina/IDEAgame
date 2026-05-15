@@ -3,7 +3,8 @@
  * Sala d'attesa host. Mostra QR reale, codice, giocatori live, pulsante avvia.
  * Polling ogni 3s su /api/home/sessions/by-code/:code.
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { AudioManager } from '@/audio/AudioManager';
 import { useLocation, useParams } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, Users, Check, Loader2 } from 'lucide-react';
@@ -99,6 +100,13 @@ export default function HomeLobbyPage() {
     const id = setInterval(() => { void poll(); }, 3000);
     return () => clearInterval(id);
   }, [poll]);
+
+  // ── Lobby music ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    AudioManager.stopLoop(true);
+    void AudioManager.playLoop('global', 'lobby_loop');
+    return () => { AudioManager.stopLoop(true); };
+  }, []);
 
   const handleStart = async () => {
     if (!session) return;

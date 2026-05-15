@@ -490,6 +490,10 @@ export default function HomeGame() {
   const [wheelSelected, setWheelSelected] = useState<string | null>(null);
   const [postSpinModal, setPostSpinModal] = useState(false);
   const [postGameCountdown, setPostGameCountdown] = useState<number>(5);
+  // ── Home media (intro videos per game) ────────────────────────────────────
+  type HomeMediaItem = { id: string; name: string; kind: string; url: string; tags: string[] };
+  const [homeMedia, setHomeMedia] = useState<HomeMediaItem[]>([]);
+  const [introVideo, setIntroVideo] = useState<{ url: string; slug: string; timeLimit: number } | null>(null);
 
   const { on } = useHomeSocket(session?.id ?? null);
 
@@ -550,7 +554,8 @@ export default function HomeGame() {
   // ── Audio unlock ────────────────────────────────────────────────────────────
   const unlockAudio = useCallback((_src?: string) => {
     setAudioUnlocked(true);
-    void AudioManager.playLoop('global', 'lobby_loop');
+    AudioManager.stopLoop(true);
+    void AudioManager.playLoop('hub', 'lobby_loop');
   }, []);
 
   // ── Load session from URL ────────────────────────────────────────────────────
@@ -571,6 +576,8 @@ export default function HomeGame() {
           setRevealed(false);
         } else if (p === 'board') {
           setPhase('board');
+          AudioManager.stopLoop(true);
+          void AudioManager.playLoop('hub', 'lobby_loop');
         } else {
           // Session is in lobby/waiting state — hand off to the lobby page
           navigate(`/home-lobby/${data.session.joinCode}`);
@@ -593,6 +600,8 @@ export default function HomeGame() {
       setPhase('board');
       setJonnyMood('excited');
       setJonnyMsg('Scegli il tuo gioco!');
+      AudioManager.stopLoop(true);
+      void AudioManager.playLoop('hub', 'lobby_loop');
     });
     const u3 = on<{ session: HomeSession; players: HomePlayer[]; payload: Record<string, unknown> }>('home:game_started', (d) => {
       setSession(d.session);
@@ -601,6 +610,8 @@ export default function HomeGame() {
       setRevealed(false);
       startTimer(Number(d.payload?.timeLimit ?? 30));
       setJonnyMood('thinking');
+      AudioManager.stopLoop(true);
+      void AudioManager.playLoop(d.session.gameSlug ?? 'global', 'round_loop');
     });
     const u4 = on<{ round: number; payload: Record<string, unknown> }>('home:round', (d) => {
       setSession(prev => prev ? { ...prev, currentRound: d.round, roundPayload: d.payload } : prev);
@@ -613,7 +624,7 @@ export default function HomeGame() {
       setPlayers(d.players);
       setJonnyMood('winner');
       setJonnyMsg(`${ALL_GAMES.find(g => g.slug === d.gameSlug)?.name ?? 'Gioco'} completato! 🎉`);
-      AudioManager.stopLoop();
+      AudioManager.stopLoop(true);
       setPostGame({ gameSlug: d.gameSlug, players: d.players });
     });
     const u6 = on<{ session: HomeSession; players: HomePlayer[] }>('home:champion', (d) => {
@@ -621,6 +632,7 @@ export default function HomeGame() {
       setPlayers(d.players);
       setPhase('champion');
       setJonnyMood('winner');
+      AudioManager.stopLoop(true);
       void AudioManager.playStinger('global', 'podium_theme');
     });
     const u7 = on<{ payload: Record<string, unknown>; players: HomePlayer[] }>('home:card_flip', (d) => {
@@ -674,6 +686,22 @@ export default function HomeGame() {
 
   useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
 
+  // ── Fetch home media (intro videos tagged home_intro_{slug}) ───────────────
+  useEffect(() => {
+    fetch('/api/media')
+      .then(r => r.ok ? r.json() : [])
+      .then((items: HomeMediaItem[]) => {
+        setHomeMedia(items.filter(m => m.kind === 'video' && m.tags?.some(t => t.startsWith('home_intro_'))));
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const getIntroVideoUrl = useCallback((slug: string): string | null => {
+    const tag = `home_intro_${slug}`;
+    return homeMedia.find(m => m.tags?.includes(tag))?.url ?? null;
+  }, [homeMedia]);
+
   // ── API ───────────────────────────────────────────────────────────────────────
 
   const createSession = async () => {
@@ -705,6 +733,8 @@ export default function HomeGame() {
       setPhase('board');
       setJonnyMood('excited');
       setJonnyMsg('Scegli il gioco!');
+      AudioManager.stopLoop(true);
+      void AudioManager.playLoop('hub', 'lobby_loop');
     } finally { setLoading(false); }
   };
 
@@ -721,13 +751,23 @@ export default function HomeGame() {
       const d = await r.json() as { session: HomeSession; players: HomePlayer[] };
       setSession(d.session);
       setPlayers(d.players);
-      setPhase('playing');
-      setRevealed(false);
-      startTimer(Number(d.session.roundPayload?.timeLimit ?? 30));
-      setJonnyMood('thinking');
       const game = ALL_GAMES.find(g => g.slug === slug);
       setJonnyMsg(`${game?.name ?? slug} iniziato!`);
-      void AudioManager.playLoop(slug, 'round_loop');
+      const timeLimit = Number(d.session.roundPayload?.timeLimit ?? 30);
+      // Hard stop board music before anything
+      AudioManager.stopLoop(true);
+      const videoUrl = getIntroVideoUrl(slug);
+      if (videoUrl) {
+        // Show fullscreen intro video — game starts when video ends/errors/skipped
+        setIntroVideo({ url: videoUrl, slug, timeLimit });
+      } else {
+        // No video — start game immediately
+        setPhase('playing');
+        setRevealed(false);
+        startTimer(timeLimit);
+        setJonnyMood('thinking');
+        void AudioManager.playLoop(slug, 'round_loop');
+      }
     } finally { setSelectingGame(null); }
   };
 
@@ -747,7 +787,7 @@ export default function HomeGame() {
         setSession(d.session);
         if (d.players) setPlayers(d.players);
         setJonnyMood('winner');
-        AudioManager.stopLoop();
+        AudioManager.stopLoop(true);
         setPostGame({ gameSlug: finishedSlug ?? '', players: d.players ?? players });
       } else {
         setSession(d.session);
@@ -769,7 +809,7 @@ export default function HomeGame() {
       setSession(d.session);
       setPlayers(d.players);
       setJonnyMood('winner');
-      AudioManager.stopLoop();
+      AudioManager.stopLoop(true);
       setPostGame({ gameSlug: finishedSlug ?? '', players: d.players });
     } finally { setLoading(false); }
   };
@@ -784,6 +824,7 @@ export default function HomeGame() {
       setPlayers(d.players);
       setPhase('champion');
       setJonnyMood('winner');
+      AudioManager.stopLoop(true);
       void AudioManager.playStinger('global', 'podium_theme');
     } finally { setLoading(false); }
   };
@@ -816,12 +857,15 @@ export default function HomeGame() {
           setPlayers(d.players);
           setPhase('champion');
           setJonnyMood('winner');
+          AudioManager.stopLoop(true);
           void AudioManager.playStinger('global', 'podium_theme');
         } finally { setLoading(false); }
       } else {
         setPhase('board');
         setJonnyMood('excited');
         setJonnyMsg('Scegli il gioco!');
+        AudioManager.stopLoop(true);
+        void AudioManager.playLoop('hub', 'lobby_loop');
       }
     }, totalSeconds * 1000);
     return () => { clearTimeout(timer); clearInterval(countdown); };
@@ -1225,6 +1269,56 @@ export default function HomeGame() {
         )}
 
       </AnimatePresence>
+
+      {/* ══ INTRO VIDEO ══ */}
+      {introVideo && (
+        <motion.div
+          key="intro-video"
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black">
+          <video
+            key={introVideo.url}
+            src={introVideo.url}
+            autoPlay
+            playsInline
+            className="h-full w-full object-contain"
+            onEnded={() => {
+              const { slug, timeLimit } = introVideo;
+              setIntroVideo(null);
+              setPhase('playing');
+              setRevealed(false);
+              setJonnyMood('thinking');
+              startTimer(timeLimit);
+              AudioManager.stopLoop(true);
+              void AudioManager.playLoop(slug, 'round_loop');
+            }}
+            onError={() => {
+              const { slug, timeLimit } = introVideo;
+              setIntroVideo(null);
+              setPhase('playing');
+              setRevealed(false);
+              setJonnyMood('thinking');
+              startTimer(timeLimit);
+              AudioManager.stopLoop(true);
+              void AudioManager.playLoop(slug, 'round_loop');
+            }}
+          />
+          <button
+            onClick={() => {
+              const { slug, timeLimit } = introVideo;
+              setIntroVideo(null);
+              setPhase('playing');
+              setRevealed(false);
+              setJonnyMood('thinking');
+              startTimer(timeLimit);
+              AudioManager.stopLoop(true);
+              void AudioManager.playLoop(slug, 'round_loop');
+            }}
+            className="absolute bottom-8 right-8 rounded-2xl border border-white/20 bg-white/10 px-5 py-3 text-sm font-black text-white/60 backdrop-blur-sm transition-colors hover:text-white/90">
+            Salta ▶
+          </button>
+        </motion.div>
+      )}
 
       {/* ══ POST-GAME LEADERBOARD OVERLAY ══ */}
       <AnimatePresence>
