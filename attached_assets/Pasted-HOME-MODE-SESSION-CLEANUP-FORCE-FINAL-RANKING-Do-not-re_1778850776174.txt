@@ -1,0 +1,76 @@
+HOME MODE — SESSION CLEANUP + FORCE FINAL RANKING.
+
+Do not redesign.
+Do not touch live mode.
+Do not touch graphics except minimal button placement.
+Do not change existing gameplay logic.
+
+Audit and patch Home Mode only.
+
+Problems:
+1. If users create a Home room, start playing, then close browser and leave, what happens to that suspended session?
+2. We need automatic cleanup/expiration for abandoned Home sessions.
+3. We need a visible host control to immediately close the current Home game and show final ranking using current scores.
+
+Check:
+- home_sessions table
+- home_players table
+- existing status values
+- created_at / updated_at fields
+- any cleanup already present
+- current champion/final ranking endpoint
+
+Required behavior:
+
+A. Auto expiration
+Home sessions should expire automatically if abandoned.
+
+Rules:
+- lobby/waiting sessions expire after 2 hours of inactivity
+- playing sessions expire after 6 hours of inactivity
+- ended sessions can remain for 24 hours then be deletable/ignored
+- expired sessions must not appear as active rooms
+- joining an expired session must return a clear error
+
+If there is no cleanup job, implement minimal cleanup:
+- add helper cleanupExpiredHomeSessions()
+- run it opportunistically inside:
+  GET /api/home/sessions/by-code/:code
+  POST /api/home/sessions
+  POST /api/home/sessions/:id/join
+
+B. Force final ranking
+Add host control on Home TV screen:
+
+Button:
+"Chiudi e mostra classifica"
+
+Visible when:
+- session status is playing
+- at least one player exists
+
+Action:
+- call existing champion/final endpoint if available
+- if not available, create minimal endpoint:
+  POST /api/home/sessions/:id/finish-now
+
+Behavior:
+- set session.status = ended
+- keep current player scores
+- emit socket event home:champion or equivalent
+- TV shows final ranking immediately
+- phones show final/waiting completed state
+
+C. Safety
+- confirm before closing:
+  "Vuoi chiudere la partita e mostrare la classifica con i punteggi attuali?"
+- no points reset
+- no players removed
+
+Output:
+A. current cleanup status
+B. files modified
+C. expiration rules implemented
+D. force final ranking behavior
+E. typecheck result
+F. manual test steps

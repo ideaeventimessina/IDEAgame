@@ -646,6 +646,19 @@ export default function HomeGame() {
                   style={{background:'rgba(245,182,66,0.15)',border:'1px solid rgba(245,182,66,0.35)',color:'#F5B642'}}>
                   <Users className="inline h-4 w-4 mr-1"/>{players.length}
                 </div>
+                {gamesPlayed.length > 0 && players.length > 0 && (
+                  <button
+                    disabled={loading}
+                    onClick={async () => {
+                      if (window.confirm('Vuoi chiudere la partita e mostrare la classifica con i punteggi attuali?')) {
+                        await goToChampion();
+                      }
+                    }}
+                    className="flex items-center gap-2 rounded-2xl px-4 py-2 text-xs font-black disabled:opacity-40"
+                    style={{background:'rgba(245,182,66,0.12)',border:'1px solid rgba(245,182,66,0.35)',color:'rgba(245,182,66,0.9)'}}>
+                    <Trophy className="h-3.5 w-3.5"/> Chiudi &amp; classifica
+                  </button>
+                )}
                 {allDone && (
                   <motion.button onClick={goToChampion} disabled={loading}
                     whileHover={{scale:1.05}} whileTap={{scale:0.97}}
@@ -812,6 +825,17 @@ export default function HomeGame() {
                   className="flex items-center gap-2 rounded-2xl px-4 py-2 text-xs font-bold disabled:opacity-40"
                   style={{background:'rgba(239,68,68,0.12)',border:'1px solid rgba(239,68,68,0.35)',color:'rgba(239,68,68,0.7)'}}>
                   <X className="h-4 w-4"/> Fine gioco
+                </button>
+                <button
+                  disabled={loading || players.length === 0}
+                  onClick={async () => {
+                    if (window.confirm('Vuoi chiudere la partita e mostrare la classifica con i punteggi attuali?')) {
+                      await goToChampion();
+                    }
+                  }}
+                  className="flex items-center gap-2 rounded-2xl px-4 py-2 text-xs font-bold disabled:opacity-40"
+                  style={{background:'rgba(245,182,66,0.12)',border:'1px solid rgba(245,182,66,0.35)',color:'rgba(245,182,66,0.8)'}}>
+                  <Trophy className="h-4 w-4"/> Chiudi &amp; classifica
                 </button>
               </div>
             </div>

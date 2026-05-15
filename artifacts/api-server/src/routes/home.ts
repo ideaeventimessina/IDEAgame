@@ -18,7 +18,7 @@
  */
 
 import { Router, type IRouter } from "express";
-import { eq, and, asc, desc } from "drizzle-orm";
+import { eq, and, or, lt, asc, desc } from "drizzle-orm";
 import {
   db,
   homeSessionsTable,
@@ -77,6 +77,25 @@ async function broadcastState(sessionId: string) {
   if (!session) return;
   const players = await getPlayers(sessionId);
   emitToRoom(homeRoom(sessionId), "home:state", { session, players });
+}
+
+/**
+ * Opportunistic cleanup of abandoned Home sessions.
+ * lobby  → expire after 2 h of inactivity (updatedAt)
+ * playing → expire after 6 h of inactivity
+ * ended  → expire after 24 h
+ * Players are deleted automatically via ON DELETE CASCADE.
+ */
+async function cleanupExpiredHomeSessions(): Promise<void> {
+  const now = Date.now();
+  const twoH  = new Date(now - 2  * 60 * 60 * 1000);
+  const sixH  = new Date(now - 6  * 60 * 60 * 1000);
+  const dayH  = new Date(now - 24 * 60 * 60 * 1000);
+  await Promise.all([
+    db.delete(homeSessionsTable).where(and(eq(homeSessionsTable.status, "lobby"),   lt(homeSessionsTable.updatedAt, twoH))),
+    db.delete(homeSessionsTable).where(and(eq(homeSessionsTable.status, "playing"), lt(homeSessionsTable.updatedAt, sixH))),
+    db.delete(homeSessionsTable).where(and(eq(homeSessionsTable.status, "ended"),   lt(homeSessionsTable.updatedAt, dayH))),
+  ]);
 }
 
 // ── Coppie card types ─────────────────────────────────────────────────────────
@@ -480,6 +499,9 @@ async function loadGameRounds(gameSlug: string): Promise<RoundPayload[]> {
 
 // ── POST /home/sessions ────────────────────────────────────────────────────────
 router.post("/home/sessions", async (req, res): Promise<void> => {
+  // Opportunistic cleanup of stale sessions before creating a new one
+  void cleanupExpiredHomeSessions().catch(() => {});
+
   const hostName      = String(req.body?.hostName ?? "Casa").slice(0, 50);
   const maxPlayers    = Math.min(Math.max(Number(req.body?.maxPlayers ?? 8), 2), 50);
   const selectedGames = Array.isArray(req.body?.selectedGames) ? req.body.selectedGames as string[] : [];
@@ -493,7 +515,7 @@ router.post("/home/sessions", async (req, res): Promise<void> => {
     joinCode = makeJoinCode();
   }
 
-  const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000);
+  const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000); // lobby: 2 h inactivity window
   const [session] = await db.insert(homeSessionsTable).values({
     joinCode,
     hostName,
@@ -513,13 +535,15 @@ router.post("/home/sessions", async (req, res): Promise<void> => {
 
 // ── GET /home/sessions/by-code/:code ──────────────────────────────────────────
 router.get("/home/sessions/by-code/:code", async (req, res): Promise<void> => {
+  void cleanupExpiredHomeSessions().catch(() => {});
+
   const code = String(req.params["code"]).toUpperCase().trim();
   const [session] = await db.select().from(homeSessionsTable)
     .where(eq(homeSessionsTable.joinCode, code));
 
   if (!session) { res.status(404).json({ error: "Sessione non trovata" }); return; }
   if (session.status === "ended") { res.status(409).json({ error: "Sessione terminata" }); return; }
-  if (new Date() > session.expiresAt) { res.status(409).json({ error: "Sessione scaduta" }); return; }
+  if (new Date() > session.expiresAt) { res.status(410).json({ error: "Sessione scaduta o abbandonata" }); return; }
 
   const players = await getPlayers(session.id);
   res.json({ session, players });
@@ -542,9 +566,12 @@ router.post("/home/sessions/:id/join", async (req, res): Promise<void> => {
   const id = String(req.params["id"]);
   if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
 
+  void cleanupExpiredHomeSessions().catch(() => {});
+
   const session = await getSession(id);
   if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
   if (session.status === "ended") { res.status(409).json({ error: "Sessione terminata" }); return; }
+  if (new Date() > session.expiresAt) { res.status(410).json({ error: "Sessione scaduta o abbandonata" }); return; }
 
   const nickname = String(req.body?.nickname ?? "").trim().slice(0, 30);
   if (!nickname) { res.status(400).json({ error: "Nickname obbligatorio" }); return; }
@@ -618,6 +645,7 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
     currentRound: 0,
     totalRounds: preloadedRounds.length,
     roundPayload: firstRound,
+    expiresAt: new Date(Date.now() + 6 * 60 * 60 * 1000), // playing: 6 h inactivity window
   }).where(eq(homeSessionsTable.id, id)).returning();
 
   const players = await getPlayers(id);
@@ -872,8 +900,11 @@ router.post("/home/sessions/:id/champion", async (req, res): Promise<void> => {
   const id = String(req.params["id"]);
   if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
 
-  const [updated] = await db.update(homeSessionsTable).set({ status: "ended", gameSlug: null })
-    .where(eq(homeSessionsTable.id, id)).returning();
+  const [updated] = await db.update(homeSessionsTable).set({
+    status: "ended",
+    gameSlug: null,
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // ended: retained 24 h
+  }).where(eq(homeSessionsTable.id, id)).returning();
 
   if (!updated) { res.status(404).json({ error: "Non trovata" }); return; }
 
