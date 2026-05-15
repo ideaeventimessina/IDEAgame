@@ -881,14 +881,14 @@ function RoundBoard({ session, revealed, onReveal, onNext, players, onScore }: {
   const mode = String(p.mode ?? 'home-quiz');
 
   if (mode === 'home-quiz')       return <QuizBoard payload={p} revealed={revealed} onReveal={onReveal}/>;
-  if (mode === 'home-ballo')      return <BalloBoard payload={p} onReveal={onReveal}/>;
+  if (mode === 'home-ballo')      return <BalloBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
   if (mode === 'home-percorso')   return <PercorsoBoard payload={p} onReveal={onReveal}/>;
   if (mode === 'home-coppie')     return <CoppieBoard payload={p} onNext={onNext}/>;
   if (mode === 'home-saramusica') return <SaraMusicaBoard payload={p} revealed={revealed} onReveal={onReveal}/>;
-  if (mode === 'home-adult')      return <AdultOnlyBoard payload={p} revealed={revealed} onReveal={onReveal}/>;
+  if (mode === 'home-adult')      return <AdultOnlyBoard payload={p} revealed={revealed} onReveal={onReveal} players={players} onScore={onScore}/>;
   if (mode === 'home-wordback')   return <WordBackBoard payload={p} players={players} onScore={onScore} onReveal={onReveal}/>;
-  if (mode === 'home-karaoke')    return <KaraokeBoard payload={p} onReveal={onReveal}/>;
-  if (mode === 'home-freestyle')  return <FreestyleBoard payload={p} onReveal={onReveal}/>;
+  if (mode === 'home-karaoke')    return <KaraokeBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
+  if (mode === 'home-freestyle')  return <FreestyleBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
   return <div className="text-white/40 text-2xl">Caricamento gioco…</div>;
 }
 
@@ -949,7 +949,14 @@ function QuizBoard({ payload, revealed, onReveal }: { payload: Record<string,unk
 
 // ── BalloBoard ────────────────────────────────────────────────────────────────
 
-function BalloBoard({ payload, onReveal }: { payload: Record<string,unknown>; onReveal: () => void }) {
+function BalloBoard({ payload, onReveal, players, onScore }: {
+  payload: Record<string,unknown>;
+  onReveal: () => void;
+  players: HomePlayer[];
+  onScore: (pid: string, pts: number) => Promise<void>;
+}) {
+  const [awarded, setAwarded] = useState<string|null>(null);
+  const pts = Number(payload.points ?? 150);
   return (
     <motion.div key={String(payload.roundIndex)} initial={{scale:0.9,opacity:0}} animate={{scale:1,opacity:1}}
       className="flex w-full max-w-2xl flex-col items-center gap-7 text-center">
@@ -971,10 +978,24 @@ function BalloBoard({ payload, onReveal }: { payload: Record<string,unknown>; on
       <div className="text-6xl font-black" style={{color:'#A78BFA',textShadow:'0 0 30px rgba(167,139,250,0.6)'}}>
         {Number(payload.duration ?? 60)}s
       </div>
-      <button onClick={onReveal} className="flex items-center gap-3 rounded-2xl px-10 py-5 text-xl font-black text-white"
-        style={{background:'linear-gradient(135deg,#A78BFA,#7c3aed)',boxShadow:'0 0 50px rgba(167,139,250,0.55)'}}>
-        <Check className="h-6 w-6"/> Sfida completata!
-      </button>
+      <div className="text-base text-white/50">Chi ha ballato meglio? Assegna i punti ({pts}pt):</div>
+      <div className="flex flex-wrap justify-center gap-3">
+        {players.map(p => (
+          <button key={p.id} disabled={!!awarded}
+            onClick={async () => { setAwarded(p.id); await onScore(p.id, p.score + pts); onReveal(); }}
+            className="rounded-2xl px-5 py-3 text-sm font-black transition-all disabled:opacity-50"
+            style={awarded===p.id
+              ? {background:'linear-gradient(135deg,#A78BFA,#7c3aed)',color:'#fff',boxShadow:'0 0 30px rgba(167,139,250,0.6)'}
+              : {background:`linear-gradient(135deg,${p.avatarColor},${p.avatarColor}cc)`,color:'#000'}}>
+            {p.nickname} {awarded===p.id && '✓'}
+          </button>
+        ))}
+        <button disabled={!!awarded} onClick={() => onReveal()}
+          className="rounded-2xl px-5 py-3 text-sm font-black transition-all"
+          style={{background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.14)',color:'rgba(255,255,255,0.5)'}}>
+          Nessuno
+        </button>
+      </div>
     </motion.div>
   );
 }
@@ -1107,7 +1128,15 @@ function SaraMusicaBoard({ payload, revealed, onReveal }: { payload: Record<stri
 
 // ── AdultOnlyBoard ────────────────────────────────────────────────────────────
 
-function AdultOnlyBoard({ payload, revealed, onReveal }: { payload: Record<string,unknown>; revealed: boolean; onReveal: () => void }) {
+function AdultOnlyBoard({ payload, revealed, onReveal, players, onScore }: {
+  payload: Record<string,unknown>;
+  revealed: boolean;
+  onReveal: () => void;
+  players: HomePlayer[];
+  onScore: (pid: string, pts: number) => Promise<void>;
+}) {
+  const [awarded, setAwarded] = useState<string|null>(null);
+  const pts = Number(payload.points ?? 150);
   return (
     <motion.div key={String(payload.roundIndex)} initial={{scale:0.9,opacity:0}} animate={{scale:1,opacity:1}}
       className="flex w-full max-w-2xl flex-col items-center gap-7 text-center">
@@ -1122,17 +1151,38 @@ function AdultOnlyBoard({ payload, revealed, onReveal }: { payload: Record<strin
       </div>
       <div className="flex items-center gap-4">
         <div className="rounded-2xl px-4 py-2" style={{background:'rgba(248,113,113,0.18)',color:'#F87171',border:'1px solid rgba(248,113,113,0.45)'}}>
-          <span className="font-black">{Number(payload.points??150)} pt</span>
+          <span className="font-black">{pts} pt</span>
         </div>
         <div className="rounded-2xl px-4 py-2" style={{background:'rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.6)',border:'1px solid rgba(255,255,255,0.14)'}}>
           <Timer className="inline h-4 w-4 mr-1"/><span className="font-black">{Number(payload.timeLimit??90)}s</span>
         </div>
       </div>
-      {!revealed && (
+      {!revealed ? (
         <button onClick={onReveal} className="flex items-center gap-3 rounded-2xl px-10 py-5 text-xl font-black text-white"
           style={{background:'linear-gradient(135deg,#F87171,#dc2626)',boxShadow:'0 0 50px rgba(248,113,113,0.55)'}}>
           <Check className="h-6 w-6"/> Sfida completata!
         </button>
+      ) : (
+        <>
+          <div className="text-base text-white/50">Chi l'ha completata? Assegna i punti ({pts}pt):</div>
+          <div className="flex flex-wrap justify-center gap-3">
+            {players.map(p => (
+              <button key={p.id} disabled={!!awarded}
+                onClick={async () => { setAwarded(p.id); await onScore(p.id, p.score + pts); }}
+                className="rounded-2xl px-5 py-3 text-sm font-black transition-all disabled:opacity-50"
+                style={awarded===p.id
+                  ? {background:'linear-gradient(135deg,#F87171,#dc2626)',color:'#fff',boxShadow:'0 0 30px rgba(248,113,113,0.6)'}
+                  : {background:`linear-gradient(135deg,${p.avatarColor},${p.avatarColor}cc)`,color:'#000'}}>
+                {p.nickname} {awarded===p.id && '✓'}
+              </button>
+            ))}
+            <button disabled={!!awarded} onClick={() => {}}
+              className="rounded-2xl px-5 py-3 text-sm font-black transition-all"
+              style={{background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.14)',color:'rgba(255,255,255,0.5)'}}>
+              Nessuno
+            </button>
+          </div>
+        </>
       )}
     </motion.div>
   );
@@ -1194,7 +1244,14 @@ function WordBackBoard({ payload, players, onScore, onReveal }: {
 
 // ── KaraokeBoard ──────────────────────────────────────────────────────────────
 
-function KaraokeBoard({ payload, onReveal }: { payload: Record<string,unknown>; onReveal: () => void }) {
+function KaraokeBoard({ payload, onReveal, players, onScore }: {
+  payload: Record<string,unknown>;
+  onReveal: () => void;
+  players: HomePlayer[];
+  onScore: (pid: string, pts: number) => Promise<void>;
+}) {
+  const [awarded, setAwarded] = useState<string|null>(null);
+  const pts = Number(payload.points ?? 150);
   return (
     <motion.div key={String(payload.roundIndex)} initial={{scale:0.9,opacity:0}} animate={{scale:1,opacity:1}}
       className="flex w-full max-w-2xl flex-col items-center gap-7 text-center">
@@ -1213,17 +1270,38 @@ function KaraokeBoard({ payload, onReveal }: { payload: Record<string,unknown>; 
           </div>
         </div>
       )}
-      <button onClick={onReveal} className="flex items-center gap-3 rounded-2xl px-10 py-5 text-xl font-black text-white"
-        style={{background:'linear-gradient(135deg,#FB923C,#ea580c)',boxShadow:'0 0 50px rgba(251,146,60,0.55)'}}>
-        🎤 Cantato! Prossimo
-      </button>
+      <div className="text-base text-white/50">Chi ha cantato meglio? Assegna i punti ({pts}pt):</div>
+      <div className="flex flex-wrap justify-center gap-3">
+        {players.map(p => (
+          <button key={p.id} disabled={!!awarded}
+            onClick={async () => { setAwarded(p.id); await onScore(p.id, p.score + pts); onReveal(); }}
+            className="rounded-2xl px-5 py-3 text-sm font-black transition-all disabled:opacity-50"
+            style={awarded===p.id
+              ? {background:'linear-gradient(135deg,#FB923C,#ea580c)',color:'#fff',boxShadow:'0 0 30px rgba(251,146,60,0.6)'}
+              : {background:`linear-gradient(135deg,${p.avatarColor},${p.avatarColor}cc)`,color:'#000'}}>
+            {p.nickname} {awarded===p.id && '✓'}
+          </button>
+        ))}
+        <button disabled={!!awarded} onClick={() => onReveal()}
+          className="rounded-2xl px-5 py-3 text-sm font-black transition-all"
+          style={{background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.14)',color:'rgba(255,255,255,0.5)'}}>
+          Nessuno
+        </button>
+      </div>
     </motion.div>
   );
 }
 
 // ── FreestyleBoard ────────────────────────────────────────────────────────────
 
-function FreestyleBoard({ payload, onReveal }: { payload: Record<string,unknown>; onReveal: () => void }) {
+function FreestyleBoard({ payload, onReveal, players, onScore }: {
+  payload: Record<string,unknown>;
+  onReveal: () => void;
+  players: HomePlayer[];
+  onScore: (pid: string, pts: number) => Promise<void>;
+}) {
+  const [awarded, setAwarded] = useState<string|null>(null);
+  const pts = Number(payload.points ?? 200);
   const trackIdx = Number(payload.roundIndex ?? 0) % FREESTYLE_TRACKS.length;
   const trackUrl = FREESTYLE_TRACKS[trackIdx] ?? FREESTYLE_TRACKS[0];
   return (
@@ -1242,10 +1320,24 @@ function FreestyleBoard({ payload, onReveal }: { payload: Record<string,unknown>
       </div>
       <div className="text-lg text-white/55">Improvvisa un freestyle su questa parola — {Number(payload.timeLimit??30)} secondi!</div>
       <AudioPlayer src={trackUrl} label="Avvia base musicale" color="#FB923C"/>
-      <button onClick={onReveal} className="flex items-center gap-3 rounded-2xl px-10 py-5 text-xl font-black text-white"
-        style={{background:'linear-gradient(135deg,#FB923C,#ea580c)',boxShadow:'0 0 50px rgba(251,146,60,0.55)'}}>
-        🎙️ Freestyle fatto!
-      </button>
+      <div className="text-base text-white/50">Chi ha rappato meglio? Assegna i punti ({pts}pt):</div>
+      <div className="flex flex-wrap justify-center gap-3">
+        {players.map(p => (
+          <button key={p.id} disabled={!!awarded}
+            onClick={async () => { setAwarded(p.id); await onScore(p.id, p.score + pts); onReveal(); }}
+            className="rounded-2xl px-5 py-3 text-sm font-black transition-all disabled:opacity-50"
+            style={awarded===p.id
+              ? {background:'linear-gradient(135deg,#FB923C,#ea580c)',color:'#fff',boxShadow:'0 0 30px rgba(251,146,60,0.6)'}
+              : {background:`linear-gradient(135deg,${p.avatarColor},${p.avatarColor}cc)`,color:'#000'}}>
+            {p.nickname} {awarded===p.id && '✓'}
+          </button>
+        ))}
+        <button disabled={!!awarded} onClick={() => onReveal()}
+          className="rounded-2xl px-5 py-3 text-sm font-black transition-all"
+          style={{background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.14)',color:'rgba(255,255,255,0.5)'}}>
+          Nessuno
+        </button>
+      </div>
     </motion.div>
   );
 }
