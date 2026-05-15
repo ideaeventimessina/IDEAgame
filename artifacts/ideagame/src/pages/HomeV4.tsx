@@ -6,14 +6,21 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation } from 'wouter';
 import { motion, AnimatePresence, useAnimation } from 'framer-motion';
 import { RotateCcw, Users, Trophy, Zap, Star, ChevronRight } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
+import {
+  useListGames, useGetScoreboard,
+  type ScoreboardEntry, type Game as ApiGame,
+} from '@workspace/api-client-react';
 
 /* ─── Jonny poses: PNG transparent — no blend mode needed */
 /* jonnyNobg = /public/jonny-master-nobg.png (already no background) */
 
 /* ─── types ─────────────────────────────────────── */
 type Screen = 'show' | 'arena' | 'podium';
-interface Game   { slug:string; label:string; short:string; color:string; glow:string; desc:string; players:string; diff:string; }
-interface Player { id:number; name:string; score:number; delta:number; }
+interface Game       { slug:string; label:string; short:string; color:string; glow:string; desc:string; players:string; diff:string; }
+interface LiveEvent  { id:string; name:string; joinCode:string; }
+interface LivePlayer { id:string; nickname:string; teamId:string|null; }
+interface LiveState  { event:LiveEvent|null; players:LivePlayer[]; loading:boolean; }
 
 /* ─── data ──────────────────────────────────────── */
 const GAMES: Game[] = [
@@ -27,14 +34,6 @@ const GAMES: Game[] = [
   { slug:'karaoke',   label:'Karaoke Battle',     short:'KARAOKE',   color:'#6633CC', glow:'#C084FC', desc:'Canta, stona, vinci. Il pubblico decide tutto.',        players:'2-16', diff:'Facile'  },
 ];
 
-const PLAYERS: Player[] = [
-  { id:1, name:'Giulia',  score:5100, delta:450 },
-  { id:2, name:'Sofia',   score:4800, delta:390 },
-  { id:3, name:'Chiara',  score:4650, delta:310 },
-  { id:4, name:'Marco',   score:4200, delta:280 },
-  { id:5, name:'Lorenzo', score:3900, delta:210 },
-  { id:6, name:'Davide',  score:3500, delta:175 },
-];
 
 const PLAYER_COLORS = ['#F5B642','#A855F7','#EC4899','#34D399','#60A5FA','#FB923C'];
 
@@ -43,6 +42,40 @@ const BASE = (import.meta.env.BASE_URL as string) ?? '/';
 function pub(path: string) {
   const b = BASE.endsWith('/') ? BASE.slice(0, -1) : BASE;
   return `${b}${path}`;
+}
+
+/* ─── live-state hook (public endpoint, no auth) ─── */
+function useLiveState(): LiveState {
+  const [state, setState] = useState<LiveState>({ event:null, players:[], loading:true });
+  useEffect(()=>{
+    let alive = true;
+    const load = () =>
+      fetch('/api/events/public/live-state')
+        .then(r=>r.json())
+        .then((d:{event:LiveEvent|null;players:LivePlayer[]})=>{
+          if(alive) setState({ event:d.event, players:d.players??[], loading:false });
+        })
+        .catch(()=>{ if(alive) setState(s=>({...s,loading:false})); });
+    load();
+    const t = setInterval(load, 5000);
+    return ()=>{ alive=false; clearInterval(t); };
+  },[]);
+  return state;
+}
+
+/* ─── map API game → local Game type ─────────────── */
+function mapApiGame(g: ApiGame): Game {
+  const style = GAMES.find(s=>s.slug===g.slug);
+  return {
+    slug:    g.slug,
+    label:   g.name,
+    short:   style?.short ?? g.name.split(' ')[0].toUpperCase().slice(0,7),
+    color:   style?.color ?? (g.accentColor as string) ?? '#7C3AED',
+    glow:    style?.glow  ?? (g.accentColor as string) ?? '#A855F7',
+    desc:    (g.tagline as string) ?? style?.desc ?? '',
+    players: style?.players ?? '2-20',
+    diff:    style?.diff    ?? 'Media',
+  };
 }
 
 /* ─── stable random seed (no re-render drift) ────── */
@@ -82,18 +115,19 @@ function SectorIcon({ slug }: { slug: string }) {
 }
 
 /* ─── wheel ──────────────────────────────────────── */
-function GameWheel({ selected, onSelect, spinning }: {
-  selected: Game; onSelect:(g:Game)=>void; spinning:boolean;
+function GameWheel({ selected, onSelect, spinning, games = GAMES }: {
+  selected: Game; onSelect:(g:Game)=>void; spinning:boolean; games?: Game[];
 }) {
   const cx=220, cy=220, r=183, ri=60;
   const controls = useAnimation();
 
   useEffect(()=>{
     if(spinning){
-      const idx = GAMES.findIndex(g=>g.slug===selected.slug);
-      controls.start({ rotate:[0, 1620+idx*45], transition:{ duration:2.8, ease:'easeInOut' as const } });
+      const idx = games.findIndex(g=>g.slug===selected.slug);
+      const sliceAngle = games.length > 0 ? 360/games.length : 45;
+      controls.start({ rotate:[0, 1620+idx*sliceAngle], transition:{ duration:2.8, ease:'easeInOut' as const } });
     }
-  },[spinning, selected, controls]);
+  },[spinning, selected, controls, games]);
 
   const BULBS = 48;
   const bulbR = r+17;
@@ -103,7 +137,7 @@ function GameWheel({ selected, onSelect, spinning }: {
       <motion.div animate={controls} style={{ transformOrigin:'center', width:'100%', height:'100%' }}>
         <svg viewBox="0 0 440 440" width="100%" height="100%">
           <defs>
-            {GAMES.map(g=>(
+            {games.map(g=>(
               <radialGradient key={g.slug} id={`gw-${g.slug}`} cx="38%" cy="28%" r="75%">
                 <stop offset="0%" stopColor={g.glow} stopOpacity="1"/>
                 <stop offset="55%" stopColor={g.color} stopOpacity="1"/>
@@ -159,8 +193,9 @@ function GameWheel({ selected, onSelect, spinning }: {
           <circle cx={cx} cy={cy} r={r+5}  fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="1.5"/>
 
           {/* sectors */}
-          {GAMES.map((g,i)=>{
-            const a1=i*45, a2=(i+1)*45;
+          {games.map((g,i)=>{
+            const sliceAng = 360/games.length;
+            const a1=i*sliceAng, a2=(i+1)*sliceAng;
             const isSel = g.slug===selected.slug;
             const lbl   = midPt(cx,cy,r*0.70,a1,a2);
             const iconPt= midPt(cx,cy,r*0.52,a1,a2);
@@ -191,8 +226,9 @@ function GameWheel({ selected, onSelect, spinning }: {
           })}
 
           {/* dividers */}
-          {GAMES.map((_,i)=>{
-            const p1=polar(cx,cy,ri+4,i*45), p2=polar(cx,cy,r-4,i*45);
+          {games.map((_,i)=>{
+            const sliceAng = 360/games.length;
+            const p1=polar(cx,cy,ri+4,i*sliceAng), p2=polar(cx,cy,r-4,i*sliceAng);
             return <line key={i} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="rgba(0,0,0,0.65)" strokeWidth="1.5"/>;
           })}
 
@@ -508,15 +544,29 @@ function GameCard({ game }: { game: Game }) {
 }
 
 /* ─── classifica ─────────────────────────────────── */
-function Classifica() {
-  const glowFor = (i:number) => i===0?'rgba(245,182,66,0.7)':i===1?'rgba(192,192,192,0.5)':i===2?'rgba(205,127,50,0.45)':undefined;
+function Classifica({ players, scoreboard }: { players: LivePlayer[]; scoreboard: ScoreboardEntry[]; }) {
+  const glowFor  = (i:number) => i===0?'rgba(245,182,66,0.7)':i===1?'rgba(192,192,192,0.5)':i===2?'rgba(205,127,50,0.45)':undefined;
   const borderFor= (i:number) => i===0?'rgba(245,182,66,0.5)':i===1?'rgba(192,192,192,0.35)':i===2?'rgba(205,127,50,0.35)':'rgba(255,255,255,0.07)';
-  const bgFor   = (i:number) => i===0?'linear-gradient(135deg,rgba(245,182,66,0.22),rgba(245,182,66,0.06))'
-                               :i===1?'linear-gradient(135deg,rgba(192,192,192,0.12),rgba(192,192,192,0.04))'
-                               :i===2?'linear-gradient(135deg,rgba(205,127,50,0.12),rgba(205,127,50,0.04))'
-                               :'rgba(255,255,255,0.04)';
-  const avSize  = (i:number) => i<3?'w-10 h-10':'w-8 h-8';
-  const rankLabel=(i:number)=>['🥇','🥈','🥉'][i]??`${i+1}`;
+  const bgFor    = (i:number) => i===0?'linear-gradient(135deg,rgba(245,182,66,0.22),rgba(245,182,66,0.06))'
+                                :i===1?'linear-gradient(135deg,rgba(192,192,192,0.12),rgba(192,192,192,0.04))'
+                                :i===2?'linear-gradient(135deg,rgba(205,127,50,0.12),rgba(205,127,50,0.04))'
+                                :'rgba(255,255,255,0.04)';
+  const avSize   = (i:number) => i<3?'w-10 h-10':'w-8 h-8';
+  const rankLabel= (i:number) => ['🥇','🥈','🥉'][i]??`${i+1}`;
+
+  /* ── build score lookup teamId → total ── */
+  const teamScore = useMemo(()=>{
+    const m: Record<string,number> = {};
+    scoreboard.forEach(e=>{ m[e.teamId]=e.total; });
+    return m;
+  },[scoreboard]);
+
+  /* ── sort players by their team score desc ── */
+  const sorted = useMemo(()=>
+    [...players].sort((a,b)=>(teamScore[b.teamId??'']??0)-(teamScore[a.teamId??'']??0))
+  ,[players, teamScore]);
+
+  const isEmpty = sorted.length === 0;
 
   return (
     <div className="rounded-2xl overflow-hidden h-full flex flex-col"
@@ -528,50 +578,57 @@ function Classifica() {
           borderBottom:'1px solid rgba(245,182,66,0.25)' }}>
         <Trophy size={13} className="text-yellow-400"/>
         <span style={{ fontSize:'0.6rem', letterSpacing:'0.22em', color:'#F5B642' }}>Classifica Live</span>
-        <span className="ml-auto rounded-full px-2 py-0.5 font-black"
-          style={{ background:'rgba(245,182,66,0.2)', color:'#F5B642', fontSize:'0.55rem' }}>LIVE</span>
+        <motion.span className="ml-auto rounded-full px-2 py-0.5 font-black"
+          animate={{ opacity:[1,0.5,1] }} transition={{ duration:1.4, repeat:Infinity }}
+          style={{ background:'rgba(245,182,66,0.2)', color:'#F5B642', fontSize:'0.55rem' }}>LIVE</motion.span>
       </div>
       {/* players */}
-      <div className="flex flex-col p-2 gap-1.5 flex-1">
-        {PLAYERS.map((p,i)=>(
-          <motion.div key={p.id} className={`flex items-center gap-2 rounded-xl px-2.5 py-1.5 ${i<3?'':'py-1.5'}`}
-            initial={{ x:-30, opacity:0 }} animate={{ x:0, opacity:1 }}
-            transition={{ delay:i*0.07, ease:'easeOut' as const }}
-            style={{ background:bgFor(i), border:`1px solid ${borderFor(i)}`,
-              boxShadow:glowFor(i)?`0 0 18px ${glowFor(i)}`:undefined }}>
-            {/* rank */}
-            <span className="shrink-0 text-center" style={{ fontSize:i<3?'0.9rem':'0.7rem', width:i<3?20:16, lineHeight:1 }}>
-              {rankLabel(i)}
+      <div className="flex flex-col p-2 gap-1.5 flex-1 overflow-hidden">
+        {isEmpty ? (
+          <div className="flex-1 flex flex-col items-center justify-center gap-2 opacity-50">
+            <Users size={22} className="text-purple-400"/>
+            <span style={{ fontSize:'0.7rem', color:'rgba(255,255,255,0.4)', textAlign:'center' }}>
+              Nessun giocatore<br/>connesso
             </span>
-            {/* avatar */}
-            <div className={`${avSize(i)} rounded-full flex items-center justify-center font-black shrink-0 relative`}
-              style={{ background:`${PLAYER_COLORS[i]}2A`,
-                border:`2.5px solid ${PLAYER_COLORS[i]}${i<3?'cc':'66'}`,
-                color:PLAYER_COLORS[i], fontSize:i<3?'0.85rem':'0.72rem',
-                boxShadow:i<3?`0 0 14px ${PLAYER_COLORS[i]}66`:undefined }}>
-              {p.name[0]}
-            </div>
-            {/* name + delta */}
-            <div className="flex-1 min-w-0">
-              <div className="font-black text-white truncate" style={{ fontSize:i<3?'0.85rem':'0.78rem' }}>{p.name}</div>
-              {i<3 && <div style={{ fontSize:'0.58rem', color:'rgba(52,211,153,0.8)' }}>+{p.delta}</div>}
-            </div>
-            {/* score */}
-            <div className="font-black shrink-0" style={{
-              color:i===0?'#F5B642':i===1?'#C8C8C8':i===2?'#CD7F32':'rgba(255,255,255,0.55)',
-              fontSize:i<3?'0.88rem':'0.78rem',
-              textShadow:i<3?`0 0 12px ${PLAYER_COLORS[i]}`:undefined }}>
-              {(p.score/1000).toFixed(1)}k
-            </div>
-          </motion.div>
-        ))}
+          </div>
+        ) : sorted.map((p,i)=>{
+          const score = teamScore[p.teamId??''] ?? 0;
+          const color = PLAYER_COLORS[i % PLAYER_COLORS.length];
+          return (
+            <motion.div key={p.id} className="flex items-center gap-2 rounded-xl px-2.5 py-1.5"
+              initial={{ x:-30, opacity:0 }} animate={{ x:0, opacity:1 }}
+              transition={{ delay:i*0.05, ease:'easeOut' as const }}
+              style={{ background:bgFor(i), border:`1px solid ${borderFor(i)}`,
+                boxShadow:glowFor(i)?`0 0 18px ${glowFor(i)}`:undefined }}>
+              <span className="shrink-0 text-center" style={{ fontSize:i<3?'0.9rem':'0.7rem', width:i<3?20:16, lineHeight:1 }}>
+                {rankLabel(i)}
+              </span>
+              <div className={`${avSize(i)} rounded-full flex items-center justify-center font-black shrink-0`}
+                style={{ background:`${color}2A`, border:`2.5px solid ${color}${i<3?'cc':'66'}`,
+                  color, fontSize:i<3?'0.85rem':'0.72rem', boxShadow:i<3?`0 0 14px ${color}66`:undefined }}>
+                {p.nickname[0]?.toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-black text-white truncate" style={{ fontSize:i<3?'0.85rem':'0.78rem' }}>{p.nickname}</div>
+              </div>
+              {score > 0 && (
+                <div className="font-black shrink-0" style={{
+                  color:i===0?'#F5B642':i===1?'#C8C8C8':i===2?'#CD7F32':'rgba(255,255,255,0.55)',
+                  fontSize:i<3?'0.88rem':'0.78rem',
+                  textShadow:i<3?`0 0 12px ${color}`:undefined }}>
+                  {score >= 1000 ? `${(score/1000).toFixed(1)}k` : score}
+                </div>
+              )}
+            </motion.div>
+          );
+        })}
       </div>
       {/* footer */}
       <div className="mx-3 mb-3 rounded-xl px-3 py-2 flex items-center gap-2 shrink-0"
         style={{ background:'rgba(124,58,237,0.2)', border:'1px solid rgba(124,58,237,0.35)' }}>
         <Users size={12} className="text-purple-400 shrink-0"/>
         <span className="font-black text-white" style={{ fontSize:'0.72rem' }}>
-          <span style={{ color:'#A855F7' }}>{PLAYERS.length}</span> Giocatori Connessi
+          <span style={{ color:'#A855F7' }}>{sorted.length}</span> Giocatori Connessi
         </span>
         <motion.div className="ml-auto w-2 h-2 rounded-full bg-green-400 shrink-0"
           animate={{ opacity:[1,0,1] }} transition={{ duration:1.2, repeat:Infinity }}/>
@@ -788,16 +845,63 @@ function ShowLanding({ onArena }: { onArena:()=>void }) {
 
 /* ─── screen: ARENA ──────────────────────────────── */
 function Arena({ onPodium }: { onPodium:()=>void }) {
-  const [selected, setSelected] = useState(GAMES[0]);
+  /* ── real data ── */
+  const live = useLiveState();
+  const { data: apiGames = [] } = useListGames();
+  const scoreboard = useGetScoreboard(live.event?.id ?? '', {
+    query: { queryKey: ['scoreboard', live.event?.id], enabled: !!live.event?.id },
+  });
+  const scoreboardData: ScoreboardEntry[] = (scoreboard.data ?? []) as ScoreboardEntry[];
+
+  /* ── map API games → local Game type; fall back to GAMES if API empty ── */
+  const realGames: Game[] = useMemo(()=>
+    apiGames.length > 0 ? apiGames.map(mapApiGame) : GAMES
+  ,[apiGames]);
+
+  const [selected, setSelected] = useState<Game>(realGames[0] ?? GAMES[0]);
   const [spinning, setSpinning]  = useState(false);
 
+  /* keep selected in sync when realGames loads */
+  useEffect(()=>{
+    if(realGames.length > 0 && !realGames.find(g=>g.slug===selected.slug)){
+      setSelected(realGames[0]);
+    }
+  },[realGames, selected.slug]);
+
   const handleSpin = useCallback(()=>{
-    if(spinning) return;
-    const rnd = GAMES[Math.floor(Math.random()*GAMES.length)];
+    if(spinning || realGames.length === 0) return;
+    const rnd = realGames[Math.floor(Math.random()*realGames.length)];
     setSelected(rnd);
     setSpinning(true);
     setTimeout(()=>setSpinning(false), 3000);
-  },[spinning]);
+  },[spinning, realGames]);
+
+  /* ── join URL for QR ── */
+  const joinUrl = live.event
+    ? `${typeof window !== 'undefined' ? window.location.origin : ''}/play?e=${live.event.joinCode}`
+    : '';
+
+  /* ── no live event → empty state ── */
+  if (!live.loading && !live.event) {
+    return (
+      <motion.div key="arena-empty" className="absolute inset-0 flex flex-col items-center justify-center gap-4 z-20"
+        initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}>
+        <Stage/>
+        <div style={{ position:'relative', zIndex:20, textAlign:'center' }}>
+          <div style={{ fontSize:'clamp(2rem,4vw,3rem)', marginBottom:8 }}>🎪</div>
+          <div className="font-black text-white" style={{
+            fontFamily:"'Outfit','Arial Black',sans-serif",
+            fontSize:'clamp(1.3rem,2.5vw,2rem)',
+            textShadow:'0 0 40px rgba(168,85,247,0.6)' }}>
+            Nessun evento live
+          </div>
+          <div style={{ fontSize:'0.85rem', color:'rgba(255,255,255,0.4)', marginTop:8 }}>
+            Avvia un evento dal pannello admin per iniziare
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div key="arena" className="absolute inset-0"
@@ -823,14 +927,35 @@ function Arena({ onPodium }: { onPodium:()=>void }) {
             filter:'drop-shadow(0 0 30px rgba(245,182,66,0.7)) drop-shadow(0 0 70px rgba(168,85,247,0.4))' }}/>
       </motion.div>
 
-      {/* top-right: empty spacer (QR appartiene solo alla fase attesa giocatori) */}
-      <div className="z-20"/>
+      {/* top-right: join code + QR */}
+      <div className="flex flex-col items-end justify-center pr-4 pt-2 z-20">
+        {live.event && (
+          <motion.div initial={{ opacity:0, x:20 }} animate={{ opacity:1, x:0 }} transition={{ delay:0.15 }}
+            style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4,
+              background:'rgba(10,2,28,0.88)', border:'1.5px solid rgba(245,182,66,0.35)',
+              borderRadius:14, padding:'8px 12px',
+              backdropFilter:'blur(12px)',
+              boxShadow:'0 0 24px rgba(245,182,66,0.25)' }}>
+            <div style={{ fontFamily:"'Outfit','Arial Black',sans-serif", fontWeight:900,
+              fontSize:'clamp(1.1rem,2vw,1.6rem)', letterSpacing:'0.14em', color:'#F5B642',
+              textShadow:'0 0 18px rgba(245,182,66,0.8)', lineHeight:1 }}>
+              {live.event.joinCode}
+            </div>
+            <div style={{ background:'white', borderRadius:6, padding:3 }}>
+              <QRCodeSVG value={joinUrl} size={56} bgColor="#ffffff" fgColor="#0a0820" level="M"/>
+            </div>
+            <div style={{ fontSize:'0.5rem', color:'rgba(255,255,255,0.4)', letterSpacing:'0.1em', textTransform:'uppercase' }}>
+              Scansiona per giocare
+            </div>
+          </motion.div>
+        )}
+      </div>
 
       {/* ── MAIN ── */}
 
       {/* left: classifica */}
       <div className="flex flex-col pl-4 pr-2 pb-1 z-20">
-        <Classifica/>
+        <Classifica players={live.players} scoreboard={scoreboardData}/>
       </div>
 
       {/* center: wheel + idle float */}
@@ -843,7 +968,7 @@ function Arena({ onPodium }: { onPodium:()=>void }) {
           <div className="absolute inset-[-8%] rounded-full pointer-events-none"
             style={{ background:`radial-gradient(circle,${selected.color}18 0%,transparent 70%)`,
               boxShadow:`0 0 100px ${selected.glow}55,0 0 200px ${selected.glow}18` }}/>
-          <GameWheel selected={selected} onSelect={setSelected} spinning={spinning}/>
+          <GameWheel selected={selected} onSelect={setSelected} spinning={spinning} games={realGames}/>
           {/* wheel floor shadow */}
           <div className="absolute pointer-events-none"
             style={{ bottom:'-12%', left:'15%', right:'15%', height:20,
@@ -907,19 +1032,29 @@ function Arena({ onPodium }: { onPodium:()=>void }) {
 
 /* ─── screen: PODIUM ─────────────────────────────── */
 function Podium({ onRestart }: { onRestart:()=>void }) {
-  const sorted=[...PLAYERS].sort((a,b)=>b.score-a.score);
-  const disp=[sorted[1],sorted[0],sorted[2]];
-  const medals=['#C0C0C0','#F5B642','#CD7F32'];
-  const glows=['rgba(192,192,192,0.6)','rgba(245,182,66,0.9)','rgba(205,127,50,0.6)'];
-  const ranks=[2,1,3];
-  const heights=[155,215,115];
-  const rest=sorted.slice(3);
+  const live = useLiveState();
+  const scoreboard = useGetScoreboard(live.event?.id ?? '', {
+    query: { queryKey: ['scoreboard-podium', live.event?.id], enabled: !!live.event?.id },
+  });
+  const sorted = useMemo(()=>
+    [...((scoreboard.data ?? []) as ScoreboardEntry[])].sort((a,b)=>b.total-a.total)
+  ,[scoreboard.data]);
+
+  const medals  = ['#C0C0C0','#F5B642','#CD7F32'];
+  const glows   = ['rgba(192,192,192,0.6)','rgba(245,182,66,0.9)','rgba(205,127,50,0.6)'];
+  const ranks   = [2,1,3];
+  const heights = [155,215,115];
+
+  /* podium display order: 2nd, 1st, 3rd */
+  const top3 = [sorted[1], sorted[0], sorted[2]].filter(Boolean);
+  const rest = sorted.slice(3);
+
   return (
     <motion.div key="podium" className="absolute inset-0 flex flex-col"
       initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
       transition={{ duration:0.5 }}>
       <Confetti/>
-      {/* Jonny podio — transparent PNG, scenic absolute */}
+      {/* Jonny podio */}
       <motion.div className="absolute pointer-events-none select-none" style={{ right:'-1%', bottom:0, zIndex:5 }}>
         <div style={{ position:'absolute', inset:0, background:'radial-gradient(ellipse 80% 90% at 50% 90%,rgba(245,182,66,0.45) 0%,transparent 70%)', pointerEvents:'none' }}/>
         <div style={{ position:'absolute', bottom:0, left:'5%', right:'5%', height:20, background:'rgba(0,0,0,0.5)', borderRadius:'50%', filter:'blur(14px)' }}/>
@@ -947,56 +1082,62 @@ function Podium({ onRestart }: { onRestart:()=>void }) {
         </motion.button>
       </div>
       {/* podium */}
-      <div className="flex-1 flex items-end justify-center gap-5 px-[22%] pb-0 z-10 relative">
-        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[60%] h-32 pointer-events-none"
-          style={{ background:'radial-gradient(ellipse 80% 100% at 50% 100%,rgba(245,182,66,0.4) 0%,transparent 70%)' }}/>
-        {disp.map((p,di)=>(
-          <motion.div key={p.id} className="flex flex-col items-center"
-            style={{ flex:di===1?'1.3':'1', maxWidth:di===1?240:185 }}
-            initial={{ y:80, opacity:0 }} animate={{ y:0, opacity:1 }}
-            transition={{ delay:0.2+di*0.18, duration:0.7, ease:'easeOut' as const }}>
-            {ranks[di]===1&&<motion.div className="text-4xl mb-1"
-              animate={{ y:[0,-10,0], rotate:[-5,5,-5] }}
-              transition={{ duration:2.2, repeat:Infinity, ease:'easeInOut' as const }}>&#128081;</motion.div>}
-            <div className="rounded-full flex items-center justify-center font-black mb-1.5"
-              style={{ width:di===1?66:50, height:di===1?66:50,
-                background:`linear-gradient(135deg,${medals[di]}44,${medals[di]}22)`,
-                border:`3px solid ${medals[di]}`,
-                boxShadow:`0 0 30px ${glows[di]}`,
-                fontSize:di===1?22:16, color:medals[di] }}>
-              {p.name[0]}
-            </div>
-            <div className="font-black text-white mb-0.5 text-center" style={{ fontSize:di===1?'1.2rem':'0.9rem', fontFamily:"'Outfit','Arial Black',sans-serif" }}>{p.name}</div>
-            <div className="font-black mb-2" style={{ color:medals[di], fontSize:di===1?'1rem':'0.82rem', textShadow:`0 0 18px ${medals[di]}` }}>{p.score.toLocaleString()} pt</div>
-            <div className="w-full flex items-end justify-center rounded-t-3xl relative overflow-hidden"
-              style={{ height:heights[di], background:`linear-gradient(180deg,${medals[di]}28 0%,${medals[di]}50 100%)`,
-                border:`2px solid ${medals[di]}88`, borderBottom:'none',
-                boxShadow:`0 0 45px ${glows[di]},inset 0 1px 0 rgba(255,255,255,0.2)` }}>
-              <div className="absolute inset-0" style={{ background:'linear-gradient(135deg,rgba(255,255,255,0.1) 0%,transparent 50%)' }}/>
-              <div className="font-black pb-3 relative z-10"
-                style={{ fontSize:di===1?'3rem':'2rem', color:medals[di], textShadow:`0 0 25px ${medals[di]}` }}>
-                {ranks[di]}
+      {top3.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center z-10 opacity-50">
+          <span style={{ color:'rgba(255,255,255,0.4)', fontSize:'1rem' }}>Nessun dato classifica</span>
+        </div>
+      ) : (
+        <div className="flex-1 flex items-end justify-center gap-5 px-[22%] pb-0 z-10 relative">
+          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[60%] h-32 pointer-events-none"
+            style={{ background:'radial-gradient(ellipse 80% 100% at 50% 100%,rgba(245,182,66,0.4) 0%,transparent 70%)' }}/>
+          {top3.map((team,di)=>(
+            <motion.div key={team.teamId} className="flex flex-col items-center"
+              style={{ flex:di===1?'1.3':'1', maxWidth:di===1?240:185 }}
+              initial={{ y:80, opacity:0 }} animate={{ y:0, opacity:1 }}
+              transition={{ delay:0.2+di*0.18, duration:0.7, ease:'easeOut' as const }}>
+              {ranks[di]===1&&<motion.div className="text-4xl mb-1"
+                animate={{ y:[0,-10,0], rotate:[-5,5,-5] }}
+                transition={{ duration:2.2, repeat:Infinity, ease:'easeInOut' as const }}>&#128081;</motion.div>}
+              <div className="rounded-full flex items-center justify-center font-black mb-1.5"
+                style={{ width:di===1?66:50, height:di===1?66:50,
+                  background:`linear-gradient(135deg,${medals[di]}44,${medals[di]}22)`,
+                  border:`3px solid ${medals[di]}`,
+                  boxShadow:`0 0 30px ${glows[di]}`,
+                  fontSize:di===1?22:16, color:medals[di] }}>
+                {(team.teamName??'?')[0].toUpperCase()}
               </div>
-            </div>
-          </motion.div>
-        ))}
-      </div>
+              <div className="font-black text-white mb-0.5 text-center" style={{ fontSize:di===1?'1.2rem':'0.9rem', fontFamily:"'Outfit','Arial Black',sans-serif" }}>{team.teamName}</div>
+              <div className="font-black mb-2" style={{ color:medals[di], fontSize:di===1?'1rem':'0.82rem', textShadow:`0 0 18px ${medals[di]}` }}>{team.total.toLocaleString()} pt</div>
+              <div className="w-full flex items-end justify-center rounded-t-3xl relative overflow-hidden"
+                style={{ height:heights[di], background:`linear-gradient(180deg,${medals[di]}28 0%,${medals[di]}50 100%)`,
+                  border:`2px solid ${medals[di]}88`, borderBottom:'none',
+                  boxShadow:`0 0 45px ${glows[di]},inset 0 1px 0 rgba(255,255,255,0.2)` }}>
+                <div className="absolute inset-0" style={{ background:'linear-gradient(135deg,rgba(255,255,255,0.1) 0%,transparent 50%)' }}/>
+                <div className="font-black pb-3 relative z-10"
+                  style={{ fontSize:di===1?'3rem':'2rem', color:medals[di], textShadow:`0 0 25px ${medals[di]}` }}>
+                  {ranks[di]}
+                </div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      )}
       <div className="h-1.5 mx-8 shrink-0 z-10"
         style={{ background:'linear-gradient(90deg,transparent,rgba(245,182,66,0.7) 25%,rgba(255,255,255,1) 50%,rgba(245,182,66,0.7) 75%,transparent)',
           boxShadow:'0 0 25px rgba(245,182,66,0.5)' }}/>
       <div className="flex justify-center gap-3 px-10 py-3 shrink-0 z-10 flex-wrap">
-        {rest.map((p,i)=>(
-          <motion.div key={p.id} className="flex items-center gap-3 rounded-2xl px-4 py-2"
+        {rest.map((team,i)=>(
+          <motion.div key={team.teamId} className="flex items-center gap-3 rounded-2xl px-4 py-2"
             style={{ background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.1)' }}
             initial={{ y:18, opacity:0 }} animate={{ y:0, opacity:1 }}
             transition={{ delay:0.8+i*0.08 }}>
             <span className="font-black" style={{ color:'rgba(255,255,255,0.3)', fontSize:'0.85rem' }}>{i+4}</span>
             <div className="w-8 h-8 rounded-full flex items-center justify-center font-black text-xs"
-              style={{ background:`${PLAYER_COLORS[i+3]}2A`, color:PLAYER_COLORS[i+3], border:`1.5px solid ${PLAYER_COLORS[i+3]}66` }}>
-              {p.name[0]}
+              style={{ background:`${PLAYER_COLORS[i%PLAYER_COLORS.length]}2A`, color:PLAYER_COLORS[i%PLAYER_COLORS.length], border:`1.5px solid ${PLAYER_COLORS[i%PLAYER_COLORS.length]}66` }}>
+              {(team.teamName??'?')[0].toUpperCase()}
             </div>
-            <span className="font-black text-white" style={{ fontSize:'0.85rem' }}>{p.name}</span>
-            <span className="font-black" style={{ color:'#F5B642', fontSize:'0.82rem' }}>{p.score.toLocaleString()}</span>
+            <span className="font-black text-white" style={{ fontSize:'0.85rem' }}>{team.teamName}</span>
+            <span className="font-black" style={{ color:'#F5B642', fontSize:'0.82rem' }}>{team.total.toLocaleString()}</span>
           </motion.div>
         ))}
       </div>
