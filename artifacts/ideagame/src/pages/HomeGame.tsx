@@ -759,7 +759,7 @@ export default function HomeGame() {
 
             {/* Content */}
             <div className="flex flex-1 items-center justify-center overflow-auto px-6 py-3">
-              <RoundBoard session={session} revealed={revealed}
+              <RoundBoard key={session.currentRound} session={session} revealed={revealed}
                 onReveal={() => { setRevealed(true); if(timerRef.current) clearInterval(timerRef.current); setJonnyMood('correct'); }}
                 onNext={nextRound} players={players} onScore={async (pid,pts) => {
                   await fetch(`/api/home/sessions/${session.id}/score`, {
@@ -882,7 +882,7 @@ function RoundBoard({ session, revealed, onReveal, onNext, players, onScore }: {
 
   if (mode === 'home-quiz')       return <QuizBoard payload={p} revealed={revealed} onReveal={onReveal}/>;
   if (mode === 'home-ballo')      return <BalloBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
-  if (mode === 'home-percorso')   return <PercorsoBoard payload={p} onReveal={onReveal}/>;
+  if (mode === 'home-percorso')   return <PercorsoBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
   if (mode === 'home-coppie')     return <CoppieBoard payload={p} onNext={onNext}/>;
   if (mode === 'home-saramusica') return <SaraMusicaBoard payload={p} revealed={revealed} onReveal={onReveal}/>;
   if (mode === 'home-adult')      return <AdultOnlyBoard payload={p} revealed={revealed} onReveal={onReveal} players={players} onScore={onScore}/>;
@@ -1002,7 +1002,14 @@ function BalloBoard({ payload, onReveal, players, onScore }: {
 
 // ── PercorsoBoard ─────────────────────────────────────────────────────────────
 
-function PercorsoBoard({ payload, onReveal }: { payload: Record<string,unknown>; onReveal: () => void }) {
+function PercorsoBoard({ payload, onReveal, players, onScore }: {
+  payload: Record<string,unknown>;
+  onReveal: () => void;
+  players: HomePlayer[];
+  onScore: (pid: string, pts: number) => Promise<void>;
+}) {
+  const [awarded, setAwarded] = useState<string|null>(null);
+  const pts = Number(payload.points ?? 150);
   const TYPE_ICONS: Record<string,string> = { sfida:'⚡',domanda:'❓',mimo:'🎭',ballo:'💃',veloce:'🏃',coppia:'👫',reazione:'😱',fantasia:'🌟' };
   const icon = TYPE_ICONS[String(payload.challengeType??'sfida')]??'⚡';
   return (
@@ -1018,16 +1025,30 @@ function PercorsoBoard({ payload, onReveal }: { payload: Record<string,unknown>;
       <div className="max-w-lg text-lg text-white/65 leading-relaxed">{String(payload.description??'')}</div>
       <div className="flex items-center gap-6">
         <div className="rounded-2xl px-5 py-2" style={{background:'rgba(52,211,153,0.18)',border:'1px solid rgba(52,211,153,0.45)',color:'#34D399'}}>
-          <span className="text-xl font-black">{Number(payload.points??150)} pt</span>
+          <span className="text-xl font-black">{pts} pt</span>
         </div>
         <div className="rounded-2xl px-5 py-2" style={{background:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.14)',color:'rgba(255,255,255,0.6)'}}>
           <Timer className="inline h-4 w-4 mr-1"/><span className="text-xl font-black">{Number(payload.timeLimit??60)}s</span>
         </div>
       </div>
-      <button onClick={onReveal} className="flex items-center gap-3 rounded-2xl px-10 py-5 text-xl font-black text-white"
-        style={{background:'linear-gradient(135deg,#34D399,#059669)',boxShadow:'0 0 50px rgba(52,211,153,0.55)'}}>
-        <Check className="h-6 w-6"/> Sfida superata!
-      </button>
+      <div className="text-base text-white/50">Chi ha superato la sfida? Assegna i punti ({pts}pt):</div>
+      <div className="flex flex-wrap justify-center gap-3">
+        {players.map(p => (
+          <button key={p.id} disabled={!!awarded}
+            onClick={async () => { setAwarded(p.id); await onScore(p.id, p.score + pts); onReveal(); }}
+            className="rounded-2xl px-5 py-3 text-sm font-black transition-all disabled:opacity-50"
+            style={awarded===p.id
+              ? {background:'linear-gradient(135deg,#34D399,#059669)',color:'#fff',boxShadow:'0 0 30px rgba(52,211,153,0.6)'}
+              : {background:`linear-gradient(135deg,${p.avatarColor},${p.avatarColor}cc)`,color:'#000'}}>
+            {p.nickname} {awarded===p.id && '✓'}
+          </button>
+        ))}
+        <button disabled={!!awarded} onClick={() => onReveal()}
+          className="rounded-2xl px-5 py-3 text-sm font-black transition-all"
+          style={{background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.14)',color:'rgba(255,255,255,0.5)'}}>
+          Nessuno
+        </button>
+      </div>
     </motion.div>
   );
 }
