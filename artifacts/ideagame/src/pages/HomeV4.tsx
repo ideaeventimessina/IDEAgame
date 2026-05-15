@@ -731,238 +731,56 @@ const FEATURES = [
 function ShowLanding({ onArena }: { onArena:()=>void }) {
   return (
     <motion.div key="show" className="absolute inset-0 overflow-hidden"
-      initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0, scale:1.05 }}
-      transition={{ duration:0.6 }}>
+      initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
+      transition={{ duration:0.5 }}>
 
-      {/* ── concept art background — full bleed ── */}
+      {/* background */}
       <div className="absolute inset-0" style={{
         backgroundImage:`url(${pub('/landing-bg.png')})`,
         backgroundSize:'cover',
         backgroundPosition:'center top',
-        backgroundRepeat:'no-repeat',
       }}/>
 
-      {/* ── layered overlay: readable top + deep bottom + light center ── */}
-      <div className="absolute inset-0 pointer-events-none" style={{
-        background:[
-          'linear-gradient(to bottom,rgba(3,0,16,0.78) 0%,rgba(3,0,16,0.38) 22%,rgba(3,0,16,0.05) 42%,rgba(3,0,16,0.05) 62%,rgba(3,0,16,0.55) 82%,rgba(3,0,16,0.88) 100%)',
-          'radial-gradient(ellipse 60% 50% at 50% 48%,transparent 0%,rgba(3,0,16,0.18) 100%)',
-        ].join(','),
-      }}/>
-
-      {/* ── left neon sign ── */}
-      <motion.div
-        initial={{ x:-30, opacity:0 }} animate={{ x:0, opacity:1 }}
-        transition={{ delay:0.5, duration:0.6 }}
-        style={{
-          position:'absolute', left:'clamp(12px,2.5vw,36px)', top:'50%',
-          transform:'translateY(-50%)',
-          zIndex:12,
-          background:'rgba(10,0,30,0.75)',
-          border:'2.5px solid rgba(245,182,66,0.7)',
-          borderRadius:14,
-          padding:'14px 18px',
-          backdropFilter:'blur(10px)',
-          boxShadow:'0 0 28px rgba(245,182,66,0.4),inset 0 0 20px rgba(245,182,66,0.06)',
-          textAlign:'center', lineHeight:1.2,
-          maxWidth:'clamp(90px,9vw,120px)',
-        }}>
-        {[['8','MONDI'],['DI','GIOCO'],['∞','']].map(([a,b],i)=>(
-          <div key={i} style={{
-            fontFamily:"'Outfit','Arial Black',sans-serif",
-            fontWeight:900,
-            fontSize: i===0 ? 'clamp(1.6rem,2.5vw,2.1rem)' : 'clamp(0.7rem,1vw,0.85rem)',
-            color: i===0 ? '#F5B642' : 'rgba(255,255,255,0.85)',
-            letterSpacing:'0.08em',
-            textShadow:'0 0 16px rgba(245,182,66,0.7)',
-            lineHeight:1.1,
-          }}>{a}{b ? ' '+b : ''}</div>
-        ))}
-      </motion.div>
-
-      {/* ── right neon sign ── */}
-      <motion.div
-        initial={{ x:30, opacity:0 }} animate={{ x:0, opacity:1 }}
-        transition={{ delay:0.55, duration:0.6 }}
-        style={{
-          position:'absolute', right:'clamp(12px,2.5vw,36px)', top:'50%',
-          transform:'translateY(-50%)',
-          zIndex:12,
-          background:'rgba(10,0,30,0.75)',
-          border:'2.5px solid rgba(168,85,247,0.7)',
-          borderRadius:14,
-          padding:'14px 18px',
-          backdropFilter:'blur(10px)',
-          boxShadow:'0 0 28px rgba(168,85,247,0.4),inset 0 0 20px rgba(168,85,247,0.06)',
-          textAlign:'center', lineHeight:1.25,
-          maxWidth:'clamp(90px,9vw,120px)',
-        }}>
-        {['GIOCA.','RIDI.','SFIDA.'].map((w,i)=>(
-          <div key={w} style={{
-            fontFamily:"'Outfit','Arial Black',sans-serif",
-            fontWeight:900,
-            fontSize:'clamp(0.85rem,1.3vw,1.1rem)',
-            color:['#F5B642','#A855F7','#F472B6'][i],
-            letterSpacing:'0.06em',
-            textShadow:`0 0 14px ${['rgba(245,182,66,0.8)','rgba(168,85,247,0.8)','rgba(244,114,182,0.8)'][i]}`,
-          }}>{w}</div>
-        ))}
-      </motion.div>
-
-      {/* ── top content: logo + subtitle + tagline ── */}
-      <div className="absolute inset-x-0 top-0 flex flex-col items-center z-20"
-        style={{ paddingTop:'clamp(1rem,2.5vh,2.2rem)' }}>
-
-        {/* logo */}
-        <motion.img src={pub('/jonny-world-logo.png')} alt="Jonny's World"
-          initial={{ y:-28, opacity:0 }} animate={{ y:0, opacity:1 }}
-          transition={{ delay:0.08, duration:0.7, ease:'easeOut' as const }}
+      {/* bottom-left: CTA */}
+      <motion.div className="absolute z-20"
+        style={{ left:'clamp(20px,3vw,48px)', bottom:'clamp(20px,3vh,44px)' }}
+        initial={{ y:16, opacity:0 }} animate={{ y:0, opacity:1 }}
+        transition={{ delay:0.2, duration:0.5 }}>
+        <motion.button onClick={onArena}
+          whileHover={{ scale:1.06 }} whileTap={{ scale:0.97 }}
           style={{
-            width:'clamp(18rem,30vw,26rem)', objectFit:'contain',
-            filter:'drop-shadow(0 0 60px rgba(245,182,66,0.7)) drop-shadow(0 0 120px rgba(168,85,247,0.45))',
-            marginBottom:'clamp(4px,0.8vh,10px)',
+            display:'flex', alignItems:'center', gap:'0.8rem',
+            padding:'clamp(0.85rem,1.5vh,1.1rem) clamp(2rem,3.5vw,3.2rem)',
+            background:'linear-gradient(135deg,#F5B642 0%,#FF8C00 55%,#FF5500 100%)',
+            border:'2.5px solid #FFD700',
+            borderRadius:'100px',
+            fontFamily:"'Outfit','Arial Black',sans-serif",
+            fontWeight:900,
+            fontSize:'clamp(1.1rem,1.8vw,1.5rem)',
+            color:'#000',
+            letterSpacing:'0.05em',
+            boxShadow:'0 0 55px rgba(245,182,66,0.75),0 0 110px rgba(245,182,66,0.28),0 8px 32px rgba(0,0,0,0.65)',
+            cursor:'pointer',
+          }}>
+          <motion.span
+            animate={{ scale:[1,1.22,1] }}
+            transition={{ duration:1.1, repeat:Infinity, ease:'easeInOut' as const }}
+            style={{ fontSize:'1.25em' }}>▶</motion.span>
+          INIZIA LO SHOW
+        </motion.button>
+      </motion.div>
+
+      {/* bottom-right: IDEAgames logo */}
+      <motion.div className="absolute z-20"
+        style={{ right:'clamp(20px,3vw,48px)', bottom:'clamp(20px,3vh,44px)' }}
+        initial={{ opacity:0 }} animate={{ opacity:1 }}
+        transition={{ delay:0.3, duration:0.5 }}>
+        <img src={pub('/logo.png')} alt="IDEAgames"
+          style={{
+            height:'clamp(2rem,4vh,3.2rem)', objectFit:'contain',
+            filter:'brightness(1.3) drop-shadow(0 0 14px rgba(245,182,66,0.6)) drop-shadow(0 0 28px rgba(168,85,247,0.35))',
           }}/>
-
-        {/* gold subtitle banner */}
-        <motion.div
-          initial={{ opacity:0, y:6 }} animate={{ opacity:1, y:0 }}
-          transition={{ delay:0.25, duration:0.5 }}
-          style={{
-            display:'inline-flex', alignItems:'center', gap:8,
-            background:'linear-gradient(90deg,transparent,rgba(245,182,66,0.18),rgba(245,182,66,0.28),rgba(245,182,66,0.18),transparent)',
-            border:'1px solid rgba(245,182,66,0.35)',
-            borderRadius:100, padding:'4px 22px',
-            marginBottom:'clamp(6px,1.2vh,12px)',
-          }}>
-          <span style={{
-            fontFamily:"'Outfit',sans-serif", fontWeight:800,
-            fontSize:'clamp(0.6rem,0.9vw,0.75rem)',
-            letterSpacing:'0.28em', textTransform:'uppercase',
-            color:'rgba(245,182,66,0.9)',
-          }}>Il Parco del Divertimento Intelligente</span>
-        </motion.div>
-
-        {/* marquee tagline */}
-        <motion.div
-          initial={{ opacity:0, y:8 }} animate={{ opacity:1, y:0 }}
-          transition={{ delay:0.35, duration:0.55 }}
-          style={{ textAlign:'center' }}>
-          <div style={{
-            fontFamily:"'Outfit','Arial Black',sans-serif",
-            fontWeight:900,
-            fontSize:'clamp(1.3rem,2.2vw,1.9rem)',
-            letterSpacing:'0.04em',
-            color:'#fff',
-            textShadow:'0 0 40px rgba(168,85,247,0.6),0 2px 0 rgba(0,0,0,0.8)',
-            lineHeight:1.1,
-          }}>
-            Gioca. Ridi. Sfida.
-          </div>
-          <div style={{
-            fontFamily:"'Outfit',sans-serif",
-            fontWeight:700,
-            fontSize:'clamp(0.8rem,1.2vw,1rem)',
-            letterSpacing:'0.18em',
-            textTransform:'uppercase',
-            color:'rgba(255,255,255,0.55)',
-            marginTop:4,
-          }}>
-            Vivi il tuo spettacolo.
-          </div>
-        </motion.div>
-      </div>
-
-      {/* ── bottom content: badges + CTA + welcome ── */}
-      <div className="absolute inset-x-0 bottom-0 flex flex-col items-center z-20"
-        style={{ paddingBottom:'clamp(1rem,2.5vh,2rem)' }}>
-
-        {/* feature badges */}
-        <motion.div
-          initial={{ opacity:0, y:14 }} animate={{ opacity:1, y:0 }}
-          transition={{ delay:0.45, duration:0.55 }}
-          style={{ display:'flex', gap:'clamp(6px,1vw,12px)', marginBottom:'clamp(10px,1.8vh,16px)' }}>
-          {FEATURES.map((f,i)=>(
-            <motion.div key={f.title}
-              initial={{ opacity:0, y:10 }} animate={{ opacity:1, y:0 }}
-              transition={{ delay:0.47+i*0.07, duration:0.4, ease:'easeOut' as const }}
-              style={{
-                display:'flex', alignItems:'center', gap:8,
-                padding:'clamp(7px,1vh,11px) clamp(10px,1.2vw,16px)',
-                background:'rgba(10,0,30,0.72)',
-                border:`1.5px solid ${f.border}`,
-                borderRadius:100,
-                backdropFilter:'blur(14px)',
-                boxShadow:`0 0 20px ${f.glow}22`,
-              }}>
-              <span style={{ fontSize:'clamp(1rem,1.6vw,1.3rem)', lineHeight:1 }}>{f.icon}</span>
-              <div style={{ lineHeight:1.15 }}>
-                <div style={{
-                  fontFamily:"'Outfit','Arial Black',sans-serif", fontWeight:900,
-                  fontSize:'clamp(0.72rem,1vw,0.88rem)', color:f.color,
-                  letterSpacing:'0.02em', textShadow:`0 0 12px ${f.glow}88`,
-                }}>{f.title}</div>
-                <div style={{
-                  fontFamily:"'Outfit',sans-serif", fontWeight:600,
-                  fontSize:'clamp(0.5rem,0.65vw,0.6rem)',
-                  color:'rgba(255,255,255,0.4)', letterSpacing:'0.1em',
-                  textTransform:'uppercase',
-                }}>{f.sub}</div>
-              </div>
-            </motion.div>
-          ))}
-        </motion.div>
-
-        {/* CTA */}
-        <motion.div initial={{ y:18, opacity:0 }} animate={{ y:0, opacity:1 }}
-          transition={{ delay:0.62, duration:0.5 }}>
-          <motion.button onClick={onArena}
-            whileHover={{ scale:1.06 }} whileTap={{ scale:0.97 }}
-            style={{
-              display:'flex', alignItems:'center', gap:'0.8rem',
-              padding:'clamp(0.85rem,1.5vh,1.15rem) clamp(2.2rem,4vw,3.8rem)',
-              background:'linear-gradient(135deg,#F5B642 0%,#FF8C00 55%,#FF5500 100%)',
-              border:'2.5px solid #FFD700',
-              borderRadius:'100px',
-              fontFamily:"'Outfit','Arial Black',sans-serif",
-              fontWeight:900,
-              fontSize:'clamp(1.1rem,1.8vw,1.5rem)',
-              color:'#000',
-              letterSpacing:'0.05em',
-              boxShadow:'0 0 60px rgba(245,182,66,0.8),0 0 120px rgba(245,182,66,0.3),0 8px 36px rgba(0,0,0,0.7)',
-              cursor:'pointer',
-            }}>
-            <motion.span
-              animate={{ scale:[1,1.22,1] }}
-              transition={{ duration:1.1, repeat:Infinity, ease:'easeInOut' as const }}
-              style={{ fontSize:'1.25em' }}>▶</motion.span>
-            INIZIA LO SHOW
-          </motion.button>
-        </motion.div>
-
-        {/* welcome strip */}
-        <motion.div
-          initial={{ opacity:0 }} animate={{ opacity:1 }}
-          transition={{ delay:0.8, duration:0.5 }}
-          style={{
-            marginTop:'clamp(8px,1.2vh,14px)',
-            display:'flex', alignItems:'center', gap:8,
-            background:'rgba(10,0,30,0.7)',
-            border:'1px solid rgba(255,255,255,0.12)',
-            borderRadius:100,
-            padding:'5px 18px',
-            backdropFilter:'blur(10px)',
-          }}>
-          <img src={pub('/jonny-world-logo.png')} alt=""
-            style={{ height:18, objectFit:'contain', opacity:0.8 }}/>
-          <span style={{
-            fontFamily:"'Outfit',sans-serif", fontWeight:700,
-            fontSize:'clamp(0.6rem,0.85vw,0.72rem)',
-            color:'rgba(255,255,255,0.5)', letterSpacing:'0.1em',
-          }}>
-            Smartphone come controller · 8 giochi · Casa o eventi
-          </span>
-        </motion.div>
-      </div>
+      </motion.div>
 
     </motion.div>
   );
