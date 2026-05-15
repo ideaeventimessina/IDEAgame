@@ -203,13 +203,19 @@ export default function ModeSelect() {
    *   CARD_Y = 258px (below logo, small breathing room)
    *   CARD_H = 370px → cards end at 628px, back button at 646px < 720 ✓
    */
-  const CARD_X   = 180;
-  const CARD_W   = 280;
+  /*
+   * Image pathway center ≈ 42% of 1280px = 538px.
+   * Two 260px cards + 40px gap = 560px → left = 538-280 = 258px, right = 818px.
+   * Jonny starts at ~63% = 806px → minimal overlap on far edge only.
+   * Title centered with text-align:center over same 560px span.
+   */
+  const CARD_X   = 258;
+  const CARD_W   = 260;
   const CARD_H   = 370;
   const CARD_GAP = 40;
   const TITLE_Y  = 218;
   const CARD_Y   = 262;
-  const CARDS_TOTAL_W = CARD_W * 2 + CARD_GAP;   /* 600 */
+  const CARDS_TOTAL_W = CARD_W * 2 + CARD_GAP;   /* 560 */
 
   return (
     <div className="fixed inset-0 overflow-hidden"
