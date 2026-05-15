@@ -1,5 +1,5 @@
 import { useLocation } from 'wouter';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useState } from 'react';
 import { Home, Mic2, ChevronLeft, Users, Star, Zap, Building2 } from 'lucide-react';
 
@@ -60,79 +60,6 @@ const MODES: Mode[] = [
   },
 ];
 
-/* ── cinematic background ─────────────────────── */
-function SceneBg() {
-  return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none" style={{ zIndex:0 }}>
-      {/* void */}
-      <div className="absolute inset-0" style={{
-        background:'radial-gradient(ellipse 120% 80% at 50% 100%,rgba(60,20,120,0.55) 0%,rgba(20,5,50,0.9) 45%,#030010 80%)'
-      }}/>
-
-      {/* spotlight left */}
-      <div className="absolute" style={{
-        left:'-5%', top:0, width:'35%', height:'85%',
-        background:'conic-gradient(from -8deg at 20% 0%,transparent 0deg,rgba(245,182,66,0.07) 18deg,transparent 36deg)',
-        filter:'blur(2px)',
-      }}/>
-      {/* spotlight center-left */}
-      <div className="absolute" style={{
-        left:'18%', top:0, width:'30%', height:'90%',
-        background:'conic-gradient(from -6deg at 50% 0%,transparent 0deg,rgba(168,85,247,0.09) 15deg,transparent 30deg)',
-        filter:'blur(3px)',
-      }}/>
-      {/* spotlight center-right */}
-      <div className="absolute" style={{
-        right:'18%', top:0, width:'30%', height:'90%',
-        background:'conic-gradient(from 6deg at 50% 0%,transparent 0deg,rgba(168,85,247,0.09) 15deg,transparent 30deg)',
-        filter:'blur(3px)',
-      }}/>
-      {/* spotlight right */}
-      <div className="absolute" style={{
-        right:'-5%', top:0, width:'35%', height:'85%',
-        background:'conic-gradient(from 8deg at 80% 0%,transparent 0deg,rgba(245,182,66,0.07) 18deg,transparent 36deg)',
-        filter:'blur(2px)',
-      }}/>
-
-      {/* crowd silhouettes */}
-      <svg className="absolute bottom-0 left-0 right-0 w-full" viewBox="0 0 1280 180" preserveAspectRatio="none" style={{ height:180 }}>
-        {Array.from({length:52}).map((_,i)=>{
-          const x=i*(1280/52); const h=55+Math.sin(i*1.37)*22+(i%3)*14; const w=18+Math.cos(i*0.9)*4;
-          return <ellipse key={i} cx={x+12} cy={178-h/2} rx={w/2} ry={h/2} fill="rgba(0,0,0,0.55)"/>;
-        })}
-      </svg>
-
-      {/* floor glow */}
-      <div className="absolute bottom-0 left-0 right-0" style={{
-        height:120,
-        background:'radial-gradient(ellipse 90% 100% at 50% 100%,rgba(168,85,247,0.22) 0%,rgba(245,182,66,0.08) 55%,transparent 80%)',
-        filter:'blur(12px)',
-      }}/>
-
-      {/* floor reflective line */}
-      <div className="absolute bottom-0 left-0 right-0" style={{
-        height:3,
-        background:'linear-gradient(90deg,transparent,rgba(245,182,66,0.4),rgba(168,85,247,0.5),rgba(245,182,66,0.4),transparent)',
-      }}/>
-
-      {/* floating particles */}
-      {Array.from({length:18}).map((_,i)=>(
-        <motion.div key={i}
-          className="absolute rounded-full"
-          style={{
-            width:2+Math.random()*3, height:2+Math.random()*3,
-            left:`${8+Math.random()*84}%`,
-            background: i%3===0?'rgba(245,182,66,0.7)':i%3===1?'rgba(168,85,247,0.7)':'rgba(255,255,255,0.4)',
-          }}
-          animate={{ y:[-8,8,-8], opacity:[0.3,0.8,0.3] }}
-          transition={{ duration:3+Math.random()*3, repeat:Infinity, delay:Math.random()*4,
-            ease:'easeInOut' as const }}
-        />
-      ))}
-    </div>
-  );
-}
-
 /* ── mode card ────────────────────────────────── */
 function ModeCard({ mode, delay }: { mode: Mode; delay: number }) {
   const [hovered, setHovered] = useState(false);
@@ -158,7 +85,7 @@ function ModeCard({ mode, delay }: { mode: Mode; delay: number }) {
           ? `0 0 60px ${mode.glow}55, 0 0 120px ${mode.glow}22, inset 0 1px 0 rgba(255,255,255,0.12)`
           : `0 0 30px ${mode.glow}22, inset 0 1px 0 rgba(255,255,255,0.06)`,
         transition: 'border-color 0.25s, box-shadow 0.25s',
-        backdropFilter: 'blur(18px)',
+        backdropFilter: 'blur(22px)',
         overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column',
@@ -290,45 +217,32 @@ export default function ModeSelect() {
 
   return (
     <div className="fixed inset-0 overflow-hidden"
-      style={{ background:'#030010', fontFamily:"'Outfit','Space Grotesk','Arial Black',sans-serif" }}>
+      style={{ fontFamily:"'Outfit','Space Grotesk','Arial Black',sans-serif" }}>
 
-      <SceneBg/>
+      {/* ── fullscreen background image ── */}
+      <div className="absolute inset-0" style={{
+        backgroundImage: `url(${pub('/mode-select-bg.png')})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center center',
+        zIndex: 0,
+      }}/>
 
-      {/* Jonny — right side scenic */}
-      <motion.div
-        className="absolute pointer-events-none select-none"
-        style={{ right: '-2%', bottom: 0, zIndex: 5, width: 'clamp(200px,22vw,300px)' }}
-        initial={{ x: 60, opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        transition={{ delay: 0.3, duration: 0.9, ease: 'easeOut' as const }}
-      >
-        {/* pedestal glow */}
-        <div style={{
-          position: 'absolute', bottom: -2, left: '5%', right: '5%', height: 12,
-          background: 'linear-gradient(90deg,transparent,rgba(168,85,247,0.8),rgba(245,182,66,0.5),transparent)',
-          borderRadius: '50%', filter: 'blur(7px)',
-        }}/>
-        {/* body halo */}
-        <div style={{
-          position: 'absolute', inset: 0, top: '10%',
-          background: 'radial-gradient(ellipse 70% 80% at 55% 65%,rgba(168,85,247,0.25) 0%,rgba(245,182,66,0.1) 55%,transparent 80%)',
-          pointerEvents: 'none',
-        }}/>
-        <motion.img
-          src={pub('/jonny-master-nobg.png')}
-          alt="Jonny host"
-          style={{
-            display: 'block', width: '100%', objectFit: 'contain',
-            filter: 'drop-shadow(0 0 50px rgba(168,85,247,0.7)) drop-shadow(-4px 0 22px rgba(245,182,66,0.4)) drop-shadow(0 8px 30px rgba(0,0,0,0.6))',
-          }}
-          animate={{ y: [0, -8, 0] }}
-          transition={{ duration: 3.8, repeat: Infinity, ease: 'easeInOut' as const }}
-        />
-      </motion.div>
+      {/* ── dark overlay for readability (25%) ── */}
+      <div className="absolute inset-0" style={{
+        background: 'rgba(3,0,16,0.28)',
+        zIndex: 1,
+      }}/>
 
-      {/* main content */}
-      <div className="absolute inset-0 flex flex-col items-center z-10"
-        style={{ paddingRight: 'clamp(160px,22vw,310px)' }}>
+      {/* ── bottom vignette so cards float above floor ── */}
+      <div className="absolute inset-x-0 bottom-0" style={{
+        height: '30%',
+        background: 'linear-gradient(to top,rgba(3,0,16,0.55) 0%,transparent 100%)',
+        zIndex: 2,
+        pointerEvents: 'none',
+      }}/>
+
+      {/* ── main content ── */}
+      <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
 
         {/* logo */}
         <motion.img
@@ -340,7 +254,7 @@ export default function ModeSelect() {
           style={{
             width: 'clamp(10rem,16vw,15rem)',
             objectFit: 'contain',
-            marginTop: 'clamp(1.5rem,3vh,2.5rem)',
+            marginBottom: 'clamp(0.6rem,1.2vh,1rem)',
             filter: 'drop-shadow(0 0 30px rgba(245,182,66,0.7)) drop-shadow(0 0 70px rgba(168,85,247,0.35))',
           }}
         />
@@ -350,7 +264,7 @@ export default function ModeSelect() {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2, duration: 0.5 }}
-          style={{ textAlign: 'center', marginTop: 'clamp(0.8rem,1.5vh,1.2rem)' }}
+          style={{ textAlign: 'center', marginBottom: 'clamp(1rem,2vh,1.8rem)' }}
         >
           <div style={{
             fontWeight: 900,
@@ -358,6 +272,7 @@ export default function ModeSelect() {
             letterSpacing: '0.04em',
             color: '#fff',
             lineHeight: 1.1,
+            textShadow: '0 2px 24px rgba(0,0,0,0.8)',
           }}>
             SCEGLI LA TUA MODALITÀ
           </div>
@@ -365,9 +280,10 @@ export default function ModeSelect() {
             marginTop: 6,
             fontSize: 'clamp(0.65rem,0.95vw,0.82rem)',
             letterSpacing: '0.28em',
-            color: 'rgba(255,255,255,0.4)',
+            color: 'rgba(255,255,255,0.55)',
             fontWeight: 600,
             textTransform: 'uppercase',
+            textShadow: '0 1px 8px rgba(0,0,0,0.8)',
           }}>
             Due esperienze. Un solo show.
           </div>
@@ -377,7 +293,6 @@ export default function ModeSelect() {
         <div style={{
           display: 'flex',
           gap: 'clamp(16px,2.5vw,32px)',
-          marginTop: 'clamp(1.2rem,2.5vh,2rem)',
           alignItems: 'stretch',
         }}>
           {MODES.map((mode, i) => (
@@ -395,18 +310,18 @@ export default function ModeSelect() {
             marginTop: 'clamp(1rem,2vh,1.8rem)',
             display: 'flex', alignItems: 'center', gap: '0.5rem',
             padding: '0.6rem 1.6rem',
-            background: 'rgba(255,255,255,0.05)',
-            border: '1.5px solid rgba(255,255,255,0.15)',
+            background: 'rgba(0,0,0,0.35)',
+            border: '1.5px solid rgba(255,255,255,0.2)',
             borderRadius: 100,
-            color: 'rgba(255,255,255,0.55)',
+            color: 'rgba(255,255,255,0.65)',
             fontSize: 'clamp(0.72rem,1vw,0.85rem)',
             fontWeight: 700,
             letterSpacing: '0.05em',
             cursor: 'pointer',
-            backdropFilter: 'blur(8px)',
+            backdropFilter: 'blur(12px)',
             transition: 'all 0.2s',
           }}
-          whileHover={{ borderColor: 'rgba(255,255,255,0.35)', color: 'rgba(255,255,255,0.85)' }}
+          whileHover={{ borderColor: 'rgba(255,255,255,0.45)', color: 'rgba(255,255,255,0.9)' }}
           whileTap={{ scale: 0.97 }}
         >
           <ChevronLeft size={15}/> TORNA AL MENU
