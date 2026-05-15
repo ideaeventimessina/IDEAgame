@@ -36,7 +36,7 @@ const MODES: Mode[] = [
     tags: ['2–20 giocatori', 'Casual & fun', 'Senza allestimento'],
     color: '#F5B642',
     glow: '#FFD040',
-    bgSolid: 'rgba(28,14,2,0.88)',
+    bgSolid: 'rgba(28,14,2,0.90)',
     border: 'rgba(245,182,66,0.55)',
     cta: "ENTRA NELL'ARENA",
     route: '/home-room',
@@ -51,7 +51,7 @@ const MODES: Mode[] = [
     tags: ['20–200 ospiti', 'Show professionale', 'Con presentatore'],
     color: '#A855F7',
     glow: '#C084FC',
-    bgSolid: 'rgba(18,5,40,0.88)',
+    bgSolid: 'rgba(18,5,40,0.90)',
     border: 'rgba(168,85,247,0.55)',
     cta: 'INIZIA LO SHOW',
     route: '/home-v4?mode=live',
@@ -78,7 +78,6 @@ function ModeCard({ mode, delay }: { mode: Mode; delay: number }) {
         position: 'relative',
         cursor: 'pointer',
         borderRadius: 24,
-        /* opaque background — no bleed-through from background art */
         background: mode.bgSolid,
         border: `2px solid ${hovered ? mode.color : mode.border}`,
         boxShadow: hovered
@@ -94,13 +93,12 @@ function ModeCard({ mode, delay }: { mode: Mode; delay: number }) {
         padding: '0 0 24px 0',
       }}
     >
-      {/* accent tint overlay */}
+      {/* accent tint */}
       <div style={{
         position: 'absolute', inset: 0,
-        background: `radial-gradient(ellipse 80% 60% at 50% 0%,${mode.color}14 0%,transparent 70%)`,
+        background: `radial-gradient(ellipse 80% 55% at 50% 0%,${mode.color}12 0%,transparent 65%)`,
         pointerEvents: 'none',
       }}/>
-
       {/* top glow band */}
       <div style={{
         position: 'absolute', top: 0, left: 0, right: 0, height: 4,
@@ -127,46 +125,29 @@ function ModeCard({ mode, delay }: { mode: Mode; delay: number }) {
         <div style={{ color: mode.color, display: 'flex' }}><Icon size={36} strokeWidth={1.5} /></div>
       </motion.div>
 
-      {/* title */}
       <div style={{
-        marginTop: 16,
-        fontFamily: "'Outfit','Arial Black',sans-serif",
+        marginTop: 16, fontFamily: "'Outfit','Arial Black',sans-serif",
         fontWeight: 900, fontSize: '1.1rem', letterSpacing: '0.08em',
-        color: mode.color, textAlign: 'center', paddingInline: 20,
-        flexShrink: 0,
-      }}>
-        {mode.title}
-      </div>
+        color: mode.color, textAlign: 'center', paddingInline: 20, flexShrink: 0,
+      }}>{mode.title}</div>
 
-      {/* subtitle */}
       <div style={{
-        marginTop: 6,
-        fontFamily: "'Outfit',sans-serif",
+        marginTop: 6, fontFamily: "'Outfit',sans-serif",
         fontWeight: 600, fontSize: '0.8rem',
         color: 'rgba(255,255,255,0.78)',
-        textAlign: 'center', paddingInline: 20, lineHeight: 1.4,
-        flexShrink: 0,
-      }}>
-        {mode.subtitle}
-      </div>
+        textAlign: 'center', paddingInline: 20, lineHeight: 1.4, flexShrink: 0,
+      }}>{mode.subtitle}</div>
 
-      {/* desc */}
       <div style={{
-        marginTop: 10,
-        fontFamily: "'Outfit',sans-serif",
+        marginTop: 10, fontFamily: "'Outfit',sans-serif",
         fontWeight: 400, fontSize: '0.72rem',
         color: 'rgba(255,255,255,0.45)',
-        textAlign: 'center', paddingInline: 24, lineHeight: 1.5,
-        flexShrink: 0,
-      }}>
-        {mode.desc}
-      </div>
+        textAlign: 'center', paddingInline: 24, lineHeight: 1.5, flexShrink: 0,
+      }}>{mode.desc}</div>
 
-      {/* tags */}
       <div style={{
         display: 'flex', flexDirection: 'column', gap: 6,
-        marginTop: 14, paddingInline: 18, width: '100%',
-        flexShrink: 0,
+        marginTop: 14, paddingInline: 18, width: '100%', flexShrink: 0,
       }}>
         {mode.tags.map((tag, i) => {
           const TagIcon = TagIcons[i];
@@ -188,10 +169,8 @@ function ModeCard({ mode, delay }: { mode: Mode; delay: number }) {
         })}
       </div>
 
-      {/* spacer */}
       <div style={{ flexGrow: 1 }}/>
 
-      {/* CTA */}
       <motion.button
         animate={hovered ? { scale: 1.04 } : { scale: 1 }}
         transition={{ duration: 0.2 }}
@@ -205,14 +184,11 @@ function ModeCard({ mode, delay }: { mode: Mode; delay: number }) {
           color: mode.id === 'home' ? '#000' : '#fff',
           cursor: 'pointer',
           boxShadow: `0 0 28px ${mode.glow}55`,
-          width: 'calc(100% - 36px)',
-          flexShrink: 0,
+          width: 'calc(100% - 36px)', flexShrink: 0,
         }}
         whileTap={{ scale: 0.97 }}
         onClick={e => { e.stopPropagation(); navigate(mode.route); }}
-      >
-        {mode.cta}
-      </motion.button>
+      >{mode.cta}</motion.button>
     </motion.div>
   );
 }
@@ -221,12 +197,6 @@ function ModeCard({ mode, delay }: { mode: Mode; delay: number }) {
 export default function ModeSelect() {
   const [, navigate] = useLocation();
 
-  /*
-   * Layout for 1280×720 viewport.
-   * x: user spec (220 / 420w / 60gap).
-   * y: scaled to fit 720 — title:55, cards:155, cardH:490 → cards end 645, button at 661 < 720.
-   * Safe zone x≥1120 reserved for Jonny in background art.
-   */
   const CARD_X   = 220;
   const TITLE_Y  = 52;
   const CARD_Y   = 148;
@@ -236,52 +206,79 @@ export default function ModeSelect() {
 
   return (
     <div className="fixed inset-0 overflow-hidden"
-      style={{ fontFamily: "'Outfit','Space Grotesk','Arial Black',sans-serif" }}>
+      style={{
+        background: '#0a041a',   /* deep purple base — shows where image is masked */
+        fontFamily: "'Outfit','Space Grotesk','Arial Black',sans-serif",
+      }}>
 
-      {/* ── fullscreen cinematic background ── */}
+      {/*
+       * ── LEFT WING: neon signs + audience, ~0–22% width ──
+       * Shows only the left slice of the artwork.
+       */}
       <div className="absolute inset-0" style={{
         backgroundImage: `url(${pub('/mode-select-bg.png')})`,
         backgroundSize: 'cover',
-        backgroundPosition: 'center center',
-        zIndex: 0,
-      }}/>
-
-      {/* ── 15% veil — keeps image vivid ── */}
-      <div className="absolute inset-0" style={{
-        background: 'rgba(0,0,0,0.15)',
+        backgroundPosition: 'left center',
         zIndex: 1,
-        pointerEvents: 'none',
+        maskImage: 'linear-gradient(to right, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 14%, rgba(0,0,0,0) 22%)',
+        WebkitMaskImage: 'linear-gradient(to right, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 14%, rgba(0,0,0,0) 22%)',
       }}/>
 
       {/*
-       * Gradient mask: covers the baked "JONNY'S WORLD" logo at the top
-       * of the artwork, so it doesn't compete with the UI title.
-       * Fades to transparent at ~38% height so the park below stays fully visible.
+       * ── RIGHT WING: Jonny + right attractions, ~70–100% width ──
+       * Shows only the right slice of the artwork.
        */}
-      <div className="absolute inset-x-0 top-0" style={{
-        height: '38%',
-        background: 'linear-gradient(to bottom,rgba(10,4,26,0.82) 0%,rgba(10,4,26,0.45) 45%,transparent 100%)',
+      <div className="absolute inset-0" style={{
+        backgroundImage: `url(${pub('/mode-select-bg.png')})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'right center',
+        zIndex: 1,
+        maskImage: 'linear-gradient(to left, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 22%, rgba(0,0,0,0) 32%)',
+        WebkitMaskImage: 'linear-gradient(to left, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 22%, rgba(0,0,0,0) 32%)',
+      }}/>
+
+      {/*
+       * ── BOTTOM BAND: stage floor + front-row audience ──
+       * Shows the lower 28% of the image so the stage doesn't disappear.
+       */}
+      <div className="absolute inset-0" style={{
+        backgroundImage: `url(${pub('/mode-select-bg.png')})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center bottom',
+        zIndex: 1,
+        maskImage: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.85) 14%, rgba(0,0,0,0) 28%)',
+        WebkitMaskImage: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.85) 14%, rgba(0,0,0,0) 28%)',
+      }}/>
+
+      {/*
+       * ── TOP BAND: sky + fireworks, hidden behind center ──
+       * Shows only the top 18% where baked logo does NOT overlap left/right edges.
+       */}
+      <div className="absolute inset-0" style={{
+        backgroundImage: `url(${pub('/mode-select-bg.png')})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center top',
+        zIndex: 1,
+        maskImage: [
+          'linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.7) 8%, rgba(0,0,0,0) 18%)',
+          'linear-gradient(to right, rgba(0,0,0,1) 0%, rgba(0,0,0,0) 18%, rgba(0,0,0,0) 72%, rgba(0,0,0,1) 88%)',
+        ].join(','),
+        WebkitMaskImage: [
+          'linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.7) 8%, rgba(0,0,0,0) 18%)',
+          'linear-gradient(to right, rgba(0,0,0,1) 0%, rgba(0,0,0,0) 18%, rgba(0,0,0,0) 72%, rgba(0,0,0,1) 88%)',
+        ].join(','),
+        WebkitMaskComposite: 'source-in',
+        maskComposite: 'intersect',
+      }}/>
+
+      {/* ── subtle vignette on the center dark zone ── */}
+      <div className="absolute inset-0" style={{
+        background: 'radial-gradient(ellipse 55% 65% at 48% 50%, rgba(20,8,50,0.0) 0%, rgba(10,4,26,0.55) 70%, rgba(10,4,26,0.0) 100%)',
         zIndex: 2,
         pointerEvents: 'none',
       }}/>
 
-      {/*
-       * Blackout panel: covers the baked UI region in the artwork
-       * (logo, card shapes, baked text, baked CTAs).
-       * Positioned behind the HTML cards (z:8) so only park/Jonny remain visible.
-       */}
-      <div style={{
-        position: 'absolute',
-        left: 170,
-        top: 0,
-        width: CARD_W * 2 + CARD_GAP + 100,
-        height: '100%',
-        background: 'linear-gradient(90deg,rgba(10,4,26,0.88) 0%,rgba(10,4,26,0.88) 85%,transparent 100%)',
-        zIndex: 8,
-        pointerEvents: 'none',
-      }}/>
-
-      {/* ── title block — left aligned ── */}
+      {/* ── title block ── */}
       <motion.div
         initial={{ opacity: 0, y: -12 }}
         animate={{ opacity: 1, y: 0 }}
