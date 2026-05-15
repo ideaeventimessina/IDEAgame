@@ -1,0 +1,63 @@
+FIX HOME WHEEL — FUNCTIONAL + VISUAL.
+
+Do not redesign the whole app.
+Do not touch backend.
+Do not touch HomeJoin.
+Do not touch routes.
+
+Fix only HomeGame.tsx board wheel.
+
+Problems:
+1. Wheel text rotates upside down.
+2. Center must show Jonny’s World logo, not text.
+3. Remove the huge dark halo behind the wheel.
+4. Background is too flat/technical.
+5. Jonny is too small.
+6. Pointer lands between two games.
+7. After spin, selected game modal/preview is wrong or does not open the correct game.
+
+Required fixes:
+
+A. Wheel text
+- Segment labels must always be readable horizontally.
+- Do NOT rotate text with the wheel.
+- Use overlay labels positioned around the wheel OR counter-rotate text so it stays upright.
+- No upside-down words.
+
+B. Center logo
+- Replace center text with official Jonny’s World logo asset.
+- Logo must fit inside center circle.
+- No “Scegli il gioco” text in the center.
+
+C. Pointer accuracy
+- Pointer must always land at the exact center of a segment.
+- Spin math must calculate selected index based on segment angle.
+- After spin, selectedGame must match the segment under the pointer.
+- Do not allow the pointer to stop between two segments.
+
+D. Selected game confirmation
+After spin finishes:
+- open a clear start panel/modal for the exact selected game
+- panel shows game title, short description, and button “Avvia gioco”
+- clicking Avvia gioco starts that exact gameSlug
+
+E. Visual fixes
+- remove oversized dark circular halo behind wheel
+- use the approved cinematic Home/ModeSelect background mood, not hex debug background
+- enlarge Jonny on the right by at least 35%
+- keep left ranking panel
+- keep bottom controls
+- make everything 16:9 TV readable
+
+F. Safety
+- visibleGames filter must still work
+- completed games must not be selectable
+- if only one game is available, wheel must select that game directly
+- no changes to scoring or API
+
+Output:
+A. file modified
+B. spin math explanation
+C. how selected game is mapped to pointer
+D. typecheck result
+E. manual test steps

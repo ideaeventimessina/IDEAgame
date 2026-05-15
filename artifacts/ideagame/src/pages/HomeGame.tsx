@@ -177,16 +177,35 @@ function WheelSectorIcon({ slug }:{ slug:string }) {
 function HomeGameWheel({ selected, onSelect, spinning, games }:{
   selected: WheelGame; onSelect:(g:WheelGame)=>void; spinning:boolean; games:WheelGame[];
 }) {
-  const cx=220,cy=220,r=183,ri=60;
+  const cx=220,cy=220,r=183,ri=62;
   const controls = useAnimation();
   const BULBS=48, bulbR=r+17;
+  // Track cumulative rotation so each subsequent spin starts from where the last left off.
+  // Using a ref avoids stale-closure issues inside the effect; the state drives label re-render.
+  const currentRotationRef = useRef(0);
+  const [currentRotation, setCurrentRotation] = useState(0);
 
   useEffect(()=>{
-    if(spinning){
-      const idx=games.findIndex(g=>g.slug===selected.slug);
-      const sliceAngle=games.length>0?360/games.length:45;
-      void controls.start({rotate:[0,1620+idx*sliceAngle],transition:{duration:2.8,ease:'easeInOut' as const}});
-    }
+    if(!spinning) return;
+    const idx = Math.max(0, games.findIndex(g=>g.slug===selected.slug));
+    const sliceAngle = games.length > 0 ? 360/games.length : 45;
+    // Correct spin math: CSS rotate(R) moves sector at angle θ to screen angle θ+R.
+    // Pointer is at 0° (top). Sector idx center is at (idx+0.5)*sliceAngle.
+    // For it to reach the top: (idx+0.5)*sliceAngle + R ≡ 0 (mod 360)
+    // → R_target_mod = (360 - ((idx+0.5)*sliceAngle % 360)) % 360
+    const targetMod = (360 - (((idx+0.5)*sliceAngle) % 360)) % 360;
+    const currentMod = ((currentRotationRef.current % 360) + 360) % 360;
+    let diff = targetMod - currentMod;
+    if (diff <= 0) diff += 360;   // always spin at least one full extra step forward
+    const spinAmount = 1440 + diff; // 4 full spins + precision landing
+    const newTotal = currentRotationRef.current + spinAmount;
+    void controls.start({
+      rotate: newTotal,
+      transition: { duration: 2.8, ease: 'easeInOut' as const }
+    }).then(()=>{
+      currentRotationRef.current = newTotal;
+      setCurrentRotation(newTotal);
+    });
   },[spinning,selected,controls,games]);
 
   return (
@@ -226,52 +245,47 @@ function HomeGameWheel({ selected, onSelect, spinning, games }:{
             </filter>
           </defs>
 
-          <ellipse cx={cx} cy={cy+15} rx={r+40} ry={r+30} fill="rgba(0,0,0,0.55)" filter="url(#hw-glow)"/>
+          {/* Gold metallic ring — no dark halo ellipse */}
           <circle cx={cx} cy={cy} r={r+22} fill="none" stroke="url(#hw-ring2)" strokeWidth="5"/>
           <circle cx={cx} cy={cy} r={r+14} fill="rgba(0,0,0,0.6)" stroke="none"/>
           <circle cx={cx} cy={cy} r={r+12} fill="none" stroke="url(#hw-ring1)" strokeWidth="11"
             style={{filter:'drop-shadow(0 0 10px rgba(245,182,66,0.95))'}}/>
           <circle cx={cx} cy={cy} r={r+5} fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="1.5"/>
 
+          {/* Sectors — icon only, no text (text is in static overlay) */}
           {games.map((g,i)=>{
             const sliceAng=360/games.length;
             const a1=i*sliceAng,a2=(i+1)*sliceAng;
             const isSel=g.slug===selected.slug;
-            const lbl=midPoint(cx,cy,r*0.70,a1,a2);
-            const iconPt=midPoint(cx,cy,r*0.52,a1,a2);
+            const iconPt=midPoint(cx,cy,r*0.58,a1,a2);
             return (
-              <g key={g.slug} onClick={()=>!g.done&&onSelect(g)} style={{cursor:g.done?'default':'pointer',opacity:g.done?0.5:1}}>
+              <g key={g.slug} onClick={()=>!g.done&&onSelect(g)} style={{cursor:g.done?'default':'pointer',opacity:g.done?0.45:1}}>
                 <path d={sectorPath(cx,cy,r,ri,a1,a2)} fill="rgba(0,0,0,0.35)" style={{transform:'translate(2px,3px)'}}/>
                 <path d={sectorPath(cx,cy,r-(isSel?0:4),ri+(isSel?0:3),a1,a2)}
-                  fill={g.done?'rgba(52,211,153,0.4)':`url(#hw-${g.slug})`}
+                  fill={g.done?'rgba(52,211,153,0.38)':`url(#hw-${g.slug})`}
                   stroke={isSel?'rgba(255,255,255,0.75)':g.done?'rgba(52,211,153,0.55)':'rgba(0,0,0,0.6)'}
                   strokeWidth={isSel?2.5:1.5}
                   filter={isSel&&!g.done?'url(#hw-glow)':undefined}/>
                 {g.done ? (
-                  <text x={lbl.x} y={lbl.y-6} textAnchor="middle" dominantBaseline="middle"
-                    fontSize="18" fill="rgba(52,211,153,0.95)" filter="url(#hw-txt)" style={{userSelect:'none'}}>✓</text>
+                  <text x={iconPt.x} y={iconPt.y} textAnchor="middle" dominantBaseline="middle"
+                    fontSize="24" fill="rgba(52,211,153,0.95)" filter="url(#hw-txt)" style={{userSelect:'none'}}>✓</text>
                 ) : (
                   <g transform={`translate(${iconPt.x},${iconPt.y}) scale(0.92)`}>
                     <WheelSectorIcon slug={g.slug}/>
                   </g>
                 )}
-                <text x={lbl.x} y={g.done?lbl.y+8:lbl.y} textAnchor="middle" dominantBaseline="middle"
-                  fontSize="11" fontWeight="900" fontFamily="'Outfit','Arial Black',sans-serif"
-                  fill={g.done?'rgba(52,211,153,0.75)':'white'}
-                  stroke="rgba(0,0,0,0.95)" strokeWidth="3" paintOrder="stroke"
-                  filter="url(#hw-txt)" style={{userSelect:'none',letterSpacing:'0.06em'}}>
-                  {g.short}
-                </text>
               </g>
             );
           })}
 
+          {/* Dividers */}
           {games.map((_,i)=>{
             const sliceAng=360/games.length;
             const p1=polarPt(cx,cy,ri+4,i*sliceAng),p2=polarPt(cx,cy,r-4,i*sliceAng);
             return <line key={i} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="rgba(0,0,0,0.65)" strokeWidth="1.5"/>;
           })}
 
+          {/* Bulb ring */}
           {Array.from({length:BULBS},(_,i)=>{
             const ang=i*(360/BULBS);
             const pt=polarPt(cx,cy,bulbR,ang);
@@ -285,19 +299,46 @@ function HomeGameWheel({ selected, onSelect, spinning, games }:{
             );
           })}
 
+          {/* Hub — Jonny's World logo instead of text */}
           <circle cx={cx} cy={cy} r={ri+5} fill="rgba(0,0,0,0.85)"/>
           <circle cx={cx} cy={cy} r={ri} fill="url(#hw-hub)" stroke="url(#hw-ring1)" strokeWidth="3"
             style={{filter:'drop-shadow(0 0 12px rgba(168,85,247,0.7))'}}/>
           <circle cx={cx} cy={cy} r={ri-6} fill="transparent" stroke="rgba(255,255,255,0.12)" strokeWidth="1"/>
-          <text x={cx} y={cy-9} textAnchor="middle" dominantBaseline="middle"
-            fontSize="10.5" fontWeight="900" fontFamily="'Outfit','Arial Black',sans-serif"
-            fill="#F5B642" style={{userSelect:'none',letterSpacing:'0.14em'}}>SCEGLI</text>
-          <text x={cx} y={cy+8} textAnchor="middle" dominantBaseline="middle"
-            fontSize="10.5" fontWeight="900" fontFamily="'Outfit','Arial Black',sans-serif"
-            fill="#FFD700" style={{userSelect:'none',letterSpacing:'0.08em'}}>IL GIOCO</text>
+          <image href="/jonny-world-hero.png"
+            x={cx-46} y={cy-26} width={92} height={52}
+            preserveAspectRatio="xMidYMid meet"/>
         </svg>
       </motion.div>
 
+      {/* ── Static label overlay — does NOT rotate, always readable ── */}
+      {/* Labels are positioned at the CURRENT screen angle of each sector  */}
+      {/* Screen angle = original angle + cumulative rotation                */}
+      <svg style={{position:'absolute',inset:0,pointerEvents:'none'}}
+        viewBox="0 0 440 440" width="100%" height="100%">
+        <defs>
+          <filter id="hw-txt2">
+            <feDropShadow dx="0" dy="1" stdDeviation="2.5" floodColor="rgba(0,0,0,1)" floodOpacity="1"/>
+          </filter>
+        </defs>
+        {!spinning && games.map((g,i)=>{
+          const sliceAng=360/games.length;
+          // After CSS rotate(currentRotation), sector i's center moved from (i+0.5)*sliceAng to that + currentRotation
+          const screenAngle=(i+0.5)*sliceAng + currentRotation;
+          const lbl=polarPt(cx,cy,r*0.72,screenAngle);
+          const isSel=g.slug===selected.slug;
+          return (
+            <text key={g.slug} x={lbl.x} y={lbl.y} textAnchor="middle" dominantBaseline="middle"
+              fontSize={isSel?13:11} fontWeight="900" fontFamily="'Outfit','Arial Black',sans-serif"
+              fill={g.done?'rgba(52,211,153,0.85)':isSel?'#FFE066':'white'}
+              stroke="rgba(0,0,0,0.95)" strokeWidth="3.5" paintOrder="stroke"
+              filter="url(#hw-txt2)" style={{userSelect:'none',letterSpacing:'0.06em'}}>
+              {g.short}
+            </text>
+          );
+        })}
+      </svg>
+
+      {/* Pointer */}
       <div style={{position:'absolute',top:'-3%',left:'50%',transform:'translateX(-50%)',zIndex:10,pointerEvents:'none'}}>
         <svg width="28" height="38" viewBox="0 0 28 38">
           <defs>
@@ -444,6 +485,7 @@ export default function HomeGame() {
   const [postGame, setPostGame] = useState<{gameSlug:string;players:HomePlayer[]}|null>(null);
   const [spinning, setSpinning] = useState(false);
   const [wheelSelected, setWheelSelected] = useState<string | null>(null);
+  const [postSpinModal, setPostSpinModal] = useState(false);
 
   const { on } = useHomeSocket(session?.id ?? null);
 
@@ -489,10 +531,16 @@ export default function HomeGame() {
     if (spinning || wheelGames.length === 0) return;
     const available = wheelGames.filter(g => !g.done);
     const pool = available.length > 0 ? available : wheelGames;
+    // Single game available — skip animation, go straight to modal
+    if (pool.length === 1) {
+      setWheelSelected(pool[0].slug);
+      setPostSpinModal(true);
+      return;
+    }
     const rnd = pool[Math.floor(Math.random() * pool.length)];
     setWheelSelected(rnd.slug);
     setSpinning(true);
-    setTimeout(() => setSpinning(false), 3000);
+    setTimeout(() => { setSpinning(false); setPostSpinModal(true); }, 3000);
   }, [spinning, wheelGames]);
 
   // ── Audio unlock ────────────────────────────────────────────────────────────
@@ -994,8 +1042,6 @@ export default function HomeGame() {
                 style={{width:'min(44vw,60vh)',height:'min(44vw,60vh)'}}
                 animate={{y:[0,-6,0]}}
                 transition={{duration:4,repeat:Infinity,ease:'easeInOut' as const}}>
-                <div className="absolute inset-[-8%] rounded-full pointer-events-none"
-                  style={{background:`radial-gradient(circle,${wheelSelectedGame.color}18 0%,transparent 70%)`,boxShadow:`0 0 100px ${wheelSelectedGame.glow}55,0 0 200px ${wheelSelectedGame.glow}18`}}/>
                 <HomeGameWheel
                   selected={wheelSelectedGame}
                   onSelect={g => setWheelSelected(g.slug)}
@@ -1014,15 +1060,15 @@ export default function HomeGame() {
                 loading={!!selectingGame}/>
             </div>
 
-            {/* Jonny — big scenic presence, overlapping right column */}
+            {/* Jonny — enlarged scenic presence */}
             <div className="absolute pointer-events-none select-none"
-              style={{right:'-1%',bottom:'10vh',zIndex:12,width:'23%'}}>
-              <div style={{position:'absolute',bottom:-4,left:'8%',right:'8%',height:22,background:'rgba(0,0,0,0.65)',borderRadius:'50%',filter:'blur(18px)'}}/>
-              <div style={{position:'absolute',bottom:2,left:'5%',right:'5%',height:10,background:'linear-gradient(90deg,transparent,rgba(168,85,247,0.8),rgba(245,182,66,0.6),rgba(168,85,247,0.8),transparent)',borderRadius:'50%',filter:'blur(6px)'}}/>
-              <div style={{position:'absolute',bottom:0,left:'-25%',right:'-10%',top:'5%',background:`radial-gradient(ellipse 65% 75% at 52% 65%,${wheelSelectedGame.glow}30 0%,rgba(168,85,247,0.15) 55%,transparent 80%)`,pointerEvents:'none'}}/>
+              style={{right:'0%',bottom:'6vh',zIndex:12,width:'30%'}}>
+              <div style={{position:'absolute',bottom:-4,left:'8%',right:'8%',height:28,background:'rgba(0,0,0,0.65)',borderRadius:'50%',filter:'blur(20px)'}}/>
+              <div style={{position:'absolute',bottom:2,left:'5%',right:'5%',height:12,background:'linear-gradient(90deg,transparent,rgba(168,85,247,0.8),rgba(245,182,66,0.6),rgba(168,85,247,0.8),transparent)',borderRadius:'50%',filter:'blur(8px)'}}/>
+              <div style={{position:'absolute',bottom:0,left:'-20%',right:'-10%',top:'5%',background:`radial-gradient(ellipse 65% 75% at 52% 65%,${wheelSelectedGame.glow}30 0%,rgba(168,85,247,0.15) 55%,transparent 80%)`,pointerEvents:'none'}}/>
               <motion.img src="/jonny-master-nobg.png" alt="Jonny host"
-                style={{height:'min(56vh,460px)',display:'block',objectFit:'contain',width:'100%',filter:`drop-shadow(0 0 55px ${wheelSelectedGame.glow}cc) drop-shadow(-5px 0 25px rgba(168,85,247,0.55)) drop-shadow(0 10px 35px rgba(0,0,0,0.7))`}}
-                animate={{y:[0,-8,0]}}
+                style={{height:'min(74vh,600px)',display:'block',objectFit:'contain',width:'100%',filter:`drop-shadow(0 0 65px ${wheelSelectedGame.glow}dd) drop-shadow(-6px 0 28px rgba(168,85,247,0.6)) drop-shadow(0 12px 40px rgba(0,0,0,0.75))`}}
+                animate={{y:[0,-10,0]}}
                 transition={{duration:3.5,repeat:Infinity,ease:'easeInOut' as const}}/>
             </div>
 
@@ -1069,6 +1115,62 @@ export default function HomeGame() {
 
             {/* BOTTOM-RIGHT: spacer */}
             <div className="z-20"/>
+
+            {/* ── Post-spin game confirmation modal ── */}
+            <AnimatePresence>
+              {postSpinModal && !wheelSelectedGame.done && (
+                <motion.div key="postspin"
+                  initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+                  className="absolute inset-0 z-50 flex items-center justify-center"
+                  style={{background:'rgba(4,0,18,0.82)',backdropFilter:'blur(18px)'}}>
+                  <motion.div
+                    initial={{scale:0.85,y:40,opacity:0}} animate={{scale:1,y:0,opacity:1}}
+                    exit={{scale:0.9,y:-20,opacity:0}}
+                    transition={{type:'spring',damping:22,stiffness:300}}
+                    className="relative rounded-3xl overflow-hidden max-w-sm w-full mx-6"
+                    style={{background:'linear-gradient(160deg,rgba(18,6,44,0.98),rgba(10,2,28,0.98))',border:`2px solid ${wheelSelectedGame.color}80`,boxShadow:`0 0 80px ${wheelSelectedGame.glow}55, 0 30px 80px rgba(0,0,0,0.8)`}}>
+                    {/* Top accent bar */}
+                    <div style={{height:5,background:`linear-gradient(90deg,transparent,${wheelSelectedGame.color},${wheelSelectedGame.glow},${wheelSelectedGame.color},transparent)`}}/>
+                    <div className="px-8 py-7 flex flex-col items-center gap-5 text-center">
+                      {/* Game emoji */}
+                      <div className="text-6xl leading-none" style={{filter:`drop-shadow(0 0 24px ${wheelSelectedGame.glow})`}}>
+                        {visibleGames.find(g=>g.slug===wheelSelectedGame.slug)?.emoji ?? '🎮'}
+                      </div>
+                      {/* Title */}
+                      <div>
+                        <div className="text-[11px] font-black tracking-widest uppercase mb-1.5"
+                          style={{color:wheelSelectedGame.color}}>La ruota ha scelto</div>
+                        <div className="text-3xl font-black text-white leading-tight"
+                          style={{textShadow:`0 0 30px ${wheelSelectedGame.glow}88`}}>
+                          {wheelSelectedGame.label}
+                        </div>
+                      </div>
+                      {/* Description */}
+                      {visibleGames.find(g=>g.slug===wheelSelectedGame.slug)?.description && (
+                        <div className="text-sm text-white/50 leading-relaxed">
+                          {visibleGames.find(g=>g.slug===wheelSelectedGame.slug)?.description}
+                        </div>
+                      )}
+                      {/* CTA */}
+                      <motion.button
+                        onClick={() => { setPostSpinModal(false); void selectGame(wheelSelectedGame.slug); }}
+                        disabled={!!selectingGame}
+                        className="w-full rounded-2xl py-4 font-black text-lg text-white disabled:opacity-50"
+                        style={{background:`linear-gradient(135deg,${wheelSelectedGame.color},${wheelSelectedGame.glow})`,boxShadow:`0 0 40px ${wheelSelectedGame.color}66,0 6px 0 rgba(0,0,0,0.4)`}}
+                        whileHover={{scale:1.03}} whileTap={{scale:0.97}}>
+                        {selectingGame ? <Loader2 className="inline h-5 w-5 animate-spin mr-2"/> : <Play className="inline h-5 w-5 mr-2" style={{fill:'white'}}/>}
+                        Avvia gioco
+                      </motion.button>
+                      {/* Dismiss */}
+                      <button onClick={() => setPostSpinModal(false)}
+                        className="text-xs text-white/25 hover:text-white/50 transition-colors">
+                        ← Torna alla ruota
+                      </button>
+                    </div>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </motion.div>
         )}
 
