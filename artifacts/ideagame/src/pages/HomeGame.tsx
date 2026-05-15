@@ -357,6 +357,10 @@ export default function HomeGame() {
     if (timerRef.current) clearInterval(timerRef.current);
     try {
       const r = await fetch(`/api/home/sessions/${session.id}/next`, { method: 'POST' });
+      if (!r.ok) {
+        console.warn('nextRound rejected', r.status);
+        return;
+      }
       const d = await r.json() as { gameEnded?: boolean; session: HomeSession; payload?: Record<string, unknown>; players?: HomePlayer[] };
       if (d.gameEnded) {
         setSession(d.session);
@@ -919,10 +923,8 @@ function QuizBoard({ payload, revealed, onReveal }: { payload: Record<string,unk
             border=`2px solid ${ANS_COLORS[i]}`; shadow=`0 0 35px ${ANS_GLOW[i]}`; textCol='#fff';
           }
           return (
-            <motion.button key={i} initial={{scale:0.88,opacity:0}} animate={{scale:1,opacity:1}} transition={{delay:i*0.07}}
-              whileHover={!revealed?{scale:1.03}:{}} whileTap={!revealed?{scale:0.96}:{}}
-              onClick={!revealed?onReveal:undefined}
-              className="flex items-center gap-4 rounded-2xl px-6 py-5 text-left transition-all"
+            <motion.div key={i} initial={{scale:0.88,opacity:0}} animate={{scale:1,opacity:1}} transition={{delay:i*0.07}}
+              className="flex items-center gap-4 rounded-2xl px-6 py-5 text-left"
               style={{background:bg,border,boxShadow:shadow}}>
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-lg font-black"
                 style={{background:'rgba(0,0,0,0.3)',color:revealed&&isCorrect?'#4ade80':textCol}}>
@@ -930,16 +932,10 @@ function QuizBoard({ payload, revealed, onReveal }: { payload: Record<string,unk
               </div>
               <div className="flex-1 text-base font-black leading-snug" style={{color:textCol}}>{ans}</div>
               {revealed && isCorrect && <Check className="h-6 w-6 shrink-0 text-white"/>}
-            </motion.button>
+            </motion.div>
           );
         })}
       </div>
-      {!revealed && (
-        <button onClick={onReveal} className="mx-auto flex items-center gap-2 rounded-2xl px-6 py-2.5 text-sm font-bold"
-          style={{background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.14)',color:'rgba(255,255,255,0.55)'}}>
-          <Check className="h-4 w-4"/> Rivela risposta
-        </button>
-      )}
     </div>
   );
 }
@@ -1257,16 +1253,6 @@ function CoppieBoard({ payload, onNext }: { payload: Record<string,unknown>; onN
   const total = Number(payload.totalPairs ?? 0);
   const cols = Math.min(Math.ceil(Math.sqrt(cards.length)), 6);
 
-  const flipCard = async (cardId: string) => {
-    const url = window.location.search;
-    const sid = new URLSearchParams(url).get('s');
-    if (!sid) return;
-    await fetch(`/api/home/sessions/${sid}/flip`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ cardId }),
-    });
-  };
-
   return (
     <div className="flex w-full max-w-5xl flex-col items-center gap-5">
       <div className="flex items-center gap-4">
@@ -1280,11 +1266,8 @@ function CoppieBoard({ payload, onNext }: { payload: Record<string,unknown>; onN
       </div>
       <div className={`grid gap-3`} style={{gridTemplateColumns:`repeat(${cols}, minmax(0, 1fr))`,width:'100%'}}>
         {cards.map(card => (
-          <motion.button key={card.id}
-            whileHover={!card.matched&&!card.flipped?{scale:1.06}:{}}
-            whileTap={!card.matched&&!card.flipped?{scale:0.95}:{}}
-            onClick={() => !card.matched && flipCard(card.id)}
-            className="relative flex min-h-16 items-center justify-center rounded-2xl text-sm font-black transition-all"
+          <div key={card.id}
+            className="relative flex min-h-16 items-center justify-center rounded-2xl text-sm font-black"
             style={card.matched
               ? {background:'linear-gradient(135deg,#22c55e,#16a34a)',border:'2px solid #4ade80',boxShadow:'0 0 20px rgba(34,197,94,0.4)',color:'#fff'}
               : card.flipped
@@ -1300,11 +1283,11 @@ function CoppieBoard({ payload, onNext }: { payload: Record<string,unknown>; onN
                 : <span className="px-2 text-center text-sm font-black">{card.text}</span>
             ) : (
               card.imageUrl
-                ? <img src={card.imageUrl} alt="" className="h-16 w-16 rounded-xl object-cover opacity-0 blur-md"
+                ? <img src={card.imageUrl} alt="" className="h-16 w-16 rounded-xl object-cover"
                     style={{filter:'blur(8px)',opacity:0.15}}/>
                 : <span className="text-2xl text-white/25">?</span>
             )}
-          </motion.button>
+          </div>
         ))}
       </div>
       {matched >= total && total > 0 && (
