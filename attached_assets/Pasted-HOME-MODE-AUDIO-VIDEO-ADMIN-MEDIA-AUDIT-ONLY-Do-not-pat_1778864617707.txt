@@ -1,0 +1,84 @@
+HOME MODE — AUDIO / VIDEO / ADMIN MEDIA AUDIT ONLY.
+
+Do not patch yet.
+Do not redesign.
+Do not touch scoring.
+Do not touch routes.
+Do not touch live mode unless it shares the same admin audio system.
+
+Goal:
+Understand where Home Mode audio and multimedia should be managed from Admin.
+
+Questions:
+1. Does the current Admin panel already manage audio assets?
+2. Are those audio settings connected only to Live Mode or also to Home Mode?
+3. Where are uploaded MP3/video/media stored?
+4. Does HomeGame.tsx read any audio settings?
+5. Does HomeLobbyPage play lobby music?
+6. Does each Home game have configurable background music?
+7. Is there a media library for:
+   - lobby music
+   - wheel music
+   - game background music
+   - game intro video
+   - game-specific songs/videos
+   - sound effects
+8. Is AudioOrchestrator used in Home Mode or only Live Mode?
+9. Are there fade/crossfade systems currently active?
+10. Where should we disable fades to avoid overlapping audio?
+
+Required Home Mode behavior:
+
+A. Lobby QR page
+- music starts from /home-lobby/:code
+- this is the “waiting/lobby music”
+- must loop
+- no fade overlap
+
+B. Board / wheel
+- separate arena/board music
+- starts when leaving lobby
+- stops lobby music immediately
+
+C. Before every game
+- show full-screen game preview video
+- video comes from Admin media library
+- after preview ends, start the game
+- if no preview exists, skip directly to game
+
+D. During every game
+- each game can have its own background music
+- Quizzone music
+- Percorso music
+- Ballo music
+- Adult music
+- Coppie music
+- Parola music
+- Karaoke music
+- Freestyle music
+- SaraMusica music
+
+E. Special games
+Some games need their own songs/videos:
+- Karaoke: karaoke video/audio assets
+- SaraMusica: song clips
+- Freestyle: beat tracks
+- Ballo: dance tracks
+
+F. Audio rule
+NO fades.
+NO crossfade.
+NO overlapping music.
+When new music starts:
+- stop current track immediately
+- reset previous audio
+- play next track cleanly
+
+Audit output:
+A. Current admin media/audio structure
+B. Current audio components/hooks
+C. Which parts are connected to Home Mode
+D. Missing pieces
+E. Proposed clean architecture
+F. Files that would need patching later
+G. No code changes yet
