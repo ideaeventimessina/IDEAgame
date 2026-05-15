@@ -85,13 +85,15 @@ function Router() {
     <Switch>
       <Route path="/" component={Hub} />
       <Route path="/projector" component={ProjectorStandby} />
+      {/* LEGACY — prototype routes, unreachable from active UI, pending deletion */}
       <Route path="/dev-test" component={DevTest} />
       <Route path="/home-v2" component={HomeV2} />
       <Route path="/home-v3" component={HomeV3} />
       <Route path="/home-v4" component={HomeV4} />
       <Route path="/home-v5" component={HomeV5} />
-      <Route path="/mode-select" component={ModeSelect} />
       <Route path="/home-room" component={HomeRoom} />
+      {/* END LEGACY */}
+      <Route path="/mode-select" component={ModeSelect} />
       <Route path="/cockpit" component={Cockpit} />
       <Route path="/splash" component={Splash} />
       <Route path="/language" component={LanguageSelect} />

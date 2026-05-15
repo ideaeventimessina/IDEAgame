@@ -268,13 +268,7 @@ export default function Cockpit() {
           ))}
         </div>
 
-        <motion.button
-          initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.42 }}
-          onClick={() => navigate('/dev-test')}
-          className="mt-6 rounded-2xl border border-blue-400/30 bg-blue-400/10 px-5 py-3 text-sm font-black text-blue-200 transition-colors hover:bg-blue-400/20"
-        >
-          Test sviluppo: regia + proiettore insieme
-        </motion.button>
+        {/* LEGACY dev-test button removed from active UI */}
 
         {/* Logout */}
         <motion.div

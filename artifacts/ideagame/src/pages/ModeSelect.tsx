@@ -54,7 +54,7 @@ const MODES: Mode[] = [
     bgSolid: 'rgba(14,4,34,0.88)',
     border: 'rgba(168,85,247,0.55)',
     cta: 'INIZIA LO SHOW',
-    route: '/home-v4?mode=live',
+    route: '/',
     Icon: Mic2,
     tagIcons: [Building2, Star, Zap],
   },
@@ -312,7 +312,7 @@ export default function ModeSelect() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.55, duration: 0.35 }}
-        onClick={() => navigate('/home-v4')}
+        onClick={() => navigate('/')}
         style={{
           position: 'absolute',
           /* center the button under the two cards */
