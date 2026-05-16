@@ -2,6 +2,7 @@ import { useLocation } from 'wouter';
 import { motion } from 'framer-motion';
 import { useState } from 'react';
 import { Home, Mic2, ChevronLeft, Users, Star, Zap, Building2 } from 'lucide-react';
+import { AudioManager } from '@/audio/AudioManager';
 
 /* ── asset helper ─────────────────────────────── */
 const BASE = (import.meta.env.BASE_URL as string) ?? '/';
@@ -73,7 +74,7 @@ function ModeCard({ mode, delay }: { mode: Mode; delay: number }) {
       transition={{ delay, duration: 0.55, ease: 'easeOut' as const }}
       onHoverStart={() => setHovered(true)}
       onHoverEnd={() => setHovered(false)}
-      onClick={() => navigate(mode.route)}
+      onClick={() => { AudioManager.resumeContext(); navigate(mode.route); }}
       style={{
         position: 'relative',
         cursor: 'pointer',
@@ -181,7 +182,7 @@ function ModeCard({ mode, delay }: { mode: Mode; delay: number }) {
           width: 'calc(100% - 28px)', flexShrink: 0,
         }}
         whileTap={{ scale: 0.97 }}
-        onClick={e => { e.stopPropagation(); navigate(mode.route); }}
+        onClick={e => { e.stopPropagation(); AudioManager.resumeContext(); navigate(mode.route); }}
       >{mode.cta}</motion.button>
     </motion.div>
   );

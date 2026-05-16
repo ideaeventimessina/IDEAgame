@@ -64,6 +64,10 @@ function makeJoinCode(): string {
 
 function homeRoom(id: string) { return `home:${id}`; }
 
+// In-memory answer tracking for quiz rounds. Map: sessionId → round → playerId → answerIndex.
+// Round entries are deleted once the all-answered event fires to avoid re-emitting.
+const quizAnswerMap = new Map<string, Map<number, Map<string, number>>>();
+
 async function getSession(id: string) {
   const [s] = await db.select().from(homeSessionsTable).where(eq(homeSessionsTable.id, id));
   return s ?? null;
@@ -630,6 +634,51 @@ router.post("/home/sessions/:id/join", async (req, res): Promise<void> => {
 
   await broadcastState(id);
   res.status(201).json(player);
+});
+
+// ── POST /home/sessions/:id/answer — phone reports a quiz answer ────────────────
+router.post("/home/sessions/:id/answer", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+
+  const { playerId, answerIndex, round } = req.body as { playerId: string; answerIndex: number; round: number };
+  if (!playerId || typeof answerIndex !== "number" || typeof round !== "number") {
+    res.status(400).json({ error: "Parametri mancanti" }); return;
+  }
+
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  if (session.status !== "playing") { res.status(409).json({ error: "Sessione non in corso" }); return; }
+
+  const payload = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (String(payload.mode ?? "") !== "home-quiz") {
+    res.status(400).json({ error: "Non in modalità quiz" }); return;
+  }
+  if (session.currentRound !== round) {
+    res.status(409).json({ error: "Round non corrispondente" }); return;
+  }
+
+  // Store answer (first answer per player wins — no changing answer after submission)
+  if (!quizAnswerMap.has(id)) quizAnswerMap.set(id, new Map());
+  const roundMap = quizAnswerMap.get(id)!;
+  if (!roundMap.has(round)) roundMap.set(round, new Map());
+  const answerMap = roundMap.get(round)!;
+  if (!answerMap.has(playerId)) answerMap.set(playerId, answerIndex);
+
+  // Check whether all active players have now answered
+  const players = await getPlayers(id);
+  if (players.length > 0 && answerMap.size >= players.length) {
+    emitToRoom(homeRoom(id), "home:quiz_all_answered", {
+      sessionId: id,
+      round,
+      correctIndex: Number(payload.correctIndex ?? 0),
+      answers: Object.fromEntries(answerMap.entries()),
+    });
+    // Remove round entry so a late-arriving duplicate doesn't re-emit
+    roundMap.delete(round);
+  }
+
+  res.json({ ok: true });
 });
 
 // ── POST /home/sessions/:id/ready — pass to game-board ─────────────────────────

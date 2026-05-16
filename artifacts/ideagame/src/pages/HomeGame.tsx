@@ -656,7 +656,13 @@ export default function HomeGame() {
       if (timerRef.current) clearInterval(timerRef.current);
       setJonnyMood('correct');
     });
-    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); };
+    const u10 = on<{ sessionId: string; round: number; correctIndex: number }>('home:quiz_all_answered', () => {
+      // All players answered — freeze timer and reveal correct answer on TV
+      if (timerRef.current) clearInterval(timerRef.current);
+      setRevealed(true);
+      setJonnyMood('correct');
+    });
+    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); u10?.(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [on]);
 

@@ -127,6 +127,7 @@ class _AudioManager {
   resumeContext() {
     // A tiny silent WAV (1 sample) played synchronously during the gesture
     // convinces the browser this tab has had user interaction with audio.
+    console.log('[AudioDebug] unlock');
     const a = new Audio(
       'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA',
     );
@@ -219,7 +220,8 @@ class _AudioManager {
    */
   /** Returns true if the loop started, false if blocked by browser autoplay policy or settings. */
   async playLoop(slug: AudioSlug | string, type: AudioType | string = 'round_loop'): Promise<boolean> {
-    if (!this.settings.musicEnabled || this.settings.muted) return false;
+    console.log('[AudioDebug] playLoop request', { slug, type });
+    if (!this.settings.musicEnabled || this.settings.muted) { console.log('[AudioDebug] playLoop blocked — music disabled or muted'); return false; }
     if (this.currentLoopSlug === slug && this.currentLoopType === type) return true;
 
     // Snapshot previous state so we can restore on autoplay block.

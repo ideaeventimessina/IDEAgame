@@ -330,7 +330,13 @@ export default function HomeJoin() {
       }
     });
 
-    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); };
+    const u9 = on<{ sessionId: string; round: number; correctIndex: number }>('home:quiz_all_answered', () => {
+      // All players answered — reveal answer on phone even if this player hasn't answered yet
+      if (timerRef.current) clearInterval(timerRef.current);
+      setRevealed(true);
+    });
+
+    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); };
   // Only re-register when the socket `on` function changes (new connection)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [on]);
@@ -671,6 +677,14 @@ export default function HomeJoin() {
                 const p = session.roundPayload;
                 if (String(p.mode)==='home-quiz' && idx===Number(p.correctIndex)) {
                   void addScore(Number(p.points ?? 200));
+                }
+                // Report answer to server so it can detect when all players answered
+                if (String(p.mode) === 'home-quiz' && player) {
+                  void fetch(`/api/home/sessions/${session.id}/answer`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ playerId: player.id, answerIndex: idx, round: session.currentRound }),
+                  }).catch(() => {});
                 }
               }}
               onFlip={flipCard}

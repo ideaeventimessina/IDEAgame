@@ -113,6 +113,7 @@ export default function HomeLobbyPage() {
     if (musicPlaying) {
       AudioManager.stopLoop(true);
     } else {
+      AudioManager.resumeContext();
       void AudioManager.playLoop('global', 'lobby_loop');
     }
     setMusicPlaying(m => !m);
