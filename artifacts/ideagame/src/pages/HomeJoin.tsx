@@ -295,7 +295,10 @@ export default function HomeJoin() {
       setPhase('playing');
       setAnswered(null);
       setRevealed(false);
-      startRoundTimer(d.payload ?? {});
+      // Flow pilot: no round timer during theme_select/booking/confirm/countdown
+      if (String(d.session.roundPayload?.mode ?? '') !== 'home-flow') {
+        startRoundTimer(d.payload ?? {});
+      }
     });
 
     const u4 = on<{ round: number; payload: Record<string,unknown> }>('home:round', (d) => {

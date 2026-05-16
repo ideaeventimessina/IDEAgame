@@ -629,19 +629,31 @@ export default function HomeGame() {
       setRevealed(false);
       setBalloEnergies({});
       setBalloResult(null);
-      startTimer(Number(d.payload?.timeLimit ?? 30));
       setJonnyMood('thinking');
+      // Flow pilot: skip timer + audio — music stays as lobby, switches on first home:round
+      if (String(d.session.roundPayload?.mode ?? '') === 'home-flow') {
+        console.log('[HomeAudioFlow] home:game_started flow — skipping timer+audio, phase=theme_select');
+        return;
+      }
+      startTimer(Number(d.payload?.timeLimit ?? 30));
       console.log('[AudioTrace] home:game_started — stopLoop then playLoop', { slug: d.session.gameSlug ?? 'global', type: 'round_loop' });
       AudioManager.stopLoop(true);
       void AudioManager.playLoop(d.session.gameSlug ?? 'global', 'round_loop');
     });
     const u4 = on<{ round: number; payload: Record<string, unknown> }>('home:round', (d) => {
+      const roundMode = String(d.payload?.mode ?? '');
       setSession(prev => prev ? { ...prev, currentRound: d.round, roundPayload: d.payload } : prev);
       setRevealed(false);
       setBalloEnergies({});
       setBalloResult(null);
       startTimer(Number(d.payload?.timeLimit ?? 30));
       setJonnyMood('thinking');
+      // Audio switch: covers both normal ballo AND flow→ballo transition
+      if (roundMode === 'home-ballo') {
+        console.log('[HomeAudioFlow] home:round home-ballo — switching to ballo audio');
+        AudioManager.stopLoop(true);
+        void AudioManager.playLoop('sfida-ballo', 'round_loop');
+      }
     });
     const u5 = on<{ session: HomeSession; players: HomePlayer[]; gameSlug: string }>('home:game_ended', (d) => {
       setSession(d.session);
@@ -851,6 +863,17 @@ export default function HomeGame() {
       setPlayers(d.players);
       const game = ALL_GAMES.find(g => g.slug === slug);
       setJonnyMsg(`${game?.name ?? slug} iniziato!`);
+
+      // ── GameFlowEngine pilot: theme_select → booking → confirm → countdown ──
+      // Do NOT start timer, do NOT switch audio, do NOT show intro video.
+      // Music keeps playing (lobby_loop). Audio switches on first home:round.
+      if (String(d.session.roundPayload?.mode ?? '') === 'home-flow') {
+        console.log('[HomeAudioFlow] flow mode detected in selectGame — keeping lobby audio, entering theme_select');
+        setPhase('playing');
+        return;
+      }
+
+      // ── Normal path ──────────────────────────────────────────────────────────
       const timeLimit = Number(d.session.roundPayload?.timeLimit ?? 30);
       // Hard stop board music before anything
       AudioManager.stopLoop(true);
