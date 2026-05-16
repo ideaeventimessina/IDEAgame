@@ -1,0 +1,191 @@
+HOME MODE — MASTER GAMEPLAY ARCHITECTURE AUDIT.
+
+Do not patch yet.
+Do not redesign.
+Do not touch live mode.
+
+We need to convert Home Mode into a true TV + phone controller party game.
+
+GLOBAL RULES:
+1. TV is show screen.
+2. Phones are always controllers.
+3. Admin dashboard is the only content source.
+4. No silence ever: every room/game must have background music.
+5. Game media temporarily lowers/stops background music, then background returns immediately.
+6. Every game must start with theme/category selection.
+7. Even if only one category/theme exists, host must see it and confirm it.
+8. Scores must be hidden on phones during active games.
+9. Scores are shown on TV lobby/board and in partial rankings only.
+10. Host controls game start/countdown after players are ready.
+
+CURRENT CRITICAL BUGS:
+- Quizzone all-answered reveal still does not trigger with one player.
+- Quizzone answer order is always the same; answers must shuffle every round.
+- Coppie cards are empty and do not flip.
+- Ballo sensor activation button missing.
+- Some rooms still have no audio.
+- Sara Musica is not logical yet.
+- Adult Only is incomplete.
+- Percorso is not a phone-controller game.
+- Karaoke/Freestyle logic is incomplete.
+
+REQUIRED ARCHITECTURE FOR EVERY GAME:
+
+A. CATEGORY/THEME SELECT
+Before starting any game:
+- load available categories/themes from Admin dashboard
+- show category card on TV
+- host confirms selected category
+- if only one exists, still show it and confirm
+- only after confirmation start countdown/game
+
+B. AUDIO RULE
+- background music must always play
+- no silence
+- if game media/chorus/song starts:
+  stop or duck background immediately
+- when media ends:
+  resume background immediately
+- if no specific track exists:
+  fallback to lobby/board music
+- never silently fail
+
+C. PLAYER REGISTRATION FLOW FOR CHALLENGE GAMES
+For games that are not all-player multiple choice like Quizzone:
+- players must book themselves from phone
+- TV shows booked players
+- host confirms
+- countdown starts only after confirmation
+- players who already played can book again later
+
+GAME SPECIFICATIONS:
+
+1. QUIZZONE
+- all players answer from phone
+- when last active player answers:
+  TV reveals correct answer immediately
+  phones show result immediately
+  timer freezes
+  host still presses Avanti
+- answers must be shuffled every question
+- category must be selected before quiz starts
+
+2. COPPIE
+- populate fallback cards properly
+- cards must be visible on TV and phone
+- add button on TV: “Mostra carte 10s”
+- cards reveal for 10 seconds, then hide
+- players interact from phone to choose/flip/match
+- no empty cards
+
+3. SARA MUSICA
+Flow:
+- TV shows hint
+- phones show 6 possible answers
+- players compete with answer
+- first correct player wins access
+- TV immediately shows who answered correctly
+- background music stops when chorus/audio clip starts
+- chorus plays after answer validation
+- background resumes after chorus
+- remove meaningless “Ho risposto io” button
+
+4. ADULT ONLY
+Flow:
+- TV shows challenge
+- phones show “Accetto la sfida”
+- first player who accepts appears on TV
+- accepting gives 100 courage points
+- other players vote 1–5 stars
+- each star = 20 points
+- final score = courage points + votes
+- microphone/sounds/verses are phase 2, but architecture must allow it
+
+5. SFIDA DI BALLO
+Flow:
+- phone must show “Attiva sensori”
+- first 2 players who book enter the dance battle
+- host confirms players
+- host presses start
+- countdown begins
+- dance track starts
+- TV shows both players with vertical movement meters
+- phone sends sensor energy
+- winner calculated automatically by movement intensity
+- background music alternates with dance track
+
+6. PAROLA ALLE SPALLE
+Flow:
+- player 1 books = guesser, must turn back
+- player 2 books = suggester
+- only after both confirmed, TV reveals word
+- suggester helps guesser
+- guesser presses “Rispondi” on phone and says word
+- microphone/speech match validates answer
+- if correct: both +100
+- if wrong: suggester -50
+- phone acts as controller
+
+7. KARAOKE / FREESTYLE
+When entering Karaoke room:
+- host chooses Karaoke or Freestyle
+Karaoke:
+- player books first
+- TV shows selected singer
+- host confirms
+- karaoke video starts
+- phone microphone tracks voice
+- system gives 50–200 based on pitch/match
+- other players vote 1–5 stars
+- each star = 20 points
+Freestyle:
+- beat starts
+- microphone records/monitors performance
+- others vote 1–5 stars
+- background music alternates with game media
+
+8. PERCORSO A RISATE
+Flow:
+- explanation appears on TV
+- two players book
+- host confirms
+- challenge starts
+- remaining players vote separately for each contestant
+- phone is voting/controller device
+- TV shows result and points
+
+AUDIT OUTPUT:
+Return a table:
+
+GAME | CURRENT STATE | WHAT IS MISSING | ADMIN CONTENT NEEDED | PHONE CONTROLLER NEEDED | BACKEND SCORING NEEDED | AUDIO/MEDIA NEEDED | PRIORITY
+
+Then propose implementation in phases:
+
+PHASE 1 — Fix broken existing games:
+- Quizzone all-answered
+- Quizzone answer shuffle
+- Coppie cards + reveal 10s
+- Ballo sensor button
+- audio fallback everywhere
+
+PHASE 2 — Booking system shared component:
+- player booking
+- host confirm
+- countdown
+- vote screen
+
+PHASE 3 — Apply booking/voting to:
+- Adult
+- Percorso
+- Karaoke/Freestyle
+- WordBack
+
+PHASE 4 — Media/microphone/sensor advanced:
+- SaraMusica clips
+- Karaoke pitch
+- Freestyle mic
+- WordBack speech match
+- Adult microphone/verses
+
+Do not code yet.
+Return only audit, architecture, and phased implementation plan.
