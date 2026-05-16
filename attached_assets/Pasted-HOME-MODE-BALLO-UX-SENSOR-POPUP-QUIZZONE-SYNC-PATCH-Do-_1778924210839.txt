@@ -1,0 +1,154 @@
+HOME MODE — BALLO UX + SENSOR POPUP + QUIZZONE SYNC PATCH.
+
+Do not redesign whole app.
+Do not touch live mode.
+Do not touch routes.
+Do not touch other games except Quizzone sync.
+
+PART 1 — iPhone popup during Ballo
+
+Problem:
+During Ballo on iPhone, a native popup keeps appearing while moving.
+It may be iOS Shake to Undo or repeated motion permission request.
+
+Patch:
+- make sure DeviceMotionEvent.requestPermission() is called only once per session/player
+- store result in localStorage:
+  ideagame:motion-permission = granted / denied
+- if already granted, do not call requestPermission again
+- before Ballo starts:
+  blur active input:
+  document.activeElement?.blur?.()
+- remove focus from any text input after nickname submit
+- if possible add CSS/attributes to prevent text selection/input focus during Ballo:
+  user-select: none
+  inputMode none where relevant
+- log:
+  [BalloTrace:phone] permission already granted - skipping prompt
+
+PART 2 — Ballo duration
+
+Change Ballo Home Mode duration:
+- each Ballo round = 15 seconds
+- total 4 rounds = 60 seconds
+- update fallbackBallo and loadBalloRounds payload:
+  duration: 15
+  timeLimit: 15
+- make sure phone timer and TV timer both use 15 seconds.
+
+PART 3 — Ballo TV visual scoring
+
+Current TV is not satisfying.
+We need live visual scoring like Guitar Hero.
+
+In BalloBoard on TV:
+- show each player as a large contestant card
+- each card must show:
+  player nickname
+  avatar/figure placeholder
+  vertical movement meter next to the figure
+  live energy value 0–100
+  current points earned during this round
+  leader highlight
+
+Design:
+- 2 players should appear side by side large.
+- If more players, use responsive grid.
+- vertical meter must fill from bottom to top.
+- meter must animate smoothly.
+- leader card gets gold glow.
+- show floating +points / energy bursts when energy increases.
+- no manual winner buttons.
+- no "Nessuno" button.
+- no static waiting screen once data arrives.
+
+Scoring:
+- while players move, TV must show live energy.
+- at timer end, backend awards points automatically to highest peak energy player.
+- TV shows winner:
+  "VINCE [nickname] +150"
+- scoreboard updates immediately.
+
+PART 4 — Ballo live data reliability
+
+Verify chain:
+phone emit home:ballo_energy
+server receives
+server stores peak by sessionId + currentRound + playerId
+server emits home:ballo_live
+TV receives and updates meter
+
+Important:
+- include currentRound in payload
+- ignore energy from old rounds
+- clear energy map after scoring
+- prevent duplicate scoring
+
+PART 5 — Quizzone phone sync speed
+
+Problem:
+TV question updates first, phones update ~3 seconds late.
+This wastes time.
+
+Required:
+- TV can render first.
+- phones must update immediately after, ideally via socket.
+- fallback polling can be 1 second during active Home game only.
+
+Patch:
+In HomeJoin playing phase:
+- reduce fallback polling from 5s/3s to 1s only while phase === playing
+- do not use 1s polling in lobby if not needed
+- make sure home:round socket remains primary path
+- when home:round arrives:
+  update phone immediately
+  reset answered/revealed
+  restart timer based on server timestamp/timeLimit
+- if socket misses event, 1s polling recovers quickly.
+
+Also check backend emits home:round immediately after TV advances.
+
+PART 6 — Quizzone all-answered reveal
+
+Keep required behavior:
+- if all players answer early:
+  TV reveals correct answer immediately
+  phones show result immediately
+  timer freezes
+  host still presses Avanti to continue
+
+Make sure this works with the faster phone sync.
+
+TESTS:
+1. Ballo:
+- create Home session only Ballo
+- join 2 players on phones
+- permission popup appears max once
+- start round
+- timer 15s
+- TV shows both player cards with vertical live meters
+- move one phone more
+- energy updates on TV live
+- at 0s highest player gets +150 automatically
+- score appears in partial leaderboard
+
+2. Quizzone:
+- create Home session only Quizzone
+- join 2 players
+- TV Q1 appears
+- phones Q1 appear within 1 second
+- both answer before timer
+- TV reveals correct answer immediately
+- phones show result immediately
+- host Avanti -> Q2
+- phones update within 1 second
+
+OUTPUT:
+A. files modified
+B. iPhone popup mitigation
+C. Ballo duration changed to 15s x 4
+D. Ballo TV visual meters
+E. Ballo auto scoring confirmation
+F. Quizzone sync improvement
+G. typecheck frontend/backend
+H. manual test result

@@ -236,7 +236,7 @@ export default function HomeJoin() {
           }
         })
         .catch(() => {});
-    }, 5000);
+    }, 1000);
     return () => clearInterval(interval);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, session?.id, session?.gameSlug, session?.currentRound]);
@@ -766,7 +766,7 @@ function PhoneController({
   if (mode === 'home-percorso')   return <PercorsoHomeController payload={p} timeLeft={timeLeft}/>;
   if (mode === 'home-saramusica') return <SaraMusicaController payload={p} players={players} player={player} onScore={onScore}/>;
   if (mode === 'home-adult')      return <AdultController payload={p} timeLeft={timeLeft}/>;
-  if (mode === 'home-ballo')      return <BalloController payload={p} timeLeft={timeLeft} sessionId={session.id} emit={emit} playerId={player.id}/>;
+  if (mode === 'home-ballo')      return <BalloController payload={p} timeLeft={timeLeft} sessionId={session.id} emit={emit} playerId={player.id} round={session.currentRound}/>;
   if (mode === 'home-wordback')   return <WordBackController payload={p} timeLeft={timeLeft}/>;
   if (mode === 'home-karaoke')    return <KaraokeController payload={p} sessionId={session.id}/>;
   if (mode === 'home-freestyle')  return <FreestyleController payload={p} timeLeft={timeLeft}/>;
@@ -1027,12 +1027,13 @@ function SimpleController({ payload, color, emoji, label, timeLeft }: {
 
 const MOTION_PERM_KEY = 'ideagame:motion-permission';
 
-function BalloController({ payload, timeLeft, sessionId, emit, playerId }: {
+function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }: {
   payload: Record<string,unknown>;
   timeLeft: number | null;
   sessionId: string;
   emit: (event: string, data: unknown) => void;
   playerId: string;
+  round?: number;
 }) {
   const [energy, setEnergy] = useState(0);
   const [motionPerm, setMotionPerm] = useState<'unknown'|'granted'|'denied'|'unsupported'>('unknown');
@@ -1048,20 +1049,28 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId }: {
 
   // Restore permission from localStorage — iOS only asks once per device
   useEffect(() => {
-    if (typeof DeviceMotionEvent === 'undefined') { console.log('[BalloTrace:phone] permission state: unsupported (no DeviceMotionEvent)'); setMotionPerm('unsupported'); return; }
+    if (typeof DeviceMotionEvent === 'undefined') {
+      console.log('[BalloTrace:phone] permission state: unsupported (no DeviceMotionEvent)');
+      setMotionPerm('unsupported'); return;
+    }
     const saved = localStorage.getItem(MOTION_PERM_KEY);
-    if (saved === 'granted') { console.log('[BalloTrace:phone] permission state: granted (from localStorage)'); setMotionPerm('granted'); return; }
-    if (saved === 'denied') { console.log('[BalloTrace:phone] permission state: denied (from localStorage)'); setMotionPerm('denied'); return; }
-    // Non-iOS devices (Android, desktop) grant without a popup
+    if (saved === 'granted') {
+      console.log('[BalloTrace:phone] permission already granted — skipping prompt');
+      setMotionPerm('granted'); return;
+    }
+    if (saved === 'denied') {
+      console.log('[BalloTrace:phone] permission state: denied (from localStorage)');
+      setMotionPerm('denied'); return;
+    }
+    // Non-iOS devices (Android, desktop) grant without a popup — never show a dialog
     const dme = DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> };
     if (typeof dme.requestPermission !== 'function') {
       console.log('[BalloTrace:phone] permission state: granted (non-iOS auto-grant)');
       localStorage.setItem(MOTION_PERM_KEY, 'granted');
       setMotionPerm('granted');
     } else {
-      console.log('[BalloTrace:phone] permission state: unknown (iOS — waiting for user tap)');
+      console.log('[BalloTrace:phone] permission state: unknown (iOS 13+ — waiting for user tap)');
     }
-    // else: iOS 13+ — stay 'unknown' until user taps the button
   }, []);
 
   const requestMotion = useCallback(async () => {
@@ -1099,8 +1108,8 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId }: {
       const e = Math.min(100, Math.round(avg));
       setEnergy(e);
       if (timeLeftRef.current !== null && timeLeftRef.current > 0) {
-        console.log('[BalloTrace:phone] energy calculated', e, '— emitting home:ballo_energy', { sessionId, playerId });
-        emit('home:ballo_energy', { sessionId, playerId, energy: e });
+        console.log('[BalloTrace:phone] energy calculated', e, '— emitting home:ballo_energy', { sessionId, playerId, round });
+        emit('home:ballo_energy', { sessionId, playerId, energy: e, round: round ?? 0 });
       }
     }, 400);
     return () => { window.removeEventListener('devicemotion', handleMotion); clearInterval(interval); };
@@ -1110,7 +1119,7 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId }: {
   const energyColor = energy > 70 ? '#22c55e' : energy > 35 ? '#eab308' : '#A78BFA';
 
   return (
-    <div className="flex flex-col items-center gap-5 py-4 text-center">
+    <div className="flex flex-col items-center gap-5 py-4 text-center" style={{userSelect:'none',WebkitUserSelect:'none'}}>
       <div className="text-6xl">💃</div>
       <div className="text-xl font-black text-white">{String(payload.name ?? 'Sfida di Ballo')}</div>
       <div className="text-sm text-white/55 leading-relaxed px-2">{String(payload.description ?? '')}</div>

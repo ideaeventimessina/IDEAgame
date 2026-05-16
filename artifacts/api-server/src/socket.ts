@@ -14,12 +14,14 @@ let _io: SocketServer | null = null;
 const playerSockets = new Map<string, { playerId: string; eventId: string }>();
 
 // ── Home Mode: per-session/player peak Ballo energy (in-memory, ephemeral) ────
-const balloEnergyMap = new Map<string, Map<string, number>>();
+// Keyed by sessionId; tracks which round the map belongs to so stale energy
+// from a previous round is ignored automatically.
+const balloEnergyMap = new Map<string, { round: number; players: Map<string, number> }>();
 
 export function getBalloEnergies(sessionId: string): Record<string, number> {
-  const map = balloEnergyMap.get(sessionId);
-  if (!map) return {};
-  return Object.fromEntries(map.entries());
+  const entry = balloEnergyMap.get(sessionId);
+  if (!entry) return {};
+  return Object.fromEntries(entry.players.entries());
 }
 
 export function clearBalloEnergies(sessionId: string): void {
@@ -158,21 +160,30 @@ export function initHomeSocketHandlers(io: SocketServer): void {
       const sessionId = d["sessionId"];
       const playerId = d["playerId"];
       const energy = d["energy"];
+      const round = typeof d["round"] === "number" ? d["round"] : -1;
       if (typeof sessionId !== "string" || typeof playerId !== "string" || typeof energy !== "number") return;
 
-      logger.info({ sessionId, playerId, energy: Math.round(energy) }, "[BalloTrace:server] received home:ballo_energy");
+      logger.info({ sessionId, playerId, energy: Math.round(energy), round }, "[BalloTrace:server] received home:ballo_energy");
 
-      if (!balloEnergyMap.has(sessionId)) balloEnergyMap.set(sessionId, new Map());
-      const playerMap = balloEnergyMap.get(sessionId)!;
-      const current = playerMap.get(playerId) ?? 0;
+      // Initialize entry for this round; reset if round changed (new ballo round)
+      const existing = balloEnergyMap.get(sessionId);
+      if (!existing || existing.round !== round) {
+        if (existing && existing.round !== round) {
+          logger.info({ sessionId, oldRound: existing.round, newRound: round }, "[BalloTrace:server] round changed — resetting energy map");
+        }
+        balloEnergyMap.set(sessionId, { round, players: new Map() });
+      }
+      const entry = balloEnergyMap.get(sessionId)!;
+      const current = entry.players.get(playerId) ?? 0;
       const newPeak = Math.max(current, Math.round(energy));
-      playerMap.set(playerId, newPeak);
-      logger.info({ sessionId, playerId, prev: current, newPeak }, "[BalloTrace:server] stored peak");
+      entry.players.set(playerId, newPeak);
+      logger.info({ sessionId, playerId, prev: current, newPeak, round }, "[BalloTrace:server] stored peak");
 
       emitToRoom(`home:${sessionId}`, "home:ballo_live", {
-        energies: Object.fromEntries(playerMap.entries()),
+        energies: Object.fromEntries(entry.players.entries()),
+        round,
       });
-      logger.info({ sessionId, playerCount: playerMap.size }, "[BalloTrace:server] emitted home:ballo_live");
+      logger.info({ sessionId, playerCount: entry.players.size }, "[BalloTrace:server] emitted home:ballo_live");
     });
   });
 }

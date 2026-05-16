@@ -487,6 +487,7 @@ export default function HomeGame() {
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [postGame, setPostGame] = useState<{gameSlug:string;players:HomePlayer[]}|null>(null);
   const [balloEnergies, setBalloEnergies] = useState<Record<string, number>>({});
+  const [balloResult, setBalloResult] = useState<{ winnerId: string; winnerNickname: string; points: number } | null>(null);
   const [spinning, setSpinning] = useState(false);
   const [wheelSelected, setWheelSelected] = useState<string | null>(null);
   const [postSpinModal, setPostSpinModal] = useState(false);
@@ -606,6 +607,7 @@ export default function HomeGame() {
       setJonnyMood('excited');
       setJonnyMsg('Scegli il tuo gioco!');
       console.log('[AudioTrace] home:board — stopLoop then playLoop hub/lobby_loop');
+      setBalloResult(null);
       AudioManager.stopLoop(true);
       void AudioManager.playLoop('hub', 'lobby_loop');
     });
@@ -615,6 +617,7 @@ export default function HomeGame() {
       setPhase('playing');
       setRevealed(false);
       setBalloEnergies({});
+      setBalloResult(null);
       startTimer(Number(d.payload?.timeLimit ?? 30));
       setJonnyMood('thinking');
       console.log('[AudioTrace] home:game_started — stopLoop then playLoop', { slug: d.session.gameSlug ?? 'global', type: 'round_loop' });
@@ -625,6 +628,7 @@ export default function HomeGame() {
       setSession(prev => prev ? { ...prev, currentRound: d.round, roundPayload: d.payload } : prev);
       setRevealed(false);
       setBalloEnergies({});
+      setBalloResult(null);
       startTimer(Number(d.payload?.timeLimit ?? 30));
       setJonnyMood('thinking');
     });
@@ -656,9 +660,10 @@ export default function HomeGame() {
       console.log('[BalloTrace:tv] received home:ballo_result', { winnerId: d.winnerId, points: d.points, energies: d.energies });
       setPlayers(prev => prev.map(p => p.id === d.winnerId ? { ...p, score: p.score + d.points } : p));
       setBalloEnergies(d.energies);
+      setBalloResult({ winnerId: d.winnerId, winnerNickname: d.winnerNickname, points: d.points });
       setRevealed(true);
       if (timerRef.current) clearInterval(timerRef.current);
-      setJonnyMood('correct');
+      setJonnyMood('winner');
     });
     const u10 = on<{ sessionId: string; round: number; correctIndex: number }>('home:quiz_all_answered', (d) => {
       console.log('[QuizTrace:tv] received home:quiz_all_answered', d);
@@ -1254,7 +1259,7 @@ export default function HomeGame() {
             <div className="flex flex-1 items-center justify-center overflow-auto px-6 py-3">
               <RoundBoard key={session.currentRound} session={session} revealed={revealed}
                 onReveal={() => { setRevealed(true); if(timerRef.current) clearInterval(timerRef.current); setJonnyMood('correct'); }}
-                onNext={nextRound} players={players} balloEnergies={balloEnergies} onScore={async (pid,pts) => {
+                onNext={nextRound} players={players} balloEnergies={balloEnergies} balloResult={balloResult} onScore={async (pid,pts) => {
                   // Optimistic update — score appears immediately in bar + partial leaderboard
                   setPlayers(prev => prev.map(p => p.id === pid ? { ...p, score: pts } : p));
                   await fetch(`/api/home/sessions/${session.id}/score`, {
@@ -1502,7 +1507,7 @@ export default function HomeGame() {
 
 // ── RoundBoard ─────────────────────────────────────────────────────────────────
 
-function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, balloEnergies }: {
+function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, balloEnergies, balloResult }: {
   session: HomeSession;
   revealed: boolean;
   onReveal: () => void;
@@ -1510,12 +1515,13 @@ function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, bal
   players: HomePlayer[];
   onScore: (playerId: string, points: number) => Promise<void>;
   balloEnergies?: Record<string, number>;
+  balloResult?: { winnerId: string; winnerNickname: string; points: number } | null;
 }) {
   const p = session.roundPayload;
   const mode = String(p.mode ?? 'home-quiz');
 
   if (mode === 'home-quiz')       return <QuizBoard payload={p} revealed={revealed} onReveal={onReveal}/>;
-  if (mode === 'home-ballo')      return <BalloBoard payload={p} players={players} balloEnergies={balloEnergies ?? {}}/>;
+  if (mode === 'home-ballo')      return <BalloBoard payload={p} players={players} balloEnergies={balloEnergies ?? {}} balloResult={balloResult ?? null}/>;
   if (mode === 'home-percorso')   return <PercorsoBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
   if (mode === 'home-coppie')     return <CoppieBoard payload={p} onNext={onNext}/>;
   if (mode === 'home-saramusica') return <SaraMusicaBoard payload={p} revealed={revealed} onReveal={onReveal}/>;
@@ -1581,81 +1587,124 @@ function QuizBoard({ payload, revealed, onReveal }: { payload: Record<string,unk
   );
 }
 
-// ── BalloBoard ────────────────────────────────────────────────────────────────
+// ── BalloBoard — Guitar Hero style vertical meters ──────────────────────────
 
-function BalloBoard({ payload, players, balloEnergies }: {
+function BalloBoard({ payload, players, balloEnergies, balloResult }: {
   payload: Record<string,unknown>;
   players: HomePlayer[];
   balloEnergies: Record<string, number>;
+  balloResult: { winnerId: string; winnerNickname: string; points: number } | null;
 }) {
   const pts = Number(payload.points ?? 150);
   const hasLiveData = Object.keys(balloEnergies).length > 0;
   const maxEnergy = hasLiveData ? Math.max(1, ...Object.values(balloEnergies)) : 1;
   const sortedPlayers = [...players].sort((a, b) => (balloEnergies[b.id] ?? 0) - (balloEnergies[a.id] ?? 0));
+  const isManyPlayers = players.length > 3;
 
   return (
-    <motion.div key={String(payload.roundIndex)} initial={{scale:0.9,opacity:0}} animate={{scale:1,opacity:1}}
-      className="flex w-full max-w-2xl flex-col items-center gap-6 text-center">
-      <div className="flex h-24 w-24 items-center justify-center rounded-3xl text-6xl"
-        style={{background:'linear-gradient(135deg,rgba(167,139,250,0.35),rgba(167,139,250,0.15))',border:'2px solid rgba(167,139,250,0.55)',boxShadow:'0 0 60px rgba(167,139,250,0.4)'}}>
-        💃
-      </div>
-      <div className="text-display text-4xl font-black text-white" style={{textShadow:'0 0 30px rgba(167,139,250,0.5)'}}>
-        {String(payload.name ?? 'Sfida di Ballo')}
-      </div>
-      <div className="max-w-lg text-base text-white/65">{String(payload.description ?? '')}</div>
-      {!!payload.musicHint && (
-        <div className="flex items-center gap-3 rounded-2xl px-5 py-2"
-          style={{background:'rgba(167,139,250,0.18)',border:'1px solid rgba(167,139,250,0.45)',color:'#c084fc'}}>
-          <Music className="h-4 w-4"/>
-          <span className="text-sm font-black">🎵 {String(payload.musicHint)}</span>
+    <motion.div key={String(payload.roundIndex)} initial={{opacity:0,y:16}} animate={{opacity:1,y:0}}
+      className="flex w-full flex-col items-center gap-5">
+
+      {/* Header */}
+      <div className="flex flex-col items-center gap-2 text-center">
+        <div className="text-5xl">💃</div>
+        <div className="text-display text-3xl font-black text-white" style={{textShadow:'0 0 24px rgba(167,139,250,0.5)'}}>
+          {String(payload.name ?? 'Sfida di Ballo')}
         </div>
+        <div className="text-sm text-white/55 max-w-md">{String(payload.description ?? '')}</div>
+      </div>
+
+      {/* Winner banner — appears after ballo round ends */}
+      {balloResult && (
+        <motion.div initial={{scale:0.7,opacity:0}} animate={{scale:1,opacity:1}} transition={{type:'spring',stiffness:300,damping:20}}
+          className="flex flex-col items-center gap-1 rounded-3xl px-10 py-4"
+          style={{background:'linear-gradient(135deg,rgba(245,182,66,0.22),rgba(249,115,22,0.12))',border:'2px solid rgba(245,182,66,0.7)',boxShadow:'0 0 60px rgba(245,182,66,0.4)'}}>
+          <div className="text-4xl">🏆</div>
+          <div className="text-display text-2xl font-black text-yellow-400 tracking-wide">VINCE {balloResult.winnerNickname.toUpperCase()}!</div>
+          <div className="text-xl font-black" style={{color:'#F5B642'}}>+{balloResult.points} punti</div>
+        </motion.div>
       )}
 
-      {/* Live energy bars — primary UI when data arrives from phones */}
-      {hasLiveData ? (
-        <div className="w-full max-w-xl space-y-3">
-          <div className="text-xs font-bold text-white/35 uppercase tracking-wider">⚡ Energia in tempo reale · chi balla di più vince +{pts}pt automaticamente</div>
+      {/* Contestant cards — side-by-side vertical meters */}
+      {sortedPlayers.length > 0 && (
+        <div className={`flex w-full gap-4 justify-center ${isManyPlayers ? 'flex-wrap' : 'flex-row'} items-end`}>
           {sortedPlayers.map((p, i) => {
             const e = balloEnergies[p.id] ?? 0;
             const pct = Math.round((e / maxEnergy) * 100);
-            const isLeader = i === 0 && e > 0;
+            const isWinner = balloResult?.winnerId === p.id;
+            const isLeader = !balloResult && i === 0 && e > 0;
+            const borderCol = isWinner ? 'rgba(245,182,66,0.85)' : isLeader ? 'rgba(245,182,66,0.45)' : `${p.avatarColor}66`;
+            const glowCol   = isWinner ? '0 0 70px rgba(245,182,66,0.65),0 0 140px rgba(245,182,66,0.2)' : isLeader ? '0 0 40px rgba(245,182,66,0.25)' : '0 0 20px rgba(0,0,0,0.5)';
+            const meterBg   = isWinner || isLeader
+              ? 'linear-gradient(0deg,#F5B642,#f97316)'
+              : `linear-gradient(0deg,${p.avatarColor},${p.avatarColor}bb)`;
+            const meterGlow = isWinner || isLeader ? '0 0 18px rgba(245,182,66,0.8)' : `0 0 12px ${p.avatarColor}88`;
+
             return (
-              <div key={p.id} className="flex items-center gap-3">
-                <div className="w-7 shrink-0 text-center text-xl">{isLeader ? '🥇' : `${i + 1}`}</div>
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-black"
-                  style={{background: p.avatarColor, color:'#000'}}>
-                  {p.nickname.slice(0,2).toUpperCase()}
-                </div>
-                <div className="flex-1">
-                  <div className="mb-1 flex items-center justify-between text-xs font-bold">
-                    <span className={isLeader ? 'text-yellow-400' : 'text-white/70'}>{p.nickname}</span>
-                    <span style={{color:'#A78BFA'}}>{e}%</span>
+              <motion.div key={p.id}
+                initial={{y:24,opacity:0}} animate={{y:0,opacity:1}} transition={{delay: i*0.08}}
+                className="flex flex-col items-center gap-3 rounded-3xl p-5"
+                style={{
+                  flex: isManyPlayers ? '1 1 160px' : '1 1 200px',
+                  maxWidth: isManyPlayers ? 180 : 260,
+                  minWidth: 140,
+                  background:'linear-gradient(160deg,rgba(255,255,255,0.07),rgba(255,255,255,0.02))',
+                  border:`2px solid ${borderCol}`,
+                  boxShadow: glowCol,
+                }}>
+
+                {/* Rank + Avatar */}
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">{isWinner ? '🏆' : isLeader ? '🥇' : `${i+1}`}</span>
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl text-sm font-black"
+                    style={{background:p.avatarColor, color:'#000', boxShadow:`0 0 14px ${p.avatarColor}88`}}>
+                    {p.nickname.slice(0,2).toUpperCase()}
                   </div>
-                  <div className="relative h-5 w-full overflow-hidden rounded-full bg-white/10">
-                    <motion.div className="absolute inset-y-0 left-0 rounded-full"
-                      animate={{width:`${pct}%`}} transition={{duration:0.2}}
+                </div>
+
+                {/* Nickname */}
+                <div className="text-center text-sm font-black leading-tight"
+                  style={{color: isWinner || isLeader ? '#F5B642' : 'rgba(255,255,255,0.9)'}}>
+                  {p.nickname}
+                </div>
+
+                {/* Vertical energy meter */}
+                <div className="flex flex-col items-center gap-1">
+                  <div className="text-xs font-bold tabular-nums" style={{color:'#A78BFA'}}>{e}%</div>
+                  <div style={{position:'relative', height:160, width:26, background:'rgba(255,255,255,0.07)', borderRadius:13, overflow:'hidden'}}>
+                    <motion.div
+                      animate={{height:`${pct}%`}}
+                      transition={{duration:0.18, type:'spring', stiffness:380, damping:38}}
                       style={{
-                        background: isLeader ? 'linear-gradient(90deg,#F5B642,#f97316)' : 'linear-gradient(90deg,#A78BFA,#7c3aed)',
-                        boxShadow: isLeader ? '0 0 14px rgba(245,182,66,0.7)' : '0 0 8px rgba(167,139,250,0.5)',
+                        position:'absolute', bottom:0, left:0, right:0,
+                        background: meterBg,
+                        boxShadow: meterGlow,
+                        borderRadius:13,
                       }}
                     />
                   </div>
                 </div>
-              </div>
+
+                {/* Score */}
+                <div className="flex flex-col items-center">
+                  <div className="text-xs text-white/35">punti</div>
+                  <div className="text-lg font-black text-white tabular-nums">{p.score}</div>
+                </div>
+              </motion.div>
             );
           })}
         </div>
-      ) : (
-        <div className="flex flex-col items-center gap-3 text-center">
-          <div className="text-5xl font-black" style={{color:'#A78BFA',textShadow:'0 0 30px rgba(167,139,250,0.6)'}}>
-            {Number(payload.duration ?? 60)}s
-          </div>
-          <div className="text-sm text-white/35">
-            💃 In attesa dei dati dal telefono… il vincitore ({pts}pt) verrà assegnato automaticamente!
-          </div>
-        </div>
       )}
+
+      {/* Waiting for first data */}
+      {!hasLiveData && !balloResult && (
+        <motion.div animate={{opacity:[0.4,1,0.4]}} transition={{repeat:Infinity,duration:1.8}}
+          className="text-sm text-white/40">
+          💃 Muovete il telefono — l'energia appare in tempo reale!
+        </motion.div>
+      )}
+
+      <div className="text-xs text-white/20">⚡ +{pts}pt al campione di energia · assegnato automaticamente</div>
     </motion.div>
   );
 }

@@ -361,13 +361,13 @@ async function loadBalloRounds(): Promise<RoundPayload[]> {
 
   if (challenges.length === 0) return fallbackBallo();
 
-  return shuffleArr(challenges).map((c, i) => ({
+  return shuffleArr(challenges).slice(0, 4).map((c, i) => ({
     mode: "home-ballo",
     roundIndex: i,
     name: c.name,
     description: c.description,
-    duration: c.duration ?? 60,
-    timeLimit: c.duration ?? 60,
+    duration: c.duration ?? 15,
+    timeLimit: c.duration ?? 15,
     musicHint: c.musicHint ?? "",
     difficulty: c.difficulty ?? "medium",
     startedAt: null,
@@ -376,8 +376,10 @@ async function loadBalloRounds(): Promise<RoundPayload[]> {
 
 function fallbackBallo(): RoundPayload[] {
   return [
-    { mode: "home-ballo", roundIndex: 0, name: "Sfida Freestyle", description: "Balla liberamente per 60 secondi — più energia hai, meglio è!", duration: 60, timeLimit: 60, musicHint: "", startedAt: null },
-    { mode: "home-ballo", roundIndex: 1, name: "La Coreografia", description: "Inventate insieme una coreografia di 8 passi che tutti devono ripetere!", duration: 90, timeLimit: 90, musicHint: "", startedAt: null },
+    { mode: "home-ballo", roundIndex: 0, name: "Sfida Freestyle",    description: "Balla liberamente — più energia hai, meglio è!",                         duration: 15, timeLimit: 15, musicHint: "", startedAt: null },
+    { mode: "home-ballo", roundIndex: 1, name: "La Coreografia",     description: "Inventate insieme una mossa — tutti la ripetono!",                       duration: 15, timeLimit: 15, musicHint: "", startedAt: null },
+    { mode: "home-ballo", roundIndex: 2, name: "Stile Libero",       description: "Balla come vuoi, senza regole — giudica solo l'energia!",                 duration: 15, timeLimit: 15, musicHint: "", startedAt: null },
+    { mode: "home-ballo", roundIndex: 3, name: "Il Gran Finale",     description: "Ultimo round — tutto quello che hai!",                                    duration: 15, timeLimit: 15, musicHint: "", startedAt: null },
   ];
 }
 
