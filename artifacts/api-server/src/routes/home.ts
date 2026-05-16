@@ -445,6 +445,35 @@ function fallbackBallo(): RoundPayload[] {
   ];
 }
 
+// ── GameFlowEngine: load ballo rounds for a chosen theme ─────────────────────
+// Called by the flow/confirm route after countdown starts.
+async function loadBalloRoundsForTheme(
+  selectedTheme: { id: string; name: string } | null,
+): Promise<RoundPayload[]> {
+  if (selectedTheme?.id === "fallback") return fallbackBallo();
+  const challenges = await db.select().from(danceChallengesTable)
+    .orderBy(desc(danceChallengesTable.createdAt));
+  if (challenges.length === 0) return fallbackBallo();
+  const selected = selectedTheme
+    ? challenges.find((c) => c.id === selectedTheme.id)
+    : null;
+  const others = selected
+    ? challenges.filter((c) => c.id !== selectedTheme!.id)
+    : challenges;
+  const pool = selected ? [selected, ...shuffleArr(others)] : shuffleArr(challenges);
+  return pool.slice(0, 4).map((c, i) => ({
+    mode: "home-ballo",
+    roundIndex: i,
+    name: c.name,
+    description: c.description,
+    duration: c.duration ?? 15,
+    timeLimit: c.duration ?? 15,
+    musicHint: c.musicHint ?? "",
+    difficulty: c.difficulty ?? "medium",
+    startedAt: null,
+  }));
+}
+
 // ── Auto-score Ballo: highest peak energy wins ────────────────────────────────
 async function autoScoreBallo(
   sessionId: string,
@@ -877,6 +906,46 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
     res.status(409).json({ error: "Gioco già completato" }); return;
   }
 
+  // ── GameFlowEngine pilot — sfida-ballo enters pre-game flow ───────────────────
+  // Future flow games: adult-only, percorso-a-risate, karaoke-battle,
+  //                    freestyle-battle, parola-alle-spalle
+  if (gameSlug === "sfida-ballo") {
+    const challenges = await db.select().from(danceChallengesTable)
+      .orderBy(desc(danceChallengesTable.createdAt));
+    const themes = challenges.length > 0
+      ? challenges.slice(0, 6).map((c) => ({
+          id: c.id,
+          name: c.name,
+          description: c.description ?? "",
+        }))
+      : [{ id: "fallback", name: "SFIDA LIBERA", description: "Balla liberamente — più energia hai, meglio è!" }];
+    const flowPayload: RoundPayload = {
+      mode: "home-flow",
+      gameFlowPhase: "theme_select",
+      gameSlug,
+      themes,
+      selectedTheme: null,
+      bookedPlayers: [],
+      maxPlayers: 2,
+    };
+    const newFlowCfg = { ...cfg, phase: "playing", gamesPlayed };
+    const [flowUpdated] = await db.update(homeSessionsTable).set({
+      gameSlug,
+      gameConfig: newFlowCfg,
+      status: "playing",
+      currentRound: 0,
+      totalRounds: 0,
+      roundPayload: flowPayload,
+      expiresAt: new Date(Date.now() + 6 * 60 * 60 * 1000),
+    }).where(eq(homeSessionsTable.id, id)).returning();
+    const flowPlayers = await getPlayers(id);
+    emitToRoom(homeRoom(id), "home:game_started", { session: flowUpdated, players: flowPlayers, payload: flowPayload });
+    emitToRoom(homeRoom(id), "home:state", { session: flowUpdated, players: flowPlayers });
+    res.json({ session: flowUpdated, players: flowPlayers });
+    return;
+  }
+  // ── END pilot ─────────────────────────────────────────────────────────────────
+
   // Load all rounds from DB for this game
   const preloadedRounds = await loadGameRounds(gameSlug);
   // Stamp authoritative start time so phones can calculate remaining time on restore
@@ -935,6 +1004,149 @@ router.post("/home/sessions/:id/start", async (req, res): Promise<void> => {
   emitToRoom(homeRoom(id), "home:game_started", { session: updated, players, payload: firstRound });
   emitToRoom(homeRoom(id), "home:round", { round: 0, payload: firstRound });
   res.json(updated);
+});
+
+// ── POST /home/sessions/:id/flow/select-theme ─────────────────────────────────
+router.post("/home/sessions/:id/flow/select-theme", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-flow") { res.status(409).json({ error: "Sessione non in modalità flow" }); return; }
+  if (rp["gameFlowPhase"] !== "theme_select") { res.status(409).json({ error: "Fase non corretta" }); return; }
+
+  const { themeId, themeName, themeDescription } = req.body as {
+    themeId: string; themeName: string; themeDescription?: string;
+  };
+  if (!themeId || !themeName) { res.status(400).json({ error: "themeId e themeName obbligatori" }); return; }
+
+  const selectedTheme = { id: themeId, name: themeName, description: themeDescription ?? "" };
+  const updatedRp: RoundPayload = { ...rp, gameFlowPhase: "booking", selectedTheme } as RoundPayload;
+  const [updated] = await db.update(homeSessionsTable)
+    .set({ roundPayload: updatedRp })
+    .where(eq(homeSessionsTable.id, id)).returning();
+  const players = await getPlayers(id);
+  emitToRoom(homeRoom(id), "home:state", { session: updated, players });
+  res.json({ session: updated, players });
+});
+
+// ── POST /home/sessions/:id/flow/book-player ──────────────────────────────────
+router.post("/home/sessions/:id/flow/book-player", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-flow") { res.status(409).json({ error: "Sessione non in modalità flow" }); return; }
+  if (rp["gameFlowPhase"] !== "booking") { res.status(409).json({ error: "Prenotazione non aperta" }); return; }
+
+  const { playerId, nickname, avatarColor, action } = req.body as {
+    playerId: string; nickname?: string; avatarColor?: string; action: "book" | "unbook";
+  };
+  if (!playerId) { res.status(400).json({ error: "playerId obbligatorio" }); return; }
+
+  const maxPlayers = Number(rp["maxPlayers"] ?? 2);
+  const players = await getPlayers(id);
+
+  // Purge any disconnected bookings first
+  const connectedIds = new Set(players.filter((p) => p.isConnected).map((p) => p.id));
+  let booked = ((rp["bookedPlayers"] as Array<{ id: string; nickname: string; avatarColor: string }>) ?? [])
+    .filter((b) => connectedIds.has(b.id));
+
+  if (action === "unbook") {
+    booked = booked.filter((b) => b.id !== playerId);
+  } else {
+    if (booked.length >= maxPlayers) {
+      res.status(409).json({ error: "Posti esauriti" }); return;
+    }
+    if (!booked.find((b) => b.id === playerId)) {
+      booked = [...booked, { id: playerId, nickname: nickname ?? "?", avatarColor: avatarColor ?? "#A78BFA" }];
+    }
+  }
+
+  const updatedRp: RoundPayload = { ...rp, bookedPlayers: booked } as RoundPayload;
+  const [updated] = await db.update(homeSessionsTable)
+    .set({ roundPayload: updatedRp })
+    .where(eq(homeSessionsTable.id, id)).returning();
+  emitToRoom(homeRoom(id), "home:state", { session: updated, players });
+  emitToRoom(homeRoom(id), "home:player_booked", { bookedPlayers: booked });
+  res.json({ session: updated, bookedPlayers: booked });
+});
+
+// ── POST /home/sessions/:id/flow/confirm ──────────────────────────────────────
+router.post("/home/sessions/:id/flow/confirm", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-flow") { res.status(409).json({ error: "Sessione non in modalità flow" }); return; }
+  if (rp["gameFlowPhase"] === "countdown" || rp["gameFlowPhase"] === "confirm") {
+    res.status(409).json({ error: "Già in avvio" }); return;
+  }
+  if (rp["gameFlowPhase"] !== "booking") { res.status(409).json({ error: "Fase non corretta" }); return; }
+
+  const maxPlayers = Number(rp["maxPlayers"] ?? 2);
+  const players = await getPlayers(id);
+
+  // Purge disconnected bookings
+  const connectedIds = new Set(players.filter((p) => p.isConnected).map((p) => p.id));
+  const booked = ((rp["bookedPlayers"] as Array<{ id: string }>) ?? [])
+    .filter((b) => connectedIds.has(b.id));
+
+  if (booked.length < maxPlayers) {
+    res.status(409).json({ error: `Servono ${maxPlayers} giocatori connessi (prenotati: ${booked.length})` }); return;
+  }
+
+  const selectedTheme = rp["selectedTheme"] as { id: string; name: string } | null;
+
+  // Move to confirm phase (brief transition shown to TV/phones)
+  const confirmRp: RoundPayload = { ...rp, gameFlowPhase: "confirm", bookedPlayers: booked } as RoundPayload;
+  const [confirmUpdated] = await db.update(homeSessionsTable)
+    .set({ roundPayload: confirmRp })
+    .where(eq(homeSessionsTable.id, id)).returning();
+  emitToRoom(homeRoom(id), "home:state", { session: confirmUpdated, players });
+  res.json({ ok: true });
+
+  // After a brief pause: move to countdown, then load real ballo rounds
+  setTimeout(async () => {
+    try {
+      const countdownRp: RoundPayload = { ...confirmRp, gameFlowPhase: "countdown" } as RoundPayload;
+      const [cdUpdated] = await db.update(homeSessionsTable)
+        .set({ roundPayload: countdownRp })
+        .where(eq(homeSessionsTable.id, id)).returning();
+      const cdPlayers = await getPlayers(id);
+      emitToRoom(homeRoom(id), "home:state", { session: cdUpdated, players: cdPlayers });
+
+      // After countdown (4s) load real ballo rounds and fire home:round
+      setTimeout(async () => {
+        try {
+          const preloadedRounds = await loadBalloRoundsForTheme(selectedTheme);
+          const firstRound: RoundPayload = { ...(preloadedRounds[0] ?? {}), roundStartedAt: new Date().toISOString() } as RoundPayload;
+          const cfg = (session.gameConfig ?? {}) as Record<string, unknown>;
+          const gamesPlayed = (cfg["gamesPlayed"] as string[]) ?? [];
+          const newCfg = { ...cfg, phase: "playing", gamesPlayed, preloadedRounds };
+          const [gameUpdated] = await db.update(homeSessionsTable).set({
+            gameConfig: newCfg,
+            currentRound: 0,
+            totalRounds: preloadedRounds.length,
+            roundPayload: firstRound,
+          }).where(eq(homeSessionsTable.id, id)).returning();
+          const gamePlayers = await getPlayers(id);
+          emitToRoom(homeRoom(id), "home:round", { round: 0, payload: firstRound });
+          emitToRoom(homeRoom(id), "home:state", { session: gameUpdated, players: gamePlayers });
+        } catch (err) {
+          logger.error({ err, sessionId: id }, "flow/confirm: ballo round load failed");
+        }
+      }, 4000);
+    } catch (err) {
+      logger.error({ err, sessionId: id }, "flow/confirm: countdown transition failed");
+    }
+  }, 500);
 });
 
 // ── POST /home/sessions/:id/next ───────────────────────────────────────────────

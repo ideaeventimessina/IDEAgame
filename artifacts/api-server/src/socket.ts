@@ -29,6 +29,13 @@ export function clearBalloEnergies(sessionId: string): void {
 }
 
 /**
+ * socketId → { sessionId, playerId }
+ * Populated via "home:player_register" so we can remove booked players on
+ * disconnect during the pre-game flow booking phase.
+ */
+const homePlayerSockets = new Map<string, { sessionId: string; playerId: string }>();
+
+/**
  * Attach Socket.IO to the raw HTTP server.
  * After this call io.engine is set and socket.io handles /socket.io requests.
  */
@@ -94,6 +101,7 @@ export function initSocket(server: HttpServer): SocketServer {
     });
 
     socket.on("disconnect", (reason) => {
+      // ── Live-mode player disconnect ──────────────────────────────────────────
       const reg = playerSockets.get(socket.id);
       if (reg) {
         playerSockets.delete(socket.id);
@@ -109,6 +117,49 @@ export function initSocket(server: HttpServer): SocketServer {
           })
           .catch((err) => logger.error({ err }, "player disconnect db update failed"));
       }
+
+      // ── Home-mode player disconnect: purge from flow booking if applicable ──
+      const homeReg = homePlayerSockets.get(socket.id);
+      if (homeReg) {
+        homePlayerSockets.delete(socket.id);
+        db.update(homePlayersTable)
+          .set({ isConnected: false })
+          .where(eq(homePlayersTable.id, homeReg.playerId))
+          .then(async () => {
+            const [session] = await db
+              .select()
+              .from(homeSessionsTable)
+              .where(eq(homeSessionsTable.id, homeReg.sessionId));
+            if (!session) return;
+            const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+            if (rp["mode"] !== "home-flow" || rp["gameFlowPhase"] !== "booking") return;
+            const booked = (rp["bookedPlayers"] as Array<{ id: string }>) ?? [];
+            const filtered = booked.filter((b) => b.id !== homeReg.playerId);
+            if (filtered.length === booked.length) return; // wasn't booked
+            const updatedRp = { ...rp, bookedPlayers: filtered };
+            await db
+              .update(homeSessionsTable)
+              .set({ roundPayload: updatedRp })
+              .where(eq(homeSessionsTable.id, homeReg.sessionId));
+            const players = await db
+              .select()
+              .from(homePlayersTable)
+              .where(eq(homePlayersTable.sessionId, homeReg.sessionId));
+            emitToRoom(`home:${homeReg.sessionId}`, "home:state", {
+              session: { ...session, roundPayload: updatedRp },
+              players,
+            });
+            emitToRoom(`home:${homeReg.sessionId}`, "home:player_booked", {
+              bookedPlayers: filtered,
+            });
+            logger.info(
+              { playerId: homeReg.playerId, sessionId: homeReg.sessionId },
+              "home:flow:booking purged on disconnect",
+            );
+          })
+          .catch((err) => logger.error({ err }, "home flow disconnect cleanup failed"));
+      }
+
       logger.info({ sid: socket.id, reason }, "ws:disconnect");
     });
   });
@@ -150,7 +201,26 @@ export function initHomeSocketHandlers(io: SocketServer): void {
         .catch((err) => logger.error({ err, sessionId }, "join:home state push failed"));
     });
 
+    /**
+     * Home players call this after joining so we can track their socket for
+     * flow-booking disconnect cleanup. Also marks the player as connected.
+     */
+    socket.on("home:player_register", (data: unknown) => {
+      if (!data || typeof data !== "object") return;
+      const d = data as Record<string, unknown>;
+      const sessionId = typeof d["sessionId"] === "string" ? d["sessionId"] : null;
+      const playerId = typeof d["playerId"] === "string" ? d["playerId"] : null;
+      if (!sessionId || !playerId) return;
+      homePlayerSockets.set(socket.id, { sessionId, playerId });
+      db.update(homePlayersTable)
+        .set({ isConnected: true })
+        .where(eq(homePlayersTable.id, playerId))
+        .catch((err) => logger.error({ err }, "home:player_register db update failed"));
+      logger.info({ sid: socket.id, sessionId, playerId }, "home:player:registered");
+    });
+
     socket.on("leave:home", (sessionId: string) => {
+      homePlayerSockets.delete(socket.id);
       void socket.leave(`home:${sessionId}`);
     });
 

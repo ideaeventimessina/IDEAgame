@@ -1,0 +1,247 @@
+HOME MODE — BUILD UNIVERSAL GAME FLOW ENGINE
+
+Do not redesign UI.
+Do not touch live mode.
+Do not rewrite already working scoring systems.
+Do not touch audio architecture.
+Do not touch current quiz shuffle logic.
+
+Goal:
+Stop building each game with custom logic.
+Create ONE reusable pre-game architecture used by all non-quizzone games.
+
+QUICK RULE:
+Quizzone remains exempt because it is all-player simultaneous.
+
+All other games must use the same universal flow.
+
+==================================================
+PHASE FLOW
+==================================================
+
+Every non-quizzone game must follow:
+
+1. THEME SELECTION
+2. PLAYER BOOKING
+3. HOST CONFIRM
+4. COUNTDOWN
+5. GAME EXECUTION
+6. VOTING / VALIDATION
+7. RESULT SCREEN
+8. RETURN TO BOARD
+
+==================================================
+1. THEME SELECTION
+==================================================
+
+Before a game starts:
+
+TV must show available categories/themes loaded from admin content.
+
+Example:
+
+Karaoke:
+- Sanremo
+- Disney
+- Trap
+- 90s
+
+Coppie:
+- Disney
+- Anime
+- Meme
+- Celebrities
+
+Adult:
+- Hot
+- Funny
+- Couple
+- Dark
+
+If only one theme exists:
+still show it and require host confirmation.
+
+Host presses:
+"Conferma tema"
+
+Then proceed.
+
+==================================================
+2. PLAYER BOOKING
+==================================================
+
+For all non-quizzone games:
+
+phones enter booking mode.
+
+Players press:
+"Mi prenoto"
+
+TV shows live booked players.
+
+Examples:
+
+Ballo → max 2 players
+Percorso → max 2 players
+Adult → max 1 player
+Karaoke → max 1 player
+Freestyle → max 1 player
+WordBack → 2 players with roles
+SaraMusica → all players remain active (skip booking)
+Coppie → all players remain active (skip booking)
+
+When required slots are full:
+TV enables host confirm button.
+
+==================================================
+3. HOST CONFIRM
+==================================================
+
+Host sees:
+
+selected theme
+selected players
+
+Button:
+
+"Avvia sfida"
+
+==================================================
+4. COUNTDOWN
+==================================================
+
+Universal fullscreen countdown:
+
+3
+2
+1
+GO
+
+Only after countdown:
+
+actual challenge starts
+
+==================================================
+5. GAME EXECUTION
+==================================================
+
+Current game logic starts here.
+
+Reuse existing logic:
+
+Ballo:
+sensor system
+
+Coppie:
+card system
+
+SaraMusica:
+answer system
+
+etc.
+
+==================================================
+6. VOTING / VALIDATION
+==================================================
+
+Games requiring votes:
+
+Adult
+Percorso
+Freestyle
+Karaoke
+
+non-playing users receive vote UI.
+
+Games requiring validation:
+
+WordBack
+host validation fallback remains
+
+==================================================
+7. RESULT SCREEN
+==================================================
+
+TV shows:
+
+winner
+points earned
+animation
+short summary
+
+Then continue normal partial leaderboard flow.
+
+==================================================
+TECH REQUIREMENTS
+==================================================
+
+Create reusable component:
+
+<GameFlowEngine />
+
+Reusable phases:
+
+theme_select
+booking
+confirm
+countdown
+playing
+voting
+result
+
+Store state in session.gameConfig:
+
+selectedTheme
+bookedPlayers
+gameFlowPhase
+
+==================================================
+SOCKET EVENTS
+==================================================
+
+Create reusable events:
+
+home:theme_selected
+home:player_booked
+home:booking_confirmed
+home:countdown_start
+home:game_result
+
+Do NOT create game-specific duplicate socket events.
+
+==================================================
+APPLY NOW TO THESE GAMES FIRST
+==================================================
+
+1. Ballo
+2. Adult
+3. Percorso
+4. Karaoke
+5. Freestyle
+6. WordBack
+
+Do NOT apply yet to:
+
+Quizzone
+SaraMusica
+Coppie
+
+they already have custom simultaneous logic.
+
+==================================================
+OUTPUT
+==================================================
+
+A. files modified
+
+B. reusable engine created
+
+C. games migrated
+
+D. session state changes
+
+E. socket events created
+
+F. typecheck results
+
+G. manual test flow

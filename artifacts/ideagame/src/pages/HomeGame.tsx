@@ -18,6 +18,7 @@ import {
 import { QrPlaceholder } from '@/components/QrPlaceholder';
 import { JonnyAvatar } from '@/components/JonnyAvatar';
 import { useEventSocket } from '@/hooks/useEventSocket';
+import { GameFlowEngine } from '@/components/GameFlowEngine';
 import { AudioManager } from '@/audio/AudioManager';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -1554,6 +1555,7 @@ function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, bal
   const p = session.roundPayload;
   const mode = String(p.mode ?? 'home-quiz');
 
+  if (mode === 'home-flow')       return <GameFlowEngine session={session} players={players}/>;
   if (mode === 'home-quiz')       return <QuizBoard payload={p} revealed={revealed} onReveal={onReveal}/>;
   if (mode === 'home-ballo')      return <BalloBoard payload={p} players={players} balloEnergies={balloEnergies ?? {}} balloResult={balloResult ?? null}/>;
   if (mode === 'home-percorso')   return <PercorsoBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;

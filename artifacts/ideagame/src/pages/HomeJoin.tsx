@@ -14,6 +14,7 @@ import {
   Laugh, Zap, ShieldAlert, MessageSquare, Mic, Timer,
 } from 'lucide-react';
 import { useEventSocket } from '@/hooks/useEventSocket';
+import { GameFlowPhone } from '@/components/GameFlowPhone';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -175,6 +176,12 @@ export default function HomeJoin() {
     emit('join:home', session.id);
     return () => { emit('leave:home', session.id); };
   }, [session?.id, emit]);
+
+  // Register phone for home-flow booking/disconnect tracking
+  useEffect(() => {
+    if (!session?.id || !player?.id) return;
+    emit('home:player_register', { sessionId: session.id, playerId: player.id });
+  }, [session?.id, player?.id, emit]);
 
   // Polling fallback in lobby
   useEffect(() => {
@@ -765,6 +772,7 @@ function PhoneController({
   const p = session.roundPayload;
   const mode = String(p.mode ?? 'home-quiz');
 
+  if (mode === 'home-flow')       return <GameFlowPhone session={session} player={player}/>;
   if (mode === 'home-quiz')       return <QuizController payload={p} revealed={revealed} answered={answered} onAnswer={onAnswer}/>;
   if (mode === 'home-coppie')     return <CoppieController payload={p} onFlip={onFlip} player={player}/>;
   if (mode === 'home-percorso')   return <PercorsoHomeController payload={p} timeLeft={timeLeft}/>;
