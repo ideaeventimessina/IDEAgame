@@ -160,16 +160,19 @@ export function initHomeSocketHandlers(io: SocketServer): void {
       const energy = d["energy"];
       if (typeof sessionId !== "string" || typeof playerId !== "string" || typeof energy !== "number") return;
 
-      logger.info({ sessionId, playerId, energy: Math.round(energy) }, "[BalloServer] energy received");
+      logger.info({ sessionId, playerId, energy: Math.round(energy) }, "[BalloTrace:server] received home:ballo_energy");
 
       if (!balloEnergyMap.has(sessionId)) balloEnergyMap.set(sessionId, new Map());
       const playerMap = balloEnergyMap.get(sessionId)!;
       const current = playerMap.get(playerId) ?? 0;
-      playerMap.set(playerId, Math.max(current, Math.round(energy)));
+      const newPeak = Math.max(current, Math.round(energy));
+      playerMap.set(playerId, newPeak);
+      logger.info({ sessionId, playerId, prev: current, newPeak }, "[BalloTrace:server] stored peak");
 
       emitToRoom(`home:${sessionId}`, "home:ballo_live", {
         energies: Object.fromEntries(playerMap.entries()),
       });
+      logger.info({ sessionId, playerCount: playerMap.size }, "[BalloTrace:server] emitted home:ballo_live");
     });
   });
 }

@@ -1,0 +1,131 @@
+STOP PATCHING. RUNTIME TRACE ONLY.
+
+The last fixes did NOT work in real usage:
+1. no music anywhere
+2. Ballo sensor works but no live TV score and no points assigned
+3. Quizzone still waits for timer instead of revealing when all players answered
+
+Do NOT write new fixes yet.
+Do NOT redesign.
+Do NOT touch graphics.
+Do NOT add features.
+
+Run a real runtime trace with logs for the three broken systems.
+
+=====================================
+AUDIO TRACE
+=====================================
+
+Add temporary logs only:
+
+[AudioTrace] user gesture received
+[AudioTrace] AudioContext state before/after resume
+[AudioTrace] playLoop called { scope, key }
+[AudioTrace] resolved url
+[AudioTrace] audio element/source created
+[AudioTrace] play success
+[AudioTrace] play failed { error }
+[AudioTrace] stopLoop called
+
+Trace pages:
+- ModeSelect click "Modalità Home"
+- HomeLobbyPage mount
+- HomeGame board phase
+- "Attiva audio" button
+
+Find:
+- is playLoop called?
+- is AudioContext resumed?
+- does URL exist?
+- is stopLoop immediately killing playback?
+- is browser blocking it?
+
+=====================================
+BALLO TRACE
+=====================================
+
+Add temporary logs only:
+
+Phone HomeJoin/BalloController:
+[BalloTrace:phone] permission state
+[BalloTrace:phone] energy calculated
+[BalloTrace:phone] emit home:ballo_energy { sessionId, playerId, round, energy }
+
+Server socket.ts:
+[BalloTrace:server] received home:ballo_energy
+[BalloTrace:server] stored peak
+[BalloTrace:server] emitted home:ballo_live
+
+TV HomeGame/BalloBoard:
+[BalloTrace:tv] received home:ballo_live
+[BalloTrace:tv] balloEnergies state updated
+[BalloTrace:tv] finishing ballo round
+
+Backend routes/home.ts:
+[BalloTrace:score] autoScoreBallo called
+[BalloTrace:score] energy map found
+[BalloTrace:score] winner selected
+[BalloTrace:score] points updated
+[BalloTrace:score] emitted home:ballo_result
+
+Find exactly where the chain breaks:
+phone emit -> server receive -> TV receive -> backend score.
+
+=====================================
+QUIZZONE TRACE
+=====================================
+
+Add temporary logs only:
+
+Phone submit:
+[QuizTrace:phone] answer submitted { playerId, round, answer }
+
+Backend answer endpoint:
+[QuizTrace:server] answer saved
+[QuizTrace:server] answered count
+[QuizTrace:server] player count
+[QuizTrace:server] all answered? true/false
+[QuizTrace:server] emitted home:quiz_all_answered
+
+TV HomeGame:
+[QuizTrace:tv] received home:quiz_all_answered
+[QuizTrace:tv] set revealed true
+[QuizTrace:tv] timer stopped
+
+Phone HomeJoin:
+[QuizTrace:phone] received home:quiz_all_answered
+[QuizTrace:phone] showing result
+
+Find exactly why all-answered reveal is not happening.
+
+=====================================
+TEST REQUIRED
+=====================================
+
+After adding logs, run manual/local runtime test:
+
+1. Audio:
+- click Modalità Home
+- click Attiva audio
+- enter lobby
+- enter board
+
+2. Ballo:
+- create session only Ballo
+- join one phone
+- grant permission
+- move phone
+- verify log chain
+
+3. Quizzone:
+- create session only Quizzone
+- join 2 players
+- both answer before timer ends
+- verify all-answered logs
+
+OUTPUT ONLY:
+A. audio trace results and exact break point
+B. ballo trace results and exact break point
+C. quizzone trace results and exact break point
+D. files where trace logs were added
+E. no functional patches yet

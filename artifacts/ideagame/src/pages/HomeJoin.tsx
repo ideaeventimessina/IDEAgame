@@ -330,10 +330,12 @@ export default function HomeJoin() {
       }
     });
 
-    const u9 = on<{ sessionId: string; round: number; correctIndex: number }>('home:quiz_all_answered', () => {
+    const u9 = on<{ sessionId: string; round: number; correctIndex: number }>('home:quiz_all_answered', (d) => {
+      console.log('[QuizTrace:phone] received home:quiz_all_answered', d);
       // All players answered — reveal answer on phone even if this player hasn't answered yet
       if (timerRef.current) clearInterval(timerRef.current);
       setRevealed(true);
+      console.log('[QuizTrace:phone] showing result');
     });
 
     return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); };
@@ -680,11 +682,12 @@ export default function HomeJoin() {
                 }
                 // Report answer to server so it can detect when all players answered
                 if (String(p.mode) === 'home-quiz' && player) {
+                  console.log('[QuizTrace:phone] answer submitted', { playerId: player.id, round: session.currentRound, answer: idx });
                   void fetch(`/api/home/sessions/${session.id}/answer`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ playerId: player.id, answerIndex: idx, round: session.currentRound }),
-                  }).catch(() => {});
+                  }).then(r => r.json()).then(d => console.log('[QuizTrace:phone] answer POST response', d)).catch(err => console.log('[QuizTrace:phone] answer POST failed', err));
                 }
               }}
               onFlip={flipCard}
@@ -1045,15 +1048,18 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId }: {
 
   // Restore permission from localStorage — iOS only asks once per device
   useEffect(() => {
-    if (typeof DeviceMotionEvent === 'undefined') { setMotionPerm('unsupported'); return; }
+    if (typeof DeviceMotionEvent === 'undefined') { console.log('[BalloTrace:phone] permission state: unsupported (no DeviceMotionEvent)'); setMotionPerm('unsupported'); return; }
     const saved = localStorage.getItem(MOTION_PERM_KEY);
-    if (saved === 'granted') { setMotionPerm('granted'); return; }
-    if (saved === 'denied') { setMotionPerm('denied'); return; }
+    if (saved === 'granted') { console.log('[BalloTrace:phone] permission state: granted (from localStorage)'); setMotionPerm('granted'); return; }
+    if (saved === 'denied') { console.log('[BalloTrace:phone] permission state: denied (from localStorage)'); setMotionPerm('denied'); return; }
     // Non-iOS devices (Android, desktop) grant without a popup
     const dme = DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> };
     if (typeof dme.requestPermission !== 'function') {
+      console.log('[BalloTrace:phone] permission state: granted (non-iOS auto-grant)');
       localStorage.setItem(MOTION_PERM_KEY, 'granted');
       setMotionPerm('granted');
+    } else {
+      console.log('[BalloTrace:phone] permission state: unknown (iOS — waiting for user tap)');
     }
     // else: iOS 13+ — stay 'unknown' until user taps the button
   }, []);
@@ -1093,7 +1099,7 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId }: {
       const e = Math.min(100, Math.round(avg));
       setEnergy(e);
       if (timeLeftRef.current !== null && timeLeftRef.current > 0) {
-        console.log('[BalloPhone] emit energy', { sessionId, playerId, energy: e });
+        console.log('[BalloTrace:phone] energy calculated', e, '— emitting home:ballo_energy', { sessionId, playerId });
         emit('home:ballo_energy', { sessionId, playerId, energy: e });
       }
     }, 400);

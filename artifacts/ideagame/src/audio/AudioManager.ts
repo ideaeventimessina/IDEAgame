@@ -127,7 +127,7 @@ class _AudioManager {
   resumeContext() {
     // A tiny silent WAV (1 sample) played synchronously during the gesture
     // convinces the browser this tab has had user interaction with audio.
-    console.log('[AudioDebug] unlock');
+    console.log('[AudioTrace] user gesture received — resumeContext called');
     const a = new Audio(
       'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA',
     );
@@ -192,18 +192,22 @@ class _AudioManager {
 
     if (isLoop) {
       // Loops: no static fallback — tenant upload or silence.
-      return resolveFirst([
+      const url = await resolveFirst([
         apiAudioUrl(slug, type),
         ...(slug !== 'global' ? [apiAudioUrl('global', type)] : []),
       ], this.knownFiles);
+      console.log('[AudioTrace] resolved url', { slug, type, url: url ?? 'null — no file uploaded (loop requires tenant upload)' });
+      return url;
     }
 
     // Stingers / SFX: full chain including static bundled files.
-    return resolveFirst([
+    const url = await resolveFirst([
       apiAudioUrl(slug, type),
       staticAudioUrl(slug, type),
       ...(slug !== 'global' ? [apiAudioUrl('global', type), staticAudioUrl('global', type)] : []),
     ], this.knownFiles);
+    console.log('[AudioTrace] resolved url', { slug, type, url: url ?? 'null — no static/api file found' });
+    return url;
   }
 
   async preload(slug: AudioSlug | string) {
@@ -220,8 +224,8 @@ class _AudioManager {
    */
   /** Returns true if the loop started, false if blocked by browser autoplay policy or settings. */
   async playLoop(slug: AudioSlug | string, type: AudioType | string = 'round_loop'): Promise<boolean> {
-    console.log('[AudioDebug] playLoop request', { slug, type });
-    if (!this.settings.musicEnabled || this.settings.muted) { console.log('[AudioDebug] playLoop blocked — music disabled or muted'); return false; }
+    console.log('[AudioTrace] playLoop called', { slug, type });
+    if (!this.settings.musicEnabled || this.settings.muted) { console.log('[AudioTrace] playLoop blocked — music disabled or muted', { musicEnabled: this.settings.musicEnabled, muted: this.settings.muted }); return false; }
     if (this.currentLoopSlug === slug && this.currentLoopType === type) return true;
 
     // Snapshot previous state so we can restore on autoplay block.
@@ -259,6 +263,7 @@ class _AudioManager {
 
     if (!src) {
       // No file — fade-out already running, just record missing state.
+      console.log('[AudioTrace] no file — staying silent', { slug, type });
       this.currentLoopSrc = null;
       if (LOOP_TYPES.has(String(type))) {
         this.missingLoop = { slug: String(slug), type: String(type) };
@@ -272,13 +277,16 @@ class _AudioManager {
     const audio = new Audio(src);
     audio.loop   = true;
     audio.volume = 0;
+    console.log('[AudioTrace] audio element created', { src });
 
     this.currentLoop    = audio;
     this.currentLoopSrc = src;
 
     try {
       await audio.play();
-    } catch {
+      console.log('[AudioTrace] play success', { slug, type, src });
+    } catch (err) {
+      console.log('[AudioTrace] play failed — autoplay blocked by browser', { slug, type, error: String(err) });
       // Browser blocked autoplay — cancel the fade-out and restore old loop.
       if (fadeOutInterval) {
         clearInterval(fadeOutInterval);
@@ -328,6 +336,7 @@ class _AudioManager {
   }
 
   stopLoop(immediate = false) {
+    console.log('[AudioTrace] stopLoop called', { immediate, hadLoop: !!this.currentLoop, currentSlug: this.currentLoopSlug });
     this.currentLoopSlug = null;
     this.currentLoopType = null;
     this._stopMp3Loop(immediate);

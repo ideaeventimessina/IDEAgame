@@ -386,13 +386,15 @@ async function autoScoreBallo(
   sessionId: string,
   players: { id: string; score: number; nickname: string }[],
 ): Promise<string | null> {
+  logger.info({ sessionId, playerCount: players.length }, "[BalloTrace:score] autoScoreBallo called");
   const energies = getBalloEnergies(sessionId);
   clearBalloEnergies(sessionId);
 
   if (Object.keys(energies).length === 0) {
-    logger.warn({ sessionId }, "ballo: no energy data — skipping auto-score");
+    logger.warn({ sessionId }, "[BalloTrace:score] energy map empty — no motion data received, skipping auto-score");
     return null;
   }
+  logger.info({ sessionId, energies }, "[BalloTrace:score] energy map found");
 
   let winnerId = "";
   let maxEnergy = -1;
@@ -402,7 +404,9 @@ async function autoScoreBallo(
   if (!winnerId) return null;
 
   const winner = players.find((p) => p.id === winnerId);
-  if (!winner) return null;
+  if (!winner) { logger.warn({ sessionId, winnerId }, "[BalloTrace:score] winner playerId not in players list"); return null; }
+
+  logger.info({ sessionId, winnerId, winnerNickname: winner.nickname, maxEnergy }, "[BalloTrace:score] winner selected");
 
   const BALLO_POINTS = 150;
   const newScore = Math.max(0, winner.score + BALLO_POINTS);
@@ -411,6 +415,8 @@ async function autoScoreBallo(
     .set({ score: newScore })
     .where(and(eq(homePlayersTable.id, winnerId), eq(homePlayersTable.sessionId, sessionId)));
 
+  logger.info({ sessionId, winnerId, newScore }, "[BalloTrace:score] points updated in DB");
+
   emitToRoom(`home:${sessionId}`, "home:ballo_result", {
     winnerId,
     winnerNickname: winner.nickname,
@@ -418,7 +424,7 @@ async function autoScoreBallo(
     energies,
   });
 
-  logger.info({ sessionId, winnerId, maxEnergy, newScore }, "ballo: auto-scored winner");
+  logger.info({ sessionId, winnerId, maxEnergy, newScore }, "[BalloTrace:score] emitted home:ballo_result");
   return winnerId;
 }
 
@@ -663,11 +669,16 @@ router.post("/home/sessions/:id/answer", async (req, res): Promise<void> => {
   const roundMap = quizAnswerMap.get(id)!;
   if (!roundMap.has(round)) roundMap.set(round, new Map());
   const answerMap = roundMap.get(round)!;
-  if (!answerMap.has(playerId)) answerMap.set(playerId, answerIndex);
+  const alreadyAnswered = answerMap.has(playerId);
+  if (!alreadyAnswered) answerMap.set(playerId, answerIndex);
+  logger.info({ sessionId: id, playerId, answerIndex, round, alreadyAnswered }, "[QuizTrace:server] answer saved");
 
   // Check whether all active players have now answered
   const players = await getPlayers(id);
+  logger.info({ sessionId: id, round, answeredCount: answerMap.size, playerCount: players.length, allAnswered: answerMap.size >= players.length }, "[QuizTrace:server] answer count check");
+
   if (players.length > 0 && answerMap.size >= players.length) {
+    logger.info({ sessionId: id, round }, "[QuizTrace:server] all answered — emitting home:quiz_all_answered");
     emitToRoom(homeRoom(id), "home:quiz_all_answered", {
       sessionId: id,
       round,
@@ -676,6 +687,7 @@ router.post("/home/sessions/:id/answer", async (req, res): Promise<void> => {
     });
     // Remove round entry so a late-arriving duplicate doesn't re-emit
     roundMap.delete(round);
+    logger.info({ sessionId: id, round }, "[QuizTrace:server] emitted home:quiz_all_answered");
   }
 
   res.json({ ok: true });

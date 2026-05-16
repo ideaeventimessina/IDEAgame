@@ -74,7 +74,7 @@ function ModeCard({ mode, delay }: { mode: Mode; delay: number }) {
       transition={{ delay, duration: 0.55, ease: 'easeOut' as const }}
       onHoverStart={() => setHovered(true)}
       onHoverEnd={() => setHovered(false)}
-      onClick={() => { AudioManager.resumeContext(); navigate(mode.route); }}
+      onClick={() => { console.log('[AudioTrace] user gesture received — ModeCard click', mode.id); AudioManager.resumeContext(); navigate(mode.route); }}
       style={{
         position: 'relative',
         cursor: 'pointer',
@@ -182,7 +182,7 @@ function ModeCard({ mode, delay }: { mode: Mode; delay: number }) {
           width: 'calc(100% - 28px)', flexShrink: 0,
         }}
         whileTap={{ scale: 0.97 }}
-        onClick={e => { e.stopPropagation(); AudioManager.resumeContext(); navigate(mode.route); }}
+        onClick={e => { e.stopPropagation(); console.log('[AudioTrace] user gesture received — CTA click', mode.id); AudioManager.resumeContext(); navigate(mode.route); }}
       >{mode.cta}</motion.button>
     </motion.div>
   );

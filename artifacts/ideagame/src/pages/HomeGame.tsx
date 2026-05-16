@@ -605,6 +605,7 @@ export default function HomeGame() {
       setPhase('board');
       setJonnyMood('excited');
       setJonnyMsg('Scegli il tuo gioco!');
+      console.log('[AudioTrace] home:board — stopLoop then playLoop hub/lobby_loop');
       AudioManager.stopLoop(true);
       void AudioManager.playLoop('hub', 'lobby_loop');
     });
@@ -616,6 +617,7 @@ export default function HomeGame() {
       setBalloEnergies({});
       startTimer(Number(d.payload?.timeLimit ?? 30));
       setJonnyMood('thinking');
+      console.log('[AudioTrace] home:game_started — stopLoop then playLoop', { slug: d.session.gameSlug ?? 'global', type: 'round_loop' });
       AudioManager.stopLoop(true);
       void AudioManager.playLoop(d.session.gameSlug ?? 'global', 'round_loop');
     });
@@ -647,19 +649,23 @@ export default function HomeGame() {
       if (d.players) setPlayers(d.players);
     });
     const u8 = on<{ energies: Record<string, number> }>('home:ballo_live', (d) => {
+      console.log('[BalloTrace:tv] received home:ballo_live', d.energies);
       setBalloEnergies(d.energies);
     });
     const u9 = on<{ winnerId: string; winnerNickname: string; points: number; energies: Record<string, number> }>('home:ballo_result', (d) => {
+      console.log('[BalloTrace:tv] received home:ballo_result', { winnerId: d.winnerId, points: d.points, energies: d.energies });
       setPlayers(prev => prev.map(p => p.id === d.winnerId ? { ...p, score: p.score + d.points } : p));
       setBalloEnergies(d.energies);
       setRevealed(true);
       if (timerRef.current) clearInterval(timerRef.current);
       setJonnyMood('correct');
     });
-    const u10 = on<{ sessionId: string; round: number; correctIndex: number }>('home:quiz_all_answered', () => {
+    const u10 = on<{ sessionId: string; round: number; correctIndex: number }>('home:quiz_all_answered', (d) => {
+      console.log('[QuizTrace:tv] received home:quiz_all_answered', d);
       // All players answered — freeze timer and reveal correct answer on TV
-      if (timerRef.current) clearInterval(timerRef.current);
+      if (timerRef.current) { clearInterval(timerRef.current); console.log('[QuizTrace:tv] timer stopped'); }
       setRevealed(true);
+      console.log('[QuizTrace:tv] set revealed true');
       setJonnyMood('correct');
     });
     return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); u10?.(); };
