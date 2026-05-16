@@ -48,6 +48,11 @@ type MusicPaths = {
   'sfida-ballo': string;
   'percorso-a-risate': string;
   'gioco-coppie': string;
+  'adult-only': string;
+  'karaoke-battle': string;
+  'freestyle-battle': string;
+  saramusica: string;
+  'parola-alle-spalle': string;
   'percorso-sfida': string;
   'percorso-domanda': string;
   'percorso-mimo': string;
@@ -60,16 +65,22 @@ type MusicPaths = {
 
 const MUSIC_DEFAULTS: MusicPaths = {
   lobby: '', quizzone: '', 'sfida-ballo': '', 'percorso-a-risate': '', 'gioco-coppie': '',
+  'adult-only': '', 'karaoke-battle': '', 'freestyle-battle': '', saramusica: '', 'parola-alle-spalle': '',
   'percorso-sfida': '', 'percorso-domanda': '', 'percorso-mimo': '', 'percorso-ballo': '',
   'percorso-veloce': '', 'percorso-coppia': '', 'percorso-reazione': '', 'percorso-fantasia': '',
 };
 
 const MUSIC_SLOTS: { key: keyof MusicPaths; label: string; icon: string; fallback: string }[] = [
-  { key: 'lobby',             label: 'Lobby / Home (sottofondo principale)', icon: '🏠', fallback: '/audio/jonny-world/global/lobby_loop.mp3' },
-  { key: 'quizzone',          label: 'Quizzone',                             icon: '❓', fallback: '/audio/jonny-world/quizzone/round_loop.mp3' },
-  { key: 'sfida-ballo',       label: 'Sfida di Ballo',                       icon: '💃', fallback: '/audio/jonny-world/sfida-ballo/round_loop.mp3' },
-  { key: 'percorso-a-risate', label: 'Percorso a Risate (generale)',          icon: '⚡', fallback: '/audio/jonny-world/percorso-a-risate/round_loop.mp3' },
-  { key: 'gioco-coppie',      label: 'Gioco delle Coppie',                   icon: '🃏', fallback: '/audio/jonny-world/gioco-coppie/tension_loop.mp3' },
+  { key: 'lobby',              label: 'Lobby / Home (sottofondo principale)', icon: '🏠', fallback: '/audio/jonny-world/global/lobby_loop.mp3' },
+  { key: 'quizzone',           label: 'Quizzone',                             icon: '❓', fallback: '/audio/jonny-world/quizzone/round_loop.mp3' },
+  { key: 'sfida-ballo',        label: 'Sfida di Ballo',                       icon: '💃', fallback: '/audio/jonny-world/sfida-ballo/round_loop.mp3' },
+  { key: 'percorso-a-risate',  label: 'Percorso a Risate (generale)',         icon: '⚡', fallback: '/audio/jonny-world/percorso-a-risate/round_loop.mp3' },
+  { key: 'gioco-coppie',       label: 'Gioco delle Coppie',                   icon: '🃏', fallback: '/audio/jonny-world/gioco-coppie/tension_loop.mp3' },
+  { key: 'adult-only',         label: 'Adult Only (18+)',                      icon: '🔞', fallback: '' },
+  { key: 'karaoke-battle',     label: 'Karaoke Battle',                       icon: '🎤', fallback: '' },
+  { key: 'freestyle-battle',   label: 'Freestyle Battle',                     icon: '🎙️', fallback: '' },
+  { key: 'saramusica',         label: 'Sara Musica (indovina la canzone)',     icon: '🎵', fallback: '' },
+  { key: 'parola-alle-spalle', label: 'Parola alle Spalle',                   icon: '💬', fallback: '' },
 ];
 
 const PERCORSO_CHALLENGE_SLOTS: { key: keyof MusicPaths; label: string; icon: string }[] = [

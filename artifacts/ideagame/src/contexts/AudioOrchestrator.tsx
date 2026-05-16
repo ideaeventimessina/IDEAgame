@@ -14,21 +14,54 @@ import { getSocket } from '@/hooks/useEventSocket';
 const BASE = (import.meta.env.BASE_URL as string) ?? '/';
 
 /**
- * Maps tenant musicPaths keys to the AudioManager slug/type pairs.
+ * Maps tenant musicPaths admin keys to ONE OR MORE AudioManager {slug, type} pairs.
+ * Each admin key can override multiple runtime slug/type combinations —
+ * e.g. the "quizzone" admin upload should power both the classic projector path
+ * (`quizzone/lobby_loop`) AND the Home Mode path (`home-quiz/round_loop`).
+ *
  * The value stored in DB is an object-storage path like `/uploads/...`.
  * The playback URL is `/api/storage${objectPath}`.
- *
- * All game entries use `lobby_loop` so the tenant-uploaded track plays
- * immediately on game mount (useGameAudio autoLoop default = 'lobby_loop').
- * Socket events (quiz:question, etc.) switch to tension_loop/round_loop
- * on the fly; those also resolve against overrides first.
  */
-const MUSIC_PATH_MAP: Record<string, { slug: string; type: string }> = {
-  lobby:              { slug: 'hub',               type: 'lobby_loop' },
-  quizzone:           { slug: 'quizzone',          type: 'lobby_loop' },
-  'sfida-ballo':      { slug: 'sfida-ballo',       type: 'lobby_loop' },
-  'percorso-a-risate':{ slug: 'percorso-a-risate', type: 'lobby_loop' },
-  'gioco-coppie':     { slug: 'gioco-coppie',      type: 'lobby_loop' },
+const MUSIC_PATH_MAP: Record<string, Array<{ slug: string; type: string }>> = {
+  lobby:              [
+    { slug: 'hub',               type: 'lobby_loop'  },
+  ],
+  quizzone:           [
+    { slug: 'quizzone',          type: 'lobby_loop'  },
+    { slug: 'home-quiz',         type: 'round_loop'  },
+  ],
+  'sfida-ballo':      [
+    { slug: 'sfida-ballo',       type: 'lobby_loop'  },
+    { slug: 'home-ballo',        type: 'round_loop'  },
+  ],
+  'percorso-a-risate':[
+    { slug: 'percorso-a-risate', type: 'lobby_loop'  },
+    { slug: 'home-percorso',     type: 'round_loop'  },
+  ],
+  'gioco-coppie':     [
+    { slug: 'gioco-coppie',      type: 'lobby_loop'  },
+    { slug: 'home-coppie',       type: 'round_loop'  },
+  ],
+  'adult-only':       [
+    { slug: 'adult-only',        type: 'lobby_loop'  },
+    { slug: 'home-adult',        type: 'round_loop'  },
+  ],
+  'karaoke-battle':   [
+    { slug: 'karaoke-battle',    type: 'lobby_loop'  },
+    { slug: 'home-karaoke',      type: 'round_loop'  },
+  ],
+  'freestyle-battle': [
+    { slug: 'freestyle-battle',  type: 'lobby_loop'  },
+    { slug: 'home-freestyle',    type: 'round_loop'  },
+  ],
+  saramusica:         [
+    { slug: 'saramusica',        type: 'lobby_loop'  },
+    { slug: 'home-saramusica',   type: 'round_loop'  },
+  ],
+  'parola-alle-spalle':[
+    { slug: 'parola-alle-spalle',type: 'lobby_loop'  },
+    { slug: 'home-wordback',     type: 'round_loop'  },
+  ],
 };
 
 async function loadMusicOverrides() {
@@ -43,10 +76,12 @@ async function loadMusicOverrides() {
     if (!musicPaths) return;
     AudioManager.clearLoopOverrides();
     for (const [key, objectPath] of Object.entries(musicPaths)) {
-      const mapping = MUSIC_PATH_MAP[key];
-      if (!mapping || !objectPath) continue;
+      const targets = MUSIC_PATH_MAP[key];
+      if (!targets || !objectPath) continue;
       const playbackUrl = `${BASE}api/storage${objectPath}`.replace(/([^:])\/\//g, '$1/');
-      AudioManager.setLoopOverride(mapping.slug, mapping.type, playbackUrl);
+      for (const { slug, type } of targets) {
+        AudioManager.setLoopOverride(slug, type, playbackUrl);
+      }
     }
     // If a loop is already playing with a now-overridden slot, switch to the custom track
     await AudioManager.reloadCurrentLoop();
