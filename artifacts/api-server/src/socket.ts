@@ -13,6 +13,19 @@ let _io: SocketServer | null = null;
  */
 const playerSockets = new Map<string, { playerId: string; eventId: string }>();
 
+// ── Home Mode: per-session/player peak Ballo energy (in-memory, ephemeral) ────
+const balloEnergyMap = new Map<string, Map<string, number>>();
+
+export function getBalloEnergies(sessionId: string): Record<string, number> {
+  const map = balloEnergyMap.get(sessionId);
+  if (!map) return {};
+  return Object.fromEntries(map.entries());
+}
+
+export function clearBalloEnergies(sessionId: string): void {
+  balloEnergyMap.delete(sessionId);
+}
+
 /**
  * Attach Socket.IO to the raw HTTP server.
  * After this call io.engine is set and socket.io handles /socket.io requests.
@@ -137,6 +150,24 @@ export function initHomeSocketHandlers(io: SocketServer): void {
 
     socket.on("leave:home", (sessionId: string) => {
       void socket.leave(`home:${sessionId}`);
+    });
+
+    socket.on("home:ballo_energy", (data: unknown) => {
+      if (!data || typeof data !== "object") return;
+      const d = data as Record<string, unknown>;
+      const sessionId = d["sessionId"];
+      const playerId = d["playerId"];
+      const energy = d["energy"];
+      if (typeof sessionId !== "string" || typeof playerId !== "string" || typeof energy !== "number") return;
+
+      if (!balloEnergyMap.has(sessionId)) balloEnergyMap.set(sessionId, new Map());
+      const playerMap = balloEnergyMap.get(sessionId)!;
+      const current = playerMap.get(playerId) ?? 0;
+      playerMap.set(playerId, Math.max(current, Math.round(energy)));
+
+      emitToRoom(`home:${sessionId}`, "home:ballo_live", {
+        energies: Object.fromEntries(playerMap.entries()),
+      });
     });
   });
 }

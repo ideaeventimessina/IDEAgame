@@ -666,6 +666,7 @@ export default function HomeJoin() {
               }}
               onFlip={flipCard}
               onScore={addScore}
+              emit={emit}
             />
           </motion.div>
         )}
@@ -718,7 +719,7 @@ export default function HomeJoin() {
 
 function PhoneController({
   session, player, players, revealed, answered, timeLeft,
-  onAnswer, onFlip, onScore,
+  onAnswer, onFlip, onScore, emit,
 }: {
   session: HomeSession;
   player: HomePlayer;
@@ -729,6 +730,7 @@ function PhoneController({
   onAnswer: (idx: number) => void;
   onFlip: (cardId: string) => void;
   onScore: (pts: number) => Promise<void>;
+  emit: (event: string, data: unknown) => void;
 }) {
   const p = session.roundPayload;
   const mode = String(p.mode ?? 'home-quiz');
@@ -738,7 +740,7 @@ function PhoneController({
   if (mode === 'home-percorso')   return <PercorsoHomeController payload={p} timeLeft={timeLeft}/>;
   if (mode === 'home-saramusica') return <SaraMusicaController payload={p} players={players} player={player} onScore={onScore}/>;
   if (mode === 'home-adult')      return <AdultController payload={p} timeLeft={timeLeft}/>;
-  if (mode === 'home-ballo')      return <BalloController payload={p} timeLeft={timeLeft} sessionId={session.id}/>;
+  if (mode === 'home-ballo')      return <BalloController payload={p} timeLeft={timeLeft} sessionId={session.id} emit={emit} playerId={player.id}/>;
   if (mode === 'home-wordback')   return <WordBackController payload={p} timeLeft={timeLeft}/>;
   if (mode === 'home-karaoke')    return <KaraokeController payload={p} sessionId={session.id}/>;
   if (mode === 'home-freestyle')  return <FreestyleController payload={p} timeLeft={timeLeft}/>;
@@ -997,14 +999,18 @@ function SimpleController({ payload, color, emoji, label, timeLeft }: {
 
 // ── BalloController ────────────────────────────────────────────────────────────
 
-function BalloController({ payload, timeLeft, sessionId: _sessionId }: {
+function BalloController({ payload, timeLeft, sessionId, emit, playerId }: {
   payload: Record<string,unknown>;
   timeLeft: number | null;
   sessionId: string;
+  emit: (event: string, data: unknown) => void;
+  playerId: string;
 }) {
   const [energy, setEnergy] = useState(0);
   const [motionPerm, setMotionPerm] = useState<'unknown'|'granted'|'denied'|'unsupported'>('unknown');
   const magsRef = useRef<number[]>([]);
+  const timeLeftRef = useRef(timeLeft);
+  useEffect(() => { timeLeftRef.current = timeLeft; }, [timeLeft]);
 
   // Blur any focused input to prevent iOS "Shake to Undo" popup during dancing
   useEffect(() => {
@@ -1040,7 +1046,11 @@ function BalloController({ payload, timeLeft, sessionId: _sessionId }: {
       if (mags.length === 0) return;
       const avg = mags.reduce((a, b) => a + b, 0) / mags.length;
       mags.length = 0;
-      setEnergy(Math.min(100, Math.round(avg)));
+      const e = Math.min(100, Math.round(avg));
+      setEnergy(e);
+      if (timeLeftRef.current !== null && timeLeftRef.current > 0) {
+        emit('home:ballo_energy', { sessionId, playerId, energy: e });
+      }
     }, 400);
     return () => { window.removeEventListener('devicemotion', handleMotion); clearInterval(interval); };
   }, [motionPerm]);

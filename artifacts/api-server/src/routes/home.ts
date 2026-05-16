@@ -49,7 +49,8 @@ import {
   freestyleSetsTable,
   freestyleWordsTable,
 } from "@workspace/db";
-import { emitToRoom } from "../socket";
+import { emitToRoom, getBalloEnergies, clearBalloEnergies } from "../socket";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -362,6 +363,7 @@ async function loadBalloRounds(): Promise<RoundPayload[]> {
     name: c.name,
     description: c.description,
     duration: c.duration ?? 60,
+    timeLimit: c.duration ?? 60,
     musicHint: c.musicHint ?? "",
     difficulty: c.difficulty ?? "medium",
     startedAt: null,
@@ -370,9 +372,50 @@ async function loadBalloRounds(): Promise<RoundPayload[]> {
 
 function fallbackBallo(): RoundPayload[] {
   return [
-    { mode: "home-ballo", roundIndex: 0, name: "Sfida Freestyle", description: "Balla liberamente per 60 secondi — più energia hai, meglio è!", duration: 60, musicHint: "", startedAt: null },
-    { mode: "home-ballo", roundIndex: 1, name: "La Coreografia", description: "Inventate insieme una coreografia di 8 passi che tutti devono ripetere!", duration: 90, musicHint: "", startedAt: null },
+    { mode: "home-ballo", roundIndex: 0, name: "Sfida Freestyle", description: "Balla liberamente per 60 secondi — più energia hai, meglio è!", duration: 60, timeLimit: 60, musicHint: "", startedAt: null },
+    { mode: "home-ballo", roundIndex: 1, name: "La Coreografia", description: "Inventate insieme una coreografia di 8 passi che tutti devono ripetere!", duration: 90, timeLimit: 90, musicHint: "", startedAt: null },
   ];
+}
+
+// ── Auto-score Ballo: highest peak energy wins ────────────────────────────────
+async function autoScoreBallo(
+  sessionId: string,
+  players: { id: string; score: number; nickname: string }[],
+): Promise<string | null> {
+  const energies = getBalloEnergies(sessionId);
+  clearBalloEnergies(sessionId);
+
+  if (Object.keys(energies).length === 0) {
+    logger.warn({ sessionId }, "ballo: no energy data — skipping auto-score");
+    return null;
+  }
+
+  let winnerId = "";
+  let maxEnergy = -1;
+  for (const [pid, e] of Object.entries(energies)) {
+    if (e > maxEnergy) { maxEnergy = e; winnerId = pid; }
+  }
+  if (!winnerId) return null;
+
+  const winner = players.find((p) => p.id === winnerId);
+  if (!winner) return null;
+
+  const BALLO_POINTS = 150;
+  const newScore = Math.max(0, winner.score + BALLO_POINTS);
+
+  await db.update(homePlayersTable)
+    .set({ score: newScore })
+    .where(and(eq(homePlayersTable.id, winnerId), eq(homePlayersTable.sessionId, sessionId)));
+
+  emitToRoom(`home:${sessionId}`, "home:ballo_result", {
+    winnerId,
+    winnerNickname: winner.nickname,
+    points: BALLO_POINTS,
+    energies,
+  });
+
+  logger.info({ sessionId, winnerId, maxEnergy, newScore }, "ballo: auto-scored winner");
+  return winnerId;
 }
 
 /** 7. Parola alle Spalle — carica word_back_cards dal DB */
@@ -701,6 +744,15 @@ router.post("/home/sessions/:id/next", async (req, res): Promise<void> => {
   const gamesPlayed = (cfg.gamesPlayed as string[]) ?? [];
   const nextRound = session.currentRound + 1;
 
+  // Auto-score Ballo before advancing — highest peak energy wins this round
+  const currentPayload = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (String(currentPayload.mode ?? "") === "home-ballo") {
+    const playersForBallo = await getPlayers(id);
+    await autoScoreBallo(id, playersForBallo).catch((err) =>
+      logger.error({ err, sessionId: id }, "autoScoreBallo failed in /next"),
+    );
+  }
+
   if (nextRound >= session.totalRounds) {
     // This game is over — return to board
     const slug = session.gameSlug ?? "";
@@ -758,6 +810,15 @@ router.post("/home/sessions/:id/end-game", async (req, res): Promise<void> => {
   const gamesPlayed = (cfg.gamesPlayed as string[]) ?? [];
   const slug = session.gameSlug ?? "";
   const newGamesPlayed = slug && !gamesPlayed.includes(slug) ? [...gamesPlayed, slug] : gamesPlayed;
+
+  // Auto-score Ballo before ending — highest peak energy wins
+  const endGamePayload = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (String(endGamePayload.mode ?? "") === "home-ballo") {
+    const playersForBallo = await getPlayers(id);
+    await autoScoreBallo(id, playersForBallo).catch((err) =>
+      logger.error({ err, sessionId: id }, "autoScoreBallo failed in /end-game"),
+    );
+  }
 
   const players = await getPlayers(id);
   const gameScoreSnapshot = (cfg.gameScores ?? {}) as Record<string, Record<string, number>>;

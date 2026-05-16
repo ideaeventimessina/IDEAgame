@@ -486,6 +486,7 @@ export default function HomeGame() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [postGame, setPostGame] = useState<{gameSlug:string;players:HomePlayer[]}|null>(null);
+  const [balloEnergies, setBalloEnergies] = useState<Record<string, number>>({});
   const [spinning, setSpinning] = useState(false);
   const [wheelSelected, setWheelSelected] = useState<string | null>(null);
   const [postSpinModal, setPostSpinModal] = useState(false);
@@ -612,6 +613,7 @@ export default function HomeGame() {
       setPlayers(d.players);
       setPhase('playing');
       setRevealed(false);
+      setBalloEnergies({});
       startTimer(Number(d.payload?.timeLimit ?? 30));
       setJonnyMood('thinking');
       AudioManager.stopLoop(true);
@@ -620,6 +622,7 @@ export default function HomeGame() {
     const u4 = on<{ round: number; payload: Record<string, unknown> }>('home:round', (d) => {
       setSession(prev => prev ? { ...prev, currentRound: d.round, roundPayload: d.payload } : prev);
       setRevealed(false);
+      setBalloEnergies({});
       startTimer(Number(d.payload?.timeLimit ?? 30));
       setJonnyMood('thinking');
     });
@@ -643,7 +646,17 @@ export default function HomeGame() {
       setSession(prev => prev ? { ...prev, roundPayload: d.payload } : prev);
       if (d.players) setPlayers(d.players);
     });
-    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); };
+    const u8 = on<{ energies: Record<string, number> }>('home:ballo_live', (d) => {
+      setBalloEnergies(d.energies);
+    });
+    const u9 = on<{ winnerId: string; winnerNickname: string; points: number; energies: Record<string, number> }>('home:ballo_result', (d) => {
+      setPlayers(prev => prev.map(p => p.id === d.winnerId ? { ...p, score: p.score + d.points } : p));
+      setBalloEnergies(d.energies);
+      setRevealed(true);
+      if (timerRef.current) clearInterval(timerRef.current);
+      setJonnyMood('correct');
+    });
+    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [on]);
 
@@ -1185,8 +1198,7 @@ export default function HomeGame() {
 
               <div className="flex gap-2">
                 <button onClick={nextRound}
-                  disabled={loading || (session?.gameSlug === 'sfida-ballo' && !revealed)}
-                  title={session?.gameSlug === 'sfida-ballo' && !revealed ? 'Assegna prima i punti ballo' : undefined}
+                  disabled={loading}
                   className="flex items-center gap-2 rounded-2xl px-5 py-2 text-sm font-bold disabled:opacity-40"
                   style={{background:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.14)',color:'rgba(255,255,255,0.65)'}}>
                   {loading ? <Loader2 className="h-4 w-4 animate-spin"/> : <SkipForward className="h-4 w-4"/>} Avanti
@@ -1214,7 +1226,7 @@ export default function HomeGame() {
             <div className="flex flex-1 items-center justify-center overflow-auto px-6 py-3">
               <RoundBoard key={session.currentRound} session={session} revealed={revealed}
                 onReveal={() => { setRevealed(true); if(timerRef.current) clearInterval(timerRef.current); setJonnyMood('correct'); }}
-                onNext={nextRound} players={players} onScore={async (pid,pts) => {
+                onNext={nextRound} players={players} balloEnergies={balloEnergies} onScore={async (pid,pts) => {
                   // Optimistic update — score appears immediately in bar + partial leaderboard
                   setPlayers(prev => prev.map(p => p.id === pid ? { ...p, score: pts } : p));
                   await fetch(`/api/home/sessions/${session.id}/score`, {
@@ -1462,19 +1474,20 @@ export default function HomeGame() {
 
 // ── RoundBoard ─────────────────────────────────────────────────────────────────
 
-function RoundBoard({ session, revealed, onReveal, onNext, players, onScore }: {
+function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, balloEnergies }: {
   session: HomeSession;
   revealed: boolean;
   onReveal: () => void;
   onNext?: () => void;
   players: HomePlayer[];
   onScore: (playerId: string, points: number) => Promise<void>;
+  balloEnergies?: Record<string, number>;
 }) {
   const p = session.roundPayload;
   const mode = String(p.mode ?? 'home-quiz');
 
   if (mode === 'home-quiz')       return <QuizBoard payload={p} revealed={revealed} onReveal={onReveal}/>;
-  if (mode === 'home-ballo')      return <BalloBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
+  if (mode === 'home-ballo')      return <BalloBoard payload={p} onReveal={onReveal} players={players} onScore={onScore} balloEnergies={balloEnergies ?? {}}/>;
   if (mode === 'home-percorso')   return <PercorsoBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
   if (mode === 'home-coppie')     return <CoppieBoard payload={p} onNext={onNext}/>;
   if (mode === 'home-saramusica') return <SaraMusicaBoard payload={p} revealed={revealed} onReveal={onReveal}/>;
@@ -1542,53 +1555,98 @@ function QuizBoard({ payload, revealed, onReveal }: { payload: Record<string,unk
 
 // ── BalloBoard ────────────────────────────────────────────────────────────────
 
-function BalloBoard({ payload, onReveal, players, onScore }: {
+function BalloBoard({ payload, onReveal, players, onScore, balloEnergies }: {
   payload: Record<string,unknown>;
   onReveal: () => void;
   players: HomePlayer[];
   onScore: (pid: string, pts: number) => Promise<void>;
+  balloEnergies: Record<string, number>;
 }) {
   const [awarded, setAwarded] = useState<string|null>(null);
   const pts = Number(payload.points ?? 150);
+  const hasLiveData = Object.keys(balloEnergies).length > 0;
+  const maxEnergy = hasLiveData ? Math.max(1, ...Object.values(balloEnergies)) : 1;
+  const sortedPlayers = [...players].sort((a, b) => (balloEnergies[b.id] ?? 0) - (balloEnergies[a.id] ?? 0));
+
   return (
     <motion.div key={String(payload.roundIndex)} initial={{scale:0.9,opacity:0}} animate={{scale:1,opacity:1}}
-      className="flex w-full max-w-2xl flex-col items-center gap-7 text-center">
-      <div className="flex h-28 w-28 items-center justify-center rounded-3xl text-7xl"
+      className="flex w-full max-w-2xl flex-col items-center gap-6 text-center">
+      <div className="flex h-24 w-24 items-center justify-center rounded-3xl text-6xl"
         style={{background:'linear-gradient(135deg,rgba(167,139,250,0.35),rgba(167,139,250,0.15))',border:'2px solid rgba(167,139,250,0.55)',boxShadow:'0 0 60px rgba(167,139,250,0.4)'}}>
         💃
       </div>
-      <div className="text-display text-5xl font-black text-white" style={{textShadow:'0 0 30px rgba(167,139,250,0.5)'}}>
+      <div className="text-display text-4xl font-black text-white" style={{textShadow:'0 0 30px rgba(167,139,250,0.5)'}}>
         {String(payload.name ?? 'Sfida di Ballo')}
       </div>
-      <div className="max-w-lg text-xl text-white/65">{String(payload.description ?? '')}</div>
+      <div className="max-w-lg text-base text-white/65">{String(payload.description ?? '')}</div>
       {!!payload.musicHint && (
-        <div className="flex items-center gap-3 rounded-2xl px-6 py-3"
+        <div className="flex items-center gap-3 rounded-2xl px-5 py-2"
           style={{background:'rgba(167,139,250,0.18)',border:'1px solid rgba(167,139,250,0.45)',color:'#c084fc'}}>
-          <Music className="h-5 w-5"/>
-          <span className="text-base font-black">🎵 {String(payload.musicHint)}</span>
+          <Music className="h-4 w-4"/>
+          <span className="text-sm font-black">🎵 {String(payload.musicHint)}</span>
         </div>
       )}
-      <div className="text-6xl font-black" style={{color:'#A78BFA',textShadow:'0 0 30px rgba(167,139,250,0.6)'}}>
-        {Number(payload.duration ?? 60)}s
-      </div>
-      <div className="text-base text-white/50">Chi ha ballato meglio? Assegna i punti ({pts}pt):</div>
-      <div className="flex flex-wrap justify-center gap-3">
-        {players.map(p => (
-          <button key={p.id} disabled={!!awarded}
-            onClick={async () => { setAwarded(p.id); await onScore(p.id, p.score + pts); onReveal(); }}
-            className="rounded-2xl px-5 py-3 text-sm font-black transition-all disabled:opacity-50"
-            style={awarded===p.id
-              ? {background:'linear-gradient(135deg,#A78BFA,#7c3aed)',color:'#fff',boxShadow:'0 0 30px rgba(167,139,250,0.6)'}
-              : {background:`linear-gradient(135deg,${p.avatarColor},${p.avatarColor}cc)`,color:'#000'}}>
-            {p.nickname} {awarded===p.id && '✓'}
-          </button>
-        ))}
-        <button disabled={!!awarded} onClick={() => onReveal()}
-          className="rounded-2xl px-5 py-3 text-sm font-black transition-all"
-          style={{background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.14)',color:'rgba(255,255,255,0.5)'}}>
-          Nessuno
-        </button>
-      </div>
+
+      {/* Live energy bars — primary UI when data arrives from phones */}
+      {hasLiveData ? (
+        <div className="w-full max-w-xl space-y-3">
+          <div className="text-xs font-bold text-white/35 uppercase tracking-wider">⚡ Energia in tempo reale · chi balla di più vince +{pts}pt automaticamente</div>
+          {sortedPlayers.map((p, i) => {
+            const e = balloEnergies[p.id] ?? 0;
+            const pct = Math.round((e / maxEnergy) * 100);
+            const isLeader = i === 0 && e > 0;
+            return (
+              <div key={p.id} className="flex items-center gap-3">
+                <div className="w-7 shrink-0 text-center text-xl">{isLeader ? '🥇' : `${i + 1}`}</div>
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-black"
+                  style={{background: p.avatarColor, color:'#000'}}>
+                  {p.nickname.slice(0,2).toUpperCase()}
+                </div>
+                <div className="flex-1">
+                  <div className="mb-1 flex items-center justify-between text-xs font-bold">
+                    <span className={isLeader ? 'text-yellow-400' : 'text-white/70'}>{p.nickname}</span>
+                    <span style={{color:'#A78BFA'}}>{e}%</span>
+                  </div>
+                  <div className="relative h-5 w-full overflow-hidden rounded-full bg-white/10">
+                    <motion.div className="absolute inset-y-0 left-0 rounded-full"
+                      animate={{width:`${pct}%`}} transition={{duration:0.2}}
+                      style={{
+                        background: isLeader ? 'linear-gradient(90deg,#F5B642,#f97316)' : 'linear-gradient(90deg,#A78BFA,#7c3aed)',
+                        boxShadow: isLeader ? '0 0 14px rgba(245,182,66,0.7)' : '0 0 8px rgba(167,139,250,0.5)',
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        /* Fallback manual selection — shown when no phone data received yet */
+        <>
+          <div className="text-5xl font-black" style={{color:'#A78BFA',textShadow:'0 0 30px rgba(167,139,250,0.6)'}}>
+            {Number(payload.duration ?? 60)}s
+          </div>
+          <div className="text-sm text-white/40">In attesa dei dati dal telefono… oppure assegna manualmente ({pts}pt):</div>
+          <div className="flex flex-wrap justify-center gap-3">
+            {players.map(p => (
+              <button key={p.id} disabled={!!awarded}
+                onClick={async () => { setAwarded(p.id); await onScore(p.id, p.score + pts); onReveal(); }}
+                className="rounded-2xl px-5 py-3 text-sm font-black transition-all disabled:opacity-50"
+                style={awarded===p.id
+                  ? {background:'linear-gradient(135deg,#A78BFA,#7c3aed)',color:'#fff',boxShadow:'0 0 30px rgba(167,139,250,0.6)'}
+                  : {background:`linear-gradient(135deg,${p.avatarColor},${p.avatarColor}cc)`,color:'#000'}}>
+                {p.nickname} {awarded===p.id && '✓'}
+              </button>
+            ))}
+            <button disabled={!!awarded} onClick={() => onReveal()}
+              className="rounded-2xl px-5 py-3 text-sm font-black transition-all"
+              style={{background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.14)',color:'rgba(255,255,255,0.5)'}}>
+              Nessuno
+            </button>
+          </div>
+        </>
+      )}
     </motion.div>
   );
 }

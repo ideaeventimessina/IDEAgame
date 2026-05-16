@@ -1,0 +1,81 @@
+HOME MODE — IMPLEMENT BALLO AUTO SCORING PHASE 1.
+
+Do not redesign.
+Do not touch other games.
+Do not touch live mode.
+Do not change routes.
+
+Problem:
+Ballo accelerometer works on phone but energy stays local.
+No points appear on phone or TV.
+At round end no player receives score.
+
+Implement minimal Ballo auto-scoring.
+
+Required:
+
+1. Phone → server
+In HomeJoin.tsx BalloController:
+- pass playerId and emit into BalloController
+- every 500ms send:
+  emit('home:ballo_energy', { sessionId, playerId, energy })
+- only emit if timeLeft > 0 and motion permission granted
+
+2. Server socket
+Add socket listener:
+home:ballo_energy
+
+Store peak energy per player in memory:
+Map<sessionId, Map<playerId, peakEnergy>>
+
+Broadcast to room:
+home:ballo_live
+{ energies: Record<playerId, number> }
+
+3. TV display
+In HomeGame.tsx BalloBoard:
+- listen to home:ballo_live
+- show live energy bars for every player
+- show numeric score 0–100
+- remove expectation that host manually chooses winner
+
+4. Auto scoring at round end
+In POST /api/home/sessions/:id/next:
+if current round is home-ballo:
+- read peak energy map
+- find highest player
+- award points automatically
+- emit home:ballo_result
+- clear energy map for that session/round
+
+Also apply same auto-score logic in end-game path if ballo is active.
+
+5. Fix Ballo duration
+In loadBalloRounds / fallbackBallo:
+- add timeLimit equal to duration
+- phone timer must use real duration, not default 30s
+
+6. Fallback
+If no energy data exists:
+- do not crash
+- no points awarded
+- log warning
+
+Test:
+1. create Home session with only Ballo
+2. join 2 players
+3. start Ballo
+4. move phone
+5. TV must show live energy bars
+6. at end/Avanti, highest energy player gets points automatically
+7. scoreboard updates
+8. typecheck frontend/backend clean
+
+Output:
+A. files modified
+B. socket event implemented
+C. live TV energy bars
+D. auto scoring behavior
+E. duration fix
+F. test result
+G. typecheck result
