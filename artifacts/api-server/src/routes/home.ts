@@ -18,11 +18,12 @@
  */
 
 import { Router, type IRouter } from "express";
-import { eq, and, or, lt, asc, desc } from "drizzle-orm";
+import { eq, and, or, lt, asc, desc, isNull } from "drizzle-orm";
 import {
   db,
   homeSessionsTable,
   homePlayersTable,
+  systemSettingsTable,
   // Percorso
   laughingPathSetsTable,
   laughingPathStepsTable,
@@ -558,6 +559,33 @@ async function loadGameRounds(gameSlug: string): Promise<RoundPayload[]> {
     default:                     return loadQuizRounds();
   }
 }
+
+// ── GET /home/music-config  (PUBLIC — no auth required) ───────────────────────
+// Returns only the musicPaths object from tenant.settings so unauthenticated
+// devices (Home Mode TV board, player phones) can load custom audio tracks.
+// home_sessions have no tenantId — merge musicPaths from all tenants.
+// Audio slugs are game-specific and don't conflict between tenants.
+router.get("/home/music-config", async (req, res): Promise<void> => {
+  try {
+    const rows = await db
+      .select()
+      .from(systemSettingsTable)
+      .where(eq(systemSettingsTable.key, 'tenant.settings'));
+
+    const merged: Record<string, string> = {};
+    for (const row of rows) {
+      const value = row.value;
+      if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+      const paths = (value as Record<string, unknown>).musicPaths as Record<string, string> | undefined;
+      if (paths) Object.assign(merged, paths);
+    }
+
+    res.json({ musicPaths: merged });
+  } catch (err) {
+    req.log.error({ err }, 'home/music-config error');
+    res.json({ musicPaths: {} });
+  }
+});
 
 // ── POST /home/sessions ────────────────────────────────────────────────────────
 router.post("/home/sessions", async (req, res): Promise<void> => {

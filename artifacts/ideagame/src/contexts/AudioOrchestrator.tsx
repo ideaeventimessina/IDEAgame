@@ -15,12 +15,18 @@ const BASE = (import.meta.env.BASE_URL as string) ?? '/';
 
 /**
  * Maps tenant musicPaths admin keys to ONE OR MORE AudioManager {slug, type} pairs.
- * Each admin key can override multiple runtime slug/type combinations —
- * e.g. the "quizzone" admin upload should power both the classic projector path
- * (`quizzone/lobby_loop`) AND the Home Mode path (`home-quiz/round_loop`).
+ *
+ * Keys must match EXACTLY the values stored in home_sessions.gameSlug (and the games table slug).
+ * Each key targets two slots:
+ *   - lobby_loop  → classic projector / pre-game lobby music
+ *   - round_loop  → in-round music (Home Mode TV board)
  *
  * The value stored in DB is an object-storage path like `/uploads/...`.
  * The playback URL is `/api/storage${objectPath}`.
+ *
+ * WRONG slugs removed: home-quiz, home-ballo, home-coppie, home-percorso,
+ *   home-adult, home-karaoke, home-freestyle, home-saramusica, home-wordback.
+ * These never appear in session.gameSlug — they were internal loadGameRounds() mode strings.
  */
 const MUSIC_PATH_MAP: Record<string, Array<{ slug: string; type: string }>> = {
   lobby:              [
@@ -28,61 +34,67 @@ const MUSIC_PATH_MAP: Record<string, Array<{ slug: string; type: string }>> = {
   ],
   quizzone:           [
     { slug: 'quizzone',          type: 'lobby_loop'  },
-    { slug: 'home-quiz',         type: 'round_loop'  },
+    { slug: 'quizzone',          type: 'round_loop'  },
   ],
   'sfida-ballo':      [
     { slug: 'sfida-ballo',       type: 'lobby_loop'  },
-    { slug: 'home-ballo',        type: 'round_loop'  },
+    { slug: 'sfida-ballo',       type: 'round_loop'  },
   ],
   'percorso-a-risate':[
     { slug: 'percorso-a-risate', type: 'lobby_loop'  },
-    { slug: 'home-percorso',     type: 'round_loop'  },
+    { slug: 'percorso-a-risate', type: 'round_loop'  },
   ],
   'gioco-coppie':     [
     { slug: 'gioco-coppie',      type: 'lobby_loop'  },
-    { slug: 'home-coppie',       type: 'round_loop'  },
+    { slug: 'gioco-coppie',      type: 'round_loop'  },
   ],
   'adult-only':       [
     { slug: 'adult-only',        type: 'lobby_loop'  },
-    { slug: 'home-adult',        type: 'round_loop'  },
+    { slug: 'adult-only',        type: 'round_loop'  },
   ],
   'karaoke-battle':   [
     { slug: 'karaoke-battle',    type: 'lobby_loop'  },
-    { slug: 'home-karaoke',      type: 'round_loop'  },
+    { slug: 'karaoke-battle',    type: 'round_loop'  },
   ],
   'freestyle-battle': [
     { slug: 'freestyle-battle',  type: 'lobby_loop'  },
-    { slug: 'home-freestyle',    type: 'round_loop'  },
+    { slug: 'freestyle-battle',  type: 'round_loop'  },
   ],
   saramusica:         [
     { slug: 'saramusica',        type: 'lobby_loop'  },
-    { slug: 'home-saramusica',   type: 'round_loop'  },
+    { slug: 'saramusica',        type: 'round_loop'  },
   ],
   'parola-alle-spalle':[
     { slug: 'parola-alle-spalle',type: 'lobby_loop'  },
-    { slug: 'home-wordback',     type: 'round_loop'  },
+    { slug: 'parola-alle-spalle',type: 'round_loop'  },
   ],
 };
 
 async function loadMusicOverrides() {
   try {
-    const url = `${BASE}api/system-settings`.replace(/([^:])\/\//g, '$1/');
-    const r = await fetch(url, { credentials: 'include' });
+    // Use the public /home/music-config endpoint so unauthenticated devices
+    // (Home Mode TV board, player phones) can load overrides without a session cookie.
+    // Pass the current URL's ?s= param so the server can scope to the right tenant.
+    const sessionId = new URLSearchParams(window.location.search).get('s');
+    const qs = sessionId ? `?s=${encodeURIComponent(sessionId)}` : '';
+    const url = `${BASE}api/home/music-config${qs}`.replace(/([^:])\/\//g, '$1/');
+    const r = await fetch(url);
     if (!r.ok) return;
-    const rows = await r.json() as Array<{ key: string; value: unknown }>;
-    const tenantRow = rows.find((r: { key: string }) => r.key === 'tenant.settings');
-    if (!tenantRow || typeof tenantRow.value !== 'object' || !tenantRow.value) return;
-    const musicPaths = (tenantRow.value as Record<string, unknown>).musicPaths as Record<string, string> | undefined;
-    if (!musicPaths) return;
+    const data = await r.json() as { musicPaths: Record<string, string> };
+    const musicPaths = data.musicPaths;
+    if (!musicPaths || !Object.keys(musicPaths).length) return;
     AudioManager.clearLoopOverrides();
+    let registered = 0;
     for (const [key, objectPath] of Object.entries(musicPaths)) {
       const targets = MUSIC_PATH_MAP[key];
       if (!targets || !objectPath) continue;
       const playbackUrl = `${BASE}api/storage${objectPath}`.replace(/([^:])\/\//g, '$1/');
       for (const { slug, type } of targets) {
         AudioManager.setLoopOverride(slug, type, playbackUrl);
+        registered++;
       }
     }
+    console.log('[HomeAudio] loaded paths', { musicPaths, registered, sessionId });
     // If a loop is already playing with a now-overridden slot, switch to the custom track
     await AudioManager.reloadCurrentLoop();
   } catch { /* silent */ }
