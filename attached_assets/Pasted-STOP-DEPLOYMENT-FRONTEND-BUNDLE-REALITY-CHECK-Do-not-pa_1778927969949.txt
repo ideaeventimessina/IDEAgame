@@ -1,0 +1,97 @@
+STOP. DEPLOYMENT / FRONTEND BUNDLE REALITY CHECK.
+
+Do not patch gameplay yet.
+Do not redesign.
+Do not add features.
+
+The latest fixes are NOT visible in real frontend:
+
+1. Quizzone still waits for timer 0 instead of revealing after all players answered.
+2. Coppie still empty; cards do not flip; phone guests receive nothing.
+3. Ballo sensor button still missing.
+4. Audio still says files do not exist even after admin mapping fix.
+
+This suggests one of these:
+- frontend bundle is stale
+- browser/service worker/cache is serving old JS
+- Replit workflow did not restart the correct app
+- changes were made in files not used by active routes
+- deployed URL uses a different build than local canvas
+- wrong route/component is active
+- HMR failed silently
+- duplicate HomeJoin/HomeGame components exist
+
+TASK: RUNTIME REALITY CHECK ONLY.
+
+A. Verify active files
+In the running app, prove which components are actually mounted for:
+- /home?s=...
+- /home/join?s=...
+- /home-lobby/:code
+- /mode-select
+
+Add temporary console logs at top-level component mount:
+
+[RuntimeCheck] HomeGame mounted FILE=<path> BUILD=<timestamp>
+[RuntimeCheck] HomeJoin mounted FILE=<path> BUILD=<timestamp>
+[RuntimeCheck] HomeLobbyPage mounted FILE=<path> BUILD=<timestamp>
+[RuntimeCheck] ModeSelect mounted FILE=<path> BUILD=<timestamp>
+
+B. Verify build freshness
+- Add a visible tiny debug stamp in bottom-left ONLY in dev:
+  BUILD: YYYY-MM-DD HH:mm / HomeGame v-test
+- Restart frontend workflow
+- Hard refresh browser
+- Confirm the stamp changes.
+
+C. Verify duplicate components
+Search entire repo for:
+- function HomeGame
+- const HomeGame
+- export default HomeGame
+- function HomeJoin
+- BalloController
+- CoppieBoard
+- QuizBoard
+- playLoop('home
+- playLoop('hub
+
+Return every file containing them.
+
+D. Verify route mapping
+Print App.tsx route table:
+- /home uses which imported component?
+- /home/join uses which imported component?
+- /home-lobby uses which imported component?
+
+E. Verify current runtime behavior with logs
+Run one test each and capture logs:
+
+Quizzone:
+- 1 player answers
+- show server log for all-answered count
+- show TV log received/not received event
+
+Coppie:
+- start Coppie
+- log payload received by TV and phone
+- print number of cards in payload
+- print whether fallback 24 cards loaded
+
+Ballo:
+- open phone
+- log if BalloController mounted
+- log motionPerm state
+- log whether "ATTIVA SENSORI" button condition is true/false
+
+Audio:
+- log actual AudioOrchestrator musicPaths loaded
+- log exact requested slug/type
+- log exact override found or missing
+
+OUTPUT ONLY:
+1. Is frontend running latest code? YES/NO
+2. Which active components are mounted?
+3. Are duplicate components/routes present?
+4. Exact reason each fix is not visible
+5. Do NOT patch until this is proven.

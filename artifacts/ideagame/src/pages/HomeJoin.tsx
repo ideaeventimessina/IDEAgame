@@ -64,7 +64,11 @@ function getSavedJoin(): { sessionId: string; joinCode: string; playerId: string
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
+const BUILD_STAMP_JOIN = `${new Date().toISOString().slice(0,16).replace('T',' ')} / HomeJoin v-check`;
 export default function HomeJoin() {
+  useEffect(() => {
+    console.log('[RuntimeCheck] HomeJoin mounted FILE=src/pages/HomeJoin.tsx BUILD=' + BUILD_STAMP_JOIN);
+  }, []);
   const [, navigate] = useLocation();
   const urlParams = new URLSearchParams(window.location.search);
   const urlCode = urlParams.get('s')?.toUpperCase().trim() ?? null;

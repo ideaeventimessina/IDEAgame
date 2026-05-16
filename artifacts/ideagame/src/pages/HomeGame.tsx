@@ -467,7 +467,11 @@ function useHomeSocket(sessionId: string | null) {
 
 type Phase = 'welcome' | 'join' | 'board' | 'playing' | 'champion';
 
+const BUILD_STAMP = `${new Date().toISOString().slice(0,16).replace('T',' ')} / HomeGame v-check`;
 export default function HomeGame() {
+  useEffect(() => {
+    console.log('[RuntimeCheck] HomeGame mounted FILE=src/pages/HomeGame.tsx BUILD=' + BUILD_STAMP);
+  }, []);
   const [, navigate] = useLocation();
   const urlParams = new URLSearchParams(window.location.search);
   const urlSessionId = urlParams.get('s');
@@ -995,6 +999,13 @@ export default function HomeGame() {
       <div className="pointer-events-none absolute inset-0 z-0">
         {Array.from({length:50}).map((_,i)=>{const cs=['#fff','#F5B642','#A855F7','#22D3EE','#F472B6','#34D399'];return<div key={i} className="absolute rounded-full" style={{left:`${(i*37+11)%100}%`,top:`${(i*53+7)%100}%`,width:1.5+(i%3),height:1.5+(i%3),background:cs[i%cs.length],opacity:0.10+(i%5)*0.05}}/>;})}
       </div>
+
+      {/* Dev build stamp — dev only */}
+      {import.meta.env.DEV && (
+        <div className="pointer-events-none absolute bottom-1 left-2 z-50 text-[9px] font-mono opacity-40" style={{color:'#F5B642'}}>
+          BUILD: {BUILD_STAMP}
+        </div>
+      )}
 
       {/* Audio unlock / warning */}
       {!audioUnlocked && (
