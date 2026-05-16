@@ -493,6 +493,9 @@ export default function HomeGame() {
   const [postGame, setPostGame] = useState<{gameSlug:string;players:HomePlayer[]}|null>(null);
   const [balloEnergies, setBalloEnergies] = useState<Record<string, number>>({});
   const [balloResult, setBalloResult] = useState<{ winnerId: string; winnerNickname: string; points: number } | null>(null);
+  const [saraMusicaWinner, setSaraMusicaWinner] = useState<{ nickname: string; points: number; round: number } | null>(null);
+  // Reset saraMusicaWinner when the round changes
+  useEffect(() => { setSaraMusicaWinner(null); }, [session?.currentRound]);
   const [spinning, setSpinning] = useState(false);
   const [wheelSelected, setWheelSelected] = useState<string | null>(null);
   const [postSpinModal, setPostSpinModal] = useState(false);
@@ -680,7 +683,15 @@ export default function HomeGame() {
       console.log('[QuizTrace:tv] set revealed true');
       setJonnyMood('correct');
     });
-    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); u10?.(); };
+    const u11 = on<{ playerId: string; nickname: string; round: number; points: number }>('home:saramusica_winner', (d) => {
+      console.log('[SaraTrace:tv] received home:saramusica_winner', d);
+      setSaraMusicaWinner({ nickname: d.nickname, points: d.points, round: d.round });
+      setPlayers(prev => prev.map(p => p.id === d.playerId ? { ...p, score: p.score + d.points } : p));
+      setRevealed(true);
+      if (timerRef.current) clearInterval(timerRef.current);
+      setJonnyMood('excited');
+    });
+    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); u10?.(); u11?.(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [on]);
 
@@ -1281,7 +1292,7 @@ export default function HomeGame() {
             <div className="flex flex-1 items-center justify-center overflow-auto px-6 py-3">
               <RoundBoard key={session.currentRound} session={session} revealed={revealed}
                 onReveal={() => { setRevealed(true); if(timerRef.current) clearInterval(timerRef.current); setJonnyMood('correct'); }}
-                onNext={nextRound} players={players} balloEnergies={balloEnergies} balloResult={balloResult} onScore={async (pid,pts) => {
+                onNext={nextRound} players={players} balloEnergies={balloEnergies} balloResult={balloResult} saraMusicaWinner={saraMusicaWinner} onScore={async (pid,pts) => {
                   // Optimistic update — score appears immediately in bar + partial leaderboard
                   setPlayers(prev => prev.map(p => p.id === pid ? { ...p, score: pts } : p));
                   await fetch(`/api/home/sessions/${session.id}/score`, {
@@ -1529,7 +1540,7 @@ export default function HomeGame() {
 
 // ── RoundBoard ─────────────────────────────────────────────────────────────────
 
-function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, balloEnergies, balloResult }: {
+function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, balloEnergies, balloResult, saraMusicaWinner }: {
   session: HomeSession;
   revealed: boolean;
   onReveal: () => void;
@@ -1538,6 +1549,7 @@ function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, bal
   onScore: (playerId: string, points: number) => Promise<void>;
   balloEnergies?: Record<string, number>;
   balloResult?: { winnerId: string; winnerNickname: string; points: number } | null;
+  saraMusicaWinner?: { nickname: string; points: number; round: number } | null;
 }) {
   const p = session.roundPayload;
   const mode = String(p.mode ?? 'home-quiz');
@@ -1546,7 +1558,7 @@ function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, bal
   if (mode === 'home-ballo')      return <BalloBoard payload={p} players={players} balloEnergies={balloEnergies ?? {}} balloResult={balloResult ?? null}/>;
   if (mode === 'home-percorso')   return <PercorsoBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
   if (mode === 'home-coppie')     return <CoppieBoard payload={p} onNext={onNext}/>;
-  if (mode === 'home-saramusica') return <SaraMusicaBoard payload={p} revealed={revealed} onReveal={onReveal}/>;
+  if (mode === 'home-saramusica') return <SaraMusicaBoard payload={p} revealed={revealed} onReveal={onReveal} winner={saraMusicaWinner ?? null}/>;
   if (mode === 'home-adult')      return <AdultOnlyBoard payload={p} revealed={revealed} onReveal={onReveal} players={players} onScore={onScore}/>;
   if (mode === 'home-wordback')   return <WordBackBoard payload={p} players={players} onScore={onScore} onReveal={onReveal}/>;
   if (mode === 'home-karaoke')    return <KaraokeBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
@@ -1841,7 +1853,12 @@ function AudioPlayer({ src, label = 'Riproduci', color = '#60A5FA' }: { src: str
 
 // ── SaraMusicaBoard ───────────────────────────────────────────────────────────
 
-function SaraMusicaBoard({ payload, revealed, onReveal }: { payload: Record<string,unknown>; revealed: boolean; onReveal: () => void }) {
+function SaraMusicaBoard({ payload, revealed, onReveal, winner }: {
+  payload: Record<string,unknown>;
+  revealed: boolean;
+  onReveal: () => void;
+  winner?: { nickname: string; points: number; round: number } | null;
+}) {
   const audioUrl = payload.audioUrl ? String(payload.audioUrl) : null;
   return (
     <motion.div key={String(payload.roundIndex)} initial={{scale:0.9,opacity:0}} animate={{scale:1,opacity:1}}
@@ -1866,12 +1883,23 @@ function SaraMusicaBoard({ payload, revealed, onReveal }: { payload: Record<stri
         </>
       ) : (
         <>
+          {winner && (
+            <motion.div initial={{scale:0,opacity:0}} animate={{scale:1,opacity:1}} transition={{type:'spring',delay:0.1}}
+              className="rounded-3xl px-8 py-4 text-center"
+              style={{background:'linear-gradient(135deg,rgba(96,165,250,0.25),rgba(37,99,235,0.15))',border:'2px solid rgba(96,165,250,0.6)',boxShadow:'0 0 60px rgba(96,165,250,0.4)'}}>
+              <div className="text-xs font-black uppercase tracking-widest mb-1" style={{color:'rgba(96,165,250,0.8)'}}>🏆 HA INDOVINATO</div>
+              <div className="text-3xl font-black text-white">{winner.nickname}</div>
+              <div className="text-xl font-bold mt-1" style={{color:'#60A5FA'}}>+{winner.points} punti!</div>
+            </motion.div>
+          )}
           <div className="text-display text-5xl font-black text-white">{String(payload.title??'?')}</div>
           <div className="text-2xl font-bold" style={{color:'#60A5FA'}}>— {String(payload.artist??'')}</div>
           <AudioPlayer src={audioUrl} label="Riproduci ancora" color="#60A5FA"/>
-          <div className="rounded-2xl px-5 py-2" style={{background:'rgba(96,165,250,0.18)',border:'1px solid rgba(96,165,250,0.45)',color:'#60A5FA'}}>
-            <span className="text-xl font-black">{Number(payload.points??100)} punti a chi l'ha indovinata!</span>
-          </div>
+          {!winner && (
+            <div className="rounded-2xl px-5 py-2" style={{background:'rgba(96,165,250,0.18)',border:'1px solid rgba(96,165,250,0.45)',color:'#60A5FA'}}>
+              <span className="text-xl font-black">{Number(payload.points??100)} punti a chi l'ha indovinata!</span>
+            </div>
+          )}
         </>
       )}
     </motion.div>
@@ -2103,10 +2131,26 @@ function CoppieBoard({ payload, onNext }: { payload: Record<string,unknown>; onN
   const matched = Number(payload.matchedPairs ?? 0);
   const total = Number(payload.totalPairs ?? 0);
   const cols = Math.min(Math.ceil(Math.sqrt(cards.length)), 6);
+  const [preview, setPreview] = useState(false);
+  const [previewSecs, setPreviewSecs] = useState(0);
+  const previewTimer = useRef<ReturnType<typeof setInterval>|null>(null);
+
+  const startPreview = () => {
+    if (previewTimer.current) clearInterval(previewTimer.current);
+    setPreview(true);
+    setPreviewSecs(10);
+    let t = 10;
+    previewTimer.current = setInterval(() => {
+      t -= 1;
+      setPreviewSecs(t);
+      if (t <= 0) { clearInterval(previewTimer.current!); setPreview(false); }
+    }, 1000);
+  };
+  useEffect(() => () => { if (previewTimer.current) clearInterval(previewTimer.current); }, []);
 
   return (
     <div className="flex w-full max-w-5xl flex-col items-center gap-5">
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-4 flex-wrap justify-center">
         <div className="text-display text-3xl font-black" style={{color:'#F472B6'}}>
           {String(payload.category ?? 'Coppie')}
         </div>
@@ -2114,32 +2158,44 @@ function CoppieBoard({ payload, onNext }: { payload: Record<string,unknown>; onN
           style={{background:'rgba(244,114,182,0.18)',color:'#F472B6',border:'1px solid rgba(244,114,182,0.45)'}}>
           {matched}/{total} coppie
         </div>
+        {!preview && matched < total && (
+          <button onClick={startPreview}
+            className="flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-black"
+            style={{background:'rgba(244,114,182,0.12)',border:'1px solid rgba(244,114,182,0.4)',color:'#F472B6'}}>
+            👁 Mostra carte 10s
+          </button>
+        )}
+        {preview && (
+          <div className="rounded-full px-4 py-1.5 text-sm font-black"
+            style={{background:'rgba(244,114,182,0.25)',border:'1px solid rgba(244,114,182,0.6)',color:'#F472B6'}}>
+            👁 Visibili {previewSecs}s…
+          </div>
+        )}
       </div>
       <div className={`grid gap-3`} style={{gridTemplateColumns:`repeat(${cols}, minmax(0, 1fr))`,width:'100%'}}>
-        {cards.map(card => (
-          <div key={card.id}
-            className="relative flex min-h-16 items-center justify-center rounded-2xl text-sm font-black"
-            style={card.matched
-              ? {background:'linear-gradient(135deg,#22c55e,#16a34a)',border:'2px solid #4ade80',boxShadow:'0 0 20px rgba(34,197,94,0.4)',color:'#fff'}
-              : card.flipped
-              ? {background:'linear-gradient(135deg,#F472B6,#ec4899)',border:'2px solid #F472B6',boxShadow:'0 0 25px rgba(244,114,182,0.5)',color:'#fff'}
-              : {background:'rgba(255,255,255,0.05)',border:'2px solid rgba(244,114,182,0.3)',color:'rgba(255,255,255,0.5)'}}>
-            {card.matched ? (
-              card.imageUrl
-                ? <img src={card.imageUrl} alt={card.text} className="h-16 w-16 rounded-xl object-cover"/>
-                : <span className="px-2 text-center text-sm font-black">{card.text}</span>
-            ) : card.flipped ? (
-              card.imageUrl
-                ? <img src={card.imageUrl} alt={card.text} className="h-16 w-16 rounded-xl object-cover"/>
-                : <span className="px-2 text-center text-sm font-black">{card.text}</span>
-            ) : (
-              card.imageUrl
-                ? <img src={card.imageUrl} alt="" className="h-16 w-16 rounded-xl object-cover"
-                    style={{filter:'blur(8px)',opacity:0.15}}/>
-                : <span className="text-2xl text-white/25">?</span>
-            )}
-          </div>
-        ))}
+        {cards.map(card => {
+          const showFace = card.matched || card.flipped || preview;
+          return (
+            <div key={card.id}
+              className="relative flex min-h-16 items-center justify-center rounded-2xl text-sm font-black"
+              style={card.matched
+                ? {background:'linear-gradient(135deg,#22c55e,#16a34a)',border:'2px solid #4ade80',boxShadow:'0 0 20px rgba(34,197,94,0.4)',color:'#fff'}
+                : showFace
+                ? {background:'linear-gradient(135deg,#F472B6,#ec4899)',border:'2px solid #F472B6',boxShadow:'0 0 25px rgba(244,114,182,0.5)',color:'#fff'}
+                : {background:'rgba(255,255,255,0.05)',border:'2px solid rgba(244,114,182,0.3)',color:'rgba(255,255,255,0.5)'}}>
+              {showFace ? (
+                card.imageUrl
+                  ? <img src={card.imageUrl} alt={card.text} className="h-16 w-16 rounded-xl object-cover"/>
+                  : <span className="px-2 text-center text-sm font-black">{card.text}</span>
+              ) : (
+                card.imageUrl
+                  ? <img src={card.imageUrl} alt="" className="h-16 w-16 rounded-xl object-cover"
+                      style={{filter:'blur(8px)',opacity:0.15}}/>
+                  : <span className="text-2xl text-white/25">?</span>
+              )}
+            </div>
+          );
+        })}
       </div>
       {matched >= total && total > 0 && (
         <motion.button initial={{scale:0}} animate={{scale:1}} transition={{type:'spring'}}

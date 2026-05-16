@@ -768,7 +768,7 @@ function PhoneController({
   if (mode === 'home-quiz')       return <QuizController payload={p} revealed={revealed} answered={answered} onAnswer={onAnswer}/>;
   if (mode === 'home-coppie')     return <CoppieController payload={p} onFlip={onFlip} player={player}/>;
   if (mode === 'home-percorso')   return <PercorsoHomeController payload={p} timeLeft={timeLeft}/>;
-  if (mode === 'home-saramusica') return <SaraMusicaController payload={p} players={players} player={player} onScore={onScore}/>;
+  if (mode === 'home-saramusica') return <SaraMusicaController payload={p} player={player} session={session}/>;
   if (mode === 'home-adult')      return <AdultController payload={p} timeLeft={timeLeft} onScore={onScore}/>;
   if (mode === 'home-ballo')      return <BalloController payload={p} timeLeft={timeLeft} sessionId={session.id} emit={emit} playerId={player.id} round={session.currentRound}/>;
   if (mode === 'home-wordback')   return <WordBackController payload={p} timeLeft={timeLeft}/>;
@@ -1051,26 +1051,27 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
     if (active instanceof HTMLElement) active.blur();
   }, []);
 
-  // Restore permission from localStorage — auto-start only when previously granted.
-  // On ALL other devices (including non-iOS Android/desktop) stay at 'unknown' so
-  // the "ATTIVA SENSORI" button is always visible as an explicit CTA before tracking starts.
+  // Check localStorage only to pre-know if permission was granted before.
+  // We NEVER auto-start sensors — the user must always tap a button to begin.
+  // This ensures the sensor CTA is always visible and the user understands the state.
+  const hadPermission = useRef(
+    typeof localStorage !== 'undefined' && localStorage.getItem(MOTION_PERM_KEY) === 'granted'
+  ).current;
+
   useEffect(() => {
     if (typeof DeviceMotionEvent === 'undefined') {
       console.log('[BalloTrace:phone] permission state: unsupported (no DeviceMotionEvent)');
       setMotionPerm('unsupported'); return;
     }
     const saved = localStorage.getItem(MOTION_PERM_KEY);
-    if (saved === 'granted') {
-      console.log('[BalloTrace:phone] permission already granted (from localStorage) — auto-starting sensors');
-      setMotionPerm('granted'); return;
-    }
     if (saved === 'denied') {
       console.log('[BalloTrace:phone] permission denied (from localStorage)');
       setMotionPerm('denied'); return;
     }
-    // Stay at 'unknown' — show "ATTIVA SENSORI" button on every device including Android/desktop
-    console.log('[BalloTrace:phone] permission unknown — waiting for user to tap ATTIVA SENSORI');
-  }, []);
+    // Always stay at 'unknown' so the activation button is visible.
+    // hadPermission tracks whether iOS permission was already granted (no dialog needed).
+    console.log('[BalloTrace:phone] waiting for user to tap activation button (hadPermission=' + String(hadPermission) + ')');
+  }, [hadPermission]);
 
   const requestMotion = useCallback(async () => {
     const dme = DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> };
@@ -1133,7 +1134,7 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
         <button onClick={() => void requestMotion()}
           className="flex items-center gap-2 rounded-2xl px-6 py-3 text-sm font-black"
           style={{background:'linear-gradient(135deg,#A78BFA,#7C3AED)',color:'#fff',boxShadow:'0 0 30px rgba(167,139,250,0.4)'}}>
-          📱 Attiva sensori movimento
+          {hadPermission ? '▶ Avvia sensori' : '📱 Attiva sensori movimento'}
         </button>
       )}
       {motionPerm === 'denied' && (
@@ -1176,38 +1177,80 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
 
 // ── SaraMusicaController ──────────────────────────────────────────────────────
 
-function SaraMusicaController({ payload, players, player, onScore }: {
+function SaraMusicaController({ payload, player, session }: {
   payload: Record<string,unknown>;
-  players: HomePlayer[];
   player: HomePlayer;
-  onScore: (pts: number) => Promise<void>;
+  session: HomeSession;
 }) {
-  const [guessed, setGuessed] = useState(false);
+  const [answered, setAnswered] = useState<number | null>(null);
+  const [result, setResult] = useState<'correct' | 'wrong' | 'late' | null>(null);
+  const choices = (payload.choices as string[]) ?? [];
   const pts = Number(payload.points ?? 100);
-  void players; // used for future features
+
+  const submitAnswer = async (idx: number) => {
+    if (answered !== null) return;
+    setAnswered(idx);
+    try {
+      const r = await fetch(`/api/home/sessions/${session.id}/saramusica-answer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId: player.id, choiceIndex: idx, round: Number(payload.roundIndex ?? 0) }),
+      });
+      const data = await r.json() as { ok: boolean; correct?: boolean; alreadyWon?: boolean };
+      console.log('[SaraTrace:phone] answer response', data);
+      if (data.alreadyWon) setResult('late');
+      else setResult(data.correct ? 'correct' : 'wrong');
+    } catch {
+      setResult('wrong');
+    }
+  };
 
   return (
-    <div className="flex flex-col items-center gap-5 py-4 text-center">
-      <div className="text-6xl">🎵</div>
-      <div className="text-xl font-black text-white">Indovina la canzone!</div>
-      <div className="rounded-2xl p-4 w-full"
+    <div className="flex flex-col items-center gap-4 py-4 text-center">
+      <div className="text-5xl">🎵</div>
+      <div className="text-lg font-black text-white">Indovina la canzone!</div>
+      <div className="rounded-2xl p-3 w-full"
         style={{background:'rgba(96,165,250,0.12)',border:'1px solid rgba(96,165,250,0.35)'}}>
-        <div className="text-xs font-black uppercase tracking-widest mb-2" style={{color:'rgba(96,165,250,0.8)'}}>SUGGERIMENTO</div>
+        <div className="text-xs font-black uppercase tracking-widest mb-1" style={{color:'rgba(96,165,250,0.8)'}}>SUGGERIMENTO</div>
         <div className="text-sm text-white/75 italic leading-relaxed">"{String(payload.snippetHint??'...')}"</div>
       </div>
-      {!guessed ? (
-        <button onClick={async () => {
-          setGuessed(true);
-          await onScore(pts);
-        }}
-          className="flex w-full items-center justify-center gap-3 rounded-2xl py-5 text-xl font-black text-black"
-          style={{background:'linear-gradient(135deg,#60A5FA,#2563eb)',boxShadow:'0 0 40px rgba(96,165,250,0.5)'}}>
-          🎵 L'ho indovinata! +{pts}pt
-        </button>
-      ) : (
-        <div className="rounded-2xl p-4 text-center w-full"
-          style={{background:'rgba(34,197,94,0.18)',border:'1px solid rgba(34,197,94,0.35)',color:'#4ade80'}}>
-          ✅ +{pts} punti assegnati! ({player.score + pts}pt totali)
+
+      {result === null && (
+        <div className="grid grid-cols-2 gap-3 w-full">
+          {choices.map((choice, idx) => (
+            <button key={idx} onClick={() => void submitAnswer(idx)}
+              disabled={answered !== null}
+              className="rounded-2xl px-3 py-4 text-sm font-black text-white disabled:opacity-50"
+              style={{background:'linear-gradient(135deg,rgba(96,165,250,0.25),rgba(37,99,235,0.15))',border:'2px solid rgba(96,165,250,0.45)',boxShadow:'0 0 20px rgba(96,165,250,0.2)'}}>
+              {choice}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {result === 'correct' && (
+        <motion.div initial={{scale:0}} animate={{scale:1}} transition={{type:'spring'}}
+          className="rounded-2xl p-5 text-center w-full"
+          style={{background:'rgba(34,197,94,0.18)',border:'2px solid rgba(34,197,94,0.5)',color:'#4ade80'}}>
+          <div className="text-3xl mb-1">✅</div>
+          <div className="text-xl font-black">Esatto! +{pts}pt</div>
+          <div className="text-sm opacity-70 mt-1">Risposta corretta!</div>
+        </motion.div>
+      )}
+
+      {result === 'wrong' && (
+        <div className="rounded-2xl p-5 text-center w-full"
+          style={{background:'rgba(239,68,68,0.18)',border:'2px solid rgba(239,68,68,0.4)',color:'#f87171'}}>
+          <div className="text-3xl mb-1">❌</div>
+          <div className="text-xl font-black">Risposta sbagliata!</div>
+        </div>
+      )}
+
+      {result === 'late' && (
+        <div className="rounded-2xl p-5 text-center w-full"
+          style={{background:'rgba(245,182,66,0.18)',border:'2px solid rgba(245,182,66,0.4)',color:'#F5B642'}}>
+          <div className="text-3xl mb-1">⏱</div>
+          <div className="text-xl font-black">Qualcuno ha già risposto!</div>
         </div>
       )}
     </div>

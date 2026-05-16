@@ -238,7 +238,10 @@ export function AudioOrchestratorProvider({ children }: { children: ReactNode })
       return;
     }
     if (slug) {
-      void AudioManager.transitionTo(slug);
+      // transitionTo fades out current loop and starts game-specific track.
+      // If the slug has no registered track, AudioManager sets missingLoopTrack
+      // (visible as a warning in presenter UI) and audio fades to silence.
+      AudioManager.transitionTo(slug);
     } else {
       void AudioManager.playLoop('hub', 'lobby_loop');
     }

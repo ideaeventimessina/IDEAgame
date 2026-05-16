@@ -68,6 +68,22 @@ function homeRoom(id: string) { return `home:${id}`; }
 // In-memory answer tracking for quiz rounds. Map: sessionId → round → playerId → answerIndex.
 // Round entries are deleted once the all-answered event fires to avoid re-emitting.
 const quizAnswerMap = new Map<string, Map<number, Map<string, number>>>();
+// sessionId → round → winnerId (first correct player per round)
+const saraMusicaWinnerMap = new Map<string, Map<number, string>>();
+
+/** Fisher-Yates shuffle that tracks where the correct answer moved. */
+function shuffleWithCorrectIndex(
+  answers: string[],
+  correctIndex: number,
+): { answers: string[]; correctIndex: number } {
+  const arr = [...answers];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j]!, arr[i]!];
+  }
+  const newCorrect = arr.indexOf(answers[correctIndex] ?? "");
+  return { answers: arr, correctIndex: newCorrect >= 0 ? newCorrect : 0 };
+}
 
 async function getSession(id: string) {
   const [s] = await db.select().from(homeSessionsTable).where(eq(homeSessionsTable.id, id));
@@ -254,7 +270,7 @@ function buildCoppiePayload(
   };
 }
 
-/** 3. Quizzone — carica domande dal DB (quiz_packs) */
+/** 3. Quizzone — carica domande dal DB (quiz_packs). Answers are shuffled per round. */
 async function loadQuizRounds(): Promise<RoundPayload[]> {
   const [pack] = await db.select().from(quizPacksTable)
     .where(eq(quizPacksTable.status, "generated"))
@@ -264,24 +280,29 @@ async function loadQuizRounds(): Promise<RoundPayload[]> {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const questions = pack.generatedJson as any[];
-  return questions.map((q, i) => ({
-    mode: "home-quiz",
-    roundIndex: i,
-    category: pack.title ?? "Quiz",
-    question: q.questionText ?? q.question ?? `Domanda ${i + 1}`,
-    answers: q.answers ?? ["A", "B", "C", "D"],
-    correctIndex: q.correctAnswer ?? q.correctIndex ?? q.correct_index ?? 0,
-    explanation: q.explanation ?? q.jonnyLine ?? "",
-    points: q.points ?? 200,
-    timeLimit: q.timeLimit ?? q.time_limit ?? 15,
-    questionStartedAt: null,
-    revealed: false,
-  }));
+  return questions.map((q, i) => {
+    const rawAnswers: string[] = q.answers ?? ["A", "B", "C", "D"];
+    const rawCorrect: number = q.correctAnswer ?? q.correctIndex ?? q.correct_index ?? 0;
+    const { answers, correctIndex } = shuffleWithCorrectIndex(rawAnswers, rawCorrect);
+    return {
+      mode: "home-quiz",
+      roundIndex: i,
+      category: pack.title ?? "Quiz",
+      question: q.questionText ?? q.question ?? `Domanda ${i + 1}`,
+      answers,
+      correctIndex,
+      explanation: q.explanation ?? q.jonnyLine ?? "",
+      points: q.points ?? 200,
+      timeLimit: q.timeLimit ?? q.time_limit ?? 15,
+      questionStartedAt: null,
+      revealed: false,
+    };
+  });
 }
 
 function fallbackQuiz(): RoundPayload[] {
   const qs = [
-    { question: "Chi era il sindaco di Gotham City?",          answers: ["Batman","Robin","James Gordon","Il Pinguino"],   correctIndex: 2, explanation: "James Gordon era il commissario di polizia!" },
+    { question: "Chi era il commissario di Gotham City?",      answers: ["Batman","Robin","James Gordon","Il Pinguino"],   correctIndex: 2, explanation: "James Gordon era il commissario di polizia!" },
     { question: "Quante strisce ha la bandiera italiana?",      answers: ["2","3","4","5"],                                 correctIndex: 1, explanation: "Verde, bianco e rosso: tre strisce verticali!" },
     { question: "Quale pianeta è il più grande del sistema solare?", answers: ["Saturno","Marte","Giove","Nettuno"],      correctIndex: 2, explanation: "Giove è così grande che ci entrerebbero 1.300 Terre!" },
     { question: "In quale città si trova la Torre Eiffel?",    answers: ["Roma","Berlino","Parigi","Madrid"],               correctIndex: 2, explanation: "Parigi, costruita nel 1889 da Gustave Eiffel." },
@@ -289,14 +310,36 @@ function fallbackQuiz(): RoundPayload[] {
     { question: "Qual è la capitale dell'Australia?",          answers: ["Sydney","Melbourne","Brisbane","Canberra"],       correctIndex: 3, explanation: "Molti pensano Sydney, ma la capitale è Canberra!" },
     { question: "Chi ha dipinto la Gioconda?",                 answers: ["Michelangelo","Leonardo da Vinci","Raffaello","Botticelli"], correctIndex: 1, explanation: "Leonardo la dipinse tra il 1503 e il 1519." },
   ];
-  return qs.map((q, i) => ({
-    mode: "home-quiz", roundIndex: i, category: "Quiz",
-    question: q.question, answers: q.answers, correctIndex: q.correctIndex,
-    explanation: q.explanation, points: 200, timeLimit: 15, revealed: false,
-  }));
+  return qs.map((q, i) => {
+    const { answers, correctIndex } = shuffleWithCorrectIndex(q.answers, q.correctIndex);
+    return {
+      mode: "home-quiz", roundIndex: i, category: "Quiz",
+      question: q.question, answers, correctIndex,
+      explanation: q.explanation, points: 200, timeLimit: 15, revealed: false,
+    };
+  });
 }
 
-/** 4. SaraMusica — carica tracce dal DB */
+const SARA_FALLBACK_TITLES = [
+  "Bohemian Rhapsody", "Smells Like Teen Spirit", "Hotel California",
+  "Sweet Child O' Mine", "Purple Rain", "Like a Prayer", "Billie Jean",
+  "Don't Stop Believin'", "Eye of the Tiger", "Africa",
+];
+
+/** Build 6 shuffled choices (1 correct + 5 distractors) for a SaraMusica round. */
+function buildSaraChoices(correctTitle: string, allTitles: string[]): { choices: string[]; correctChoiceIndex: number } {
+  const distractors = allTitles
+    .filter(t => t !== correctTitle)
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 5);
+  // Pad with global fallbacks if the set has fewer than 6 tracks
+  const fallbackPool = SARA_FALLBACK_TITLES.filter(fb => fb !== correctTitle && !distractors.includes(fb));
+  while (distractors.length < 5) distractors.push(fallbackPool.shift() ?? `Canzone ${distractors.length + 1}`);
+  const choices = [correctTitle, ...distractors].sort(() => Math.random() - 0.5);
+  return { choices, correctChoiceIndex: choices.indexOf(correctTitle) };
+}
+
+/** 4. SaraMusica — carica tracce dal DB. Each round includes 6 shuffled answer choices. */
 async function loadSaraMusicaRounds(): Promise<RoundPayload[]> {
   const [set] = await db.select().from(saraMusicaSetsTable)
     .where(eq(saraMusicaSetsTable.isActive, true))
@@ -309,24 +352,35 @@ async function loadSaraMusicaRounds(): Promise<RoundPayload[]> {
 
   if (tracks.length === 0) return fallbackSaraMusica();
 
-  return tracks.map((t, i) => ({
-    mode: "home-saramusica",
-    roundIndex: i,
-    setName: set.title,
-    title: t.title,
-    artist: t.artist ?? "",
-    challengeType: t.challengeType ?? "indovina",
-    snippetHint: t.snippetHint ?? "",
-    audioUrl: t.audioUrl ?? null,
-    durationSeconds: t.durationSeconds ?? 30,
-    points: t.points ?? 100,
-    revealed: false,
-  }));
+  const allTitles = tracks.map(t => t.title);
+  return tracks.map((t, i) => {
+    const { choices, correctChoiceIndex } = buildSaraChoices(t.title, allTitles);
+    return {
+      mode: "home-saramusica",
+      roundIndex: i,
+      setName: set.title,
+      title: t.title,
+      artist: t.artist ?? "",
+      challengeType: t.challengeType ?? "indovina",
+      snippetHint: t.snippetHint ?? "",
+      audioUrl: t.audioUrl ?? null,
+      durationSeconds: t.durationSeconds ?? 30,
+      points: t.points ?? 100,
+      choices,
+      correctChoiceIndex,
+      revealed: false,
+    };
+  });
 }
 
 function fallbackSaraMusica(): RoundPayload[] {
+  const { choices, correctChoiceIndex } = buildSaraChoices("Under Pressure", []);
   return [
-    { mode: "home-saramusica", roundIndex: 0, setName: "SaraMusica", title: "Under Pressure", artist: "Queen & David Bowie", snippetHint: "Un classico degli anni '80 su un tema molto pesante...", audioUrl: null, durationSeconds: 30, points: 150, revealed: false },
+    { mode: "home-saramusica", roundIndex: 0, setName: "SaraMusica",
+      title: "Under Pressure", artist: "Queen & David Bowie",
+      snippetHint: "Un classico degli anni '80 su un tema molto pesante...",
+      audioUrl: null, durationSeconds: 30, points: 150,
+      choices, correctChoiceIndex, revealed: false },
   ];
 }
 
@@ -711,10 +765,12 @@ router.post("/home/sessions/:id/answer", async (req, res): Promise<void> => {
   logger.info({ sessionId: id, playerId, answerIndex, round, alreadyAnswered }, "[QuizTrace:server] answer saved");
 
   // Check whether all active players have now answered.
-  // effectiveCount: use DB player count when available; fall back to answerMap.size
-  // if no players are tracked yet (edge-case: player answered before DB row committed).
+  // Use only CONNECTED players so disconnected/ghost devices don't block the reveal.
   const players = await getPlayers(id);
-  const effectiveCount = players.length > 0 ? players.length : answerMap.size;
+  const connectedPlayers = players.filter(p => p.isConnected);
+  const effectiveCount = connectedPlayers.length > 0
+    ? connectedPlayers.length
+    : players.length > 0 ? players.length : answerMap.size;
   logger.info({ sessionId: id, round, answeredCount: answerMap.size, playerCount: players.length, effectiveCount, allAnswered: answerMap.size >= effectiveCount }, "[QuizTrace:server] answer count check");
 
   if (effectiveCount > 0 && answerMap.size >= effectiveCount) {
@@ -731,6 +787,56 @@ router.post("/home/sessions/:id/answer", async (req, res): Promise<void> => {
   }
 
   res.json({ ok: true });
+});
+
+// ── POST /home/sessions/:id/saramusica-answer — first correct answer wins ──────
+router.post("/home/sessions/:id/saramusica-answer", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+
+  const { playerId, choiceIndex, round } = req.body as { playerId: string; choiceIndex: number; round: number };
+  if (!playerId || typeof choiceIndex !== "number" || typeof round !== "number") {
+    res.status(400).json({ error: "Parametri mancanti" }); return;
+  }
+
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+
+  const payload = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (String(payload.mode ?? "") !== "home-saramusica") {
+    res.status(400).json({ error: "Non in modalità SaraMusica" }); return;
+  }
+
+  // If this round already has a winner, reject late arrivals
+  if (!saraMusicaWinnerMap.has(id)) saraMusicaWinnerMap.set(id, new Map());
+  const roundWinners = saraMusicaWinnerMap.get(id)!;
+  if (roundWinners.has(round)) {
+    res.json({ ok: true, correct: false, alreadyWon: true }); return;
+  }
+
+  const correctChoiceIndex = Number(payload.correctChoiceIndex ?? 0);
+  const isCorrect = choiceIndex === correctChoiceIndex;
+
+  if (isCorrect) {
+    roundWinners.set(round, playerId);
+    const players = await getPlayers(id);
+    const winner = players.find(p => p.id === playerId);
+    if (winner) {
+      const pts = Number(payload.points ?? 100);
+      await db.update(homePlayersTable)
+        .set({ score: winner.score + pts })
+        .where(eq(homePlayersTable.id, playerId));
+      emitToRoom(homeRoom(id), "home:saramusica_winner", {
+        playerId,
+        nickname: winner.nickname,
+        round,
+        points: pts,
+      });
+      logger.info({ sessionId: id, playerId, round, pts }, "[SaraTrace:server] winner found");
+    }
+  }
+
+  res.json({ ok: true, correct: isCorrect });
 });
 
 // ── POST /home/sessions/:id/ready — pass to game-board ─────────────────────────

@@ -1,0 +1,118 @@
+HOME MODE — PHASE 1A BUG FIXING ONLY.
+
+Do not redesign.
+Do not touch live mode.
+Do not build the full booking architecture yet.
+Do not implement microphone/pitch detection yet.
+Do not refactor routes.
+
+Goal:
+Make the current Home Mode testable and coherent before building the universal GameLobbyFlow.
+
+PATCH ONLY THESE ITEMS:
+
+1. QUIZZONE
+
+A. Shuffle answers every question.
+- The answer options must not always appear in the same position.
+- Keep correctAnswer mapping valid after shuffle.
+- The phone and TV must receive the same shuffled order.
+
+B. Fix all-answered reveal for single player and multi-player.
+- If there is 1 active player and they answer, TV reveals immediately.
+- If there are 2+ active players, TV reveals when the last active player answers.
+- Timer freezes.
+- Host still presses Avanti to continue.
+- Add guard so old/disconnected/ghost players are not counted.
+
+Test:
+- 1 player answers → reveal immediately.
+- 2 players: first answer does not reveal, second answer reveals.
+
+2. COPPIE
+
+A. Ensure fallback cards are populated.
+- If no admin card set exists, use 12 fallback pairs = 24 cards.
+- No empty cards.
+- Cards must be visible both on TV and phone.
+
+B. Add TV button:
+"Mostra carte 10s"
+- Reveals all cards on TV for 10 seconds.
+- Then hides them again.
+- Does not break phone flipping/matching.
+- Must be usable before players start matching.
+
+Test:
+- Start Coppie with no DB card set.
+- TV shows 24 cards.
+- Phone shows playable cards.
+- Press "Mostra carte 10s" → cards reveal then hide.
+- Phone can flip/match.
+
+3. BALLO
+
+A. Restore visible sensor button.
+- Phone must always show "ATTIVA SENSORI" before motion starts.
+- Even if localStorage has granted permission, still show clear state:
+  "Sensori pronti" / "Avvia movimento"
+- Do not auto-hide the control completely.
+- User must understand how to start sensor tracking.
+
+B. Keep current sensor pipeline.
+- Do not rebuild scoring here.
+- Just make the control visible and testable.
+
+Test:
+- Open phone controller.
+- See sensor button/state.
+- Tap.
+- Energy bar moves.
+- TV receives live energy if current pipeline works.
+
+4. SARA MUSICA — MINIMUM TESTABLE LOGIC
+
+A. Remove meaningless "Ho risposto io" button.
+B. Phone must show 6 answer buttons.
+- If admin data has choices, use them.
+- If not, create safe fallback choices.
+C. First correct answer wins.
+D. TV must immediately show the player who answered correctly.
+E. Do not implement chorus/audio ducking yet in this patch.
+
+Test:
+- Start SaraMusica.
+- Phone shows 6 choices.
+- Correct player is shown on TV.
+
+5. AUDIO — NO SILENCE FALLBACK
+
+Do not change admin audio architecture.
+Current admin audio mapping is already fixed.
+
+Add only safe fallback behavior:
+- If a specific game track is missing, fall back to board/lobby music.
+- If board/lobby music exists, keep it playing.
+- Do not show silence unless absolutely no audio file exists anywhere.
+- If absolutely no audio exists, show visible warning:
+  "Nessun audio caricato in dashboard."
+
+Rules:
+- No fade/crossfade.
+- No overlapping tracks.
+- hard stop or duck only if needed.
+
+Test:
+- Start a game without specific track.
+- Board/lobby music continues or resumes.
+- No silent room.
+
+OUTPUT:
+A. files modified
+B. Quizzone shuffle + all-answered result
+C. Coppie fallback + 10s reveal result
+D. Ballo sensor control result
+E. SaraMusica 6-answer result
+F. Audio fallback behavior
+G. typecheck frontend/backend
+H. manual test steps
