@@ -178,12 +178,22 @@ function fallbackPercorso(): RoundPayload[] {
   }));
 }
 
+// 12-pair fallback deck — always playable without any DB cards
+const FALLBACK_COPPIE_PAIRS: { a: string; b: string }[] = [
+  { a: "Roma",      b: "Colosseo"   }, { a: "Milano",   b: "Duomo"       },
+  { a: "Venezia",   b: "Gondola"    }, { a: "Napoli",   b: "Pizza"        },
+  { a: "Firenze",   b: "Uffizi"     }, { a: "Torino",   b: "Juventus"     },
+  { a: "Pisa",      b: "Torre"      }, { a: "Sicilia",  b: "Etna"         },
+  { a: "Sole",      b: "Luna"       }, { a: "Gatto",    b: "Miao"         },
+  { a: "Mare",      b: "Spiaggia"   }, { a: "Pasta",    b: "Sugo"         },
+];
+
 /** 2. Gioco delle Coppie — carica carte dal DB */
 async function loadCoppieRound(roundIndex: number): Promise<CoppiePayload> {
   const sets = await db.select().from(cardSetsTable).orderBy(desc(cardSetsTable.createdAt));
   // Pick set by cycling through available sets
   const set = sets[roundIndex % Math.max(sets.length, 1)] ?? sets[0];
-  if (!set) return buildCoppiePayload([], roundIndex, "Coppie");
+  if (!set) return buildCoppiePayload(FALLBACK_COPPIE_PAIRS, roundIndex, "Coppie");
 
   const cards = await db.select().from(cardsTable)
     .where(eq(cardsTable.cardSetId, set.id))
@@ -214,10 +224,7 @@ async function loadCoppieRound(roundIndex: number): Promise<CoppiePayload> {
   }
 
   if (pairs.length === 0) {
-    return buildCoppiePayload([
-      { a: "Roma", b: "Colosseo" }, { a: "Milano", b: "Duomo" },
-      { a: "Venezia", b: "Gondola" }, { a: "Napoli", b: "Pizza" },
-    ], roundIndex, set.name);
+    return buildCoppiePayload(FALLBACK_COPPIE_PAIRS, roundIndex, set.name);
   }
 
   return buildCoppiePayload(pairs, roundIndex, set.name);
@@ -675,11 +682,14 @@ router.post("/home/sessions/:id/answer", async (req, res): Promise<void> => {
   if (!alreadyAnswered) answerMap.set(playerId, answerIndex);
   logger.info({ sessionId: id, playerId, answerIndex, round, alreadyAnswered }, "[QuizTrace:server] answer saved");
 
-  // Check whether all active players have now answered
+  // Check whether all active players have now answered.
+  // effectiveCount: use DB player count when available; fall back to answerMap.size
+  // if no players are tracked yet (edge-case: player answered before DB row committed).
   const players = await getPlayers(id);
-  logger.info({ sessionId: id, round, answeredCount: answerMap.size, playerCount: players.length, allAnswered: answerMap.size >= players.length }, "[QuizTrace:server] answer count check");
+  const effectiveCount = players.length > 0 ? players.length : answerMap.size;
+  logger.info({ sessionId: id, round, answeredCount: answerMap.size, playerCount: players.length, effectiveCount, allAnswered: answerMap.size >= effectiveCount }, "[QuizTrace:server] answer count check");
 
-  if (players.length > 0 && answerMap.size >= players.length) {
+  if (effectiveCount > 0 && answerMap.size >= effectiveCount) {
     logger.info({ sessionId: id, round }, "[QuizTrace:server] all answered — emitting home:quiz_all_answered");
     emitToRoom(homeRoom(id), "home:quiz_all_answered", {
       sessionId: id,

@@ -1,0 +1,82 @@
+HOME MODE — GAME CONTROLLERS REALITY AUDIT + CRITICAL REGRESSIONS.
+
+Do not redesign.
+Do not touch live mode.
+Do not touch routes.
+Do not delete files.
+
+We have a core problem:
+Home Mode visually works, but most games are not yet true phone-controller games.
+
+Manual observations:
+1. Quizzone:
+- phone sync is now good
+- but when the last/only player answers, TV does NOT reveal immediately
+- check if all-answered logic counts wrong players or ignores single-player sessions
+
+2. Ballo:
+- regression: phone sensor activation button disappeared
+- therefore sensor cannot start
+- TV meters exist but no data arrives
+- restore explicit button: "ATTIVA SENSORI"
+- after permission granted, show active state and send energy
+
+3. Audio:
+- no uploaded audio files exist, so platform is silent
+- for testing, add safe static fallback audio files/paths OR visible admin warning
+- "Attiva audio" must either start a fallback track or clearly say "Nessun file audio caricato"
+- do not silently fail
+
+4. Coppie:
+- not enough cards are populated
+- for testing, always provide a fallback set of 12 cards/images/placeholders
+- every card must be visible and playable
+
+5. Adult Only:
+- currently gives true/false but phones cannot answer
+- game logic is incomplete
+- audit what the intended phone controller should be
+- minimum now: phone must show answer buttons and submit response
+- later: microphone/animal sounds can be phase 2
+
+6. Sara Musica:
+- no audio connected
+- minimum now: must use audio manager fallback / uploaded clips
+- phone must allow title answer input
+- TV must show hints/audio state
+
+7. Percorso a Risate:
+- currently only TV scenes
+- phone has no meaningful interaction
+- minimum now: phone must act as joystick/controller:
+  - volunteer button
+  - ready button
+  - vote button
+  - simple action/tap button depending on challenge
+
+General rule:
+Every Home game must use phone as controller, not just TV host controls.
+
+Audit every Home game and output:
+
+GAME | CURRENT PHONE INTERACTION | MISSING | MINIMUM FIX TO MAKE IT TESTABLE | FILES
+
+Then patch only critical regressions:
+A. Restore Ballo "ATTIVA SENSORI" button.
+B. Fix Quizzone all-answered reveal for single player and multiple players.
+C. Add audio fallback/warning so silent failure is visible.
+D. Add 12 fallback cards to Coppie.
+
+Do not implement microphone animal sounds yet.
+Do not implement full SaraMusica yet.
+Do not implement full Percorso joystick yet.
+
+Output:
+A. audit table
+B. files modified
+C. Ballo sensor button restored
+D. Quizzone all-answered fixed
+E. Audio fallback/warning behavior
+F. Coppie fallback cards
+G. typecheck frontend/backend
+H. manual test steps

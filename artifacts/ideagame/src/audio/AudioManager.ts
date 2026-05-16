@@ -268,7 +268,7 @@ class _AudioManager {
       if (LOOP_TYPES.has(String(type))) {
         this.missingLoop = { slug: String(slug), type: String(type) };
       }
-      return true; // intentionally silent
+      return false; // silent — no file uploaded
     }
 
     this.missingLoop = null;

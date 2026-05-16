@@ -765,7 +765,7 @@ function PhoneController({
   if (mode === 'home-coppie')     return <CoppieController payload={p} onFlip={onFlip} player={player}/>;
   if (mode === 'home-percorso')   return <PercorsoHomeController payload={p} timeLeft={timeLeft}/>;
   if (mode === 'home-saramusica') return <SaraMusicaController payload={p} players={players} player={player} onScore={onScore}/>;
-  if (mode === 'home-adult')      return <AdultController payload={p} timeLeft={timeLeft}/>;
+  if (mode === 'home-adult')      return <AdultController payload={p} timeLeft={timeLeft} onScore={onScore}/>;
   if (mode === 'home-ballo')      return <BalloController payload={p} timeLeft={timeLeft} sessionId={session.id} emit={emit} playerId={player.id} round={session.currentRound}/>;
   if (mode === 'home-wordback')   return <WordBackController payload={p} timeLeft={timeLeft}/>;
   if (mode === 'home-karaoke')    return <KaraokeController payload={p} sessionId={session.id}/>;
@@ -1047,7 +1047,9 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
     if (active instanceof HTMLElement) active.blur();
   }, []);
 
-  // Restore permission from localStorage — iOS only asks once per device
+  // Restore permission from localStorage — auto-start only when previously granted.
+  // On ALL other devices (including non-iOS Android/desktop) stay at 'unknown' so
+  // the "ATTIVA SENSORI" button is always visible as an explicit CTA before tracking starts.
   useEffect(() => {
     if (typeof DeviceMotionEvent === 'undefined') {
       console.log('[BalloTrace:phone] permission state: unsupported (no DeviceMotionEvent)');
@@ -1055,22 +1057,15 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
     }
     const saved = localStorage.getItem(MOTION_PERM_KEY);
     if (saved === 'granted') {
-      console.log('[BalloTrace:phone] permission already granted — skipping prompt');
+      console.log('[BalloTrace:phone] permission already granted (from localStorage) — auto-starting sensors');
       setMotionPerm('granted'); return;
     }
     if (saved === 'denied') {
-      console.log('[BalloTrace:phone] permission state: denied (from localStorage)');
+      console.log('[BalloTrace:phone] permission denied (from localStorage)');
       setMotionPerm('denied'); return;
     }
-    // Non-iOS devices (Android, desktop) grant without a popup — never show a dialog
-    const dme = DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> };
-    if (typeof dme.requestPermission !== 'function') {
-      console.log('[BalloTrace:phone] permission state: granted (non-iOS auto-grant)');
-      localStorage.setItem(MOTION_PERM_KEY, 'granted');
-      setMotionPerm('granted');
-    } else {
-      console.log('[BalloTrace:phone] permission state: unknown (iOS 13+ — waiting for user tap)');
-    }
+    // Stay at 'unknown' — show "ATTIVA SENSORI" button on every device including Android/desktop
+    console.log('[BalloTrace:phone] permission unknown — waiting for user to tap ATTIVA SENSORI');
   }, []);
 
   const requestMotion = useCallback(async () => {
@@ -1217,15 +1212,32 @@ function SaraMusicaController({ payload, players, player, onScore }: {
 
 // ── AdultController ────────────────────────────────────────────────────────────
 
-function AdultController({ payload, timeLeft }: { payload: Record<string,unknown>; timeLeft: number | null }) {
+function AdultController({ payload, timeLeft, onScore }: {
+  payload: Record<string,unknown>;
+  timeLeft: number | null;
+  onScore?: (pts: number) => Promise<void>;
+}) {
+  const [choice, setChoice] = useState<'true'|'false'|null>(null);
+  const pts = Number(payload.points ?? 150);
+  const isYesNo = String(payload.body ?? '').length > 0;
+  const hasChoice = choice !== null;
+
+  const pick = async (v: 'true'|'false') => {
+    if (hasChoice) return;
+    setChoice(v);
+    if (v === 'true' && onScore) await onScore(pts);
+  };
+
   return (
-    <div className="flex flex-col items-center gap-5 py-4 text-center">
+    <div className="flex flex-col items-center gap-5 py-4 text-center" style={{userSelect:'none',WebkitUserSelect:'none'}}>
       <div className="text-6xl">🔞</div>
       <div className="text-xl font-black text-white">{String(payload.title ?? 'Sfida Adult Only')}</div>
-      <div className="rounded-2xl p-4 w-full"
-        style={{background:'rgba(248,113,113,0.12)',border:'1px solid rgba(248,113,113,0.35)'}}>
-        <div className="text-sm text-white/75 leading-relaxed">{String(payload.body ?? '')}</div>
-      </div>
+      {isYesNo && (
+        <div className="rounded-2xl p-4 w-full"
+          style={{background:'rgba(248,113,113,0.12)',border:'1px solid rgba(248,113,113,0.35)'}}>
+          <div className="text-sm text-white/75 leading-relaxed">{String(payload.body ?? '')}</div>
+        </div>
+      )}
       {timeLeft !== null && (
         <div className="flex items-center gap-2 rounded-xl px-5 py-2"
           style={{background:'rgba(248,113,113,0.18)',border:'1px solid rgba(248,113,113,0.45)',color:'#F87171'}}>
@@ -1233,7 +1245,38 @@ function AdultController({ payload, timeLeft }: { payload: Record<string,unknown
           <span className="text-2xl font-black tabular-nums">{timeLeft}s</span>
         </div>
       )}
-      <div className="text-xs text-white/35">L'animatore assegna i punti dalla TV</div>
+
+      {/* Answer buttons */}
+      {!hasChoice ? (
+        <div className="flex w-full gap-4">
+          <button onClick={() => void pick('true')}
+            className="flex flex-1 flex-col items-center justify-center gap-2 rounded-3xl py-7 text-lg font-black text-white"
+            style={{background:'linear-gradient(135deg,rgba(34,197,94,0.28),rgba(34,197,94,0.10))',border:'2px solid rgba(34,197,94,0.6)',boxShadow:'0 0 30px rgba(34,197,94,0.25)'}}>
+            <span className="text-4xl">✅</span>
+            L'ho fatto!
+          </button>
+          <button onClick={() => void pick('false')}
+            className="flex flex-1 flex-col items-center justify-center gap-2 rounded-3xl py-7 text-lg font-black text-white"
+            style={{background:'linear-gradient(135deg,rgba(248,113,113,0.28),rgba(248,113,113,0.10))',border:'2px solid rgba(248,113,113,0.6)',boxShadow:'0 0 30px rgba(248,113,113,0.25)'}}>
+            <span className="text-4xl">❌</span>
+            Non ci sto!
+          </button>
+        </div>
+      ) : (
+        <motion.div initial={{scale:0.8,opacity:0}} animate={{scale:1,opacity:1}}
+          className="flex flex-col items-center gap-2 rounded-3xl px-8 py-6"
+          style={choice === 'true'
+            ? {background:'rgba(34,197,94,0.15)',border:'2px solid rgba(34,197,94,0.6)'}
+            : {background:'rgba(248,113,113,0.15)',border:'2px solid rgba(248,113,113,0.6)'}}>
+          <div className="text-4xl">{choice === 'true' ? '🔥' : '😅'}</div>
+          <div className="text-lg font-black text-white">
+            {choice === 'true' ? 'Sfida accettata!' : 'Passato!'}
+          </div>
+          {choice === 'true' && (
+            <div className="text-sm" style={{color:'rgba(34,197,94,0.9)'}}>+{pts} punti assegnati!</div>
+          )}
+        </motion.div>
+      )}
     </div>
   );
 }

@@ -485,6 +485,7 @@ export default function HomeGame() {
   const [jonnyMsg, setJonnyMsg] = useState('Benvenuti a JONNY\'S WORLD!');
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const [audioWarning, setAudioWarning] = useState(false);
   const [postGame, setPostGame] = useState<{gameSlug:string;players:HomePlayer[]}|null>(null);
   const [balloEnergies, setBalloEnergies] = useState<Record<string, number>>({});
   const [balloResult, setBalloResult] = useState<{ winnerId: string; winnerNickname: string; points: number } | null>(null);
@@ -561,7 +562,9 @@ export default function HomeGame() {
   const unlockAudio = useCallback((_src?: string) => {
     setAudioUnlocked(true);
     AudioManager.stopLoop(true);
-    void AudioManager.playLoop('hub', 'lobby_loop');
+    void AudioManager.playLoop('hub', 'lobby_loop').then(started => {
+      if (!started) setAudioWarning(true);
+    });
   }, []);
 
   // ── Load session from URL ────────────────────────────────────────────────────
@@ -993,13 +996,21 @@ export default function HomeGame() {
         {Array.from({length:50}).map((_,i)=>{const cs=['#fff','#F5B642','#A855F7','#22D3EE','#F472B6','#34D399'];return<div key={i} className="absolute rounded-full" style={{left:`${(i*37+11)%100}%`,top:`${(i*53+7)%100}%`,width:1.5+(i%3),height:1.5+(i%3),background:cs[i%cs.length],opacity:0.10+(i%5)*0.05}}/>;})}
       </div>
 
-      {/* Audio unlock */}
+      {/* Audio unlock / warning */}
       {!audioUnlocked && (
         <button onClick={() => unlockAudio()}
           className="hg-pulse absolute bottom-5 right-5 z-50 flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-black"
           style={{background:'rgba(245,182,66,0.15)',border:'1px solid rgba(245,182,66,0.6)',color:'#F5B642',backdropFilter:'blur(10px)'}}>
           🎵 Attiva audio
         </button>
+      )}
+      {audioUnlocked && audioWarning && (
+        <div className="absolute bottom-5 right-5 z-50 flex items-center gap-3 rounded-2xl px-4 py-3 text-xs font-bold"
+          style={{background:'rgba(245,182,66,0.10)',border:'1px solid rgba(245,182,66,0.35)',color:'rgba(245,182,66,0.75)',backdropFilter:'blur(10px)',maxWidth:280}}>
+          <span className="shrink-0 text-base">🔇</span>
+          <span>Nessun file audio caricato — carica MP3 da <span className="underline">/admin</span> per attivare la musica</span>
+          <button onClick={() => setAudioWarning(false)} className="ml-1 shrink-0 opacity-50 hover:opacity-100">✕</button>
+        </div>
       )}
 
       <AnimatePresence mode="wait">
