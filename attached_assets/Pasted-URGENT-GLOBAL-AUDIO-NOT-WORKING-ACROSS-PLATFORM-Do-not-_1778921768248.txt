@@ -1,0 +1,73 @@
+URGENT — GLOBAL AUDIO NOT WORKING ACROSS PLATFORM.
+
+Do not redesign.
+Do not touch gameplay.
+Do not touch scoring.
+Do not touch routes.
+Do not patch Ballo yet.
+
+Problem:
+Music does not work across the whole platform.
+In Home Mode, lobby music should start when clicking "Modalità Home" / entering Home flow, but it does not.
+Even pressing "Attiva audio" does not start music.
+
+Audit first, then patch minimal.
+
+Check:
+1. AudioManager unlock flow
+2. AudioContext state after user gesture
+3. "Attiva audio" button handler
+4. Whether AudioManager.playLoop is actually called
+5. Whether requested audio paths exist
+6. Whether Admin Audio settings return valid musicPaths
+7. Whether playLoop('global','lobby_loop') resolves to a valid URL
+8. Whether playLoop('hub','lobby_loop') resolves to a valid URL
+9. Whether browser blocks playback because no AudioContext.resume()
+10. Whether stopLoop(true) immediately stops the track right after playLoop
+11. Whether HomeLobbyPage unmount cleanup stops audio too early
+12. Whether ModeSelect should start audio or HomeLobbyPage should start audio
+
+Required behavior:
+A. On first user click in ModeSelect "Modalità Home":
+- unlock AudioContext
+- start Home lobby music immediately if possible
+- if no uploaded home lobby music exists, fall back to global lobby_loop
+- no fade/crossfade
+
+B. On /home-lobby/:code:
+- lobby music must keep playing
+- pressing "Attiva audio" must start/resume lobby music
+
+C. On entering /home?s=ID board:
+- lobby music stops
+- board/wheel music starts
+
+D. Audio button:
+- must call AudioManager.unlock/resume if needed
+- then play the correct phase music
+- must not only toggle UI state
+
+Patch minimal:
+- add clear console logs:
+  [AudioDebug] unlock
+  [AudioDebug] playLoop request { scope, key, url }
+  [AudioDebug] play success
+  [AudioDebug] play failed
+- fix the first broken point found
+
+Output:
+A. root cause
+B. files modified
+C. exact reason music was silent
+D. AudioManager unlock fix
+E. where lobby music starts
+F. where board music starts
+G. typecheck result
+H. manual test:
+   1. click Modalità Home
+   2. music starts
+   3. enter lobby
+   4. music continues
+   5. press Attiva audio if muted
+   6. enter board
+   7. lobby stops and board music starts

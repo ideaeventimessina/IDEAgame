@@ -1,0 +1,192 @@
+HOME MODE — FIX BALLO AUTO SCORING COMPLETELY.
+
+Do not redesign.
+Do not touch other games.
+Do not touch live mode.
+Do not touch routes.
+
+Current problem:
+Ballo sensor works on phone, but:
+- iPhone/browser permission popup keeps appearing repeatedly
+- TV still says "In attesa dei dati dal telefono"
+- no live energy score appears on TV
+- when timer reaches 0, no points are assigned
+- phone stays stuck at 0 seconds
+- TV still shows manual winner buttons ("Andrà", "Nessuno")
+- Ballo still behaves like manual host scoring instead of automatic sensor scoring
+
+Goal:
+Ballo must be fully automatic.
+
+Required behavior:
+1. Phone asks motion permission only once per player/session.
+2. Phone sends live energy to server while Ballo is active.
+3. TV shows live energy bars/scores for all players.
+4. At timer 0, Ballo auto-selects winner by highest peak energy.
+5. Server awards points automatically.
+6. Scoreboard updates.
+7. Phone and TV advance correctly after result.
+8. Remove manual winner buttons from Ballo.
+
+FILES TO AUDIT/PATCH:
+- HomeJoin.tsx
+- HomeGame.tsx
+- api-server socket.ts
+- api-server routes/home.ts
+
+PART A — MOTION PERMISSION FIX
+
+In BalloController:
+- Do NOT call DeviceMotionEvent.requestPermission repeatedly.
+- Store permission result in localStorage/sessionStorage:
+  ideagame:motion-permission = granted / denied
+- If already granted:
+  start motion tracking without asking again.
+- If denied:
+  show fallback message.
+- Make sure the old nickname input is blurred before starting motion to reduce iOS Shake to Undo popup:
+  document.activeElement?.blur?.()
+
+PART B — PHONE ENERGY EMIT DEBUG + FIX
+
+In BalloController:
+- Ensure emit is actually passed into BalloController.
+- Ensure playerId is passed into BalloController.
+- Every 400–500ms while:
+  timeLeft > 0
+  permission granted
+  energy available
+emit:
+  home:ballo_energy
+  {
+    sessionId,
+    playerId,
+    energy,
+    round: session.currentRound
+  }
+
+Add temporary console logs:
+[BalloPhone] emit energy { sessionId, playerId, energy }
+
+PART C — SERVER SOCKET RELAY
+
+In api-server socket.ts:
+- Ensure listener exists:
+  socket.on("home:ballo_energy", ...)
+- Validate:
+  sessionId exists
+  playerId exists
+  energy number
+- Store peak energy per sessionId + round + playerId
+- Broadcast to room:
+  home:ballo_live
+  {
+    sessionId,
+    round,
+    energies: Record<playerId, peakEnergy>
+  }
+
+Add temporary server log:
+[BalloServer] energy received { sessionId, playerId, energy }
+
+PART D — TV LIVE BARS
+
+In HomeGame.tsx:
+- Listen to home:ballo_live.
+- Only accept data for current sessionId and currentRound.
+- Update balloEnergies state.
+- BalloBoard must show live bars for every player:
+  player nickname
+  energy 0–100
+  animated bar
+  leader highlight
+- Remove text "In attesa dei dati..." once first data arrives.
+- If no data yet, show waiting message.
+
+PART E — REMOVE MANUAL SCORING FROM BALLO
+
+In BalloBoard:
+REMOVE:
+- manual player winner buttons
+- "Nessuno" button
+- host manual onScore controls
+
+Ballo must NOT depend on animator assigning winner.
+
+PART F — AUTO END ON TIMER ZERO
+
+Current bug:
+timer reaches 0 but nothing happens.
+
+Patch:
+When Ballo timeLeft reaches 0 on TV:
+- call a protected finishBalloRound() once
+- it must call existing next/end logic OR a new minimal endpoint
+- must not double-call if host also presses Avanti
+
+Preferred:
+Use existing POST /api/home/sessions/:id/next.
+Before advancing, backend auto-scores Ballo from stored energy map.
+
+If no energy exists:
+- emit warning
+- no points awarded
+- still advance safely
+
+PART G — BACKEND AUTO-SCORING
+
+In routes/home.ts:
+Before advancing a Ballo round in /next and /end-game:
+- read stored peak energies for sessionId + currentRound
+- find highest energy player
+- award points automatically, e.g. +150 or payload.points
+- update home_players score
+- emit home:ballo_result:
+  {
+    winnerId,
+    winnerNickname,
+    points,
+    energies
+  }
+- clear energy map for that session+round
+
+PART H — PHONE RESULT SYNC
+
+In HomeJoin.tsx:
+- listen to home:ballo_result or home:round/home:state after result
+- when Ballo ends:
+  show result or move to next state
+  do not remain stuck at 0 seconds
+
+PART I — SAFETY
+
+- Prevent duplicate scoring:
+  use a ref/flag on frontend finishBalloRound()
+  backend should also clear energy map after scoring
+- If same round is requested twice, do not award twice.
+- Typecheck frontend and backend.
+
+TEST REQUIRED:
+1. Create Home session with only Ballo.
+2. Join with 2 players.
+3. Start Ballo.
+4. Grant sensor permission once.
+5. Move phone A more than phone B.
+6. TV must show live energy bars.
+7. Wait timer to 0.
+8. TV must auto-finish round.
+9. Player with highest energy gets points.
+10. Phone must not stay stuck at 0.
+11. Restart another Ballo round: permission popup must NOT appear again.
+12. Typecheck frontend/backend clean.
+
+OUTPUT:
+A. root cause found
+B. files modified
+C. permission fix
+D. live energy socket flow
+E. manual buttons removed
+F. auto timer finish behavior
+G. scoring behavior
+H. test result
+I. typecheck result

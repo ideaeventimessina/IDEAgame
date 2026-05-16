@@ -160,6 +160,8 @@ export function initHomeSocketHandlers(io: SocketServer): void {
       const energy = d["energy"];
       if (typeof sessionId !== "string" || typeof playerId !== "string" || typeof energy !== "number") return;
 
+      logger.info({ sessionId, playerId, energy: Math.round(energy) }, "[BalloServer] energy received");
+
       if (!balloEnergyMap.has(sessionId)) balloEnergyMap.set(sessionId, new Map());
       const playerMap = balloEnergyMap.get(sessionId)!;
       const current = playerMap.get(playerId) ?? 0;

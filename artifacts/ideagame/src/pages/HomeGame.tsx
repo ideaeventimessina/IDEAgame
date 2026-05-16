@@ -860,6 +860,22 @@ export default function HomeGame() {
     } finally { setLoading(false); }
   };
 
+  // ── Ballo auto-finish: advance round automatically when timer hits zero ────────
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const nextRoundRef = useRef<() => Promise<void>>(nextRound);
+  useEffect(() => { nextRoundRef.current = nextRound; });
+
+  const balloAutoFinishedRef = useRef(false);
+  // Reset guard whenever the round or game changes so each Ballo round fires exactly once
+  useEffect(() => { balloAutoFinishedRef.current = false; }, [session?.currentRound, session?.gameSlug]);
+  useEffect(() => {
+    if (timeLeft !== 0 || String(session?.roundPayload?.mode ?? '') !== 'home-ballo') return;
+    if (balloAutoFinishedRef.current) return;
+    balloAutoFinishedRef.current = true;
+    void nextRoundRef.current();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeLeft, session?.roundPayload?.mode]);
+
   const endGame = async () => {
     if (!session) return;
     const finishedSlug = session.gameSlug;
@@ -1487,7 +1503,7 @@ function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, bal
   const mode = String(p.mode ?? 'home-quiz');
 
   if (mode === 'home-quiz')       return <QuizBoard payload={p} revealed={revealed} onReveal={onReveal}/>;
-  if (mode === 'home-ballo')      return <BalloBoard payload={p} onReveal={onReveal} players={players} onScore={onScore} balloEnergies={balloEnergies ?? {}}/>;
+  if (mode === 'home-ballo')      return <BalloBoard payload={p} players={players} balloEnergies={balloEnergies ?? {}}/>;
   if (mode === 'home-percorso')   return <PercorsoBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
   if (mode === 'home-coppie')     return <CoppieBoard payload={p} onNext={onNext}/>;
   if (mode === 'home-saramusica') return <SaraMusicaBoard payload={p} revealed={revealed} onReveal={onReveal}/>;
@@ -1555,14 +1571,11 @@ function QuizBoard({ payload, revealed, onReveal }: { payload: Record<string,unk
 
 // ── BalloBoard ────────────────────────────────────────────────────────────────
 
-function BalloBoard({ payload, onReveal, players, onScore, balloEnergies }: {
+function BalloBoard({ payload, players, balloEnergies }: {
   payload: Record<string,unknown>;
-  onReveal: () => void;
   players: HomePlayer[];
-  onScore: (pid: string, pts: number) => Promise<void>;
   balloEnergies: Record<string, number>;
 }) {
-  const [awarded, setAwarded] = useState<string|null>(null);
   const pts = Number(payload.points ?? 150);
   const hasLiveData = Object.keys(balloEnergies).length > 0;
   const maxEnergy = hasLiveData ? Math.max(1, ...Object.values(balloEnergies)) : 1;
@@ -1622,30 +1635,14 @@ function BalloBoard({ payload, onReveal, players, onScore, balloEnergies }: {
           })}
         </div>
       ) : (
-        /* Fallback manual selection — shown when no phone data received yet */
-        <>
+        <div className="flex flex-col items-center gap-3 text-center">
           <div className="text-5xl font-black" style={{color:'#A78BFA',textShadow:'0 0 30px rgba(167,139,250,0.6)'}}>
             {Number(payload.duration ?? 60)}s
           </div>
-          <div className="text-sm text-white/40">In attesa dei dati dal telefono… oppure assegna manualmente ({pts}pt):</div>
-          <div className="flex flex-wrap justify-center gap-3">
-            {players.map(p => (
-              <button key={p.id} disabled={!!awarded}
-                onClick={async () => { setAwarded(p.id); await onScore(p.id, p.score + pts); onReveal(); }}
-                className="rounded-2xl px-5 py-3 text-sm font-black transition-all disabled:opacity-50"
-                style={awarded===p.id
-                  ? {background:'linear-gradient(135deg,#A78BFA,#7c3aed)',color:'#fff',boxShadow:'0 0 30px rgba(167,139,250,0.6)'}
-                  : {background:`linear-gradient(135deg,${p.avatarColor},${p.avatarColor}cc)`,color:'#000'}}>
-                {p.nickname} {awarded===p.id && '✓'}
-              </button>
-            ))}
-            <button disabled={!!awarded} onClick={() => onReveal()}
-              className="rounded-2xl px-5 py-3 text-sm font-black transition-all"
-              style={{background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.14)',color:'rgba(255,255,255,0.5)'}}>
-              Nessuno
-            </button>
+          <div className="text-sm text-white/35">
+            💃 In attesa dei dati dal telefono… il vincitore ({pts}pt) verrà assegnato automaticamente!
           </div>
-        </>
+        </div>
       )}
     </motion.div>
   );

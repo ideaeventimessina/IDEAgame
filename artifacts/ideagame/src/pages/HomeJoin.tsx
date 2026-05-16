@@ -321,7 +321,16 @@ export default function HomeJoin() {
       }
     });
 
-    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); };
+    // Ballo auto-scoring result — optimistically update this player's score;
+    // the full round advance arrives moments later via home:round or home:game_ended
+    const u8 = on<{ winnerId: string; winnerNickname: string; points: number }>('home:ballo_result', (d) => {
+      const cur = playerRef.current;
+      if (cur && cur.id === d.winnerId) {
+        setPlayer(prev => prev ? { ...prev, score: prev.score + d.points } : prev);
+      }
+    });
+
+    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); };
   // Only re-register when the socket `on` function changes (new connection)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [on]);
@@ -999,6 +1008,8 @@ function SimpleController({ payload, color, emoji, label, timeLeft }: {
 
 // ── BalloController ────────────────────────────────────────────────────────────
 
+const MOTION_PERM_KEY = 'ideagame:motion-permission';
+
 function BalloController({ payload, timeLeft, sessionId, emit, playerId }: {
   payload: Record<string,unknown>;
   timeLeft: number | null;
@@ -1018,18 +1029,37 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId }: {
     if (active instanceof HTMLElement) active.blur();
   }, []);
 
+  // Restore permission from localStorage — iOS only asks once per device
   useEffect(() => {
     if (typeof DeviceMotionEvent === 'undefined') { setMotionPerm('unsupported'); return; }
+    const saved = localStorage.getItem(MOTION_PERM_KEY);
+    if (saved === 'granted') { setMotionPerm('granted'); return; }
+    if (saved === 'denied') { setMotionPerm('denied'); return; }
+    // Non-iOS devices (Android, desktop) grant without a popup
     const dme = DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> };
-    if (typeof dme.requestPermission !== 'function') setMotionPerm('granted');
+    if (typeof dme.requestPermission !== 'function') {
+      localStorage.setItem(MOTION_PERM_KEY, 'granted');
+      setMotionPerm('granted');
+    }
+    // else: iOS 13+ — stay 'unknown' until user taps the button
   }, []);
 
   const requestMotion = useCallback(async () => {
     const dme = DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> };
     if (typeof dme.requestPermission === 'function') {
-      try { const r = await dme.requestPermission(); setMotionPerm(r === 'granted' ? 'granted' : 'denied'); }
-      catch { setMotionPerm('denied'); }
-    } else { setMotionPerm('granted'); }
+      try {
+        const r = await dme.requestPermission();
+        const perm: 'granted' | 'denied' = r === 'granted' ? 'granted' : 'denied';
+        localStorage.setItem(MOTION_PERM_KEY, perm);
+        setMotionPerm(perm);
+      } catch {
+        localStorage.setItem(MOTION_PERM_KEY, 'denied');
+        setMotionPerm('denied');
+      }
+    } else {
+      localStorage.setItem(MOTION_PERM_KEY, 'granted');
+      setMotionPerm('granted');
+    }
   }, []);
 
   useEffect(() => {
@@ -1049,11 +1079,13 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId }: {
       const e = Math.min(100, Math.round(avg));
       setEnergy(e);
       if (timeLeftRef.current !== null && timeLeftRef.current > 0) {
+        console.log('[BalloPhone] emit energy', { sessionId, playerId, energy: e });
         emit('home:ballo_energy', { sessionId, playerId, energy: e });
       }
     }, 400);
     return () => { window.removeEventListener('devicemotion', handleMotion); clearInterval(interval); };
-  }, [motionPerm]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [motionPerm, emit, sessionId, playerId]);
 
   const energyColor = energy > 70 ? '#22c55e' : energy > 35 ? '#eab308' : '#A78BFA';
 

@@ -1,0 +1,79 @@
+HOME MODE — QUIZZONE AUTO REVEAL WHEN ALL PLAYERS ANSWER.
+
+Do not redesign.
+Do not touch other games.
+Do not touch live mode.
+Do not change routes.
+
+Current behavior:
+Quizzone question lasts 30 seconds.
+Even if all players answer early, TV waits until timer expires or host action.
+
+Required behavior:
+1. Timer remains max 30 seconds.
+2. Host/animator still controls "Avanti" to go to next question.
+3. But when all active players have answered current question:
+   - freeze/stop timer immediately
+   - reveal correct answer on TV
+   - show correct/wrong result on phones
+   - do NOT advance automatically
+   - wait for host to press "Avanti"
+
+Audit and patch:
+- HomeJoin.tsx submit answer flow
+- HomeGame.tsx QuizBoard/revealed/timer state
+- home.ts answer endpoint
+- socket events for answer submitted / reveal
+
+Implementation requirements:
+A. Backend must detect when all active players answered current Quizzone round.
+B. When last answer arrives:
+   emit socket event:
+   home:quiz_all_answered
+   {
+     sessionId,
+     round,
+     correctAnswer,
+     answersSummary
+   }
+
+C. TV HomeGame listens to home:quiz_all_answered:
+   - set revealed = true
+   - stop/freeze local timer at current value or 0
+   - show correct answer highlight
+   - keep "Avanti" button enabled
+   - do not call nextRound automatically
+
+D. Phones HomeJoin listen to same event:
+   - show whether their answer was correct/wrong
+   - disable answer buttons
+   - do not reset to next question
+
+E. Safety:
+- Only trigger for current gameSlug Quizzone
+- Only trigger for currentRound
+- Do not trigger if already revealed
+- Do not reveal if there are zero players
+- If some players disconnect, count only active players currently in session if active flag exists; otherwise count current players in room/session.
+
+Test:
+1. Create Home session with only Quizzone.
+2. Join 2 players.
+3. Q1 starts with 30s.
+4. Player 1 answers.
+5. TV does NOT reveal yet.
+6. Player 2 answers.
+7. TV immediately reveals correct answer before 30s.
+8. Timer freezes.
+9. Phones show result.
+10. Host presses Avanti.
+11. Q2 starts normally with fresh timer.
+12. Typecheck frontend/backend clean.
+
+Output:
+A. files modified
+B. backend all-answered logic
+C. socket event added
+D. TV reveal behavior
+E. phone reveal behavior
+F. typecheck result
