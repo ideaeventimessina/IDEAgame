@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import app from "./app";
-import { initSocket } from "./socket";
+import { initSocket, initHomeSocketHandlers } from "./socket";
 import { logger } from "./lib/logger";
 import { db, playersTable, tenantsTable, usersTable, eventsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
@@ -101,7 +101,9 @@ process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT",  () => shutdown("SIGINT"));
 
 // socket.io attaches itself (sets io.engine, registers request + upgrade listeners)
-initSocket(server);
+const io = initSocket(server);
+// Register home-session socket handlers (join:home, leave:home, home:player_register)
+initHomeSocketHandlers(io);
 
 // Forward non-socket.io HTTP requests to Express
 server.on("request", (req, res) => {
