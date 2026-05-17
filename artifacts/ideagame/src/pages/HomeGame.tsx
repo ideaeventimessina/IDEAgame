@@ -589,8 +589,26 @@ export default function HomeGame() {
         if (data.session.status === 'ended') {
           setPhase('champion');
         } else if (data.session.status === 'playing') {
-          setPhase('playing');
-          setRevealed(false);
+          if (p === 'board') {
+            // Between games: show board UI + start lobby music
+            console.log('[AudioFlowDebug] load-session status=playing phase=board — playLoop hub/lobby_loop');
+            setPhase('board');
+            AudioManager.stopLoop(true);
+            void AudioManager.playLoop('hub', 'lobby_loop');
+          } else {
+            // Game in progress — restore correct music based on mode
+            const flowMode = String(data.session.roundPayload?.mode ?? '');
+            console.log('[AudioFlowDebug] load-session status=playing phase=playing flowMode=' + flowMode + ' slug=' + (data.session.gameSlug ?? 'null'));
+            setPhase('playing');
+            setRevealed(false);
+            if (flowMode === 'home-flow') {
+              // Flow phases (theme_select/booking/confirm/countdown) use lobby music
+              void AudioManager.playLoop('hub', 'lobby_loop');
+            } else {
+              AudioManager.stopLoop(true);
+              void AudioManager.playLoop(data.session.gameSlug ?? 'hub', 'round_loop');
+            }
+          }
         } else if (p === 'board') {
           setPhase('board');
           AudioManager.stopLoop(true);
@@ -660,7 +678,9 @@ export default function HomeGame() {
       setPlayers(d.players);
       setJonnyMood('winner');
       setJonnyMsg(`${ALL_GAMES.find(g => g.slug === d.gameSlug)?.name ?? 'Gioco'} completato! 🎉`);
+      console.log('[AudioFlowDebug] home:game_ended — stopLoop then playLoop hub/lobby_loop for post-game screen');
       AudioManager.stopLoop(true);
+      void AudioManager.playLoop('hub', 'lobby_loop');
       setPostGame({ gameSlug: d.gameSlug, players: d.players });
     });
     const u6 = on<{ session: HomeSession; players: HomePlayer[] }>('home:champion', (d) => {
@@ -908,7 +928,9 @@ export default function HomeGame() {
         setSession(d.session);
         if (d.players) setPlayers(d.players);
         setJonnyMood('winner');
+        console.log('[AudioFlowDebug] nextRound gameEnded — stopLoop then playLoop hub/lobby_loop for post-game screen');
         AudioManager.stopLoop(true);
+        void AudioManager.playLoop('hub', 'lobby_loop');
         setPostGame({ gameSlug: finishedSlug ?? '', players: d.players ?? players });
       } else {
         setSession(d.session);
@@ -946,7 +968,9 @@ export default function HomeGame() {
       setSession(d.session);
       setPlayers(d.players);
       setJonnyMood('winner');
+      console.log('[AudioFlowDebug] endGame — stopLoop then playLoop hub/lobby_loop for post-game screen');
       AudioManager.stopLoop(true);
+      void AudioManager.playLoop('hub', 'lobby_loop');
       setPostGame({ gameSlug: finishedSlug ?? '', players: d.players });
     } finally { setLoading(false); }
   };

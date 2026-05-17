@@ -104,20 +104,20 @@ export default function HomeLobbyPage() {
 
   // ── Lobby music ────────────────────────────────────────────────────────────
   useEffect(() => {
-    console.log('[AudioTrace] HomeLobbyPage mount — calling stopLoop then playLoop lobby_loop');
+    console.log('[AudioFlowDebug] HomeLobbyPage mount — phase=lobby slug=hub playLoop hub/lobby_loop');
     AudioManager.stopLoop(true);
-    void AudioManager.playLoop('global', 'lobby_loop');
-    return () => { console.log('[AudioTrace] HomeLobbyPage unmount — stopLoop'); AudioManager.stopLoop(true); };
+    void AudioManager.playLoop('hub', 'lobby_loop');
+    return () => { console.log('[AudioFlowDebug] HomeLobbyPage unmount — stopLoop'); AudioManager.stopLoop(true); };
   }, []);
 
   const toggleMusic = () => {
     if (musicPlaying) {
-      console.log('[AudioTrace] toggleMusic — stopping');
+      console.log('[AudioFlowDebug] toggleMusic — stopping');
       AudioManager.stopLoop(true);
     } else {
-      console.log('[AudioTrace] toggleMusic — user gesture, calling resumeContext then playLoop');
+      console.log('[AudioFlowDebug] toggleMusic — user gesture, calling resumeContext then playLoop hub/lobby_loop');
       AudioManager.resumeContext();
-      void AudioManager.playLoop('global', 'lobby_loop');
+      void AudioManager.playLoop('hub', 'lobby_loop');
     }
     setMusicPlaying(m => !m);
   };
