@@ -1,0 +1,192 @@
+URGENT HOME MODE — FINAL BALLO STABILITY PATCH.
+
+Do not redesign.
+Do not touch audio.
+Do not touch routes.
+Do not touch booking flow.
+Do not rewrite Ballo scoring backend.
+Do not open/modify unrelated games.
+
+Fix ONLY these 3 issues:
+
+==================================================
+1. COCKPIT HARD BLOCK ON PLAYER DEVICES
+==================================================
+
+Problem:
+Cockpit/Regia button can reappear on at least one player phone during Ballo, especially after strong movement.
+
+Required:
+BackToCockpit must NEVER render on player-facing/mobile routes or player contexts.
+
+Patch:
+- Update BackToCockpit with a hard block, not only route hiding.
+- Hide if route starts with:
+  /home/join
+  /join
+  /play
+  /home-lobby
+- Also hide if viewport is mobile/touch:
+  window.innerWidth < 900 OR matchMedia('(pointer: coarse)')
+- Also hide if localStorage/sessionStorage contains Home player identity:
+  ideagame:home:player
+- Also hide if URL has player/home join params.
+- Cockpit can remain only on desktop staff/regia/projector/admin contexts.
+
+Test:
+- On iPhone /home/join and during Ballo, Cockpit must never appear.
+- Moving/shaking must not make it reappear.
+
+==================================================
+2. IPHONE "ANNULLA INSERIMENTO" POPUP HARD MITIGATION
+==================================================
+
+Problem:
+During Ballo, if the phone moves very hard, iPhone shows native “Annulla inserimento” / Shake to Undo popup.
+When popup appears, TV bars freeze and points may not be assigned.
+
+Cause:
+iOS Shake to Undo is triggered by an active or recently active input undo stack.
+
+Required:
+When entering Home player mode and especially Ballo:
+- no input/textarea/contenteditable must remain focused
+- text selection must be disabled
+- undo stack must be minimized
+- if popup/focus interruption happens, energy streaming must resume
+
+Patch in HomeJoin/BalloController:
+
+A. After nickname submit:
+- blur active input
+- clear selection
+- remove input value reference if safe
+- set document.body style:
+  user-select: none
+  -webkit-user-select: none
+  touch-action: manipulation
+
+B. When BalloController mounts:
+- blur active element immediately
+- clear selection
+- add capture listener:
+  focusin → if target is input/textarea/contenteditable, blur immediately
+- add selectionchange listener → clear selection
+- add visibilitychange + focus listeners → re-blur + resume streaming
+- cleanup listeners on unmount
+
+C. During Ballo:
+- wrap controller with:
+  userSelect: 'none'
+  WebkitUserSelect: 'none'
+  touchAction: 'manipulation'
+- do NOT call DeviceMotionEvent.requestPermission repeatedly.
+- permission only once.
+
+D. Energy resume:
+- if page loses focus because iOS popup appears:
+  on focus/visibility return, continue emitting home:ballo_energy if timeLeft > 0
+- do not freeze permanently.
+
+Test:
+- iPhone, enter nickname
+- start Ballo
+- activate sensors once
+- shake hard
+- no popup should appear
+- if popup appears anyway, bars must resume immediately after dismiss
+- points still assigned at timer end
+
+==================================================
+3. BALLO LIVE ENERGY MUST BE REAL-TIME, NOT PEAK
+==================================================
+
+Problem:
+TV bar gets stuck at the best/highest percentage.
+It shows peak energy, not real current movement.
+I need the bar to show the player’s CURRENT movement live.
+Peak can still be used internally for winner scoring, but visual bar must be real-time.
+
+Required:
+- Backend can keep peakEnergy for final scoring.
+- But socket event home:ballo_live must also send currentEnergy per player.
+- TV BalloBoard must display currentEnergy, not peakEnergy.
+- Leader/winner during round can still use peak or current, but bar must move up/down live.
+
+Patch:
+
+Phone emits:
+home:ballo_energy {
+  sessionId,
+  playerId,
+  round,
+  energy
+}
+
+Server stores:
+- currentEnergy[playerId] = latest energy
+- peakEnergy[playerId] = max energy
+
+Server broadcasts:
+home:ballo_live {
+  sessionId,
+  round,
+  currentEnergies: Record<playerId, number>,
+  peakEnergies: Record<playerId, number>
+}
+
+TV:
+- vertical movement meter uses currentEnergies[playerId]
+- provisional live points use currentEnergy:
+  liveRoundPoints = Math.round((currentEnergy / 100) * 150)
+- final official winner/scoring remains based on peakEnergy at timer end
+
+==================================================
+4. BALLO LIVE POINTS / GUITAR HERO FEEDBACK
+==================================================
+
+Add visual satisfaction during Ballo.
+
+In HomeGame.tsx BalloBoard:
+For each player card show:
+- nickname
+- avatar/figure placeholder
+- vertical real-time movement meter
+- current energy %
+- provisional live points:
+  +Math.round(currentEnergy / 100 * 150)
+- floating burst animations when currentEnergy rises by at least 5:
+  +12
+  +20
+  COMBO!
+- leader glow
+- winner banner at result
+
+Important:
+- Do NOT persist provisional points every tick.
+- Official score changes only after home:ballo_result.
+- Phone score must not update live.
+- TV visual points are only excitement feedback.
+
+==================================================
+SAFETY
+==================================================
+
+Do not touch:
+- audio
+- routing
+- booking flow
+- other games
+- official autoScoreBallo logic except reading peakEnergy from the updated map structure
+
+Run typecheck.
+
+OUTPUT:
+A. files modified
+B. Cockpit hard block behavior
+C. iPhone popup mitigation
+D. currentEnergy vs peakEnergy explanation
+E. live points visual behavior
+F. official scoring unchanged confirmation
+G. typecheck result
+H. manual test steps

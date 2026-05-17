@@ -16,12 +16,13 @@ const playerSockets = new Map<string, { playerId: string; eventId: string }>();
 // ── Home Mode: per-session/player peak Ballo energy (in-memory, ephemeral) ────
 // Keyed by sessionId; tracks which round the map belongs to so stale energy
 // from a previous round is ignored automatically.
-const balloEnergyMap = new Map<string, { round: number; players: Map<string, number> }>();
+// players = peak energies (used by autoScoreBallo), current = latest live energy per player
+const balloEnergyMap = new Map<string, { round: number; players: Map<string, number>; current: Map<string, number> }>();
 
 export function getBalloEnergies(sessionId: string): Record<string, number> {
   const entry = balloEnergyMap.get(sessionId);
   if (!entry) return {};
-  return Object.fromEntries(entry.players.entries());
+  return Object.fromEntries(entry.players.entries()); // returns peak energies for scoring
 }
 
 export function clearBalloEnergies(sessionId: string): void {
@@ -241,16 +242,19 @@ export function initHomeSocketHandlers(io: SocketServer): void {
         if (existing && existing.round !== round) {
           logger.info({ sessionId, oldRound: existing.round, newRound: round }, "[BalloTrace:server] round changed — resetting energy map");
         }
-        balloEnergyMap.set(sessionId, { round, players: new Map() });
+        balloEnergyMap.set(sessionId, { round, players: new Map(), current: new Map() });
       }
       const entry = balloEnergyMap.get(sessionId)!;
-      const current = entry.players.get(playerId) ?? 0;
-      const newPeak = Math.max(current, Math.round(energy));
-      entry.players.set(playerId, newPeak);
-      logger.info({ sessionId, playerId, prev: current, newPeak, round }, "[BalloTrace:server] stored peak");
+      const currEnergy = Math.round(energy);
+      const prevPeak = entry.players.get(playerId) ?? 0;
+      const newPeak = Math.max(prevPeak, currEnergy);
+      entry.players.set(playerId, newPeak);    // peak — used by autoScoreBallo
+      entry.current.set(playerId, currEnergy); // current — used for live TV bar
+      logger.info({ sessionId, playerId, currEnergy, prevPeak, newPeak, round }, "[BalloTrace:server] stored energy");
 
       emitToRoom(`home:${sessionId}`, "home:ballo_live", {
-        energies: Object.fromEntries(entry.players.entries()),
+        currentEnergies: Object.fromEntries(entry.current.entries()),
+        peakEnergies:    Object.fromEntries(entry.players.entries()),
         round,
       });
       logger.info({ sessionId, playerCount: entry.players.size }, "[BalloTrace:server] emitted home:ballo_live");

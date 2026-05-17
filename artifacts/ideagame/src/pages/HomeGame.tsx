@@ -492,7 +492,8 @@ export default function HomeGame() {
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [audioWarning, setAudioWarning] = useState(false);
   const [postGame, setPostGame] = useState<{gameSlug:string;players:HomePlayer[]}|null>(null);
-  const [balloEnergies, setBalloEnergies] = useState<Record<string, number>>({});
+  const [balloEnergies, setBalloEnergies] = useState<Record<string, number>>({});     // peak — for winner/sorting
+  const [balloCurrent, setBalloCurrent]   = useState<Record<string, number>>({});     // current live — for bars
   const [balloResult, setBalloResult] = useState<{ winnerId: string; winnerNickname: string; points: number } | null>(null);
   const [saraMusicaWinner, setSaraMusicaWinner] = useState<{ nickname: string; points: number; round: number } | null>(null);
   // Reset saraMusicaWinner when the round changes
@@ -646,6 +647,7 @@ export default function HomeGame() {
       setPhase('playing');
       setRevealed(false);
       setBalloEnergies({});
+      setBalloCurrent({});
       setBalloResult(null);
       setJonnyMood('thinking');
       // Flow pilot: skip timer + audio — music stays as lobby, switches on first home:round
@@ -663,6 +665,7 @@ export default function HomeGame() {
       setSession(prev => prev ? { ...prev, currentRound: d.round, roundPayload: d.payload } : prev);
       setRevealed(false);
       setBalloEnergies({});
+      setBalloCurrent({});
       setBalloResult(null);
       startTimer(Number(d.payload?.timeLimit ?? 30));
       setJonnyMood('thinking');
@@ -695,9 +698,10 @@ export default function HomeGame() {
       setSession(prev => prev ? { ...prev, roundPayload: d.payload } : prev);
       if (d.players) setPlayers(d.players);
     });
-    const u8 = on<{ energies: Record<string, number> }>('home:ballo_live', (d) => {
-      console.log('[BalloTrace:tv] received home:ballo_live', d.energies);
-      setBalloEnergies(d.energies);
+    const u8 = on<{ currentEnergies: Record<string, number>; peakEnergies: Record<string, number>; round: number }>('home:ballo_live', (d) => {
+      console.log('[BalloTrace:tv] received home:ballo_live', { current: d.currentEnergies, peak: d.peakEnergies });
+      setBalloCurrent(d.currentEnergies);
+      setBalloEnergies(d.peakEnergies);
     });
     const u9 = on<{ winnerId: string; winnerNickname: string; points: number; energies: Record<string, number> }>('home:ballo_result', (d) => {
       console.log('[BalloTrace:tv] received home:ballo_result', { winnerId: d.winnerId, points: d.points, energies: d.energies });
@@ -1340,7 +1344,7 @@ export default function HomeGame() {
             <div className="flex flex-1 items-center justify-center overflow-auto px-6 py-3">
               <RoundBoard key={session.currentRound} session={session} revealed={revealed}
                 onReveal={() => { setRevealed(true); if(timerRef.current) clearInterval(timerRef.current); setJonnyMood('correct'); }}
-                onNext={nextRound} players={players} balloEnergies={balloEnergies} balloResult={balloResult} saraMusicaWinner={saraMusicaWinner} onScore={async (pid,pts) => {
+                onNext={nextRound} players={players} balloEnergies={balloEnergies} balloCurrent={balloCurrent} balloResult={balloResult} saraMusicaWinner={saraMusicaWinner} onScore={async (pid,pts) => {
                   // Optimistic update — score appears immediately in bar + partial leaderboard
                   setPlayers(prev => prev.map(p => p.id === pid ? { ...p, score: pts } : p));
                   await fetch(`/api/home/sessions/${session.id}/score`, {
@@ -1588,7 +1592,7 @@ export default function HomeGame() {
 
 // ── RoundBoard ─────────────────────────────────────────────────────────────────
 
-function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, balloEnergies, balloResult, saraMusicaWinner }: {
+function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, balloEnergies, balloCurrent, balloResult, saraMusicaWinner }: {
   session: HomeSession;
   revealed: boolean;
   onReveal: () => void;
@@ -1596,6 +1600,7 @@ function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, bal
   players: HomePlayer[];
   onScore: (playerId: string, points: number) => Promise<void>;
   balloEnergies?: Record<string, number>;
+  balloCurrent?: Record<string, number>;
   balloResult?: { winnerId: string; winnerNickname: string; points: number } | null;
   saraMusicaWinner?: { nickname: string; points: number; round: number } | null;
 }) {
@@ -1604,7 +1609,7 @@ function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, bal
 
   if (mode === 'home-flow')       return <GameFlowEngine session={session} players={players}/>;
   if (mode === 'home-quiz')       return <QuizBoard payload={p} revealed={revealed} onReveal={onReveal}/>;
-  if (mode === 'home-ballo')      return <BalloBoard payload={p} players={players} balloEnergies={balloEnergies ?? {}} balloResult={balloResult ?? null}/>;
+  if (mode === 'home-ballo')      return <BalloBoard payload={p} players={players} balloEnergies={balloEnergies ?? {}} balloCurrent={balloCurrent ?? {}} balloResult={balloResult ?? null}/>;
   if (mode === 'home-percorso')   return <PercorsoBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
   if (mode === 'home-coppie')     return <CoppieBoard payload={p} onNext={onNext}/>;
   if (mode === 'home-saramusica') return <SaraMusicaBoard payload={p} revealed={revealed} onReveal={onReveal} winner={saraMusicaWinner ?? null}/>;
@@ -1672,16 +1677,47 @@ function QuizBoard({ payload, revealed, onReveal }: { payload: Record<string,unk
 
 // ── BalloBoard — Guitar Hero style vertical meters ──────────────────────────
 
-function BalloBoard({ payload, players, balloEnergies, balloResult }: {
+type BurstItem = { key: number; label: string };
+
+function BalloBoard({ payload, players, balloEnergies, balloCurrent, balloResult }: {
   payload: Record<string,unknown>;
   players: HomePlayer[];
-  balloEnergies: Record<string, number>;
+  balloEnergies: Record<string, number>;  // peak — used for winner/final sorting
+  balloCurrent: Record<string, number>;   // live current — drives bar height + provisional pts
   balloResult: { winnerId: string; winnerNickname: string; points: number } | null;
 }) {
   const pts = Number(payload.points ?? 150);
-  const hasLiveData = Object.keys(balloEnergies).length > 0;
-  const maxEnergy = hasLiveData ? Math.max(1, ...Object.values(balloEnergies)) : 1;
-  const sortedPlayers = [...players].sort((a, b) => (balloEnergies[b.id] ?? 0) - (balloEnergies[a.id] ?? 0));
+  const prevCurrentRef = useRef<Record<string, number>>({});
+  const burstKeyRef = useRef(0);
+  const [bursts, setBursts] = useState<Record<string, BurstItem[]>>({});
+
+  const spawnBurst = useCallback((pid: string, label: string) => {
+    const bKey = ++burstKeyRef.current;
+    setBursts(prev => ({ ...prev, [pid]: [...(prev[pid] ?? []).slice(-2), { key: bKey, label }] }));
+    setTimeout(() => {
+      setBursts(prev => ({ ...prev, [pid]: (prev[pid] ?? []).filter(b => b.key !== bKey) }));
+    }, 900);
+  }, []);
+
+  // Detect current-energy rises ≥ 5 and spawn floating burst labels
+  useEffect(() => {
+    if (balloResult) { prevCurrentRef.current = {}; return; }
+    for (const [pid, curr] of Object.entries(balloCurrent)) {
+      const prev = prevCurrentRef.current[pid] ?? 0;
+      const rise = curr - prev;
+      if (rise >= 5) spawnBurst(pid, rise >= 30 ? 'COMBO! 🔥' : `+${rise}`);
+    }
+    prevCurrentRef.current = { ...balloCurrent };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [balloCurrent, balloResult]);
+
+  const hasLiveData = Object.keys(balloCurrent).length > 0 || Object.keys(balloEnergies).length > 0;
+  // Sort live: by current energy, falling back to peak
+  const sortedPlayers = [...players].sort((a, b) => {
+    const ea = balloCurrent[a.id] ?? balloEnergies[a.id] ?? 0;
+    const eb = balloCurrent[b.id] ?? balloEnergies[b.id] ?? 0;
+    return eb - ea;
+  });
   const isManyPlayers = players.length > 3;
 
   return (
@@ -1697,7 +1733,7 @@ function BalloBoard({ payload, players, balloEnergies, balloResult }: {
         <div className="text-sm text-white/55 max-w-md">{String(payload.description ?? '')}</div>
       </div>
 
-      {/* Winner banner — appears after ballo round ends */}
+      {/* Winner banner */}
       {balloResult && (
         <motion.div initial={{scale:0.7,opacity:0}} animate={{scale:1,opacity:1}} transition={{type:'spring',stiffness:300,damping:20}}
           className="flex flex-col items-center gap-1 rounded-3xl px-10 py-4"
@@ -1708,19 +1744,18 @@ function BalloBoard({ payload, players, balloEnergies, balloResult }: {
         </motion.div>
       )}
 
-      {/* Contestant cards — side-by-side vertical meters */}
+      {/* Contestant cards */}
       {sortedPlayers.length > 0 && (
         <div className={`flex w-full gap-4 justify-center ${isManyPlayers ? 'flex-wrap' : 'flex-row'} items-end`}>
           {sortedPlayers.map((p, i) => {
-            const e = balloEnergies[p.id] ?? 0;
-            const pct = Math.round((e / maxEnergy) * 100);
+            const currE    = balloCurrent[p.id] ?? 0;
+            const barPct   = Math.min(100, currE);
             const isWinner = balloResult?.winnerId === p.id;
-            const isLeader = !balloResult && i === 0 && e > 0;
+            const isLeader = !balloResult && i === 0 && (currE > 0 || (balloEnergies[p.id] ?? 0) > 0);
+            const livePts  = Math.round((currE / 100) * pts);
             const borderCol = isWinner ? 'rgba(245,182,66,0.85)' : isLeader ? 'rgba(245,182,66,0.45)' : `${p.avatarColor}66`;
             const glowCol   = isWinner ? '0 0 70px rgba(245,182,66,0.65),0 0 140px rgba(245,182,66,0.2)' : isLeader ? '0 0 40px rgba(245,182,66,0.25)' : '0 0 20px rgba(0,0,0,0.5)';
-            const meterBg   = isWinner || isLeader
-              ? 'linear-gradient(0deg,#F5B642,#f97316)'
-              : `linear-gradient(0deg,${p.avatarColor},${p.avatarColor}bb)`;
+            const meterBg   = isWinner || isLeader ? 'linear-gradient(0deg,#F5B642,#f97316)' : `linear-gradient(0deg,${p.avatarColor},${p.avatarColor}bb)`;
             const meterGlow = isWinner || isLeader ? '0 0 18px rgba(245,182,66,0.8)' : `0 0 12px ${p.avatarColor}88`;
 
             return (
@@ -1728,6 +1763,7 @@ function BalloBoard({ payload, players, balloEnergies, balloResult }: {
                 initial={{y:24,opacity:0}} animate={{y:0,opacity:1}} transition={{delay: i*0.08}}
                 className="flex flex-col items-center gap-3 rounded-3xl p-5"
                 style={{
+                  position:'relative',
                   flex: isManyPlayers ? '1 1 160px' : '1 1 200px',
                   maxWidth: isManyPlayers ? 180 : 260,
                   minWidth: 140,
@@ -1735,6 +1771,20 @@ function BalloBoard({ payload, players, balloEnergies, balloResult }: {
                   border:`2px solid ${borderCol}`,
                   boxShadow: glowCol,
                 }}>
+
+                {/* Burst particles */}
+                <div style={{position:'absolute',top:4,left:0,right:0,pointerEvents:'none',display:'flex',flexDirection:'column',alignItems:'center'}}>
+                  <AnimatePresence>
+                    {(bursts[p.id] ?? []).map(b => (
+                      <motion.div key={b.key}
+                        initial={{opacity:1,y:0,scale:0.8}} animate={{opacity:0,y:-44,scale:1.2}}
+                        exit={{opacity:0}} transition={{duration:0.85,ease:'easeOut'}}
+                        style={{position:'absolute',color:'#F5B642',fontSize:13,fontWeight:900,textShadow:'0 0 12px rgba(245,182,66,0.8)',whiteSpace:'nowrap'}}>
+                        {b.label}
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                </div>
 
                 {/* Rank + Avatar */}
                 <div className="flex items-center gap-2">
@@ -1751,24 +1801,32 @@ function BalloBoard({ payload, players, balloEnergies, balloResult }: {
                   {p.nickname}
                 </div>
 
-                {/* Vertical energy meter */}
+                {/* Vertical energy meter — height = CURRENT live energy, not peak */}
                 <div className="flex flex-col items-center gap-1">
-                  <div className="text-xs font-bold tabular-nums" style={{color:'#A78BFA'}}>{e}%</div>
+                  <div className="text-xs font-bold tabular-nums" style={{color:'#A78BFA'}}>{currE}%</div>
                   <div style={{position:'relative', height:160, width:26, background:'rgba(255,255,255,0.07)', borderRadius:13, overflow:'hidden'}}>
                     <motion.div
-                      animate={{height:`${pct}%`}}
+                      animate={{height:`${barPct}%`}}
                       transition={{duration:0.18, type:'spring', stiffness:380, damping:38}}
-                      style={{
-                        position:'absolute', bottom:0, left:0, right:0,
-                        background: meterBg,
-                        boxShadow: meterGlow,
-                        borderRadius:13,
-                      }}
+                      style={{position:'absolute', bottom:0, left:0, right:0, background:meterBg, boxShadow:meterGlow, borderRadius:13}}
                     />
                   </div>
                 </div>
 
-                {/* Score */}
+                {/* Provisional live points — TV excitement only, never persisted */}
+                {!balloResult && currE > 0 && (
+                  <div className="flex flex-col items-center gap-0.5">
+                    <div className="text-xs text-white/30">provvisori</div>
+                    <motion.div key={livePts}
+                      initial={{scale:1.25,color:'#F5B642'}} animate={{scale:1,color:'rgba(255,255,255,0.65)'}}
+                      transition={{duration:0.3}}
+                      className="text-sm font-black tabular-nums">
+                      +{livePts}
+                    </motion.div>
+                  </div>
+                )}
+
+                {/* Official score */}
                 <div className="flex flex-col items-center">
                   <div className="text-xs text-white/35">punti</div>
                   <div className="text-lg font-black text-white tabular-nums">{p.score}</div>

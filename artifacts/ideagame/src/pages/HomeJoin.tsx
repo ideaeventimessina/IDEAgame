@@ -414,9 +414,12 @@ export default function HomeJoin() {
       const p: HomePlayer = await r.json();
       setPlayer(p);
       saveJoin(session.id, session.joinCode, p.id, nickname.trim());
-      // Clear iOS undo stack immediately after nickname submit so "Shake to Undo" dialog cannot appear later
+      // Clear iOS undo stack immediately after nickname submit
       (document.activeElement as HTMLElement)?.blur?.();
       window.getSelection()?.removeAllRanges?.();
+      document.body.style.userSelect = 'none';
+      document.body.style.setProperty('-webkit-user-select', 'none');
+      document.body.style.touchAction = 'manipulation';
 
       // Fetch updated state
       try {
@@ -1089,12 +1092,14 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
     document.addEventListener('selectionchange', guardSelection);
     document.body.style.userSelect = 'none';
     document.body.style.setProperty('-webkit-user-select', 'none');
+    document.body.style.touchAction = 'manipulation';
 
     return () => {
       window.removeEventListener('focusin', guardFocus, true);
       document.removeEventListener('selectionchange', guardSelection);
       document.body.style.userSelect = '';
       document.body.style.removeProperty('-webkit-user-select');
+      document.body.style.touchAction = '';
     };
   }, []);
 
