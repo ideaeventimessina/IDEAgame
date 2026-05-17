@@ -414,9 +414,11 @@ export default function HomeJoin() {
       const p: HomePlayer = await r.json();
       setPlayer(p);
       saveJoin(session.id, session.joinCode, p.id, nickname.trim());
-      // Clear iOS undo stack immediately after nickname submit
+      // iOS Shake to Undo mitigation: clear nickname immediately so the input
+      // value (and its undo stack) is gone before phase transition unmounts it.
+      setNickname('');
       (document.activeElement as HTMLElement)?.blur?.();
-      window.getSelection()?.removeAllRanges?.();
+      window.getSelection()?.removeAllRanges();
       document.body.style.userSelect = 'none';
       document.body.style.setProperty('-webkit-user-select', 'none');
       document.body.style.touchAction = 'manipulation';
@@ -566,8 +568,9 @@ export default function HomeJoin() {
               </div>
 
               <input type="text" value={nickname} onChange={e => setNickname(e.target.value.slice(0,20))}
-                onKeyDown={e => e.key==='Enter' && nickname.trim() && joinSession()}
+                onKeyDown={e => e.key==='Enter' && nickname.trim() && void joinSession()}
                 placeholder="Il tuo nome..." autoFocus
+                autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
                 className="w-full max-w-sm rounded-2xl px-6 py-5 text-center text-xl font-black focus:outline-none"
                 style={{background:'rgba(255,255,255,0.07)',border:'2px solid rgba(168,85,247,0.55)',color:'#fff',caretColor:'#A855F7'}}/>
 
@@ -1080,8 +1083,14 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
   useEffect(() => { timeLeftRef.current = timeLeft; }, [timeLeft]);
 
   // Aggressively prevent iOS "Shake to Undo" popup for the entire ballo session.
-  // Strategy: blur every input, lock user-select, intercept focusin+selectionchange.
+  // iOS "Annulla inserimento" (Shake to Undo) mitigation.
+  // NOTE: Shake to Undo cannot be fully disabled from Safari/PWA.
+  // Strategy: on mount add .ballo-mode to <body> (hides all inputs via CSS),
+  // blur any focused element, lock user-select, intercept focusin+selectionchange.
+  // The .ballo-mode CSS class is defined in index.css.
   useEffect(() => {
+    document.body.classList.add('ballo-mode');
+
     const blurActive = () => {
       const el = document.activeElement;
       if (el instanceof HTMLElement) el.blur();
@@ -1105,6 +1114,7 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
     document.body.style.touchAction = 'manipulation';
 
     return () => {
+      document.body.classList.remove('ballo-mode');
       window.removeEventListener('focusin', guardFocus, true);
       document.removeEventListener('selectionchange', guardSelection);
       document.body.style.userSelect = '';

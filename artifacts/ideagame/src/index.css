@@ -223,3 +223,23 @@ html, body {
   flex-direction: column;
   overflow: hidden;
 }
+
+/* ── Ballo mode — iOS Shake to Undo mitigation ─────────────────────────────
+   iOS "Annulla inserimento" popup is triggered by shaking when the undo stack
+   has content from a text input. This class is applied to <body> during the
+   entire BalloController lifecycle to harden against that popup.
+   NOTE: iOS Shake to Undo cannot be fully disabled from Safari/PWA.
+   This mitigation removes all editable elements and clears the undo stack
+   by ensuring nothing is focused and no selection exists.
+   ────────────────────────────────────────────────────────────────────────── */
+.ballo-mode,
+.ballo-mode * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+.ballo-mode input,
+.ballo-mode textarea,
+.ballo-mode [contenteditable] {
+  pointer-events: none !important;
+  display: none !important;
+}

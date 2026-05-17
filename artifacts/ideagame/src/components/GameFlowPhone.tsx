@@ -64,9 +64,16 @@ export function GameFlowPhone({
     setBooking(true);
 
     // ── Ballo sensor permission ─────────────────────────────────────────────
-    // iOS requires requestPermission() to be called synchronously from the
-    // user gesture. We call it here BEFORE any `await` so the tap on
-    // "MI PRENOTO" satisfies the gesture requirement.
+    // Blur any focused element and clear selection BEFORE calling
+    // requestPermission(). This clears the iOS undo stack so that shaking
+    // during Ballo is less likely to trigger "Annulla inserimento".
+    // iOS requires requestPermission() itself to be called synchronously from
+    // the user gesture — so blur/clear happen here, still before the first await.
+    if (action === 'book' && p.gameSlug === 'sfida-ballo') {
+      const el = document.activeElement;
+      if (el instanceof HTMLElement) el.blur();
+      window.getSelection()?.removeAllRanges();
+    }
     let permPromise: Promise<SensorPerm> | null = null;
     if (action === 'book' && p.gameSlug === 'sfida-ballo' && sensorPerm === 'idle') {
       try {
@@ -123,7 +130,12 @@ export function GameFlowPhone({
 
   // Fallback: player reloaded page while already booked for Ballo — show
   // a manual sensor activation button that is still within a user tap.
+  // Blur and clear selection synchronously before calling requestPermission()
+  // to minimise the iOS undo stack and reduce Shake to Undo probability.
   async function activateSensors() {
+    const el = document.activeElement;
+    if (el instanceof HTMLElement) el.blur();
+    window.getSelection()?.removeAllRanges();
     if (typeof DeviceMotionEvent === 'undefined') { setSensorPerm('unsupported'); return; }
     const dme = DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> };
     try {
