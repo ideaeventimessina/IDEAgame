@@ -1,0 +1,92 @@
+URGENT HOME MODE FIXES — PHONE COCKPIT BUTTON + IPHONE SHAKE POPUP.
+
+Do not redesign.
+Do not touch audio.
+Do not touch scoring logic except what is needed to keep Ballo energy streaming.
+Do not touch routes.
+
+BUG 1 — Cockpit button visible on player phones
+
+Problem:
+On player phones there is a Cockpit / Regia button.
+Players can enter the control room.
+This must never happen.
+
+Patch:
+- Hide/remove Cockpit button from all player-facing routes:
+  /home/join
+  /join/:code
+  /play
+  any mobile phone controller page
+- Cockpit button must remain visible only on:
+  desktop/admin/regia/projector tools if needed
+- Detect mobile/player pages and do not render BackToCockpit there.
+
+Audit:
+- find BackToCockpit component usage
+- find where it is globally injected
+- add allowlist or route blacklist
+
+Required:
+Player phones must never see Regia/Cockpit access.
+
+BUG 2 — iPhone Shake to Undo popup during Ballo
+
+Problem:
+On iPhone during Ballo a native popup appears:
+“Annulla inserimento”
+This blocks/interrupts the motion stream.
+Phone bars keep moving locally sometimes, but TV bars freeze and points are not assigned.
+
+Cause likely:
+iOS Shake to Undo triggered by previous focused input / undo stack after nickname entry.
+
+Patch:
+In HomeJoin / BalloController before activating sensors:
+- blur active element:
+  document.activeElement?.blur?.()
+- clear focus from every input/textarea/contenteditable
+- set body/user container:
+  user-select: none
+  -webkit-user-select: none
+  touch-action: manipulation
+- on entering Ballo:
+  temporarily disable text selection and editing focus
+- after nickname submit, immediately blur input
+- when Ballo starts, force blur again
+- prevent any hidden input from keeping focus
+
+Also:
+- while Ballo is active, add event listeners:
+  window.addEventListener('focusin', blurFocusedInput, true)
+  document.addEventListener('selectionchange', clearSelection)
+and remove them on unmount.
+
+Important:
+Do NOT repeatedly call DeviceMotionEvent.requestPermission.
+Permission must be asked once only.
+
+Energy streaming reliability:
+- If iOS popup still appears or page loses focus, do not stop emitting permanently.
+- On visibilitychange/focus regain:
+  resume motion listener
+  continue emitting home:ballo_energy if timeLeft > 0
+
+Test:
+1. Open phone player on iPhone.
+2. Enter nickname.
+3. Start Ballo.
+4. Activate sensors once.
+5. Shake/move phone hard.
+6. No “Annulla inserimento” popup should appear.
+7. TV energy bars must keep moving.
+8. At timer end, highest energy player gets points.
+9. Player phone must not show Cockpit/Regia button anywhere.
+
+Output:
+A. files modified
+B. Cockpit button removal
+C. iPhone popup mitigation
+D. energy stream resume behavior
+E. typecheck result
+F. manual test steps

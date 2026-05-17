@@ -3,7 +3,12 @@ import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SlidersHorizontal } from 'lucide-react';
 
-const HIDE_ON = ['/', '/admin', '/play', '/login', '/splash', '/language', '/tenant', '/control', '/event-setup', '/permissions', '/presenter', '/presenter-live'];
+const HIDE_ON = [
+  '/', '/admin', '/play', '/login', '/splash', '/language', '/tenant',
+  '/control', '/event-setup', '/permissions', '/presenter', '/presenter-live',
+  // player-phone routes — must never show Cockpit button
+  '/home/join', '/join', '/home-lobby',
+];
 
 export function BackToCockpit() {
   const [location, navigate] = useLocation();

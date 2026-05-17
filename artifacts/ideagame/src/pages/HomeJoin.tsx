@@ -414,6 +414,9 @@ export default function HomeJoin() {
       const p: HomePlayer = await r.json();
       setPlayer(p);
       saveJoin(session.id, session.joinCode, p.id, nickname.trim());
+      // Clear iOS undo stack immediately after nickname submit so "Shake to Undo" dialog cannot appear later
+      (document.activeElement as HTMLElement)?.blur?.();
+      window.getSelection()?.removeAllRanges?.();
 
       // Fetch updated state
       try {
@@ -904,6 +907,13 @@ function PercorsoHomeBallo({ timeLeft }: { timeLeft: number | null }) {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const handlerRef = useRef<((e: DeviceMotionEvent) => void) | null>(null);
 
+  // Blur any focused input to prevent iOS "Shake to Undo" popup
+  useEffect(() => {
+    const el = document.activeElement;
+    if (el instanceof HTMLElement) el.blur();
+    window.getSelection()?.removeAllRanges();
+  }, []);
+
   const startSensor = useCallback(() => {
     const h = (e: DeviceMotionEvent) => {
       const a = e.accelerationIncludingGravity;
@@ -1056,10 +1066,36 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
   const timeLeftRef = useRef(timeLeft);
   useEffect(() => { timeLeftRef.current = timeLeft; }, [timeLeft]);
 
-  // Blur any focused input to prevent iOS "Shake to Undo" popup during dancing
+  // Aggressively prevent iOS "Shake to Undo" popup for the entire ballo session.
+  // Strategy: blur every input, lock user-select, intercept focusin+selectionchange.
   useEffect(() => {
-    const active = document.activeElement;
-    if (active instanceof HTMLElement) active.blur();
+    const blurActive = () => {
+      const el = document.activeElement;
+      if (el instanceof HTMLElement) el.blur();
+      window.getSelection()?.removeAllRanges();
+    };
+    blurActive();
+
+    const guardFocus = (e: FocusEvent) => {
+      const t = e.target;
+      if (
+        t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement ||
+        t instanceof HTMLSelectElement || (t instanceof HTMLElement && t.isContentEditable)
+      ) { t.blur(); }
+    };
+    const guardSelection = () => { window.getSelection()?.removeAllRanges(); };
+
+    window.addEventListener('focusin', guardFocus, true);
+    document.addEventListener('selectionchange', guardSelection);
+    document.body.style.userSelect = 'none';
+    document.body.style.setProperty('-webkit-user-select', 'none');
+
+    return () => {
+      window.removeEventListener('focusin', guardFocus, true);
+      document.removeEventListener('selectionchange', guardSelection);
+      document.body.style.userSelect = '';
+      document.body.style.removeProperty('-webkit-user-select');
+    };
   }, []);
 
   // Check localStorage only to pre-know if permission was granted before.
@@ -1123,7 +1159,32 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
         emit('home:ballo_energy', { sessionId, playerId, energy: e, round: round ?? 0 });
       }
     }, 400);
-    return () => { window.removeEventListener('devicemotion', handleMotion); clearInterval(interval); };
+    // Visibility / focus regain — iOS "Annulla inserimento" popup briefly hides the page.
+    // When it's dismissed, re-blur and keep emitting if timer is still running.
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && (timeLeftRef.current ?? 0) > 0) {
+        console.log('[BalloTrace:phone] visibilitychange → visible, re-blurring and resuming energy stream');
+        const el = document.activeElement;
+        if (el instanceof HTMLElement) el.blur();
+        window.getSelection()?.removeAllRanges();
+      }
+    };
+    const handleWindowFocus = () => {
+      if ((timeLeftRef.current ?? 0) > 0) {
+        console.log('[BalloTrace:phone] window focus regained — re-blurring');
+        const el = document.activeElement;
+        if (el instanceof HTMLElement) el.blur();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleWindowFocus);
+
+    return () => {
+      window.removeEventListener('devicemotion', handleMotion);
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleWindowFocus);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [motionPerm, emit, sessionId, playerId]);
 
