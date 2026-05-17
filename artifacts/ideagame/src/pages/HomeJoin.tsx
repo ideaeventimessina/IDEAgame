@@ -1064,7 +1064,17 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
   round?: number;
 }) {
   const [energy, setEnergy] = useState(0);
-  const [motionPerm, setMotionPerm] = useState<'unknown'|'granted'|'denied'|'unsupported'>('unknown');
+  // Eagerly init from localStorage — if permission was granted during booking, sensors
+  // start immediately on mount with no button shown.
+  const [motionPerm, setMotionPerm] = useState<'unknown'|'granted'|'denied'|'unsupported'>(() => {
+    try {
+      if (typeof DeviceMotionEvent === 'undefined') return 'unsupported';
+      const saved = localStorage.getItem(MOTION_PERM_KEY);
+      if (saved === 'granted') return 'granted';
+      if (saved === 'denied') return 'denied';
+    } catch { /* ignore */ }
+    return 'unknown';
+  });
   const magsRef = useRef<number[]>([]);
   const timeLeftRef = useRef(timeLeft);
   useEffect(() => { timeLeftRef.current = timeLeft; }, [timeLeft]);
@@ -1103,27 +1113,11 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
     };
   }, []);
 
-  // Check localStorage only to pre-know if permission was granted before.
-  // We NEVER auto-start sensors — the user must always tap a button to begin.
-  // This ensures the sensor CTA is always visible and the user understands the state.
-  const hadPermission = useRef(
-    typeof localStorage !== 'undefined' && localStorage.getItem(MOTION_PERM_KEY) === 'granted'
-  ).current;
-
-  useEffect(() => {
-    if (typeof DeviceMotionEvent === 'undefined') {
-      console.log('[BalloTrace:phone] permission state: unsupported (no DeviceMotionEvent)');
-      setMotionPerm('unsupported'); return;
-    }
-    const saved = localStorage.getItem(MOTION_PERM_KEY);
-    if (saved === 'denied') {
-      console.log('[BalloTrace:phone] permission denied (from localStorage)');
-      setMotionPerm('denied'); return;
-    }
-    // Always stay at 'unknown' so the activation button is visible.
-    // hadPermission tracks whether iOS permission was already granted (no dialog needed).
-    console.log('[BalloTrace:phone] waiting for user to tap activation button (hadPermission=' + String(hadPermission) + ')');
-  }, [hadPermission]);
+  // Permission state is initialised eagerly from localStorage (see useState above).
+  // If the player granted permission during the booking phase (GameFlowPhone),
+  // motionPerm starts as 'granted' and the sensor loop kicks off immediately on mount
+  // with no extra button. The button below is kept as a fallback for direct
+  // BalloController access (e.g. non-flow mode or page reload without pre-grant).
 
   const requestMotion = useCallback(async () => {
     const dme = DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> };
@@ -1211,7 +1205,7 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
         <button onClick={() => void requestMotion()}
           className="flex items-center gap-2 rounded-2xl px-6 py-3 text-sm font-black"
           style={{background:'linear-gradient(135deg,#A78BFA,#7C3AED)',color:'#fff',boxShadow:'0 0 30px rgba(167,139,250,0.4)'}}>
-          {hadPermission ? '▶ Avvia sensori' : '📱 Attiva sensori movimento'}
+          📱 Attiva sensori movimento
         </button>
       )}
       {motionPerm === 'denied' && (

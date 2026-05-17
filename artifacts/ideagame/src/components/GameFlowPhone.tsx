@@ -10,6 +10,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 import { type FlowPayload, type FlowBookedPlayer, FLOW_GAME_UI, useFlowCountdown } from './GameFlowEngine';
 
+const MOTION_PERM_KEY = 'ideagame:motion-permission';
+type SensorPerm = 'idle' | 'granted' | 'denied' | 'unsupported';
+
 interface HomeSession {
   id: string;
   gameSlug: string | null;
@@ -42,11 +45,63 @@ export function GameFlowPhone({
 
   const [booking, setBooking] = useState(false);
 
+  // Sensor permission state — only meaningful when gameSlug === 'sfida-ballo'
+  const [sensorPerm, setSensorPerm] = useState<SensorPerm>(() => {
+    if (p.gameSlug !== 'sfida-ballo') return 'idle';
+    try {
+      const saved = localStorage.getItem(MOTION_PERM_KEY);
+      if (typeof DeviceMotionEvent === 'undefined') return 'unsupported';
+      if (saved === 'granted') return 'granted';
+      if (saved === 'denied') return 'denied';
+    } catch { /* ignore */ }
+    return 'idle';
+  });
+
   const { num, showGo } = useFlowCountdown(p.gameFlowPhase === 'countdown');
 
   async function book(action: 'book' | 'unbook') {
     if (booking) return;
     setBooking(true);
+
+    // ── Ballo sensor permission ─────────────────────────────────────────────
+    // iOS requires requestPermission() to be called synchronously from the
+    // user gesture. We call it here BEFORE any `await` so the tap on
+    // "MI PRENOTO" satisfies the gesture requirement.
+    let permPromise: Promise<SensorPerm> | null = null;
+    if (action === 'book' && p.gameSlug === 'sfida-ballo' && sensorPerm === 'idle') {
+      try {
+        const saved = localStorage.getItem(MOTION_PERM_KEY);
+        if (saved === 'granted') {
+          setSensorPerm('granted'); // already decided — no dialog
+        } else if (saved === 'denied') {
+          setSensorPerm('denied');
+        } else if (typeof DeviceMotionEvent === 'undefined') {
+          setSensorPerm('unsupported');
+        } else {
+          const dme = DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> };
+          if (typeof dme.requestPermission === 'function') {
+            // Kick off the iOS permission dialog synchronously from the gesture.
+            // We await the result after the booking fetch below.
+            permPromise = dme.requestPermission()
+              .then((r): SensorPerm => {
+                const perm: SensorPerm = r === 'granted' ? 'granted' : 'denied';
+                localStorage.setItem(MOTION_PERM_KEY, perm);
+                return perm;
+              })
+              .catch((): SensorPerm => {
+                localStorage.setItem(MOTION_PERM_KEY, 'denied');
+                return 'denied';
+              });
+          } else {
+            // Android / non-iOS: no permission dialog needed
+            localStorage.setItem(MOTION_PERM_KEY, 'granted');
+            setSensorPerm('granted');
+          }
+        }
+      } catch { /* ignore storage errors */ }
+    }
+    // ───────────────────────────────────────────────────────────────────────
+
     try {
       await fetch(`/api/home/sessions/${session.id}/flow/book-player`, {
         method: 'POST',
@@ -58,7 +113,33 @@ export function GameFlowPhone({
           action,
         }),
       });
+      // Resolve sensor permission result now that booking is confirmed
+      if (permPromise) {
+        const perm = await permPromise;
+        setSensorPerm(perm);
+      }
     } finally { setBooking(false); }
+  }
+
+  // Fallback: player reloaded page while already booked for Ballo — show
+  // a manual sensor activation button that is still within a user tap.
+  async function activateSensors() {
+    if (typeof DeviceMotionEvent === 'undefined') { setSensorPerm('unsupported'); return; }
+    const dme = DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> };
+    try {
+      if (typeof dme.requestPermission === 'function') {
+        const r = await dme.requestPermission(); // still within tap gesture
+        const perm: SensorPerm = r === 'granted' ? 'granted' : 'denied';
+        localStorage.setItem(MOTION_PERM_KEY, perm);
+        setSensorPerm(perm);
+      } else {
+        localStorage.setItem(MOTION_PERM_KEY, 'granted');
+        setSensorPerm('granted');
+      }
+    } catch {
+      localStorage.setItem(MOTION_PERM_KEY, 'denied');
+      setSensorPerm('denied');
+    }
   }
 
   // ── WAITING FOR THEME ─────────────────────────────────────────────────────────
@@ -115,7 +196,41 @@ export function GameFlowPhone({
               Attendi che l'animatore avvii la sfida
             </div>
           </div>
-          <button onClick={() => book('unbook')} disabled={booking}
+
+          {/* ── Sensor status badge (Ballo only) ─────────────────────────── */}
+          {p.gameSlug === 'sfida-ballo' && (
+            <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}>
+              {sensorPerm === 'granted' && (
+                <div className="flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-black"
+                  style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', color: '#4ade80' }}>
+                  ✅ Sensori pronti
+                </div>
+              )}
+              {sensorPerm === 'denied' && (
+                <div className="flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold text-center"
+                  style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)', color: 'rgba(255,100,100,0.8)' }}>
+                  ⚠️ Sei in gara, ma i sensori non sono attivi
+                </div>
+              )}
+              {sensorPerm === 'unsupported' && (
+                <div className="flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold"
+                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.4)' }}>
+                  📱 Sensori non supportati
+                </div>
+              )}
+              {sensorPerm === 'idle' && (
+                <button onClick={() => void activateSensors()}
+                  className="flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-black"
+                  style={{ background: 'rgba(167,139,250,0.18)', border: '1px solid rgba(167,139,250,0.4)', color: '#c084fc', cursor: 'pointer' }}>
+                  📱 Attiva sensori movimento
+                </button>
+              )}
+            </motion.div>
+          )}
+          {/* ─────────────────────────────────────────────────────────────── */}
+
+          <button onClick={() => void book('unbook')} disabled={booking}
             className="text-xs font-semibold underline disabled:opacity-50"
             style={{ color: 'rgba(255,255,255,0.25)' }}>
             {booking ? 'Annullamento…' : 'Annulla prenotazione'}
