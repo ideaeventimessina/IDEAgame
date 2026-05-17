@@ -58,7 +58,6 @@ function SceneBg() {
 export default function HomeSetupPage() {
   const [, navigate] = useLocation();
   const [hostName, setHostName]         = useState('');
-  const [maxPlayers, setMaxPlayers]     = useState(8);
   const [selectedGames, setSelectedGames] = useState<string[]>(
     GAME_OPTIONS.map(g => g.slug)
   );
@@ -83,7 +82,6 @@ export default function HomeSetupPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           hostName: hostName.trim(),
-          maxPlayers,
           selectedGames,
           matchDuration: duration,
         }),
@@ -192,25 +190,6 @@ export default function HomeSetupPage() {
               onFocus={e => (e.target.style.borderColor = 'rgba(245,182,66,0.6)')}
               onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.15)')}
             />
-          </div>
-
-          {/* max players */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.45)' }}>
-              Max Giocatori
-            </label>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {[2, 4, 6, 8, 10, 12, 16, 20].map(n => (
-                <button key={n} onClick={() => setMaxPlayers(n)} style={{
-                  flex: 1, padding: '0.45rem 0',
-                  background: maxPlayers === n ? 'rgba(245,182,66,0.25)' : 'rgba(255,255,255,0.05)',
-                  border: `1.5px solid ${maxPlayers === n ? 'rgba(245,182,66,0.7)' : 'rgba(255,255,255,0.12)'}`,
-                  borderRadius: 8, color: maxPlayers === n ? '#F5B642' : 'rgba(255,255,255,0.5)',
-                  fontFamily: "'Outfit',sans-serif", fontWeight: 800, fontSize: '0.75rem',
-                  cursor: 'pointer', transition: 'all 0.18s',
-                }}>{n}</button>
-              ))}
-            </div>
           </div>
 
           {/* duration */}

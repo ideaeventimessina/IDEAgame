@@ -676,7 +676,7 @@ router.post("/home/sessions", async (req, res): Promise<void> => {
   void cleanupExpiredHomeSessions().catch(() => {});
 
   const hostName      = String(req.body?.hostName ?? "Casa").slice(0, 50);
-  const maxPlayers    = Math.min(Math.max(Number(req.body?.maxPlayers ?? 8), 2), 50);
+  const maxPlayers    = 50; // unlimited — players join freely via QR
   const selectedGames = Array.isArray(req.body?.selectedGames) ? req.body.selectedGames as string[] : [];
   const matchDuration = String(req.body?.matchDuration ?? "normal");
 

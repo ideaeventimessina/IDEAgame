@@ -161,7 +161,7 @@ export default function JoinPage() {
             textShadow: '0 0 20px rgba(245,182,66,0.7)',
           }}>{session.joinCode}</div>
           <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.35)', marginTop: 4 }}>
-            {players.length}/{session.maxPlayers} giocatori connessi
+            {players.length} giocatori connessi
           </div>
         </div>
 
