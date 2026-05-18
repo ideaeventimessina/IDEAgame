@@ -81,9 +81,9 @@ export function AdminLayout({ children, title }: { children: ReactNode; title: s
       <aside className={`fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col border-r border-border bg-sidebar text-sidebar-foreground transition-transform duration-200 md:hidden ${drawerOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex items-center justify-between px-6 py-5">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center rounded-xl bg-white px-2 py-1">
+            <a href="/home-v4" title="Vai a IDEAgame Home" className="flex items-center justify-center rounded-xl bg-white px-2 py-1 hover:opacity-80 transition-opacity">
               <img src="/logo.png" alt="IDEA Games" className="h-8 w-auto object-contain" />
-            </div>
+            </a>
             <div>
               <div className="text-xs text-muted-foreground">Admin Console</div>
             </div>
@@ -98,9 +98,9 @@ export function AdminLayout({ children, title }: { children: ReactNode; title: s
       {/* ── Desktop sidebar ───────────────────────────────────────── */}
       <aside className="fixed inset-y-0 left-0 hidden w-[280px] flex-col border-r border-border bg-sidebar text-sidebar-foreground md:flex">
         <div className="flex items-center gap-3 px-6 py-5">
-          <div className="flex items-center justify-center rounded-xl bg-white px-2.5 py-1.5">
+          <a href="/home-v4" title="Vai a IDEAgame Home" className="flex items-center justify-center rounded-xl bg-white px-2.5 py-1.5 hover:opacity-80 transition-opacity">
             <img src="/logo.png" alt="IDEA Games" className="h-9 w-auto object-contain" />
-          </div>
+          </a>
           <div>
             <div className="text-xs text-muted-foreground">Admin Console</div>
           </div>
