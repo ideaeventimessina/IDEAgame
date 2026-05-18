@@ -539,7 +539,7 @@ export default function Player() {
       <>
         <PlayerLanding
           onJoin={() => setStep('join')}
-          onHome={() => { window.location.href = '/home'; }}
+          onHome={() => { window.location.href = '/home-v4'; }}
           onAdmin={() => { window.location.href = '/login'; }}
         />
         {isHostedByJonny && <JonnyLayer step="join" gameState={gameState} />}

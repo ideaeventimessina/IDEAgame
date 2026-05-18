@@ -700,7 +700,7 @@ export default function Hub() {
       <>
         <PlayerLanding
           onJoin={() => setShowCodeModal(true)}
-          onHome={() => navigate('/home')}
+          onHome={() => navigate('/home-v4')}
           onAdmin={() => navigate('/login')}
         />
 
@@ -769,7 +769,7 @@ export default function Hub() {
                   className="mt-4 w-full rounded-2xl border border-border py-3 text-sm font-bold text-muted-foreground hover:text-foreground transition-colors">
                   Accedi come animatore →
                 </button>
-                <button onClick={() => { setShowCodeModal(false); navigate('/home'); }}
+                <button onClick={() => { setShowCodeModal(false); navigate('/home-v4'); }}
                   className="mt-2 w-full rounded-xl py-2.5 text-sm font-bold transition-colors"
                   style={{ color: '#A78BFA', background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.2)' }}>
                   🏠 Vai a Modalità Home
@@ -1290,7 +1290,7 @@ export default function Hub() {
             <motion.button
               initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
               whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-              onClick={() => navigate('/home')}
+              onClick={() => navigate('/home-v4')}
               className="flex items-center gap-2 rounded-full bg-primary px-4 py-1.5 text-xs font-black text-black shadow-lg shadow-primary/30"
             >
               <Sparkles className="h-3.5 w-3.5" />
@@ -1421,7 +1421,7 @@ export default function Hub() {
             {liveEvent ? <QrPanel compact /> : !liveEvent && user ? <EventCTA /> : (
               <motion.button
                 whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
-                onClick={() => navigate('/home')}
+                onClick={() => navigate('/home-v4')}
                 className="flex w-full flex-col items-center gap-3 rounded-3xl border-2 border-primary/50 bg-primary/10 p-5 text-center hover-elevate"
               >
                 <Sparkles className="h-7 w-7 text-primary" />

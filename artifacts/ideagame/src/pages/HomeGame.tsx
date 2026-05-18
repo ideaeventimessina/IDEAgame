@@ -477,9 +477,14 @@ export default function HomeGame() {
   const urlParams = new URLSearchParams(window.location.search);
   const urlSessionId = urlParams.get('s');
 
-  // No sessionId → redirect to setup; sessionId present → wait for load effect to set real phase
+  // No sessionId → redirect to home-v4 (generic entry); sessionId present → wait for load effect
   const [phase, setPhase] = useState<Phase>('board');
-  useEffect(() => { if (!urlSessionId) navigate('/home-setup'); }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!urlSessionId) {
+      console.log('[RoutingCheck] /home without session redirected to /home-v4');
+      navigate('/home-v4');
+    }
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
   const [session, setSession] = useState<HomeSession | null>(null);
   const [players, setPlayers] = useState<HomePlayer[]>([]);
   const [loading, setLoading] = useState(false);
