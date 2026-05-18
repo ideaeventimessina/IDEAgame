@@ -3,36 +3,37 @@ import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SlidersHorizontal } from 'lucide-react';
 
-const HIDE_ROUTES = [
-  '/', '/admin', '/play', '/login', '/splash', '/language', '/tenant',
-  '/control', '/event-setup', '/permissions', '/presenter', '/presenter-live',
-  // player-phone routes
-  '/home/join', '/join', '/home-lobby',
+/**
+ * Cockpit button is shown ONLY on explicit Live/Admin/Regia paths.
+ * Every Home Mode screen (desktop or mobile) must never see it.
+ * Allowlist — if the current path does not start with one of these, return null.
+ */
+const ALLOWED_PREFIXES = [
+  '/admin',
+  '/cockpit',
+  '/control',
+  '/presenter',
+  '/presenter-live',
+  '/projector',
+  '/lobby',
+  '/scoreboard',
+  '/serata-completa',
+  // live game projector routes
+  '/quizzone',
+  '/coppie',
+  '/percorso-risate',
+  '/adult-only',
+  '/sfida-ballo',
+  '/parola-alle-spalle',
+  '/karaoke-battle',
+  '/freestyle-battle',
+  '/saramusica',
 ];
 
-/**
- * Returns true when we are in a player/phone context where the Cockpit
- * button must NEVER appear.  Checks three independent signals:
- *  1. Route prefix — covers all known player-phone routes
- *  2. Mobile/touch viewport — any device with innerWidth < 900 or coarse pointer
- *  3. Home-player identity in storage — player has joined a home session
- */
-function isPlayerContext(location: string): boolean {
-  if (HIDE_ROUTES.some(p => location === p || location.startsWith(p + '/'))) return true;
-
-  if (typeof window !== 'undefined') {
-    if (window.innerWidth < 900) return true;
-    try { if (window.matchMedia('(pointer: coarse)').matches) return true; } catch { /* ignore */ }
-  }
-
-  try {
-    // HomeJoin stores player identity under this key after joining
-    if (localStorage.getItem('ideagame:home:join')) return true;
-    if (localStorage.getItem('ideagame:home:player')) return true;
-    if (sessionStorage.getItem('ideagame:home:player')) return true;
-  } catch { /* ignore */ }
-
-  return false;
+function isAllowedPath(location: string): boolean {
+  return ALLOWED_PREFIXES.some(
+    prefix => location === prefix || location.startsWith(prefix + '/') || location.startsWith(prefix + '?'),
+  );
 }
 
 export function BackToCockpit() {
@@ -40,10 +41,10 @@ export function BackToCockpit() {
   const [visible, setVisible] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const hide = isPlayerContext(location);
+  const allowed = isAllowedPath(location);
 
   useEffect(() => {
-    if (hide) return;
+    if (!allowed) return;
     const show = () => {
       setVisible(true);
       if (timerRef.current) clearTimeout(timerRef.current);
@@ -54,9 +55,9 @@ export function BackToCockpit() {
       window.removeEventListener('mousemove', show);
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [hide]);
+  }, [allowed]);
 
-  if (hide) return null;
+  if (!allowed) return null;
 
   return (
     <AnimatePresence>
