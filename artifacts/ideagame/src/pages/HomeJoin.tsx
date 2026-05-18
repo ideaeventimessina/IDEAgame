@@ -511,6 +511,7 @@ export default function HomeJoin() {
 
         {/* ── CODE ── */}
         {phase === 'code' && (
+          <SafariGuard>
           <motion.div key="code" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0,y:-20}}
             className="relative flex min-h-screen w-full flex-col">
 
@@ -560,6 +561,7 @@ export default function HomeJoin() {
               </button>
             </div>
           </motion.div>
+          </SafariGuard>
         )}
 
         {/* ── NICKNAME ── */}
