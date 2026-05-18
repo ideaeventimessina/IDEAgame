@@ -1128,9 +1128,23 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
     window.matchMedia?.('(display-mode: standalone)').matches === true
   );
   // Browsers that block DeviceMotion on iOS (Chrome iOS, Firefox iOS, in-app browsers)
-  const isBlockedBrowser = isIOS && typeof navigator !== 'undefined' && (
-    /CriOS|FxiOS|Instagram|FBAN|FBAV/.test(navigator.userAgent)
-  );
+  // Uses .includes() instead of regex to avoid silent null-UA failure.
+  const ua = (typeof navigator !== 'undefined' ? navigator.userAgent : '') || '';
+  const BLOCKED_TOKENS = ['CriOS', 'FxiOS', 'Instagram', 'FBAN', 'FBAV'] as const;
+  const matchedToken   = BLOCKED_TOKENS.find(t => ua.includes(t)) ?? null;
+  const isSafari       = ua.includes('Safari') && !ua.includes('CriOS') && !ua.includes('FxiOS');
+  const isBlockedBrowser = isIOS && matchedToken !== null && !isSafari;
+
+  // ── Browser detection log (always — visible in Safari DevTools / ?debug=1) ──
+  if (typeof window !== 'undefined') {
+    console.log('[BrowserGuard]', {
+      ua: ua.slice(0, 200),
+      isIOS,
+      matchedToken,
+      isSafari,
+      isBlockedBrowser,
+    });
+  }
   // Refs updated on every sensor event — never cause re-renders
   const diagMotionCountRef  = useRef(0);
   const diagOrientCountRef  = useRef(0);
@@ -1531,12 +1545,28 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
           <div style={{ fontSize: 20, fontWeight: 900, color: '#fff', lineHeight: 1.3 }}>
             Apri il gioco con Safari
           </div>
+          {/* Detected browser badge */}
+          <div style={{
+            padding: '4px 14px', borderRadius: 20,
+            background: 'rgba(248,113,113,0.15)', border: '1px solid rgba(248,113,113,0.4)',
+            fontSize: 11, fontWeight: 700, color: '#fca5a5', letterSpacing: '0.04em',
+          }}>
+            Browser rilevato: {
+              matchedToken === 'CriOS'     ? 'Chrome iPhone' :
+              matchedToken === 'FxiOS'     ? 'Firefox iPhone' :
+              matchedToken === 'Instagram' ? 'Instagram in-app' :
+              matchedToken === 'FBAN' || matchedToken === 'FBAV' ? 'Facebook in-app' :
+              matchedToken ?? 'browser non supportato'
+            }
+          </div>
           <div style={{
             fontSize: 14, color: 'rgba(255,255,255,0.65)', lineHeight: 1.6,
             maxWidth: 320,
           }}>
             Per usare la Sfida di Ballo su iPhone devi aprire il gioco con Safari.
-            Chrome su iPhone blocca i sensori di movimento.
+            {matchedToken === 'CriOS' ? ' Chrome su iPhone blocca i sensori di movimento.' :
+             matchedToken === 'FxiOS' ? ' Firefox su iPhone blocca i sensori di movimento.' :
+             ' Questo browser blocca i sensori di movimento.'}
           </div>
 
           {/* Safari instructions (toggle) */}
