@@ -22,6 +22,11 @@ build = [ "pnpm", "--filter", "@workspace/ideagame", "run", "build" ]
 publicDir = "artifacts/ideagame/dist/public"
 serve = "static"
 
+[[services.production.redirects]]
+from = "/"
+to = "/home-v4"
+status = 302
+
 [[services.production.rewrites]]
 from = "/*"
 to = "/index.html"

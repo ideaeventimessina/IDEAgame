@@ -1,5 +1,4 @@
-import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
-import { useEffect } from "react";
+import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -82,22 +81,21 @@ import HomeRoom from "@/pages/HomeRoom";
 const queryClient = new QueryClient();
 
 // ── Root redirect guard ───────────────────────────────────────────────────────
-// Public entry: "/" must always land on /home-v4.
-// The ONLY exception is the projector/public-event mode (?e=JOIN_CODE), which
-// still renders Hub so the TV screen keeps working without changes.
+// Public entry: "/" must ALWAYS land on /home-v4.
+// Uses window.location.replace (hard, synchronous) so the redirect fires
+// before any auth/query state resolves — no async useEffect race condition,
+// no browser history entry left at "/" that Safari could restore.
+// The ONLY exception is the projector/public-event mode (?e=JOIN_CODE).
 function RootRoute() {
-  const [, navigate] = useLocation();
   const params = typeof window !== 'undefined'
     ? new URLSearchParams(window.location.search)
     : new URLSearchParams();
   const isProjector = !!params.get('e');
-  useEffect(() => {
-    if (!isProjector) {
-      console.log('[RoutingCheck] / without ?e= redirected to /home-v4');
-      navigate('/home-v4', { replace: true });
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   if (isProjector) return <Hub />;
+  // Hard redirect — synchronous, bypasses wouter & auth state entirely.
+  if (typeof window !== 'undefined') {
+    window.location.replace('/home-v4');
+  }
   return null;
 }
 
