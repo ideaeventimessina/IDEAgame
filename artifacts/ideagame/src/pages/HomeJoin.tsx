@@ -1127,6 +1127,10 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
     (navigator as { standalone?: boolean }).standalone === true ||
     window.matchMedia?.('(display-mode: standalone)').matches === true
   );
+  // Browsers that block DeviceMotion on iOS (Chrome iOS, Firefox iOS, in-app browsers)
+  const isBlockedBrowser = isIOS && typeof navigator !== 'undefined' && (
+    /CriOS|FxiOS|Instagram|FBAN|FBAV/.test(navigator.userAgent)
+  );
   // Refs updated on every sensor event — never cause re-renders
   const diagMotionCountRef  = useRef(0);
   const diagOrientCountRef  = useRef(0);
@@ -1145,6 +1149,8 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
   const [testRunning,     setTestRunning]      = useState(false);
   const [testCountdown,   setTestCountdown]    = useState(0);
   const [diagOpen,        setDiagOpen]         = useState(true);
+  const [safariDismissed, setSafariDismissed]  = useState(false);
+  const [showSafariHints, setShowSafariHints]  = useState(false);
 
   // Aggressively prevent iOS "Shake to Undo" popup for the entire ballo session.
   // iOS "Annulla inserimento" (Shake to Undo) mitigation.
@@ -1510,6 +1516,87 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
 
   return (
     <div className="flex flex-col items-center gap-5 py-4 text-center" style={{userSelect:'none',WebkitUserSelect:'none'}}>
+
+      {/* ── Safari-required guard (Chrome iOS / Firefox iOS / in-app browsers) */}
+      {isBlockedBrowser && !safariDismissed && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 99998,
+          background: 'rgba(0,0,0,0.97)',
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          padding: '32px 24px', gap: 20,
+          textAlign: 'center',
+        }}>
+          <div style={{ fontSize: 52 }}>🧭</div>
+          <div style={{ fontSize: 20, fontWeight: 900, color: '#fff', lineHeight: 1.3 }}>
+            Apri il gioco con Safari
+          </div>
+          <div style={{
+            fontSize: 14, color: 'rgba(255,255,255,0.65)', lineHeight: 1.6,
+            maxWidth: 320,
+          }}>
+            Per usare la Sfida di Ballo su iPhone devi aprire il gioco con Safari.
+            Chrome su iPhone blocca i sensori di movimento.
+          </div>
+
+          {/* Safari instructions (toggle) */}
+          <button
+            onClick={() => setShowSafariHints(h => !h)}
+            style={{
+              width: '100%', maxWidth: 320, padding: '14px 20px',
+              borderRadius: 16, border: '2px solid #A78BFA',
+              background: 'linear-gradient(135deg,rgba(167,139,250,0.25),rgba(124,58,237,0.25))',
+              color: '#c4b5fd', fontSize: 15, fontWeight: 900,
+              cursor: 'pointer', letterSpacing: '0.02em',
+            }}>
+            🧭 Come aprire in Safari {showSafariHints ? '▲' : '▼'}
+          </button>
+
+          {showSafariHints && (
+            <div style={{
+              width: '100%', maxWidth: 320,
+              background: 'rgba(167,139,250,0.1)',
+              border: '1px solid rgba(167,139,250,0.3)',
+              borderRadius: 14, padding: '16px 18px',
+              textAlign: 'left',
+            }}>
+              {[
+                { step: '1', icon: '⬆️', text: 'Tocca l\'icona condivisione (□↑) in basso a Safari o in alto nel browser' },
+                { step: '2', icon: '🧭', text: 'Seleziona "Apri in Safari"' },
+                { step: '3', icon: '🎮', text: 'Rientra nel gioco con lo stesso link' },
+              ].map(({ step, icon, text }) => (
+                <div key={step} style={{
+                  display: 'flex', gap: 12, alignItems: 'flex-start',
+                  marginBottom: step === '3' ? 0 : 12,
+                }}>
+                  <div style={{
+                    minWidth: 24, height: 24, borderRadius: '50%',
+                    background: 'rgba(167,139,250,0.3)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 11, fontWeight: 900, color: '#c4b5fd',
+                  }}>{step}</div>
+                  <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)', lineHeight: 1.5 }}>
+                    {icon} {text}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Fallback: continue without sensors */}
+          <button
+            onClick={() => setSafariDismissed(true)}
+            style={{
+              width: '100%', maxWidth: 320, padding: '12px 20px',
+              borderRadius: 14, border: '1px solid rgba(255,255,255,0.15)',
+              background: 'rgba(255,255,255,0.06)',
+              color: 'rgba(255,255,255,0.45)', fontSize: 13, fontWeight: 700,
+              cursor: 'pointer',
+            }}>
+            Continua senza sensori
+          </button>
+        </div>
+      )}
 
       {/* ── Fixed diagnostic overlay (dev / ?debug=1) ────────────────────── */}
       {showDiag && (() => {
