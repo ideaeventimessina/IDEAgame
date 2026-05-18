@@ -94,7 +94,7 @@ export default function HomeJoin() {
   // even when slug/round haven't changed (flow uses same slot: gameSlug=sfida-ballo, round=0).
   const currentModeRef = useRef<string>('');
 
-  const { on, emit } = useEventSocket(null);
+  const { on, emit, connected: socketConnected } = useEventSocket(null);
 
   // Keep refs in sync with state so socket handlers always see current values
   const setPhase = useCallback((p: 'code' | 'nickname' | 'lobby' | 'playing' | 'ended') => {
@@ -713,6 +713,49 @@ export default function HomeJoin() {
               </div>
             </div>
 
+            {/* ── Emergency debug panel (?debug=1 only) ─────────────────── */}
+            {new URLSearchParams(window.location.search).has('debug') && (() => {
+              const p = session.roundPayload;
+              const mode = String(p.mode ?? '—');
+              const gfp  = String((p as Record<string,unknown>).gameFlowPhase ?? '—');
+              const motPerm = (() => {
+                try { return localStorage.getItem('ideagame:motion-permission') ?? 'null'; }
+                catch { return 'err'; }
+              })();
+              const browserBlocked = (() => {
+                const ua2 = (typeof navigator !== 'undefined' ? navigator.userAgent : '') || '';
+                const isIOS2 = /iPad|iPhone|iPod/.test(ua2) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+                const blocked2 = ['CriOS','FxiOS','Instagram','FBAN','FBAV'].some(t => ua2.includes(t));
+                const safari2 = ua2.includes('Safari') && !ua2.includes('CriOS') && !ua2.includes('FxiOS');
+                return isIOS2 && blocked2 && !safari2;
+              })();
+              const rows: [string, string, boolean|undefined][] = [
+                ['phase',           phase,           phase === 'playing'],
+                ['mode',            mode,            undefined],
+                ['gameFlowPhase',   gfp,             undefined],
+                ['motionPerm(ls)',  motPerm,         motPerm === 'granted'],
+                ['browserBlocked', String(browserBlocked), !browserBlocked],
+                ['socket',         socketConnected ? '✅ connected' : '❌ disconnected', socketConnected],
+                ['gameSlug',       session.gameSlug ?? '—', undefined],
+                ['round',          String(session.currentRound), undefined],
+              ];
+              return (
+                <div style={{
+                  background: 'rgba(0,0,0,0.92)', border: '1px solid rgba(250,204,21,0.5)',
+                  borderRadius: 12, padding: '8px 12px', fontSize: 10, fontFamily: 'monospace',
+                  color: '#facc15', display: 'flex', flexDirection: 'column', gap: 3,
+                }}>
+                  <div style={{ fontWeight: 900, fontSize: 11, marginBottom: 2 }}>🔬 DEBUG PANEL</div>
+                  {rows.map(([label, val, ok]) => (
+                    <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                      <span style={{ opacity: 0.55 }}>{label}</span>
+                      <span style={{ color: ok === false ? '#f87171' : ok === true ? '#4ade80' : '#facc15' }}>{val}</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+
             {/* Game controller */}
             <PhoneController
               session={session}
@@ -1115,10 +1158,8 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
   useEffect(() => { timeLeftRef.current = timeLeft; }, [timeLeft]);
 
   // ── Diagnostics (visible in dev OR ?debug=1) ────────────────────────────
-  const showDiag = typeof window !== 'undefined' && (
-    (import.meta.env.DEV as boolean) ||
-    new URLSearchParams(window.location.search).has('debug')
-  );
+  const showDiag = typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).has('debug');
   const isIOS = typeof navigator !== 'undefined' && (
     /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
@@ -1162,7 +1203,7 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
   const [diagOrientPerm,  setDiagOrientPerm]  = useState('—');
   const [testRunning,     setTestRunning]      = useState(false);
   const [testCountdown,   setTestCountdown]    = useState(0);
-  const [diagOpen,        setDiagOpen]         = useState(true);
+  const [diagOpen,        setDiagOpen]         = useState(false);
   const [safariDismissed, setSafariDismissed]  = useState(false);
   const [showSafariHints, setShowSafariHints]  = useState(false);
   const [linkCopied,      setLinkCopied]       = useState(false);
