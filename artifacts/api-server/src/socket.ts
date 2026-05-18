@@ -259,5 +259,18 @@ export function initHomeSocketHandlers(io: SocketServer): void {
       });
       logger.info({ sessionId, playerCount: entry.players.size }, "[BalloTrace:server] emitted home:ballo_live");
     });
+
+    // ── Ballo admin sensitivity broadcast ────────────────────────────────────
+    // TV host emits home:set_ballo_sensitivity → server rebroadcasts to all room clients
+    socket.on("home:set_ballo_sensitivity", (data: unknown) => {
+      if (!data || typeof data !== "object") return;
+      const d = data as Record<string, unknown>;
+      const sessionId = typeof d["sessionId"] === "string" ? d["sessionId"] : null;
+      const sensitivity = typeof d["sensitivity"] === "number" ? d["sensitivity"] : 1.0;
+      if (!sessionId) return;
+      const clamped = Math.min(2.0, Math.max(0.5, sensitivity));
+      logger.info({ sessionId, sensitivity: clamped }, "[BalloSensitivity] broadcasting to room");
+      emitToRoom(`home:${sessionId}`, "home:ballo_sensitivity", { sensitivity: clamped });
+    });
   });
 }

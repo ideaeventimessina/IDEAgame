@@ -15,6 +15,7 @@ type SettingsValue = {
   projectionMode: boolean;
   offlineFirst: boolean;
   musicPaths: Record<string, string>;
+  balloSensitivity: number;
 };
 
 const DEFAULTS: SettingsValue = {
@@ -23,7 +24,15 @@ const DEFAULTS: SettingsValue = {
   projectionMode: true,
   offlineFirst: true,
   musicPaths: {},
+  balloSensitivity: 1.0,
 };
+
+const BALLO_PRESETS = [
+  { label: 'Soft',   value: 0.7, emoji: '🌸' },
+  { label: 'Normal', value: 1.0, emoji: '✅' },
+  { label: 'Party',  value: 1.3, emoji: '🎉' },
+  { label: 'Chaos',  value: 1.6, emoji: '🔥' },
+] as const;
 
 export default function Settings() {
   const t = useT();
@@ -105,6 +114,51 @@ export default function Settings() {
                 <input type="checkbox" checked={v.offlineFirst} onChange={e => setV({ ...v, offlineFirst: e.target.checked })} className="h-5 w-10 cursor-pointer accent-primary" />
               </label>
             </Field>
+          </div>
+
+          {/* ─── Ballo Sensitivity ──────────────────────────────────────── */}
+          <div className="mt-8 rounded-2xl border border-border bg-card overflow-hidden">
+            <div className="flex items-center gap-3 px-5 py-4" style={{ background: 'linear-gradient(135deg, rgba(167,139,250,0.08), rgba(20,15,40,0.5))' }}>
+              <div className="text-3xl">💃</div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-display font-black text-sm tracking-wide" style={{ color: '#A78BFA' }}>BALLO</span>
+                  <span className="rounded-full border px-2 py-0.5 text-[10px] font-bold tracking-widest"
+                    style={{ borderColor: 'rgba(167,139,250,0.4)', color: '#A78BFA' }}>SENSIBILITÀ</span>
+                </div>
+                <div className="mt-0.5 text-sm text-muted-foreground">
+                  Regola quanto facilmente i giocatori accumulano energia. Può essere cambiato anche in tempo reale dal pannello TV.
+                </div>
+              </div>
+            </div>
+            <div className="border-t border-border/50 px-5 py-4 space-y-4">
+              <div className="flex flex-wrap gap-2">
+                {BALLO_PRESETS.map(p => (
+                  <button key={p.label}
+                    onClick={() => setV({ ...v, balloSensitivity: p.value })}
+                    className="flex-1 rounded-xl border px-3 py-2 text-sm font-bold transition-colors"
+                    style={{
+                      borderColor: Math.abs(v.balloSensitivity - p.value) < 0.05 ? '#A78BFA' : 'rgba(255,255,255,0.12)',
+                      background:  Math.abs(v.balloSensitivity - p.value) < 0.05 ? 'rgba(167,139,250,0.12)' : 'transparent',
+                      color:       Math.abs(v.balloSensitivity - p.value) < 0.05 ? '#A78BFA' : 'var(--muted-foreground)',
+                    }}>
+                    {p.emoji} {p.label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-3">
+                <input type="range" min={0.5} max={2.0} step={0.05}
+                  value={v.balloSensitivity}
+                  onChange={e => setV({ ...v, balloSensitivity: parseFloat(e.target.value) })}
+                  className="flex-1 accent-purple-400" />
+                <span className="tabular-nums text-sm font-bold w-10 text-right" style={{ color: '#A78BFA' }}>
+                  ×{v.balloSensitivity.toFixed(2)}
+                </span>
+              </div>
+              <div className="text-[11px] text-muted-foreground">
+                Range: 0.5 (Soft) → 2.0 (Chaos). Default: 1.0. Questa è la sensibilità di default — il pannello TV la può sovrascrivere in diretta.
+              </div>
+            </div>
           </div>
 
           {/* ─── Jonny Co-Host ──────────────────────────────────────────── */}

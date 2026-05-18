@@ -86,6 +86,7 @@ export default function HomeJoin() {
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [answered, setAnswered] = useState<number | null>(null);
   const [revealed, setRevealed] = useState(false);
+  const [adminSensitivity, setAdminSensitivity] = useState(1.0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const phaseRef = useRef<'code' | 'nickname' | 'lobby' | 'playing' | 'ended'>('code');
   const playerRef = useRef<HomePlayer | null>(null);
@@ -379,7 +380,12 @@ export default function HomeJoin() {
       console.log('[QuizTrace:phone] showing result');
     });
 
-    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); };
+    // Admin sensitivity broadcast — TV host can adjust ballo sensitivity mid-session
+    const u10 = on<{ sensitivity: number }>('home:ballo_sensitivity', (d) => {
+      if (typeof d.sensitivity === 'number') setAdminSensitivity(d.sensitivity);
+    });
+
+    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); u10?.(); };
   // Only re-register when the socket `on` function changes (new connection)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [on]);
@@ -790,6 +796,7 @@ export default function HomeJoin() {
               onFlip={flipCard}
               onScore={addScore}
               emit={emit}
+              adminSensitivity={adminSensitivity}
             />
           </motion.div>
         )}
@@ -842,7 +849,7 @@ export default function HomeJoin() {
 
 function PhoneController({
   session, player, players, revealed, answered, timeLeft,
-  onAnswer, onFlip, onScore, emit,
+  onAnswer, onFlip, onScore, emit, adminSensitivity,
 }: {
   session: HomeSession;
   player: HomePlayer;
@@ -854,6 +861,7 @@ function PhoneController({
   onFlip: (cardId: string) => void;
   onScore: (pts: number) => Promise<void>;
   emit: (event: string, data: unknown) => void;
+  adminSensitivity?: number;
 }) {
   const p = session.roundPayload;
   const mode = String(p.mode ?? 'home-quiz');
@@ -864,7 +872,7 @@ function PhoneController({
   if (mode === 'home-percorso')   return <PercorsoHomeController payload={p} timeLeft={timeLeft}/>;
   if (mode === 'home-saramusica') return <SaraMusicaController payload={p} player={player} session={session}/>;
   if (mode === 'home-adult')      return <AdultController payload={p} timeLeft={timeLeft} onScore={onScore}/>;
-  if (mode === 'home-ballo')      return <BalloController payload={p} timeLeft={timeLeft} sessionId={session.id} emit={emit} playerId={player.id} round={session.currentRound}/>;
+  if (mode === 'home-ballo')      return <BalloController payload={p} timeLeft={timeLeft} sessionId={session.id} emit={emit} playerId={player.id} round={session.currentRound} adminSensitivity={adminSensitivity ?? 1.0}/>;
   if (mode === 'home-wordback')   return <WordBackController payload={p} timeLeft={timeLeft}/>;
   if (mode === 'home-karaoke')    return <KaraokeController payload={p} sessionId={session.id}/>;
   if (mode === 'home-freestyle')  return <FreestyleController payload={p} timeLeft={timeLeft}/>;
@@ -1131,14 +1139,16 @@ function SimpleController({ payload, color, emoji, label, timeLeft }: {
 // ── BalloController ────────────────────────────────────────────────────────────
 
 const MOTION_PERM_KEY = 'ideagame:motion-permission';
+const CALIB_KEY       = 'ideagame:ballo-calibration';
 
-function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }: {
+function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, adminSensitivity = 1.0 }: {
   payload: Record<string,unknown>;
   timeLeft: number | null;
   sessionId: string;
   emit: (event: string, data: unknown) => void;
   playerId: string;
   round?: number;
+  adminSensitivity?: number;
 }) {
   const [energy, setEnergy] = useState(0);
   // Eagerly init from localStorage — if permission was granted during booking, sensors
@@ -1159,6 +1169,32 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
   const prevOrientRef     = useRef<{ beta: number; gamma: number; alpha: number } | null>(null);
   const accelSamplesRef   = useRef<number[]>([]);
   const smoothedEnergyRef = useRef<number>(0);
+
+  // ── Per-device calibration ────────────────────────────────────────────────
+  // deviceMultiplier normalises sensor range across iPhone/iPad models.
+  // adminSensitivity is broadcast by the TV host and applies session-wide.
+  const deviceMultiplierRef = useRef<number>((() => {
+    try {
+      const saved = localStorage.getItem(CALIB_KEY);
+      if (saved) {
+        const d = JSON.parse(saved) as { multiplier: number };
+        return typeof d.multiplier === 'number' ? d.multiplier : 1.0;
+      }
+    } catch { /* ignore */ }
+    return 1.0;
+  })());
+  const adminSensitivityRef = useRef(adminSensitivity);
+  useEffect(() => { adminSensitivityRef.current = adminSensitivity; }, [adminSensitivity]);
+
+  const [calibPhase, setCalibPhase] = useState<'idle'|'running'|'done'>(() => {
+    try {
+      const saved = localStorage.getItem(CALIB_KEY);
+      if (saved) return 'done'; // already calibrated — skip calibration screen
+    } catch { /* ignore */ }
+    return 'idle';
+  });
+  const [calibCountdown, setCalibCountdown] = useState(3);
+  const [calibMultiplier, setCalibMultiplier] = useState<number>(deviceMultiplierRef.current);
   const timeLeftRef = useRef(timeLeft);
   useEffect(() => { timeLeftRef.current = timeLeft; }, [timeLeft]);
 
@@ -1330,6 +1366,7 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
 
   useEffect(() => {
     if (motionPerm !== 'granted') return;
+    if (calibPhase !== 'done') return; // wait for calibration before emitting energy
     console.log('[iPhoneMotion] listener attached — starting sensors',
       '| has DeviceOrientationEvent:', typeof DeviceOrientationEvent,
       '| has DeviceMotionEvent:', typeof DeviceMotionEvent);
@@ -1438,8 +1475,12 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
         return; // no samples yet — skip, keep displayed energy
       }
 
-      // Exponential smoothing: more responsive (45% new vs 55% old)
-      const smoothed = Math.round(smoothedEnergyRef.current * 0.5 + rawEnergy * 0.5);
+      // Apply per-device calibration and admin sensitivity:
+      // finalEnergy = rawEnergy × deviceMultiplier × adminSensitivity, clamped 0–100
+      const dm = deviceMultiplierRef.current;
+      const as = adminSensitivityRef.current;
+      const adjusted = Math.min(100, Math.max(0, rawEnergy * dm * as));
+      const smoothed = Math.round(smoothedEnergyRef.current * 0.5 + adjusted * 0.5);
       smoothedEnergyRef.current = smoothed;
       setEnergy(smoothed);
 
@@ -1479,8 +1520,9 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('focus', handleWindowFocus);
     };
+  // calibPhase in deps: when it becomes 'done' the sensor loop restarts cleanly
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [motionPerm, emit, sessionId, playerId]);
+  }, [motionPerm, calibPhase, emit, sessionId, playerId]);
 
   // ── Diagnostic display-refresh (400ms, only when panel is visible) ───────
   useEffect(() => {
@@ -1559,6 +1601,61 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
     }, 10_000);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [testRunning]);
+
+  // ── Per-device calibration — 3-second sensor measurement ─────────────────
+  const runCalibration = useCallback(() => {
+    setCalibPhase('running');
+    setCalibCountdown(3);
+    const orientSamples: number[] = [];
+    const accelSamples: number[] = [];
+    let prevBeta: number | null = null;
+    let prevGamma: number | null = null;
+    const handleOrient = (e: DeviceOrientationEvent) => {
+      const b = e.beta ?? 0; const g = e.gamma ?? 0;
+      if (prevBeta !== null) {
+        const db = Math.abs(b - prevBeta); const dg = Math.abs(g - prevGamma!);
+        orientSamples.push(Math.min(Math.sqrt(db * db + dg * dg), 50));
+      }
+      prevBeta = b; prevGamma = g;
+    };
+    const handleAccel = (e: DeviceMotionEvent) => {
+      const acc = e.acceleration ?? e.accelerationIncludingGravity;
+      if (!acc) return;
+      let mag = Math.sqrt((acc.x ?? 0) ** 2 + (acc.y ?? 0) ** 2 + (acc.z ?? 0) ** 2);
+      if (!e.acceleration) mag = Math.abs(mag - 9.81);
+      accelSamples.push(Math.min(mag, 10));
+    };
+    window.addEventListener('deviceorientation', handleOrient);
+    window.addEventListener('devicemotion', handleAccel);
+    const tick = setInterval(() => setCalibCountdown(c => Math.max(0, c - 1)), 1000);
+    setTimeout(() => {
+      window.removeEventListener('deviceorientation', handleOrient);
+      window.removeEventListener('devicemotion', handleAccel);
+      clearInterval(tick);
+      let calibRaw = 0;
+      if (orientSamples.length > 0) {
+        const avg = orientSamples.reduce((a, b) => a + b, 0) / orientSamples.length;
+        calibRaw = Math.min(100, (avg / 25) * 100);
+      } else if (accelSamples.length > 0) {
+        const avg = accelSamples.reduce((a, b) => a + b, 0) / accelSamples.length;
+        calibRaw = Math.min(100, (avg / 8) * 100);
+      }
+      // Target: normal active dancing → ~40% raw energy. Derive multiplier from that.
+      // Safety: if < 5% (phone not moved), keep 1.0 to avoid overblowing sensitivity.
+      let multiplier = 1.0;
+      if (calibRaw >= 5) {
+        multiplier = Math.min(4.0, Math.max(0.3, 40.0 / calibRaw));
+      }
+      deviceMultiplierRef.current = multiplier;
+      setCalibMultiplier(multiplier);
+      try {
+        localStorage.setItem(CALIB_KEY, JSON.stringify({ multiplier, calibratedAt: Date.now() }));
+      } catch { /* ignore */ }
+      setCalibPhase('done');
+      console.log('[BalloCalib] calibRaw:', calibRaw.toFixed(1), '→ multiplier:', multiplier.toFixed(2));
+    }, 3000);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const energyColor = energy > 70 ? '#22c55e' : energy > 35 ? '#eab308' : '#A78BFA';
 
@@ -1812,6 +1909,49 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
         </div>
       )}
 
+      {/* ── Calibrazione dispositivo (appare dopo permesso sensori, prima dell'energia) ── */}
+      {motionPerm === 'granted' && calibPhase !== 'done' && (
+        <motion.div initial={{opacity:0,y:12}} animate={{opacity:1,y:0}}
+          className="w-full rounded-3xl p-6 text-center space-y-5"
+          style={{background:'rgba(167,139,250,0.08)',border:'1px solid rgba(167,139,250,0.3)'}}>
+          <div className="text-5xl">📐</div>
+          <div>
+            <div className="text-xl font-black text-white">Calibrazione movimento</div>
+            {calibPhase === 'idle' && (
+              <p className="mt-1 text-sm leading-relaxed" style={{color:'rgba(255,255,255,0.5)'}}>
+                Muovi il telefono normalmente per 3 secondi.<br/>
+                Misuro la sensibilità del tuo dispositivo.
+              </p>
+            )}
+            {calibPhase === 'running' && (
+              <p className="mt-1 text-sm" style={{color:'rgba(255,255,255,0.5)'}}>
+                Muovi il telefono normalmente…
+              </p>
+            )}
+          </div>
+          {calibPhase === 'idle' && (
+            <div className="flex flex-col gap-2">
+              <button onClick={runCalibration}
+                className="rounded-2xl px-6 py-3 text-sm font-black text-black"
+                style={{background:'linear-gradient(135deg,#A78BFA,#7C3AED)',color:'#fff'}}>
+                Inizia calibrazione →
+              </button>
+              <button onClick={() => setCalibPhase('done')}
+                className="text-xs hover:opacity-70 transition-opacity"
+                style={{color:'rgba(255,255,255,0.25)',background:'none',border:'none',cursor:'pointer'}}>
+                Salta (sensibilità predefinita)
+              </button>
+            </div>
+          )}
+          {calibPhase === 'running' && (
+            <div className="flex flex-col items-center gap-2">
+              <div className="text-6xl font-black tabular-nums" style={{color:'#A78BFA'}}>{calibCountdown}</div>
+              <div className="text-xs" style={{color:'rgba(255,255,255,0.3)'}}>Misurazione in corso…</div>
+            </div>
+          )}
+        </motion.div>
+      )}
+
       {/* ── Sensore movimento ── */}
       {motionPerm === 'unknown' && (
         <button onClick={() => void requestMotion()}
@@ -1846,7 +1986,7 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
           Sensori non supportati su questo dispositivo
         </div>
       )}
-      {motionPerm === 'granted' && (
+      {motionPerm === 'granted' && calibPhase === 'done' && (
         <div className="w-full space-y-2">
           <div className="flex items-center justify-between text-xs font-bold" style={{color:'#A78BFA'}}>
             <span>⚡ Energia</span><span className="tabular-nums">{energy}%</span>
@@ -1859,17 +1999,27 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
               {energy > 60 ? '🔥 FUOCO!' : energy > 30 ? '💃 Bene!' : '📱 Muoviti!'}
             </div>
           </div>
+          {/* Per-device calibration strip */}
+          <div className="flex items-center justify-between" style={{fontSize:11,color:'rgba(167,139,250,0.5)'}}>
+            <span>✅ Calibrato · ×{calibMultiplier.toFixed(1)}</span>
+            <button onClick={() => setCalibPhase('idle')}
+              style={{color:'rgba(255,255,255,0.25)',background:'none',border:'none',cursor:'pointer',fontSize:11}}>
+              Ricalibra
+            </button>
+          </div>
         </div>
       )}
 
-      {timeLeft !== null && (
+      {calibPhase === 'done' && timeLeft !== null && (
         <div className="flex items-center gap-2 rounded-xl px-5 py-2"
           style={{background:'rgba(167,139,250,0.18)',border:'1px solid rgba(167,139,250,0.45)',color:'#A78BFA'}}>
           <Timer className="h-4 w-4"/>
           <span className="text-2xl font-black tabular-nums">{timeLeft}s</span>
         </div>
       )}
-      <div className="text-2xl font-black" style={{color:'#A78BFA'}}>BALLA! 🕺</div>
+      {calibPhase === 'done' && (
+        <div className="text-2xl font-black" style={{color:'#A78BFA'}}>BALLA! 🕺</div>
+      )}
 
     </div>
   );

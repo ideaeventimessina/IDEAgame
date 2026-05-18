@@ -461,7 +461,7 @@ function useHomeSocket(sessionId: string | null) {
     emit('join:home', sessionId);
     return () => { emit('leave:home', sessionId); };
   }, [sessionId, emit]);
-  return { on };
+  return { on, emit };
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -519,7 +519,12 @@ export default function HomeGame() {
   const introMaxTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const introStallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { on } = useHomeSocket(session?.id ?? null);
+  const { on, emit } = useHomeSocket(session?.id ?? null);
+  const [balloSensitivity, setBalloSensitivity] = useState(1.0);
+  const handleBalloSensitivity = useCallback((s: number) => {
+    setBalloSensitivity(s);
+    if (session?.id) emit('home:set_ballo_sensitivity', { sessionId: session.id, sensitivity: s });
+  }, [emit, session?.id]);
 
   // Derived
   const gamesPlayed = useMemo<string[]>(() => {
@@ -1372,7 +1377,9 @@ export default function HomeGame() {
             <div className="flex flex-1 items-center justify-center overflow-auto px-6 py-3">
               <RoundBoard key={session.currentRound} session={session} revealed={revealed}
                 onReveal={() => { setRevealed(true); if(timerRef.current) clearInterval(timerRef.current); setJonnyMood('correct'); }}
-                onNext={nextRound} players={players} balloEnergies={balloEnergies} balloCurrent={balloCurrent} balloResult={balloResult} saraMusicaWinner={saraMusicaWinner} onScore={async (pid,pts) => {
+                onNext={nextRound} players={players} balloEnergies={balloEnergies} balloCurrent={balloCurrent} balloResult={balloResult} saraMusicaWinner={saraMusicaWinner}
+                balloSensitivity={balloSensitivity} onSensitivity={handleBalloSensitivity}
+                onScore={async (pid,pts) => {
                   // Optimistic update — score appears immediately in bar + partial leaderboard
                   setPlayers(prev => prev.map(p => p.id === pid ? { ...p, score: pts } : p));
                   await fetch(`/api/home/sessions/${session.id}/score`, {
@@ -1616,7 +1623,7 @@ export default function HomeGame() {
 
 // ── RoundBoard ─────────────────────────────────────────────────────────────────
 
-function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, balloEnergies, balloCurrent, balloResult, saraMusicaWinner }: {
+function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, balloEnergies, balloCurrent, balloResult, saraMusicaWinner, balloSensitivity, onSensitivity }: {
   session: HomeSession;
   revealed: boolean;
   onReveal: () => void;
@@ -1627,13 +1634,15 @@ function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, bal
   balloCurrent?: Record<string, number>;
   balloResult?: { winnerId: string; winnerNickname: string; points: number } | null;
   saraMusicaWinner?: { nickname: string; points: number; round: number } | null;
+  balloSensitivity?: number;
+  onSensitivity?: (s: number) => void;
 }) {
   const p = session.roundPayload;
   const mode = String(p.mode ?? 'home-quiz');
 
   if (mode === 'home-flow')       return <GameFlowEngine session={session} players={players}/>;
   if (mode === 'home-quiz')       return <QuizBoard payload={p} revealed={revealed} onReveal={onReveal}/>;
-  if (mode === 'home-ballo')      return <BalloBoard payload={p} players={players} balloEnergies={balloEnergies ?? {}} balloCurrent={balloCurrent ?? {}} balloResult={balloResult ?? null}/>;
+  if (mode === 'home-ballo')      return <BalloBoard payload={p} players={players} balloEnergies={balloEnergies ?? {}} balloCurrent={balloCurrent ?? {}} balloResult={balloResult ?? null} sensitivity={balloSensitivity ?? 1} onSensitivity={onSensitivity}/>;
   if (mode === 'home-percorso')   return <PercorsoBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
   if (mode === 'home-coppie')     return <CoppieBoard payload={p} onNext={onNext}/>;
   if (mode === 'home-saramusica') return <SaraMusicaBoard payload={p} revealed={revealed} onReveal={onReveal} winner={saraMusicaWinner ?? null}/>;
@@ -1703,12 +1712,21 @@ function QuizBoard({ payload, revealed, onReveal }: { payload: Record<string,unk
 
 type BurstItem = { key: number; label: string };
 
-function BalloBoard({ payload, players, balloEnergies, balloCurrent, balloResult }: {
+const BALLO_PRESETS = [
+  { label: 'Soft', value: 0.6 },
+  { label: 'Normal', value: 1.0 },
+  { label: 'Party', value: 1.4 },
+  { label: 'Chaos', value: 2.0 },
+] as const;
+
+function BalloBoard({ payload, players, balloEnergies, balloCurrent, balloResult, sensitivity = 1, onSensitivity }: {
   payload: Record<string,unknown>;
   players: HomePlayer[];
   balloEnergies: Record<string, number>;  // peak — used for winner/final sorting
   balloCurrent: Record<string, number>;   // live current — drives bar height + provisional pts
   balloResult: { winnerId: string; winnerNickname: string; points: number } | null;
+  sensitivity?: number;
+  onSensitivity?: (s: number) => void;
 }) {
   const pts = Number(payload.points ?? 150);
   const prevCurrentRef = useRef<Record<string, number>>({});
@@ -1764,6 +1782,28 @@ function BalloBoard({ payload, players, balloEnergies, balloCurrent, balloResult
         </div>
         <div className="text-sm text-white/55 max-w-md">{String(payload.description ?? '')}</div>
       </div>
+
+      {/* Sensitivity control — visible to TV host only (not phones), hidden when result is in */}
+      {!balloResult && onSensitivity && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold" style={{color:'rgba(167,139,250,0.6)'}}>Sensibilità:</span>
+          {BALLO_PRESETS.map(preset => (
+            <button key={preset.label} onClick={() => onSensitivity(preset.value)}
+              className="rounded-xl px-3 py-1 text-xs font-black transition-all"
+              style={{
+                background: Math.abs(sensitivity - preset.value) < 0.05
+                  ? 'linear-gradient(135deg,#A78BFA,#7C3AED)'
+                  : 'rgba(167,139,250,0.12)',
+                color: Math.abs(sensitivity - preset.value) < 0.05 ? '#fff' : 'rgba(167,139,250,0.7)',
+                border: '1px solid rgba(167,139,250,0.3)',
+                cursor: 'pointer',
+              }}>
+              {preset.label}
+            </button>
+          ))}
+          <span className="text-xs tabular-nums" style={{color:'rgba(255,255,255,0.3)'}}>×{sensitivity.toFixed(1)}</span>
+        </div>
+      )}
 
       {/* Winner banner */}
       {balloResult && (
