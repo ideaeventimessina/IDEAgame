@@ -1144,6 +1144,7 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
   const [diagOrientPerm,  setDiagOrientPerm]  = useState('—');
   const [testRunning,     setTestRunning]      = useState(false);
   const [testCountdown,   setTestCountdown]    = useState(0);
+  const [diagOpen,        setDiagOpen]         = useState(true);
 
   // Aggressively prevent iOS "Shake to Undo" popup for the entire ballo session.
   // iOS "Annulla inserimento" (Shake to Undo) mitigation.
@@ -1494,8 +1495,129 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
 
   const energyColor = energy > 70 ? '#22c55e' : energy > 35 ? '#eab308' : '#A78BFA';
 
+  // ── Sensor status (shown in debug mode at top of card) ──────────────────
+  const sensorStatus: { icon: string; label: string; color: string } = (() => {
+    if (motionPerm !== 'granted')
+      return { icon: '⏳', label: 'In attesa di permesso', color: '#facc15' };
+    if (diagSnap.mo === 0 && diagSnap.or === 0)
+      return { icon: '❌', label: 'Nessun evento ricevuto', color: '#f87171' };
+    if (energy === 0)
+      return { icon: '⚠️', label: 'Eventi ricevuti ma energia 0', color: '#fb923c' };
+    if (diagSnap.ts === null)
+      return { icon: '⚠️', label: 'Energia OK ma socket non emette', color: '#fb923c' };
+    return { icon: '✅', label: 'Socket emette', color: '#4ade80' };
+  })();
+
   return (
     <div className="flex flex-col items-center gap-5 py-4 text-center" style={{userSelect:'none',WebkitUserSelect:'none'}}>
+
+      {/* ── Fixed diagnostic overlay (dev / ?debug=1) ────────────────────── */}
+      {showDiag && (() => {
+        const n = (v: number|null) => v === null ? 'null' : v.toFixed(1);
+        const Row = ({ label, val, ok }: { label: string; val: string; ok?: boolean }) => (
+          <div className="flex justify-between gap-2 leading-tight">
+            <span className="opacity-50 shrink-0">{label}</span>
+            <span className={`text-right ${ok === false ? 'text-red-400' : ok === true ? 'text-green-400' : ''}`}>{val}</span>
+          </div>
+        );
+        const dme = DeviceMotionEvent as unknown as { requestPermission?: unknown };
+        const doe = typeof DeviceOrientationEvent !== 'undefined'
+          ? DeviceOrientationEvent as unknown as { requestPermission?: unknown }
+          : null;
+        const secAgo = diagSnap.ts ? Math.round((Date.now() - diagSnap.ts) / 1000) : null;
+        return (
+          <div style={{
+            position: 'fixed', top: 8, left: 8, right: 8,
+            zIndex: 99999,
+            background: 'rgba(0,0,0,0.92)',
+            border: '1px solid rgba(250,204,21,0.5)',
+            borderRadius: 16,
+            overflow: 'hidden',
+          }}>
+            {/* Collapse toggle */}
+            <button
+              onClick={() => setDiagOpen(o => !o)}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center',
+                justifyContent: 'space-between', padding: '8px 12px',
+                background: 'transparent', border: 'none', cursor: 'pointer',
+                color: '#facc15', fontFamily: 'monospace', fontSize: 11, fontWeight: 900,
+              }}>
+              <span>🔬 DEBUG SENSORI</span>
+              <span style={{ fontSize: 14 }}>{diagOpen ? '▲' : '▼'}</span>
+            </button>
+
+            {diagOpen && (
+              <div style={{
+                maxHeight: '70vh', overflowY: 'auto',
+                padding: '0 12px 10px',
+                color: '#facc15', fontFamily: 'monospace', fontSize: 10,
+              }}>
+                {/* Sensor status summary */}
+                <div style={{
+                  marginBottom: 8, padding: '6px 10px', borderRadius: 10,
+                  background: 'rgba(255,255,255,0.07)',
+                  fontSize: 11, fontWeight: 900, color: sensorStatus.color,
+                }}>
+                  {sensorStatus.icon} {sensorStatus.label}
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <Row label="isIOS"                 val={isIOS ? '✅ YES' : '❌ NO'} ok={isIOS} />
+                  <Row label="isPWA"                 val={isStandalone ? '✅ YES' : '❌ NO'} />
+                  <Row label="DeviceMotionEvent"     val={typeof DeviceMotionEvent !== 'undefined' ? '✅' : '❌ MISSING'} ok={typeof DeviceMotionEvent !== 'undefined'} />
+                  <Row label="DME.requestPerm"       val={typeof dme.requestPermission === 'function' ? '✅ fn' : '❌ none'} ok={typeof dme.requestPermission === 'function'} />
+                  <Row label="DeviceOrientEvent"     val={typeof DeviceOrientationEvent !== 'undefined' ? '✅' : '❌ MISSING'} ok={typeof DeviceOrientationEvent !== 'undefined'} />
+                  <Row label="DOE.requestPerm"       val={typeof doe?.requestPermission === 'function' ? '✅ fn' : '❌ none'} ok={typeof doe?.requestPermission === 'function'} />
+                  <div style={{ borderTop: '1px solid rgba(250,204,21,0.2)', margin: '4px 0' }} />
+                  <Row label="motionPerm (main)"     val={motionPerm} ok={motionPerm === 'granted'} />
+                  <Row label="motionPerm (test)"     val={diagMotionPerm} ok={diagMotionPerm === 'granted' || diagMotionPerm === 'auto'} />
+                  <Row label="orientPerm (test)"     val={diagOrientPerm} ok={diagOrientPerm === 'granted' || diagOrientPerm === 'auto'} />
+                  <div style={{ borderTop: '1px solid rgba(250,204,21,0.2)', margin: '4px 0' }} />
+                  <Row label="motionEvents"          val={String(diagSnap.mo)} ok={diagSnap.mo > 0} />
+                  <Row label="orientEvents"          val={String(diagSnap.or)} ok={diagSnap.or > 0} />
+                  <Row label="last α/β/γ"            val={diagSnap.a !== null ? `${n(diagSnap.a)}° ${n(diagSnap.b)}° ${n(diagSnap.g)}°` : '—'} ok={diagSnap.a !== null} />
+                  <Row label="last accel x/y/z"      val={diagSnap.x !== null ? `${n(diagSnap.x)} ${n(diagSnap.y)} ${n(diagSnap.z)}` : '—'} ok={diagSnap.x !== null} />
+                  <div style={{ borderTop: '1px solid rgba(250,204,21,0.2)', margin: '4px 0' }} />
+                  <Row label="energy"                val={`${energy}%`} ok={energy > 0} />
+                  <Row label="last emit"             val={secAgo !== null ? `${secAgo}s ago` : '—'} ok={secAgo !== null} />
+                  <Row label="online"                val={navigator.onLine ? '✅ yes' : '❌ offline'} ok={navigator.onLine} />
+                  <div style={{ fontSize: 9, opacity: 0.4, wordBreak: 'break-all', marginTop: 4, lineHeight: 1.3 }}>
+                    {navigator.userAgent}
+                  </div>
+
+                  <button
+                    onClick={() => void runSensorTest()}
+                    style={{
+                      marginTop: 8, width: '100%', borderRadius: 10,
+                      padding: '10px 0', fontSize: 11, fontWeight: 900,
+                      background: testRunning ? 'rgba(250,204,21,0.12)' : 'rgba(250,204,21,0.22)',
+                      color: '#facc15', border: '1px solid rgba(250,204,21,0.45)',
+                      cursor: testRunning ? 'default' : 'pointer',
+                      letterSpacing: '0.05em',
+                    }}>
+                    {testRunning
+                      ? `⏱ Test… ${testCountdown}s  motion:${diagSnap.mo}  orient:${diagSnap.or}`
+                      : '🧪 Test sensori iPhone (10 s)'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* ── Sensor status badge (debug mode only, always visible below overlay) */}
+      {showDiag && (
+        <div style={{
+          marginTop: 90, padding: '5px 14px', borderRadius: 20,
+          background: 'rgba(0,0,0,0.55)', border: `1px solid ${sensorStatus.color}55`,
+          fontSize: 11, fontWeight: 700, color: sensorStatus.color,
+        }}>
+          {sensorStatus.icon} {sensorStatus.label}
+        </div>
+      )}
+
       <div className="text-6xl">💃</div>
       <div className="text-xl font-black text-white">{String(payload.name ?? 'Sfida di Ballo')}</div>
       <div className="text-sm text-white/55 leading-relaxed px-2">{String(payload.description ?? '')}</div>
@@ -1548,63 +1670,6 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
       )}
       <div className="text-2xl font-black" style={{color:'#A78BFA'}}>BALLA! 🕺</div>
 
-      {/* ── Diagnostic panel (dev / ?debug=1) ─────────────────────────────── */}
-      {showDiag && (() => {
-        const n = (v: number|null) => v === null ? 'null' : v.toFixed(1);
-        const Row = ({ label, val, ok }: { label: string; val: string; ok?: boolean }) => (
-          <div className="flex justify-between gap-2">
-            <span className="opacity-50">{label}</span>
-            <span className={ok === false ? 'text-red-400' : ok === true ? 'text-green-400' : ''}>
-              {val}
-            </span>
-          </div>
-        );
-        const dme = DeviceMotionEvent as unknown as { requestPermission?: unknown };
-        const doe = typeof DeviceOrientationEvent !== 'undefined'
-          ? DeviceOrientationEvent as unknown as { requestPermission?: unknown }
-          : null;
-        const secAgo = diagSnap.ts ? Math.round((Date.now() - diagSnap.ts) / 1000) : null;
-        return (
-          <div className="w-full rounded-2xl border border-yellow-400/40 bg-black/80 p-3 text-[10px] font-mono text-left space-y-0.5 mt-2" style={{color:'#facc15'}}>
-            <div className="text-[11px] font-black mb-2 tracking-wide">🔬 SENSOR DIAGNOSTIC</div>
-
-            <Row label="isIOS"                  val={isIOS ? '✅ YES' : '❌ NO'} ok={isIOS} />
-            <Row label="isPWA/standalone"        val={isStandalone ? '✅ YES' : '❌ NO'} />
-            <Row label="DeviceMotionEvent"       val={typeof DeviceMotionEvent !== 'undefined' ? '✅' : '❌ MISSING'} ok={typeof DeviceMotionEvent !== 'undefined'} />
-            <Row label="DME.requestPermission"   val={typeof dme.requestPermission === 'function' ? '✅ function' : '❌ none'} ok={typeof dme.requestPermission === 'function'} />
-            <Row label="DeviceOrientationEvent"  val={typeof DeviceOrientationEvent !== 'undefined' ? '✅' : '❌ MISSING'} ok={typeof DeviceOrientationEvent !== 'undefined'} />
-            <Row label="DOE.requestPermission"   val={typeof doe?.requestPermission === 'function' ? '✅ function' : '❌ none'} ok={typeof doe?.requestPermission === 'function'} />
-            <div className="border-t border-yellow-400/20 my-1"/>
-            <Row label="motionPerm (main flow)"  val={motionPerm} ok={motionPerm === 'granted'} />
-            <Row label="motionPerm (test btn)"   val={diagMotionPerm} ok={diagMotionPerm === 'granted' || diagMotionPerm === 'auto'} />
-            <Row label="orientPerm (test btn)"   val={diagOrientPerm} ok={diagOrientPerm === 'granted' || diagOrientPerm === 'auto'} />
-            <div className="border-t border-yellow-400/20 my-1"/>
-            <Row label="motionEvents (count)"    val={String(diagSnap.mo)} ok={diagSnap.mo > 0} />
-            <Row label="orientEvents (count)"    val={String(diagSnap.or)} ok={diagSnap.or > 0} />
-            <Row label="last α/β/γ"              val={diagSnap.a !== null ? `${n(diagSnap.a)}° / ${n(diagSnap.b)}° / ${n(diagSnap.g)}°` : '—'} ok={diagSnap.a !== null} />
-            <Row label="last accel x/y/z"        val={diagSnap.x !== null ? `${n(diagSnap.x)} / ${n(diagSnap.y)} / ${n(diagSnap.z)}` : '—'} ok={diagSnap.x !== null} />
-            <div className="border-t border-yellow-400/20 my-1"/>
-            <Row label="computed energy"         val={`${energy}%`} ok={energy > 0} />
-            <Row label="last socket emit"        val={secAgo !== null ? `${secAgo}s ago` : '—'} ok={secAgo !== null} />
-            <Row label="online"                  val={navigator.onLine ? '✅ yes' : '❌ offline'} ok={navigator.onLine} />
-            <div className="mt-1 text-[9px] opacity-40 break-all leading-tight">{navigator.userAgent}</div>
-
-            <button
-              onClick={() => void runSensorTest()}
-              disabled={testRunning}
-              className="mt-2 w-full rounded-xl py-2.5 text-xs font-black tracking-wide"
-              style={{
-                background: testRunning ? 'rgba(250,204,21,0.15)' : 'rgba(250,204,21,0.25)',
-                color: '#facc15', border: '1px solid rgba(250,204,21,0.5)',
-                cursor: testRunning ? 'default' : 'pointer',
-              }}>
-              {testRunning
-                ? `⏱ Test attivo… ${testCountdown}s — motion:${diagSnap.mo} orient:${diagSnap.or}`
-                : '🧪 Test sensori iPhone (10 s)'}
-            </button>
-          </div>
-        );
-      })()}
     </div>
   );
 }
