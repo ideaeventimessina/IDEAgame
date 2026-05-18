@@ -1078,7 +1078,13 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
     } catch { /* ignore */ }
     return 'unknown';
   });
-  const magsRef = useRef<number[]>([]);
+  // ── Motion tracking refs ──────────────────────────────────────────────────
+  // Primary: deviceorientation angle-delta samples (no violent shake needed)
+  // Fallback: smoothed accelerometer samples (clamped to prevent spike scoring)
+  const orientSamplesRef  = useRef<number[]>([]);
+  const prevOrientRef     = useRef<{ beta: number; gamma: number; alpha: number } | null>(null);
+  const accelSamplesRef   = useRef<number[]>([]);
+  const smoothedEnergyRef = useRef<number>(0);
   const timeLeftRef = useRef(timeLeft);
   useEffect(() => { timeLeftRef.current = timeLeft; }, [timeLeft]);
 
@@ -1149,30 +1155,82 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
 
   useEffect(() => {
     if (motionPerm !== 'granted') return;
-    const mags = magsRef.current;
-    const handleMotion = (e: DeviceMotionEvent) => {
-      const acc = e.accelerationIncludingGravity;
-      if (!acc) return;
-      const mag = Math.sqrt((acc.x ?? 0) ** 2 + (acc.y ?? 0) ** 2 + (acc.z ?? 0) ** 2);
-      mags.push(Math.min(100, Math.abs(mag - 9.81) * 8));
+
+    // ── PRIMARY: deviceorientation — angle-delta scoring ─────────────────────
+    // Tracks rotation and tilt changes per interval. Players get energy from
+    // natural dance movements (arm swing, phone tilt/rotation) without needing
+    // to shake violently. Violent shaking is NOT required or rewarded more.
+    // This eliminates the root cause of iOS "Shake to Undo" triggering.
+    const handleOrientation = (e: DeviceOrientationEvent) => {
+      const beta  = e.beta  ?? 0;
+      const gamma = e.gamma ?? 0;
+      const alpha = e.alpha ?? 0;
+      const prev  = prevOrientRef.current;
+      if (prev !== null) {
+        const db = Math.abs(beta  - prev.beta);
+        const dg = Math.abs(gamma - prev.gamma);
+        let   da = Math.abs(alpha - prev.alpha);
+        if (da > 180) da = 360 - da; // wrap-around
+        // Combined rotation magnitude; alpha weighted lower (compass drift)
+        const movement = Math.sqrt(db * db + dg * dg + (da * 0.4) * (da * 0.4));
+        // Cap at 90°/interval — a fast arm swing is ~30°, so 90 is already extreme
+        orientSamplesRef.current.push(Math.min(movement, 90));
+      }
+      prevOrientRef.current = { beta, gamma, alpha };
     };
+
+    // ── FALLBACK: smoothed accelerometer — clamped ───────────────────────────
+    // Used only when orientation provides no data (some Android devices).
+    // Prefers acceleration-without-gravity; clamps hard at 10 m/s² so that
+    // violent shaking scores NO HIGHER than vigorous dancing.
+    const handleMotion = (e: DeviceMotionEvent) => {
+      if (orientSamplesRef.current.length > 0) return; // orientation wins
+      const acc = e.acceleration ?? e.accelerationIncludingGravity;
+      if (!acc) return;
+      let mag = Math.sqrt((acc.x ?? 0) ** 2 + (acc.y ?? 0) ** 2 + (acc.z ?? 0) ** 2);
+      if (!e.acceleration) mag = Math.abs(mag - 9.81); // subtract gravity baseline
+      // Hard clamp: dance = 2–8 m/s², violent shake = 20+. Cap removes incentive to shake.
+      accelSamplesRef.current.push(Math.min(mag, 10));
+    };
+
+    window.addEventListener('deviceorientation', handleOrientation);
     window.addEventListener('devicemotion', handleMotion);
+
+    // ── Interval: compute smoothed energy and emit ───────────────────────────
     const interval = setInterval(() => {
-      if (mags.length === 0) return;
-      const avg = mags.reduce((a, b) => a + b, 0) / mags.length;
-      mags.length = 0;
-      const e = Math.min(100, Math.round(avg));
-      setEnergy(e);
+      const orientSamples = orientSamplesRef.current;
+      const accelSamples  = accelSamplesRef.current;
+
+      let rawEnergy = 0;
+      if (orientSamples.length > 0) {
+        const avg = orientSamples.reduce((a, b) => a + b, 0) / orientSamples.length;
+        orientSamples.length = 0;
+        accelSamples.length  = 0; // discard stale accel when orientation works
+        // Map 0–45° average delta → 0–100. Calm standing ~0°, active dance ~20–40°.
+        rawEnergy = Math.min(100, Math.round((avg / 45) * 100));
+      } else if (accelSamples.length > 0) {
+        const avg = accelSamples.reduce((a, b) => a + b, 0) / accelSamples.length;
+        accelSamples.length = 0;
+        // Map 0–10 m/s² → 0–100
+        rawEnergy = Math.min(100, Math.round((avg / 10) * 100));
+      } else {
+        return; // no samples — skip emit, don't reset energy
+      }
+
+      // Exponential smoothing prevents instant drops/spikes in the display bar
+      const smoothed = Math.round(smoothedEnergyRef.current * 0.55 + rawEnergy * 0.45);
+      smoothedEnergyRef.current = smoothed;
+      setEnergy(smoothed);
+
       if (timeLeftRef.current !== null && timeLeftRef.current > 0) {
-        console.log('[BalloTrace:phone] energy calculated', e, '— emitting home:ballo_energy', { sessionId, playerId, round });
-        emit('home:ballo_energy', { sessionId, playerId, energy: e, round: round ?? 0 });
+        emit('home:ballo_energy', { sessionId, playerId, energy: smoothed, round: round ?? 0 });
       }
     }, 400);
-    // Visibility / focus regain — iOS "Annulla inserimento" popup briefly hides the page.
-    // When it's dismissed, re-blur and keep emitting if timer is still running.
+
+    // Visibility / focus regain — iOS popup briefly hides the page.
+    // When dismissed, re-blur and keep emitting if timer is still running.
     const handleVisibility = () => {
       if (document.visibilityState === 'visible' && (timeLeftRef.current ?? 0) > 0) {
-        console.log('[BalloTrace:phone] visibilitychange → visible, re-blurring and resuming energy stream');
         const el = document.activeElement;
         if (el instanceof HTMLElement) el.blur();
         window.getSelection()?.removeAllRanges();
@@ -1180,7 +1238,6 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
     };
     const handleWindowFocus = () => {
       if ((timeLeftRef.current ?? 0) > 0) {
-        console.log('[BalloTrace:phone] window focus regained — re-blurring');
         const el = document.activeElement;
         if (el instanceof HTMLElement) el.blur();
       }
@@ -1189,6 +1246,7 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
     window.addEventListener('focus', handleWindowFocus);
 
     return () => {
+      window.removeEventListener('deviceorientation', handleOrientation);
       window.removeEventListener('devicemotion', handleMotion);
       clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibility);
