@@ -1775,8 +1775,24 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
         </button>
       )}
       {motionPerm === 'denied' && (
-        <div className="rounded-xl px-4 py-2 text-xs text-white/40 border border-white/10">
-          Sensori negati — balla comunque! 🕺
+        <div className="flex flex-col items-center gap-2">
+          <div className="rounded-xl px-4 py-2 text-xs text-white/40 border border-white/10">
+            Sensori negati — balla comunque! 🕺
+          </div>
+          <button
+            onClick={() => {
+              localStorage.removeItem(MOTION_PERM_KEY);
+              setMotionPerm('unknown');
+              void requestMotion();
+            }}
+            className="rounded-xl px-5 py-2 text-xs font-black"
+            style={{
+              background: 'rgba(167,139,250,0.15)',
+              border: '1px solid rgba(167,139,250,0.4)',
+              color: '#c084fc', cursor: 'pointer',
+            }}>
+            🔄 Riprova sensori
+          </button>
         </div>
       )}
       {motionPerm === 'unsupported' && (
