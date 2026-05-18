@@ -90,24 +90,28 @@ export function GameFlowPhone({
             ? DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> }
             : null;
           if (typeof dme.requestPermission === 'function') {
-            // Both permission calls fired synchronously from the user gesture (before any await)
-            // so iOS considers them within the same gesture context.
-            // DeviceOrientationEvent shares the same system permission dialog on iOS but
-            // must be requested independently — omitting it blocks orientation on iPhone.
-            const motionP = dme.requestPermission();
-            const orientP = typeof doe?.requestPermission === 'function'
-              ? doe.requestPermission()
-              : Promise.resolve('granted');
-            permPromise = Promise.all([motionP, orientP])
-              .then(([r]): SensorPerm => {
-                const perm: SensorPerm = r === 'granted' ? 'granted' : 'denied';
-                localStorage.setItem(MOTION_PERM_KEY, perm);
-                return perm;
-              })
-              .catch((): SensorPerm => {
-                localStorage.setItem(MOTION_PERM_KEY, 'denied');
-                return 'denied';
-              });
+            // Fire both synchronously from the user gesture — no await before either call.
+            // Sequential independent try/catch: a throw from orientation cannot kill motion.
+            // OR logic: grant if at least one sensor path works.
+            let motionP: Promise<string>;
+            try { motionP = dme.requestPermission(); }
+            catch { motionP = Promise.resolve('denied'); }
+
+            let orientP: Promise<string> = Promise.resolve('granted');
+            if (typeof doe?.requestPermission === 'function') {
+              try { orientP = doe.requestPermission(); }
+              catch { orientP = Promise.resolve('denied'); }
+            }
+
+            permPromise = (async (): Promise<SensorPerm> => {
+              let motionGranted = false;
+              let orientGranted = false;
+              try { motionGranted = (await motionP) === 'granted'; } catch { /* ignore */ }
+              try { orientGranted = (await orientP) === 'granted'; } catch { /* ignore */ }
+              const perm: SensorPerm = (motionGranted || orientGranted) ? 'granted' : 'denied';
+              localStorage.setItem(MOTION_PERM_KEY, perm);
+              return perm;
+            })();
           } else {
             // Android / non-iOS: no permission dialog needed
             localStorage.setItem(MOTION_PERM_KEY, 'granted');
@@ -147,19 +151,33 @@ export function GameFlowPhone({
     window.getSelection()?.removeAllRanges();
     if (typeof DeviceMotionEvent === 'undefined') { setSensorPerm('unsupported'); return; }
     const dme = DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> };
-    try {
-      if (typeof dme.requestPermission === 'function') {
-        const r = await dme.requestPermission(); // still within tap gesture
-        const perm: SensorPerm = r === 'granted' ? 'granted' : 'denied';
-        localStorage.setItem(MOTION_PERM_KEY, perm);
-        setSensorPerm(perm);
-      } else {
-        localStorage.setItem(MOTION_PERM_KEY, 'granted');
-        setSensorPerm('granted');
+    const doe2 = (typeof DeviceOrientationEvent !== 'undefined')
+      ? DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> }
+      : null;
+    if (typeof dme.requestPermission === 'function') {
+      // Fire both synchronously from tap gesture — same fix as book() and BalloController.
+      // Sequential independent try/catch: orientation throw cannot kill motion grant.
+      let motionP: Promise<string>;
+      try { motionP = dme.requestPermission(); }
+      catch { motionP = Promise.resolve('denied'); }
+
+      let orientP: Promise<string> = Promise.resolve('granted');
+      if (typeof doe2?.requestPermission === 'function') {
+        try { orientP = doe2.requestPermission(); }
+        catch { orientP = Promise.resolve('denied'); }
       }
-    } catch {
-      localStorage.setItem(MOTION_PERM_KEY, 'denied');
-      setSensorPerm('denied');
+
+      let motionGranted = false;
+      let orientGranted = false;
+      try { motionGranted = (await motionP) === 'granted'; } catch { /* ignore */ }
+      try { orientGranted = (await orientP) === 'granted'; } catch { /* ignore */ }
+
+      const perm: SensorPerm = (motionGranted || orientGranted) ? 'granted' : 'denied';
+      localStorage.setItem(MOTION_PERM_KEY, perm);
+      setSensorPerm(perm);
+    } else {
+      localStorage.setItem(MOTION_PERM_KEY, 'granted');
+      setSensorPerm('granted');
     }
   }
 

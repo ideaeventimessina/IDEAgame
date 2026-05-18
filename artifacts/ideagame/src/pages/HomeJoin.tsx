@@ -1165,6 +1165,7 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
   const [diagOpen,        setDiagOpen]         = useState(true);
   const [safariDismissed, setSafariDismissed]  = useState(false);
   const [showSafariHints, setShowSafariHints]  = useState(false);
+  const [linkCopied,      setLinkCopied]       = useState(false);
 
   // Aggressively prevent iOS "Shake to Undo" popup for the entire ballo session.
   // iOS "Annulla inserimento" (Shake to Undo) mitigation.
@@ -1531,80 +1532,103 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
   return (
     <div className="flex flex-col items-center gap-5 py-4 text-center" style={{userSelect:'none',WebkitUserSelect:'none'}}>
 
-      {/* ── Safari-required guard (Chrome iOS / Firefox iOS / in-app browsers) */}
+      {/* ── Browser guard (Chrome iOS / Firefox iOS / in-app browsers) ─────── */}
       {isBlockedBrowser && !safariDismissed && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 99998,
           background: 'rgba(0,0,0,0.97)',
           display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'center',
-          padding: '32px 24px', gap: 20,
+          padding: '32px 24px', gap: 18,
           textAlign: 'center',
+          overflowY: 'auto',
         }}>
           <div style={{ fontSize: 52 }}>🧭</div>
-          <div style={{ fontSize: 20, fontWeight: 900, color: '#fff', lineHeight: 1.3 }}>
-            Apri il gioco con Safari
+
+          <div style={{ fontSize: 22, fontWeight: 900, color: '#fff', lineHeight: 1.3 }}>
+            Apri con Safari
           </div>
+
           {/* Detected browser badge */}
           <div style={{
             padding: '4px 14px', borderRadius: 20,
             background: 'rgba(248,113,113,0.15)', border: '1px solid rgba(248,113,113,0.4)',
             fontSize: 11, fontWeight: 700, color: '#fca5a5', letterSpacing: '0.04em',
           }}>
-            Browser rilevato: {
+            Browser: {
               matchedToken === 'CriOS'     ? 'Chrome iPhone' :
               matchedToken === 'FxiOS'     ? 'Firefox iPhone' :
-              matchedToken === 'Instagram' ? 'Instagram in-app' :
-              matchedToken === 'FBAN' || matchedToken === 'FBAV' ? 'Facebook in-app' :
-              matchedToken ?? 'browser non supportato'
+              matchedToken === 'Instagram' ? 'Instagram' :
+              (matchedToken === 'FBAN' || matchedToken === 'FBAV') ? 'Facebook' :
+              matchedToken ?? 'non supportato'
             }
           </div>
-          <div style={{
-            fontSize: 14, color: 'rgba(255,255,255,0.65)', lineHeight: 1.6,
-            maxWidth: 320,
-          }}>
-            Per usare la Sfida di Ballo su iPhone devi aprire il gioco con Safari.
-            {matchedToken === 'CriOS' ? ' Chrome su iPhone blocca i sensori di movimento.' :
-             matchedToken === 'FxiOS' ? ' Firefox su iPhone blocca i sensori di movimento.' :
-             ' Questo browser blocca i sensori di movimento.'}
+
+          <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.65)', lineHeight: 1.65, maxWidth: 300 }}>
+            Su iPhone i sensori di movimento funzionano solo aprendo il gioco con Safari.
+            {matchedToken === 'CriOS' ? ' Chrome su iPhone blocca i sensori.' :
+             matchedToken === 'FxiOS' ? ' Firefox su iPhone blocca i sensori.' :
+             ' Questo browser blocca i sensori.'}
           </div>
 
-          {/* Safari instructions (toggle) */}
+          {/* Primary: copy link */}
+          <button
+            onClick={() => {
+              void navigator.clipboard.writeText(window.location.href).then(() => {
+                setLinkCopied(true);
+                setTimeout(() => setLinkCopied(false), 2500);
+              });
+            }}
+            style={{
+              width: '100%', maxWidth: 320, padding: '15px 20px',
+              borderRadius: 16, border: 'none',
+              background: linkCopied
+                ? 'linear-gradient(135deg,#16a34a,#15803d)'
+                : 'linear-gradient(135deg,#A78BFA,#7C3AED)',
+              color: '#fff', fontSize: 16, fontWeight: 900,
+              cursor: 'pointer', letterSpacing: '0.02em',
+              transition: 'background 0.3s',
+            }}>
+            {linkCopied ? '✅ Link copiato!' : '📋 Copia link'}
+          </button>
+
+          {/* Secondary: show instructions */}
           <button
             onClick={() => setShowSafariHints(h => !h)}
             style={{
-              width: '100%', maxWidth: 320, padding: '14px 20px',
-              borderRadius: 16, border: '2px solid #A78BFA',
-              background: 'linear-gradient(135deg,rgba(167,139,250,0.25),rgba(124,58,237,0.25))',
-              color: '#c4b5fd', fontSize: 15, fontWeight: 900,
-              cursor: 'pointer', letterSpacing: '0.02em',
+              width: '100%', maxWidth: 320, padding: '13px 20px',
+              borderRadius: 16, border: '2px solid rgba(167,139,250,0.5)',
+              background: 'rgba(167,139,250,0.1)',
+              color: '#c4b5fd', fontSize: 14, fontWeight: 800,
+              cursor: 'pointer',
             }}>
-            🧭 Come aprire in Safari {showSafariHints ? '▲' : '▼'}
+            {showSafariHints ? '▲ Nascondi istruzioni' : '📖 Mostra istruzioni'}
           </button>
 
           {showSafariHints && (
             <div style={{
               width: '100%', maxWidth: 320,
-              background: 'rgba(167,139,250,0.1)',
-              border: '1px solid rgba(167,139,250,0.3)',
+              background: 'rgba(167,139,250,0.08)',
+              border: '1px solid rgba(167,139,250,0.25)',
               borderRadius: 14, padding: '16px 18px',
               textAlign: 'left',
             }}>
-              {[
-                { step: '1', icon: '⬆️', text: 'Tocca l\'icona condivisione (□↑) in basso a Safari o in alto nel browser' },
-                { step: '2', icon: '🧭', text: 'Seleziona "Apri in Safari"' },
-                { step: '3', icon: '🎮', text: 'Rientra nel gioco con lo stesso link' },
-              ].map(({ step, icon, text }) => (
-                <div key={step} style={{
+              {([
+                { icon: '⬆️', text: 'Tocca il pulsante Condividi (□↑) in basso allo schermo' },
+                { icon: '📋', text: 'Tocca "Copia link"' },
+                { icon: '🧭', text: 'Apri Safari' },
+                { icon: '🔗', text: 'Incolla il link nella barra degli indirizzi e vai' },
+              ] as { icon: string; text: string }[]).map(({ icon, text }, i) => (
+                <div key={i} style={{
                   display: 'flex', gap: 12, alignItems: 'flex-start',
-                  marginBottom: step === '3' ? 0 : 12,
+                  marginBottom: i < 3 ? 12 : 0,
                 }}>
                   <div style={{
-                    minWidth: 24, height: 24, borderRadius: '50%',
-                    background: 'rgba(167,139,250,0.3)',
+                    minWidth: 26, height: 26, borderRadius: '50%',
+                    background: 'rgba(167,139,250,0.25)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 11, fontWeight: 900, color: '#c4b5fd',
-                  }}>{step}</div>
+                    fontSize: 11, fontWeight: 900, color: '#c4b5fd', flexShrink: 0,
+                  }}>{i + 1}</div>
                   <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)', lineHeight: 1.5 }}>
                     {icon} {text}
                   </div>
@@ -1613,15 +1637,13 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
             </div>
           )}
 
-          {/* Fallback: continue without sensors */}
+          {/* Tertiary: continue without sensors (tiny link only) */}
           <button
             onClick={() => setSafariDismissed(true)}
             style={{
-              width: '100%', maxWidth: 320, padding: '12px 20px',
-              borderRadius: 14, border: '1px solid rgba(255,255,255,0.15)',
-              background: 'rgba(255,255,255,0.06)',
-              color: 'rgba(255,255,255,0.45)', fontSize: 13, fontWeight: 700,
-              cursor: 'pointer',
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: 'rgba(255,255,255,0.25)', fontSize: 12, fontWeight: 500,
+              textDecoration: 'underline', marginTop: 4, padding: '4px 8px',
             }}>
             Continua senza sensori
           </button>
