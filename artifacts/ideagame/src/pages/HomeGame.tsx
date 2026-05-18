@@ -489,6 +489,9 @@ export default function HomeGame() {
   const [jonnyMood, setJonnyMood] = useState<'idle' | 'excited' | 'thinking' | 'winner' | 'scoreboard' | 'correct'>('excited');
   const [jonnyMsg, setJonnyMsg] = useState('Benvenuti a JONNY\'S WORLD!');
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Tracks the last known roundPayload.mode so home:state can detect flow→ballo transition
+  // even when slug/round haven't changed (both stay at sfida-ballo / 0 through the whole flow).
+  const currentModeRef = useRef<string>('');
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [audioWarning, setAudioWarning] = useState(false);
   const [postGame, setPostGame] = useState<{gameSlug:string;players:HomePlayer[]}|null>(null);
@@ -627,6 +630,23 @@ export default function HomeGame() {
   // ── Socket listeners ─────────────────────────────────────────────────────────
   useEffect(() => {
     const u1 = on<{ session: HomeSession; players: HomePlayer[] }>('home:state', (d) => {
+      const newMode  = String(d.session.roundPayload?.mode ?? '');
+      const prevMode = currentModeRef.current;
+      // ── Fallback: flow→ballo detected in home:state (handles missed home:round) ──
+      // currentModeRef is set by home:round first in the normal path, so this only fires
+      // when home:round was truly missed.
+      if (prevMode === 'home-flow' && newMode === 'home-ballo') {
+        console.log('[BalloFlow] home:state (TV): flow→ballo fallback — starting ballo timer');
+        currentModeRef.current = newMode;
+        setBalloEnergies({});
+        setBalloCurrent({});
+        setBalloResult(null);
+        startTimer(Number(d.session.roundPayload?.timeLimit ?? 15));
+        AudioManager.stopLoop(true);
+        void AudioManager.playLoop('sfida-ballo', 'round_loop');
+      } else {
+        currentModeRef.current = newMode;
+      }
       setSession(d.session);
       setPlayers(d.players);
     });
@@ -662,6 +682,9 @@ export default function HomeGame() {
     });
     const u4 = on<{ round: number; payload: Record<string, unknown> }>('home:round', (d) => {
       const roundMode = String(d.payload?.mode ?? '');
+      const prevMode  = currentModeRef.current;
+      currentModeRef.current = roundMode;
+      console.log('[BalloFlow] home:round (TV) → mode:', roundMode, '| prevMode:', prevMode, '| round:', d.round);
       setSession(prev => prev ? { ...prev, currentRound: d.round, roundPayload: d.payload } : prev);
       setRevealed(false);
       setBalloEnergies({});

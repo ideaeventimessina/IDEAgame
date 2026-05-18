@@ -1,0 +1,73 @@
+REGRESSION — BALLO FLOW LOOPS AFTER THEME/CONFIRM.
+
+Do not redesign.
+Do not touch audio.
+Do not touch sensor logic.
+Do not touch scoring.
+Do not touch other games.
+
+Problem:
+After selecting the Ballo theme/type, the flow loops and does not start the actual Ballo game.
+This bug was already fixed before and has regressed.
+
+Required flow:
+select Ballo from wheel
+→ theme_select
+→ booking
+→ host confirm
+→ countdown
+→ actual round payload mode must become "home-ballo"
+→ BalloController starts on phones
+→ BalloBoard starts on TV
+
+Audit:
+- home.ts flow/confirm
+- loadBalloRounds()
+- HomeGame.tsx home:round handler
+- HomeJoin.tsx home:round handler
+- GameFlowEngine.tsx
+- GameFlowPhone.tsx
+
+Find:
+1. Does /flow/confirm actually replace roundPayload mode from "home-flow" to "home-ballo" after countdown?
+2. Does it emit home:round with the real ballo payload?
+3. Is currentRound updated?
+4. Is selectedTheme causing select-game to rerun and reset back to theme_select?
+5. Is any polling overwriting the new home-ballo payload with stale home-flow payload?
+6. Did recent bookedPlayers filtering expect bookedPlayers inside payload and accidentally keep the flow payload instead of real game payload?
+
+Patch:
+- After countdown, server must set:
+  roundPayload = actual ballo round payload
+  roundPayload.mode = "home-ballo"
+  roundPayload.bookedPlayers = previously booked players
+  gameConfig.phase = "playing"
+- emit home:round with the actual updated session and payload.
+- Do not call select-game again.
+- Do not reset gameFlowPhase to theme_select after confirm.
+- Ensure phones leave GameFlowPhone and enter BalloController.
+
+Add temporary logs:
+[BalloFlow] select-theme
+[BalloFlow] booking
+[BalloFlow] confirm
+[BalloFlow] countdown done
+[BalloFlow] launching mode
+[BalloFlow] payload mode
+
+Test:
+1. new Ballo session
+2. choose theme
+3. book 2 players
+4. confirm
+5. countdown
+6. TV must show BalloBoard, not theme screen
+7. phones must show BalloController, not GameFlowPhone
+8. typecheck clean
+
+Output:
+A. root cause
+B. files modified
+C. exact transition fixed
+D. regression prevention guard
+E. typecheck result

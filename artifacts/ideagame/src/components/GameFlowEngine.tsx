@@ -102,6 +102,7 @@ export function GameFlowEngine({
   async function selectTheme(theme: FlowTheme) {
     if (selecting) return;
     setSelecting(true);
+    console.log('[BalloFlow] select-theme →', theme.name, '| session:', session.id);
     try {
       await fetch(`/api/home/sessions/${session.id}/flow/select-theme`, {
         method: 'POST',
@@ -114,6 +115,7 @@ export function GameFlowEngine({
   async function confirmFlow() {
     if (confirming) return;
     setConfirming(true);
+    console.log('[BalloFlow] confirm → calling flow/confirm | session:', session.id);
     try {
       await fetch(`/api/home/sessions/${session.id}/flow/confirm`, {
         method: 'POST',
@@ -130,6 +132,9 @@ export function GameFlowEngine({
   const canConfirm = bookedPlayers.length >= maxPlayers;
 
   void players; // forwarded for future per-player display; not used in current phases
+
+  // Diagnostic: log current phase on every render so we can trace loops
+  console.log('[BalloFlow] GameFlowEngine render — phase:', p.gameFlowPhase, '| mode:', p.mode, '| session:', session.id);
 
   return (
     <AnimatePresence mode="wait">

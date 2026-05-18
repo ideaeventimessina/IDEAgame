@@ -1105,6 +1105,7 @@ router.post("/home/sessions/:id/flow/confirm", async (req, res): Promise<void> =
   const selectedTheme = rp["selectedTheme"] as { id: string; name: string } | null;
 
   // Move to confirm phase (brief transition shown to TV/phones)
+  logger.info({ sessionId: id, bookedCount: booked.length }, "[BalloFlow] confirm");
   const confirmRp: RoundPayload = { ...rp, gameFlowPhase: "confirm", bookedPlayers: booked } as RoundPayload;
   const [confirmUpdated] = await db.update(homeSessionsTable)
     .set({ roundPayload: confirmRp })
@@ -1115,6 +1116,7 @@ router.post("/home/sessions/:id/flow/confirm", async (req, res): Promise<void> =
   // After a brief pause: move to countdown, then load real ballo rounds
   setTimeout(async () => {
     try {
+      logger.info({ sessionId: id }, "[BalloFlow] countdown");
       const countdownRp: RoundPayload = { ...confirmRp, gameFlowPhase: "countdown" } as RoundPayload;
       const [cdUpdated] = await db.update(homeSessionsTable)
         .set({ roundPayload: countdownRp })
@@ -1123,10 +1125,19 @@ router.post("/home/sessions/:id/flow/confirm", async (req, res): Promise<void> =
       emitToRoom(homeRoom(id), "home:state", { session: cdUpdated, players: cdPlayers });
 
       // After countdown (4s) load real ballo rounds and fire home:round
+      logger.info({ sessionId: id }, "[BalloFlow] countdown done — waiting 4s for ballo launch");
       setTimeout(async () => {
         try {
+          logger.info({ sessionId: id, selectedTheme }, "[BalloFlow] launching mode home-ballo");
           const preloadedRounds = await loadBalloRoundsForTheme(selectedTheme);
-          const firstRound: RoundPayload = { ...(preloadedRounds[0] ?? {}), roundStartedAt: new Date().toISOString() } as RoundPayload;
+          // Carry bookedPlayers into the round payload so TV BalloBoard filters non-dancers.
+          // 'confirmRp' is captured in this closure and has the full FlowBookedPlayer objects.
+          const firstRound: RoundPayload = {
+            ...(preloadedRounds[0] ?? {}),
+            roundStartedAt: new Date().toISOString(),
+            bookedPlayers: (confirmRp as Record<string, unknown>)["bookedPlayers"] ?? [],
+          } as RoundPayload;
+          logger.info({ sessionId: id, mode: firstRound["mode"], bookedCount: ((firstRound["bookedPlayers"] as unknown[]) ?? []).length }, "[BalloFlow] payload mode");
           const cfg = (session.gameConfig ?? {}) as Record<string, unknown>;
           const gamesPlayed = (cfg["gamesPlayed"] as string[]) ?? [];
           const newCfg = { ...cfg, phase: "playing", gamesPlayed, preloadedRounds };
@@ -1139,6 +1150,7 @@ router.post("/home/sessions/:id/flow/confirm", async (req, res): Promise<void> =
           const gamePlayers = await getPlayers(id);
           emitToRoom(homeRoom(id), "home:round", { round: 0, payload: firstRound });
           emitToRoom(homeRoom(id), "home:state", { session: gameUpdated, players: gamePlayers });
+          logger.info({ sessionId: id }, "[BalloFlow] home:round emitted");
         } catch (err) {
           logger.error({ err, sessionId: id }, "flow/confirm: ballo round load failed");
         }

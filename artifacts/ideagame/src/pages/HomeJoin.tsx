@@ -90,6 +90,9 @@ export default function HomeJoin() {
   const playerRef = useRef<HomePlayer | null>(null);
   const prevGameSlugRef = useRef<string | null>(null);
   const prevCurrentRoundRef = useRef<number>(-1);
+  // Tracks the last known roundPayload.mode so home:state can detect flow→game transitions
+  // even when slug/round haven't changed (flow uses same slot: gameSlug=sfida-ballo, round=0).
+  const currentModeRef = useRef<string>('');
 
   const { on, emit } = useEventSocket(null);
 
@@ -257,24 +260,43 @@ export default function HomeJoin() {
   // which would cause missed events during the cleanup/setup window.
   useEffect(() => {
     const u1 = on<{ session: HomeSession; players: HomePlayer[] }>('home:state', (d) => {
-      setSession(d.session);
-      setPlayers(d.players);
+      const newMode  = String(d.session.roundPayload?.mode ?? '');
+      const prevMode = currentModeRef.current;
       const cur = playerRef.current;
       if (cur) { const me = d.players.find(p => p.id === cur.id); if (me) setPlayer(me); }
+      setSession(d.session);
+      setPlayers(d.players);
       if (d.session.status === 'playing') {
         if (phaseRef.current === 'lobby') {
           setPhase('playing');
           setAnswered(null);
           setRevealed(false);
-          startRoundTimer(d.session.roundPayload ?? {});
-        } else if (phaseRef.current === 'playing' && (
-          d.session.gameSlug !== prevGameSlugRef.current ||
-          d.session.currentRound !== prevCurrentRoundRef.current
-        )) {
-          // Game changed OR round advanced — missed home:game_started / home:round event
-          setAnswered(null);
-          setRevealed(false);
-          startRoundTimer(d.session.roundPayload ?? {});
+          currentModeRef.current = newMode;
+          if (newMode !== 'home-flow') startRoundTimer(d.session.roundPayload ?? {});
+        } else if (phaseRef.current === 'playing') {
+          // ── Fallback: flow→real-game mode transition detected in home:state ──
+          // Fires when home:round was missed but home:state arrived with the real game payload.
+          // currentModeRef is updated by the home:round handler first (normal path),
+          // so this branch only acts when home:round truly never arrived.
+          if (prevMode === 'home-flow' && newMode !== 'home-flow' && newMode !== '') {
+            console.log('[BalloFlow] home:state: flow→game transition (fallback)', prevMode, '→', newMode);
+            setAnswered(null);
+            setRevealed(false);
+            currentModeRef.current = newMode;
+            startRoundTimer(d.session.roundPayload ?? {});
+          } else if (
+            d.session.gameSlug !== prevGameSlugRef.current ||
+            d.session.currentRound !== prevCurrentRoundRef.current
+          ) {
+            // Game changed OR round advanced — missed home:game_started / home:round event
+            setAnswered(null);
+            setRevealed(false);
+            currentModeRef.current = newMode;
+            startRoundTimer(d.session.roundPayload ?? {});
+          } else {
+            // Same game/round — just keep mode ref in sync
+            currentModeRef.current = newMode;
+          }
         }
         prevGameSlugRef.current = d.session.gameSlug;
         prevCurrentRoundRef.current = d.session.currentRound;
@@ -302,7 +324,11 @@ export default function HomeJoin() {
     });
 
     const u4 = on<{ round: number; payload: Record<string,unknown> }>('home:round', (d) => {
+      const roundMode = String(d.payload?.mode ?? '');
+      const prevMode  = currentModeRef.current;
+      currentModeRef.current = roundMode;
       prevCurrentRoundRef.current = d.round;
+      console.log('[BalloFlow] home:round → mode:', roundMode, '| prevMode:', prevMode, '| round:', d.round);
       setSession(prev => prev ? { ...prev, currentRound: d.round, roundPayload: d.payload } : prev);
       setAnswered(null);
       setRevealed(false);

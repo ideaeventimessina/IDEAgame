@@ -163,6 +163,9 @@ export function GameFlowPhone({
     }
   }
 
+  // Diagnostic: log current phase so we can trace loops
+  console.log('[BalloFlow] GameFlowPhone render — phase:', p.gameFlowPhase, '| mode:', p.mode, '| player:', player.id.slice(-4));
+
   // ── WAITING FOR THEME ─────────────────────────────────────────────────────────
 
   if (p.gameFlowPhase === 'theme_select') {
