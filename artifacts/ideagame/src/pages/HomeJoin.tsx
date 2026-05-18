@@ -1166,38 +1166,72 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
     const doe = (typeof DeviceOrientationEvent !== 'undefined')
       ? DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> }
       : null;
-    console.log('[BalloSensor] requestMotion — dme.rP:', typeof dme.requestPermission,
+    console.log('[iPhoneMotion] requestMotion start — dme.rP:', typeof dme.requestPermission,
       '| doe.rP:', typeof doe?.requestPermission,
-      '| has DeviceOrientationEvent:', typeof DeviceOrientationEvent);
+      '| userAgent:', navigator.userAgent.slice(0, 80));
+
+    let motionGranted = false;
+    let orientGranted = false;
 
     if (typeof dme.requestPermission === 'function') {
+      // ── Fire BOTH synchronously from the user gesture tap (no await before either
+      // call). iOS requires requestPermission() to start within the gesture stack.
+      // Each call gets its own synchronous try/catch so a throw from one cannot
+      // prevent the other from being started — this replaces the old Promise.all
+      // which would collapse both into a single 'denied' if orientation threw.
+      let motionP: Promise<string>;
       try {
-        // Both requestPermission() calls fired synchronously from the user gesture
-        // (before any await) so iOS considers them in the same gesture context.
-        const motionPromise = dme.requestPermission();
-        const orientPromise = typeof doe?.requestPermission === 'function'
-          ? doe.requestPermission()
-          : Promise.resolve('granted');
-        const [motionResult] = await Promise.all([motionPromise, orientPromise]);
-        const perm: 'granted' | 'denied' = motionResult === 'granted' ? 'granted' : 'denied';
-        console.log('[BalloSensor] permission result:', perm);
-        localStorage.setItem(MOTION_PERM_KEY, perm);
-        setMotionPerm(perm);
+        motionP = dme.requestPermission();
+      } catch (e) {
+        console.log('[iPhoneMotion] motion rP threw synchronously:', e);
+        motionP = Promise.resolve('denied');
+      }
+
+      let orientP: Promise<string> = Promise.resolve('granted'); // default when no API
+      if (typeof doe?.requestPermission === 'function') {
+        try {
+          orientP = doe.requestPermission();
+        } catch (e) {
+          console.log('[iPhoneMotion] orientation rP threw synchronously:', e);
+          orientP = Promise.resolve('denied');
+        }
+      }
+
+      // ── Await each independently — one rejection cannot deny the other ───────
+      try {
+        const r = await motionP;
+        motionGranted = r === 'granted';
+        console.log('[iPhoneMotion] motion permission result:', r);
       } catch (err) {
-        console.log('[BalloSensor] permission error:', err);
-        localStorage.setItem(MOTION_PERM_KEY, 'denied');
-        setMotionPerm('denied');
+        console.log('[iPhoneMotion] motion permission error (rejected):', err);
+      }
+
+      try {
+        const r = await orientP;
+        orientGranted = r === 'granted';
+        console.log('[iPhoneMotion] orientation permission result:', r);
+      } catch (err) {
+        console.log('[iPhoneMotion] orientation permission error (rejected):', err);
       }
     } else {
-      console.log('[BalloSensor] no requestPermission API — auto-granted');
-      localStorage.setItem(MOTION_PERM_KEY, 'granted');
-      setMotionPerm('granted');
+      // Non-iOS / desktop: no requestPermission API — sensors available automatically
+      motionGranted = true;
+      orientGranted = true;
+      console.log('[iPhoneMotion] no requestPermission API — auto-granted (Android/desktop)');
     }
+
+    // Grant if AT LEAST ONE sensor path works — fallback logic handles the rest
+    const granted = motionGranted || orientGranted;
+    console.log('[iPhoneMotion] final — motionGranted:', motionGranted,
+      '| orientGranted:', orientGranted, '| proceeding:', granted);
+    const perm: 'granted' | 'denied' = granted ? 'granted' : 'denied';
+    localStorage.setItem(MOTION_PERM_KEY, perm);
+    setMotionPerm(perm);
   }, []);
 
   useEffect(() => {
     if (motionPerm !== 'granted') return;
-    console.log('[BalloSensor] permission granted — starting listeners',
+    console.log('[iPhoneMotion] listener attached — starting sensors',
       '| has DeviceOrientationEvent:', typeof DeviceOrientationEvent,
       '| has DeviceMotionEvent:', typeof DeviceMotionEvent);
 
