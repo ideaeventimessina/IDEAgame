@@ -1712,13 +1712,21 @@ function BalloBoard({ payload, players, balloEnergies, balloCurrent, balloResult
   }, [balloCurrent, balloResult]);
 
   const hasLiveData = Object.keys(balloCurrent).length > 0 || Object.keys(balloEnergies).length > 0;
+
+  // Filter to booked players only — spectators must not appear as active dancers.
+  // roundPayload.bookedPlayers is set by the flow booking phase for games like Ballo.
+  // Fallback to all players if bookedPlayers is absent (non-flow / direct round).
+  const rawBooked = (payload.bookedPlayers ?? []) as { id: string }[];
+  const bookedIds = new Set(rawBooked.map(b => b.id));
+  const activePlayers = bookedIds.size > 0 ? players.filter(p => bookedIds.has(p.id)) : players;
+
   // Sort live: by current energy, falling back to peak
-  const sortedPlayers = [...players].sort((a, b) => {
+  const sortedPlayers = [...activePlayers].sort((a, b) => {
     const ea = balloCurrent[a.id] ?? balloEnergies[a.id] ?? 0;
     const eb = balloCurrent[b.id] ?? balloEnergies[b.id] ?? 0;
     return eb - ea;
   });
-  const isManyPlayers = players.length > 3;
+  const isManyPlayers = activePlayers.length > 3;
 
   return (
     <motion.div key={String(payload.roundIndex)} initial={{opacity:0,y:16}} animate={{opacity:1,y:0}}

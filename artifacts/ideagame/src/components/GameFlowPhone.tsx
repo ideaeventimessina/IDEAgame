@@ -86,11 +86,20 @@ export function GameFlowPhone({
           setSensorPerm('unsupported');
         } else {
           const dme = DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> };
+          const doe = (typeof DeviceOrientationEvent !== 'undefined')
+            ? DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> }
+            : null;
           if (typeof dme.requestPermission === 'function') {
-            // Kick off the iOS permission dialog synchronously from the gesture.
-            // We await the result after the booking fetch below.
-            permPromise = dme.requestPermission()
-              .then((r): SensorPerm => {
+            // Both permission calls fired synchronously from the user gesture (before any await)
+            // so iOS considers them within the same gesture context.
+            // DeviceOrientationEvent shares the same system permission dialog on iOS but
+            // must be requested independently — omitting it blocks orientation on iPhone.
+            const motionP = dme.requestPermission();
+            const orientP = typeof doe?.requestPermission === 'function'
+              ? doe.requestPermission()
+              : Promise.resolve('granted');
+            permPromise = Promise.all([motionP, orientP])
+              .then(([r]): SensorPerm => {
                 const perm: SensorPerm = r === 'granted' ? 'granted' : 'denied';
                 localStorage.setItem(MOTION_PERM_KEY, perm);
                 return perm;

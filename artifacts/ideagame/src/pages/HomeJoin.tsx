@@ -1180,14 +1180,22 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
     // race where orientSamplesRef.length is 0 between intervals.
     let orientActive = false;
 
+    // orientActive: set once orientation fires (even with zero values).
+    // Used only for the 1000ms watchdog log — NOT for gating handleMotion.
+    // Gate logic instead checks orientSamplesRef.current.length (see handleMotion).
+    let accelLoggedOnce = false; // log fallback start only once
+
     // ── PRIMARY: deviceorientation — angle-delta scoring ─────────────────────
-    // Natural dance/arm movement (10–20°) registers as 40–80% energy.
-    // No violent shaking required. Eliminates iOS "Shake to Undo" root cause.
+    // Only orientation samples with movement > 0.1° are queued.
+    // iPhone bug: deviceorientation fires but returns alpha/beta/gamma = 0 or null
+    // when DeviceOrientationEvent.requestPermission() was not called separately.
+    // In that case, movement = 0 and NO sample is pushed — allowing accel fallback.
     const handleOrientation = (e: DeviceOrientationEvent) => {
       if (!orientActive) {
         orientActive = true;
-        console.log('[BalloSensor] orientation first sample — alpha:', e.alpha,
-          'beta:', e.beta, 'gamma:', e.gamma);
+        console.log('[Ballo iPhone] orientation first sample — alpha:', e.alpha,
+          'beta:', e.beta, 'gamma:', e.gamma,
+          '| all null?', e.alpha === null && e.beta === null && e.gamma === null);
       }
       const beta  = e.beta  ?? 0;
       const gamma = e.gamma ?? 0;
@@ -1198,22 +1206,32 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
         const dg = Math.abs(gamma - prev.gamma);
         let   da = Math.abs(alpha - prev.alpha);
         if (da > 180) da = 360 - da; // handle alpha 0↔360 wrap
-        // Combined rotation magnitude; alpha weighted lower (prone to compass drift)
         const movement = Math.sqrt(db * db + dg * dg + (da * 0.4) * (da * 0.4));
-        // Cap at 60° — a fast arm swing is ~15–25°, 60° is already very energetic
-        orientSamplesRef.current.push(Math.min(movement, 60));
+        if (movement > 0.1) {
+          // Only queue meaningful rotation — threshold filters iPhone zero-lock bug
+          orientSamplesRef.current.push(Math.min(movement, 60));
+        }
+        // else: event fired but no real rotation (iPhone with blocked orientation)
+        // → sample NOT pushed → handleMotion accel fallback remains active
       }
       prevOrientRef.current = { beta, gamma, alpha };
     };
 
     // ── FALLBACK: clamped accelerometer ───────────────────────────────────────
-    // Active only when orientation hasn't produced data (some iPhones, old Android).
-    // Prefers e.acceleration (no gravity); falls back to accelerationIncludingGravity.
-    // Hard clamp at 10 m/s² — dance is 2–8, violent shake is 20+.
+    // Active whenever orientation has NOT pushed meaningful samples this interval.
+    // Gated on orientSamplesRef.current.length (not orientActive flag) so that
+    // iPhones where orientation fires but returns zero-deltas still score.
     const handleMotion = (e: DeviceMotionEvent) => {
-      if (orientActive) return; // orientation takes full priority
+      if (orientSamplesRef.current.length > 0) return; // real orientation data this interval
+      if (!accelLoggedOnce) {
+        accelLoggedOnce = true;
+        console.log('[Ballo iPhone] fallback started — using devicemotion accel');
+      }
       const acc = e.acceleration ?? e.accelerationIncludingGravity;
-      if (!acc) return;
+      if (!acc) {
+        console.log('[Ballo iPhone] handleMotion — acc null (both acceleration + aig are null)');
+        return;
+      }
       let mag = Math.sqrt((acc.x ?? 0) ** 2 + (acc.y ?? 0) ** 2 + (acc.z ?? 0) ** 2);
       if (!e.acceleration) mag = Math.abs(mag - 9.81); // remove gravity baseline
       accelSamplesRef.current.push(Math.min(mag, 10));
@@ -1222,10 +1240,16 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
     window.addEventListener('deviceorientation', handleOrientation);
     window.addEventListener('devicemotion', handleMotion);
 
-    // 1000 ms watchdog: if no orientation samples arrived, log and let accel take over
+    // 1000ms watchdog: diagnose orientation status
     const orientWatchdog = setTimeout(() => {
+      console.log('[Ballo iPhone] 1000ms watchdog — orientActive:', orientActive,
+        '| orientSamples queued:', orientSamplesRef.current.length,
+        '| accelSamples queued:', accelSamplesRef.current.length,
+        '| accelFallback:', accelLoggedOnce);
       if (!orientActive) {
-        console.log('[BalloSensor] no orientation samples after 1000ms — using accel fallback');
+        console.log('[Ballo iPhone] deviceorientation never fired — pure accel mode');
+      } else if (orientSamplesRef.current.length === 0 && accelSamplesRef.current.length === 0) {
+        console.log('[Ballo iPhone] orientation fired but zero movement + no accel — sensor stall');
       }
     }, 1000);
 
