@@ -1,0 +1,111 @@
+HOME JOIN — SAFARI CHECK BEFORE NICKNAME + ROUTE DUPLICATE AUDIT.
+
+Do not redesign.
+Do not touch gameplay.
+Do not touch scoring.
+Do not touch audio.
+
+PART 1 — Safari check must happen BEFORE nickname login.
+
+Problem:
+On iPhone Chrome, the Safari warning appears too late, after entering the game.
+It must appear immediately on the first join screen, before the user enters their name.
+
+Required:
+On /join/:code and /home/join?s=CODE:
+- detect iPhone Chrome / FxiOS / in-app browsers immediately
+- before nickname input
+- show blocking screen:
+  “Apri con Safari”
+  “Per usare Sfida di Ballo su iPhone devi entrare con Safari.”
+
+Buttons:
+1. “Copia link”
+2. “Istruzioni Safari”
+
+Important:
+A browser cannot force-open Safari if Chrome is default.
+So do NOT pretend the button can force Safari.
+If an “Apri con Safari” button exists, it should:
+- copy the current link
+- show instructions:
+  “Apri Safari manualmente e incolla il link.”
+
+The nickname form must be hidden until the browser is allowed.
+
+PART 2 — Same join UI everywhere.
+
+Problem:
+Safari link opens a different/old nickname login page.
+This must not happen.
+
+Required:
+There must be only ONE active Home player join UI.
+Both routes must use the same component/style/flow:
+- /join/:code
+- /home/join?s=CODE
+
+Audit and remove/redirect duplicates:
+- old join screen
+- old nickname page
+- old HomeJoin variants
+- old live player login if accidentally reused
+
+PART 3 — Final ranking route duplicate.
+
+Problem:
+Final ranking sometimes opens an old/different ranking page from Live mode.
+
+Required:
+Home Mode final ranking must always use the current Home final/champion screen.
+It must NOT redirect to:
+- live scoreboard
+- old hub
+- old champion page
+- admin/live routes
+
+Audit:
+- HomeGame champion screen
+- goToChampion()
+- home:champion socket handler
+- any navigate('/scoreboard')
+- any navigate('/')
+- any navigate('/hub')
+- any old podium component
+
+PART 4 — Full route audit.
+
+Return table:
+ROUTE | COMPONENT | MODE | KEEP/DELETE/REDIRECT | REASON
+
+Focus on:
+- /home
+- /home-v2
+- /home-v3
+- /home-v4
+- /home-v5
+- /home/join
+- /join/:code
+- /scoreboard
+- /lobby
+- /cockpit
+- /control
+- /play
+- /presenter
+- /projector
+
+Rules:
+- Home public landing: /home-v4
+- Home active game TV: /home?s=SESSION_ID
+- Home player join: one unified component only
+- Home final ranking: current Home champion only
+- Live/admin routes must stay separate
+
+Output:
+A. files audited
+B. duplicate routes found
+C. Safari guard moved before nickname
+D. unified join route behavior
+E. final ranking route fixed
+F. routes to delete/redirect later
+G. typecheck result
