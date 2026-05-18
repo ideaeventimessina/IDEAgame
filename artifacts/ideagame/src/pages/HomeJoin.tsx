@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useEventSocket } from '@/hooks/useEventSocket';
 import { GameFlowPhone } from '@/components/GameFlowPhone';
+import { SafariGuard } from '@/components/SafariGuard';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -563,6 +564,7 @@ export default function HomeJoin() {
 
         {/* ── NICKNAME ── */}
         {phase === 'nickname' && session && (
+          <SafariGuard>
           <motion.div key="nickname" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0,y:-20}}
             className="relative flex min-h-screen w-full flex-col">
 
@@ -614,6 +616,7 @@ export default function HomeJoin() {
               </button>
             </div>
           </motion.div>
+          </SafariGuard>
         )}
 
         {/* ── LOBBY (attesa gioco) ── */}
