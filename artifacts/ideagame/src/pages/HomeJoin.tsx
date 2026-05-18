@@ -1114,6 +1114,37 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
   const timeLeftRef = useRef(timeLeft);
   useEffect(() => { timeLeftRef.current = timeLeft; }, [timeLeft]);
 
+  // ── Diagnostics (visible in dev OR ?debug=1) ────────────────────────────
+  const showDiag = typeof window !== 'undefined' && (
+    (import.meta.env.DEV as boolean) ||
+    new URLSearchParams(window.location.search).has('debug')
+  );
+  const isIOS = typeof navigator !== 'undefined' && (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  );
+  const isStandalone = typeof window !== 'undefined' && (
+    (navigator as { standalone?: boolean }).standalone === true ||
+    window.matchMedia?.('(display-mode: standalone)').matches === true
+  );
+  // Refs updated on every sensor event — never cause re-renders
+  const diagMotionCountRef  = useRef(0);
+  const diagOrientCountRef  = useRef(0);
+  const diagLastOrientRef   = useRef<{ a: number|null; b: number|null; g: number|null }>({ a: null, b: null, g: null });
+  const diagLastAccelRef    = useRef<{ x: number|null; y: number|null; z: number|null }>({ x: null, y: null, z: null });
+  const diagLastEmitRef     = useRef<number|null>(null);
+  // Snapshot read into state by a 400ms refresh interval (only when showDiag)
+  const [diagSnap, setDiagSnap] = useState({
+    mo: 0, or: 0,
+    a: null as number|null, b: null as number|null, g: null as number|null,
+    x: null as number|null, y: null as number|null, z: null as number|null,
+    ts: null as number|null,
+  });
+  const [diagMotionPerm,  setDiagMotionPerm]  = useState('—');
+  const [diagOrientPerm,  setDiagOrientPerm]  = useState('—');
+  const [testRunning,     setTestRunning]      = useState(false);
+  const [testCountdown,   setTestCountdown]    = useState(0);
+
   // Aggressively prevent iOS "Shake to Undo" popup for the entire ballo session.
   // iOS "Annulla inserimento" (Shake to Undo) mitigation.
   // NOTE: Shake to Undo cannot be fully disabled from Safari/PWA.
@@ -1251,6 +1282,8 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
     // when DeviceOrientationEvent.requestPermission() was not called separately.
     // In that case, movement = 0 and NO sample is pushed — allowing accel fallback.
     const handleOrientation = (e: DeviceOrientationEvent) => {
+      diagOrientCountRef.current++;
+      diagLastOrientRef.current = { a: e.alpha, b: e.beta, g: e.gamma };
       if (!orientActive) {
         orientActive = true;
         console.log('[Ballo iPhone] orientation first sample — alpha:', e.alpha,
@@ -1282,6 +1315,9 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
     // Gated on orientSamplesRef.current.length (not orientActive flag) so that
     // iPhones where orientation fires but returns zero-deltas still score.
     const handleMotion = (e: DeviceMotionEvent) => {
+      diagMotionCountRef.current++;
+      const _da = e.acceleration ?? e.accelerationIncludingGravity;
+      if (_da) diagLastAccelRef.current = { x: _da.x ?? null, y: _da.y ?? null, z: _da.z ?? null };
       if (orientSamplesRef.current.length > 0) return; // real orientation data this interval
       if (!accelLoggedOnce) {
         accelLoggedOnce = true;
@@ -1345,6 +1381,7 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
         console.log('[BalloSensor] emit energy', smoothed,
           '| orientActive:', orientActive, '| tl:', tl);
         emit('home:ballo_energy', { sessionId, playerId, energy: smoothed, round: round ?? 0 });
+        diagLastEmitRef.current = Date.now();
       }
     }, 400);
 
@@ -1376,6 +1413,84 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [motionPerm, emit, sessionId, playerId]);
+
+  // ── Diagnostic display-refresh (400ms, only when panel is visible) ───────
+  useEffect(() => {
+    if (!showDiag) return;
+    const id = setInterval(() => setDiagSnap({
+      mo: diagMotionCountRef.current,
+      or: diagOrientCountRef.current,
+      a: diagLastOrientRef.current.a,
+      b: diagLastOrientRef.current.b,
+      g: diagLastOrientRef.current.g,
+      x: diagLastAccelRef.current.x,
+      y: diagLastAccelRef.current.y,
+      z: diagLastAccelRef.current.z,
+      ts: diagLastEmitRef.current,
+    }), 400);
+    return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showDiag]);
+
+  // ── Standalone sensor test (10 s window, triggered by test button) ────────
+  const runSensorTest = useCallback(async () => {
+    if (testRunning) return;
+    setTestRunning(true);
+    setTestCountdown(10);
+    // Reset counters for a clean test window
+    diagMotionCountRef.current = 0;
+    diagOrientCountRef.current = 0;
+
+    const dme = DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> };
+    const doe = (typeof DeviceOrientationEvent !== 'undefined')
+      ? DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> }
+      : null;
+
+    if (typeof dme.requestPermission === 'function') {
+      // Fire BOTH synchronously from user gesture tap (no await before either)
+      let mp: Promise<string>;
+      try { mp = dme.requestPermission(); }
+      catch (e) { mp = Promise.resolve('denied'); console.log('[iPhoneMotion:test] motion rP sync throw', e); }
+
+      let op: Promise<string> = Promise.resolve('granted');
+      if (typeof doe?.requestPermission === 'function') {
+        try { op = doe.requestPermission(); }
+        catch (e) { op = Promise.resolve('denied'); console.log('[iPhoneMotion:test] orient rP sync throw', e); }
+      }
+
+      try { const r = await mp; setDiagMotionPerm(r); console.log('[iPhoneMotion:test] motion perm:', r); }
+      catch (e) { setDiagMotionPerm(`error`); console.log('[iPhoneMotion:test] motion perm error', e); }
+      try { const r = await op; setDiagOrientPerm(r); console.log('[iPhoneMotion:test] orient perm:', r); }
+      catch (e) { setDiagOrientPerm(`error`); console.log('[iPhoneMotion:test] orient perm error', e); }
+    } else {
+      setDiagMotionPerm('auto');
+      setDiagOrientPerm('auto');
+    }
+
+    // Attach temporary listeners for 10 s
+    const onM = (e: DeviceMotionEvent) => {
+      diagMotionCountRef.current++;
+      const a = e.acceleration ?? e.accelerationIncludingGravity;
+      if (a) diagLastAccelRef.current = { x: a.x ?? null, y: a.y ?? null, z: a.z ?? null };
+    };
+    const onO = (e: DeviceOrientationEvent) => {
+      diagOrientCountRef.current++;
+      diagLastOrientRef.current = { a: e.alpha, b: e.beta, g: e.gamma };
+    };
+    window.addEventListener('devicemotion', onM);
+    window.addEventListener('deviceorientation', onO);
+
+    const tick = setInterval(() => setTestCountdown(c => Math.max(0, c - 1)), 1000);
+
+    setTimeout(() => {
+      window.removeEventListener('devicemotion', onM);
+      window.removeEventListener('deviceorientation', onO);
+      clearInterval(tick);
+      setTestRunning(false);
+      console.log('[iPhoneMotion:test] done — motion:', diagMotionCountRef.current, '| orient:', diagOrientCountRef.current);
+    }, 10_000);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [testRunning]);
 
   const energyColor = energy > 70 ? '#22c55e' : energy > 35 ? '#eab308' : '#A78BFA';
 
@@ -1432,6 +1547,64 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
         </div>
       )}
       <div className="text-2xl font-black" style={{color:'#A78BFA'}}>BALLA! 🕺</div>
+
+      {/* ── Diagnostic panel (dev / ?debug=1) ─────────────────────────────── */}
+      {showDiag && (() => {
+        const n = (v: number|null) => v === null ? 'null' : v.toFixed(1);
+        const Row = ({ label, val, ok }: { label: string; val: string; ok?: boolean }) => (
+          <div className="flex justify-between gap-2">
+            <span className="opacity-50">{label}</span>
+            <span className={ok === false ? 'text-red-400' : ok === true ? 'text-green-400' : ''}>
+              {val}
+            </span>
+          </div>
+        );
+        const dme = DeviceMotionEvent as unknown as { requestPermission?: unknown };
+        const doe = typeof DeviceOrientationEvent !== 'undefined'
+          ? DeviceOrientationEvent as unknown as { requestPermission?: unknown }
+          : null;
+        const secAgo = diagSnap.ts ? Math.round((Date.now() - diagSnap.ts) / 1000) : null;
+        return (
+          <div className="w-full rounded-2xl border border-yellow-400/40 bg-black/80 p-3 text-[10px] font-mono text-left space-y-0.5 mt-2" style={{color:'#facc15'}}>
+            <div className="text-[11px] font-black mb-2 tracking-wide">🔬 SENSOR DIAGNOSTIC</div>
+
+            <Row label="isIOS"                  val={isIOS ? '✅ YES' : '❌ NO'} ok={isIOS} />
+            <Row label="isPWA/standalone"        val={isStandalone ? '✅ YES' : '❌ NO'} />
+            <Row label="DeviceMotionEvent"       val={typeof DeviceMotionEvent !== 'undefined' ? '✅' : '❌ MISSING'} ok={typeof DeviceMotionEvent !== 'undefined'} />
+            <Row label="DME.requestPermission"   val={typeof dme.requestPermission === 'function' ? '✅ function' : '❌ none'} ok={typeof dme.requestPermission === 'function'} />
+            <Row label="DeviceOrientationEvent"  val={typeof DeviceOrientationEvent !== 'undefined' ? '✅' : '❌ MISSING'} ok={typeof DeviceOrientationEvent !== 'undefined'} />
+            <Row label="DOE.requestPermission"   val={typeof doe?.requestPermission === 'function' ? '✅ function' : '❌ none'} ok={typeof doe?.requestPermission === 'function'} />
+            <div className="border-t border-yellow-400/20 my-1"/>
+            <Row label="motionPerm (main flow)"  val={motionPerm} ok={motionPerm === 'granted'} />
+            <Row label="motionPerm (test btn)"   val={diagMotionPerm} ok={diagMotionPerm === 'granted' || diagMotionPerm === 'auto'} />
+            <Row label="orientPerm (test btn)"   val={diagOrientPerm} ok={diagOrientPerm === 'granted' || diagOrientPerm === 'auto'} />
+            <div className="border-t border-yellow-400/20 my-1"/>
+            <Row label="motionEvents (count)"    val={String(diagSnap.mo)} ok={diagSnap.mo > 0} />
+            <Row label="orientEvents (count)"    val={String(diagSnap.or)} ok={diagSnap.or > 0} />
+            <Row label="last α/β/γ"              val={diagSnap.a !== null ? `${n(diagSnap.a)}° / ${n(diagSnap.b)}° / ${n(diagSnap.g)}°` : '—'} ok={diagSnap.a !== null} />
+            <Row label="last accel x/y/z"        val={diagSnap.x !== null ? `${n(diagSnap.x)} / ${n(diagSnap.y)} / ${n(diagSnap.z)}` : '—'} ok={diagSnap.x !== null} />
+            <div className="border-t border-yellow-400/20 my-1"/>
+            <Row label="computed energy"         val={`${energy}%`} ok={energy > 0} />
+            <Row label="last socket emit"        val={secAgo !== null ? `${secAgo}s ago` : '—'} ok={secAgo !== null} />
+            <Row label="online"                  val={navigator.onLine ? '✅ yes' : '❌ offline'} ok={navigator.onLine} />
+            <div className="mt-1 text-[9px] opacity-40 break-all leading-tight">{navigator.userAgent}</div>
+
+            <button
+              onClick={() => void runSensorTest()}
+              disabled={testRunning}
+              className="mt-2 w-full rounded-xl py-2.5 text-xs font-black tracking-wide"
+              style={{
+                background: testRunning ? 'rgba(250,204,21,0.15)' : 'rgba(250,204,21,0.25)',
+                color: '#facc15', border: '1px solid rgba(250,204,21,0.5)',
+                cursor: testRunning ? 'default' : 'pointer',
+              }}>
+              {testRunning
+                ? `⏱ Test attivo… ${testCountdown}s — motion:${diagSnap.mo} orient:${diagSnap.or}`
+                : '🧪 Test sensori iPhone (10 s)'}
+            </button>
+          </div>
+        );
+      })()}
     </div>
   );
 }
