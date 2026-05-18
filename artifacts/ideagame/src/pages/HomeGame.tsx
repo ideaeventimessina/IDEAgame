@@ -1467,10 +1467,6 @@ export default function HomeGame() {
                 style={{background:'linear-gradient(135deg,#F5B642,#FF8C00)',boxShadow:'0 0 45px #F5B64255'}}>
                 <Sparkles className="h-5 w-5"/> Nuova Serata
               </motion.button>
-              <button onClick={() => navigate('/')}
-                className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-6 py-4 text-sm text-white/35 hover:text-white/60">
-                <Home className="h-4 w-4"/> Hub
-              </button>
             </div>
           </motion.div>
         )}
