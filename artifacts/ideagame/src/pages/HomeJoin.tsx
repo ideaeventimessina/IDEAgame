@@ -1137,17 +1137,33 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
 
   const requestMotion = useCallback(async () => {
     const dme = DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> };
+    const doe = (typeof DeviceOrientationEvent !== 'undefined')
+      ? DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> }
+      : null;
+    console.log('[BalloSensor] requestMotion — dme.rP:', typeof dme.requestPermission,
+      '| doe.rP:', typeof doe?.requestPermission,
+      '| has DeviceOrientationEvent:', typeof DeviceOrientationEvent);
+
     if (typeof dme.requestPermission === 'function') {
       try {
-        const r = await dme.requestPermission();
-        const perm: 'granted' | 'denied' = r === 'granted' ? 'granted' : 'denied';
+        // Both requestPermission() calls fired synchronously from the user gesture
+        // (before any await) so iOS considers them in the same gesture context.
+        const motionPromise = dme.requestPermission();
+        const orientPromise = typeof doe?.requestPermission === 'function'
+          ? doe.requestPermission()
+          : Promise.resolve('granted');
+        const [motionResult] = await Promise.all([motionPromise, orientPromise]);
+        const perm: 'granted' | 'denied' = motionResult === 'granted' ? 'granted' : 'denied';
+        console.log('[BalloSensor] permission result:', perm);
         localStorage.setItem(MOTION_PERM_KEY, perm);
         setMotionPerm(perm);
-      } catch {
+      } catch (err) {
+        console.log('[BalloSensor] permission error:', err);
         localStorage.setItem(MOTION_PERM_KEY, 'denied');
         setMotionPerm('denied');
       }
     } else {
+      console.log('[BalloSensor] no requestPermission API — auto-granted');
       localStorage.setItem(MOTION_PERM_KEY, 'granted');
       setMotionPerm('granted');
     }
@@ -1155,13 +1171,24 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
 
   useEffect(() => {
     if (motionPerm !== 'granted') return;
+    console.log('[BalloSensor] permission granted — starting listeners',
+      '| has DeviceOrientationEvent:', typeof DeviceOrientationEvent,
+      '| has DeviceMotionEvent:', typeof DeviceMotionEvent);
+
+    // orientActive: true once the first deviceorientation sample arrives.
+    // Used as the hard gate for the accel fallback — avoids the stale-length
+    // race where orientSamplesRef.length is 0 between intervals.
+    let orientActive = false;
 
     // ── PRIMARY: deviceorientation — angle-delta scoring ─────────────────────
-    // Tracks rotation and tilt changes per interval. Players get energy from
-    // natural dance movements (arm swing, phone tilt/rotation) without needing
-    // to shake violently. Violent shaking is NOT required or rewarded more.
-    // This eliminates the root cause of iOS "Shake to Undo" triggering.
+    // Natural dance/arm movement (10–20°) registers as 40–80% energy.
+    // No violent shaking required. Eliminates iOS "Shake to Undo" root cause.
     const handleOrientation = (e: DeviceOrientationEvent) => {
+      if (!orientActive) {
+        orientActive = true;
+        console.log('[BalloSensor] orientation first sample — alpha:', e.alpha,
+          'beta:', e.beta, 'gamma:', e.gamma);
+      }
       const beta  = e.beta  ?? 0;
       const gamma = e.gamma ?? 0;
       const alpha = e.alpha ?? 0;
@@ -1170,31 +1197,37 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
         const db = Math.abs(beta  - prev.beta);
         const dg = Math.abs(gamma - prev.gamma);
         let   da = Math.abs(alpha - prev.alpha);
-        if (da > 180) da = 360 - da; // wrap-around
-        // Combined rotation magnitude; alpha weighted lower (compass drift)
+        if (da > 180) da = 360 - da; // handle alpha 0↔360 wrap
+        // Combined rotation magnitude; alpha weighted lower (prone to compass drift)
         const movement = Math.sqrt(db * db + dg * dg + (da * 0.4) * (da * 0.4));
-        // Cap at 90°/interval — a fast arm swing is ~30°, so 90 is already extreme
-        orientSamplesRef.current.push(Math.min(movement, 90));
+        // Cap at 60° — a fast arm swing is ~15–25°, 60° is already very energetic
+        orientSamplesRef.current.push(Math.min(movement, 60));
       }
       prevOrientRef.current = { beta, gamma, alpha };
     };
 
-    // ── FALLBACK: smoothed accelerometer — clamped ───────────────────────────
-    // Used only when orientation provides no data (some Android devices).
-    // Prefers acceleration-without-gravity; clamps hard at 10 m/s² so that
-    // violent shaking scores NO HIGHER than vigorous dancing.
+    // ── FALLBACK: clamped accelerometer ───────────────────────────────────────
+    // Active only when orientation hasn't produced data (some iPhones, old Android).
+    // Prefers e.acceleration (no gravity); falls back to accelerationIncludingGravity.
+    // Hard clamp at 10 m/s² — dance is 2–8, violent shake is 20+.
     const handleMotion = (e: DeviceMotionEvent) => {
-      if (orientSamplesRef.current.length > 0) return; // orientation wins
+      if (orientActive) return; // orientation takes full priority
       const acc = e.acceleration ?? e.accelerationIncludingGravity;
       if (!acc) return;
       let mag = Math.sqrt((acc.x ?? 0) ** 2 + (acc.y ?? 0) ** 2 + (acc.z ?? 0) ** 2);
-      if (!e.acceleration) mag = Math.abs(mag - 9.81); // subtract gravity baseline
-      // Hard clamp: dance = 2–8 m/s², violent shake = 20+. Cap removes incentive to shake.
+      if (!e.acceleration) mag = Math.abs(mag - 9.81); // remove gravity baseline
       accelSamplesRef.current.push(Math.min(mag, 10));
     };
 
     window.addEventListener('deviceorientation', handleOrientation);
     window.addEventListener('devicemotion', handleMotion);
+
+    // 1000 ms watchdog: if no orientation samples arrived, log and let accel take over
+    const orientWatchdog = setTimeout(() => {
+      if (!orientActive) {
+        console.log('[BalloSensor] no orientation samples after 1000ms — using accel fallback');
+      }
+    }, 1000);
 
     // ── Interval: compute smoothed energy and emit ───────────────────────────
     const interval = setInterval(() => {
@@ -1205,24 +1238,28 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
       if (orientSamples.length > 0) {
         const avg = orientSamples.reduce((a, b) => a + b, 0) / orientSamples.length;
         orientSamples.length = 0;
-        accelSamples.length  = 0; // discard stale accel when orientation works
-        // Map 0–45° average delta → 0–100. Calm standing ~0°, active dance ~20–40°.
-        rawEnergy = Math.min(100, Math.round((avg / 45) * 100));
+        accelSamples.length  = 0; // discard stale accel
+        // Sensitivity: 0–25° avg → 0–100. Normal arm swing ~10–15° → 40–60%.
+        rawEnergy = Math.min(100, Math.round((avg / 25) * 100));
       } else if (accelSamples.length > 0) {
         const avg = accelSamples.reduce((a, b) => a + b, 0) / accelSamples.length;
         accelSamples.length = 0;
-        // Map 0–10 m/s² → 0–100
-        rawEnergy = Math.min(100, Math.round((avg / 10) * 100));
+        // Map 0–8 m/s² → 0–100 (more sensitive than before)
+        rawEnergy = Math.min(100, Math.round((avg / 8) * 100));
       } else {
-        return; // no samples — skip emit, don't reset energy
+        return; // no samples yet — skip, keep displayed energy
       }
 
-      // Exponential smoothing prevents instant drops/spikes in the display bar
-      const smoothed = Math.round(smoothedEnergyRef.current * 0.55 + rawEnergy * 0.45);
+      // Exponential smoothing: more responsive (45% new vs 55% old)
+      const smoothed = Math.round(smoothedEnergyRef.current * 0.5 + rawEnergy * 0.5);
       smoothedEnergyRef.current = smoothed;
       setEnergy(smoothed);
 
-      if (timeLeftRef.current !== null && timeLeftRef.current > 0) {
+      // Emit whenever timeLeft > 0 (null means no timer = always emit)
+      const tl = timeLeftRef.current;
+      if (tl === null || tl > 0) {
+        console.log('[BalloSensor] emit energy', smoothed,
+          '| orientActive:', orientActive, '| tl:', tl);
         emit('home:ballo_energy', { sessionId, playerId, energy: smoothed, round: round ?? 0 });
       }
     }, 400);
@@ -1246,6 +1283,7 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round }
     window.addEventListener('focus', handleWindowFocus);
 
     return () => {
+      clearTimeout(orientWatchdog);
       window.removeEventListener('deviceorientation', handleOrientation);
       window.removeEventListener('devicemotion', handleMotion);
       clearInterval(interval);
