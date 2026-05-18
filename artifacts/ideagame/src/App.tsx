@@ -1,4 +1,5 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
+import { useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -80,10 +81,30 @@ import HomeRoom from "@/pages/HomeRoom";
 
 const queryClient = new QueryClient();
 
+// ── Root redirect guard ───────────────────────────────────────────────────────
+// Public entry: "/" must always land on /home-v4.
+// The ONLY exception is the projector/public-event mode (?e=JOIN_CODE), which
+// still renders Hub so the TV screen keeps working without changes.
+function RootRoute() {
+  const [, navigate] = useLocation();
+  const params = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search)
+    : new URLSearchParams();
+  const isProjector = !!params.get('e');
+  useEffect(() => {
+    if (!isProjector) {
+      console.log('[RoutingCheck] / without ?e= redirected to /home-v4');
+      navigate('/home-v4', { replace: true });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  if (isProjector) return <Hub />;
+  return null;
+}
+
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={Hub} />
+      <Route path="/" component={RootRoute} />
       <Route path="/projector" component={ProjectorStandby} />
       {/* LEGACY — prototype routes, unreachable from active UI, pending deletion */}
       <Route path="/dev-test" component={DevTest} />

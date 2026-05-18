@@ -130,10 +130,10 @@ export default function Cockpit() {
         {/* Back to Hub */}
         <motion.button
           initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/home-v4')}
           className="absolute left-4 top-4 flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-muted-foreground hover:text-white transition-colors"
         >
-          <ArrowLeft className="h-3.5 w-3.5" /> Hub
+          <ArrowLeft className="h-3.5 w-3.5" /> Home
         </motion.button>
         <motion.button
           initial={{ opacity: 0 }} animate={{ opacity: 1 }}
