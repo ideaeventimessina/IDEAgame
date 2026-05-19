@@ -1,0 +1,144 @@
+HOME MODE — REUSABLE PRESS-TO-TALK VOICE ANSWER SYSTEM.
+
+FIRST AUDIT, THEN PATCH.
+Do not redesign global UI.
+Do not touch Ballo.
+Do not touch audio engine.
+Do not touch routing.
+
+Problem:
+In Parola alle Spalle, the INDOVINO has a “RISPOSTA” button but tapping it does nothing useful.
+The player cannot validate the answer.
+
+Required behavior:
+The INDOVINO must press and hold to speak.
+
+UX:
+- Button label:
+  “TIENI PREMUTO E RISPONDI”
+- While holding:
+  - microphone activates
+  - small Jonny listening overlay appears
+  - Jonny icon/avatar
+  - text:
+    “Jonny ti ascolta…”
+  - animated frequency/waveform bars
+  - live recognized text if available
+- On release:
+  - stop listening
+  - normalize recognized text
+  - immediately match against payload.word
+  - if correct, emit/POST validation
+  - if wrong, show:
+    “Non ancora, riprova!”
+
+Important:
+The player must understand clearly that the microphone is active.
+No silent microphone state.
+
+Reusable architecture:
+Create a reusable component/hook:
+
+usePressToTalkAnswer()
+
+or
+
+PressToTalkAnswer.tsx
+
+It must support:
+{
+  expectedAnswer: string,
+  onCorrect(answerText),
+  onWrong(answerText),
+  language: "it-IT",
+  holdToTalk: true
+}
+
+Use Web Speech API where available:
+window.SpeechRecognition || window.webkitSpeechRecognition
+
+Fallback:
+If SpeechRecognition is not supported:
+- show fallback input:
+  “Scrivi risposta”
+- submit button:
+  “Conferma”
+This fallback is acceptable on unsupported browsers.
+
+Audio/microphone permission:
+- request/use microphone only from direct press gesture
+- handle denied permission with visible message:
+  “Microfono non autorizzato”
+- no hidden failure
+
+Matching:
+Normalize both spoken text and target word:
+- lowercase
+- remove accents
+- trim spaces
+- remove punctuation
+- allow minor variants
+- for now exact normalized match OR includes match
+Example:
+spoken: “la sirenetta”
+target: “Sirenetta”
+→ valid
+
+Parola alle Spalle integration:
+Only INDOVINO sees PressToTalkAnswer.
+SUGGERITORE does not see it.
+Spectators do not see it.
+
+When correct:
+emit or POST:
+home:wordback_correct
+{
+  sessionId,
+  round,
+  answerText
+}
+
+Server must:
+- validate current mode is home-wordback
+- validate caller is guesserId
+- compare normalized answer to payload.word
+- prevent duplicate scoring for same round
+- award +100 to guesser
+- award +100 to suggester
+- emit to room:
+  home:wordback_correct
+  {
+    guesserId,
+    suggesterId,
+    word,
+    answerText,
+    points:100
+  }
+
+TV:
+Listen for home:wordback_correct:
+- show green overlay:
+  “RISPOSTA CORRETTA!”
+  “[nickname] ha indovinato: [word]”
+- update scores immediately
+- do not break taboo alarm system
+
+Important:
+This voice answer system must be reusable later for:
+- Karaoke
+- Freestyle
+- Adult Only verbal challenges
+- other speech-based games
+
+Do not hardcode it only inside WordBack.
+
+Output:
+A. files audited
+B. reusable component/hook created
+C. microphone UX behavior
+D. fallback behavior
+E. WordBack integration
+F. server validation/scoring
+G. TV success overlay
+H. typecheck result
+I. manual test steps

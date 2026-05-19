@@ -2404,23 +2404,19 @@ function WordBackBoard({ payload, players, onScore, onReveal, tabooAlarm, sessio
   const guesser = players.find(p => p.id === guesserId);
   const suggester = players.find(p => p.id === suggesterId);
 
-  // Listen for phone-triggered correct answer
+  // Listen for server-confirmed correct answer (server already awarded scores)
   const { on } = useHomeSocket(sessionId);
+  const [correctData, setCorrectData] = useState<{ guesserNickname: string; word: string } | null>(null);
   useEffect(() => {
-    const unsub = on<{ guesserId: string; suggesterId: string; pts: number }>('home:wordback_correct', async (d) => {
+    const unsub = on<{ guesserId: string; guesserNickname?: string; word?: string; pts: number }>('home:wordback_correct', (d) => {
       if (autoAwarded || awarded) return;
       setAutoAwarded(true);
-      const tasks: Promise<void>[] = [];
-      const g = players.find(p => p.id === d.guesserId);
-      const s = players.find(p => p.id === d.suggesterId);
-      if (g) tasks.push(onScore(g.id, g.score + d.pts));
-      if (s) tasks.push(onScore(s.id, s.score + d.pts));
-      await Promise.all(tasks);
-      setTimeout(onReveal, 1800);
+      setCorrectData({ guesserNickname: d.guesserNickname ?? '', word: d.word ?? word });
+      setTimeout(onReveal, 2400);
     });
     return unsub;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoAwarded, awarded, players, pts]);
+  }, [autoAwarded, awarded, word]);
 
   return (
     <motion.div key={String(payload.roundIndex)} initial={{scale:0.9,opacity:0}} animate={{scale:1,opacity:1}}
@@ -2451,9 +2447,14 @@ function WordBackBoard({ payload, players, onScore, onReveal, tabooAlarm, sessio
             <div className="rounded-3xl px-14 py-10 text-center"
               style={{background:'rgba(34,197,94,0.95)',border:'3px solid rgba(74,222,128,0.9)',boxShadow:'0 0 100px rgba(34,197,94,0.9)',backdropFilter:'blur(12px)'}}>
               <div className="text-7xl mb-4">✅</div>
-              <div className="text-5xl font-black text-white tracking-tight">CORRETTO!</div>
-              <div className="text-2xl text-white/90 mt-3 font-bold">{word.toUpperCase()}</div>
-              <div className="text-lg text-white/70 mt-1">+{pts} a entrambi i giocatori</div>
+              <div className="text-5xl font-black text-white tracking-tight">RISPOSTA CORRETTA!</div>
+              {correctData?.guesserNickname && (
+                <div className="text-2xl text-white/85 mt-3 font-bold">{correctData.guesserNickname} ha indovinato:</div>
+              )}
+              <div className="text-display text-4xl font-black mt-2" style={{color:'#4ade80',textShadow:'0 0 30px rgba(74,222,128,0.7)'}}>
+                {(correctData?.word ?? word).toUpperCase()}
+              </div>
+              <div className="text-lg text-white/60 mt-2">+{pts} a entrambi i giocatori</div>
             </div>
           </motion.div>
         )}

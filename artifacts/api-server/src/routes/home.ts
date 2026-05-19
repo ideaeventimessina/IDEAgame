@@ -1914,6 +1914,104 @@ router.post("/home/sessions/:id/end-game", async (req, res): Promise<void> => {
   res.json({ session: updated, players });
 });
 
+// ── In-memory duplicate guard for wordback scoring ─────────────────────────────
+const wordbackScoredRounds = new Map<string, Set<number>>();
+
+function normalizeWordForMatch(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+// ── POST /home/sessions/:id/wordback-correct ────────────────────────────────────
+router.post("/home/sessions/:id/wordback-correct", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+
+  const payload = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (payload["mode"] !== "home-wordback") {
+    res.status(400).json({ error: "Sessione non in modalità wordback" }); return;
+  }
+
+  const { playerId, answerText } = req.body as { playerId?: string; answerText?: string };
+  if (!playerId || !answerText) {
+    res.status(400).json({ error: "playerId e answerText obbligatori" }); return;
+  }
+
+  const guesserId   = String(payload["guesserId"]   ?? "");
+  const suggesterId = String(payload["suggesterId"] ?? "");
+  const word        = String(payload["word"]        ?? "");
+  const pts         = Number(payload["points"]      ?? 150);
+  const roundIndex  = typeof payload["roundIndex"] === "number" ? payload["roundIndex"] : 0;
+
+  if (!guesserId || playerId !== guesserId) {
+    res.status(403).json({ error: "Solo l'indovinatore può rispondere" }); return;
+  }
+
+  // Duplicate prevention — same round already scored
+  const scored = wordbackScoredRounds.get(id) ?? new Set<number>();
+  if (scored.has(roundIndex)) {
+    res.status(409).json({ error: "Risposta già registrata per questo round" }); return;
+  }
+
+  // Answer matching
+  const normAnswer = normalizeWordForMatch(answerText);
+  const normWord   = normalizeWordForMatch(word);
+  const matched = normWord.length > 0 && normAnswer.length > 0 &&
+    (normAnswer === normWord || normAnswer.includes(normWord) || normWord.includes(normAnswer));
+
+  if (!matched) {
+    res.status(422).json({ error: "Risposta non corrisponde", answerText }); return;
+  }
+
+  // Mark round as scored
+  scored.add(roundIndex);
+  wordbackScoredRounds.set(id, scored);
+
+  // Award scores
+  const players = await getPlayers(id);
+  const guesserPlayer   = players.find(p => p.id === guesserId);
+  const suggesterPlayer = suggesterId ? players.find(p => p.id === suggesterId) : null;
+
+  const updates: Promise<unknown>[] = [];
+  if (guesserPlayer) {
+    updates.push(
+      db.update(homePlayersTable)
+        .set({ score: Math.max(0, guesserPlayer.score + pts) })
+        .where(and(eq(homePlayersTable.id, guesserId), eq(homePlayersTable.sessionId, id)))
+    );
+  }
+  if (suggesterPlayer) {
+    updates.push(
+      db.update(homePlayersTable)
+        .set({ score: Math.max(0, suggesterPlayer.score + pts) })
+        .where(and(eq(homePlayersTable.id, suggesterId), eq(homePlayersTable.sessionId, id)))
+    );
+  }
+  await Promise.all(updates);
+
+  // Emit to room (TV board + all clients)
+  emitToRoom(homeRoom(id), "home:wordback_correct", {
+    guesserId,
+    suggesterId,
+    guesserNickname:   guesserPlayer?.nickname   ?? "",
+    suggesterNickname: suggesterPlayer?.nickname  ?? "",
+    word,
+    answerText,
+    pts,
+  });
+
+  await broadcastState(id);
+  res.json({ ok: true, pts });
+});
+
 // ── POST /home/sessions/:id/score ──────────────────────────────────────────────
 router.post("/home/sessions/:id/score", async (req, res): Promise<void> => {
   const id = String(req.params["id"]);

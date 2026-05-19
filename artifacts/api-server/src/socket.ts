@@ -340,19 +340,7 @@ export function initHomeSocketHandlers(io: SocketServer): void {
       emitToRoom(`home:${sessionId}`, "home:wordback_taboo_alarm", alarm);
     });
 
-    // Relay phone-triggered correct answer to the TV board
-    socket.on("home:wordback_correct", (data: unknown) => {
-      if (!data || typeof data !== "object") return;
-      const d = data as Record<string, unknown>;
-      const sessionId = typeof d["sessionId"] === "string" ? d["sessionId"] : null;
-      if (!sessionId) return;
-      const payload = {
-        guesserId:   typeof d["guesserId"]   === "string" ? d["guesserId"]   : "",
-        suggesterId: typeof d["suggesterId"] === "string" ? d["suggesterId"] : "",
-        pts:         typeof d["pts"]         === "number" ? d["pts"]         : 150,
-      };
-      logger.info({ sessionId, ...payload }, "[WordbackCorrect] relaying to room");
-      emitToRoom(`home:${sessionId}`, "home:wordback_correct", payload);
-    });
+    // home:wordback_correct is now fully handled server-side via
+    // POST /home/sessions/:id/wordback-correct — no socket relay needed.
   });
 }
