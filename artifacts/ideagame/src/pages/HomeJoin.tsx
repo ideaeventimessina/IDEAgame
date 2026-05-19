@@ -1376,12 +1376,18 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
     // Gate logic instead checks orientSamplesRef.current.length (see handleMotion).
     let accelLoggedOnce = false; // log fallback start only once
 
+    // stalledErrorActive: set by the 5s watchdog, cleared by the first event that arrives.
+    // This lets sensorError auto-dismiss as soon as the sensor stream (re)starts.
+    let stalledErrorActive = false;
+
     // ── PRIMARY: deviceorientation — angle-delta scoring ─────────────────────
     // Only orientation samples with movement > 0.1° are queued.
     // iPhone bug: deviceorientation fires but returns alpha/beta/gamma = 0 or null
     // when DeviceOrientationEvent.requestPermission() was not called separately.
     // In that case, movement = 0 and NO sample is pushed — allowing accel fallback.
     const handleOrientation = (e: DeviceOrientationEvent) => {
+      // Auto-clear the watchdog warning as soon as any event arrives
+      if (stalledErrorActive) { stalledErrorActive = false; setSensorError(false); }
       diagOrientCountRef.current++;
       diagLastOrientRef.current = { a: e.alpha, b: e.beta, g: e.gamma };
       if (!orientActive) {
@@ -1415,6 +1421,8 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
     // Gated on orientSamplesRef.current.length (not orientActive flag) so that
     // iPhones where orientation fires but returns zero-deltas still score.
     const handleMotion = (e: DeviceMotionEvent) => {
+      // Auto-clear the watchdog warning as soon as any event arrives
+      if (stalledErrorActive) { stalledErrorActive = false; setSensorError(false); }
       diagMotionCountRef.current++;
       const _da = e.acceleration ?? e.accelerationIncludingGravity;
       if (_da) diagLastAccelRef.current = { x: _da.x ?? null, y: _da.y ?? null, z: _da.z ?? null };
@@ -1436,10 +1444,12 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
     window.addEventListener('deviceorientation', handleOrientation);
     window.addEventListener('devicemotion', handleMotion);
 
-    // 5-second watchdog: if no sensor events at all → surface visible error to player
+    // 5-second watchdog: if no sensor events at all → show a non-blocking warning banner.
+    // stalledErrorActive is cleared automatically by the first event that arrives.
     const sensorWatchdog = setTimeout(() => {
       if (diagMotionCountRef.current === 0 && diagOrientCountRef.current === 0) {
-        console.log('[Ballo iPhone] 5s watchdog — zero events received, surfacing error');
+        console.log('[Ballo iPhone] 5s watchdog — zero events received, showing warning banner');
+        stalledErrorActive = true;
         setSensorError(true);
       }
     }, 5000);
@@ -1679,19 +1689,19 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
   return (
     <div className="flex flex-col items-center gap-5 py-4 text-center" style={{userSelect:'none',WebkitUserSelect:'none'}}>
 
-      {/* ── Sensor watchdog banner — fires when no events arrive after 5s ─────── */}
-      {/* Neutral diagnostic only; no browser-switch suggestion.               */}
-      {/* Chrome iOS / WKWebView will log event counts in the console.         */}
+      {/* ── Sensor watchdog warning — fires when no events arrive after 5s ────── */}
+      {/* Non-blocking: player can continue dancing. Auto-clears when events    */}
+      {/* arrive. Chrome iOS / WKWebView: events may start after a short delay. */}
       {sensorError && (
         <div style={{
           width: '100%', maxWidth: 340,
-          background: 'rgba(239,68,68,0.18)',
-          border: '1px solid rgba(239,68,68,0.5)',
-          borderRadius: 14, padding: '12px 16px',
-          color: '#f87171', fontSize: 14, fontWeight: 800,
+          background: 'rgba(234,179,8,0.12)',
+          border: '1px solid rgba(234,179,8,0.4)',
+          borderRadius: 14, padding: '10px 14px',
+          color: '#facc15', fontSize: 13, fontWeight: 700,
           textAlign: 'center', lineHeight: 1.55,
         }}>
-          ❌ Sensori non disponibili — energia fissa a 0
+          ⚠️ Sensori non attivi — continua a muoverti
         </div>
       )}
 
