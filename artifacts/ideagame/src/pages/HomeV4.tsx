@@ -791,11 +791,17 @@ function ShowLanding({ onArena }: { onArena:()=>void }) {
       initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
       transition={{ duration:0.5 }}>
 
-      {/* background */}
+      {/* background — contain keeps the full image visible at all aspect ratios.
+           Dark gaps (if any) are filled by the parent root background #030010.
+           backgroundPosition center/center ensures symmetric letterboxing.
+           No 100vh: the parent is fixed inset-0 which already respects the
+           browser's dynamic/visual viewport (svh/dvh equivalent). */}
       <div className="absolute inset-0" style={{
+        backgroundColor:'#030010',
         backgroundImage:`url(${pub('/landing-bg.png')})`,
-        backgroundSize:'cover',
-        backgroundPosition:'center top',
+        backgroundSize:'contain',
+        backgroundRepeat:'no-repeat',
+        backgroundPosition:'center center',
       }}/>
 
       {/* bottom-left: CTA */}
