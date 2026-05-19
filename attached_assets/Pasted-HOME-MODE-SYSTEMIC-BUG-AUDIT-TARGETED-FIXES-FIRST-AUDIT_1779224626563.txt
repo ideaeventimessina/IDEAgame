@@ -1,0 +1,254 @@
+HOME MODE — SYSTEMIC BUG AUDIT + TARGETED FIXES.
+
+FIRST AUDIT, THEN PATCH.
+Do not redesign.
+Do not touch SensorBridge.
+Do not touch audio engine unless directly needed.
+Do not patch every game blindly.
+
+We have multiple symptoms across Home Mode. Treat this as systemic state/player/socket issue first.
+
+==================================================
+PRIORITY 1 — PLAYER IDENTITY / SCORE / BOOKING BUG
+==================================================
+
+Problem:
+One specific player:
+- does not receive points in Quizzone
+- cannot book in Ballo
+- cannot book in other games
+This suggests player identity mismatch.
+
+Audit:
+- HomeJoin.tsx saved player localStorage
+- saveJoin / getSavedJoin
+- playerRef
+- current player id used in:
+  booking
+  quiz answer
+  scoring
+  wordback answer
+  ballo vote
+- server players table
+- isConnected updates
+- socket player register
+- any purgeDisconnected logic
+- book-player role validation
+- score update queries
+
+Find:
+1. Is the affected player duplicated in DB?
+2. Is phone using stale playerId from localStorage?
+3. Is playerId different from socket registered player?
+4. Is isConnected false causing server to ignore/purge him?
+5. Is scoring query failing because player not found?
+6. Is booking blocked because server thinks he is already booked/role occupied?
+7. Is localStorage restored from old session incorrectly?
+
+Patch:
+- add hard validation on HomeJoin mount:
+  if saved sessionId/playerId does not match active session/player list → clear saved join and force rejoin
+- add reconnect/register:
+  emit home:player_register { sessionId, playerId } after every join and socket reconnect
+- server must update isConnected=true for registered player
+- booking endpoints must return explicit error reason to phone
+- phone must show explicit booking error instead of silently blocking
+
+Logs:
+[PlayerIdentity]
+sessionId
+playerId
+nickname
+socketId
+isConnected
+foundInPlayers
+bookingAllowed
+scoreUpdateAffectedRows
+
+==================================================
+PRIORITY 2 — QUIZZONE REVEAL + SCORE BUG
+==================================================
+
+Problems:
+- TV must reveal correct answer immediately when last connected player answers.
+- Score of one of 3 players was not counted.
+
+Audit:
+- quiz answer endpoint
+- answeredCount vs connected player count
+- isConnected filtering
+- home:quiz_all_answered emit
+- TV listener for home:quiz_all_answered
+- scoring update per player
+- duplicate answer prevention
+- answer payload playerId
+
+Patch:
+- effective player count = connected players only, excluding spectators if any.
+- when answeredCount === effectiveCount:
+  emit home:quiz_all_answered immediately.
+- scoring must update every correct player.
+- if score update affects 0 rows, log and return explicit error.
+- TV must reveal correct answer on event, not wait timer.
+
+Output logs:
+[QuizScore]
+playerId
+correct
+points
+updatedRows
+answeredCount
+effectiveCount
+allAnswered
+
+==================================================
+PRIORITY 3 — SHARED HOME FLOW SYNC FOR BOOKINGS
+==================================================
+
+Problems:
+- Adult Only accepts booking on phone but TV remains waiting.
+- Percorso accepts booking on phone but TV remains waiting.
+- Ballo booking button can lock as if booked but player is not booked.
+- SaraMusica blocks after first question.
+- Karaoke does not ask Karaoke vs Freestyle.
+- All these suggest state/socket/polling inconsistency.
+
+Audit:
+- /flow/book-player
+- home:state broadcast
+- GameFlowPhone booking UI
+- GameFlowEngine booking slots
+- HomeGame home:state listener
+- HomeJoin home:state listener
+- playing phase polling
+- gameFlowPhase changes
+- currentRound changes
+
+Patch:
+- after every successful booking, server must broadcast full updated session + players via home:state.
+- phone must update from returned server state, not just optimistic local UI.
+- TV polling must catch bookedPlayers changes, not only gameFlowPhase.
+- phone polling must catch bookedPlayers changes.
+- booking button state must derive from server bookedPlayers, not local pending state alone.
+- on failed booking, reset loading state and show error.
+
+Logs:
+[HomeBooking]
+gameSlug
+phase
+playerId
+bookedPlayers before/after
+broadcast emitted
+TV received booked count
+phone received booked count
+
+==================================================
+PRIORITY 4 — GIOCO DELLE COPPIE PHONE/TV SEPARATION
+==================================================
+
+Problems:
+- Phone players behave like connected TV screens.
+- If one player touches a card, all phones reveal the same card.
+- Cards are revealed on all 4 screens.
+- Players cannot independently click if another player already touched.
+- TV card images too large/overflow, bottom row hidden under bar.
+
+Required:
+Separate TV board state from player phone controller.
+
+TV:
+- shows shared board.
+- large images, but must fit viewport.
+- bottom row must never be hidden by footer/bar.
+- use safe container height and responsive grid.
+
+Phones:
+- must NOT behave as mini TVs.
+- phone should be controller only.
+- if player can select cards, selection should be sent as an action, not reveal local board globally unless game rules require it.
+- For now, simplest safe behavior:
+  phones show controls/actions, not full shared card board.
+  TV owns card reveal state.
+- If phone taps card, server validates and TV updates.
+
+Patch:
+- remove shared reveal UI from phones or make it controller-only.
+- visibility preview 10s may be broadcast to phones only as preview, not as permanent card reveal.
+- ensure preview state does not conflict with active card selection.
+- fix TV grid:
+  max-height: calc(100dvh - footerHeight)
+  overflow hidden/scale grid
+  card size clamp()
+  no bottom overlap.
+
+==================================================
+PRIORITY 5 — WORDBACK CORRECT ANSWER CRASH / STUCK SUCCESS
+==================================================
+
+Problem:
+After correct answer:
+- winning user crashes/stays stuck on “corretto”
+- TV remains stuck with green “corretto” overlay.
+
+Audit:
+- PressToTalkAnswer onCorrect
+- POST /wordback-correct response handling
+- home:wordback_correct listener
+- duplicate 409 handling
+- overlay timeout cleanup
+- next round / reset state
+- phone local state after correct
+
+Patch:
+- success overlay auto-clears after 3s.
+- phone after correct returns to waiting/current round state, not stuck.
+- server duplicate 409 should not crash client.
+- on new round, clear correct state.
+- TV correct overlay must not block progression.
+
+==================================================
+PRIORITY 6 — KARAOKE / FREESTYLE ENTRY
+==================================================
+
+Problem:
+Karaoke never asks whether to do Karaoke or Freestyle.
+
+Required:
+When selecting Karaoke game:
+- first screen must ask:
+  “Karaoke Battle”
+  “Freestyle Battle”
+- chosen mode determines next theme/playlist selection.
+- do not jump directly to theme without this choice.
+
+Audit:
+- game select for karaoke-battle
+- freestyle-battle route/config
+- universal flow select-game
+- available games list
+
+Patch:
+- add pre-theme subtype selection for karaoke/freestyle
+OR
+- split clearly into two game entries if simpler.
+
+==================================================
+OUTPUT REQUIRED
+==================================================
+
+Before patch:
+A. root cause map grouped by:
+   player identity
+   socket/state sync
+   game-specific UI
+
+After patch:
+B. files modified
+C. Player identity fix
+D. Quizzone reveal/scoring fix
+E. Booking sync fix
+F. Coppie TV/phone separation + layout fix
+G. WordBack success cleanup
+H. Karaoke/Freestyle entry behavior
+I. typecheck result
+J. manual test checklist with 4 phones

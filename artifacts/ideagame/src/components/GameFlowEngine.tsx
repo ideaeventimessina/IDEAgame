@@ -26,7 +26,8 @@ export interface FlowBookedPlayer {
 
 export interface FlowPayload {
   mode: 'home-flow';
-  gameFlowPhase: 'theme_select' | 'booking' | 'confirm' | 'countdown';
+  gameFlowPhase: 'subtype_select' | 'theme_select' | 'booking' | 'confirm' | 'countdown';
+  selectedSubtype?: 'karaoke-only' | 'freestyle-only' | 'mixed';
   gameSlug: string;
   themes: FlowTheme[];
   selectedTheme: FlowTheme | null;
@@ -134,6 +135,18 @@ export function GameFlowEngine({
     } finally { setSelecting(false); }
   }
 
+  async function selectSubtype(subtype: 'karaoke-only' | 'freestyle-only' | 'mixed') {
+    if (selecting) return;
+    setSelecting(true);
+    try {
+      await fetch(`/api/home/sessions/${session.id}/flow/select-subtype`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subtype }),
+      });
+    } finally { setSelecting(false); }
+  }
+
   async function confirmFlow() {
     if (confirming) return;
     setConfirming(true);
@@ -160,6 +173,58 @@ export function GameFlowEngine({
 
   return (
     <AnimatePresence mode="wait">
+
+      {/* ── PHASE 0: SUBTYPE SELECT (karaoke-battle) ── */}
+      {p.gameFlowPhase === 'subtype_select' && (
+        <motion.div key="subtype_select"
+          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
+          transition={{ duration: 0.25 }}
+          className="flex w-full max-w-2xl flex-col items-center gap-7">
+
+          <div className="flex flex-col items-center gap-2 text-center">
+            <motion.div className="text-6xl"
+              animate={{ scale: [1, 1.1, 1] }} transition={{ duration: 2.2, repeat: Infinity }}>
+              {gameUI.emoji}
+            </motion.div>
+            <div className="text-display text-3xl font-black text-white"
+              style={{ textShadow: `0 0 30px ${gameUI.glow}55` }}>
+              Scegli il formato
+            </div>
+            <div className="text-sm font-semibold" style={{ color: 'rgba(255,255,255,0.4)' }}>
+              Seleziona la modalità di gioco
+            </div>
+          </div>
+
+          <div className="grid w-full gap-4 grid-cols-1">
+            {([
+              { subtype: 'karaoke-only' as const, emoji: '🎤', label: 'Solo Karaoke', desc: 'Canta brani originali con basi musicali' },
+              { subtype: 'freestyle-only' as const, emoji: '🎧', label: 'Solo Freestyle', desc: 'Rap improvvisato su una parola chiave' },
+              { subtype: 'mixed' as const, emoji: '🎵', label: 'Karaoke + Freestyle', desc: 'Alterna brani karaoke e round freestyle' },
+            ] as const).map(opt => (
+              <motion.button key={opt.subtype} onClick={() => selectSubtype(opt.subtype)} disabled={selecting}
+                whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+                className="flex items-center gap-4 rounded-2xl px-6 py-5 text-left disabled:opacity-50"
+                style={{
+                  background: `linear-gradient(135deg,${gameUI.color}22,${gameUI.color}0a)`,
+                  border: `1.5px solid ${gameUI.color}55`,
+                }}>
+                <span className="text-4xl">{opt.emoji}</span>
+                <div>
+                  <div className="font-black text-white text-lg">{opt.label}</div>
+                  <div className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.45)' }}>{opt.desc}</div>
+                </div>
+              </motion.button>
+            ))}
+          </div>
+
+          {selecting && (
+            <div className="flex items-center gap-2" style={{ color: 'rgba(255,255,255,0.35)' }}>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="text-sm">Caricamento…</span>
+            </div>
+          )}
+        </motion.div>
+      )}
 
       {/* ── PHASE 1: THEME SELECT ── */}
       {p.gameFlowPhase === 'theme_select' && (

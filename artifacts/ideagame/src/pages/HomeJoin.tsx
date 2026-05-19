@@ -186,6 +186,13 @@ export default function HomeJoin() {
     const onReconnect = () => {
       console.log('[HomeFlow] phone socket reconnected — re-joining home room', sid);
       emit('join:home', sid);
+      // P1: Re-register player so server marks them isConnected=true again.
+      // Without this, isConnected stays false after reconnect → quiz effectiveCount drops,
+      // booking purge removes them, and host sees phantom disconnected players.
+      if (playerRef.current?.id) {
+        emit('home:player_register', { sessionId: sid, playerId: playerRef.current.id });
+        console.log('[PlayerIdentity] re-registered after reconnect', { sid, playerId: playerRef.current.id });
+      }
     };
     socket.on('connect', onReconnect);
     return () => {
@@ -1006,7 +1013,10 @@ function CoppieController({ payload, onFlip, player, previewUntil }: {
       </div>
       <div className="grid gap-2" style={{gridTemplateColumns:`repeat(${cols},minmax(0,1fr))`}}>
         {cards.map(card => {
-          const showFace = card.matched || card.flipped || previewActive;
+          // P4: Phones must NOT reveal flipped-but-unmatched cards — those are visible
+          // only on the TV projection. All phones share the same server card state, so
+          // showing card.flipped here means every phone reveals the same card on tap.
+          const showFace = card.matched || previewActive;
           return (
             <button key={card.id}
               onClick={() => !previewActive && isMyTurn && !card.matched && !card.flipped && onFlip(card.id)}
@@ -1909,15 +1919,28 @@ function WordBackController({ payload, timeLeft, player, sessionId, emit }: {
   const [alarmPressed, setAlarmPressed] = useState(false);
   const [answered, setAnswered] = useState(false);
 
+  // P5: Reset per-round state when roundIndex changes (new word → new round).
+  // Without this, the "CORRETTO!" overlay sticks across rounds because local state
+  // survives re-renders when only props change.
+  useEffect(() => { setAnswered(false); }, [round]);
+
   const handleCorrect = useCallback(async (answerText: string) => {
     if (answered) return;
     setAnswered(true);
-    await fetch(`/api/home/sessions/${sessionId}/wordback-correct`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playerId: player.id, answerText, round }),
-    });
+    try {
+      const res = await fetch(`/api/home/sessions/${sessionId}/wordback-correct`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId: player.id, answerText, round }),
+      });
+      // On 409 duplicate or any server error (not 403 wrong-role), allow retry.
+      if (!res.ok && res.status !== 403) {
+        setAnswered(false);
+      }
+    } catch {
+      setAnswered(false);
+    }
   }, [answered, sessionId, player.id, round]);
 
   const handleAlarm = useCallback(() => {

@@ -593,6 +593,7 @@ async function loadCoppieByTheme(setId: string): Promise<CoppiePayload> {
 async function loadGameRoundsForTheme(
   gameSlug: string,
   selectedTheme: { id: string; name: string } | null,
+  selectedSubtype?: string,
 ): Promise<RoundPayload[]> {
   if (gameSlug === "sfida-ballo") return loadBalloRoundsForTheme(selectedTheme);
 
@@ -628,18 +629,46 @@ async function loadGameRoundsForTheme(
     }
     case "karaoke-battle": {
       if (isFallback) return loadKaraokeRounds();
+      const subtype = selectedSubtype ?? "mixed";
+
+      // freestyle-only: themeId is a freestyle set ID
+      if (subtype === "freestyle-only") {
+        const fWords2 = await db.select().from(freestyleWordsTable)
+          .where(and(eq(freestyleWordsTable.setId, themeId!), eq(freestyleWordsTable.isActive, true)))
+          .orderBy(asc(freestyleWordsTable.orderIndex));
+        const words = fWords2.length > 0 ? shuffleArr(fWords2).slice(0, 8) : [];
+        if (words.length === 0) return fallbackKaraoke();
+        return words.map((w, i) => ({
+          mode: "home-freestyle", roundIndex: i, setName: selectedTheme?.name ?? "Freestyle",
+          word: w.word, timeLimit: 30, points: 200, started: false,
+        }));
+      }
+
       const kTracks = await db.select().from(karaokeTracksTable)
         .where(and(eq(karaokeTracksTable.setId, themeId!), eq(karaokeTracksTable.isActive, true)))
         .orderBy(asc(karaokeTracksTable.orderIndex));
       if (kTracks.length === 0) return loadKaraokeRounds();
+
+      const kRounds: RoundPayload[] = [];
+      const kShuffled = shuffleArr(kTracks).slice(0, 8);
+
+      if (subtype === "karaoke-only") {
+        // Pure karaoke — no freestyle rounds
+        return kShuffled.map((t, i) => ({
+          mode: "home-karaoke", roundIndex: i, setName: selectedTheme!.name,
+          title: t.title, artist: t.artist ?? "", lyricSnippet: t.lyricSnippet ?? "",
+          audioUrl: t.audioUrl ?? null, durationSeconds: t.durationSeconds ?? 60,
+          points: t.points ?? 150, category: t.category ?? "", started: false,
+        }));
+      }
+
+      // mixed (default): alternate 2 karaoke + 1 freestyle
       const [fset] = await db.select().from(freestyleSetsTable)
         .where(eq(freestyleSetsTable.isActive, true))
         .orderBy(desc(freestyleSetsTable.createdAt)).limit(1);
       const fWords = fset ? await db.select().from(freestyleWordsTable)
         .where(and(eq(freestyleWordsTable.setId, fset.id), eq(freestyleWordsTable.isActive, true)))
         .orderBy(asc(freestyleWordsTable.orderIndex)) : [];
-      const kRounds: RoundPayload[] = [];
-      const kShuffled = shuffleArr(kTracks).slice(0, 8);
       const fShuffled = shuffleArr(fWords).slice(0, 6);
       let ki = 0, fi = 0, roundIdx = 0;
       while (ki < kShuffled.length || fi < fShuffled.length) {
@@ -1182,9 +1211,12 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
   // theme_select → booking (if maxPlayers > 0) → confirm → countdown → launch
   const flowConfig = await loadThemesForGame(gameSlug);
   req.log.info({ sessionId: id, gameSlug, themeCount: flowConfig.themes.length, maxPlayers: flowConfig.maxPlayers }, "[GameFlow] select-game → entering flow");
+  // P6: karaoke-battle starts at subtype_select (karaoke-only / freestyle-only / mixed)
+  // rather than jumping directly to theme_select.
+  const initialPhase = gameSlug === "karaoke-battle" ? "subtype_select" : "theme_select";
   const flowPayload: RoundPayload = {
     mode: "home-flow",
-    gameFlowPhase: "theme_select",
+    gameFlowPhase: initialPhase,
     gameSlug,
     themes: flowConfig.themes,
     selectedTheme: null,
@@ -1281,6 +1313,47 @@ router.post("/home/sessions/:id/flow/select-theme", async (req, res): Promise<vo
 
   const phaseAfter = (updated.roundPayload as Record<string,unknown>)?.["gameFlowPhase"];
   req.log.info({ sessionId: id, phaseAfter, selectedTheme }, "[BalloTheme] phase after select-theme");
+
+  const players = await getPlayers(id);
+  emitToRoom(homeRoom(id), "home:state", { session: updated, players });
+  res.json({ session: updated, players });
+});
+
+// ── POST /home/sessions/:id/flow/select-subtype (karaoke-battle only) ───────────
+router.post("/home/sessions/:id/flow/select-subtype", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-flow") { res.status(409).json({ error: "Sessione non in modalità flow" }); return; }
+  if (rp["gameFlowPhase"] !== "subtype_select") { res.status(409).json({ error: "Fase non corretta" }); return; }
+
+  const { subtype } = req.body as { subtype?: string };
+  if (!subtype || !["karaoke-only", "freestyle-only", "mixed"].includes(subtype)) {
+    res.status(400).json({ error: "subtype non valido (karaoke-only | freestyle-only | mixed)" }); return;
+  }
+
+  req.log.info({ sessionId: id, subtype }, "[KaraokeFlow] select-subtype");
+
+  // For freestyle-only: replace themes with available freestyle sets
+  let themes = (rp["themes"] as Array<{ id: string; name: string; description: string }>) ?? [];
+  if (subtype === "freestyle-only") {
+    const fSets = await db.select().from(freestyleSetsTable)
+      .where(eq(freestyleSetsTable.isActive, true))
+      .orderBy(desc(freestyleSetsTable.createdAt)).limit(6);
+    themes = fSets.length > 0
+      ? fSets.map(s => ({ id: s.id, name: s.title, description: "" }))
+      : [{ id: "fallback", name: "Freestyle Classico", description: "Parole per rap improvvisato" }];
+  }
+
+  const updatedRp: RoundPayload = { ...rp, selectedSubtype: subtype, themes, gameFlowPhase: "theme_select" } as RoundPayload;
+  const [updated] = await db.update(homeSessionsTable)
+    .set({ roundPayload: updatedRp })
+    .where(eq(homeSessionsTable.id, id)).returning();
+
+  if (!updated) { res.status(500).json({ error: "Errore interno: sessione non aggiornata" }); return; }
 
   const players = await getPlayers(id);
   emitToRoom(homeRoom(id), "home:state", { session: updated, players });
@@ -1397,7 +1470,8 @@ router.post("/home/sessions/:id/flow/confirm", async (req, res): Promise<void> =
         try {
           const launchSlug = String(rp["gameSlug"] ?? "sfida-ballo");
           logger.info({ sessionId: id, selectedTheme, gameSlug: launchSlug }, "[GameFlow] launching game");
-          const preloadedRounds = await loadGameRoundsForTheme(launchSlug, selectedTheme);
+          const selectedSubtype = rp["selectedSubtype"] ? String(rp["selectedSubtype"]) : undefined;
+          const preloadedRounds = await loadGameRoundsForTheme(launchSlug, selectedTheme, selectedSubtype);
           const bp = ((confirmRp as Record<string, unknown>)["bookedPlayers"] as Array<{id: string; nickname: string}>) ?? [];
           // For parola-alle-spalle: stamp guesserId/suggesterId from role-based booking.
           // Players choose their role (guesser/suggester) at booking time — fixed for all rounds.
@@ -2266,12 +2340,13 @@ router.post("/home/sessions/:id/score", async (req, res): Promise<void> => {
     }
   }
 
-  await db.update(homePlayersTable).set({
+  const [scoreResult] = await db.update(homePlayersTable).set({
     score: Math.max(0, points),
-  }).where(and(eq(homePlayersTable.id, playerId), eq(homePlayersTable.sessionId, id)));
+  }).where(and(eq(homePlayersTable.id, playerId), eq(homePlayersTable.sessionId, id))).returning({ id: homePlayersTable.id, score: homePlayersTable.score });
+  req.log.info({ sessionId: id, playerId, points, updated: !!scoreResult, newScore: scoreResult?.score }, "[Score] score update result");
 
   await broadcastState(id);
-  res.json({ ok: true });
+  res.json({ ok: true, score: scoreResult?.score ?? null });
 });
 
 // ── POST /home/sessions/:id/flip — flip carta (gioco-coppie) ──────────────────

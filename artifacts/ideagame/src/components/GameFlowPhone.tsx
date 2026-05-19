@@ -65,6 +65,7 @@ export function GameFlowPhone({
   const roleSlots = GAME_ROLE_SLOTS[p.gameSlug ?? ''] ?? null;
 
   const [booking, setBooking] = useState(false);
+  const [bookingError, setBookingError] = useState<string | null>(null);
 
   // Sensor permission state — only meaningful when gameSlug === 'sfida-ballo'
   const [sensorPerm, setSensorPerm] = useState<SensorPerm>(() => {
@@ -129,7 +130,8 @@ export function GameFlowPhone({
     }
 
     try {
-      await fetch(`/api/home/sessions/${session.id}/flow/book-player`, {
+      setBookingError(null);
+      const res = await fetch(`/api/home/sessions/${session.id}/flow/book-player`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -140,7 +142,10 @@ export function GameFlowPhone({
           ...(role ? { role } : {}),
         }),
       });
-      if (action === 'book' && p.gameSlug === 'sfida-ballo') {
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        setBookingError(body.error ?? 'Prenotazione non riuscita');
+      } else if (action === 'book' && p.gameSlug === 'sfida-ballo') {
         emit('home:player_sensor_ready', {
           sessionId: session.id,
           playerId: player.id,
@@ -185,6 +190,31 @@ export function GameFlowPhone({
   }
 
   console.log('[BalloFlow] GameFlowPhone render — phase:', p.gameFlowPhase, '| mode:', p.mode, '| player:', player.id.slice(-4));
+
+  // ── WAITING FOR SUBTYPE (karaoke-battle only) ─────────────────────────────────
+
+  if (p.gameFlowPhase === 'subtype_select') {
+    return (
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+        className="flex flex-col items-center gap-5 py-4">
+        <motion.div className="text-5xl"
+          animate={{ scale: [1, 1.12, 1] }} transition={{ duration: 2, repeat: Infinity }}>
+          {gameUI.emoji}
+        </motion.div>
+        <div className="text-display text-2xl font-black text-white">{gameUI.name}</div>
+        <div className="rounded-2xl px-5 py-4 text-center"
+          style={{ background: `${gameUI.color}14`, border: `1px solid ${gameUI.color}33` }}>
+          <div className="text-sm font-black" style={{ color: 'rgba(255,255,255,0.65)' }}>
+            L'animatore sta scegliendo il formato…
+          </div>
+        </div>
+        <div className="flex items-center gap-2" style={{ color: 'rgba(255,255,255,0.3)' }}>
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span className="text-xs font-semibold">In attesa</span>
+        </div>
+      </motion.div>
+    );
+  }
 
   // ── WAITING FOR THEME ─────────────────────────────────────────────────────────
 
@@ -447,6 +477,12 @@ export function GameFlowPhone({
           {booking ? <Loader2 className="h-5 w-5 animate-spin" /> : '🙋'}
           MI PRENOTO!
         </motion.button>
+        {bookingError && (
+          <div className="rounded-xl px-4 py-2 text-sm font-black text-center"
+            style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', color: '#f87171' }}>
+            ❌ {bookingError}
+          </div>
+        )}
       </motion.div>
     );
   }

@@ -831,8 +831,12 @@ export default function HomeGame() {
           const polledMode = String(d.session.roundPayload?.mode ?? '');
           const polledPhase = String(d.session.roundPayload?.gameFlowPhase ?? '');
           const isFlow = polledMode === 'home-flow' || currentModeRef.current === 'home-flow';
-          if (isFlow && polledPhase !== flowPhaseRef.current) {
-            console.log('[HomeFlow] TV polling: gameFlowPhase', flowPhaseRef.current, '→', polledPhase);
+          const phaseChanged = isFlow && polledPhase !== flowPhaseRef.current;
+          // P3: During booking, always refresh — bookedPlayers may change without the
+          // gameFlowPhase changing, so a phase-diff check alone misses new bookings.
+          const bookingRefresh = isFlow && polledPhase === 'booking';
+          if (phaseChanged || bookingRefresh) {
+            console.log('[HomeFlow] TV polling: phase', flowPhaseRef.current, '→', polledPhase, '| bookingRefresh:', bookingRefresh);
             flowPhaseRef.current = polledPhase;
             currentModeRef.current = polledMode;
             setSession(d.session);
