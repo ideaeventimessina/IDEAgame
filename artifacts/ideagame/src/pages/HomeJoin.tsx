@@ -11,7 +11,7 @@ import { SensorBridge } from '../lib/SensorBridge';
 import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Loader2, Check, ChevronRight, Home, Star, Music,
+  Loader2, Check, ChevronRight, Star, Music,
   Laugh, Zap, ShieldAlert, MessageSquare, Mic, Timer,
 } from 'lucide-react';
 import { useEventSocket } from '@/hooks/useEventSocket';
@@ -560,11 +560,6 @@ export default function HomeJoin() {
                 {loading ? <Loader2 className="h-6 w-6 animate-spin"/> : <ChevronRight className="h-6 w-6"/>} Avanti
               </button>
 
-              <button onClick={() => navigate('/')}
-                className="flex items-center gap-1.5 text-xs"
-                style={{color:'rgba(255,255,255,0.25)'}}>
-                <Home className="h-3 w-3"/> Torna all'Hub
-              </button>
             </div>
           </motion.div>
         )}
@@ -830,9 +825,11 @@ export default function HomeJoin() {
                 );
               })}
             </div>
+            {/* Safe exit — tucked away, not a primary CTA */}
             <button onClick={() => { clearJoin(); navigate('/'); }}
-              className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-6 py-3 text-sm text-white/45 hover:text-white/70">
-              <Home className="h-4 w-4"/> Torna all'Hub
+              className="text-[10px] opacity-20 hover:opacity-40 transition-opacity"
+              style={{color:'rgba(255,255,255,0.5)'}}>
+              esci dalla sessione
             </button>
           </motion.div>
         )}

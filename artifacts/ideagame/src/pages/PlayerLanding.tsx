@@ -78,7 +78,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 // ── HERO ─────────────────────────────────────────────────────────────────────
 
-function Hero({ onJoin, onHome, onAdmin, onScrollDown }: { onJoin: () => void; onHome: () => void; onAdmin: () => void; onScrollDown: () => void }) {
+function Hero({ onJoin, onHome, onAdmin, onScrollDown }: { onJoin: () => void; onHome?: () => void; onAdmin: () => void; onScrollDown: () => void }) {
   return (
     <section className="relative flex flex-col overflow-hidden select-none"
       style={{ minHeight: '100svh', background: 'radial-gradient(ellipse 120% 70% at 50% -5%, #1e0840 0%, #0e0520 40%, #060210 100%)' }}>
@@ -126,7 +126,7 @@ function Hero({ onJoin, onHome, onAdmin, onScrollDown }: { onJoin: () => void; o
 
         <div className="flex flex-col sm:flex-row gap-3 w-full max-w-lg">
           <motion.button onClick={onJoin} whileTap={{ scale: 0.97 }}
-            className="relative flex-1 overflow-hidden rounded-2xl font-black text-black"
+            className={`relative overflow-hidden rounded-2xl font-black text-black ${onHome ? 'flex-1' : 'w-full'}`}
             style={{ padding: '20px 32px', fontSize: 'clamp(1rem, 2.5vw, 1.2rem)', background: 'linear-gradient(135deg, #FFE57A 0%, #F5B642 50%, #E08800 100%)', boxShadow: '0 0 50px rgba(245,182,66,0.7), 0 4px 24px rgba(0,0,0,0.6)' }}>
             <motion.div className="absolute inset-0 -skew-x-12 w-1/4"
               style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.42), transparent)' }}
@@ -134,11 +134,13 @@ function Hero({ onJoin, onHome, onAdmin, onScrollDown }: { onJoin: () => void; o
             🎯 Evento Live
           </motion.button>
 
-          <motion.button onClick={onHome} whileTap={{ scale: 0.97 }}
-            className="relative flex-1 overflow-hidden rounded-2xl font-black"
-            style={{ padding: '20px 24px', fontSize: 'clamp(0.88rem, 2vw, 1rem)', background: 'linear-gradient(135deg, #A78BFA22 0%, #7C3AED33 100%)', border: '1.5px solid rgba(167,139,250,0.5)', color: '#C4B5FD', backdropFilter: 'blur(12px)', boxShadow: '0 0 30px rgba(167,139,250,0.2)' }}>
-            🏠 Modalità Home
-          </motion.button>
+          {onHome && (
+            <motion.button onClick={onHome} whileTap={{ scale: 0.97 }}
+              className="relative flex-1 overflow-hidden rounded-2xl font-black"
+              style={{ padding: '20px 24px', fontSize: 'clamp(0.88rem, 2vw, 1rem)', background: 'linear-gradient(135deg, #A78BFA22 0%, #7C3AED33 100%)', border: '1.5px solid rgba(167,139,250,0.5)', color: '#C4B5FD', backdropFilter: 'blur(12px)', boxShadow: '0 0 30px rgba(167,139,250,0.2)' }}>
+              🏠 Modalità Home
+            </motion.button>
+          )}
         </div>
 
         <div className="mt-4 flex items-center gap-4">
@@ -280,7 +282,7 @@ function ComeFunziona() {
 
 // ── MODALITA' ─────────────────────────────────────────────────────────────────
 
-function Modalita({ onJoin, onHome }: { onJoin: () => void; onHome: () => void }) {
+function Modalita({ onJoin, onHome }: { onJoin: () => void; onHome?: () => void }) {
   const modes = [
     {
       tag: 'Live Event', title: 'Feste, matrimoni, eventi aziendali',
@@ -290,14 +292,14 @@ function Modalita({ onJoin, onHome }: { onJoin: () => void; onHome: () => void }
       btnLabel: '🎯 Entra in un evento', btnAction: onJoin,
       btnStyle: { background: 'linear-gradient(135deg, #FFE57A 0%, #F5B642 100%)', color: '#000', boxShadow: '0 0 24px rgba(245,182,66,0.45)' },
     },
-    {
+    ...(onHome ? [{
       tag: 'Home Mode', title: 'Gioca da casa con Jonny come host',
       body: "Stessa esperienza, divano di casa. Connetti la TV, invita gli amici — Jonny è lì.",
       color: '#A78BFA', dark: '#2d1060',
       items: ['Smart TV + telefoni', 'Nessun limite di giocatori', 'Modalità family-friendly'],
       btnLabel: '🏠 Avvia Home Mode', btnAction: onHome,
       btnStyle: { background: 'linear-gradient(135deg, #A78BFA33 0%, #7C3AED44 100%)', color: '#C4B5FD', border: '1.5px solid rgba(167,139,250,0.5)', boxShadow: '0 0 20px rgba(167,139,250,0.2)' },
-    },
+    }] : []),
   ];
 
   return (
@@ -564,7 +566,7 @@ function Footer() {
 
 // ── ROOT ──────────────────────────────────────────────────────────────────────
 
-interface Props { onJoin: () => void; onHome: () => void; onAdmin: () => void }
+interface Props { onJoin: () => void; onHome?: () => void; onAdmin: () => void }
 
 export function PlayerLanding({ onJoin, onHome, onAdmin }: Props) {
   const mondiRef = useRef<HTMLDivElement>(null);
