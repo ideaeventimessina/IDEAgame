@@ -14,7 +14,7 @@ import {
   Loader2, Check, ChevronRight, Star, Music,
   Laugh, Zap, ShieldAlert, MessageSquare, Mic, Timer,
 } from 'lucide-react';
-import { useEventSocket } from '@/hooks/useEventSocket';
+import { useEventSocket, getSocket } from '@/hooks/useEventSocket';
 import { GameFlowPhone } from '@/components/GameFlowPhone';
 import PressToTalkAnswer from '@/components/PressToTalkAnswer';
 
@@ -177,11 +177,21 @@ export default function HomeJoin() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Join home socket room
+  // Join home socket room — re-join on socket reconnect to survive ping-timeout cycles
   useEffect(() => {
     if (!session?.id) return;
-    emit('join:home', session.id);
-    return () => { emit('leave:home', session.id); };
+    const sid = session.id;
+    emit('join:home', sid);
+    const socket = getSocket();
+    const onReconnect = () => {
+      console.log('[HomeFlow] phone socket reconnected — re-joining home room', sid);
+      emit('join:home', sid);
+    };
+    socket.on('connect', onReconnect);
+    return () => {
+      socket.off('connect', onReconnect);
+      emit('leave:home', sid);
+    };
   }, [session?.id, emit]);
 
   // Register phone for home-flow booking/disconnect tracking
@@ -221,6 +231,12 @@ export default function HomeJoin() {
   }, [phase, session?.id]);
 
   // Polling fallback in playing phase — recovers from missed home:game_started / home:game_ended / home:round
+  // Also catches home-flow gameFlowPhase transitions (theme_select→booking, etc.) without slug/round change.
+  const flowPhaseRef = useRef<string>('');
+  flowPhaseRef.current = String(session?.roundPayload?.gameFlowPhase ?? '');
+  const knownFlowModeRef = useRef<string>('');
+  knownFlowModeRef.current = String(session?.roundPayload?.mode ?? '');
+
   useEffect(() => {
     if (phase !== 'playing' || !session?.id) return;
     const sid = session.id;
@@ -237,7 +253,14 @@ export default function HomeJoin() {
           const slugChanged = data.session.gameSlug !== knownSlug;
           const roundChanged = data.session.currentRound !== knownRound;
           const notPlaying = data.session.status !== 'playing';
-          if (slugChanged || roundChanged || notPlaying) {
+          const polledMode = String(data.session.roundPayload?.mode ?? '');
+          const polledFlowPhase = String(data.session.roundPayload?.gameFlowPhase ?? '');
+          const isFlow = polledMode === 'home-flow' || knownFlowModeRef.current === 'home-flow';
+          const flowPhaseChanged = isFlow && polledFlowPhase !== flowPhaseRef.current;
+          if (slugChanged || roundChanged || notPlaying || flowPhaseChanged) {
+            if (flowPhaseChanged) {
+              console.log('[HomeFlow] phone polling: gameFlowPhase', flowPhaseRef.current, '→', polledFlowPhase);
+            }
             setSession(data.session);
             if (data.session.status === 'lobby') {
               setPhase('lobby');

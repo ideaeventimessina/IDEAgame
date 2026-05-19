@@ -1,0 +1,87 @@
+URGENT — ALL HOME GAMES STUCK ON THEME SELECT.
+
+Do not touch individual game logic yet.
+Do not touch sensors.
+Do not touch audio.
+Do not redesign.
+
+Problem:
+Every Home game is stuck on the theme selection screen after selecting a theme:
+
+- Karaoke
+- Freestyle
+- Percorso a Risate
+- Gioco delle Coppie
+- SaraMusica
+- Adult Only
+- Sfida di Ballo
+- Quizzone
+- Parola alle Spalle
+
+This means the shared home-flow theme selection transition is broken.
+
+Audit only the universal flow first:
+
+- GameFlowEngine selectTheme()
+- POST /api/home/sessions/:id/flow/select-theme
+- home.ts select-theme route
+- home:state socket broadcast
+- HomeGame.tsx home:state listener
+- HomeJoin.tsx home:state listener
+- roundPayload.gameFlowPhase
+- currentModeRef / flow mode guards
+- polling fallback
+- selectedTheme persistence
+
+Find:
+1. Is selectTheme() being called?
+2. Does POST /flow/select-theme return 200?
+3. Does server update roundPayload.gameFlowPhase from "theme_select" to the correct next phase?
+4. Does server emit home:state after theme selection?
+5. Does TV receive home:state?
+6. Is the client ignoring the update because gameSlug/currentRound did not change?
+7. Is polling overwriting booking/countdown with stale theme_select?
+8. Is selectedTheme saved correctly?
+9. Did recent WordBack/Ballo changes break select-theme route for all games?
+10. Did the universal flow config forget to define next phase per game?
+
+Expected behavior after theme selection:
+
+If game requires booking:
+theme_select → booking
+
+If game does NOT require booking:
+theme_select → ready/start screen OR countdown, depending current architecture
+
+Examples:
+- Ballo → booking
+- WordBack → booking
+- Adult Only → booking
+- Karaoke/Freestyle → booking
+- Quizzone → confirm/start/countdown
+- Coppie → confirm/start/countdown
+- SaraMusica → confirm/start/countdown or auction phase
+- Percorso → booking if performer challenge, otherwise confirm/start
+
+Patch:
+- Fix the shared select-theme transition once.
+- Do not patch every game separately.
+- Make select-theme idempotent.
+- Always emit home:state after updating phase.
+- Client must trust home:state even if gameSlug/currentRound did not change.
+- Add fallback polling that updates full roundPayload when gameFlowPhase changes.
+- Add logs:
+  [HomeFlow] selectTheme click
+  [HomeFlow] select-theme request
+  [HomeFlow] select-theme server phase before/after
+  [HomeFlow] home:state emitted
+  [HomeFlow] TV received phase
+  [HomeFlow] Phone received phase
+
+Output:
+A. root cause
+B. files modified
+C. shared flow fix
+D. games verified
+E. typecheck result
+F. manual test steps

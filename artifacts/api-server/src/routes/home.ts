@@ -1249,10 +1249,10 @@ router.post("/home/sessions/:id/flow/select-theme", async (req, res): Promise<vo
   const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
   if (rp["mode"] !== "home-flow") { res.status(409).json({ error: "Sessione non in modalità flow" }); return; }
 
-  // ── Idempotency: if already in booking phase (theme already selected), re-emit and return OK ──
-  // This handles double-clicks and retries from the TV without returning 409.
-  if (rp["gameFlowPhase"] === "booking" && rp["selectedTheme"] != null) {
-    req.log.info({ sessionId: id, selectedTheme: rp["selectedTheme"] }, "[BalloTheme] select-theme already booking — re-emitting home:state");
+  // ── Idempotency: if theme is already selected (past theme_select), re-emit and return OK ──
+  // Covers double-clicks, lost socket events, and retries from any device.
+  if (rp["selectedTheme"] != null && rp["gameFlowPhase"] !== "theme_select") {
+    req.log.info({ sessionId: id, gameFlowPhase: rp["gameFlowPhase"] }, "[HomeFlow] select-theme already past theme_select — re-emitting home:state");
     const players = await getPlayers(id);
     emitToRoom(homeRoom(id), "home:state", { session, players });
     res.json({ session, players });

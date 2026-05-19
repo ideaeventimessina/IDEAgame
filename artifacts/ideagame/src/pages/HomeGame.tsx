@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { QrPlaceholder } from '@/components/QrPlaceholder';
 import { JonnyAvatar } from '@/components/JonnyAvatar';
-import { useEventSocket } from '@/hooks/useEventSocket';
+import { useEventSocket, getSocket } from '@/hooks/useEventSocket';
 import { GameFlowEngine } from '@/components/GameFlowEngine';
 import { AudioManager } from '@/audio/AudioManager';
 import { useAudioSettings } from '@/contexts/AudioContext';
@@ -461,8 +461,19 @@ function useHomeSocket(sessionId: string | null) {
   const { on, emit } = useEventSocket(null);
   useEffect(() => {
     if (!sessionId) return;
-    emit('join:home', sessionId);
-    return () => { emit('leave:home', sessionId); };
+    const sid = sessionId;
+    emit('join:home', sid);
+    // Re-join home room on socket reconnect — useEventSocket only re-joins event:* rooms
+    const socket = getSocket();
+    const onReconnect = () => {
+      console.log('[HomeFlow] TV socket reconnected — re-joining home room', sid);
+      emit('join:home', sid);
+    };
+    socket.on('connect', onReconnect);
+    return () => {
+      socket.off('connect', onReconnect);
+      emit('leave:home', sid);
+    };
   }, [sessionId, emit]);
   return { on, emit };
 }
@@ -500,6 +511,8 @@ export default function HomeGame() {
   // Tracks the last known roundPayload.mode so home:state can detect flow→ballo transition
   // even when slug/round haven't changed (both stay at sfida-ballo / 0 through the whole flow).
   const currentModeRef = useRef<string>('');
+  // Tracks last known gameFlowPhase so playing-phase poll can detect home-flow transitions
+  const flowPhaseRef = useRef<string>('');
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [audioWarning, setAudioWarning] = useState(false);
   const { audioEnabled, setAudioEnabled } = useAudioSettings();
@@ -653,13 +666,16 @@ export default function HomeGame() {
   useEffect(() => {
     const u1 = on<{ session: HomeSession; players: HomePlayer[] }>('home:state', (d) => {
       const newMode  = String(d.session.roundPayload?.mode ?? '');
+      const newFlowPhase = String(d.session.roundPayload?.gameFlowPhase ?? '');
       const prevMode = currentModeRef.current;
+      console.log('[HomeFlow] TV received home:state — mode:', newMode, '| gameFlowPhase:', newFlowPhase, '| status:', d.session.status);
       // ── Fallback: flow→ballo detected in home:state (handles missed home:round) ──
       // currentModeRef is set by home:round first in the normal path, so this only fires
       // when home:round was truly missed.
       if (prevMode === 'home-flow' && newMode === 'home-ballo') {
         console.log('[BalloFlow] home:state (TV): flow→ballo fallback — starting ballo timer');
         currentModeRef.current = newMode;
+        flowPhaseRef.current = newFlowPhase;
         setBalloEnergies({});
         setBalloCurrent({});
         setBalloResult(null);
@@ -668,6 +684,7 @@ export default function HomeGame() {
         void AudioManager.playLoop('sfida-ballo', 'round_loop');
       } else {
         currentModeRef.current = newMode;
+        flowPhaseRef.current = newFlowPhase;
       }
       setSession(d.session);
       setPlayers(d.players);
@@ -799,6 +816,34 @@ export default function HomeGame() {
     return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); u10?.(); u11?.(); u12?.(); u13?.(); u14?.(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [on]);
+
+  // ── Polling fallback in playing phase (home-flow sessions only) ──────────────
+  // Catches gameFlowPhase transitions (theme_select→booking, booking→confirm, etc.)
+  // that socket delivery may miss after a reconnect.
+  useEffect(() => {
+    if (phase !== 'playing' || !session?.id) return;
+    const sid = session.id;
+    const interval = setInterval(() => {
+      fetch(`/api/home/sessions/${sid}`)
+        .then(r => r.ok ? r.json() : null)
+        .then((d: { session: HomeSession; players: HomePlayer[] } | null) => {
+          if (!d) return;
+          const polledMode = String(d.session.roundPayload?.mode ?? '');
+          const polledPhase = String(d.session.roundPayload?.gameFlowPhase ?? '');
+          const isFlow = polledMode === 'home-flow' || currentModeRef.current === 'home-flow';
+          if (isFlow && polledPhase !== flowPhaseRef.current) {
+            console.log('[HomeFlow] TV polling: gameFlowPhase', flowPhaseRef.current, '→', polledPhase);
+            flowPhaseRef.current = polledPhase;
+            currentModeRef.current = polledMode;
+            setSession(d.session);
+            setPlayers(d.players);
+          }
+        })
+        .catch(() => {});
+    }, 2000);
+    return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, session?.id]);
 
   // ── Polling fallback in join ──────────────────────────────────────────────────
   useEffect(() => {
