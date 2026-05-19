@@ -19,7 +19,8 @@ export type AudioType =
   | 'panic_blackout' | 'podium_theme' | 'applause' | 'suspense'
   | 'flip_card' | 'match_correct' | 'match_wrong' | 'crowd_hype'
   | 'booking_ding' | 'success_applause' | 'energy_rise' | 'winner_drop'
-  | 'stage_intro' | 'karaoke_bed' | 'boo_soft';
+  | 'stage_intro' | 'karaoke_bed' | 'boo_soft'
+  | 'taboo_alarm';
 
 export interface AudioSettings {
   masterVolume: number;

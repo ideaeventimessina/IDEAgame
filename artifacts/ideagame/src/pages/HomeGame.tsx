@@ -777,6 +777,7 @@ export default function HomeGame() {
       if (now - last < 2000) return;
       tabooDebounceRef.current.set(d.playerId, now);
       setTabooAlarm(d);
+      AudioManager.playGlobalStinger('taboo_alarm');
       setTimeout(() => setTabooAlarm(prev => prev?.timestamp === d.timestamp ? null : prev), 3000);
     });
 

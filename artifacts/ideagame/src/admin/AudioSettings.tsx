@@ -38,6 +38,7 @@ const EFFECT_SLOTS: { type: string; label: string; icon: string }[] = [
   { type: 'booking_ding',      label: 'Ding Prenotazione',     icon: '🔔' },
   { type: 'energy_rise',       label: 'Energy Rise',           icon: '⚡' },
   { type: 'boo_soft',          label: 'Boo Soft',              icon: '😒' },
+  { type: 'taboo_alarm',       label: 'Allarme Taboo',         icon: '🚨' },
 ];
 
 // ── Music Slots (sottofondo per gioco — object storage) ─────────────────────
