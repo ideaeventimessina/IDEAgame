@@ -8,7 +8,6 @@ import { useState, useEffect } from 'react';
 import { useLocation, useParams } from 'wouter';
 import { motion } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
-import { SafariGuard } from '@/components/SafariGuard';
 
 const AVATAR_COLORS = ['#F5B642','#A855F7','#EC4899','#34D399','#60A5FA','#F87171','#FB923C','#22D3EE'];
 
@@ -120,7 +119,6 @@ export default function JoinPage() {
   }
 
   return (
-    <SafariGuard>
     <div style={{
       minHeight: '100vh', background: '#030010',
       fontFamily: "'Outfit','Space Grotesk','Arial Black',sans-serif",
@@ -235,6 +233,5 @@ export default function JoinPage() {
 
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
-    </SafariGuard>
   );
 }

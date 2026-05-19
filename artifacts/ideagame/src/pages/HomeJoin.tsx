@@ -15,7 +15,6 @@ import {
 } from 'lucide-react';
 import { useEventSocket } from '@/hooks/useEventSocket';
 import { GameFlowPhone } from '@/components/GameFlowPhone';
-import { SafariGuard } from '@/components/SafariGuard';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -1206,24 +1205,6 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
     (navigator as { standalone?: boolean }).standalone === true ||
     window.matchMedia?.('(display-mode: standalone)').matches === true
   );
-  // Browsers that block DeviceMotion on iOS (Chrome iOS, Firefox iOS, in-app browsers)
-  // Uses .includes() instead of regex to avoid silent null-UA failure.
-  const ua = (typeof navigator !== 'undefined' ? navigator.userAgent : '') || '';
-  const BLOCKED_TOKENS = ['CriOS', 'FxiOS', 'Instagram', 'FBAN', 'FBAV'] as const;
-  const matchedToken   = BLOCKED_TOKENS.find(t => ua.includes(t)) ?? null;
-  const isSafari       = ua.includes('Safari') && !ua.includes('CriOS') && !ua.includes('FxiOS');
-  const isBlockedBrowser = isIOS && matchedToken !== null && !isSafari;
-
-  // ── Browser detection log (always — visible in Safari DevTools / ?debug=1) ──
-  if (typeof window !== 'undefined') {
-    console.log('[BrowserGuard]', {
-      ua: ua.slice(0, 200),
-      isIOS,
-      matchedToken,
-      isSafari,
-      isBlockedBrowser,
-    });
-  }
   // Refs updated on every sensor event — never cause re-renders
   const diagMotionCountRef  = useRef(0);
   const diagOrientCountRef  = useRef(0);

@@ -77,7 +77,6 @@ export function GameFlowPhone({
     //
     // Chrome iOS (CriOS / WKWebView): no requestPermission API → auto-granted.
     // Events stream unconditionally on HTTPS without any permission dialog.
-    // Do NOT gate by isBrowserBlocked() — that prevented Chrome from auto-granting.
 
     let sensorReadyResult = false;
 
