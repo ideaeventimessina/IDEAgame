@@ -1178,6 +1178,8 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
   const [bookingDiag,      setBookingDiag]      = useState<BalloBookingDiag | null>(null);
   const [listenerAttached, setListenerAttached] = useState(false);
   const [permStats,        setPermStats]        = useState<{ motion: number; orient: number; emitTs: number | null }>({ motion: 0, orient: 0, emitTs: null });
+  const [reattachKey,      setReattachKey]      = useState(0);
+  const reattachDoneRef = useRef(false);
 
   // Read booking-phase diagnostic written by GameFlowPhone.book()
   useEffect(() => {
@@ -1196,6 +1198,27 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
 
   const timeLeftRef = useRef(timeLeft);
   useEffect(() => { timeLeftRef.current = timeLeft; }, [timeLeft]);
+
+  // ── Reattach fallback: if 0 events arrive after 2s, tear down and restart ─
+  // Covers the case where permanent listeners attached but the OS stream stalled.
+  // Fires at most once per BalloController mount (reattachDoneRef guard).
+  useEffect(() => {
+    if (motionPerm !== 'granted') return;
+    reattachDoneRef.current = false; // reset on each motionPerm/session change
+    const t = setTimeout(() => {
+      if (
+        diagMotionCountRef.current === 0 &&
+        diagOrientCountRef.current === 0 &&
+        !reattachDoneRef.current
+      ) {
+        reattachDoneRef.current = true;
+        console.log('[SensorReattach] 0 events after 2s — forcing listener reattach (key +1)');
+        setReattachKey(k => k + 1);
+      }
+    }, 2000);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [motionPerm, sessionId, playerId]);
 
   // ── Diagnostics (visible in dev OR ?debug=1) ────────────────────────────
   const showDiag = typeof window !== 'undefined' &&
@@ -1522,7 +1545,7 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
       window.removeEventListener('focus', handleWindowFocus);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [motionPerm, emit, sessionId, playerId]);
+  }, [motionPerm, emit, sessionId, playerId, reattachKey]);
 
   // ── Diagnostic display-refresh (400ms, only when panel is visible) ───────
   useEffect(() => {

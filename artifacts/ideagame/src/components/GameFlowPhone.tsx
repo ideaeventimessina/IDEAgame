@@ -96,11 +96,41 @@ export function GameFlowPhone({
       try {
         const saved = localStorage.getItem(MOTION_PERM_KEY);
         if (saved === 'granted') {
-          // Previously granted — trust the cache; watchdog will catch stalled streams
+          // Permission is cached — do NOT re-request it.
+          // But we MUST verify the event stream is alive before booking.
           setSensorPerm('granted');
-          sensorReadyResult = true;
           _diagMotionGranted = true; _diagOrientGranted = true;
-          _diagTempMotion = -1; _diagTempOrient = -1;
+
+          // ── Warmup: attach temp listeners and wait ≤1500ms for a real event ──
+          let cachedMotionCount = 0;
+          let cachedOrientCount = 0;
+          const onCachedMotion = () => { cachedMotionCount++; };
+          const onCachedOrient = () => { cachedOrientCount++; };
+          window.addEventListener('devicemotion',      onCachedMotion, true);
+          window.addEventListener('deviceorientation', onCachedOrient, true);
+          console.log('[SensorWarmup] cached path — temp listeners attached, waiting ≤1500ms');
+
+          await new Promise<void>(resolve => {
+            const POLL = 50;
+            const MAX  = 1500;
+            let elapsed = 0;
+            const tick = setInterval(() => {
+              elapsed += POLL;
+              if (cachedMotionCount + cachedOrientCount > 0 || elapsed >= MAX) {
+                clearInterval(tick);
+                resolve();
+              }
+            }, POLL);
+          });
+
+          window.removeEventListener('devicemotion',      onCachedMotion, true);
+          window.removeEventListener('deviceorientation', onCachedOrient, true);
+
+          sensorReadyResult = (cachedMotionCount + cachedOrientCount) > 0;
+          _diagTempMotion = cachedMotionCount;
+          _diagTempOrient = cachedOrientCount;
+          console.log('[SensorWarmup] cached path result — motion:', cachedMotionCount,
+            '| orient:', cachedOrientCount, '| sensorReady:', sensorReadyResult);
         } else if (saved === 'denied') {
           setSensorPerm('denied');
         } else if (typeof DeviceMotionEvent === 'undefined') {
@@ -192,10 +222,38 @@ export function GameFlowPhone({
         }
       } catch { /* ignore localStorage / permission errors */ }
     } else if (action === 'book' && p.gameSlug === 'sfida-ballo' && sensorPerm === 'granted') {
-      // Already granted from a previous tap — trust cached state
-      sensorReadyResult = true;
+      // Permission already in state — still verify the event stream before booking.
       _diagMotionGranted = true; _diagOrientGranted = true;
-      _diagTempMotion = -1; _diagTempOrient = -1;
+
+      let reGrantMotionCount = 0;
+      let reGrantOrientCount = 0;
+      const onReM = () => { reGrantMotionCount++; };
+      const onReO = () => { reGrantOrientCount++; };
+      window.addEventListener('devicemotion',      onReM, true);
+      window.addEventListener('deviceorientation', onReO, true);
+      console.log('[SensorWarmup] re-tap path — temp listeners attached, waiting ≤1500ms');
+
+      await new Promise<void>(resolve => {
+        const POLL = 50;
+        const MAX  = 1500;
+        let elapsed = 0;
+        const tick = setInterval(() => {
+          elapsed += POLL;
+          if (reGrantMotionCount + reGrantOrientCount > 0 || elapsed >= MAX) {
+            clearInterval(tick);
+            resolve();
+          }
+        }, POLL);
+      });
+
+      window.removeEventListener('devicemotion',      onReM, true);
+      window.removeEventListener('deviceorientation', onReO, true);
+
+      sensorReadyResult = (reGrantMotionCount + reGrantOrientCount) > 0;
+      _diagTempMotion = reGrantMotionCount;
+      _diagTempOrient = reGrantOrientCount;
+      console.log('[SensorWarmup] re-tap path result — motion:', reGrantMotionCount,
+        '| orient:', reGrantOrientCount, '| sensorReady:', sensorReadyResult);
     }
 
     // ── Write booking diagnostic (read by BalloController on mount) ──────────
