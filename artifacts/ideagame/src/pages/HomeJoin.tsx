@@ -1134,12 +1134,6 @@ function SimpleController({ payload, color, emoji, label, timeLeft }: {
 
 // ── BalloController ────────────────────────────────────────────────────────────
 
-interface BalloBookingDiag {
-  motionGranted: boolean; orientGranted: boolean;
-  tempMotion: number;     tempOrient: number;  // -1 = cached (not measured this session)
-  sensorReady: boolean;   ts: number;
-}
-
 const MOTION_PERM_KEY = 'ideagame:motion-permission';
 
 function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, adminSensitivity = 1.0 }: {
@@ -1160,21 +1154,14 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
   const adminSensitivityRef = useRef(adminSensitivity);
   useEffect(() => { adminSensitivityRef.current = adminSensitivity; }, [adminSensitivity]);
 
-  const [sensorError,      setSensorError]      = useState(false);
-  const [bookingDiag,      setBookingDiag]      = useState<BalloBookingDiag | null>(null);
-  const [permStats,        setPermStats]        = useState<{ motion: number; orient: number; emitTs: number | null }>({ motion: 0, orient: 0, emitTs: null });
+  const [sensorError, setSensorError] = useState(false);
 
-  // Read booking-phase diagnostic written by GameFlowPhone.book()
+  // Read booking-phase diagnostic (console only — no UI)
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem('ideagame:ballo-diag');
-      if (raw) {
-        const d = JSON.parse(raw) as BalloBookingDiag;
-        setBookingDiag(d);
-        console.log('[SensorFinal] BalloController mount — bookingDiag:', d);
-      } else {
-        console.log('[SensorFinal] BalloController mount — no bookingDiag in sessionStorage');
-      }
+      if (raw) console.log('[SensorFinal] BalloController mount — bookingDiag:', JSON.parse(raw));
+      else      console.log('[SensorFinal] BalloController mount — no bookingDiag in sessionStorage');
     } catch { /* ignore */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1183,21 +1170,6 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
   useEffect(() => { timeLeftRef.current = timeLeft; }, [timeLeft]);
 
 
-  // ── Diagnostics (visible in dev OR ?debug=1) ────────────────────────────
-  const showDiag = typeof window !== 'undefined' &&
-    new URLSearchParams(window.location.search).has('debug');
-  const isIOS = typeof navigator !== 'undefined' && (
-    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-  );
-  const isStandalone = typeof window !== 'undefined' && (
-    (navigator as { standalone?: boolean }).standalone === true ||
-    window.matchMedia?.('(display-mode: standalone)').matches === true
-  );
-  // SensorBridge.getStatus() is the source of truth for all sensor diagnostics.
-  const [testRunning,     setTestRunning]      = useState(false);
-  const [testCountdown,   setTestCountdown]    = useState(0);
-  const [diagOpen,        setDiagOpen]         = useState(false);
 
   // Aggressively prevent iOS "Shake to Undo" popup for the entire ballo session.
   // iOS "Annulla inserimento" (Shake to Undo) mitigation.
@@ -1285,8 +1257,7 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
         // 0–8 m/s² → 0–100
         rawEnergy = Math.min(100, Math.round((avg / 8) * 100));
       } else {
-        setPermStats({ motion: s.motionEvents, orient: s.orientEvents, emitTs: s.lastEmitAt });
-        return; // no samples — keep displayed energy, update diag only
+        return; // no samples — keep displayed energy
       }
 
       const as = adminSensitivityRef.current;
@@ -1301,7 +1272,6 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
         SensorBridge.setLastEmit(smoothed);
         console.log('[SensorBridge] energy emit —', { smoothed, motion: s.motionEvents, orient: s.orientEvents });
       }
-      setPermStats({ motion: s.motionEvents, orient: s.orientEvents, emitTs: SensorBridge.getStatus().lastEmitAt });
     }, 400);
 
     // Visibility / focus regain — iOS popup briefly hides the page
@@ -1331,194 +1301,22 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [emit, sessionId, playerId]);
 
-  // ── Standalone sensor test (10 s window, triggered by test button) ────────
-  const runSensorTest = useCallback(async () => {
-    if (testRunning) return;
-    setTestRunning(true);
-    setTestCountdown(10);
-    // SensorBridge is already running — just show a 10s window so the user
-    // can watch the live event counts update in the debug panel.
-    const tick = setInterval(() => setTestCountdown(c => Math.max(0, c - 1)), 1000);
-    setTimeout(() => {
-      clearInterval(tick);
-      setTestRunning(false);
-      const s = SensorBridge.getStatus();
-      console.log('[SensorBridge:test] done — motion:', s.motionEvents, '| orient:', s.orientEvents);
-    }, 10_000);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [testRunning]);
-
-
   const energyColor = energy > 70 ? '#22c55e' : energy > 35 ? '#eab308' : '#A78BFA';
-
-  // ── Specific diagnostic warning (replaces generic "Sensori non attivi") ──
-  const diagMessage: string | null = (() => {
-    if (bookingDiag) {
-      if (!bookingDiag.motionGranted && !bookingDiag.orientGranted)
-        return '⛔ Permesso sensori negato';
-      if (!bookingDiag.sensorReady && bookingDiag.tempMotion !== -1)
-        return '📡 Nessun evento ricevuto durante la prenotazione';
-    }
-    if (SensorBridge.getStatus().started && permStats.motion === 0 && permStats.orient === 0 && sensorError)
-      return '📱 Sensori attivi ma nessun movimento ricevuto';
-    if (energy > 0 && permStats.emitTs === null)
-      return '📤 Energia calcolata ma non inviata';
-    if (!sensorError) return null;
-    return '⚠️ Sensori non attivi — continua a muoverti';
-  })();
-
-  // ── Sensor status (shown in debug mode at top of card) ──────────────────
-  const sensorStatus: { icon: string; label: string; color: string } = (() => {
-    const sb = SensorBridge.getStatus();
-    if (!sb.started)
-      return { icon: '⏳', label: 'In attesa di permesso', color: '#facc15' };
-    if (sb.motionEvents === 0 && sb.orientEvents === 0)
-      return { icon: '❌', label: 'Nessun evento ricevuto', color: '#f87171' };
-    if (energy === 0)
-      return { icon: '⚠️', label: 'Eventi ricevuti ma energia 0', color: '#fb923c' };
-    if (sb.lastEmitAt === null)
-      return { icon: '⚠️', label: 'Energia OK ma socket non emette', color: '#fb923c' };
-    return { icon: '✅', label: 'Socket emette', color: '#4ade80' };
-  })();
 
   return (
     <div className="flex flex-col items-center gap-5 py-4 text-center" style={{userSelect:'none',WebkitUserSelect:'none'}}>
 
-      {/* ── Sensor warning — specific message per failure point ──────────── */}
-      {diagMessage && (
+      {/* Minimal sensor-unavailable warning — shown only when truly stalled */}
+      {sensorError && (
         <div style={{
           width: '100%', maxWidth: 340,
-          background: 'rgba(234,179,8,0.12)',
-          border: '1px solid rgba(234,179,8,0.4)',
-          borderRadius: 14, padding: '10px 14px',
-          color: '#facc15', fontSize: 13, fontWeight: 700,
-          textAlign: 'center', lineHeight: 1.55,
+          background: 'rgba(234,179,8,0.1)',
+          border: '1px solid rgba(234,179,8,0.3)',
+          borderRadius: 12, padding: '9px 14px',
+          color: '#facc15', fontSize: 12, fontWeight: 600,
+          textAlign: 'center', lineHeight: 1.5,
         }}>
-          {diagMessage}
-        </div>
-      )}
-
-      {/* ── Always-visible sensor diagnostic panel ────────────────────────── */}
-      <div style={{
-        width: '100%', maxWidth: 340,
-        background: 'rgba(0,0,0,0.45)',
-        border: '1px solid rgba(167,139,250,0.2)',
-        borderRadius: 10, padding: '7px 11px',
-        fontFamily: 'monospace', fontSize: 10,
-        color: 'rgba(167,139,250,0.65)',
-        lineHeight: 1.7, textAlign: 'left',
-      }}>
-        <div>🔑 perm: motion={bookingDiag ? (bookingDiag.motionGranted ? '✅' : '❌') : '?'} orient={bookingDiag ? (bookingDiag.orientGranted ? '✅' : '❌') : '?'}</div>
-        <div>📡 booking: m={bookingDiag ? (bookingDiag.tempMotion === -1 ? 'cached' : String(bookingDiag.tempMotion)) : '?'} o={bookingDiag ? (bookingDiag.tempOrient === -1 ? 'cached' : String(bookingDiag.tempOrient)) : '?'} ready={bookingDiag ? (bookingDiag.sensorReady ? '✅' : '❌') : '?'}</div>
-        <div>🔌 listeners: {SensorBridge.getStatus().started ? '✅ attivi' : '⏳'} | live: m={permStats.motion} o={permStats.orient}</div>
-        <div>⚡ energy: {energy}% | emit: {permStats.emitTs ? `${Math.round((Date.now() - permStats.emitTs) / 1000)}s fa` : '—'}</div>
-      </div>
-
-      {/* ── Fixed diagnostic overlay (dev / ?debug=1) ────────────────────── */}
-      {showDiag && (() => {
-        const n = (v: number|null) => v === null ? 'null' : v.toFixed(1);
-        const Row = ({ label, val, ok }: { label: string; val: string; ok?: boolean }) => (
-          <div className="flex justify-between gap-2 leading-tight">
-            <span className="opacity-50 shrink-0">{label}</span>
-            <span className={`text-right ${ok === false ? 'text-red-400' : ok === true ? 'text-green-400' : ''}`}>{val}</span>
-          </div>
-        );
-        const dme = DeviceMotionEvent as unknown as { requestPermission?: unknown };
-        const doe = typeof DeviceOrientationEvent !== 'undefined'
-          ? DeviceOrientationEvent as unknown as { requestPermission?: unknown }
-          : null;
-        const sb = SensorBridge.getStatus();
-        const secAgo = sb.lastEmitAt ? Math.round((Date.now() - sb.lastEmitAt) / 1000) : null;
-        return (
-          <div style={{
-            position: 'fixed', top: 8, left: 8, right: 8,
-            zIndex: 99999,
-            background: 'rgba(0,0,0,0.92)',
-            border: '1px solid rgba(250,204,21,0.5)',
-            borderRadius: 16,
-            overflow: 'hidden',
-          }}>
-            {/* Collapse toggle */}
-            <button
-              onClick={() => setDiagOpen(o => !o)}
-              style={{
-                width: '100%', display: 'flex', alignItems: 'center',
-                justifyContent: 'space-between', padding: '8px 12px',
-                background: 'transparent', border: 'none', cursor: 'pointer',
-                color: '#facc15', fontFamily: 'monospace', fontSize: 11, fontWeight: 900,
-              }}>
-              <span>🔬 DEBUG SENSORI</span>
-              <span style={{ fontSize: 14 }}>{diagOpen ? '▲' : '▼'}</span>
-            </button>
-
-            {diagOpen && (
-              <div style={{
-                maxHeight: '70vh', overflowY: 'auto',
-                padding: '0 12px 10px',
-                color: '#facc15', fontFamily: 'monospace', fontSize: 10,
-              }}>
-                {/* Sensor status summary */}
-                <div style={{
-                  marginBottom: 8, padding: '6px 10px', borderRadius: 10,
-                  background: 'rgba(255,255,255,0.07)',
-                  fontSize: 11, fontWeight: 900, color: sensorStatus.color,
-                }}>
-                  {sensorStatus.icon} {sensorStatus.label}
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <Row label="isIOS"                 val={isIOS ? '✅ YES' : '❌ NO'} ok={isIOS} />
-                  <Row label="isPWA"                 val={isStandalone ? '✅ YES' : '❌ NO'} />
-                  <Row label="DeviceMotionEvent"     val={typeof DeviceMotionEvent !== 'undefined' ? '✅' : '❌ MISSING'} ok={typeof DeviceMotionEvent !== 'undefined'} />
-                  <Row label="DME.requestPerm"       val={typeof dme.requestPermission === 'function' ? '✅ fn' : '❌ none'} ok={typeof dme.requestPermission === 'function'} />
-                  <Row label="DeviceOrientEvent"     val={typeof DeviceOrientationEvent !== 'undefined' ? '✅' : '❌ MISSING'} ok={typeof DeviceOrientationEvent !== 'undefined'} />
-                  <Row label="DOE.requestPerm"       val={typeof doe?.requestPermission === 'function' ? '✅ fn' : '❌ none'} ok={typeof doe?.requestPermission === 'function'} />
-                  <div style={{ borderTop: '1px solid rgba(250,204,21,0.2)', margin: '4px 0' }} />
-                  <Row label="bridge.started"        val={sb.started ? '✅ yes' : '❌ no'} ok={sb.started} />
-                  <Row label="permMotion"            val={sb.permMotion ? '✅ granted' : '❌ denied'} ok={sb.permMotion} />
-                  <Row label="permOrient"            val={sb.permOrient ? '✅ granted' : '❌ denied'} ok={sb.permOrient} />
-                  <div style={{ borderTop: '1px solid rgba(250,204,21,0.2)', margin: '4px 0' }} />
-                  <Row label="motionEvents"          val={String(sb.motionEvents)} ok={sb.motionEvents > 0} />
-                  <Row label="orientEvents"          val={String(sb.orientEvents)} ok={sb.orientEvents > 0} />
-                  <Row label="last α/β/γ"            val={sb.lastOrientation ? `${n(sb.lastOrientation.a)}° ${n(sb.lastOrientation.b)}° ${n(sb.lastOrientation.g)}°` : '—'} ok={sb.lastOrientation !== null} />
-                  <Row label="last accel x/y/z"      val={sb.lastAccel ? `${n(sb.lastAccel.x)} ${n(sb.lastAccel.y)} ${n(sb.lastAccel.z)}` : '—'} ok={sb.lastAccel !== null} />
-                  <div style={{ borderTop: '1px solid rgba(250,204,21,0.2)', margin: '4px 0' }} />
-                  <Row label="energy"                val={`${energy}%`} ok={energy > 0} />
-                  <Row label="last emit"             val={secAgo !== null ? `${secAgo}s ago` : '—'} ok={secAgo !== null} />
-                  <Row label="online"                val={navigator.onLine ? '✅ yes' : '❌ offline'} ok={navigator.onLine} />
-                  <div style={{ fontSize: 9, opacity: 0.4, wordBreak: 'break-all', marginTop: 4, lineHeight: 1.3 }}>
-                    {navigator.userAgent}
-                  </div>
-
-                  <button
-                    onClick={() => void runSensorTest()}
-                    style={{
-                      marginTop: 8, width: '100%', borderRadius: 10,
-                      padding: '10px 0', fontSize: 11, fontWeight: 900,
-                      background: testRunning ? 'rgba(250,204,21,0.12)' : 'rgba(250,204,21,0.22)',
-                      color: '#facc15', border: '1px solid rgba(250,204,21,0.45)',
-                      cursor: testRunning ? 'default' : 'pointer',
-                      letterSpacing: '0.05em',
-                    }}>
-                    {testRunning
-                      ? `⏱ Test… ${testCountdown}s  motion:${SensorBridge.getStatus().motionEvents}  orient:${SensorBridge.getStatus().orientEvents}`
-                      : '🧪 Test sensori iPhone (10 s)'}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      })()}
-
-      {/* ── Sensor status badge (debug mode only, always visible below overlay) */}
-      {showDiag && (
-        <div style={{
-          marginTop: 90, padding: '5px 14px', borderRadius: 20,
-          background: 'rgba(0,0,0,0.55)', border: `1px solid ${sensorStatus.color}55`,
-          fontSize: 11, fontWeight: 700, color: sensorStatus.color,
-        }}>
-          {sensorStatus.icon} {sensorStatus.label}
+          📱 Muovi il telefono per attivare i sensori
         </div>
       )}
 
