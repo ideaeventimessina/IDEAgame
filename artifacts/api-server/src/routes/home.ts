@@ -912,13 +912,17 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
   if (gameSlug === "sfida-ballo") {
     const challenges = await db.select().from(danceChallengesTable)
       .orderBy(desc(danceChallengesTable.createdAt));
+    const toSlug = (s: string) =>
+      s.toLowerCase().replace(/[àáâãäå]/g,'a').replace(/[èéêë]/g,'e').replace(/[ìíîï]/g,'i').replace(/[òóôõö]/g,'o').replace(/[ùúûü]/g,'u').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
     const themes = challenges.length > 0
       ? challenges.slice(0, 6).map((c) => ({
           id: c.id,
+          slug: toSlug(c.name) || c.id,
           name: c.name,
           description: c.description ?? "",
         }))
-      : [{ id: "fallback", name: "SFIDA LIBERA", description: "Balla liberamente — più energia hai, meglio è!" }];
+      : [{ id: "fallback", slug: "sfida-libera", name: "SFIDA LIBERA", description: "Balla liberamente — più energia hai, meglio è!" }];
+    req.log.info({ sessionId: id, source: challenges.length > 0 ? "db" : "fallback", themeCount: themes.length, themeIds: themes.map(t => t.id) }, "[BalloTheme] select-game themes loaded");
     const flowPayload: RoundPayload = {
       mode: "home-flow",
       gameFlowPhase: "theme_select",
@@ -1015,6 +1019,17 @@ router.post("/home/sessions/:id/flow/select-theme", async (req, res): Promise<vo
 
   const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
   if (rp["mode"] !== "home-flow") { res.status(409).json({ error: "Sessione non in modalità flow" }); return; }
+
+  // ── Idempotency: if already in booking phase (theme already selected), re-emit and return OK ──
+  // This handles double-clicks and retries from the TV without returning 409.
+  if (rp["gameFlowPhase"] === "booking" && rp["selectedTheme"] != null) {
+    req.log.info({ sessionId: id, selectedTheme: rp["selectedTheme"] }, "[BalloTheme] select-theme already booking — re-emitting home:state");
+    const players = await getPlayers(id);
+    emitToRoom(homeRoom(id), "home:state", { session, players });
+    res.json({ session, players });
+    return;
+  }
+
   if (rp["gameFlowPhase"] !== "theme_select") { res.status(409).json({ error: "Fase non corretta" }); return; }
 
   const { themeId, themeName, themeDescription } = req.body as {
@@ -1023,10 +1038,21 @@ router.post("/home/sessions/:id/flow/select-theme", async (req, res): Promise<vo
   if (!themeId || !themeName) { res.status(400).json({ error: "themeId e themeName obbligatori" }); return; }
 
   const selectedTheme = { id: themeId, name: themeName, description: themeDescription ?? "" };
+  req.log.info({ sessionId: id, themeId, themeName }, "[BalloTheme] select-theme storing selectedTheme → booking");
+
   const updatedRp: RoundPayload = { ...rp, gameFlowPhase: "booking", selectedTheme } as RoundPayload;
   const [updated] = await db.update(homeSessionsTable)
     .set({ roundPayload: updatedRp })
     .where(eq(homeSessionsTable.id, id)).returning();
+
+  if (!updated) {
+    req.log.error({ sessionId: id }, "[BalloTheme] select-theme DB update returned no rows");
+    res.status(500).json({ error: "Errore interno: sessione non aggiornata" }); return;
+  }
+
+  const phaseAfter = (updated.roundPayload as Record<string,unknown>)?.["gameFlowPhase"];
+  req.log.info({ sessionId: id, phaseAfter, selectedTheme }, "[BalloTheme] phase after select-theme");
+
   const players = await getPlayers(id);
   emitToRoom(homeRoom(id), "home:state", { session: updated, players });
   res.json({ session: updated, players });
@@ -1051,8 +1077,9 @@ router.post("/home/sessions/:id/flow/book-player", async (req, res): Promise<voi
   const maxPlayers = Number(rp["maxPlayers"] ?? 2);
   const players = await getPlayers(id);
 
-  // Purge any disconnected bookings first
-  const connectedIds = new Set(players.filter((p) => p.isConnected).map((p) => p.id));
+  // Purge disconnected bookings — but always treat the requesting player as connected
+  // (their isConnected flag may be momentarily false during a socket reconnect).
+  const connectedIds = new Set(players.filter((p) => p.isConnected || p.id === playerId).map((p) => p.id));
   let booked = ((rp["bookedPlayers"] as Array<{ id: string; nickname: string; avatarColor: string }>) ?? [])
     .filter((b) => connectedIds.has(b.id));
 
@@ -1067,10 +1094,13 @@ router.post("/home/sessions/:id/flow/book-player", async (req, res): Promise<voi
     }
   }
 
-  const updatedRp: RoundPayload = { ...rp, bookedPlayers: booked } as RoundPayload;
+  // Explicitly carry selectedTheme forward (belt-and-suspenders on top of ...rp spread)
+  const selectedTheme = (rp["selectedTheme"] as Record<string,unknown> | null | undefined) ?? null;
+  const updatedRp: RoundPayload = { ...rp, selectedTheme, bookedPlayers: booked } as RoundPayload;
   const [updated] = await db.update(homeSessionsTable)
     .set({ roundPayload: updatedRp })
     .where(eq(homeSessionsTable.id, id)).returning();
+  req.log.info({ sessionId: id, action, playerId, bookedCount: booked.length, bookedIds: booked.map(b => b.id) }, "[BalloTheme] bookedPlayers after book-player");
   emitToRoom(homeRoom(id), "home:state", { session: updated, players });
   emitToRoom(homeRoom(id), "home:player_booked", { bookedPlayers: booked });
   res.json({ session: updated, bookedPlayers: booked });

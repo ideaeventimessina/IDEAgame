@@ -1,0 +1,67 @@
+BUG — BALLO THEME PACK OF 5 DOES NOT ADVANCE.
+
+Do not touch sensors.
+Do not touch audio.
+Do not touch scoring.
+Do not redesign.
+
+Problem:
+When Ballo theme selection shows this pack of 5:
+- Ballo da Principessa
+- Sotto il Mare
+- Duetto Villain
+- Passi di Avventura
+- Marcia dei Pirati
+
+clicking a theme does not advance TV to booking.
+TV remains on "Scegli il tema".
+Phones show "MI PRENOTO".
+If phone taps "MI PRENOTO", it books briefly then returns to unbooked.
+
+When another pack of 3 appears, flow behaves differently.
+
+Audit:
+- /flow/select-theme route
+- /flow/book-player route
+- GameFlowEngine selectTheme()
+- GameFlowPhone book()
+- loadBalloThemes / loadBalloRoundsForTheme
+- dance challenge/theme data source
+
+Find:
+1. Are the 5 themes fallback/static themes?
+2. Do they lack theme.id / setId / slug?
+3. Is selectedTheme saved with a value that later cannot reload rounds?
+4. Is book-player resetting bookedPlayers because selectedTheme is invalid?
+5. Is home:state broadcasting stale theme_select payload after select-theme?
+6. Is currentRound/gameSlug unchanged causing client to ignore the booking update?
+
+Patch:
+- Every theme must have stable id/slug.
+- select-theme must store selectedThemeId and selectedTheme object consistently.
+- After select-theme, roundPayload.gameFlowPhase must become "booking".
+- Do not re-run theme_select if selectedTheme exists.
+- book-player must preserve selectedTheme and bookedPlayers.
+- If theme has no DB id, use deterministic slug from title.
+- Add logs:
+  [BalloTheme] source
+  [BalloTheme] selectedTheme
+  [BalloTheme] selectedThemeId
+  [BalloTheme] phase after select
+  [BalloTheme] bookedPlayers after book
+
+Test:
+1. Force/load 5-theme pack.
+2. Click "Ballo da Principessa".
+3. TV must move to booking.
+4. Phone must show stable booked state after MI PRENOTO.
+5. Booked player must not reset.
+6. Confirm must start countdown.
+7. Typecheck clean.
+
+Output:
+A. root cause
+B. files modified
+C. why 5-theme pack failed
+D. deterministic theme id fix
+E. typecheck result

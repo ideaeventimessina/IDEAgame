@@ -104,13 +104,19 @@ export function GameFlowEngine({
   async function selectTheme(theme: FlowTheme) {
     if (selecting) return;
     setSelecting(true);
-    console.log('[BalloFlow] select-theme →', theme.name, '| session:', session.id);
+    console.log('[BalloTheme] selectTheme → id:', theme.id, '| name:', theme.name, '| session:', session.id, '| phase:', p.gameFlowPhase);
     try {
-      await fetch(`/api/home/sessions/${session.id}/flow/select-theme`, {
+      const res = await fetch(`/api/home/sessions/${session.id}/flow/select-theme`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ themeId: theme.id, themeName: theme.name, themeDescription: theme.description }),
       });
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        console.error('[BalloTheme] select-theme FAILED:', res.status, body, '| theme.id:', theme.id);
+      } else {
+        console.log('[BalloTheme] select-theme OK — waiting for home:state socket event');
+      }
     } finally { setSelecting(false); }
   }
 
