@@ -618,9 +618,11 @@ async function loadGameRoundsForTheme(
         .where(and(eq(wordBackCardsTable.setId, themeId!), eq(wordBackCardsTable.isActive, true)))
         .orderBy(asc(wordBackCardsTable.orderIndex));
       if (cards.length === 0) return loadWordBackRounds();
+      const allWords = cards.map(c => c.word);
       return shuffleArr(cards).map((c, i) => ({
         mode: "home-wordback", roundIndex: i, setName: selectedTheme!.name,
-        word: c.word, hint: c.hint ?? "", category: c.category ?? "",
+        word: c.word, tabooWords: generateTabooWords(c.word, c.hint ?? "", allWords, c.category ?? ""),
+        hint: c.hint ?? "", category: c.category ?? "",
         difficulty: c.difficulty ?? "medium", points: c.points ?? 150, timeLimit: c.timeLimit ?? 45, guessed: false,
       }));
     }
@@ -745,6 +747,49 @@ async function autoScoreBallo(
   return winnerId;
 }
 
+// ── Taboo word generation ─────────────────────────────────────────────────────
+
+const STATIC_TABOO: Record<string, string[]> = {
+  "pizza": ["Napoletana", "Forno", "Mozzarella", "Pomodoro", "Rotonda"],
+  "vespa": ["Moto", "Piaggio", "Scooter", "Guidare", "Ruote"],
+  "gelato": ["Freddo", "Cono", "Crema", "Dolce", "Estate"],
+  "spaghetti": ["Pasta", "Sugo", "Carbonara", "Forchetta", "Italiani"],
+  "mandolino": ["Strumento", "Corde", "Musica", "Suonare", "Napoletano"],
+  "colosseo": ["Roma", "Anfiteatro", "Gladiatori", "Antico", "Pietra"],
+};
+
+const CATEGORY_TABOO_FILLERS: Record<string, string[]> = {
+  "italiani": ["Famoso", "Tradizionale", "Classico", "Storico", "Nazionale"],
+  "cibo": ["Mangiare", "Gustoso", "Cucinare", "Ricetta", "Ingrediente"],
+  "sport": ["Giocare", "Vincere", "Squadra", "Campo", "Partita"],
+  "musica": ["Cantare", "Suonare", "Ritmo", "Melodia", "Strumento"],
+  "cinema": ["Film", "Attore", "Scena", "Personaggio", "Regista"],
+};
+
+function generateTabooWords(word: string, hint: string, otherWords: string[], category: string): string[] {
+  const wLow = word.toLowerCase();
+  if (STATIC_TABOO[wLow]) return STATIC_TABOO[wLow]!;
+  const STOP = new Set(["il","lo","la","le","gli","un","una","uno","di","da","in","con","su","per","tra","fra","che","non","ma","è","e","a"]);
+  const fromHint = (hint || "")
+    .split(/[\s,;.!?()\-]+/)
+    .map(w => w.trim())
+    .filter(w => w.length > 3 && !STOP.has(w.toLowerCase()) && w.toLowerCase() !== wLow)
+    .slice(0, 3);
+  const fromSet = shuffleArr(otherWords.filter(w => w.toLowerCase() !== wLow)).slice(0, 3);
+  const candidates = [...new Set([...fromHint, ...fromSet])];
+  const fillers = [...(CATEGORY_TABOO_FILLERS[category.toLowerCase()] ?? CATEGORY_TABOO_FILLERS["italiani"]!)];
+  while (candidates.length < 5 && fillers.length > 0) {
+    const fb = fillers.shift()!;
+    if (!candidates.includes(fb)) candidates.push(fb);
+  }
+  const finalFallbacks = ["Oggetto", "Cosa", "Parola", "Tipo", "Tipico"];
+  while (candidates.length < 5) {
+    const fb = finalFallbacks.shift() ?? "X";
+    if (!candidates.includes(fb)) candidates.push(fb);
+  }
+  return candidates.slice(0, 5).map(w => w.charAt(0).toUpperCase() + w.slice(1));
+}
+
 /** 7. Parola alle Spalle — carica word_back_cards dal DB */
 async function loadWordBackRounds(): Promise<RoundPayload[]> {
   const [set] = await db.select().from(wordBackSetsTable)
@@ -758,11 +803,13 @@ async function loadWordBackRounds(): Promise<RoundPayload[]> {
 
   if (cards.length === 0) return fallbackWordBack();
 
+  const allWords = cards.map(c => c.word);
   return shuffleArr(cards).map((c, i) => ({
     mode: "home-wordback",
     roundIndex: i,
     setName: set.title,
     word: c.word,
+    tabooWords: generateTabooWords(c.word, c.hint ?? "", allWords, c.category ?? ""),
     hint: c.hint ?? "",
     category: c.category ?? "",
     difficulty: c.difficulty ?? "medium",
@@ -776,7 +823,8 @@ function fallbackWordBack(): RoundPayload[] {
   const words = ["Pizza", "Vespa", "Gelato", "Spaghetti", "Mandolino", "Colosseo"];
   return words.map((w, i) => ({
     mode: "home-wordback", roundIndex: i, setName: "Classici Italiani",
-    word: w, hint: "", category: "italiani", difficulty: "easy", points: 150, timeLimit: 45, guessed: false,
+    word: w, tabooWords: generateTabooWords(w, "", words, "italiani"),
+    hint: "", category: "italiani", difficulty: "easy", points: 150, timeLimit: 45, guessed: false,
   }));
 }
 
@@ -1342,17 +1390,25 @@ router.post("/home/sessions/:id/flow/confirm", async (req, res): Promise<void> =
           const launchSlug = String(rp["gameSlug"] ?? "sfida-ballo");
           logger.info({ sessionId: id, selectedTheme, gameSlug: launchSlug }, "[GameFlow] launching game");
           const preloadedRounds = await loadGameRoundsForTheme(launchSlug, selectedTheme);
+          const bp = ((confirmRp as Record<string, unknown>)["bookedPlayers"] as Array<{id: string; nickname: string}>) ?? [];
+          // For parola-alle-spalle: stamp guesserId/suggesterId with alternating roles per round
+          const stampedRounds = launchSlug === "parola-alle-spalle" && bp.length >= 2
+            ? preloadedRounds.map((r, i) => ({
+                ...r,
+                guesserId: bp[i % 2 === 0 ? 0 : 1]?.id ?? null,
+                suggesterId: bp[i % 2 === 0 ? 1 : 0]?.id ?? null,
+              }))
+            : preloadedRounds;
           // Carry bookedPlayers into the round payload so TV boards can filter participants.
-          // 'confirmRp' is captured in this closure and has the full FlowBookedPlayer objects.
           const firstRound: RoundPayload = {
-            ...(preloadedRounds[0] ?? {}),
+            ...(stampedRounds[0] ?? {}),
             roundStartedAt: new Date().toISOString(),
-            bookedPlayers: (confirmRp as Record<string, unknown>)["bookedPlayers"] ?? [],
+            bookedPlayers: bp,
           } as RoundPayload;
-          logger.info({ sessionId: id, mode: firstRound["mode"], bookedCount: ((firstRound["bookedPlayers"] as unknown[]) ?? []).length, gameSlug: launchSlug }, "[GameFlow] payload mode");
+          logger.info({ sessionId: id, mode: firstRound["mode"], bookedCount: bp.length, gameSlug: launchSlug }, "[GameFlow] payload mode");
           const cfg = (session.gameConfig ?? {}) as Record<string, unknown>;
           const gamesPlayed = (cfg["gamesPlayed"] as string[]) ?? [];
-          const newCfg = { ...cfg, phase: "playing", gamesPlayed, preloadedRounds };
+          const newCfg = { ...cfg, phase: "playing", gamesPlayed, preloadedRounds: stampedRounds };
           const [gameUpdated] = await db.update(homeSessionsTable).set({
             gameConfig: newCfg,
             currentRound: 0,

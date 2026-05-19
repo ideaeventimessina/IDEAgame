@@ -86,7 +86,7 @@ export default function HomeJoin() {
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [answered, setAnswered] = useState<number | null>(null);
   const [revealed, setRevealed] = useState(false);
-  const [adminSensitivity, setAdminSensitivity] = useState(1.0);
+  const [adminSensitivity, setAdminSensitivity] = useState(3.0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const phaseRef = useRef<'code' | 'nickname' | 'lobby' | 'playing' | 'ended'>('code');
   const playerRef = useRef<HomePlayer | null>(null);
@@ -869,7 +869,7 @@ function PhoneController({
   if (mode === 'home-saramusica') return <SaraMusicaController payload={p} player={player} session={session}/>;
   if (mode === 'home-adult')      return <AdultController payload={p} timeLeft={timeLeft} onScore={onScore}/>;
   if (mode === 'home-ballo')      return <BalloController payload={p} timeLeft={timeLeft} sessionId={session.id} emit={emit} playerId={player.id} round={session.currentRound} adminSensitivity={adminSensitivity ?? 1.0}/>;
-  if (mode === 'home-wordback')   return <WordBackController payload={p} timeLeft={timeLeft}/>;
+  if (mode === 'home-wordback')   return <WordBackController payload={p} timeLeft={timeLeft} player={player} sessionId={session.id} emit={emit}/>;
   if (mode === 'home-karaoke')    return <KaraokeController payload={p} sessionId={session.id}/>;
   if (mode === 'home-freestyle')  return <FreestyleController payload={p} timeLeft={timeLeft}/>;
   return <div className="text-center text-white/40 py-8">In attesa del gioco…</div>;
@@ -1513,30 +1513,109 @@ function AdultController({ payload, timeLeft, onScore }: {
 
 // ── WordBackController ─────────────────────────────────────────────────────────
 
-function WordBackController({ payload, timeLeft }: { payload: Record<string,unknown>; timeLeft: number | null }) {
+function WordBackController({ payload, timeLeft, player, sessionId, emit }: {
+  payload: Record<string,unknown>;
+  timeLeft: number | null;
+  player: HomePlayer;
+  sessionId: string;
+  emit: (event: string, data: unknown) => void;
+}) {
+  const guesserId = String(payload.guesserId ?? '');
+  const suggesterId = String(payload.suggesterId ?? '');
+  const tabooWords = (payload.tabooWords as string[]) ?? [];
+  const round = typeof payload.roundIndex === 'number' ? payload.roundIndex : 0;
+  const isGuesser = !!guesserId && player.id === guesserId;
+  const isSuggester = !!suggesterId && player.id === suggesterId;
+  const [alarmPressed, setAlarmPressed] = useState(false);
+
+  const handleAlarm = useCallback(() => {
+    if (alarmPressed) return;
+    setAlarmPressed(true);
+    emit('home:wordback_taboo_alarm', { sessionId, playerId: player.id, nickname: player.nickname, round });
+    setTimeout(() => setAlarmPressed(false), 2000);
+  }, [alarmPressed, emit, sessionId, player.id, player.nickname, round]);
+
+  const timerBadge = timeLeft !== null ? (
+    <div className="flex items-center gap-2 rounded-xl px-5 py-2"
+      style={{background:'rgba(34,211,238,0.18)',border:'1px solid rgba(34,211,238,0.45)',color:'#22D3EE'}}>
+      <Timer className="h-4 w-4"/>
+      <span className="text-2xl font-black tabular-nums">{timeLeft}s</span>
+    </div>
+  ) : null;
+
+  if (isGuesser) {
+    return (
+      <div className="flex flex-col items-center gap-5 py-4 text-center">
+        <div className="text-6xl">🙈</div>
+        <div className="text-xl font-black text-white">Indovina la parola!</div>
+        <div className="rounded-2xl p-5 w-full"
+          style={{background:'rgba(167,139,250,0.12)',border:'1px solid rgba(167,139,250,0.4)'}}>
+          <div className="text-xs font-black uppercase tracking-widest mb-2" style={{color:'rgba(167,139,250,0.9)'}}>IL TUO RUOLO</div>
+          <div className="text-base font-black text-white">INDOVINATORE</div>
+          <div className="mt-2 text-sm text-white/50">Ascolta i suggerimenti e cerca di indovinarla!</div>
+        </div>
+        {timerBadge}
+        <div className="text-xs text-white/35">L'animatore assegna i punti dalla TV</div>
+      </div>
+    );
+  }
+
+  if (isSuggester) {
+    return (
+      <div className="flex flex-col items-center gap-5 py-4 text-center">
+        <div className="text-6xl">💬</div>
+        <div className="text-xl font-black text-white">Fai indovinare!</div>
+        <div className="rounded-2xl p-5 w-full"
+          style={{background:'rgba(34,211,238,0.12)',border:'1px solid rgba(34,211,238,0.4)'}}>
+          <div className="text-xs font-black uppercase tracking-widest mb-2" style={{color:'rgba(34,211,238,0.9)'}}>LA PAROLA SEGRETA</div>
+          <div className="text-display text-4xl font-black" style={{color:'#22D3EE',textShadow:'0 0 30px rgba(34,211,238,0.6)'}}>
+            {String(payload.word ?? '?')}
+          </div>
+        </div>
+        {tabooWords.length > 0 && (
+          <div className="rounded-2xl p-4 w-full"
+            style={{background:'rgba(239,68,68,0.12)',border:'1px solid rgba(239,68,68,0.4)'}}>
+            <div className="text-xs font-black uppercase tracking-widest mb-3" style={{color:'rgba(239,68,68,0.9)'}}>⛔ PAROLE VIETATE</div>
+            <div className="flex flex-col gap-1.5">
+              {tabooWords.map((w, i) => (
+                <div key={i} className="text-sm font-bold text-white/80">{i+1}. {w}</div>
+              ))}
+            </div>
+            <div className="mt-3 text-xs text-white/40 italic">Non puoi dire queste parole!</div>
+          </div>
+        )}
+        {timerBadge}
+      </div>
+    );
+  }
+
+  // All other players → Controllo Taboo
   return (
     <div className="flex flex-col items-center gap-5 py-4 text-center">
-      <div className="text-6xl">💬</div>
-      <div className="text-xl font-black text-white">Fai indovinare la parola!</div>
-      <div className="rounded-2xl p-5 w-full"
-        style={{background:'rgba(34,211,238,0.12)',border:'1px solid rgba(34,211,238,0.35)'}}>
-        <div className="text-xs font-black uppercase tracking-widest mb-2" style={{color:'rgba(34,211,238,0.8)'}}>CATEGORIA</div>
-        <div className="text-base text-white/70">{String(payload.category ?? '')} — {String(payload.difficulty ?? 'medium')}</div>
-        {!!payload.hint && (
-          <div className="mt-2 text-sm text-white/50 italic">💡 {String(payload.hint)}</div>
-        )}
-      </div>
-      <div className="text-base text-white/45">
-        Descrivi la parola sulla schiena con gesti o parole — senza dirla!
-      </div>
-      {timeLeft !== null && (
-        <div className="flex items-center gap-2 rounded-xl px-5 py-2"
-          style={{background:'rgba(34,211,238,0.18)',border:'1px solid rgba(34,211,238,0.45)',color:'#22D3EE'}}>
-          <Timer className="h-4 w-4"/>
-          <span className="text-2xl font-black tabular-nums">{timeLeft}s</span>
+      <div className="text-6xl">🚨</div>
+      <div className="text-xl font-black text-white">Controllo Taboo</div>
+      {tabooWords.length > 0 && (
+        <div className="rounded-2xl p-4 w-full"
+          style={{background:'rgba(239,68,68,0.12)',border:'1px solid rgba(239,68,68,0.35)'}}>
+          <div className="text-xs font-black uppercase tracking-widest mb-3" style={{color:'rgba(239,68,68,0.9)'}}>⛔ PAROLE VIETATE</div>
+          <div className="flex flex-col gap-1.5">
+            {tabooWords.map((w, i) => (
+              <div key={i} className="text-sm font-bold text-white/80">{i+1}. {w}</div>
+            ))}
+          </div>
         </div>
       )}
-      <div className="text-xs text-white/35">L'animatore assegna i punti dalla TV</div>
+      <button onClick={handleAlarm} disabled={alarmPressed}
+        className="w-full rounded-2xl py-5 text-xl font-black text-white transition-all active:scale-95 disabled:opacity-60"
+        style={{
+          background: alarmPressed ? 'rgba(239,68,68,0.35)' : 'linear-gradient(135deg,#ef4444,#b91c1c)',
+          border: '2px solid rgba(239,68,68,0.8)',
+          boxShadow: alarmPressed ? 'none' : '0 0 40px rgba(239,68,68,0.5)',
+        }}>
+        {alarmPressed ? '🚨 Inviato!' : '🚨 ALLARME TABOO'}
+      </button>
+      {timerBadge}
+      <div className="text-xs text-white/35">Premi il bottone se senti una parola vietata!</div>
     </div>
   );
 }

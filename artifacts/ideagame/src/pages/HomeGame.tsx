@@ -43,6 +43,8 @@ interface HomePlayer {
   isConnected: boolean;
 }
 
+type TabooAlarmEvent = { playerId: string; nickname: string; round: number; timestamp: number };
+
 // ── Game catalogue ─────────────────────────────────────────────────────────────
 
 const ALL_GAMES = [
@@ -520,6 +522,8 @@ export default function HomeGame() {
   const introStallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { on, emit } = useHomeSocket(session?.id ?? null);
+  const [tabooAlarm, setTabooAlarm] = useState<TabooAlarmEvent | null>(null);
+  const tabooDebounceRef = useRef<Map<string, number>>(new Map());
   const [balloSensitivity, setBalloSensitivity] = useState(1.0);
   const [sensorReadyMap, setSensorReadyMap] = useState<Record<string, boolean>>({});
   const handleBalloSensitivity = useCallback((s: number) => {
@@ -767,7 +771,16 @@ export default function HomeGame() {
       setSensorReadyMap(prev => ({ ...prev, [d.playerId]: d.sensorReady }));
     });
 
-    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); u10?.(); u11?.(); u12?.(); };
+    const u13 = on<TabooAlarmEvent>('home:wordback_taboo_alarm', (d) => {
+      const now = Date.now();
+      const last = tabooDebounceRef.current.get(d.playerId) ?? 0;
+      if (now - last < 2000) return;
+      tabooDebounceRef.current.set(d.playerId, now);
+      setTabooAlarm(d);
+      setTimeout(() => setTabooAlarm(prev => prev?.timestamp === d.timestamp ? null : prev), 3000);
+    });
+
+    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); u10?.(); u11?.(); u12?.(); u13?.(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [on]);
 
@@ -1385,6 +1398,7 @@ export default function HomeGame() {
                 onReveal={() => { setRevealed(true); if(timerRef.current) clearInterval(timerRef.current); setJonnyMood('correct'); }}
                 onNext={nextRound} players={players} balloEnergies={balloEnergies} balloCurrent={balloCurrent} balloResult={balloResult} saraMusicaWinner={saraMusicaWinner}
                 balloSensitivity={balloSensitivity} onSensitivity={handleBalloSensitivity} sensorReadyMap={sensorReadyMap}
+                tabooAlarm={tabooAlarm}
                 onScore={async (pid,pts) => {
                   // Optimistic update — score appears immediately in bar + partial leaderboard
                   setPlayers(prev => prev.map(p => p.id === pid ? { ...p, score: pts } : p));
@@ -1629,7 +1643,7 @@ export default function HomeGame() {
 
 // ── RoundBoard ─────────────────────────────────────────────────────────────────
 
-function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, balloEnergies, balloCurrent, balloResult, saraMusicaWinner, balloSensitivity, onSensitivity, sensorReadyMap }: {
+function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, balloEnergies, balloCurrent, balloResult, saraMusicaWinner, balloSensitivity, onSensitivity, sensorReadyMap, tabooAlarm }: {
   session: HomeSession;
   revealed: boolean;
   onReveal: () => void;
@@ -1643,6 +1657,7 @@ function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, bal
   balloSensitivity?: number;
   onSensitivity?: (s: number) => void;
   sensorReadyMap?: Record<string, boolean>;
+  tabooAlarm?: TabooAlarmEvent | null;
 }) {
   const p = session.roundPayload;
   const mode = String(p.mode ?? 'home-quiz');
@@ -1654,7 +1669,7 @@ function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, bal
   if (mode === 'home-coppie')     return <CoppieBoard payload={p} onNext={onNext}/>;
   if (mode === 'home-saramusica') return <SaraMusicaBoard payload={p} revealed={revealed} onReveal={onReveal} winner={saraMusicaWinner ?? null}/>;
   if (mode === 'home-adult')      return <AdultOnlyBoard payload={p} revealed={revealed} onReveal={onReveal} players={players} onScore={onScore}/>;
-  if (mode === 'home-wordback')   return <WordBackBoard payload={p} players={players} onScore={onScore} onReveal={onReveal}/>;
+  if (mode === 'home-wordback')   return <WordBackBoard payload={p} players={players} onScore={onScore} onReveal={onReveal} tabooAlarm={tabooAlarm ?? null}/>;
   if (mode === 'home-karaoke')    return <KaraokeBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
   if (mode === 'home-freestyle')  return <FreestyleBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
   return <div className="text-white/40 text-2xl">Caricamento gioco…</div>;
@@ -1719,12 +1734,6 @@ function QuizBoard({ payload, revealed, onReveal }: { payload: Record<string,unk
 
 type BurstItem = { key: number; label: string };
 
-const BALLO_PRESETS = [
-  { label: 'Soft', value: 0.6 },
-  { label: 'Normal', value: 1.0 },
-  { label: 'Party', value: 1.4 },
-  { label: 'Chaos', value: 2.0 },
-] as const;
 
 function BalloBoard({ payload, players, balloEnergies, balloCurrent, balloResult, sensitivity = 1, onSensitivity }: {
   payload: Record<string,unknown>;
@@ -1790,27 +1799,6 @@ function BalloBoard({ payload, players, balloEnergies, balloCurrent, balloResult
         <div className="text-sm text-white/55 max-w-md">{String(payload.description ?? '')}</div>
       </div>
 
-      {/* Sensitivity control — visible to TV host only (not phones), hidden when result is in */}
-      {!balloResult && onSensitivity && (
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-bold" style={{color:'rgba(167,139,250,0.6)'}}>Sensibilità:</span>
-          {BALLO_PRESETS.map(preset => (
-            <button key={preset.label} onClick={() => onSensitivity(preset.value)}
-              className="rounded-xl px-3 py-1 text-xs font-black transition-all"
-              style={{
-                background: Math.abs(sensitivity - preset.value) < 0.05
-                  ? 'linear-gradient(135deg,#A78BFA,#7C3AED)'
-                  : 'rgba(167,139,250,0.12)',
-                color: Math.abs(sensitivity - preset.value) < 0.05 ? '#fff' : 'rgba(167,139,250,0.7)',
-                border: '1px solid rgba(167,139,250,0.3)',
-                cursor: 'pointer',
-              }}>
-              {preset.label}
-            </button>
-          ))}
-          <span className="text-xs tabular-nums" style={{color:'rgba(255,255,255,0.3)'}}>×{sensitivity.toFixed(1)}</span>
-        </div>
-      )}
 
       {/* Winner banner */}
       {balloResult && (
@@ -2156,32 +2144,73 @@ function AdultOnlyBoard({ payload, revealed, onReveal, players, onScore }: {
 
 // ── WordBackBoard ─────────────────────────────────────────────────────────────
 
-function WordBackBoard({ payload, players, onScore, onReveal }: {
+function WordBackBoard({ payload, players, onScore, onReveal, tabooAlarm }: {
   payload: Record<string,unknown>;
   players: HomePlayer[];
   onScore: (pid: string, pts: number) => Promise<void>;
   onReveal: () => void;
+  tabooAlarm: TabooAlarmEvent | null;
 }) {
   const [awarded, setAwarded] = useState<string|null>(null);
   const pts = Number(payload.points??150);
+  const guesserId = String(payload.guesserId ?? '');
+  const suggesterId = String(payload.suggesterId ?? '');
+  const guesser = players.find(p => p.id === guesserId);
+  const suggester = players.find(p => p.id === suggesterId);
 
   return (
     <motion.div key={String(payload.roundIndex)} initial={{scale:0.9,opacity:0}} animate={{scale:1,opacity:1}}
-      className="flex w-full max-w-2xl flex-col items-center gap-7 text-center">
-      <div className="flex h-24 w-24 items-center justify-center rounded-3xl text-6xl"
-        style={{background:'linear-gradient(135deg,rgba(34,211,238,0.35),rgba(34,211,238,0.15))',border:'2px solid rgba(34,211,238,0.55)',boxShadow:'0 0 60px rgba(34,211,238,0.4)'}}>
+      className="flex w-full max-w-2xl flex-col items-center gap-6 text-center">
+
+      {/* Taboo alarm overlay */}
+      <AnimatePresence>
+        {tabooAlarm && (
+          <motion.div key={tabooAlarm.timestamp}
+            initial={{opacity:0,scale:0.7}} animate={{opacity:1,scale:1}} exit={{opacity:0,scale:0.8}}
+            transition={{type:'spring',stiffness:400,damping:25}}
+            className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+            <div className="rounded-3xl px-14 py-10 text-center"
+              style={{background:'rgba(239,68,68,0.95)',border:'3px solid rgba(255,120,120,0.9)',boxShadow:'0 0 100px rgba(239,68,68,0.9)',backdropFilter:'blur(12px)'}}>
+              <div className="text-7xl mb-4">🚨</div>
+              <div className="text-5xl font-black text-white tracking-tight">ALLARME TABOO!</div>
+              <div className="text-2xl text-white/85 mt-3">premuto da <span className="font-black">{tabooAlarm.nickname}</span></div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="flex h-20 w-20 items-center justify-center rounded-3xl text-5xl"
+        style={{background:'linear-gradient(135deg,rgba(34,211,238,0.35),rgba(34,211,238,0.15))',border:'2px solid rgba(34,211,238,0.55)',boxShadow:'0 0 50px rgba(34,211,238,0.4)'}}>
         💬
       </div>
-      <div className="rounded-3xl px-8 py-6"
-        style={{background:'linear-gradient(135deg,rgba(34,211,238,0.2),rgba(34,211,238,0.08))',border:'2px solid rgba(34,211,238,0.55)',boxShadow:'0 0 50px rgba(34,211,238,0.3)'}}>
-        <div className="text-xs font-black uppercase tracking-widest mb-2" style={{color:'rgba(34,211,238,0.8)'}}>La parola sulla schiena</div>
-        <div className="text-display text-6xl font-black" style={{color:'#22D3EE',textShadow:'0 0 40px rgba(34,211,238,0.6)'}}>
-          {String(payload.word??'?')}
+
+      {/* Role badges */}
+      {(guesser || suggester) && (
+        <div className="flex gap-3 w-full">
+          {guesser && (
+            <div className="flex-1 rounded-2xl px-4 py-3"
+              style={{background:'rgba(167,139,250,0.15)',border:'1.5px solid rgba(167,139,250,0.4)'}}>
+              <div className="text-xs font-black uppercase tracking-widest mb-1" style={{color:'rgba(167,139,250,0.9)'}}>🙈 Indovinatore</div>
+              <div className="font-black text-white text-lg">{guesser.nickname}</div>
+            </div>
+          )}
+          {suggester && (
+            <div className="flex-1 rounded-2xl px-4 py-3"
+              style={{background:'rgba(34,211,238,0.15)',border:'1.5px solid rgba(34,211,238,0.4)'}}>
+              <div className="text-xs font-black uppercase tracking-widest mb-1" style={{color:'rgba(34,211,238,0.9)'}}>💬 Suggeritore</div>
+              <div className="font-black text-white text-lg">{suggester.nickname}</div>
+            </div>
+          )}
         </div>
-        {!!payload.hint && (
-          <div className="mt-3 text-base text-white/55 italic">💡 {String(payload.hint)}</div>
-        )}
+      )}
+
+      <div className="rounded-2xl px-6 py-4 w-full"
+        style={{background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.1)'}}>
+        <div className="text-xs font-black uppercase tracking-widest mb-1" style={{color:'rgba(255,255,255,0.35)'}}>CATEGORIA</div>
+        <div className="text-base text-white/55">{String(payload.category ?? '')} — {String(payload.difficulty ?? 'medium')}</div>
+        <div className="text-sm text-white/30 mt-1.5 italic">🤫 La parola è sul telefono del Suggeritore</div>
       </div>
+
       <div className="text-base text-white/50">Chi l'ha indovinata? Assegna i punti:</div>
       <div className="flex flex-wrap justify-center gap-3">
         {players.map(p => (

@@ -1,0 +1,187 @@
+HOME MODE — BALL0 SENSITIVITY DEFAULT + WORD BACK TABOO UPGRADE.
+
+Do not touch Ballo SensorBridge.
+Do not touch Ballo listener lifecycle.
+Do not touch audio engine.
+Do not touch routing.
+
+==================================================
+PART 1 — BALLO SENSITIVITY CLEANUP
+==================================================
+
+Ballo sensors are now working.
+
+Required:
+- Set default Ballo sensitivity multiplier to 3x.
+- Remove sensitivity preset buttons from UI:
+  Soft
+  Normal
+  Party
+  Chaos
+- Remove manual sensitivity selector from player-facing/game UI.
+- Keep internal sensitivity setting if needed, but default must be 3.0.
+- Clamp final energy to 100 as currently done.
+
+Do not modify:
+- SensorBridge
+- permission flow
+- socket events
+- live points
+- scoring
+
+Output:
+A. files modified
+B. default sensitivity set to 3x
+C. removed buttons
+D. typecheck result
+
+==================================================
+PART 2 — PAROLA ALLE SPALLE / TABOO MODE
+==================================================
+
+Goal:
+Make "Parola alle Spalle" much more engaging.
+
+New gameplay logic:
+
+Roles:
+1. Player A = INDOVINATORE
+   - Does NOT see the secret word.
+   - Phone shows only the game explanation/instructions.
+   - Must guess the word verbally.
+
+2. Player B = SUGGERITORE
+   - Sees the secret word.
+   - Sees 5 forbidden words.
+   - Must help Player A guess without saying forbidden words.
+
+3. All other players = CONTROLLO TABOO
+   - See the same 5 forbidden words.
+   - Have a huge red alarm button.
+   - If they hear a forbidden word, they press the alarm.
+
+TV:
+- Shows current round.
+- Shows Player A as indovinatore.
+- Shows Player B as suggeritore.
+- Shows the timer.
+- Does NOT show the secret word to the audience if the screen is visible to the guesser.
+- Shows taboo alarm events live:
+  “ALLARME TABOO — premuto da [nickname]”
+- Alarm does NOT stop the game.
+- Alarm does NOT pause timer.
+- It only creates sound/visual tension.
+
+Phone UX:
+
+For Player A:
+- title: “Indovina la parola”
+- explanation text
+- big button:
+  “HO INDOVINATO”
+- optional voice/microphone validation later, but do not implement voice matching now unless already available.
+
+For Player B:
+- title: “Fai indovinare”
+- secret word visible
+- forbidden words list:
+  1. forbidden word
+  2. forbidden word
+  3. forbidden word
+  4. forbidden word
+  5. forbidden word
+- warning:
+  “Non puoi dire queste parole.”
+
+For all other players:
+- title: “Controllo Taboo”
+- forbidden words list
+- huge red button:
+  “ALLARME TABOO”
+- pressing it emits:
+  home:wordback_taboo_alarm
+  {
+    sessionId,
+    playerId,
+    nickname,
+    round
+  }
+
+Server/socket:
+- Add event:
+  home:wordback_taboo_alarm
+- Server broadcasts to home room:
+  home:wordback_taboo_alarm
+  {
+    playerId,
+    nickname,
+    round,
+    timestamp
+  }
+
+TV behavior:
+- Listen for home:wordback_taboo_alarm.
+- Show animated red alert overlay for 2–3 seconds.
+- Play loud alarm sound if audio slot exists.
+- Do NOT stop timer.
+- Do NOT end round.
+- Multiple alarms can appear, but debounce same player for 2 seconds to avoid spam.
+
+Scoring for now:
+- Do not change scoring backend yet.
+- Keep current host scoring / round progression.
+- Optional future scoring:
+  if guessed correct: +100 both indovinatore and suggeritore.
+  if failed: -50 only suggeritore.
+Do NOT implement this scoring change in this patch unless already easy and safe.
+
+Data requirements:
+Each round payload for parola-alle-spalle must include:
+{
+  mode: "home-wordback",
+  word: string,
+  tabooWords: string[5],
+  guesserId,
+  suggesterId
+}
+
+If DB does not have tabooWords:
+- generate fallback tabooWords from existing word/category data
+- or add placeholder tabooWords deterministically
+- do not leave empty list
+
+Startup flow:
+This game must use the universal startup flow:
+- theme/category selection
+- booking 2 players
+  player 1 = indovinatore
+  player 2 = suggeritore
+- host clicks Avvia sfida
+- countdown
+- then round starts
+
+Do not touch Ballo.
+
+Audit first:
+- current WordBack phone controller
+- current WordBack TV board
+- current payload shape
+- current server route/load rounds
+- socket handlers
+
+Patch:
+- add role-based phone rendering
+- add forbidden words list
+- add alarm button for spectators
+- add socket event
+- add TV alert overlay
+- add fallback tabooWords if missing
+
+Output:
+A. files modified
+B. new payload shape
+C. phone role behavior
+D. TV alarm behavior
+E. socket event names
+F. typecheck result
+G. manual test steps

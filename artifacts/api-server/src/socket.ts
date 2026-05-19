@@ -282,9 +282,25 @@ export function initHomeSocketHandlers(io: SocketServer): void {
       const sessionId = typeof d["sessionId"] === "string" ? d["sessionId"] : null;
       const sensitivity = typeof d["sensitivity"] === "number" ? d["sensitivity"] : 1.0;
       if (!sessionId) return;
-      const clamped = Math.min(2.0, Math.max(0.5, sensitivity));
+      const clamped = Math.min(5.0, Math.max(0.5, sensitivity));
       logger.info({ sessionId, sensitivity: clamped }, "[BalloSensitivity] broadcasting to room");
       emitToRoom(`home:${sessionId}`, "home:ballo_sensitivity", { sensitivity: clamped });
+    });
+
+    // ── Parola alle Spalle — Taboo alarm ─────────────────────────────────────
+    socket.on("home:wordback_taboo_alarm", (data: unknown) => {
+      if (!data || typeof data !== "object") return;
+      const d = data as Record<string, unknown>;
+      const sessionId = typeof d["sessionId"] === "string" ? d["sessionId"] : null;
+      if (!sessionId) return;
+      const alarm = {
+        playerId: typeof d["playerId"] === "string" ? d["playerId"] : "",
+        nickname: typeof d["nickname"] === "string" ? d["nickname"] : "",
+        round: typeof d["round"] === "number" ? d["round"] : 0,
+        timestamp: Date.now(),
+      };
+      logger.info({ sessionId, playerId: alarm.playerId, nickname: alarm.nickname }, "[TabooAlarm] broadcasting to room");
+      emitToRoom(`home:${sessionId}`, "home:wordback_taboo_alarm", alarm);
     });
   });
 }
