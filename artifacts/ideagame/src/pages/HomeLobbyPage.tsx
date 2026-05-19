@@ -1,13 +1,13 @@
 /**
  * HomeLobbyPage — /home-lobby/:code
- * Sala d'attesa host. Mostra QR reale, codice, giocatori live, pulsante avvia.
- * Polling ogni 3s su /api/home/sessions/by-code/:code.
+ * Stadium QR redesign: giant scannable QR as hero, code, counter, minimal clutter.
+ * Optimised for projectors, LED walls, TVs — readable from 20–30 metres.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { AudioManager } from '@/audio/AudioManager';
 import { useLocation, useParams } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, Users, Check, Loader2 } from 'lucide-react';
+import { ChevronLeft, Users, Loader2 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 
 const BASE = (import.meta.env.BASE_URL as string) ?? '/';
@@ -34,12 +34,15 @@ interface HomePlayer {
 
 const AVATAR_COLORS = ['#F5B642','#A855F7','#EC4899','#34D399','#60A5FA','#F87171','#FB923C','#22D3EE'];
 
-function SceneBg() {
+// ── Background — same SceneBg kept from original ──────────────────────────────
+function SceneBg({ pulse }: { pulse: boolean }) {
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none" style={{ zIndex: 0 }}>
       <div className="absolute inset-0" style={{
         background: 'radial-gradient(ellipse 130% 90% at 50% 100%,rgba(245,182,66,0.2) 0%,rgba(60,20,120,0.55) 30%,#030010 70%)',
+        transition: 'opacity 0.4s',
       }}/>
+      {/* Cinematic light beams */}
       <div className="absolute" style={{
         left: '-8%', top: 0, width: '40%', height: '80%',
         background: 'conic-gradient(from -6deg at 20% 0%,transparent 0deg,rgba(245,182,66,0.08) 16deg,transparent 32deg)',
@@ -50,6 +53,7 @@ function SceneBg() {
         background: 'conic-gradient(from 6deg at 80% 0%,transparent 0deg,rgba(245,182,66,0.08) 16deg,transparent 32deg)',
         filter: 'blur(2px)',
       }}/>
+      {/* Audience silhouette bar */}
       <svg className="absolute bottom-0 left-0 right-0 w-full" viewBox="0 0 1280 120"
         preserveAspectRatio="none" style={{ height: 100, opacity: 0.45 }}>
         {Array.from({ length: 44 }).map((_, i) => {
@@ -58,10 +62,25 @@ function SceneBg() {
           return <ellipse key={i} cx={x + 14} cy={118 - h / 2} rx={8} ry={h / 2} fill="rgba(0,0,0,0.5)"/>;
         })}
       </svg>
+      {/* Stage floor glow line */}
       <div className="absolute bottom-0 left-0 right-0" style={{
         height: 3,
         background: 'linear-gradient(90deg,transparent,rgba(245,182,66,0.5),rgba(168,85,247,0.4),rgba(245,182,66,0.5),transparent)',
       }}/>
+      {/* Join pulse overlay */}
+      <AnimatePresence>
+        {pulse && (
+          <motion.div
+            key="pulse"
+            initial={{ opacity: 0.35 }}
+            animate={{ opacity: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 1.2, ease: 'easeOut' }}
+            className="absolute inset-0"
+            style={{ background: 'radial-gradient(ellipse 60% 60% at 50% 50%,rgba(168,85,247,0.4),transparent)', pointerEvents: 'none' }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -76,6 +95,8 @@ export default function HomeLobbyPage() {
   const [notFound, setNotFound] = useState(false);
   const [starting, setStarting] = useState(false);
   const [musicPlaying, setMusicPlaying] = useState(true);
+  const [joinPulse, setJoinPulse] = useState(false);
+  const prevPlayerCount = useRef(0);
 
   const joinUrl = typeof window !== 'undefined'
     ? `${window.location.origin}${BASE.replace(/\/$/, '')}/join/${code}`
@@ -89,7 +110,15 @@ export default function HomeLobbyPage() {
       if (!r.ok) return;
       const data = await r.json() as { session: HomeSession; players: HomePlayer[] };
       setSession(data.session);
-      setPlayers(data.players);
+      setPlayers(prev => {
+        // Trigger pulse when a new player joins
+        if (data.players.length > prevPlayerCount.current) {
+          setJoinPulse(true);
+          setTimeout(() => setJoinPulse(false), 1300);
+        }
+        prevPlayerCount.current = data.players.length;
+        return data.players;
+      });
       if (data.session.status === 'playing') {
         navigate(`/home?s=${data.session.id}`);
       }
@@ -102,20 +131,17 @@ export default function HomeLobbyPage() {
     return () => clearInterval(id);
   }, [poll]);
 
-  // ── Lobby music ────────────────────────────────────────────────────────────
+  // ── Lobby music ─────────────────────────────────────────────────────────────
   useEffect(() => {
-    console.log('[AudioFlowDebug] HomeLobbyPage mount — phase=lobby slug=hub playLoop hub/lobby_loop');
     AudioManager.stopLoop(true);
     void AudioManager.playLoop('hub', 'lobby_loop');
-    return () => { console.log('[AudioFlowDebug] HomeLobbyPage unmount — stopLoop'); AudioManager.stopLoop(true); };
+    return () => { AudioManager.stopLoop(true); };
   }, []);
 
   const toggleMusic = () => {
     if (musicPlaying) {
-      console.log('[AudioFlowDebug] toggleMusic — stopping');
       AudioManager.stopLoop(true);
     } else {
-      console.log('[AudioFlowDebug] toggleMusic — user gesture, calling resumeContext then playLoop hub/lobby_loop');
       AudioManager.resumeContext();
       void AudioManager.playLoop('hub', 'lobby_loop');
     }
@@ -133,11 +159,12 @@ export default function HomeLobbyPage() {
     }
   };
 
+  // ── Not found ────────────────────────────────────────────────────────────────
   if (notFound) {
     return (
       <div className="fixed inset-0 flex flex-col items-center justify-center"
         style={{ background: '#030010', fontFamily: "'Outfit',sans-serif", gap: 16 }}>
-        <SceneBg/>
+        <SceneBg pulse={false}/>
         <div style={{ position: 'relative', zIndex: 10, textAlign: 'center' }}>
           <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#fff', marginBottom: 8 }}>
             Stanza non trovata
@@ -155,26 +182,31 @@ export default function HomeLobbyPage() {
     );
   }
 
+  // ── Loading ──────────────────────────────────────────────────────────────────
   if (!session) {
     return (
       <div className="fixed inset-0 flex items-center justify-center"
         style={{ background: '#030010' }}>
-        <SceneBg/>
+        <SceneBg pulse={false}/>
         <Loader2 size={36} style={{ color: '#F5B642', animation: 'spin 1s linear infinite', position: 'relative', zIndex: 10 }}/>
       </div>
     );
   }
 
   const canStart = players.length >= 1;
+  const selectedGames = (session.gameConfig?.selectedGames as string[] | undefined) ?? [];
+  const matchDuration = String(session.gameConfig?.matchDuration ?? 'normal');
 
   return (
     <div className="fixed inset-0 overflow-hidden"
       style={{ background: '#030010', fontFamily: "'Outfit','Space Grotesk','Arial Black',sans-serif" }}>
-      <SceneBg/>
+      <SceneBg pulse={joinPulse}/>
 
-      {/* top bar */}
+      {/* ── TOP BAR — minimal, non-distracting ─────────────────────────────── */}
       <div className="relative z-10 flex items-center justify-between"
-        style={{ padding: 'clamp(10px,1.5vh,18px) clamp(16px,2.5vw,32px) 4px' }}>
+        style={{ padding: 'clamp(10px,1.5vh,18px) clamp(16px,2.5vw,32px) 0' }}>
+
+        {/* Left controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <motion.button
             initial={{ opacity: 0 }} animate={{ opacity: 1 }}
@@ -184,7 +216,7 @@ export default function HomeLobbyPage() {
               padding: '0.45rem 1.1rem',
               background: 'rgba(255,255,255,0.05)',
               border: '1.5px solid rgba(255,255,255,0.12)',
-              borderRadius: 100, color: 'rgba(255,255,255,0.5)',
+              borderRadius: 100, color: 'rgba(255,255,255,0.45)',
               fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.05em', cursor: 'pointer',
               backdropFilter: 'blur(8px)',
             }}
@@ -198,9 +230,7 @@ export default function HomeLobbyPage() {
             style={{
               padding: '0.45rem 0.85rem',
               background: musicPlaying ? 'rgba(245,182,66,0.1)' : 'rgba(255,255,255,0.04)',
-              border: musicPlaying
-                ? '1.5px solid rgba(245,182,66,0.4)'
-                : '1.5px solid rgba(255,255,255,0.1)',
+              border: musicPlaying ? '1.5px solid rgba(245,182,66,0.4)' : '1.5px solid rgba(255,255,255,0.1)',
               borderRadius: 100,
               color: musicPlaying ? '#F5B642' : 'rgba(255,255,255,0.35)',
               fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.05em', cursor: 'pointer',
@@ -212,270 +242,304 @@ export default function HomeLobbyPage() {
           </motion.button>
         </div>
 
+        {/* Logo — centred */}
         <motion.img src={pub('/jonny-world-logo.png')} alt="Jonny's World"
           initial={{ y: -10, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.05, duration: 0.5 }}
-          style={{ width: 'clamp(7rem,11vw,9rem)', objectFit: 'contain',
+          style={{ width: 'clamp(7rem,10vw,9rem)', objectFit: 'contain',
             filter: 'drop-shadow(0 0 20px rgba(245,182,66,0.6))' }}/>
 
+        {/* Host pill */}
         <div style={{
           display: 'flex', alignItems: 'center', gap: 6,
-          background: 'rgba(168,85,247,0.12)',
-          border: '1px solid rgba(168,85,247,0.3)',
+          background: 'rgba(255,255,255,0.05)',
+          border: '1px solid rgba(255,255,255,0.12)',
           borderRadius: 100, padding: '6px 14px',
+          fontSize: '0.72rem', fontWeight: 700, color: 'rgba(255,255,255,0.45)',
+          letterSpacing: '0.06em',
         }}>
-          <Users size={13} style={{ color: '#A855F7' }}/>
-          <span style={{ fontWeight: 800, fontSize: '0.75rem', color: '#A855F7' }}>
-            {players.length}/{session.maxPlayers}
-          </span>
+          🎤 {session.hostName}
         </div>
       </div>
 
-      {/* title */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.15 }}
-        style={{ textAlign: 'center', marginBottom: 'clamp(8px,1.2vh,14px)', position: 'relative', zIndex: 10 }}>
-        <div style={{ fontWeight: 900, fontSize: 'clamp(1rem,1.8vw,1.4rem)', letterSpacing: '0.06em', color: '#fff' }}>
-          IN ATTESA DEI GIOCATORI
-        </div>
-        <div style={{ fontSize: '0.62rem', letterSpacing: '0.22em', color: 'rgba(255,255,255,0.35)', fontWeight: 600, textTransform: 'uppercase', marginTop: 2 }}>
-          {session.hostName} · Stanza {session.joinCode}
-        </div>
-      </motion.div>
+      {/* ── HERO SECTION ────────────────────────────────────────────────────── */}
+      <div className="relative z-10 flex flex-col items-center"
+        style={{
+          paddingTop: 'clamp(6px,1vh,12px)',
+          paddingBottom: 'clamp(60px,8vh,90px)',
+          height: 'calc(100% - clamp(50px,8vh,76px))',
+          justifyContent: 'center',
+          gap: 'clamp(6px,1.2vh,14px)',
+        }}>
 
-      {/* main 3-col layout */}
-      <div style={{
-        position: 'relative', zIndex: 10,
-        display: 'grid',
-        gridTemplateColumns: '1fr clamp(120px,14vw,160px) 1fr',
-        gap: 'clamp(10px,1.8vw,24px)',
-        padding: '0 clamp(16px,2.5vw,32px)',
-        alignItems: 'start',
-      }}>
-
-        {/* LEFT — session info */}
+        {/* CTA headline — pulsing glow */}
         <motion.div
-          initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }}
-          transition={{ delay: 0.2 }}
-          style={{
-            background: 'rgba(255,255,255,0.04)',
-            border: '1.5px solid rgba(255,255,255,0.1)',
-            borderRadius: 20, padding: 'clamp(14px,2vh,20px)',
-            backdropFilter: 'blur(14px)',
-            display: 'flex', flexDirection: 'column', gap: 12,
-          }}>
-          <div style={{ fontSize: '0.65rem', fontWeight: 900, letterSpacing: '0.2em', color: '#F5B642', textTransform: 'uppercase' }}>
-            ⚙ Dettagli Stanza
-          </div>
-
-          {[
-            { label: 'Host', value: session.hostName },
-            { label: 'Codice', value: session.joinCode },
-            { label: 'Max Giocatori', value: String(session.maxPlayers) },
-            { label: 'Durata', value: String((session.gameConfig as Record<string, unknown>)?.matchDuration ?? 'normal') },
-          ].map(row => (
-            <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.4)', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                {row.label}
-              </span>
-              <span style={{ fontSize: '0.82rem', color: '#fff', fontWeight: 700 }}>{row.value}</span>
-            </div>
-          ))}
-
-          <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '2px 0' }}/>
-
-          <div style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)' }}>
-            Giochi inclusi
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-            {((session.gameConfig as Record<string, unknown>)?.selectedGames as string[] ?? []).map(g => (
-              <div key={g} style={{
-                padding: '3px 9px',
-                background: 'rgba(168,85,247,0.12)',
-                border: '1px solid rgba(168,85,247,0.3)',
-                borderRadius: 100,
-                fontSize: '0.6rem', fontWeight: 700, color: 'rgba(255,255,255,0.55)',
-                letterSpacing: '0.04em',
-              }}>{g.replace(/-/g, ' ')}</div>
-            ))}
-          </div>
-        </motion.div>
-
-        {/* CENTER — code + QR */}
-        <motion.div
-          initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.28 }}
-          style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, paddingTop: 4 }}>
-
-          {/* code */}
-          <div style={{
-            background: 'rgba(245,182,66,0.1)',
-            border: '2px solid rgba(245,182,66,0.55)',
-            borderRadius: 14, padding: '10px 16px', textAlign: 'center',
-            boxShadow: '0 0 30px rgba(245,182,66,0.2)', width: '100%',
-          }}>
-            <div style={{ fontSize: '0.55rem', fontWeight: 800, letterSpacing: '0.22em', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', marginBottom: 2 }}>
-              Codice
-            </div>
-            <motion.div
-              animate={{ scale: [1, 1.04, 1] }}
-              transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' as const }}
-              style={{
-                fontFamily: "'Outfit','Arial Black',sans-serif",
-                fontWeight: 900, fontSize: 'clamp(1.4rem,2.2vw,1.8rem)',
-                letterSpacing: '0.12em', color: '#F5B642',
-                textShadow: '0 0 20px rgba(245,182,66,0.7)',
-              }}>
-              {session.joinCode}
-            </motion.div>
-          </div>
-
-          {/* real QR */}
-          <div style={{
-            background: '#fff', borderRadius: 12, padding: 10,
-            boxShadow: '0 0 30px rgba(245,182,66,0.35)',
-            border: '2px solid rgba(245,182,66,0.5)',
-          }}>
-            <QRCodeSVG value={joinUrl} size={102} bgColor="#ffffff" fgColor="#0a0820" level="M" includeMargin={false}/>
-          </div>
-
-          <span style={{
-            fontFamily: "'Outfit',sans-serif", fontSize: '0.62rem', fontWeight: 700,
-            letterSpacing: '0.12em', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase',
-          }}>Scansiona per entrare</span>
-
-          {/* count badge */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 5,
-            background: 'rgba(255,255,255,0.05)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: 100, padding: '5px 12px',
-          }}>
-            <Users size={12} style={{ color: '#A855F7' }}/>
-            <span style={{ fontFamily: "'Outfit',sans-serif", fontWeight: 800, fontSize: '0.68rem', color: 'rgba(255,255,255,0.6)', letterSpacing: '0.05em' }}>
-              <span style={{ color: '#A855F7' }}>{players.length}</span>/{session.maxPlayers} connessi
-            </span>
-          </div>
-        </motion.div>
-
-        {/* RIGHT — players */}
-        <motion.div
-          initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }}
-          transition={{ delay: 0.3 }}
-          style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-
-          <div style={{
-            background: 'rgba(255,255,255,0.04)',
-            border: '1.5px solid rgba(255,255,255,0.1)',
-            borderRadius: 20, padding: 'clamp(12px,1.8vh,18px)',
-            backdropFilter: 'blur(14px)',
-          }}>
-            <div style={{
-              fontWeight: 900, fontSize: '0.72rem', letterSpacing: '0.2em',
-              color: '#A855F7', textTransform: 'uppercase', marginBottom: 10,
-              display: 'flex', alignItems: 'center', gap: 6,
-            }}>
-              <Users size={13}/> Giocatori in attesa
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 7, minHeight: 120 }}>
-              <AnimatePresence>
-                {players.map((p, i) => {
-                  const color = p.avatarColor || AVATAR_COLORS[i % AVATAR_COLORS.length]!;
-                  return (
-                    <motion.div key={p.id}
-                      initial={{ x: 30, opacity: 0 }}
-                      animate={{ x: 0, opacity: 1 }}
-                      exit={{ x: -20, opacity: 0 }}
-                      transition={{ duration: 0.35, ease: 'easeOut' as const }}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 10,
-                        background: 'rgba(255,255,255,0.06)',
-                        border: `1.5px solid ${color}44`,
-                        borderRadius: 100, padding: '7px 14px 7px 7px',
-                        boxShadow: `0 0 16px ${color}22`,
-                      }}>
-                      <div style={{
-                        width: 30, height: 30, borderRadius: '50%',
-                        background: `radial-gradient(circle,${color}55,${color}22)`,
-                        border: `2px solid ${color}88`,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontWeight: 900, fontSize: '0.75rem', color: '#fff', flexShrink: 0,
-                      }}>{p.nickname[0]?.toUpperCase()}</div>
-                      <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'rgba(255,255,255,0.9)', letterSpacing: '0.02em', flex: 1 }}>
-                        {p.nickname}
-                      </span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <Check size={12} style={{ color: '#34D399' }}/>
-                        <span style={{ fontSize: '0.62rem', color: '#34D399', fontWeight: 700, letterSpacing: '0.05em' }}>
-                          CONNESSO
-                        </span>
-                      </div>
-                    </motion.div>
-                  );
-                })}
-              </AnimatePresence>
-
-              {players.length === 0 && (
-                <div style={{ textAlign: 'center', padding: '20px 0', fontSize: '0.72rem', color: 'rgba(255,255,255,0.25)', fontStyle: 'italic' }}>
-                  In attesa dei giocatori…
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Jonny bubble */}
+          initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          style={{ textAlign: 'center' }}>
           <motion.div
-            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.9 }}
+            animate={{ textShadow: ['0 0 24px rgba(245,182,66,0.5)','0 0 48px rgba(245,182,66,0.9)','0 0 24px rgba(245,182,66,0.5)'] }}
+            transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
             style={{
-              background: 'linear-gradient(135deg,rgba(168,85,247,0.18),rgba(245,182,66,0.1))',
-              border: '1.5px solid rgba(168,85,247,0.45)',
-              borderRadius: 16, padding: '12px 16px', backdropFilter: 'blur(12px)',
-              position: 'relative',
+              fontWeight: 900,
+              fontSize: 'clamp(0.9rem,2.2vw,1.55rem)',
+              letterSpacing: 'clamp(0.12em,0.4vw,0.28em)',
+              color: '#F5B642',
+              textTransform: 'uppercase',
             }}>
-            <div style={{ position: 'absolute', bottom: -8, right: 24, width: 14, height: 8, background: 'rgba(168,85,247,0.45)', clipPath: 'polygon(0 0, 100% 0, 50% 100%)' }}/>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-              <img src={pub('/jonny-master-nobg.png')} alt="Jonny" style={{ width: 44, height: 44, objectFit: 'contain', flexShrink: 0, filter: 'drop-shadow(0 0 10px rgba(168,85,247,0.6))' }}/>
-              <div>
-                <div style={{ fontSize: '0.58rem', fontWeight: 800, letterSpacing: '0.15em', color: '#F5B642', textTransform: 'uppercase', marginBottom: 4 }}>Jonny dice</div>
-                <div style={{ fontWeight: 600, fontSize: 'clamp(0.72rem,1vw,0.82rem)', color: 'rgba(255,255,255,0.85)', lineHeight: 1.45, fontStyle: 'italic' }}>
-                  {players.length === 0
-                    ? '"Aspettiamo i giocatori… scansionate il QR!"'
-                    : players.length < 2
-                    ? '"Un altro giocatore e possiamo cominciare!"'
-                    : `"${players.length} giocatori pronti! Quando vuoi, si parte!"`}
-                </div>
-              </div>
-            </div>
+            ↓ SCANSIONA IL QR PER ENTRARE ↓
           </motion.div>
         </motion.div>
+
+        {/* ── GIANT QR ─────────────────────────────────────────────────────── */}
+        <motion.div
+          initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+          transition={{ delay: 0.18, type: 'spring', stiffness: 180, damping: 22 }}
+          style={{ position: 'relative', flexShrink: 0 }}>
+
+          {/* Outer glow ring — animated */}
+          <motion.div
+            animate={{
+              boxShadow: joinPulse
+                ? ['0 0 0px 0px rgba(168,85,247,0)','0 0 80px 40px rgba(168,85,247,0.6)','0 0 0px 0px rgba(168,85,247,0)']
+                : ['0 0 40px 8px rgba(245,182,66,0.35)','0 0 70px 20px rgba(245,182,66,0.6)','0 0 40px 8px rgba(245,182,66,0.35)'],
+            }}
+            transition={joinPulse
+              ? { duration: 1.2, ease: 'easeOut' }
+              : { duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+            style={{
+              borderRadius: 24,
+              // Outer frame: thick gold/white border for projector visibility
+              padding: 'clamp(10px,1.4vw,20px)',
+              background: '#ffffff',
+              border: 'clamp(6px,1vw,14px) solid #ffffff',
+              outline: 'clamp(3px,0.5vw,6px) solid rgba(245,182,66,0.8)',
+              outlineOffset: 'clamp(2px,0.4vw,5px)',
+              lineHeight: 0,
+            }}>
+            {/* QR — no transparency, no overlay. Sharp and white-backed. */}
+            <QRCodeSVG
+              value={joinUrl}
+              size={Math.round(Math.min(
+                typeof window !== 'undefined' ? window.innerHeight * 0.42 : 400,
+                typeof window !== 'undefined' ? window.innerWidth  * 0.35 : 400,
+              ))}
+              bgColor="#ffffff"
+              fgColor="#03000f"
+              level="H"
+              includeMargin={false}
+            />
+          </motion.div>
+        </motion.div>
+
+        {/* ── ROOM CODE — enormous typography ─────────────────────────────── */}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+          style={{ textAlign: 'center', lineHeight: 1 }}>
+          <motion.div
+            animate={{ scale: [1, 1.025, 1] }}
+            transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
+            style={{
+              fontFamily: "'Outfit','Arial Black',monospace",
+              fontWeight: 900,
+              fontSize: 'clamp(2.8rem,7.5vw,6.5rem)',
+              letterSpacing: 'clamp(0.22em,0.8vw,0.4em)',
+              color: '#ffffff',
+              textShadow: '0 0 32px rgba(245,182,66,0.7), 0 2px 0 rgba(0,0,0,0.5)',
+            }}>
+            {session.joinCode}
+          </motion.div>
+          {/* Secondary URL */}
+          <div style={{
+            marginTop: 'clamp(2px,0.4vh,6px)',
+            fontSize: 'clamp(0.62rem,1.1vw,0.88rem)',
+            fontWeight: 600, letterSpacing: '0.12em',
+            color: 'rgba(255,255,255,0.3)',
+          }}>
+            ideagame.it/join
+          </div>
+        </motion.div>
+
+        {/* ── PLAYER COUNTER — large live number ───────────────────────────── */}
+        <motion.div
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+          transition={{ delay: 0.32 }}
+          style={{ display: 'flex', alignItems: 'center', gap: 'clamp(8px,1.5vw,18px)' }}>
+          <motion.div
+            animate={joinPulse ? { scale: [1, 1.22, 1] } : { scale: 1 }}
+            transition={{ duration: 0.5, ease: 'easeOut' }}
+            style={{
+              display: 'flex', alignItems: 'baseline', gap: 'clamp(4px,0.6vw,8px)',
+              background: 'rgba(168,85,247,0.12)',
+              border: '2px solid rgba(168,85,247,0.4)',
+              borderRadius: 'clamp(12px,1.5vw,20px)',
+              padding: 'clamp(6px,0.8vh,12px) clamp(16px,2.5vw,36px)',
+              boxShadow: '0 0 30px rgba(168,85,247,0.2)',
+            }}>
+            <Users size={22} style={{ color: '#A855F7', flexShrink: 0 }}/>
+            <span style={{
+              fontFamily: "'Outfit',monospace",
+              fontWeight: 900,
+              fontSize: 'clamp(1.6rem,4vw,3.2rem)',
+              color: '#A855F7',
+              letterSpacing: '0.04em',
+              lineHeight: 1,
+            }}>
+              {players.length}
+            </span>
+            <span style={{
+              fontWeight: 700,
+              fontSize: 'clamp(0.9rem,2vw,1.6rem)',
+              color: 'rgba(255,255,255,0.35)',
+              letterSpacing: '0.04em',
+              lineHeight: 1,
+            }}>
+              / {session.maxPlayers}
+            </span>
+            <span style={{
+              fontWeight: 800,
+              fontSize: 'clamp(0.65rem,1.4vw,1rem)',
+              color: 'rgba(255,255,255,0.4)',
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              lineHeight: 1,
+              marginLeft: 2,
+            }}>
+              GIOCATORI
+            </span>
+          </motion.div>
+        </motion.div>
+
+        {/* ── PLAYER AVATARS — compact row ─────────────────────────────────── */}
+        <AnimatePresence>
+          {players.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+              transition={{ duration: 0.4 }}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexWrap: 'wrap', gap: 'clamp(4px,0.6vw,8px)',
+                maxWidth: 'clamp(300px,70vw,900px)',
+              }}>
+              {players.map((p, i) => {
+                const color = p.avatarColor || AVATAR_COLORS[i % AVATAR_COLORS.length]!;
+                return (
+                  <motion.div key={p.id}
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0, opacity: 0 }}
+                    transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 'clamp(4px,0.5vw,7px)',
+                      background: 'rgba(255,255,255,0.06)',
+                      border: `1.5px solid ${color}55`,
+                      borderRadius: 100,
+                      padding: 'clamp(4px,0.5vh,6px) clamp(10px,1.2vw,14px) clamp(4px,0.5vh,6px) clamp(4px,0.5vw,6px)',
+                      boxShadow: `0 0 12px ${color}22`,
+                    }}>
+                    <div style={{
+                      width: 'clamp(22px,2.2vw,30px)', height: 'clamp(22px,2.2vw,30px)',
+                      borderRadius: '50%',
+                      background: `radial-gradient(circle,${color}55,${color}22)`,
+                      border: `2px solid ${color}88`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontWeight: 900, fontSize: 'clamp(0.6rem,0.9vw,0.75rem)', color: '#fff', flexShrink: 0,
+                    }}>{p.nickname[0]?.toUpperCase()}</div>
+                    <span style={{
+                      fontWeight: 700, fontSize: 'clamp(0.65rem,1vw,0.82rem)',
+                      color: 'rgba(255,255,255,0.85)',
+                      letterSpacing: '0.02em', whiteSpace: 'nowrap',
+                    }}>
+                      {p.nickname}
+                    </span>
+                  </motion.div>
+                );
+              })}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Camera helper */}
+        <div style={{
+          fontSize: 'clamp(0.6rem,1.1vw,0.82rem)',
+          fontWeight: 600,
+          letterSpacing: '0.1em',
+          color: 'rgba(255,255,255,0.22)',
+          textTransform: 'uppercase',
+          textAlign: 'center',
+        }}>
+          📷 Apri la fotocamera e inquadra il QR
+        </div>
       </div>
 
-      {/* CTA */}
-      <div style={{ position: 'absolute', bottom: 24, left: 0, right: 0, display: 'flex', justifyContent: 'center', zIndex: 20 }}>
+      {/* ── FOOTER — room metadata pills + CTA ──────────────────────────────── */}
+      <div style={{
+        position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 20,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: 'clamp(10px,1.6vh,18px) clamp(16px,2.5vw,32px)',
+        borderTop: '1px solid rgba(255,255,255,0.06)',
+        background: 'linear-gradient(0deg,rgba(3,0,16,0.92) 0%,transparent 100%)',
+        gap: 12,
+        flexWrap: 'wrap',
+      }}>
+        {/* Left: metadata pills */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <Pill label="Host" value={session.hostName} color="rgba(245,182,66,0.5)"/>
+          <Pill label="Durata" value={matchDuration} color="rgba(168,85,247,0.5)"/>
+          <Pill label="Max" value={`${session.maxPlayers} giocatori`} color="rgba(168,85,247,0.5)"/>
+          {selectedGames.slice(0,4).map(g => (
+            <Pill key={g} label="" value={g.replace(/-/g,' ')} color="rgba(255,255,255,0.2)"/>
+          ))}
+          {selectedGames.length > 4 && (
+            <Pill label="" value={`+${selectedGames.length - 4}`} color="rgba(255,255,255,0.2)"/>
+          )}
+        </div>
+
+        {/* Right: Avvia CTA */}
         <motion.button
-          whileHover={canStart ? { scale: 1.03 } : {}}
-          whileTap={canStart ? { scale: 0.97 } : {}}
+          whileHover={canStart ? { scale: 1.04 } : {}}
+          whileTap={canStart ? { scale: 0.96 } : {}}
           onClick={canStart ? handleStart : undefined}
           disabled={!canStart || starting}
           style={{
-            background: canStart ? 'linear-gradient(135deg,#F5B642,#E09020)' : 'rgba(255,255,255,0.08)',
-            border: canStart ? 'none' : '1.5px solid rgba(255,255,255,0.15)',
-            borderRadius: 100, padding: '0.85rem 3.5rem',
-            fontSize: '1rem', fontWeight: 900, letterSpacing: '0.12em',
-            color: canStart ? '#fff' : 'rgba(255,255,255,0.3)',
+            background: canStart ? 'linear-gradient(135deg,#F5B642,#E09020)' : 'rgba(255,255,255,0.07)',
+            border: canStart ? 'none' : '1.5px solid rgba(255,255,255,0.13)',
+            borderRadius: 100,
+            padding: 'clamp(0.6rem,1.2vh,0.9rem) clamp(1.6rem,3vw,3rem)',
+            fontSize: 'clamp(0.8rem,1.4vw,1rem)',
+            fontWeight: 900, letterSpacing: '0.1em',
+            color: canStart ? '#fff' : 'rgba(255,255,255,0.25)',
             boxShadow: canStart ? '0 0 40px rgba(245,182,66,0.5)' : 'none',
             cursor: canStart ? 'pointer' : 'not-allowed',
-            display: 'flex', alignItems: 'center', gap: 10, transition: 'all 0.3s',
+            display: 'flex', alignItems: 'center', gap: 8, transition: 'all 0.3s',
+            flexShrink: 0,
           }}>
-          {starting ? <Loader2 size={20} style={{ animation: 'spin 1s linear infinite' }}/> : '⚡'}
-          {starting ? 'AVVIO...' : canStart ? 'AVVIA LA PARTITA' : 'IN ATTESA DI GIOCATORI…'}
+          {starting ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }}/> : '⚡'}
+          {starting ? 'AVVIO...' : canStart ? 'AVVIA LA PARTITA' : 'IN ATTESA…'}
         </motion.button>
       </div>
 
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
+
+// ── Pill helper ───────────────────────────────────────────────────────────────
+function Pill({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 5,
+      background: 'rgba(255,255,255,0.04)',
+      border: `1px solid ${color}`,
+      borderRadius: 100, padding: '4px 10px',
+      fontSize: 'clamp(0.58rem,0.9vw,0.72rem)',
+      fontWeight: 700, letterSpacing: '0.06em',
+      color: 'rgba(255,255,255,0.5)',
+      whiteSpace: 'nowrap',
+    }}>
+      {label && <span style={{ color: 'rgba(255,255,255,0.28)', marginRight: 2 }}>{label}:</span>}
+      <span style={{ color: 'rgba(255,255,255,0.65)' }}>{value}</span>
     </div>
   );
 }
