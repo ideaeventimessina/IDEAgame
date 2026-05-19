@@ -260,6 +260,20 @@ export function initHomeSocketHandlers(io: SocketServer): void {
       logger.info({ sessionId, playerCount: entry.players.size }, "[BalloTrace:server] emitted home:ballo_live");
     });
 
+    // ── Sensor readiness broadcast ────────────────────────────────────────────
+    // Phone emits home:player_sensor_ready after booking → server rebroadcasts to room
+    // TV host uses this to show ⚠️ badge for players whose sensors are not available.
+    socket.on("home:player_sensor_ready", (data: unknown) => {
+      if (!data || typeof data !== "object") return;
+      const d = data as Record<string, unknown>;
+      const sessionId = typeof d["sessionId"] === "string" ? d["sessionId"] : null;
+      const playerId = typeof d["playerId"] === "string" ? d["playerId"] : null;
+      const sensorReady = typeof d["sensorReady"] === "boolean" ? d["sensorReady"] : false;
+      if (!sessionId || !playerId) return;
+      logger.info({ sessionId, playerId, sensorReady }, "[SensorReady] broadcasting to room");
+      emitToRoom(`home:${sessionId}`, "home:player_sensor_ready", { sessionId, playerId, sensorReady });
+    });
+
     // ── Ballo admin sensitivity broadcast ────────────────────────────────────
     // TV host emits home:set_ballo_sensitivity → server rebroadcasts to all room clients
     socket.on("home:set_ballo_sensitivity", (data: unknown) => {

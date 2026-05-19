@@ -9,6 +9,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 import { type FlowPayload, type FlowBookedPlayer, FLOW_GAME_UI, useFlowCountdown } from './GameFlowEngine';
+import { isBrowserBlocked } from './SafariGuard';
 
 const MOTION_PERM_KEY = 'ideagame:motion-permission';
 type SensorPerm = 'idle' | 'granted' | 'denied' | 'unsupported';
@@ -30,9 +31,11 @@ interface HomePlayer {
 export function GameFlowPhone({
   session,
   player,
+  emit,
 }: {
   session: HomeSession;
   player: HomePlayer;
+  emit: (event: string, data: unknown) => void;
 }) {
   const p = session.roundPayload as unknown as FlowPayload;
   const gameUI = FLOW_GAME_UI[p.gameSlug ?? ''] ?? { color: '#A78BFA', glow: '#C4B5FD', emoji: '🎮', name: 'Gioco' };
@@ -84,6 +87,11 @@ export function GameFlowPhone({
           setSensorPerm('denied');
         } else if (typeof DeviceMotionEvent === 'undefined') {
           setSensorPerm('unsupported');
+        } else if (isBrowserBlocked()) {
+          // Chrome iOS / Firefox iOS / in-app browsers: DeviceMotion is blocked.
+          // Skip requestPermission (it would either not exist or silently deny).
+          // Mark as unsupported so the TV host sees the ⚠️ badge.
+          setSensorPerm('unsupported');
         } else {
           const dme = DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> };
           const doe = (typeof DeviceOrientationEvent !== 'undefined')
@@ -134,9 +142,19 @@ export function GameFlowPhone({
         }),
       });
       // Resolve sensor permission result now that booking is confirmed
+      let resolvedPerm: SensorPerm = sensorPerm;
       if (permPromise) {
         const perm = await permPromise;
         setSensorPerm(perm);
+        resolvedPerm = perm;
+      }
+      // Broadcast sensor readiness to TV so the host sees ⚠️ for players without sensors
+      if (action === 'book' && p.gameSlug === 'sfida-ballo') {
+        emit('home:player_sensor_ready', {
+          sessionId: session.id,
+          playerId: player.id,
+          sensorReady: resolvedPerm === 'granted',
+        });
       }
     } finally { setBooking(false); }
   }

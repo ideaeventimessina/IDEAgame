@@ -517,7 +517,6 @@ export default function HomeJoin() {
 
         {/* ── CODE ── */}
         {phase === 'code' && (
-          <SafariGuard>
           <motion.div key="code" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0,y:-20}}
             className="relative flex min-h-screen w-full flex-col">
 
@@ -567,12 +566,10 @@ export default function HomeJoin() {
               </button>
             </div>
           </motion.div>
-          </SafariGuard>
         )}
 
         {/* ── NICKNAME ── */}
         {phase === 'nickname' && session && (
-          <SafariGuard>
           <motion.div key="nickname" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0,y:-20}}
             className="relative flex min-h-screen w-full flex-col">
 
@@ -624,7 +621,6 @@ export default function HomeJoin() {
               </button>
             </div>
           </motion.div>
-          </SafariGuard>
         )}
 
         {/* ── LOBBY (attesa gioco) ── */}
@@ -866,7 +862,7 @@ function PhoneController({
   const p = session.roundPayload;
   const mode = String(p.mode ?? 'home-quiz');
 
-  if (mode === 'home-flow')       return <GameFlowPhone session={session} player={player}/>;
+  if (mode === 'home-flow')       return <GameFlowPhone session={session} player={player} emit={emit}/>;
   if (mode === 'home-quiz')       return <QuizController payload={p} revealed={revealed} answered={answered} onAnswer={onAnswer}/>;
   if (mode === 'home-coppie')     return <CoppieController payload={p} onFlip={onFlip} player={player}/>;
   if (mode === 'home-percorso')   return <PercorsoHomeController payload={p} timeLeft={timeLeft}/>;
@@ -1195,6 +1191,7 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
   });
   const [calibCountdown, setCalibCountdown] = useState(3);
   const [calibMultiplier, setCalibMultiplier] = useState<number>(deviceMultiplierRef.current);
+  const [sensorError, setSensorError] = useState(false);
   const timeLeftRef = useRef(timeLeft);
   useEffect(() => { timeLeftRef.current = timeLeft; }, [timeLeft]);
 
@@ -1367,6 +1364,7 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
   useEffect(() => {
     if (motionPerm !== 'granted') return;
     if (calibPhase !== 'done') return; // wait for calibration before emitting energy
+    setSensorError(false); // reset on each sensor loop start
     console.log('[iPhoneMotion] listener attached — starting sensors',
       '| has DeviceOrientationEvent:', typeof DeviceOrientationEvent,
       '| has DeviceMotionEvent:', typeof DeviceMotionEvent);
@@ -1441,6 +1439,14 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
     window.addEventListener('deviceorientation', handleOrientation);
     window.addEventListener('devicemotion', handleMotion);
 
+    // 5-second watchdog: if no sensor events at all → surface visible error to player
+    const sensorWatchdog = setTimeout(() => {
+      if (diagMotionCountRef.current === 0 && diagOrientCountRef.current === 0) {
+        console.log('[Ballo iPhone] 5s watchdog — zero events received, surfacing error');
+        setSensorError(true);
+      }
+    }, 5000);
+
     // 1000ms watchdog: diagnose orientation status
     const orientWatchdog = setTimeout(() => {
       console.log('[Ballo iPhone] 1000ms watchdog — orientActive:', orientActive,
@@ -1513,6 +1519,7 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
     window.addEventListener('focus', handleWindowFocus);
 
     return () => {
+      clearTimeout(sensorWatchdog);
       clearTimeout(orientWatchdog);
       window.removeEventListener('deviceorientation', handleOrientation);
       window.removeEventListener('devicemotion', handleMotion);
@@ -1674,6 +1681,20 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
 
   return (
     <div className="flex flex-col items-center gap-5 py-4 text-center" style={{userSelect:'none',WebkitUserSelect:'none'}}>
+
+      {/* ── 5-second sensor watchdog banner (fires only inside BalloController) ── */}
+      {sensorError && (
+        <div style={{
+          width: '100%', maxWidth: 340,
+          background: 'rgba(239,68,68,0.18)',
+          border: '1px solid rgba(239,68,68,0.5)',
+          borderRadius: 14, padding: '12px 16px',
+          color: '#f87171', fontSize: 14, fontWeight: 800,
+          textAlign: 'center', lineHeight: 1.55,
+        }}>
+          ❌ Nessun dato dal sensore — prova Safari
+        </div>
+      )}
 
       {/* ── Browser guard (Chrome iOS / Firefox iOS / in-app browsers) ─────── */}
       {isBlockedBrowser && !safariDismissed && (

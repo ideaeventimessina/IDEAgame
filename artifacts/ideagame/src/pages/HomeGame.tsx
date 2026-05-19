@@ -521,6 +521,7 @@ export default function HomeGame() {
 
   const { on, emit } = useHomeSocket(session?.id ?? null);
   const [balloSensitivity, setBalloSensitivity] = useState(1.0);
+  const [sensorReadyMap, setSensorReadyMap] = useState<Record<string, boolean>>({});
   const handleBalloSensitivity = useCallback((s: number) => {
     setBalloSensitivity(s);
     if (session?.id) emit('home:set_ballo_sensitivity', { sessionId: session.id, sensitivity: s });
@@ -761,7 +762,12 @@ export default function HomeGame() {
       if (timerRef.current) clearInterval(timerRef.current);
       setJonnyMood('excited');
     });
-    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); u10?.(); u11?.(); };
+
+    const u12 = on<{ sessionId: string; playerId: string; sensorReady: boolean }>('home:player_sensor_ready', (d) => {
+      setSensorReadyMap(prev => ({ ...prev, [d.playerId]: d.sensorReady }));
+    });
+
+    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); u10?.(); u11?.(); u12?.(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [on]);
 
@@ -1378,7 +1384,7 @@ export default function HomeGame() {
               <RoundBoard key={session.currentRound} session={session} revealed={revealed}
                 onReveal={() => { setRevealed(true); if(timerRef.current) clearInterval(timerRef.current); setJonnyMood('correct'); }}
                 onNext={nextRound} players={players} balloEnergies={balloEnergies} balloCurrent={balloCurrent} balloResult={balloResult} saraMusicaWinner={saraMusicaWinner}
-                balloSensitivity={balloSensitivity} onSensitivity={handleBalloSensitivity}
+                balloSensitivity={balloSensitivity} onSensitivity={handleBalloSensitivity} sensorReadyMap={sensorReadyMap}
                 onScore={async (pid,pts) => {
                   // Optimistic update — score appears immediately in bar + partial leaderboard
                   setPlayers(prev => prev.map(p => p.id === pid ? { ...p, score: pts } : p));
@@ -1623,7 +1629,7 @@ export default function HomeGame() {
 
 // ── RoundBoard ─────────────────────────────────────────────────────────────────
 
-function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, balloEnergies, balloCurrent, balloResult, saraMusicaWinner, balloSensitivity, onSensitivity }: {
+function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, balloEnergies, balloCurrent, balloResult, saraMusicaWinner, balloSensitivity, onSensitivity, sensorReadyMap }: {
   session: HomeSession;
   revealed: boolean;
   onReveal: () => void;
@@ -1636,11 +1642,12 @@ function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, bal
   saraMusicaWinner?: { nickname: string; points: number; round: number } | null;
   balloSensitivity?: number;
   onSensitivity?: (s: number) => void;
+  sensorReadyMap?: Record<string, boolean>;
 }) {
   const p = session.roundPayload;
   const mode = String(p.mode ?? 'home-quiz');
 
-  if (mode === 'home-flow')       return <GameFlowEngine session={session} players={players}/>;
+  if (mode === 'home-flow')       return <GameFlowEngine session={session} players={players} sensorReadyMap={sensorReadyMap}/>;
   if (mode === 'home-quiz')       return <QuizBoard payload={p} revealed={revealed} onReveal={onReveal}/>;
   if (mode === 'home-ballo')      return <BalloBoard payload={p} players={players} balloEnergies={balloEnergies ?? {}} balloCurrent={balloCurrent ?? {}} balloResult={balloResult ?? null} sensitivity={balloSensitivity ?? 1} onSensitivity={onSensitivity}/>;
   if (mode === 'home-percorso')   return <PercorsoBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;

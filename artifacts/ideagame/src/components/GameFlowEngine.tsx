@@ -87,9 +87,11 @@ interface HomePlayer {
 export function GameFlowEngine({
   session,
   players,
+  sensorReadyMap = {},
 }: {
   session: HomeSession;
   players: HomePlayer[];
+  sensorReadyMap?: Record<string, boolean>;
 }) {
   const p = session.roundPayload as unknown as FlowPayload;
   const gameUI = FLOW_GAME_UI[p.gameSlug ?? ''] ?? { color: '#A78BFA', glow: '#C4B5FD', emoji: '🎮', name: 'Gioco' };
@@ -131,7 +133,7 @@ export function GameFlowEngine({
   const selectedTheme = p.selectedTheme as FlowTheme | null;
   const canConfirm = bookedPlayers.length >= maxPlayers;
 
-  void players; // forwarded for future per-player display; not used in current phases
+  void players; // used via sensorReadyMap for per-player sensor status badges
 
   // Diagnostic: log current phase on every render so we can trace loops
   console.log('[BalloFlow] GameFlowEngine render — phase:', p.gameFlowPhase, '| mode:', p.mode, '| session:', session.id);
@@ -237,6 +239,19 @@ export function GameFlowEngine({
                         <div className="text-xs font-semibold" style={{ color: `${booked.avatarColor}dd` }}>
                           In gara ✓
                         </div>
+                        {/* Sensor readiness badge — only shown for sfida-ballo */}
+                        {p.gameSlug === 'sfida-ballo' && sensorReadyMap[booked.id] === false && (
+                          <div className="rounded-xl px-2 py-1 text-xs font-black text-center"
+                            style={{ background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.45)', color: '#f87171' }}>
+                            ⚠️ Sensori non disponibili
+                          </div>
+                        )}
+                        {p.gameSlug === 'sfida-ballo' && sensorReadyMap[booked.id] === true && (
+                          <div className="rounded-xl px-2 py-1 text-xs font-black"
+                            style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.35)', color: '#4ade80' }}>
+                            ✅ Sensori pronti
+                          </div>
+                        )}
                       </motion.div>
                     ) : (
                       <motion.div key={`empty-${i}`} className="flex flex-col items-center gap-2">
