@@ -79,6 +79,11 @@ export function GameFlowPhone({
     // Events stream unconditionally on HTTPS without any permission dialog.
 
     let sensorReadyResult = false;
+    // Booking-phase diagnostics — hoisted so every code path can set them
+    let _diagMotionGranted = false;
+    let _diagOrientGranted = false;
+    let _diagTempMotion    = 0;  // -1 = cached (not measured this session)
+    let _diagTempOrient    = 0;
 
     if (action === 'book' && p.gameSlug === 'sfida-ballo') {
       // Clear undo stack before any sensor work (reduces "Annulla inserimento" on shake)
@@ -94,6 +99,8 @@ export function GameFlowPhone({
           // Previously granted — trust the cache; watchdog will catch stalled streams
           setSensorPerm('granted');
           sensorReadyResult = true;
+          _diagMotionGranted = true; _diagOrientGranted = true;
+          _diagTempMotion = -1; _diagTempOrient = -1;
         } else if (saved === 'denied') {
           setSensorPerm('denied');
         } else if (typeof DeviceMotionEvent === 'undefined') {
@@ -121,11 +128,16 @@ export function GameFlowPhone({
               let m = false, o = false;
               try { m = (await motionP) === 'granted'; } catch { /* ignore */ }
               try { o = (await orientP) === 'granted'; } catch { /* ignore */ }
+              _diagMotionGranted = m;
+              _diagOrientGranted = o;
+              console.log('[SensorFinal] permission result — motion:', m, '| orient:', o);
               return (m || o) ? ('granted' as const) : ('denied' as const);
             })();
           } else {
             // Chrome iOS / WKWebView / Android / desktop: no permission dialog.
             // Events stream on HTTPS without needing requestPermission.
+            _diagMotionGranted = true;
+            _diagOrientGranted = true;
             permissionP = Promise.resolve('granted');
           }
 
@@ -164,6 +176,8 @@ export function GameFlowPhone({
 
             // ── Step 5: truth from actual events ─────────────────────────────
             sensorReadyResult = (motionEventCount + orientEventCount) > 0;
+            _diagTempMotion = motionEventCount;
+            _diagTempOrient = orientEventCount;
             console.log(
               '[SensorChain] verify — motion:', motionEventCount,
               '| orient:', orientEventCount,
@@ -180,6 +194,19 @@ export function GameFlowPhone({
     } else if (action === 'book' && p.gameSlug === 'sfida-ballo' && sensorPerm === 'granted') {
       // Already granted from a previous tap — trust cached state
       sensorReadyResult = true;
+      _diagMotionGranted = true; _diagOrientGranted = true;
+      _diagTempMotion = -1; _diagTempOrient = -1;
+    }
+
+    // ── Write booking diagnostic (read by BalloController on mount) ──────────
+    if (action === 'book' && p.gameSlug === 'sfida-ballo') {
+      const _diag = {
+        motionGranted: _diagMotionGranted, orientGranted: _diagOrientGranted,
+        tempMotion:    _diagTempMotion,    tempOrient:    _diagTempOrient,
+        sensorReady:   sensorReadyResult,  ts:            Date.now(),
+      };
+      try { sessionStorage.setItem('ideagame:ballo-diag', JSON.stringify(_diag)); } catch { /* ignore */ }
+      console.log('[SensorFinal] booking complete —', _diag);
     }
 
     // ── Step 7: ONLY NOW — fetch, socket emit, UI updates ──────────────────

@@ -1133,6 +1133,12 @@ function SimpleController({ payload, color, emoji, label, timeLeft }: {
 
 // ── BalloController ────────────────────────────────────────────────────────────
 
+interface BalloBookingDiag {
+  motionGranted: boolean; orientGranted: boolean;
+  tempMotion: number;     tempOrient: number;  // -1 = cached (not measured this session)
+  sensorReady: boolean;   ts: number;
+}
+
 const MOTION_PERM_KEY = 'ideagame:motion-permission';
 
 function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, adminSensitivity = 1.0 }: {
@@ -1168,7 +1174,26 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
   const adminSensitivityRef = useRef(adminSensitivity);
   useEffect(() => { adminSensitivityRef.current = adminSensitivity; }, [adminSensitivity]);
 
-  const [sensorError, setSensorError] = useState(false);
+  const [sensorError,      setSensorError]      = useState(false);
+  const [bookingDiag,      setBookingDiag]      = useState<BalloBookingDiag | null>(null);
+  const [listenerAttached, setListenerAttached] = useState(false);
+  const [permStats,        setPermStats]        = useState<{ motion: number; orient: number; emitTs: number | null }>({ motion: 0, orient: 0, emitTs: null });
+
+  // Read booking-phase diagnostic written by GameFlowPhone.book()
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('ideagame:ballo-diag');
+      if (raw) {
+        const d = JSON.parse(raw) as BalloBookingDiag;
+        setBookingDiag(d);
+        console.log('[SensorFinal] BalloController mount — bookingDiag:', d);
+      } else {
+        console.log('[SensorFinal] BalloController mount — no bookingDiag in sessionStorage');
+      }
+    } catch { /* ignore */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const timeLeftRef = useRef(timeLeft);
   useEffect(() => { timeLeftRef.current = timeLeft; }, [timeLeft]);
 
@@ -1319,10 +1344,12 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
 
   useEffect(() => {
     if (motionPerm !== 'granted') return;
-    setSensorError(false); // reset on each sensor loop start
-    console.log('[iPhoneMotion] listener attached — starting sensors',
-      '| has DeviceOrientationEvent:', typeof DeviceOrientationEvent,
-      '| has DeviceMotionEvent:', typeof DeviceMotionEvent);
+    setSensorError(false);
+    setListenerAttached(true);
+    console.log('[SensorFinal] permanent listeners attached —',
+      { motionPerm, sessionId, playerId: playerId.slice(-4) },
+      '| DOE:', typeof DeviceOrientationEvent,
+      '| DME:', typeof DeviceMotionEvent);
 
     // orientActive: true once the first deviceorientation sample arrives.
     // Used as the hard gate for the accel fallback — avoids the stale-length
@@ -1460,7 +1487,10 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
           '| orientActive:', orientActive, '| tl:', tl);
         emit('home:ballo_energy', { sessionId, playerId, energy: smoothed, round: round ?? 0 });
         diagLastEmitRef.current = Date.now();
+        console.log('[SensorFinal] energy emit —', { smoothed, motion: diagMotionCountRef.current, orient: diagOrientCountRef.current });
       }
+      // Always update permStats for the always-visible diagnostic panel
+      setPermStats({ motion: diagMotionCountRef.current, orient: diagOrientCountRef.current, emitTs: diagLastEmitRef.current });
     }, 400);
 
     // Visibility / focus regain — iOS popup briefly hides the page.
@@ -1482,6 +1512,7 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
     window.addEventListener('focus', handleWindowFocus);
 
     return () => {
+      setListenerAttached(false);
       clearTimeout(sensorWatchdog);
       clearTimeout(orientWatchdog);
       window.removeEventListener('deviceorientation', handleOrientation);
@@ -1574,6 +1605,22 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
 
   const energyColor = energy > 70 ? '#22c55e' : energy > 35 ? '#eab308' : '#A78BFA';
 
+  // ── Specific diagnostic warning (replaces generic "Sensori non attivi") ──
+  const diagMessage: string | null = (() => {
+    if (bookingDiag) {
+      if (!bookingDiag.motionGranted && !bookingDiag.orientGranted)
+        return '⛔ Permesso sensori negato';
+      if (!bookingDiag.sensorReady && bookingDiag.tempMotion !== -1)
+        return '📡 Nessun evento ricevuto durante la prenotazione';
+    }
+    if (listenerAttached && permStats.motion === 0 && permStats.orient === 0 && sensorError)
+      return '📱 Sensori attivi ma nessun movimento ricevuto';
+    if (energy > 0 && permStats.emitTs === null)
+      return '📤 Energia calcolata ma non inviata';
+    if (!sensorError) return null;
+    return '⚠️ Sensori non attivi — continua a muoverti';
+  })();
+
   // ── Sensor status (shown in debug mode at top of card) ──────────────────
   const sensorStatus: { icon: string; label: string; color: string } = (() => {
     if (motionPerm !== 'granted')
@@ -1590,10 +1637,8 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
   return (
     <div className="flex flex-col items-center gap-5 py-4 text-center" style={{userSelect:'none',WebkitUserSelect:'none'}}>
 
-      {/* ── Sensor watchdog warning — fires when no events arrive after 5s ────── */}
-      {/* Non-blocking: player can continue dancing. Auto-clears when events    */}
-      {/* arrive. Chrome iOS / WKWebView: events may start after a short delay. */}
-      {sensorError && (
+      {/* ── Sensor warning — specific message per failure point ──────────── */}
+      {diagMessage && (
         <div style={{
           width: '100%', maxWidth: 340,
           background: 'rgba(234,179,8,0.12)',
@@ -1602,9 +1647,25 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
           color: '#facc15', fontSize: 13, fontWeight: 700,
           textAlign: 'center', lineHeight: 1.55,
         }}>
-          ⚠️ Sensori non attivi — continua a muoverti
+          {diagMessage}
         </div>
       )}
+
+      {/* ── Always-visible sensor diagnostic panel ────────────────────────── */}
+      <div style={{
+        width: '100%', maxWidth: 340,
+        background: 'rgba(0,0,0,0.45)',
+        border: '1px solid rgba(167,139,250,0.2)',
+        borderRadius: 10, padding: '7px 11px',
+        fontFamily: 'monospace', fontSize: 10,
+        color: 'rgba(167,139,250,0.65)',
+        lineHeight: 1.7, textAlign: 'left',
+      }}>
+        <div>🔑 perm: motion={bookingDiag ? (bookingDiag.motionGranted ? '✅' : '❌') : '?'} orient={bookingDiag ? (bookingDiag.orientGranted ? '✅' : '❌') : '?'}</div>
+        <div>📡 booking: m={bookingDiag ? (bookingDiag.tempMotion === -1 ? 'cached' : String(bookingDiag.tempMotion)) : '?'} o={bookingDiag ? (bookingDiag.tempOrient === -1 ? 'cached' : String(bookingDiag.tempOrient)) : '?'} ready={bookingDiag ? (bookingDiag.sensorReady ? '✅' : '❌') : '?'}</div>
+        <div>🔌 listeners: {listenerAttached ? '✅ attivi' : '⏳'} | live: m={permStats.motion} o={permStats.orient}</div>
+        <div>⚡ energy: {energy}% | emit: {permStats.emitTs ? `${Math.round((Date.now() - permStats.emitTs) / 1000)}s fa` : '—'}</div>
+      </div>
 
       {/* ── Fixed diagnostic overlay (dev / ?debug=1) ────────────────────── */}
       {showDiag && (() => {
