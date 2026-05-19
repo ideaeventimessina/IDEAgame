@@ -17,12 +17,21 @@ function saveSettings(s: AudioSettings) {
 
 export interface AudioCtx {
   settings: AudioSettings;
+  /** Derived convenience — true when NOT muted. Persisted in localStorage. */
+  audioEnabled: boolean;
   setMasterVolume: (v: number) => void;
   setMusicVolume: (v: number) => void;
   setSfxVolume: (v: number) => void;
   toggleMusic: () => void;
   toggleSfx: () => void;
   toggleMute: () => void;
+  /**
+   * Primary global on/off toggle.
+   * setAudioEnabled(false) → mute immediately (volume 0, no new sounds).
+   * setAudioEnabled(true)  → unmute and restore volumes.
+   * Persisted automatically in localStorage under 'ideagame:audio:settings'.
+   */
+  setAudioEnabled: (enabled: boolean) => void;
   resetDefaults: () => void;
 }
 
@@ -30,12 +39,14 @@ export interface AudioCtx {
 // and in any edge case where the provider tree hasn't mounted yet.
 const DEFAULT_CTX: AudioCtx = {
   settings: { ...DEFAULT_AUDIO_SETTINGS },
+  audioEnabled:    true,
   setMasterVolume: () => {},
   setMusicVolume:  () => {},
   setSfxVolume:    () => {},
   toggleMusic:     () => {},
   toggleSfx:       () => {},
   toggleMute:      () => {},
+  setAudioEnabled: () => {},
   resetDefaults:   () => {},
 };
 
@@ -67,18 +78,24 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   const toggleMusic     = useCallback(() => update(prev => ({ musicEnabled: !prev.musicEnabled })), [update]);
   const toggleSfx       = useCallback(() => update(prev => ({ sfxEnabled:   !prev.sfxEnabled   })), [update]);
   const toggleMute      = useCallback(() => update(prev => ({ muted:        !prev.muted        })), [update]);
+  /** Global on/off: false = mute immediately; true = unmute and restore volumes. */
+  const setAudioEnabled = useCallback((enabled: boolean) => update({ muted: !enabled }), [update]);
   const resetDefaults   = useCallback(() => update({ ...DEFAULT_AUDIO_SETTINGS }), [update]);
+
+  const audioEnabled = !settings.muted;
 
   const value = useMemo<AudioCtx>(() => ({
     settings,
+    audioEnabled,
     setMasterVolume,
     setMusicVolume,
     setSfxVolume,
     toggleMusic,
     toggleSfx,
     toggleMute,
+    setAudioEnabled,
     resetDefaults,
-  }), [settings, setMasterVolume, setMusicVolume, setSfxVolume, toggleMusic, toggleSfx, toggleMute, resetDefaults]);
+  }), [settings, audioEnabled, setMasterVolume, setMusicVolume, setSfxVolume, toggleMusic, toggleSfx, toggleMute, setAudioEnabled, resetDefaults]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

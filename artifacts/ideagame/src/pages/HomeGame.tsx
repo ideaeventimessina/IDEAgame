@@ -20,6 +20,7 @@ import { JonnyAvatar } from '@/components/JonnyAvatar';
 import { useEventSocket } from '@/hooks/useEventSocket';
 import { GameFlowEngine } from '@/components/GameFlowEngine';
 import { AudioManager } from '@/audio/AudioManager';
+import { useAudioSettings } from '@/contexts/AudioContext';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -501,6 +502,7 @@ export default function HomeGame() {
   const currentModeRef = useRef<string>('');
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [audioWarning, setAudioWarning] = useState(false);
+  const { audioEnabled, setAudioEnabled } = useAudioSettings();
   const [postGame, setPostGame] = useState<{gameSlug:string;players:HomePlayer[]}|null>(null);
   const [balloEnergies, setBalloEnergies] = useState<Record<string, number>>({});     // peak — for winner/sorting
   const [balloCurrent, setBalloCurrent]   = useState<Record<string, number>>({});     // current live — for bars
@@ -1138,22 +1140,58 @@ export default function HomeGame() {
         </div>
       )}
 
-      {/* Audio unlock / warning */}
-      {!audioUnlocked && (
-        <button onClick={() => unlockAudio()}
-          className="hg-pulse absolute bottom-5 right-5 z-50 flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-black"
-          style={{background:'rgba(245,182,66,0.15)',border:'1px solid rgba(245,182,66,0.6)',color:'#F5B642',backdropFilter:'blur(10px)'}}>
-          🎵 Attiva audio
-        </button>
-      )}
-      {audioUnlocked && audioWarning && (
-        <div className="absolute bottom-5 right-5 z-50 flex items-center gap-3 rounded-2xl px-4 py-3 text-xs font-bold"
-          style={{background:'rgba(245,182,66,0.10)',border:'1px solid rgba(245,182,66,0.35)',color:'rgba(245,182,66,0.75)',backdropFilter:'blur(10px)',maxWidth:280}}>
-          <span className="shrink-0 text-base">🔇</span>
-          <span>Nessun file audio caricato — carica MP3 da <span className="underline">/admin</span> per attivare la musica</span>
-          <button onClick={() => setAudioWarning(false)} className="ml-1 shrink-0 opacity-50 hover:opacity-100">✕</button>
+      {/* ── Global audio toggle — bottom-right ──────────────────────────────── */}
+      <div className="absolute bottom-5 right-5 z-50 flex flex-col items-end gap-2">
+
+        {/* Grouped [Attiva audio] [Silenzio] toggle pair */}
+        <div
+          className="flex items-center rounded-2xl overflow-hidden"
+          style={{
+            border: '1px solid rgba(245,182,66,0.35)',
+            backdropFilter: 'blur(10px)',
+            background: 'rgba(6,2,19,0.72)',
+            boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+          }}
+        >
+          {/* Attiva audio */}
+          <button
+            onClick={() => {
+              if (!audioUnlocked) unlockAudio();
+              setAudioEnabled(true);
+            }}
+            className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-black transition-all duration-200 active:scale-95 select-none"
+            style={{
+              color:      audioEnabled ? '#F5B642' : 'rgba(255,255,255,0.28)',
+              background: audioEnabled ? 'rgba(245,182,66,0.18)' : 'transparent',
+              borderRight: '1px solid rgba(245,182,66,0.20)',
+            }}
+          >
+            🎵 Attiva audio
+          </button>
+
+          {/* Silenzio */}
+          <button
+            onClick={() => setAudioEnabled(false)}
+            className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-black transition-all duration-200 active:scale-95 select-none"
+            style={{
+              color:      !audioEnabled ? '#f87171' : 'rgba(255,255,255,0.28)',
+              background: !audioEnabled ? 'rgba(239,68,68,0.18)' : 'transparent',
+            }}
+          >
+            🔇 Silenzio
+          </button>
         </div>
-      )}
+
+        {/* No-track warning — shown only after unlock if no MP3 uploaded */}
+        {audioUnlocked && audioWarning && (
+          <div className="flex items-center gap-3 rounded-2xl px-4 py-2.5 text-xs font-bold"
+            style={{background:'rgba(245,182,66,0.10)',border:'1px solid rgba(245,182,66,0.30)',color:'rgba(245,182,66,0.70)',backdropFilter:'blur(10px)',maxWidth:260}}>
+            <span className="shrink-0">🔇</span>
+            <span>Nessun MP3 caricato — vai su <span className="underline">/admin</span></span>
+            <button onClick={() => setAudioWarning(false)} className="ml-1 shrink-0 opacity-50 hover:opacity-100">✕</button>
+          </div>
+        )}
+      </div>
 
       <AnimatePresence mode="wait">
 
