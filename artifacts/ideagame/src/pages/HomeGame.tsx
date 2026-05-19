@@ -1746,7 +1746,7 @@ function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, bal
   if (mode === 'home-quiz')       return <QuizBoard payload={p} revealed={revealed} onReveal={onReveal}/>;
   if (mode === 'home-ballo')      return <BalloBoard session={session} payload={p} players={players} balloEnergies={balloEnergies ?? {}} balloCurrent={balloCurrent ?? {}} balloResult={balloResult ?? null} balloVotes={balloVotes ?? {}} onReset={onBalloReset} onStageNext={onStageNext} onEndBallo={onEndBallo} sensitivity={balloSensitivity ?? 1} onSensitivity={onSensitivity}/>;
   if (mode === 'home-percorso')   return <PercorsoBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
-  if (mode === 'home-coppie')     return <CoppieBoard payload={p} onNext={onNext}/>;
+  if (mode === 'home-coppie')     return <CoppieBoard payload={p} onNext={onNext} sessionId={session.id}/>;
   if (mode === 'home-saramusica') return <SaraMusicaBoard payload={p} revealed={revealed} onReveal={onReveal} winner={saraMusicaWinner ?? null}/>;
   if (mode === 'home-adult')      return <AdultOnlyBoard payload={p} revealed={revealed} onReveal={onReveal} players={players} onScore={onScore}/>;
   if (mode === 'home-wordback')   return <WordBackBoard payload={p} players={players} onScore={onScore} onReveal={onReveal} tabooAlarm={tabooAlarm ?? null} sessionId={session.id}/>;
@@ -2693,7 +2693,9 @@ function FreestyleBoard({ payload, onReveal, players, onScore }: {
 
 interface CoppieCard { id: string; text: string; imageUrl?: string; pairId: number; flipped: boolean; matched: boolean; }
 
-function CoppieBoard({ payload, onNext }: { payload: Record<string,unknown>; onNext?: () => void }) {
+const BASE_URL_COPPIE = (import.meta.env.BASE_URL as string | undefined) ?? '/';
+
+function CoppieBoard({ payload, onNext, sessionId }: { payload: Record<string,unknown>; onNext?: () => void; sessionId?: string }) {
   const cards = (payload.cards as CoppieCard[]) ?? [];
   const matched = Number(payload.matchedPairs ?? 0);
   const total = Number(payload.totalPairs ?? 0);
@@ -2712,11 +2714,20 @@ function CoppieBoard({ payload, onNext }: { payload: Record<string,unknown>; onN
       setPreviewSecs(t);
       if (t <= 0) { clearInterval(previewTimer.current!); setPreview(false); }
     }, 1000);
+    // Broadcast visibility to phones via server
+    if (sessionId) {
+      void fetch(`${BASE_URL_COPPIE}api/home/sessions/${sessionId}/coppie-preview`.replace(/([^:])\/\//g,'$1/'), {
+        method: 'POST', credentials: 'include',
+      });
+    }
   };
   useEffect(() => () => { if (previewTimer.current) clearInterval(previewTimer.current); }, []);
 
+  // Larger cards: clamp(140px, 14vw, 260px) wide, 4:3 aspect ratio visible from far away
+  const cardSize = `clamp(130px, ${Math.floor(82 / cols)}vw, 250px)`;
+
   return (
-    <div className="flex w-full max-w-5xl flex-col items-center gap-5">
+    <div className="flex w-full max-w-6xl flex-col items-center gap-4">
       <div className="flex items-center gap-4 flex-wrap justify-center">
         <div className="text-display text-3xl font-black" style={{color:'#F472B6'}}>
           {String(payload.category ?? 'Coppie')}
@@ -2729,7 +2740,7 @@ function CoppieBoard({ payload, onNext }: { payload: Record<string,unknown>; onN
           <button onClick={startPreview}
             className="flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-black"
             style={{background:'rgba(244,114,182,0.12)',border:'1px solid rgba(244,114,182,0.4)',color:'#F472B6'}}>
-            👁 Mostra carte 10s
+            👁 Attiva visibilità 10 secondi
           </button>
         )}
         {preview && (
@@ -2739,26 +2750,43 @@ function CoppieBoard({ payload, onNext }: { payload: Record<string,unknown>; onN
           </div>
         )}
       </div>
-      <div className={`grid gap-3`} style={{gridTemplateColumns:`repeat(${cols}, minmax(0, 1fr))`,width:'100%'}}>
+      <div className="grid gap-3" style={{
+        gridTemplateColumns: `repeat(${cols}, ${cardSize})`,
+        justifyContent: 'center',
+      }}>
         {cards.map(card => {
           const showFace = card.matched || card.flipped || preview;
           return (
             <div key={card.id}
-              className="relative flex min-h-16 items-center justify-center rounded-2xl text-sm font-black"
-              style={card.matched
-                ? {background:'linear-gradient(135deg,#22c55e,#16a34a)',border:'2px solid #4ade80',boxShadow:'0 0 20px rgba(34,197,94,0.4)',color:'#fff'}
-                : showFace
-                ? {background:'linear-gradient(135deg,#F472B6,#ec4899)',border:'2px solid #F472B6',boxShadow:'0 0 25px rgba(244,114,182,0.5)',color:'#fff'}
-                : {background:'rgba(255,255,255,0.05)',border:'2px solid rgba(244,114,182,0.3)',color:'rgba(255,255,255,0.5)'}}>
+              className="relative overflow-hidden rounded-2xl"
+              style={{
+                width: cardSize, height: cardSize, aspectRatio: '1/1',
+                ...(card.matched
+                  ? {background:'linear-gradient(135deg,#22c55e,#16a34a)',border:'3px solid #4ade80',boxShadow:'0 0 30px rgba(34,197,94,0.5)'}
+                  : showFace
+                  ? {background:'linear-gradient(135deg,#F472B6,#ec4899)',border:'3px solid #F472B6',boxShadow:'0 0 35px rgba(244,114,182,0.6)'}
+                  : {background:'rgba(255,255,255,0.06)',border:'3px solid rgba(244,114,182,0.35)'}),
+              }}>
               {showFace ? (
                 card.imageUrl
-                  ? <img src={card.imageUrl} alt={card.text} className="h-16 w-16 rounded-xl object-cover"/>
-                  : <span className="px-2 text-center text-sm font-black">{card.text}</span>
+                  ? <img src={card.imageUrl} alt={card.text}
+                      className="absolute inset-0 h-full w-full object-cover"
+                      style={{borderRadius:'inherit'}}/>
+                  : <div className="flex h-full w-full items-center justify-center p-2">
+                      <span className="text-center font-black text-white leading-tight"
+                        style={{fontSize:'clamp(0.85rem,1.8vw,1.4rem)'}}>{card.text}</span>
+                    </div>
               ) : (
                 card.imageUrl
-                  ? <img src={card.imageUrl} alt="" className="h-16 w-16 rounded-xl object-cover"
-                      style={{filter:'blur(8px)',opacity:0.15}}/>
-                  : <span className="text-2xl text-white/25">?</span>
+                  ? <img src={card.imageUrl} alt=""
+                      className="absolute inset-0 h-full w-full object-cover"
+                      style={{borderRadius:'inherit',filter:'blur(12px)',opacity:0.12}}/>
+                  : null
+              )}
+              {!showFace && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span style={{fontSize:'clamp(2rem,4vw,3.5rem)',opacity:0.3,color:'#F472B6'}}>?</span>
+                </div>
               )}
             </div>
           );

@@ -157,10 +157,38 @@ class _AudioManager {
   }
 
   applySettings(s: AudioSettings) {
+    const wasEffectivelyMuted = this.settings.muted || !this.settings.musicEnabled;
     this.settings = { ...s };
+    const nowEffectivelyMuted = s.muted || !s.musicEnabled;
+    const targetVol = this.loopVol();
+
     if (this.currentLoop) {
-      this.currentLoop.volume = this.loopVol();
-      this.currentLoop.muted  = s.muted || !s.musicEnabled;
+      this.currentLoop.volume = targetVol;
+      this.currentLoop.muted  = nowEffectivelyMuted;
+
+      console.log('[AudioToggle]', {
+        enabled: !nowEffectivelyMuted,
+        currentTrack: this.currentLoopSlug,
+        paused: this.currentLoop.paused,
+        muted: nowEffectivelyMuted,
+        volume: targetVol,
+      });
+
+      // Unmuting: if the element is paused (was started silently while muted), resume it now
+      if (wasEffectivelyMuted && !nowEffectivelyMuted && this.currentLoop.paused) {
+        console.log('[AudioToggle] unmuting — resuming paused loop', { currentTrack: this.currentLoopSlug });
+        void this.currentLoop.play().catch(() => {});
+      }
+    } else if (wasEffectivelyMuted && !nowEffectivelyMuted && this.currentLoopSlug && this.currentLoopType) {
+      // Safety net: element was destroyed while muted but slug/type intent was tracked — restart
+      const slug = this.currentLoopSlug;
+      const type = this.currentLoopType;
+      this.currentLoopSlug = null;
+      this.currentLoopType = null;
+      console.log('[AudioToggle] unmuting — restarting loop (element destroyed while muted)', {
+        enabled: true, currentTrack: slug, paused: true, muted: false, volume: this.loopVol(),
+      });
+      void this.playLoop(slug, type);
     }
   }
 
@@ -226,8 +254,19 @@ class _AudioManager {
   /** Returns true if the loop started, false if blocked by browser autoplay policy or settings. */
   async playLoop(slug: AudioSlug | string, type: AudioType | string = 'round_loop'): Promise<boolean> {
     console.log('[AudioTrace] playLoop called', { slug, type });
-    if (!this.settings.musicEnabled || this.settings.muted) { console.log('[AudioTrace] playLoop blocked — music disabled or muted', { musicEnabled: this.settings.musicEnabled, muted: this.settings.muted }); return false; }
-    if (this.currentLoopSlug === slug && this.currentLoopType === type) return true;
+    // Hard block only on musicEnabled=false. muted=true still creates element (silently) so
+    // applySettings can resume it instantly when unmuted — no file reload needed.
+    if (!this.settings.musicEnabled) { console.log('[AudioTrace] playLoop blocked — musicEnabled=false'); return false; }
+    const isMuted = this.settings.muted;
+    if (this.currentLoopSlug === slug && this.currentLoopType === type) {
+      // Same intent already tracked — ensure playing if not muted
+      if (this.currentLoop && !this.currentLoop.paused) return true;
+      if (this.currentLoop && isMuted) return true; // paused because muted — correct
+      if (this.currentLoop) { void this.currentLoop.play().catch(() => {}); return true; }
+      // No element despite matching slug — fall through to recreate
+      this.currentLoopSlug = null;
+      this.currentLoopType = null;
+    }
 
     // Snapshot previous state so we can restore on autoplay block.
     const prev     = this.currentLoop;
@@ -278,37 +317,43 @@ class _AudioManager {
     const audio = new Audio(src);
     audio.loop   = true;
     audio.volume = 0;
-    console.log('[AudioTrace] audio element created', { src });
+    // Start muted when muted — muted autoplay is always allowed by browsers.
+    // applySettings will unmute + resume when the user re-enables audio.
+    audio.muted  = isMuted;
+    console.log('[AudioTrace] audio element created', { src, startMuted: isMuted });
 
     this.currentLoop    = audio;
     this.currentLoopSrc = src;
 
     try {
       await audio.play();
-      console.log('[AudioTrace] play success', { slug, type, src });
+      console.log('[AudioTrace] play success', { slug, type, src, muted: isMuted });
     } catch (err) {
-      console.log('[AudioTrace] play failed — autoplay blocked by browser', { slug, type, error: String(err) });
-      // Browser blocked autoplay — cancel the fade-out and restore old loop.
-      if (fadeOutInterval) {
-        clearInterval(fadeOutInterval);
-        fadeOutInterval = null;
+      if (!isMuted) {
+        // Audible autoplay was blocked — cancel fade-out and restore old loop.
+        console.log('[AudioTrace] play failed — autoplay blocked by browser', { slug, type, error: String(err) });
+        if (fadeOutInterval) { clearInterval(fadeOutInterval); fadeOutInterval = null; }
+        if (prev) prev.volume = prevVol;
+        this.currentLoop     = prev;
+        this.currentLoopSlug = prevSlug;
+        this.currentLoopType = prevType;
+        this.currentLoopSrc  = prevSrc;
+        return false;
       }
-      if (prev) prev.volume = prevVol;
-      this.currentLoop     = prev;
-      this.currentLoopSlug = prevSlug;
-      this.currentLoopType = prevType;
-      this.currentLoopSrc  = prevSrc;
-      return false;
+      // Muted autoplay failed (very rare) — keep element alive; applySettings will call play() on unmute
+      console.log('[AudioToggle] play failed while muted — element kept alive for unmute restore', { slug, type });
     }
 
-    // ── Fade in new track ──────────────────────────────────────────────────
-    const targetVol = this.loopVol();
-    let fadeInStep = 0;
-    const fadeInInterval = setInterval(() => {
-      fadeInStep++;
-      audio.volume = Math.min(targetVol, targetVol * (fadeInStep / FADE_STEPS));
-      if (fadeInStep >= FADE_STEPS) clearInterval(fadeInInterval);
-    }, CROSSFADE_DURATION / FADE_STEPS);
+    // ── Fade in new track — only when not muted ────────────────────────────
+    const targetVol = this.loopVol(); // 0 when muted; real vol otherwise
+    if (targetVol > 0) {
+      let fadeInStep = 0;
+      const fadeInInterval = setInterval(() => {
+        fadeInStep++;
+        audio.volume = Math.min(targetVol, targetVol * (fadeInStep / FADE_STEPS));
+        if (fadeInStep >= FADE_STEPS) clearInterval(fadeInInterval);
+      }, CROSSFADE_DURATION / FADE_STEPS);
+    }
 
     return true;
   }

@@ -1,0 +1,91 @@
+GIOCO DELLE COPPIE — BIG TV CARDS + VISIBILITY SYNC TO PHONES.
+
+Do not redesign the whole game.
+Do not touch audio.
+Do not touch scoring.
+Do not touch other games.
+
+Problem 1:
+On TV, Coppie card images are too small.
+From distance they are unreadable.
+
+Required TV layout:
+- make cards/images much larger
+- reduce unnecessary spacing/margins
+- use available screen height better
+- cards should be clearly visible from far away
+- image should fill most of the card
+- keep card aspect ratio clean
+- if there are many cards, use responsive grid but prioritize large size
+
+Suggested:
+- increase card min/max size
+- use object-fit: cover or contain depending current asset type
+- remove tiny thumbnails
+- use clamp() sizing based on viewport
+- example:
+  card width: clamp(140px, 14vw, 260px)
+  card height: clamp(180px, 18vw, 320px)
+
+Problem 2:
+When host clicks:
+“Attiva visibilità 10 secondi”
+
+it currently reveals cards only on TV.
+It must also reveal them on all player phones.
+
+Required behavior:
+- Host clicks visibility button on TV
+- TV reveals all cards for 10 seconds
+- all phones receive the same reveal state
+- phones show cards visible for the same countdown
+- after 10 seconds, TV and phones hide cards again
+- countdown should be synchronized as much as possible
+
+Implementation:
+Add socket event or session state:
+home:coppie_visibility_preview
+
+Payload:
+{
+  sessionId,
+  until: timestamp,
+  duration: 10
+}
+
+TV:
+- on button click emit/send preview event
+- set local previewUntil
+- render cards visible while Date.now() < previewUntil
+
+Server:
+- broadcast to home room:
+  home:coppie_visibility_preview
+
+Phones:
+- listen for home:coppie_visibility_preview
+- set previewUntil
+- while active, show all cards visible
+- show countdown:
+  “Carte visibili: 7s”
+
+Important:
+- This is preview visibility only.
+- Do not mark cards as matched.
+- Do not change scoring.
+- Do not allow phones to reveal permanently.
+- After 10 seconds, restore normal hidden state.
+
+Audit:
+- HomeGame.tsx CoppieBoard
+- HomeJoin.tsx Coppie phone controller
+- socket.ts
+- any existing revealAll/showAll state
+
+Output:
+A. files modified
+B. TV card size changes
+C. visibility sync socket flow
+D. phone behavior
+E. typecheck result
+F. manual test steps

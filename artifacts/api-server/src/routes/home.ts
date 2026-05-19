@@ -2154,6 +2154,18 @@ router.post("/home/sessions/:id/flip", async (req, res): Promise<void> => {
   res.json({ payload: newPayload, matched });
 });
 
+// ── POST /home/sessions/:id/coppie-preview — broadcast 10-s visibility to all phones ──
+router.post("/home/sessions/:id/coppie-preview", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  if (session.status !== "playing") { res.status(409).json({ error: "Sessione non in corso" }); return; }
+  const until = Date.now() + 10_000;
+  emitToRoom(homeRoom(id), "home:coppie_visibility_preview", { sessionId: id, until });
+  res.json({ ok: true, until });
+});
+
 // ── POST /home/sessions/:id/champion ──────────────────────────────────────────
 router.post("/home/sessions/:id/champion", async (req, res): Promise<void> => {
   const id = String(req.params["id"]);

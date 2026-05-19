@@ -88,6 +88,7 @@ export default function HomeJoin() {
   const [answered, setAnswered] = useState<number | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [adminSensitivity, setAdminSensitivity] = useState(3.0);
+  const [coppiePreviewUntil, setCoppiePreviewUntil] = useState<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const phaseRef = useRef<'code' | 'nickname' | 'lobby' | 'playing' | 'ended'>('code');
   const playerRef = useRef<HomePlayer | null>(null);
@@ -386,7 +387,16 @@ export default function HomeJoin() {
       if (typeof d.sensitivity === 'number') setAdminSensitivity(d.sensitivity);
     });
 
-    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); u10?.(); };
+    // TV host clicked "Attiva visibilità 10 secondi" — show all coppie cards on phone
+    const u11 = on<{ sessionId: string; until: number }>('home:coppie_visibility_preview', (d) => {
+      if (typeof d.until === 'number') {
+        setCoppiePreviewUntil(d.until);
+        // Auto-clear after the window expires
+        setTimeout(() => setCoppiePreviewUntil(null), d.until - Date.now() + 200);
+      }
+    });
+
+    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); u10?.(); u11?.(); };
   // Only re-register when the socket `on` function changes (new connection)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [on]);
@@ -789,6 +799,7 @@ export default function HomeJoin() {
               onScore={addScore}
               emit={emit}
               adminSensitivity={adminSensitivity}
+              coppiePreviewUntil={coppiePreviewUntil}
             />
           </motion.div>
         )}
@@ -843,7 +854,7 @@ export default function HomeJoin() {
 
 function PhoneController({
   session, player, players, revealed, answered, timeLeft,
-  onAnswer, onFlip, onScore, emit, adminSensitivity,
+  onAnswer, onFlip, onScore, emit, adminSensitivity, coppiePreviewUntil,
 }: {
   session: HomeSession;
   player: HomePlayer;
@@ -856,13 +867,14 @@ function PhoneController({
   onScore: (pts: number) => Promise<void>;
   emit: (event: string, data: unknown) => void;
   adminSensitivity?: number;
+  coppiePreviewUntil?: number | null;
 }) {
   const p = session.roundPayload;
   const mode = String(p.mode ?? 'home-quiz');
 
   if (mode === 'home-flow')       return <GameFlowPhone session={session} player={player} emit={emit}/>;
   if (mode === 'home-quiz')       return <QuizController payload={p} revealed={revealed} answered={answered} onAnswer={onAnswer}/>;
-  if (mode === 'home-coppie')     return <CoppieController payload={p} onFlip={onFlip} player={player}/>;
+  if (mode === 'home-coppie')     return <CoppieController payload={p} onFlip={onFlip} player={player} previewUntil={coppiePreviewUntil ?? null}/>;
   if (mode === 'home-percorso')   return <PercorsoHomeController payload={p} timeLeft={timeLeft}/>;
   if (mode === 'home-saramusica') return <SaraMusicaController payload={p} player={player} session={session}/>;
   if (mode === 'home-adult')      return <AdultController payload={p} timeLeft={timeLeft} onScore={onScore}/>;
@@ -935,10 +947,11 @@ function QuizController({ payload, revealed, answered, onAnswer }: {
 
 interface CoppieCard { id: string; text: string; imageUrl?: string; pairId: number; flipped: boolean; matched: boolean; }
 
-function CoppieController({ payload, onFlip, player }: {
+function CoppieController({ payload, onFlip, player, previewUntil }: {
   payload: Record<string,unknown>;
   onFlip: (cardId: string) => void;
   player: HomePlayer;
+  previewUntil: number | null;
 }) {
   const cards = (payload.cards as CoppieCard[]) ?? [];
   const matched = Number(payload.matchedPairs ?? 0);
@@ -947,31 +960,48 @@ function CoppieController({ payload, onFlip, player }: {
   const isMyTurn = !lastFlippedBy || lastFlippedBy === player.id || (payload.currentFlipped as string[])?.length === 0;
   const cols = Math.min(Math.ceil(Math.sqrt(cards.length)), 4);
 
+  // Countdown ticker during preview window
+  const [now, setNow] = useState(() => Date.now());
+  const previewActive = previewUntil !== null && now < previewUntil;
+  const previewSecsLeft = previewUntil !== null ? Math.max(0, Math.ceil((previewUntil - now) / 1000)) : 0;
+
+  useEffect(() => {
+    if (!previewActive) return;
+    const id = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(id);
+  }, [previewActive]);
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between rounded-xl px-4 py-2"
         style={{background:'rgba(244,114,182,0.12)',border:'1px solid rgba(244,114,182,0.35)'}}>
         <span className="text-sm font-black" style={{color:'#F472B6'}}>💞 Coppie: {matched}/{total}</span>
-        <span className="text-xs text-white/50">{isMyTurn ? '🟢 Il tuo turno!' : '⏳ Aspetta...'}</span>
+        {previewActive
+          ? <span className="text-xs font-black" style={{color:'#F472B6'}}>👁 Carte visibili: {previewSecsLeft}s</span>
+          : <span className="text-xs text-white/50">{isMyTurn ? '🟢 Il tuo turno!' : '⏳ Aspetta...'}</span>
+        }
       </div>
       <div className="grid gap-2" style={{gridTemplateColumns:`repeat(${cols},minmax(0,1fr))`}}>
-        {cards.map(card=>(
-          <button key={card.id}
-            onClick={() => isMyTurn && !card.matched && !card.flipped && onFlip(card.id)}
-            disabled={!isMyTurn || card.matched || card.flipped}
-            className="flex min-h-14 items-center justify-center rounded-xl text-xs font-black transition-all disabled:opacity-60"
-            style={card.matched
-              ? {background:'rgba(34,197,94,0.25)',border:'1px solid rgba(34,197,94,0.55)',color:'#4ade80'}
-              : card.flipped
-              ? {background:'linear-gradient(135deg,rgba(244,114,182,0.4),rgba(244,114,182,0.2))',border:'2px solid #F472B6',color:'#fff'}
-              : {background:'rgba(255,255,255,0.05)',border:'1px solid rgba(244,114,182,0.3)',color:'rgba(255,255,255,0.5)'}}>
-            {card.matched || card.flipped ? (
-              card.imageUrl
-                ? <img src={card.imageUrl} alt={card.text} className="h-10 w-10 rounded-lg object-cover"/>
-                : <span className="px-1 text-center leading-tight">{card.text}</span>
-            ) : '?'}
-          </button>
-        ))}
+        {cards.map(card => {
+          const showFace = card.matched || card.flipped || previewActive;
+          return (
+            <button key={card.id}
+              onClick={() => !previewActive && isMyTurn && !card.matched && !card.flipped && onFlip(card.id)}
+              disabled={previewActive || !isMyTurn || card.matched || card.flipped}
+              className="flex min-h-14 items-center justify-center rounded-xl text-xs font-black transition-all disabled:opacity-60"
+              style={card.matched
+                ? {background:'rgba(34,197,94,0.25)',border:'1px solid rgba(34,197,94,0.55)',color:'#4ade80'}
+                : showFace
+                ? {background:'linear-gradient(135deg,rgba(244,114,182,0.4),rgba(244,114,182,0.2))',border:'2px solid #F472B6',color:'#fff'}
+                : {background:'rgba(255,255,255,0.05)',border:'1px solid rgba(244,114,182,0.3)',color:'rgba(255,255,255,0.5)'}}>
+              {showFace ? (
+                card.imageUrl
+                  ? <img src={card.imageUrl} alt={card.text} className="h-10 w-10 rounded-lg object-cover"/>
+                  : <span className="px-1 text-center leading-tight">{card.text}</span>
+              ) : '?'}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
