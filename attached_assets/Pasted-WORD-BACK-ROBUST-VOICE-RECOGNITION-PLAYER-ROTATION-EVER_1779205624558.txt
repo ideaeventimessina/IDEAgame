@@ -1,0 +1,183 @@
+WORD BACK — ROBUST VOICE RECOGNITION + PLAYER ROTATION EVERY 3 WORDS.
+
+FIRST AUDIT, THEN PATCH.
+Do not touch Ballo.
+Do not touch audio engine.
+Do not touch routing.
+Do not redesign global UI.
+
+==================================================
+PART 1 — FIX MICROPHONE / SPEECH RECOGNITION RELIABILITY
+==================================================
+
+Problem:
+In Parola alle Spalle, the microphone recognition works only 1 time out of 3.
+This is not reliable enough for live events.
+
+Goal:
+Make PressToTalkAnswer robust and predictable.
+
+Audit:
+- PressToTalkAnswer.tsx
+- Web Speech API lifecycle
+- recognition.start()
+- recognition.stop()
+- recognition.onresult
+- recognition.onerror
+- recognition.onend
+- hold-to-talk pointer/touch/mouse events
+- mobile Safari/Chrome behavior
+- HTTPS secure context
+- microphone permission handling
+
+Required behavior:
+- Player holds button to speak.
+- Jonny listening overlay appears immediately.
+- Waveform animates immediately.
+- Recognition starts from direct user gesture.
+- Recognized text appears live.
+- On release, answer is matched immediately.
+- If recognition ends too early, keep last transcript.
+- If recognition fails, show exact error and fallback input.
+
+Patch:
+- Use robust event handling:
+  onTouchStart
+  onTouchEnd
+  onMouseDown
+  onMouseUp
+  onPointerCancel
+- prevent double start/stop
+- keep recognition instance in ref
+- keep latest transcript in ref
+- handle:
+  no-speech
+  audio-capture
+  not-allowed
+  aborted
+  network
+- do not clear transcript before matching
+- if no final result but interim result exists, use interim text
+- if recognition ends before button release, still allow matching latest transcript
+- fallback text input must always be available after failure
+
+Add visible status:
+- “Microfono attivo”
+- “Sto ascoltando…”
+- “Ho sentito: [testo]”
+- “Non ho sentito nulla, riprova”
+
+Logs:
+[PressToTalk]
+secureContext
+speechSupported
+start
+result interim/final
+error
+end
+release
+match result
+
+Output:
+A. root cause of unreliable mic
+B. files modified
+C. robust speech lifecycle
+D. fallback behavior
+E. typecheck result
+
+==================================================
+PART 2 — WORD BACK PLAYER ROTATION EVERY 3 WORDS
+==================================================
+
+Current:
+The same INDOVINO/SUGGERITORE can continue too long.
+
+Required:
+Every 3 words, the game must change players.
+
+Logic:
+- One pair plays 3 words.
+- After 3 words, return to booking phase.
+- New players can book as:
+  - INDOVINO
+  - SUGGERITORE
+- Booking window lasts 10 seconds.
+
+If both roles are booked within 10 seconds:
+- continue with those players.
+
+If 10 seconds expire and roles are incomplete:
+- show all connected player names on TV
+- randomly select 2 connected players
+- assign:
+  random player 1 = INDOVINO
+  random player 2 = SUGGERITORE
+- if only one connected player exists, show error:
+  “Servono almeno 2 giocatori”
+- if current pair is still connected, they can be selected again only if there are fewer than 4 players connected; otherwise prefer players who were not in previous pair.
+
+Server state:
+Track in roundPayload or session gameConfig:
+{
+  wordBackPairRoundCount: number,
+  wordBackCurrentPair: {
+    guesserId,
+    suggesterId
+  },
+  wordBackPairHistory: []
+}
+
+After each word/round:
+- increment wordBackPairRoundCount
+- if count < 3:
+  continue next word with same pair
+- if count === 3:
+  reset count to 0
+  clear bookedPlayers
+  enter booking phase for WordBack
+  start 10-second booking window
+
+Booking phase UI:
+TV:
+- show:
+  “Cambio giocatori”
+  “Prenotatevi entro 10 secondi”
+  countdown 10s
+  role slots:
+    INDOVINO
+    SUGGERITORE
+- after timeout:
+  show random selection animation:
+  “Scelta casuale giocatori…”
+  then selected pair
+
+Phones:
+- show two role buttons:
+  “MI PRENOTO COME INDOVINO”
+  “MI PRENOTO COME SUGGERITORE”
+- if role occupied, disable that role.
+- after timeout/random pick, selected players see their roles.
+
+Events/API:
+Add/patch:
+- home:wordback_pair_rotation_start
+- home:wordback_random_pair_selected
+or implement via existing home:state if simpler.
+
+Important:
+- Do not break taboo alarm.
+- Do not break speech answer validation.
+- Do not break +100/+100 scoring.
+- Do not show word to indovino.
+- TV still shows word + taboo words.
+
+Output:
+A. rotation state model
+B. files modified
+C. 3-word rotation logic
+D. 10-second booking timeout
+E. random fallback selection
+F. phone role UI
+G. TV rotation UI
+H. typecheck result
+I. manual test steps

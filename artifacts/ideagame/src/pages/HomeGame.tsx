@@ -2432,6 +2432,89 @@ function AdultOnlyBoard({ payload, revealed, onReveal, players, onScore }: {
   );
 }
 
+// ── WordBackBookingBoard (TV view during pair-rotation window) ─────────────────
+
+function WordBackBookingBoard({ payload }: { payload: Record<string, unknown> }) {
+  const bookingUntil = Number(payload.bookingOpenUntil ?? 0);
+  const bookedRoles = (payload.bookedRoles as {
+    guesser:   { id: string; nickname: string } | null;
+    suggester: { id: string; nickname: string } | null;
+  } | null) ?? { guesser: null, suggester: null };
+  const bookingError = payload.bookingError as string | undefined;
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const iid = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(iid);
+  }, []);
+
+  const secsLeft  = Math.max(0, Math.ceil((bookingUntil - now) / 1000));
+  const pct       = Math.min(1, secsLeft / 10);
+
+  return (
+    <motion.div key="wordback-booking"
+      initial={{scale:0.9,opacity:0}} animate={{scale:1,opacity:1}}
+      className="flex w-full max-w-2xl flex-col items-center gap-7 text-center">
+      <div className="text-6xl">🔄</div>
+      <div className="text-display text-4xl font-black text-white">Cambio giocatori!</div>
+
+      {bookingError ? (
+        <div className="w-full rounded-2xl px-6 py-5"
+          style={{background:'rgba(239,68,68,0.12)',border:'1.5px solid rgba(239,68,68,0.45)',color:'#f87171'}}>
+          <div className="text-2xl mb-2">⚠️</div>
+          <div className="text-base font-black">{bookingError}</div>
+        </div>
+      ) : (
+        <>
+          <div className="text-lg text-white/55">I giocatori si prenotano sul telefono</div>
+
+          {/* Countdown ring */}
+          <div className="relative flex h-28 w-28 items-center justify-center rounded-full"
+            style={{
+              background:`conic-gradient(rgba(167,139,250,0.9) ${pct * 100}%, rgba(255,255,255,0.1) 0)`,
+              boxShadow:'0 0 50px rgba(167,139,250,0.35)',
+            }}>
+            <div className="flex items-center justify-center rounded-full bg-[#0f0f23]"
+              style={{width:'5.5rem',height:'5.5rem'}}>
+              <span className="text-3xl font-black text-white tabular-nums">{secsLeft}</span>
+            </div>
+          </div>
+
+          {/* Role slots */}
+          <div className="flex gap-4 w-full">
+            <div className="flex-1 rounded-2xl px-5 py-6 text-center"
+              style={bookedRoles.guesser
+                ? {background:'rgba(167,139,250,0.25)',border:'2px solid rgba(167,139,250,0.7)',boxShadow:'0 0 30px rgba(167,139,250,0.3)'}
+                : {background:'rgba(255,255,255,0.04)',border:'2px dashed rgba(167,139,250,0.3)'}}>
+              <div className="text-xs font-black uppercase tracking-widest mb-3"
+                style={{color:'rgba(167,139,250,0.8)'}}>🙈 INDOVINO</div>
+              {bookedRoles.guesser
+                ? <div className="text-2xl font-black text-white">{bookedRoles.guesser.nickname}</div>
+                : <div className="text-sm text-white/30 italic">— in attesa —</div>
+              }
+            </div>
+            <div className="flex-1 rounded-2xl px-5 py-6 text-center"
+              style={bookedRoles.suggester
+                ? {background:'rgba(34,211,238,0.25)',border:'2px solid rgba(34,211,238,0.7)',boxShadow:'0 0 30px rgba(34,211,238,0.3)'}
+                : {background:'rgba(255,255,255,0.04)',border:'2px dashed rgba(34,211,238,0.3)'}}>
+              <div className="text-xs font-black uppercase tracking-widest mb-3"
+                style={{color:'rgba(34,211,238,0.8)'}}>💬 SUGGERITORE</div>
+              {bookedRoles.suggester
+                ? <div className="text-2xl font-black text-white">{bookedRoles.suggester.nickname}</div>
+                : <div className="text-sm text-white/30 italic">— in attesa —</div>
+              }
+            </div>
+          </div>
+
+          {secsLeft <= 0 && (
+            <div className="text-white/40 text-sm italic">Scelta casuale in corso…</div>
+          )}
+        </>
+      )}
+    </motion.div>
+  );
+}
+
 // ── WordBackBoard ─────────────────────────────────────────────────────────────
 
 function WordBackBoard({ payload, players, onScore, onReveal, tabooAlarm, sessionId }: {
@@ -2462,9 +2545,18 @@ function WordBackBoard({ payload, players, onScore, onReveal, tabooAlarm, sessio
       setCorrectData({ guesserNickname: d.guesserNickname ?? '', word: d.word ?? word });
       setTimeout(onReveal, 2400);
     });
+    // Booking phase — delegate to dedicated component (hooks already called above)
+    if (String(payload.mode ?? '') === 'home-wordback-booking') {
+      unsub();
+    }
     return unsub;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoAwarded, awarded, word]);
+
+  // Booking phase dispatches to its own component (after all hooks are called)
+  if (String(payload.mode ?? '') === 'home-wordback-booking') {
+    return <WordBackBookingBoard payload={payload} />;
+  }
 
   return (
     <motion.div key={String(payload.roundIndex)} initial={{scale:0.9,opacity:0}} animate={{scale:1,opacity:1}}

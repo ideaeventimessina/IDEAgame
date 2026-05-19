@@ -1778,6 +1778,94 @@ function AdultController({ payload, timeLeft, onScore }: {
   );
 }
 
+// ── WordBackBookingPhone (phone view during pair-rotation window) ───────────────
+
+function WordBackBookingPhone({ payload, player, sessionId }: {
+  payload: Record<string, unknown>;
+  player: HomePlayer;
+  sessionId: string;
+}) {
+  const bookedRoles = (payload.bookedRoles as {
+    guesser:   { id: string; nickname: string } | null;
+    suggester: { id: string; nickname: string } | null;
+  } | null) ?? { guesser: null, suggester: null };
+  const bookingUntil = Number(payload.bookingOpenUntil ?? 0);
+
+  const [myRole,  setMyRole]  = useState<'guesser' | 'suggester' | null>(null);
+  const [booking, setBooking] = useState(false);
+  const [now,     setNow]     = useState(() => Date.now());
+
+  useEffect(() => {
+    const iid = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(iid);
+  }, []);
+
+  const secsLeft       = Math.max(0, Math.ceil((bookingUntil - now) / 1000));
+  const guesserTaken   = !!bookedRoles.guesser;
+  const suggesterTaken = !!bookedRoles.suggester;
+
+  const bookRole = useCallback(async (role: 'guesser' | 'suggester') => {
+    if (booking || myRole) return;
+    setBooking(true);
+    try {
+      const r = await fetch(`/api/home/sessions/${sessionId}/wordback-book-role`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId: player.id, nickname: player.nickname, role }),
+      });
+      if (r.ok) setMyRole(role);
+    } catch { /* ignore — network error, player can retry */ }
+    finally { setBooking(false); }
+  }, [booking, myRole, sessionId, player.id, player.nickname]);
+
+  return (
+    <div className="flex flex-col items-center gap-5 py-4 text-center">
+      <div className="text-5xl">🔄</div>
+      <div className="text-xl font-black text-white">Cambio giocatori!</div>
+      {secsLeft > 0 && (
+        <div className="text-sm font-black" style={{color:'#A78BFA'}}>{secsLeft}s per prenotarsi</div>
+      )}
+
+      {myRole ? (
+        <div className="rounded-2xl px-6 py-5 w-full text-center"
+          style={{background:'rgba(34,197,94,0.15)',border:'1.5px solid rgba(34,197,94,0.5)'}}>
+          <div className="text-3xl mb-2">{myRole === 'guesser' ? '🙈' : '💬'}</div>
+          <div className="text-base font-black text-white">
+            Sei il {myRole === 'guesser' ? 'INDOVINO' : 'SUGGERITORE'}!
+          </div>
+          <div className="text-xs text-white/40 mt-1">In attesa dell'inizio…</div>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3 w-full">
+          <button onClick={() => void bookRole('guesser')} disabled={booking || guesserTaken}
+            className="w-full rounded-2xl py-5 text-base font-black text-white transition-all active:scale-95 disabled:opacity-60"
+            style={{
+              background: guesserTaken ? 'rgba(167,139,250,0.12)' : 'linear-gradient(135deg,#A78BFA,#7C3AED)',
+              border: '2px solid rgba(167,139,250,0.6)',
+              boxShadow: guesserTaken ? 'none' : '0 0 30px rgba(167,139,250,0.4)',
+            }}>
+            {guesserTaken
+              ? `🙈 ${bookedRoles.guesser!.nickname} è l'INDOVINO`
+              : '🙈 MI PRENOTO COME INDOVINO'}
+          </button>
+          <button onClick={() => void bookRole('suggester')} disabled={booking || suggesterTaken}
+            className="w-full rounded-2xl py-5 text-base font-black text-white transition-all active:scale-95 disabled:opacity-60"
+            style={{
+              background: suggesterTaken ? 'rgba(34,211,238,0.12)' : 'linear-gradient(135deg,#22D3EE,#0891b2)',
+              border: '2px solid rgba(34,211,238,0.6)',
+              boxShadow: suggesterTaken ? 'none' : '0 0 30px rgba(34,211,238,0.4)',
+            }}>
+            {suggesterTaken
+              ? `💬 ${bookedRoles.suggester!.nickname} è il SUGGERITORE`
+              : '💬 MI PRENOTO COME SUGGERITORE'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── WordBackController ─────────────────────────────────────────────────────────
 
 function WordBackController({ payload, timeLeft, player, sessionId, emit }: {
@@ -1823,6 +1911,11 @@ function WordBackController({ payload, timeLeft, player, sessionId, emit }: {
       <span className="text-2xl font-black tabular-nums">{timeLeft}s</span>
     </div>
   ) : null;
+
+  // Pair-rotation booking window — all hooks already called above
+  if (String(payload.mode ?? '') === 'home-wordback-booking') {
+    return <WordBackBookingPhone payload={payload} player={player} sessionId={sessionId}/>;
+  }
 
   if (isGuesser) {
     if (answered) {

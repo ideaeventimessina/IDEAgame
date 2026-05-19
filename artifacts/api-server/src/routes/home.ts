@@ -1499,18 +1499,52 @@ router.post("/home/sessions/:id/next", async (req, res): Promise<void> => {
     return;
   }
 
+  // ── WordBack rotation: after every 3 words, open a 10-second booking window ──
+  const currentMode = String(currentPayload.mode ?? "");
+  if (currentMode === "home-wordback-booking") {
+    // Booking timer is managing advancement — reject duplicate next calls
+    res.status(409).json({ error: "Fase di prenotazione in corso" });
+    return;
+  }
+  let wbCompletedCount = Number(cfg.wordBackPairRoundCount ?? 0);
+  if (currentMode === "home-wordback") {
+    wbCompletedCount += 1;
+    if (wbCompletedCount >= 3) {
+      const prevPair = {
+        guesserId:   String(currentPayload["guesserId"]   ?? ""),
+        suggesterId: String(currentPayload["suggesterId"] ?? ""),
+      };
+      await enterWordBackBookingPhase(id, nextRound, preloadedRounds, cfg, prevPair);
+      res.json({ gameEnded: false, bookingPhase: true });
+      return;
+    }
+  }
+
   // Next round within current game — stamp authoritative start time.
   // Carry bookedPlayers forward so TV boards (e.g. BalloBoard) can filter participants on every round.
   const bookedPlayers = Array.isArray(currentPayload["bookedPlayers"]) ? currentPayload["bookedPlayers"] : [];
+
+  // For parola-alle-spalle: carry the active pair forward on every non-rotating round
+  const wordbackPairFields = currentMode === "home-wordback" ? {
+    guesserId:         currentPayload["guesserId"]         ?? null,
+    guesserNickname:   currentPayload["guesserNickname"]   ?? null,
+    suggesterId:       currentPayload["suggesterId"]       ?? null,
+    suggesterNickname: currentPayload["suggesterNickname"] ?? null,
+  } : {};
+
   const nextPayload = {
     ...(preloadedRounds[nextRound] ?? { mode: "unknown", roundIndex: nextRound }),
     roundStartedAt: new Date().toISOString(),
     ...(bookedPlayers.length > 0 ? { bookedPlayers } : {}),
+    ...wordbackPairFields,
   };
 
   const [updated] = await db.update(homeSessionsTable).set({
     currentRound: nextRound,
     roundPayload: nextPayload,
+    ...(currentMode === "home-wordback"
+      ? { gameConfig: { ...cfg, wordBackPairRoundCount: wbCompletedCount } }
+      : {}),
   }).where(eq(homeSessionsTable.id, id)).returning();
 
   emitToRoom(homeRoom(id), "home:round", { round: nextRound, payload: nextPayload });
@@ -1927,6 +1961,148 @@ router.post("/home/sessions/:id/end-game", async (req, res): Promise<void> => {
   res.json({ session: updated, players });
 });
 
+// ── WordBack booking helpers ────────────────────────────────────────────────────
+const wordbackBookingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/** Advance to the next actual wordback round after booking resolves. */
+async function advanceToWordBackRound(
+  sessionId: string,
+  guesser: { id: string; nickname: string },
+  suggester: { id: string; nickname: string },
+): Promise<void> {
+  const session = await getSession(sessionId);
+  if (!session || session.status !== "playing") return;
+  const cfg = (session.gameConfig ?? {}) as Record<string, unknown>;
+  const preloadedRounds = (cfg.preloadedRounds as RoundPayload[]) ?? [];
+  const pendingRoundIndex = Number(cfg.wordBackPendingRoundIndex ?? (session.currentRound + 1));
+  const players = await getPlayers(sessionId);
+
+  if (pendingRoundIndex >= session.totalRounds) {
+    const gamesPlayed = (cfg.gamesPlayed as string[]) ?? [];
+    const slug = session.gameSlug ?? "";
+    const newGamesPlayed = slug && !gamesPlayed.includes(slug) ? [...gamesPlayed, slug] : gamesPlayed;
+    const gameScoreSnapshot = (cfg.gameScores ?? {}) as Record<string, Record<string, number>>;
+    if (slug) gameScoreSnapshot[slug] = Object.fromEntries(players.map(p => [p.id, p.score]));
+    const newCfg = { ...cfg, phase: "board", gamesPlayed: newGamesPlayed, gameScores: gameScoreSnapshot, preloadedRounds: [] };
+    const [ended] = await db.update(homeSessionsTable)
+      .set({ status: "lobby", gameSlug: null, gameConfig: newCfg, roundPayload: {} as RoundPayload })
+      .where(eq(homeSessionsTable.id, sessionId)).returning();
+    if (ended) emitToRoom(homeRoom(sessionId), "home:game_ended", { session: ended, players, gameSlug: slug });
+    return;
+  }
+
+  const baseRound: RoundPayload = preloadedRounds[pendingRoundIndex]
+    ?? ({ mode: "home-wordback", roundIndex: pendingRoundIndex } as RoundPayload);
+  const nextPayload: RoundPayload = {
+    ...baseRound,
+    guesserId: guesser.id,
+    guesserNickname: guesser.nickname,
+    suggesterId: suggester.id,
+    suggesterNickname: suggester.nickname,
+    roundStartedAt: new Date().toISOString(),
+    wordBackPairRoundCount: 0,
+  };
+  const newCfg = { ...cfg, wordBackPairRoundCount: 0, wordBackPendingRoundIndex: null };
+  const [updated] = await db.update(homeSessionsTable)
+    .set({ currentRound: pendingRoundIndex, roundPayload: nextPayload, gameConfig: newCfg })
+    .where(eq(homeSessionsTable.id, sessionId)).returning();
+  if (updated) {
+    emitToRoom(homeRoom(sessionId), "home:round", { round: pendingRoundIndex, payload: nextPayload });
+    emitToRoom(homeRoom(sessionId), "home:state", { session: updated, players });
+  }
+}
+
+/** Enter the 10-second role-booking interlude. */
+async function enterWordBackBookingPhase(
+  sessionId: string,
+  nextRoundIndex: number,
+  preloadedRounds: RoundPayload[],
+  cfg: Record<string, unknown>,
+  prevPair: { guesserId: string; suggesterId: string },
+): Promise<void> {
+  const players = await getPlayers(sessionId);
+  const bookingUntil = Date.now() + 10_000;
+  const bookingPayload: RoundPayload = {
+    mode: "home-wordback-booking",
+    roundIndex: nextRoundIndex,
+    bookingOpenUntil: bookingUntil,
+    bookedRoles: { guesser: null, suggester: null },
+  };
+  // Preserve preloadedRounds in cfg so advanceToWordBackRound can read them after the DB round-trip
+  const newCfg = {
+    ...cfg,
+    wordBackPairRoundCount: 0,
+    wordBackPendingRoundIndex: nextRoundIndex,
+    wordBackPrevPair: prevPair,
+    preloadedRounds,
+  };
+  const [updated] = await db.update(homeSessionsTable)
+    .set({ roundPayload: bookingPayload, gameConfig: newCfg })
+    .where(eq(homeSessionsTable.id, sessionId)).returning();
+  if (updated) {
+    emitToRoom(homeRoom(sessionId), "home:round", { round: nextRoundIndex, payload: bookingPayload });
+    emitToRoom(homeRoom(sessionId), "home:state", { session: updated, players });
+  }
+
+  const existing = wordbackBookingTimers.get(sessionId);
+  if (existing) clearTimeout(existing);
+  const timer = setTimeout(() => {
+    wordbackBookingTimers.delete(sessionId);
+    void autoSelectWordBackPair(sessionId, prevPair);
+  }, 10_200);
+  wordbackBookingTimers.set(sessionId, timer);
+}
+
+/** Auto-select pair after timer expiry; respects any partial bookings already made. */
+async function autoSelectWordBackPair(
+  sessionId: string,
+  prevPair: { guesserId: string; suggesterId: string },
+): Promise<void> {
+  const session = await getSession(sessionId);
+  if (!session || session.status !== "playing") return;
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (String(rp.mode ?? "") !== "home-wordback-booking") return;
+
+  const players = await getPlayers(sessionId);
+  const connected = players.filter(p => p.isConnected);
+  if (connected.length < 2) {
+    const errPayload = { ...rp, bookingError: "Servono almeno 2 giocatori connessi" };
+    const [updated] = await db.update(homeSessionsTable)
+      .set({ roundPayload: errPayload })
+      .where(eq(homeSessionsTable.id, sessionId)).returning();
+    if (updated) emitToRoom(homeRoom(sessionId), "home:state", { session: updated, players });
+    return;
+  }
+
+  const bookedRoles = (rp.bookedRoles as {
+    guesser: { id: string; nickname: string } | null;
+    suggester: { id: string; nickname: string } | null;
+  } | null) ?? { guesser: null, suggester: null };
+  let guesser = bookedRoles.guesser;
+  let suggester = bookedRoles.suggester;
+
+  if (!guesser || !suggester) {
+    // Prefer players who didn't participate in the previous pair when pool is large enough
+    let pool = connected;
+    if (connected.length >= 4) {
+      const nonPrev = connected.filter(p => p.id !== prevPair.guesserId && p.id !== prevPair.suggesterId);
+      if (nonPrev.length >= 2) pool = nonPrev;
+    }
+    const shuffled = shuffleArr([...pool]);
+    if (!guesser && shuffled[0]) guesser = { id: shuffled[0].id, nickname: shuffled[0].nickname };
+    if (!suggester) {
+      const sg = shuffled.find(p => p.id !== guesser?.id);
+      if (sg) suggester = { id: sg.id, nickname: sg.nickname };
+    }
+    if (!guesser || !suggester) {
+      logger.warn({ sessionId }, "autoSelectWordBackPair: not enough distinct players");
+      return;
+    }
+  }
+
+  await advanceToWordBackRound(sessionId, guesser, suggester);
+}
+
 // ── In-memory duplicate guard for wordback scoring ─────────────────────────────
 const wordbackScoredRounds = new Map<string, Set<number>>();
 
@@ -2023,6 +2199,47 @@ router.post("/home/sessions/:id/wordback-correct", async (req, res): Promise<voi
 
   await broadcastState(id);
   res.json({ ok: true, pts });
+});
+
+// ── POST /home/sessions/:id/wordback-book-role ────────────────────────────────
+router.post("/home/sessions/:id/wordback-book-role", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (String(rp.mode ?? "") !== "home-wordback-booking") {
+    res.status(409).json({ error: "Non in fase di prenotazione wordback" }); return;
+  }
+
+  const { playerId, nickname, role } = req.body as {
+    playerId?: string; nickname?: string; role?: "guesser" | "suggester";
+  };
+  if (!playerId || !role || !["guesser", "suggester"].includes(role)) {
+    res.status(400).json({ error: "playerId e role (guesser/suggester) obbligatori" }); return;
+  }
+
+  const bookedRoles = { ...(rp.bookedRoles as { guesser: unknown; suggester: unknown } ?? { guesser: null, suggester: null }) };
+  if (bookedRoles[role]) { res.status(409).json({ error: "Ruolo già occupato" }); return; }
+  bookedRoles[role] = { id: playerId, nickname: nickname ?? "?" };
+
+  const updatedRp = { ...rp, bookedRoles };
+  const players = await getPlayers(id);
+  const [updated] = await db.update(homeSessionsTable)
+    .set({ roundPayload: updatedRp })
+    .where(eq(homeSessionsTable.id, id)).returning();
+  if (updated) emitToRoom(homeRoom(id), "home:state", { session: updated, players });
+  res.json({ ok: true, bookedRoles });
+
+  // If both roles are now filled: cancel the 10-second timer and advance immediately
+  const gRole = bookedRoles.guesser as { id: string; nickname: string } | null;
+  const sRole = bookedRoles.suggester as { id: string; nickname: string } | null;
+  if (gRole && sRole) {
+    const timer = wordbackBookingTimers.get(id);
+    if (timer) { clearTimeout(timer); wordbackBookingTimers.delete(id); }
+    await advanceToWordBackRound(id, gRole, sRole);
+  }
 });
 
 // ── POST /home/sessions/:id/score ──────────────────────────────────────────────
