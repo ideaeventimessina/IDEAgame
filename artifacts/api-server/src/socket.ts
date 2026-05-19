@@ -19,6 +19,10 @@ const playerSockets = new Map<string, { playerId: string; eventId: string }>();
 // players = peak energies (used by autoScoreBallo), current = latest live energy per player
 const balloEnergyMap = new Map<string, { round: number; players: Map<string, number>; current: Map<string, number> }>();
 
+// ── Home Mode: spectator votes for Ballo dancers (in-memory, ephemeral) ────────
+// Key = `${sessionId}:${round}` → Map<voterId → Map<dancerId → stars (1-5)>>
+const balloVoteMap = new Map<string, Map<string, Map<string, number>>>();
+
 export function getBalloEnergies(sessionId: string): Record<string, number> {
   const entry = balloEnergyMap.get(sessionId);
   if (!entry) return {};
@@ -285,6 +289,39 @@ export function initHomeSocketHandlers(io: SocketServer): void {
       const clamped = Math.min(5.0, Math.max(0.5, sensitivity));
       logger.info({ sessionId, sensitivity: clamped }, "[BalloSensitivity] broadcasting to room");
       emitToRoom(`home:${sessionId}`, "home:ballo_sensitivity", { sensitivity: clamped });
+    });
+
+    // ── Ballo spectator voting ────────────────────────────────────────────────
+    // Spectators (players not in bookedPlayers) cast star votes for each dancer.
+    // Votes are aggregated in-memory and broadcast as home:ballo_vote_update.
+    socket.on("home:ballo_vote", (data: unknown) => {
+      if (!data || typeof data !== "object") return;
+      const d = data as Record<string, unknown>;
+      const sessionId = typeof d["sessionId"] === "string" ? d["sessionId"] : null;
+      const round     = typeof d["round"]     === "number" ? d["round"]     : -1;
+      const voterId   = typeof d["voterId"]   === "string" ? d["voterId"]   : null;
+      const dancerId  = typeof d["dancerId"]  === "string" ? d["dancerId"]  : null;
+      const stars     = typeof d["stars"]     === "number" ? Math.max(1, Math.min(5, Math.round(d["stars"]))) : 3;
+      if (!sessionId || !voterId || !dancerId || round < 0) return;
+
+      const key = `${sessionId}:${round}`;
+      if (!balloVoteMap.has(key)) balloVoteMap.set(key, new Map());
+      const roundVotes = balloVoteMap.get(key)!;
+      if (!roundVotes.has(voterId)) roundVotes.set(voterId, new Map());
+      roundVotes.get(voterId)!.set(dancerId, stars);
+
+      // Aggregate: total stars + count per dancer
+      const totals: Record<string, { total: number; count: number }> = {};
+      for (const [, voterVotes] of roundVotes) {
+        for (const [did, s] of voterVotes) {
+          if (!totals[did]) totals[did] = { total: 0, count: 0 };
+          totals[did].total += s;
+          totals[did].count += 1;
+        }
+      }
+
+      emitToRoom(`home:${sessionId}`, "home:ballo_vote_update", { round, totals });
+      logger.info({ sessionId, voterId, dancerId, stars, round }, "[BalloVote] vote cast and broadcast");
     });
 
     // ── Parola alle Spalle — Taboo alarm ─────────────────────────────────────

@@ -526,6 +526,8 @@ export default function HomeGame() {
   const tabooDebounceRef = useRef<Map<string, number>>(new Map());
   const [balloSensitivity, setBalloSensitivity] = useState(1.0);
   const [sensorReadyMap, setSensorReadyMap] = useState<Record<string, boolean>>({});
+  // Spectator votes per dancer: Record<dancerId, { total: number; count: number }>
+  const [balloVotes, setBalloVotes] = useState<Record<string, { total: number; count: number }>>({});
   const handleBalloSensitivity = useCallback((s: number) => {
     setBalloSensitivity(s);
     if (session?.id) emit('home:set_ballo_sensitivity', { sessionId: session.id, sensitivity: s });
@@ -705,6 +707,7 @@ export default function HomeGame() {
       setBalloEnergies({});
       setBalloCurrent({});
       setBalloResult(null);
+      setBalloVotes({});
       startTimer(Number(d.payload?.timeLimit ?? 30));
       setJonnyMood('thinking');
       // Audio switch: covers both normal ballo AND flow→ballo transition
@@ -781,7 +784,11 @@ export default function HomeGame() {
       setTimeout(() => setTabooAlarm(prev => prev?.timestamp === d.timestamp ? null : prev), 3000);
     });
 
-    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); u10?.(); u11?.(); u12?.(); u13?.(); };
+    const u14 = on<{ round: number; totals: Record<string, { total: number; count: number }> }>('home:ballo_vote_update', (d) => {
+      setBalloVotes(d.totals);
+    });
+
+    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); u10?.(); u11?.(); u12?.(); u13?.(); u14?.(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [on]);
 
@@ -1397,7 +1404,19 @@ export default function HomeGame() {
             <div className="flex flex-1 items-center justify-center overflow-auto px-6 py-3">
               <RoundBoard key={session.currentRound} session={session} revealed={revealed}
                 onReveal={() => { setRevealed(true); if(timerRef.current) clearInterval(timerRef.current); setJonnyMood('correct'); }}
-                onNext={nextRound} players={players} balloEnergies={balloEnergies} balloCurrent={balloCurrent} balloResult={balloResult} saraMusicaWinner={saraMusicaWinner}
+                onNext={nextRound} players={players} balloEnergies={balloEnergies} balloCurrent={balloCurrent} balloResult={balloResult}
+                balloVotes={balloVotes}
+                onBalloReset={async () => {
+                  if (!session?.id) return;
+                  try {
+                    await fetch(`/api/home/sessions/${session.id}/ballo-reset-booking`, { method: 'POST' });
+                    setBalloVotes({});
+                    setBalloEnergies({});
+                    setBalloCurrent({});
+                    setBalloResult(null);
+                  } catch { /* server broadcasts state update */ }
+                }}
+                saraMusicaWinner={saraMusicaWinner}
                 balloSensitivity={balloSensitivity} onSensitivity={handleBalloSensitivity} sensorReadyMap={sensorReadyMap}
                 tabooAlarm={tabooAlarm}
                 onScore={async (pid,pts) => {
@@ -1644,7 +1663,7 @@ export default function HomeGame() {
 
 // ── RoundBoard ─────────────────────────────────────────────────────────────────
 
-function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, balloEnergies, balloCurrent, balloResult, saraMusicaWinner, balloSensitivity, onSensitivity, sensorReadyMap, tabooAlarm }: {
+function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, balloEnergies, balloCurrent, balloResult, balloVotes, onBalloReset, saraMusicaWinner, balloSensitivity, onSensitivity, sensorReadyMap, tabooAlarm }: {
   session: HomeSession;
   revealed: boolean;
   onReveal: () => void;
@@ -1654,6 +1673,8 @@ function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, bal
   balloEnergies?: Record<string, number>;
   balloCurrent?: Record<string, number>;
   balloResult?: { winnerId: string; winnerNickname: string; points: number } | null;
+  balloVotes?: Record<string, { total: number; count: number }>;
+  onBalloReset?: () => void;
   saraMusicaWinner?: { nickname: string; points: number; round: number } | null;
   balloSensitivity?: number;
   onSensitivity?: (s: number) => void;
@@ -1665,7 +1686,7 @@ function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, bal
 
   if (mode === 'home-flow')       return <GameFlowEngine session={session} players={players} sensorReadyMap={sensorReadyMap}/>;
   if (mode === 'home-quiz')       return <QuizBoard payload={p} revealed={revealed} onReveal={onReveal}/>;
-  if (mode === 'home-ballo')      return <BalloBoard payload={p} players={players} balloEnergies={balloEnergies ?? {}} balloCurrent={balloCurrent ?? {}} balloResult={balloResult ?? null} sensitivity={balloSensitivity ?? 1} onSensitivity={onSensitivity}/>;
+  if (mode === 'home-ballo')      return <BalloBoard payload={p} players={players} balloEnergies={balloEnergies ?? {}} balloCurrent={balloCurrent ?? {}} balloResult={balloResult ?? null} balloVotes={balloVotes ?? {}} onReset={onBalloReset} sensitivity={balloSensitivity ?? 1} onSensitivity={onSensitivity}/>;
   if (mode === 'home-percorso')   return <PercorsoBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
   if (mode === 'home-coppie')     return <CoppieBoard payload={p} onNext={onNext}/>;
   if (mode === 'home-saramusica') return <SaraMusicaBoard payload={p} revealed={revealed} onReveal={onReveal} winner={saraMusicaWinner ?? null}/>;
@@ -1736,12 +1757,14 @@ function QuizBoard({ payload, revealed, onReveal }: { payload: Record<string,unk
 type BurstItem = { key: number; label: string };
 
 
-function BalloBoard({ payload, players, balloEnergies, balloCurrent, balloResult, sensitivity = 1, onSensitivity }: {
+function BalloBoard({ payload, players, balloEnergies, balloCurrent, balloResult, balloVotes, onReset, sensitivity = 1, onSensitivity }: {
   payload: Record<string,unknown>;
   players: HomePlayer[];
   balloEnergies: Record<string, number>;  // peak — used for winner/final sorting
   balloCurrent: Record<string, number>;   // live current — drives bar height + provisional pts
   balloResult: { winnerId: string; winnerNickname: string; points: number } | null;
+  balloVotes: Record<string, { total: number; count: number }>;
+  onReset?: () => void;
   sensitivity?: number;
   onSensitivity?: (s: number) => void;
 }) {
@@ -1809,6 +1832,34 @@ function BalloBoard({ payload, players, balloEnergies, balloCurrent, balloResult
           <div className="text-4xl">🏆</div>
           <div className="text-display text-2xl font-black text-yellow-400 tracking-wide">VINCE {balloResult.winnerNickname.toUpperCase()}!</div>
           <div className="text-xl font-black" style={{color:'#F5B642'}}>+{balloResult.points} punti</div>
+        </motion.div>
+      )}
+
+      {/* Spectator vote tallies — shown after result */}
+      {balloResult && Object.keys(balloVotes).length > 0 && (
+        <motion.div initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} transition={{delay:0.3}}
+          className="flex w-full max-w-xl flex-col gap-2">
+          <div className="text-xs font-black uppercase tracking-widest text-center" style={{color:'rgba(255,255,255,0.35)'}}>
+            ⭐ Voti del Pubblico
+          </div>
+          <div className="flex flex-wrap justify-center gap-3">
+            {sortedPlayers.map(p => {
+              const vd = balloVotes[p.id];
+              if (!vd || vd.count === 0) return null;
+              const avg = vd.total / vd.count;
+              const stars = Math.round(avg);
+              return (
+                <div key={p.id} className="flex flex-col items-center gap-1 rounded-2xl px-4 py-2"
+                  style={{background:`${p.avatarColor}15`,border:`1px solid ${p.avatarColor}44`}}>
+                  <div className="text-xs font-black" style={{color:p.avatarColor}}>{p.nickname}</div>
+                  <div className="text-base">{'⭐'.repeat(stars)}{'☆'.repeat(Math.max(0,5-stars))}</div>
+                  <div className="text-xs font-semibold" style={{color:'rgba(255,255,255,0.35)'}}>
+                    {avg.toFixed(1)} · {vd.count} {vd.count===1?'voto':'voti'}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </motion.div>
       )}
 
@@ -1914,6 +1965,22 @@ function BalloBoard({ payload, players, balloEnergies, balloCurrent, balloResult
       )}
 
       <div className="text-xs text-white/20">⚡ +{pts}pt al campione di energia · assegnato automaticamente</div>
+
+      {/* NUOVA SFIDA — reset booking for a fresh pair of dancers */}
+      {balloResult && onReset && (
+        <motion.div initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} transition={{delay:0.6}}
+          className="flex flex-col items-center gap-2">
+          <motion.button onClick={onReset}
+            whileHover={{scale:1.04}} whileTap={{scale:0.96}}
+            className="flex items-center gap-2 rounded-2xl px-8 py-3 text-base font-black text-white"
+            style={{background:'linear-gradient(135deg,#A78BFA,#7C3AED)',boxShadow:'0 0 35px rgba(167,139,250,0.5)',border:'none'}}>
+            💃 NUOVA SFIDA →
+          </motion.button>
+          <div className="text-xs font-semibold" style={{color:'rgba(255,255,255,0.25)'}}>
+            Nuovi ballerini si prenotano dal telefono
+          </div>
+        </motion.div>
+      )}
     </motion.div>
   );
 }

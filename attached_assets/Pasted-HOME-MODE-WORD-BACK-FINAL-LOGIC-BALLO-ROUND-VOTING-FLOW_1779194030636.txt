@@ -1,0 +1,255 @@
+HOME MODE — WORD BACK FINAL LOGIC + BALLO ROUND/VOTING FLOW.
+
+FIRST AUDIT, THEN PATCH.
+Do not redesign global UI.
+Do not touch audio engine.
+Do not touch SensorBridge core.
+Do not touch routing.
+
+==================================================
+PART 1 — PAROLA ALLE SPALLE / TABOO FINAL LOGIC
+==================================================
+
+Current:
+- roles mostly work
+- taboo alarm works
+- phones show role-specific UI
+- missing TV word display
+- missing clear role booking
+- missing guesser answer button / voice validation / scoring
+
+Required TV behavior:
+On TV during Parola alle Spalle:
+- show the SECRET WORD very large
+- show the 5 TABOO WORDS clearly underneath
+- show:
+  INDOVINO: [nickname]
+  SUGGERITORE: [nickname]
+- keep taboo alarm overlay when spectators press alarm
+
+Important:
+The TV is for audience/staff, so it MUST show the word and taboo words.
+Phone of indovino must NOT show the word.
+Phone of suggeritore must show word + taboo words.
+Spectators show taboo words + alarm button.
+
+Booking behavior:
+During booking phase for Parola alle Spalle:
+- do not just use generic “MI PRENOTO”
+- show two role buttons:
+  1. “MI PRENOTO COME INDOVINO”
+  2. “MI PRENOTO COME SUGGERITORE”
+- Store role explicitly:
+  bookedPlayers = [
+    { id, nickname, role: "guesser" },
+    { id, nickname, role: "suggester" }
+  ]
+- Only one guesser and one suggester allowed.
+- Same player cannot hold both roles.
+- TV booking screen must show two slots:
+  INDOVINO
+  SUGGERITORE
+
+Round payload:
+Ensure payload contains:
+{
+  mode: "home-wordback",
+  word,
+  tabooWords: string[5],
+  guesserId,
+  suggesterId,
+  guesserNickname,
+  suggesterNickname,
+  bookedPlayers
+}
+
+Phone INDOVINO behavior:
+- Show explanation/instructions
+- Do NOT show word
+- Add huge button:
+  “RISPOSTA”
+- When tapped:
+  activate microphone / speech recognition if supported
+  listen to spoken answer
+  compare normalized spoken text with payload.word
+- If correct:
+  emit/POST validation:
+  home:wordback_correct
+  { sessionId, round, guesserId, suggesterId, word }
+- TV shows:
+  “RISPOSTA CORRETTA!”
+- Server awards:
+  +100 to INDOVINO
+  +100 to SUGGERITORE
+- Round can reveal success but does not need to stop timer immediately unless current game flow expects reveal.
+
+If speech recognition is unavailable:
+- show fallback text input/button ONLY for development/testing:
+  “Inserisci risposta”
+- do not expose ugly dev UI in production unless needed.
+
+Server:
+Add/patch endpoint or socket event:
+home:wordback_correct
+
+Server must:
+- validate current round is home-wordback
+- validate player is guesser
+- normalize answer
+- compare with word
+- prevent duplicate scoring for same round
+- award +100 to both guesser and suggester
+- emit:
+  home:wordback_correct
+  { guesserId, suggesterId, word, points:100 }
+
+TV:
+Listen for home:wordback_correct:
+- show green success overlay 3s
+- update player scores immediately
+- keep taboo alarm behavior
+
+Output for Part 1:
+A. files modified
+B. role booking implementation
+C. TV word/taboo display
+D. speech validation behavior
+E. scoring behavior
+F. typecheck
+
+==================================================
+PART 2 — BALLO NEXT-ROUND FLOW + VOTING
+==================================================
+
+Current:
+- Ballo sensors work
+- during round only booked players must appear
+- bug: when moving from first Ballo challenge to second, all logged players appear as sensor-active dancers
+- after each Ballo challenge, we need voting and mini podium
+- next challenge must require fresh booking again
+
+Required Ballo round lifecycle:
+
+For EACH Ballo challenge:
+1. theme already selected
+2. booking phase appears
+3. exactly 2 dancers are booked
+4. only those 2 dancers appear on TV as active competitors
+5. all other players are spectators/voters
+6. host starts round
+7. countdown
+8. active dance timer
+9. during dance:
+   - only booked dancers send/use sensor energy
+   - spectators can vote 1–5 stars for their preferred dancer
+   - voting can happen during the performance
+   - voting closes when time expires
+10. at time end:
+   - sensor winner is determined as now
+   - votes are counted
+   - show mini podium between the 2 dancers
+   - award/prepare scoring according to current logic or keep sensor score + display votes if scoring not yet approved
+11. then return to booking phase for the next Ballo challenge
+12. players may rebook even if they just danced
+
+Critical bug fix:
+When moving from Ballo round 1 to round 2:
+- do NOT show all logged players as active dancers
+- clear previous bookedPlayers for the new round
+- force new booking
+- only current bookedPlayers should be active dancers
+- spectators remain spectators and can vote
+
+Voting behavior:
+Phone for booked dancers:
+- shows dancer mode / energy status
+- does NOT show voting buttons
+
+Phone for non-booked players:
+- shows voting UI:
+  “Vota il ballerino migliore”
+  dancer A: 1–5 stars
+  dancer B: 1–5 stars
+- one vote per spectator per round
+- can update vote until timer expires OR first vote locks, choose simpler safer implementation:
+  one vote, locked after submit
+- emit:
+  home:ballo_vote
+  { sessionId, round, voterId, dancerId, stars }
+
+Server/socket:
+- add home:ballo_vote handler
+- store votes in memory per session/round
+- broadcast:
+  home:ballo_vote_update
+  { round, votesByDancer, totalVotes }
+
+TV:
+During dance:
+- show only 2 dancer cards
+- show live sensor bars for those 2 only
+- show live vote count/stars for each dancer
+- spectators never appear as dancers
+
+At round end:
+- show mini podium:
+  1st dancer
+  2nd dancer
+  sensor energy summary
+  vote summary
+- then show button:
+  “PROSSIMA SFIDA”
+- clicking it returns to Ballo booking phase for the next challenge
+
+Important:
+Do not break SensorBridge.
+Do not reintroduce calibration.
+Do not make all players active dancers.
+Do not auto-carry bookedPlayers into the next Ballo round.
+
+Patch places likely involved:
+- home.ts next/flow logic
+- socket.ts ballo energy/vote maps
+- HomeGame.tsx BalloBoard / flow handling
+- HomeJoin.tsx BalloController / phone role rendering
+- GameFlowPhone.tsx booking/voting UI
+- GameFlowEngine.tsx booking slots
+
+Output for Part 2:
+A. root cause of all-players-active bug
+B. files modified
+C. fresh booking per Ballo round
+D. voting socket flow
+E. mini podium behavior
+F. typecheck
+G. manual test steps
+
+==================================================
+GENERAL MANUAL TEST
+==================================================
+
+Test WordBack:
+1. 4 phones join
+2. choose Parola alle Spalle
+3. select theme
+4. book one INDOVINO and one SUGGERITORE
+5. start
+6. TV shows word + taboo words
+7. indovino phone hides word and has RISPOSTA button
+8. suggeritore sees word + taboo list
+9. spectators see taboo list + alarm
+10. spectator presses alarm → TV red alert
+11. indovino says correct word → +100/+100 awarded
+
+Test Ballo:
+1. 4 phones join
+2. choose Ballo
+3. book 2 dancers
+4. only 2 appear on TV
+5. other 2 see voting UI
+6. dancers move sensors
+7. spectators vote
+8. timer ends
+9. mini podium appears
+10. next challenge returns to fresh booking
+11. repeat with same or different dancers

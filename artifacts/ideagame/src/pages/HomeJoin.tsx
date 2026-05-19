@@ -1145,6 +1145,13 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
   round?: number;
   adminSensitivity?: number;
 }) {
+  // ── Spectator check ───────────────────────────────────────────────────────────
+  const rawBooked = (payload.bookedPlayers ?? []) as Array<{ id: string; nickname: string; avatarColor: string }>;
+  const isSpectator = rawBooked.length > 0 && !rawBooked.some(b => b.id === playerId);
+
+  // Spectator voting state — Map<dancerId, stars>
+  const [votedFor, setVotedFor] = useState<Record<string, number>>({});
+
   const [energy, setEnergy] = useState(0);
   // Eagerly init from localStorage — if permission was granted during booking, sensors
   // SensorBridge owns all sensor listeners — BalloController only reads from it.
@@ -1302,6 +1309,68 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
   }, [emit, sessionId, playerId]);
 
   const energyColor = energy > 70 ? '#22c55e' : energy > 35 ? '#eab308' : '#A78BFA';
+
+  // ── Spectator voting UI ───────────────────────────────────────────────────────
+  if (isSpectator) {
+    const castVote = (dancerId: string, stars: number) => {
+      setVotedFor(prev => ({ ...prev, [dancerId]: stars }));
+      emit('home:ballo_vote', { sessionId, voterId: playerId, dancerId, stars, round: round ?? 0 });
+    };
+    return (
+      <div className="flex flex-col items-center gap-5 py-4 text-center">
+        <div className="text-5xl">👏</div>
+        <div className="text-xl font-black text-white">{String(payload.name ?? 'Sfida di Ballo')}</div>
+        <div className="rounded-2xl px-5 py-3 text-sm font-bold text-center"
+          style={{background:'rgba(167,139,250,0.12)',border:'1px solid rgba(167,139,250,0.3)',color:'rgba(167,139,250,0.85)'}}>
+          Sei spettatore — vota i ballerini!
+        </div>
+
+        {timeLeft !== null && timeLeft > 0 && (
+          <div className="flex items-center gap-2 rounded-xl px-4 py-2"
+            style={{background:'rgba(167,139,250,0.18)',border:'1px solid rgba(167,139,250,0.45)',color:'#A78BFA'}}>
+            <Timer className="h-4 w-4"/>
+            <span className="text-xl font-black tabular-nums">{timeLeft}s</span>
+          </div>
+        )}
+
+        <div className="flex flex-col gap-4 w-full">
+          {rawBooked.map(dancer => {
+            const myVote = votedFor[dancer.id];
+            return (
+              <div key={dancer.id} className="flex flex-col gap-2 rounded-2xl px-4 py-4"
+                style={{background:`${dancer.avatarColor}12`,border:`1.5px solid ${dancer.avatarColor}44`}}>
+                <div className="flex items-center gap-2">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full text-sm font-black"
+                    style={{background:dancer.avatarColor,color:'#0a0015'}}>
+                    {dancer.nickname[0]?.toUpperCase()}
+                  </div>
+                  <div className="font-black text-white">{dancer.nickname}</div>
+                  {myVote && (
+                    <div className="ml-auto text-xs font-black" style={{color:'rgba(255,255,255,0.4)'}}>
+                      ✓ {myVote}⭐
+                    </div>
+                  )}
+                </div>
+                <div className="flex justify-center gap-2">
+                  {[1,2,3,4,5].map(s => (
+                    <button key={s} onClick={() => castVote(dancer.id, s)}
+                      className="flex h-11 w-11 items-center justify-center rounded-full text-2xl transition-transform active:scale-90"
+                      style={{
+                        background: myVote && myVote >= s ? `${dancer.avatarColor}33` : 'rgba(255,255,255,0.06)',
+                        border: myVote && myVote >= s ? `1.5px solid ${dancer.avatarColor}88` : '1.5px solid rgba(255,255,255,0.12)',
+                        transform: myVote === s ? 'scale(1.15)' : 'scale(1)',
+                      }}>
+                      {myVote && myVote >= s ? '⭐' : '☆'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center gap-5 py-4 text-center" style={{userSelect:'none',WebkitUserSelect:'none'}}>

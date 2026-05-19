@@ -2,9 +2,7 @@
  * GameFlowEngine — TV-side universal pre-game flow.
  * Phases: theme_select → booking → confirm → countdown
  *
- * Pilot: sfida-ballo.
- * Placeholders ready for: adult-only, percorso-a-risate,
- * karaoke-battle, freestyle-battle, parola-alle-spalle.
+ * Supports: sfida-ballo (generic slots), parola-alle-spalle (role-labeled INDOVINO/SUGGERITORE slots).
  */
 
 import { useState, useEffect } from 'react';
@@ -23,6 +21,7 @@ export interface FlowBookedPlayer {
   id: string;
   nickname: string;
   avatarColor: string;
+  role?: 'guesser' | 'suggester';
 }
 
 export interface FlowPayload {
@@ -36,16 +35,31 @@ export interface FlowPayload {
 }
 
 // ── Per-game visual config ───────────────────────────────────────────────────────
-// Add a row here when a new game enters the flow.
 
 export const FLOW_GAME_UI: Record<string, { color: string; glow: string; emoji: string; name: string }> = {
   'sfida-ballo':        { color: '#A78BFA', glow: '#C4B5FD', emoji: '💃', name: 'Sfida di Ballo' },
-  // ── future pilots ────────────────────────────────────────────────────────────
   'adult-only':         { color: '#F87171', glow: '#FCA5A5', emoji: '🔞', name: 'Adult Only' },
   'percorso-a-risate':  { color: '#34D399', glow: '#6EE7B7', emoji: '😂', name: 'Percorso a Risate' },
   'karaoke-battle':     { color: '#FB923C', glow: '#FDBA74', emoji: '🎤', name: 'Karaoke Battle' },
   'freestyle-battle':   { color: '#22D3EE', glow: '#67E8F9', emoji: '🎧', name: 'Freestyle Battle' },
   'parola-alle-spalle': { color: '#22D3EE', glow: '#67E8F9', emoji: '💬', name: 'Parola alle Spalle' },
+};
+
+// ── Role slot config for role-based booking games ────────────────────────────────
+
+interface RoleSlot {
+  role: 'guesser' | 'suggester';
+  label: string;
+  sublabel: string;
+  color: string;
+  emoji: string;
+}
+
+const GAME_ROLE_SLOTS: Record<string, RoleSlot[]> = {
+  'parola-alle-spalle': [
+    { role: 'guesser',   label: 'INDOVINO',    sublabel: 'Non vede la parola — deve indovinare', color: '#A78BFA', emoji: '🙈' },
+    { role: 'suggester', label: 'SUGGERITORE',  sublabel: 'Vede la parola — deve farla indovinare', color: '#22D3EE', emoji: '💬' },
+  ],
 };
 
 // ── Countdown hook (shared with GameFlowPhone) ───────────────────────────────────
@@ -138,10 +152,10 @@ export function GameFlowEngine({
   const themes = (p.themes ?? []) as FlowTheme[];
   const selectedTheme = p.selectedTheme as FlowTheme | null;
   const canConfirm = bookedPlayers.length >= maxPlayers;
+  const roleSlots = GAME_ROLE_SLOTS[p.gameSlug ?? ''] ?? null;
 
   void players; // used via sensorReadyMap for per-player sensor status badges
 
-  // Diagnostic: log current phase on every render so we can trace loops
   console.log('[BalloFlow] GameFlowEngine render — phase:', p.gameFlowPhase, '| mode:', p.mode, '| session:', session.id);
 
   return (
@@ -210,7 +224,11 @@ export function GameFlowEngine({
             </div>
             <div className="rounded-full px-4 py-1.5 text-sm font-black"
               style={{ background: `${gameUI.color}20`, color: gameUI.color, border: `1px solid ${gameUI.color}44` }}>
-              {maxPlayers > 0 ? 'Chi vuole partecipare? Prenotatevi dal telefono!' : 'Tutti pronti? Avvia il gioco!'}
+              {maxPlayers > 0
+                ? roleSlots
+                  ? 'Scegliete il vostro ruolo dal telefono!'
+                  : 'Chi vuole partecipare? Prenotatevi dal telefono!'
+                : 'Tutti pronti? Avvia il gioco!'}
             </div>
           </div>
 
@@ -218,7 +236,14 @@ export function GameFlowEngine({
           {maxPlayers > 0 ? (
             <div className="flex w-full gap-5">
               {Array.from({ length: maxPlayers }).map((_, i) => {
-                const booked = bookedPlayers[i];
+                const roleSlot = roleSlots?.[i] ?? null;
+                // For role-based games: find by role; otherwise use array index
+                const booked = roleSlot
+                  ? bookedPlayers.find(b => b.role === roleSlot.role)
+                  : bookedPlayers[i];
+                const slotColor = roleSlot?.color ?? gameUI.color;
+                const slotLabel = roleSlot?.label ?? 'In attesa…';
+                const slotEmoji = roleSlot?.emoji ?? null;
                 return (
                   <div key={i}
                     className="flex flex-1 flex-col items-center justify-center gap-3 rounded-2xl px-4 py-7 transition-all"
@@ -229,10 +254,19 @@ export function GameFlowEngine({
                           boxShadow: `0 0 28px ${booked.avatarColor}33`,
                         }
                       : {
-                          background: 'rgba(255,255,255,0.025)',
-                          border: '2px dashed rgba(255,255,255,0.12)',
+                          background: roleSlot ? `${slotColor}0a` : 'rgba(255,255,255,0.025)',
+                          border: roleSlot ? `2px dashed ${slotColor}44` : '2px dashed rgba(255,255,255,0.12)',
                         }
                     }>
+
+                    {/* Role label header (shown for role-based games) */}
+                    {roleSlot && (
+                      <div className="text-xs font-black uppercase tracking-widest"
+                        style={{ color: booked ? `${booked.avatarColor}cc` : `${slotColor}88` }}>
+                        {slotEmoji} {slotLabel}
+                      </div>
+                    )}
+
                     <AnimatePresence mode="wait">
                       {booked ? (
                         <motion.div key={booked.id}
@@ -245,7 +279,7 @@ export function GameFlowEngine({
                           </div>
                           <div className="font-black text-white text-base">{booked.nickname}</div>
                           <div className="text-xs font-semibold" style={{ color: `${booked.avatarColor}dd` }}>
-                            In gara ✓
+                            {roleSlot ? '✓ Ruolo scelto' : 'In gara ✓'}
                           </div>
                           {/* Sensor readiness badge — only shown for sfida-ballo */}
                           {p.gameSlug === 'sfida-ballo' && sensorReadyMap[booked.id] === false && (
@@ -264,12 +298,19 @@ export function GameFlowEngine({
                       ) : (
                         <motion.div key={`empty-${i}`} className="flex flex-col items-center gap-2">
                           <div className="flex h-16 w-16 items-center justify-center rounded-full"
-                            style={{ border: '2px dashed rgba(255,255,255,0.15)' }}>
-                            <Users className="h-7 w-7" style={{ color: 'rgba(255,255,255,0.15)' }} />
+                            style={{ border: `2px dashed ${roleSlot ? slotColor + '44' : 'rgba(255,255,255,0.15)'}` }}>
+                            <Users className="h-7 w-7" style={{ color: roleSlot ? `${slotColor}55` : 'rgba(255,255,255,0.15)' }} />
                           </div>
-                          <div className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.2)' }}>
-                            In attesa…
-                          </div>
+                          {!roleSlot && (
+                            <div className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.2)' }}>
+                              {slotLabel}
+                            </div>
+                          )}
+                          {roleSlot && (
+                            <div className="text-xs font-semibold text-center" style={{ color: `${slotColor}66` }}>
+                              {roleSlot.sublabel}
+                            </div>
+                          )}
                         </motion.div>
                       )}
                     </AnimatePresence>
@@ -315,8 +356,10 @@ export function GameFlowEngine({
             </motion.button>
             <div className="text-xs font-semibold text-center" style={{ color: 'rgba(255,255,255,0.22)' }}>
               {canConfirm
-                ? (maxPlayers === 0 ? 'Tutti pronti — avvia!' : 'Tutti prenotati — avvia!')
-                : `Servono ${maxPlayers} giocatori prenotati`}
+                ? (maxPlayers === 0 ? 'Tutti pronti — avvia!' : 'Tutti pronti — avvia!')
+                : roleSlots
+                  ? `Servono entrambi i ruoli`
+                  : `Servono ${maxPlayers} giocatori prenotati`}
             </div>
           </div>
         </motion.div>
@@ -335,18 +378,26 @@ export function GameFlowEngine({
             {selectedTheme?.name ?? gameUI.name}
           </div>
           <div className="flex gap-5">
-            {bookedPlayers.map((bp) => (
-              <motion.div key={bp.id}
-                initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-                transition={{ type: 'spring', stiffness: 300, damping: 22 }}
-                className="flex flex-col items-center gap-2">
-                <div className="flex items-center justify-center rounded-full text-2xl font-black"
-                  style={{ width: 72, height: 72, background: bp.avatarColor, color: '#0a0015', boxShadow: `0 0 24px ${bp.avatarColor}66` }}>
-                  {bp.nickname[0]?.toUpperCase()}
-                </div>
-                <div className="text-sm font-black text-white">{bp.nickname}</div>
-              </motion.div>
-            ))}
+            {bookedPlayers.map((bp) => {
+              const rs = GAME_ROLE_SLOTS[p.gameSlug ?? '']?.find(s => s.role === bp.role);
+              return (
+                <motion.div key={bp.id}
+                  initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 22 }}
+                  className="flex flex-col items-center gap-2">
+                  <div className="flex items-center justify-center rounded-full text-2xl font-black"
+                    style={{ width: 72, height: 72, background: bp.avatarColor, color: '#0a0015', boxShadow: `0 0 24px ${bp.avatarColor}66` }}>
+                    {bp.nickname[0]?.toUpperCase()}
+                  </div>
+                  <div className="text-sm font-black text-white">{bp.nickname}</div>
+                  {rs && (
+                    <div className="text-xs font-black" style={{ color: rs.color }}>
+                      {rs.emoji} {rs.label}
+                    </div>
+                  )}
+                </motion.div>
+              );
+            })}
           </div>
           <div className="flex items-center gap-2" style={{ color: gameUI.color }}>
             <Loader2 className="h-5 w-5 animate-spin" />

@@ -1298,18 +1298,19 @@ router.post("/home/sessions/:id/flow/book-player", async (req, res): Promise<voi
   if (rp["mode"] !== "home-flow") { res.status(409).json({ error: "Sessione non in modalità flow" }); return; }
   if (rp["gameFlowPhase"] !== "booking") { res.status(409).json({ error: "Prenotazione non aperta" }); return; }
 
-  const { playerId, nickname, avatarColor, action } = req.body as {
-    playerId: string; nickname?: string; avatarColor?: string; action: "book" | "unbook";
+  const { playerId, nickname, avatarColor, action, role } = req.body as {
+    playerId: string; nickname?: string; avatarColor?: string; action: "book" | "unbook"; role?: "guesser" | "suggester";
   };
   if (!playerId) { res.status(400).json({ error: "playerId obbligatorio" }); return; }
 
   const maxPlayers = Number(rp["maxPlayers"] ?? 2);
   const players = await getPlayers(id);
+  const gameSlug = String(rp["gameSlug"] ?? "");
 
   // Purge disconnected bookings — but always treat the requesting player as connected
   // (their isConnected flag may be momentarily false during a socket reconnect).
   const connectedIds = new Set(players.filter((p) => p.isConnected || p.id === playerId).map((p) => p.id));
-  let booked = ((rp["bookedPlayers"] as Array<{ id: string; nickname: string; avatarColor: string }>) ?? [])
+  let booked = ((rp["bookedPlayers"] as Array<{ id: string; nickname: string; avatarColor: string; role?: string }>) ?? [])
     .filter((b) => connectedIds.has(b.id));
 
   if (action === "unbook") {
@@ -1318,8 +1319,15 @@ router.post("/home/sessions/:id/flow/book-player", async (req, res): Promise<voi
     if (booked.length >= maxPlayers) {
       res.status(409).json({ error: "Posti esauriti" }); return;
     }
+    // For parola-alle-spalle: each role slot (guesser/suggester) can only be taken by one player
+    if (gameSlug === "parola-alle-spalle" && role) {
+      const roleConflict = (booked as Array<{ id: string; role?: string }>).find(b => b.role === role && b.id !== playerId);
+      if (roleConflict) {
+        res.status(409).json({ error: "Ruolo già occupato" }); return;
+      }
+    }
     if (!booked.find((b) => b.id === playerId)) {
-      booked = [...booked, { id: playerId, nickname: nickname ?? "?", avatarColor: avatarColor ?? "#A78BFA" }];
+      booked = [...booked, { id: playerId, nickname: nickname ?? "?", avatarColor: avatarColor ?? "#A78BFA", ...(role ? { role } : {}) }];
     }
   }
 
@@ -1391,12 +1399,19 @@ router.post("/home/sessions/:id/flow/confirm", async (req, res): Promise<void> =
           logger.info({ sessionId: id, selectedTheme, gameSlug: launchSlug }, "[GameFlow] launching game");
           const preloadedRounds = await loadGameRoundsForTheme(launchSlug, selectedTheme);
           const bp = ((confirmRp as Record<string, unknown>)["bookedPlayers"] as Array<{id: string; nickname: string}>) ?? [];
-          // For parola-alle-spalle: stamp guesserId/suggesterId with alternating roles per round
+          // For parola-alle-spalle: stamp guesserId/suggesterId from role-based booking.
+          // Players choose their role (guesser/suggester) at booking time — fixed for all rounds.
+          // Falls back to index 0/1 if no explicit roles were assigned.
+          const typedBp = bp as Array<{ id: string; nickname: string; role?: string }>;
+          const guesserBp   = typedBp.find(b => b.role === "guesser")   ?? bp[0];
+          const suggesterBp = typedBp.find(b => b.role === "suggester") ?? bp[1];
           const stampedRounds = launchSlug === "parola-alle-spalle" && bp.length >= 2
-            ? preloadedRounds.map((r, i) => ({
+            ? preloadedRounds.map((r) => ({
                 ...r,
-                guesserId: bp[i % 2 === 0 ? 0 : 1]?.id ?? null,
-                suggesterId: bp[i % 2 === 0 ? 1 : 0]?.id ?? null,
+                guesserId:         guesserBp?.id       ?? null,
+                guesserNickname:   guesserBp?.nickname  ?? null,
+                suggesterId:       suggesterBp?.id      ?? null,
+                suggesterNickname: suggesterBp?.nickname ?? null,
               }))
             : preloadedRounds;
           // Carry bookedPlayers into the round payload so TV boards can filter participants.
@@ -1484,8 +1499,14 @@ router.post("/home/sessions/:id/next", async (req, res): Promise<void> => {
     return;
   }
 
-  // Next round within current game — stamp authoritative start time
-  const nextPayload = { ...(preloadedRounds[nextRound] ?? { mode: "unknown", roundIndex: nextRound }), roundStartedAt: new Date().toISOString() };
+  // Next round within current game — stamp authoritative start time.
+  // Carry bookedPlayers forward so TV boards (e.g. BalloBoard) can filter participants on every round.
+  const bookedPlayers = Array.isArray(currentPayload["bookedPlayers"]) ? currentPayload["bookedPlayers"] : [];
+  const nextPayload = {
+    ...(preloadedRounds[nextRound] ?? { mode: "unknown", roundIndex: nextRound }),
+    roundStartedAt: new Date().toISOString(),
+    ...(bookedPlayers.length > 0 ? { bookedPlayers } : {}),
+  };
 
   const [updated] = await db.update(homeSessionsTable).set({
     currentRound: nextRound,
@@ -1495,6 +1516,45 @@ router.post("/home/sessions/:id/next", async (req, res): Promise<void> => {
   emitToRoom(homeRoom(id), "home:round", { round: nextRound, payload: nextPayload });
   await broadcastState(id);
   res.json({ gameEnded: false, session: updated, payload: nextPayload });
+});
+
+// ── POST /home/sessions/:id/ballo-reset-booking ───────────────────────────────
+// Resets a running ballo round back to the booking phase so a fresh pair of
+// players can sign up for the next sfida without ending the overall game.
+router.post("/home/sessions/:id/ballo-reset-booking", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const currentPayload = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (String(currentPayload.mode ?? "") !== "home-ballo") {
+    res.status(409).json({ error: "Sessione non in modalità ballo" }); return;
+  }
+  const selectedTheme = (currentPayload["selectedTheme"] ?? null) as Record<string, unknown> | null;
+  const cfg = (session.gameConfig ?? {}) as Record<string, unknown>;
+  const flowConfig = await loadThemesForGame("sfida-ballo");
+  const freshRp: RoundPayload = {
+    mode: "home-flow",
+    gameFlowPhase: "booking",
+    gameSlug: "sfida-ballo",
+    themes: flowConfig.themes,
+    selectedTheme,
+    bookedPlayers: [],
+    maxPlayers: flowConfig.maxPlayers,
+  } as RoundPayload;
+  const newCfg = { ...cfg, phase: "playing", preloadedRounds: [] };
+  const [updated] = await db.update(homeSessionsTable).set({
+    status: "playing",
+    gameSlug: "sfida-ballo",
+    gameConfig: newCfg,
+    currentRound: 0,
+    totalRounds: 0,
+    roundPayload: freshRp,
+  }).where(eq(homeSessionsTable.id, id)).returning();
+  const players = await getPlayers(id);
+  req.log.info({ sessionId: id }, "[BalloReset] reset to fresh booking phase");
+  emitToRoom(homeRoom(id), "home:state", { session: updated, players });
+  res.json({ session: updated, players });
 });
 
 // ── POST /home/sessions/:id/end-game — forza fine gioco corrente ───────────────

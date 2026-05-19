@@ -2,7 +2,7 @@
  * GameFlowPhone — Phone-side universal pre-game flow controller.
  * Phases: theme_select (waiting) → booking → confirm → countdown
  *
- * Pilot: sfida-ballo.
+ * Supports: sfida-ballo (generic booking), parola-alle-spalle (INDOVINO / SUGGERITORE role selection).
  */
 
 import { useState } from 'react';
@@ -28,6 +28,23 @@ interface HomePlayer {
   isConnected: boolean;
 }
 
+// ── Role slot config (mirrors GameFlowEngine) ────────────────────────────────────
+
+interface PhoneRoleSlot {
+  role: 'guesser' | 'suggester';
+  label: string;
+  sublabel: string;
+  color: string;
+  emoji: string;
+}
+
+const GAME_ROLE_SLOTS: Record<string, PhoneRoleSlot[]> = {
+  'parola-alle-spalle': [
+    { role: 'guesser',   label: 'DIVENTA INDOVINO',    sublabel: 'Non vedrai la parola — devi indovinarla!',    color: '#A78BFA', emoji: '🙈' },
+    { role: 'suggester', label: 'DIVENTA SUGGERITORE',  sublabel: 'Vedrai la parola — devi farla indovinare!',   color: '#22D3EE', emoji: '💬' },
+  ],
+};
+
 export function GameFlowPhone({
   session,
   player,
@@ -45,6 +62,7 @@ export function GameFlowPhone({
   const isBooked = bookedPlayers.some((b) => b.id === player.id);
   const isFull = bookedPlayers.length >= maxPlayers;
   const selectedTheme = p.selectedTheme as { id: string; name: string } | null;
+  const roleSlots = GAME_ROLE_SLOTS[p.gameSlug ?? ''] ?? null;
 
   const [booking, setBooking] = useState(false);
 
@@ -62,29 +80,23 @@ export function GameFlowPhone({
 
   const { num, showGo } = useFlowCountdown(p.gameFlowPhase === 'countdown');
 
-  async function book(action: 'book' | 'unbook') {
+  async function book(action: 'book' | 'unbook', role?: 'guesser' | 'suggester') {
     if (booking) return;
     setBooking(true);
 
     let sensorReadyResult = false;
 
     if (action === 'book' && p.gameSlug === 'sfida-ballo') {
-      // Clear undo stack before sensor work (reduces "Annulla inserimento" on shake)
       const el = document.activeElement;
       if (el instanceof HTMLElement) el.blur();
       window.getSelection()?.removeAllRanges();
 
-      // ── SensorBridge.start() — called SYNCHRONOUSLY inside the gesture ──────
-      // Handles requestPermission() + listener attachment in one shot, idempotent.
-      // Listeners stay alive through this booking POST and into BalloController.
       const permPromise = SensorBridge.start();
-
       const perm = await permPromise;
       localStorage.setItem(MOTION_PERM_KEY, perm);
       setSensorPerm(perm);
 
       if (perm === 'granted') {
-        // Wait ≤1500ms for the first real sensor event from the bridge
         await new Promise<void>(resolve => {
           const POLL = 50;
           const MAX  = 1500;
@@ -104,7 +116,6 @@ export function GameFlowPhone({
         console.log('[SensorBridge] pre-booking status —', { ...s, sensorReadyResult });
       }
 
-      // Write booking diagnostic (read by BalloController on mount)
       const _diag = {
         motionGranted: SensorBridge.getStatus().permMotion,
         orientGranted: SensorBridge.getStatus().permOrient,
@@ -117,7 +128,6 @@ export function GameFlowPhone({
       console.log('[SensorFinal] booking complete —', _diag);
     }
 
-    // ── Step 7: ONLY NOW — fetch, socket emit, UI updates ──────────────────
     try {
       await fetch(`/api/home/sessions/${session.id}/flow/book-player`, {
         method: 'POST',
@@ -127,6 +137,7 @@ export function GameFlowPhone({
           nickname: player.nickname,
           avatarColor: player.avatarColor,
           action,
+          ...(role ? { role } : {}),
         }),
       });
       if (action === 'book' && p.gameSlug === 'sfida-ballo') {
@@ -139,10 +150,6 @@ export function GameFlowPhone({
     } finally { setBooking(false); }
   }
 
-  // Fallback: player reloaded page while already booked for Ballo — show
-  // a manual sensor activation button that is still within a user tap.
-  // Blur and clear selection synchronously before calling requestPermission()
-  // to minimise the iOS undo stack and reduce Shake to Undo probability.
   async function activateSensors() {
     const el = document.activeElement;
     if (el instanceof HTMLElement) el.blur();
@@ -153,8 +160,6 @@ export function GameFlowPhone({
       ? DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> }
       : null;
     if (typeof dme.requestPermission === 'function') {
-      // Fire both synchronously from tap gesture — same fix as book() and BalloController.
-      // Sequential independent try/catch: orientation throw cannot kill motion grant.
       let motionP: Promise<string>;
       try { motionP = dme.requestPermission(); }
       catch { motionP = Promise.resolve('denied'); }
@@ -179,7 +184,6 @@ export function GameFlowPhone({
     }
   }
 
-  // Diagnostic: log current phase so we can trace loops
   console.log('[BalloFlow] GameFlowPhone render — phase:', p.gameFlowPhase, '| mode:', p.mode, '| player:', player.id.slice(-4));
 
   // ── WAITING FOR THEME ─────────────────────────────────────────────────────────
@@ -211,7 +215,7 @@ export function GameFlowPhone({
 
   if (p.gameFlowPhase === 'booking') {
 
-    // ── No-booking variant (maxPlayers === 0): everyone plays, no action needed ──
+    // No-booking variant (maxPlayers === 0)
     if (maxPlayers === 0) {
       return (
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
@@ -243,7 +247,10 @@ export function GameFlowPhone({
       );
     }
 
+    // Already booked
     if (isBooked) {
+      const myBooking = bookedPlayers.find(b => b.id === player.id);
+      const myRoleSlot = roleSlots?.find(s => s.role === myBooking?.role) ?? null;
       return (
         <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
           className="flex flex-col items-center gap-5 py-4">
@@ -252,13 +259,23 @@ export function GameFlowPhone({
             transition={{ type: 'spring', stiffness: 380, damping: 22 }}
             className="flex h-24 w-24 items-center justify-center rounded-full text-4xl font-black"
             style={{
-              background: `linear-gradient(135deg,${gameUI.color},${gameUI.glow})`,
-              boxShadow: `0 0 50px ${gameUI.color}66`,
+              background: `linear-gradient(135deg,${myRoleSlot?.color ?? gameUI.color},${gameUI.glow})`,
+              boxShadow: `0 0 50px ${myRoleSlot?.color ?? gameUI.color}66`,
               color: '#0a0015',
             }}>
-            ✓
+            {myRoleSlot ? myRoleSlot.emoji : '✓'}
           </motion.div>
-          <div className="text-display text-2xl font-black text-white">SEI IN GARA!</div>
+          <div className="text-display text-2xl font-black text-white">
+            {myRoleSlot ? myRoleSlot.label : 'SEI IN GARA!'}
+          </div>
+          {myRoleSlot && (
+            <div className="rounded-2xl px-5 py-3 text-center"
+              style={{ background: `${myRoleSlot.color}14`, border: `1px solid ${myRoleSlot.color}33` }}>
+              <div className="text-base font-black" style={{ color: myRoleSlot.color }}>
+                {myRoleSlot.sublabel}
+              </div>
+            </div>
+          )}
           <div className="rounded-2xl px-5 py-3 text-center"
             style={{ background: `${gameUI.color}14`, border: `1px solid ${gameUI.color}33` }}>
             <div className="text-sm font-semibold" style={{ color: gameUI.color }}>
@@ -269,7 +286,7 @@ export function GameFlowPhone({
             </div>
           </div>
 
-          {/* ── Sensor status badge (Ballo only) ─────────────────────────── */}
+          {/* Sensor status badge — Ballo only */}
           {p.gameSlug === 'sfida-ballo' && (
             <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}>
@@ -300,7 +317,6 @@ export function GameFlowPhone({
               )}
             </motion.div>
           )}
-          {/* ─────────────────────────────────────────────────────────────── */}
 
           <button onClick={() => void book('unbook')} disabled={booking}
             className="text-xs font-semibold underline disabled:opacity-50"
@@ -311,6 +327,65 @@ export function GameFlowPhone({
       );
     }
 
+    // ── PAROLA ALLE SPALLE: role selection UI ─────────────────────────────────
+    if (roleSlots && !isFull) {
+      const typedBooked = bookedPlayers as Array<FlowBookedPlayer & { role?: string }>;
+      return (
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+          className="flex flex-col items-center gap-5 py-4">
+          <div className="text-5xl">{gameUI.emoji}</div>
+          <div className="text-display text-2xl font-black text-white">{gameUI.name}</div>
+          {selectedTheme && (
+            <div className="text-sm font-semibold" style={{ color: gameUI.color }}>
+              {selectedTheme.name}
+            </div>
+          )}
+          <div className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.35)' }}>
+            Scegli il tuo ruolo:
+          </div>
+          <div className="flex flex-col gap-3 w-full">
+            {roleSlots.map((rs) => {
+              const taken = typedBooked.some(b => b.role === rs.role);
+              return (
+                <motion.button key={rs.role}
+                  onClick={() => !taken && void book('book', rs.role)}
+                  disabled={booking || taken}
+                  whileHover={{ scale: taken ? 1 : 1.03 }} whileTap={{ scale: taken ? 1 : 0.96 }}
+                  className="flex flex-col items-center gap-1.5 rounded-2xl px-6 py-5 text-center disabled:opacity-40"
+                  style={taken
+                    ? { background: 'rgba(255,255,255,0.04)', border: `2px solid ${rs.color}22` }
+                    : { background: `linear-gradient(135deg,${rs.color}25,${rs.color}10)`, border: `2px solid ${rs.color}77`, boxShadow: `0 0 30px ${rs.color}33` }
+                  }>
+                  <div className="text-3xl">{rs.emoji}</div>
+                  <div className="text-xl font-black" style={{ color: taken ? 'rgba(255,255,255,0.3)' : rs.color }}>
+                    {booking ? <Loader2 className="h-5 w-5 animate-spin inline" /> : rs.label}
+                  </div>
+                  <div className="text-xs font-semibold" style={{ color: taken ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.55)' }}>
+                    {taken ? '✓ Ruolo già occupato' : rs.sublabel}
+                  </div>
+                </motion.button>
+              );
+            })}
+          </div>
+          {bookedPlayers.length > 0 && (
+            <div className="flex gap-2 mt-1">
+              {bookedPlayers.map((bp) => (
+                <div key={bp.id} className="flex items-center gap-1.5 rounded-full px-3 py-1"
+                  style={{ background: `${bp.avatarColor}22`, border: `1px solid ${bp.avatarColor}55` }}>
+                  <div className="h-6 w-6 rounded-full flex items-center justify-center text-xs font-black"
+                    style={{ background: bp.avatarColor, color: '#0a0015' }}>
+                    {bp.nickname[0]?.toUpperCase()}
+                  </div>
+                  <span className="text-xs font-black" style={{ color: bp.avatarColor }}>{bp.nickname}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </motion.div>
+      );
+    }
+
+    // Generic "posti esauriti" (full, not booked)
     if (isFull) {
       return (
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
@@ -333,6 +408,7 @@ export function GameFlowPhone({
       );
     }
 
+    // Generic booking button (sfida-ballo and others)
     return (
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
         className="flex flex-col items-center gap-5 py-4">
@@ -378,12 +454,16 @@ export function GameFlowPhone({
   // ── CONFIRM ───────────────────────────────────────────────────────────────────
 
   if (p.gameFlowPhase === 'confirm') {
+    const myBooking = bookedPlayers.find(b => b.id === player.id);
+    const myRoleSlot = roleSlots?.find(s => s.role === (myBooking as FlowBookedPlayer & { role?: string } | undefined)?.role) ?? null;
     return (
       <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
         className="flex flex-col items-center gap-5 py-4">
-        <div className="text-5xl">{gameUI.emoji}</div>
+        <div className="text-5xl">{myRoleSlot ? myRoleSlot.emoji : gameUI.emoji}</div>
         <div className="text-display text-2xl font-black text-white">
-          {isBooked ? 'SEI IN GARA!' : 'SEI SPETTATORE'}
+          {isBooked
+            ? (myRoleSlot ? myRoleSlot.label : 'SEI IN GARA!')
+            : 'SEI SPETTATORE'}
         </div>
         <div className="flex items-center gap-2" style={{ color: gameUI.color }}>
           <Loader2 className="h-5 w-5 animate-spin" />
