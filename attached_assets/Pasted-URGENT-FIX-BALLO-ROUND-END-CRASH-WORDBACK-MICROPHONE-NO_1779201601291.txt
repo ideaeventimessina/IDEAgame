@@ -1,0 +1,146 @@
+URGENT — FIX BALLO ROUND-END CRASH + WORDBACK MICROPHONE NOT STARTING.
+
+Do not redesign.
+Do not touch SensorBridge.
+Do not touch audio.
+Do not touch routing.
+Do not touch unrelated games.
+
+Context:
+Console logs only show CSP report-only warnings.
+Those are NOT the crash root cause because policy is report-only.
+Ignore CSP unless there is an actual blocked script error.
+
+==================================================
+PART 1 — BALLO CRASH AT END OF FIRST ROUND
+==================================================
+
+Problem:
+Sfida di Ballo crashes at the end of the first round with generic error:
+"qualcosa è andato storto".
+
+Likely area:
+Recent Ballo tournament/result logic:
+- balloPhase === 'result'
+- balloStageResult
+- mini podium
+- ballo-reset-booking
+- onStageNext
+- onEndBallo
+- balloResult
+- votes summary
+- teams/stage payload fields
+
+Audit:
+- HomeGame.tsx BalloBoard result branch
+- home.ts ballo-round-end / autoScoreBallo / next route
+- socket.ts ballo_result / vote updates
+- any undefined access:
+  teams[0].players
+  teams[1].players
+  result.winnerTeamId
+  balloResult.winnerId
+  votesByDancer[dancerId]
+  activePlayers.map when activePlayers undefined
+  bookedPlayers.map when bookedPlayers undefined
+
+Patch:
+- add safe defaults for:
+  teams = []
+  bookedPlayers = []
+  activeDancerIds = []
+  votesByDancer = {}
+  balloResult = null
+- result UI must not crash if teams/result/votes are incomplete
+- if payload missing team data, show fallback:
+  "Risultato manche"
+  with the 2 booked players only
+- do NOT auto-next
+- after result screen, only button:
+  "PROSSIMA SFIDA"
+
+Add error logs:
+[BalloCrashGuard]
+payload summary
+result summary
+teams length
+booked count
+active dancers count
+votes object
+
+Output:
+A. exact crash root cause
+B. file modified
+C. safe fallback added
+D. typecheck result
+
+==================================================
+PART 2 — WORDBACK MICROPHONE NOT STARTING
+==================================================
+
+Problem:
+In Parola alle Spalle, INDOVINO sees the answer button but pressing it does not activate microphone.
+Message appears:
+"Nessun microfono attivato"
+
+Required UX:
+- user must PRESS AND HOLD
+- microphone must start on pointerDown/touchStart/mouseDown
+- Jonny listening overlay must appear immediately
+- waveform must animate
+- if SpeechRecognition unsupported, show text fallback
+- if microphone permission denied, show clear message
+
+Audit:
+- PressToTalkAnswer.tsx
+- HomeJoin.tsx WordBackController
+- button event handlers:
+  onPointerDown
+  onPointerUp
+  onTouchStart
+  onTouchEnd
+  onMouseDown
+  onMouseUp
+- check if pointer events are swallowed by preventDefault/touchAction/userSelect
+- check if SpeechRecognition exists:
+  window.SpeechRecognition
+  window.webkitSpeechRecognition
+- check if HTTPS / secure context:
+  window.isSecureContext
+- check if recognition.start() throws
+- check if recognition.stop() fires too early
+
+Patch:
+- Use explicit touch + mouse events, not pointer events only.
+- On press start:
+  preventDefault()
+  create SpeechRecognition instance
+  set language it-IT
+  interimResults true
+  continuous false
+  call recognition.start()
+  immediately show Jonny listening overlay
+- On release:
+  stop recognition
+  match final transcript
+- If recognition.start() throws:
+  show exact error
+- Add fallback text input if:
+  !SpeechRecognition OR !window.isSecureContext
+
+Logs:
+[PressToTalk]
+secureContext
+speechSupported
+start called
+start error
+result transcript
+end
+match result
+
+Output:
+A. microphone root cause
+B. file modified
+C. hold-to-talk fixed
+D. fallback behavior
+E. typecheck result

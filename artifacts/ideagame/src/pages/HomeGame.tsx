@@ -1800,6 +1800,34 @@ function BalloBoard({ session, payload, players, balloEnergies, balloCurrent, ba
   // Stage 1 never has balloPhase in payload (uses old flow path) — treat as dancing
   const effectivePhase = balloStage >= 2 ? balloPhase : (balloResult ? 'result' : 'dancing');
 
+  // ── ALL HOOKS MUST BE DECLARED BEFORE ANY CONDITIONAL RETURN ─────────────────
+  // React rule of hooks: hooks must be called in the same order every render.
+  // If these were declared after the booking/result early returns, React would
+  // throw "Rendered fewer hooks than previous render" whenever effectivePhase
+  // changed from 'dancing' → 'result' (i.e. at the END OF EVERY ROUND).
+  const prevCurrentRef = useRef<Record<string, number>>({});
+  const burstKeyRef = useRef(0);
+  const [bursts, setBursts] = useState<Record<string, BurstItem[]>>({});
+
+  const spawnBurst = useCallback((pid: string, label: string) => {
+    const bKey = ++burstKeyRef.current;
+    setBursts(prev => ({ ...prev, [pid]: [...(prev[pid] ?? []).slice(-2), { key: bKey, label }] }));
+    setTimeout(() => {
+      setBursts(prev => ({ ...prev, [pid]: (prev[pid] ?? []).filter(b => b.key !== bKey) }));
+    }, 900);
+  }, []);
+
+  useEffect(() => {
+    if (balloResult) { prevCurrentRef.current = {}; return; }
+    for (const [pid, curr] of Object.entries(balloCurrent)) {
+      const prev = prevCurrentRef.current[pid] ?? 0;
+      const rise = curr - prev;
+      if (rise >= 5) spawnBurst(pid, rise >= 30 ? 'COMBO! 🔥' : `+${rise}`);
+    }
+    prevCurrentRef.current = { ...balloCurrent };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [balloCurrent, balloResult]);
+
   // ── BOOKING PHASE (stages 2 & 3 only) ───────────────────────────────────────
   if (effectivePhase === 'booking') {
     const requiredPerTeam = balloStage;
@@ -1885,7 +1913,12 @@ function BalloBoard({ session, payload, players, balloEnergies, balloCurrent, ba
     const stageLabels = ['Sfida 1: Duello d\'ingresso','Sfida 2: Coppie','Sfida Finale: Terzetti'];
     const stageLabel = stageLabels[balloStage - 1] ?? 'Risultato';
     const isFinal = balloStage >= 3;
-    const teamResult = balloResult?.teamResult;
+    const teamResult = balloResult?.teamResult ?? null;
+    // [BalloCrashGuard] safe defaults — all arrays guarded against undefined
+    const safeWinnerPlayers = teamResult?.winnerTeamPlayers ?? [];
+    const safeTeamScores   = teamResult?.teamScores ?? [];
+    const safeBookedPlayers = (payload.bookedPlayers as {id:string;nickname:string;avatarColor:string}[] | undefined) ?? [];
+    console.log('[BalloCrashGuard] result phase', { balloStage, balloPhase, teamResult: !!teamResult, winnerId: balloResult?.winnerId ?? null, bookedCount: safeBookedPlayers.length, teamsCount: safeTeamScores.length });
     return (
       <motion.div initial={{opacity:0,y:16}} animate={{opacity:1,y:0}}
         className="flex w-full flex-col items-center gap-5">
@@ -1913,22 +1946,22 @@ function BalloBoard({ session, payload, players, balloEnergies, balloCurrent, ba
                 VINCE SQUADRA {teamResult.winnerTeamId}!
               </div>
               <div className="text-base font-bold text-white/70">
-                {teamResult.winnerTeamPlayers.map(p=>p.nickname).join(' + ')}
+                {safeWinnerPlayers.map(p=>p.nickname).join(' + ')}
               </div>
               <div className="text-xl font-black" style={{color:'#F5B642'}}>
-                +{teamResult.perPlayer} punti ciascuno · {prizePoints} totali
+                +{teamResult.perPlayer ?? 0} punti ciascuno · {prizePoints} totali
               </div>
             </div>
             {/* Team energy scores */}
             <div className="flex gap-4 mt-1">
-              {teamResult.teamScores.map(ts => (
+              {safeTeamScores.map(ts => (
                 <div key={ts.teamId} className="flex flex-col items-center gap-1 rounded-2xl px-5 py-3"
                   style={{background: ts.teamId===teamResult.winnerTeamId ? 'rgba(245,182,66,0.12)' : 'rgba(255,255,255,0.05)',
                     border:`1.5px solid ${ts.teamId===teamResult.winnerTeamId ? 'rgba(245,182,66,0.5)' : 'rgba(255,255,255,0.12)'}`}}>
                   <div className="font-black text-sm" style={{color: ts.teamId===teamResult.winnerTeamId ? '#F5B642' : 'rgba(255,255,255,0.5)'}}>
                     Squadra {ts.teamId} {ts.teamId===teamResult.winnerTeamId ? '🏆':''}
                   </div>
-                  <div className="text-xs text-white/40">{ts.players.map(p=>p.nickname).join(' + ')}</div>
+                  <div className="text-xs text-white/40">{(ts.players ?? []).map(p=>p.nickname).join(' + ')}</div>
                   <div className="text-base font-black" style={{color:'#A78BFA'}}>⚡ {ts.totalEnergy}</div>
                 </div>
               ))}
@@ -1943,7 +1976,7 @@ function BalloBoard({ session, payload, players, balloEnergies, balloCurrent, ba
         {Object.keys(balloVotes).length > 0 && (
           <motion.div initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} transition={{delay:0.3}}
             className="flex flex-wrap justify-center gap-3">
-            {(payload.bookedPlayers as {id:string;nickname:string;avatarColor:string}[]??[]).map(p => {
+            {safeBookedPlayers.map(p => {
               const vd = balloVotes[p.id];
               if (!vd || vd.count === 0) return null;
               const avg = vd.total / vd.count;
@@ -1994,29 +2027,6 @@ function BalloBoard({ session, payload, players, balloEnergies, balloCurrent, ba
   const dancingStageLabel = balloStage >= 2 ? (balloStage === 2 ? 'Sfida 2: Coppie' : 'Sfida Finale: Terzetti') : null;
 
   const pts = Number(payload.points ?? 150);
-  const prevCurrentRef = useRef<Record<string, number>>({});
-  const burstKeyRef = useRef(0);
-  const [bursts, setBursts] = useState<Record<string, BurstItem[]>>({});
-
-  const spawnBurst = useCallback((pid: string, label: string) => {
-    const bKey = ++burstKeyRef.current;
-    setBursts(prev => ({ ...prev, [pid]: [...(prev[pid] ?? []).slice(-2), { key: bKey, label }] }));
-    setTimeout(() => {
-      setBursts(prev => ({ ...prev, [pid]: (prev[pid] ?? []).filter(b => b.key !== bKey) }));
-    }, 900);
-  }, []);
-
-  useEffect(() => {
-    if (balloResult) { prevCurrentRef.current = {}; return; }
-    for (const [pid, curr] of Object.entries(balloCurrent)) {
-      const prev = prevCurrentRef.current[pid] ?? 0;
-      const rise = curr - prev;
-      if (rise >= 5) spawnBurst(pid, rise >= 30 ? 'COMBO! 🔥' : `+${rise}`);
-    }
-    prevCurrentRef.current = { ...balloCurrent };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [balloCurrent, balloResult]);
-
   const hasLiveData = Object.keys(balloCurrent).length > 0 || Object.keys(balloEnergies).length > 0;
 
   // Filter to activeDancerIds (stages 2/3) or bookedPlayers (stage 1), fallback all

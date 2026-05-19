@@ -1549,7 +1549,13 @@ async function autoScoreBalloTournament(
       if (e > maxEnergy) { maxEnergy = e; winnerId = pid; }
     }
     const winner = players.find((p) => p.id === winnerId);
-    if (!winner) return;
+    if (!winner) {
+      logger.warn({ sessionId, winnerId }, "[BalloCrashGuard] solo winner id not in players list — emitting null result so TV transitions to result phase");
+      emitToRoom(`home:${sessionId}`, "home:ballo_result", {
+        winnerId: null, winnerNickname: null, points: prizePoints, energies, teamResult: null,
+      });
+      return;
+    }
     const newScore = winner.score + prizePoints;
     await db.update(homePlayersTable).set({ score: newScore })
       .where(and(eq(homePlayersTable.id, winnerId), eq(homePlayersTable.sessionId, sessionId)));
@@ -1572,7 +1578,14 @@ async function autoScoreBalloTournament(
   teamScores.sort((a, b) => b.totalEnergy - a.totalEnergy);
 
   const winningEntry = teamScores[0];
-  if (!winningEntry || winningEntry.team.players.length === 0) return;
+  if (!winningEntry || winningEntry.team.players.length === 0) {
+    logger.warn({ sessionId, teamsLen: teams.length }, "[BalloCrashGuard] no winning team entry or empty players — emitting null teamResult so TV transitions to result phase");
+    emitToRoom(`home:${sessionId}`, "home:ballo_result", {
+      winnerId: null, winnerNickname: null, points: prizePoints, energies,
+      teamResult: null,
+    });
+    return;
+  }
 
   const perPlayer = Math.floor(prizePoints / winningEntry.team.players.length);
   for (const member of winningEntry.team.players) {

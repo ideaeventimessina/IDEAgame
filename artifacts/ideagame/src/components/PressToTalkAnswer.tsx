@@ -61,12 +61,13 @@ export interface PressToTalkAnswerProps {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnySR = any;
+// Re-evaluated at render time so SSR/mobile browsers that initialise late are handled
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const SR: AnySR | null =
-  typeof window !== 'undefined'
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ? ((window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition ?? null)
-    : null;
+function getSR(): AnySR | null {
+  if (typeof window === 'undefined') return null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition ?? null;
+}
 
 export default function PressToTalkAnswer({
   expectedAnswer,
@@ -87,23 +88,41 @@ export default function PressToTalkAnswer({
   const lastTranscriptRef = useRef('');
   const failTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── start recognition on pointer-down ──────────────────────────────────────
+  // ── start recognition on press ─────────────────────────────────────────────
   const startListening = useCallback(() => {
-    if (!SR || listening || disabled || corrected) return;
+    // Re-resolve SR at call time — avoids stale module-load null on some mobile browsers
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SRClass: AnySR | null = typeof window !== 'undefined'
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ? ((window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition ?? null)
+      : null;
+
+    console.log('[PressToTalk] startListening', {
+      secureContext: window.isSecureContext,
+      speechSupported: !!SRClass,
+      listening,
+      disabled,
+      corrected,
+    });
+
+    if (!SRClass || listening || disabled || corrected) return;
     matchedRef.current = false;
     lastTranscriptRef.current = '';
     setTranscript('');
     setMatchFail(false);
     if (failTimerRef.current) clearTimeout(failTimerRef.current);
 
-    const rec = new SR();
+    const rec = new SRClass();
     recRef.current = rec;
     rec.lang = language;
     rec.interimResults = true;
     rec.maxAlternatives = 3;
-    rec.continuous = true;
+    // continuous:false is correct for hold-to-talk — continuous:true auto-stops
+    // after silence on mobile Chrome/iOS and causes onend to fire mid-hold
+    rec.continuous = false;
 
-    rec.onstart = () => setListening(true);
+    // Show overlay IMMEDIATELY — don't wait for async onstart
+    setListening(true);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     rec.onresult = (e: any) => {
@@ -113,6 +132,7 @@ export default function PressToTalkAnswer({
         if (result.isFinal) {
           for (let a = 0; a < result.length; a++) {
             const t = result[a].transcript;
+            console.log('[PressToTalk] result transcript', { t, isFinal: true, index: a });
             if (isMatch(t, expectedAnswer) && !matchedRef.current) {
               matchedRef.current = true;
               try { rec.stop(); } catch { /* ignore */ }
@@ -132,6 +152,7 @@ export default function PressToTalkAnswer({
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     rec.onerror = (e: any) => {
+      console.log('[PressToTalk] onerror', { error: e.error, message: e.message });
       if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
         setPermDenied(true);
       }
@@ -139,6 +160,7 @@ export default function PressToTalkAnswer({
     };
 
     rec.onend = () => {
+      console.log('[PressToTalk] onend', { matched: matchedRef.current, transcript: lastTranscriptRef.current });
       setListening(false);
       if (!matchedRef.current && lastTranscriptRef.current) {
         setMatchFail(true);
@@ -148,8 +170,10 @@ export default function PressToTalkAnswer({
     };
 
     try {
+      console.log('[PressToTalk] start called', { lang: language });
       rec.start();
-    } catch {
+    } catch (err) {
+      console.log('[PressToTalk] start error', { err });
       setListening(false);
     }
   }, [listening, disabled, corrected, language, expectedAnswer, onCorrect, onWrong]);
@@ -190,8 +214,8 @@ export default function PressToTalkAnswer({
     );
   }
 
-  // ── speech recognition available ───────────────────────────────────────────
-  if (SR) {
+  // ── speech recognition available — checked at render time, not module load ──
+  if (getSR()) {
     return (
       <div className="flex flex-col items-center gap-4 w-full">
 
@@ -239,12 +263,18 @@ export default function PressToTalkAnswer({
           )}
         </AnimatePresence>
 
-        {/* Hold-to-talk button */}
+        {/* Hold-to-talk button — pointer + touch + mouse for max mobile compat */}
         <motion.button
           onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); startListening(); }}
           onPointerUp={stopListening}
           onPointerLeave={stopListening}
           onPointerCancel={stopListening}
+          onTouchStart={(e) => { e.preventDefault(); startListening(); }}
+          onTouchEnd={(e) => { e.preventDefault(); stopListening(); }}
+          onTouchCancel={(e) => { e.preventDefault(); stopListening(); }}
+          onMouseDown={startListening}
+          onMouseUp={stopListening}
+          onMouseLeave={stopListening}
           disabled={disabled}
           whileTap={{ scale: 0.95 }}
           className="w-full select-none rounded-2xl py-5 text-base font-black text-white disabled:opacity-50"
