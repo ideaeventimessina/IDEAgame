@@ -1,0 +1,156 @@
+FINAL FIXES — WORD BACK TV + GUESS BUTTON + BALLO REBOOK FLOW.
+
+Do not redesign.
+Do not touch audio.
+Do not touch scoring except where explicitly required.
+
+==================================================
+PART 1 — WORD BACK TV IS STILL RENDERING OLD LAYOUT
+==================================================
+
+BUG:
+TV still shows:
+- category
+- “la parola è sul telefono del suggeritore”
+instead of:
+- BIG SECRET WORD
+- 5 TABOO WORDS
+- proper live taboo board
+
+This means:
+payload already contains the correct data,
+BUT the TV render is still using the old component/layout.
+
+Required:
+Find the active render path used during:
+mode === 'home-wordback'
+
+Patch the ACTIVE render component only.
+Do not create duplicates.
+
+TV MUST show:
+
+------------------------------------------------
+BIG CENTER WORD
+------------------------------------------------
+
+Under it:
+🚫 PAROLE VIETATE
+- taboo1
+- taboo2
+- taboo3
+- taboo4
+- taboo5
+
+Top role cards:
+🙈 INDOVINATORE: nickname
+💬 SUGGERITORE: nickname
+
+Keep:
+- timer
+- alarm overlay
+- scoreboard
+- current round indicators
+
+Remove:
+- “la parola è sul telefono del suggeritore”
+- old category-only placeholder layout
+
+If tabooWords missing:
+show fallback:
+“Nessuna parola taboo caricata”
+
+==================================================
+PART 2 — INDOVINO RESPONSE BUTTON MISSING
+==================================================
+
+BUG:
+Indovino phone still has no:
+- RISPOSTA button
+- speech flow
+
+Required:
+On INDOVINO phone:
+show huge CTA:
+🎤 RISPONDI
+
+Flow:
+1. tap button
+2. speech recognition starts
+3. detected text appears live
+4. normalize answer
+5. compare with payload.word
+6. if correct:
+   emit:
+   home:wordback_correct
+7. server validates
+8. TV success overlay
+9. +100 to indovino
+10. +100 to suggeritore
+
+If speechRecognition unsupported:
+show fallback:
+✏️ Scrivi risposta
+with text input.
+
+Very important:
+Only INDOVINO sees this UI.
+SUGGERITORE never sees response button.
+
+==================================================
+PART 3 — BALLO STILL AUTO-ADVANCES WITHOUT REBOOK
+==================================================
+
+BUG:
+After first dance challenge,
+game automatically started next round
+instead of:
+- showing results
+- stopping
+- returning to booking phase
+
+Root cause likely:
+existing auto-next flow still active
+after timer/game-end.
+
+Required:
+After EVERY Ballo round:
+1. freeze energy
+2. freeze votes
+3. show mini podium/results
+4. DO NOT auto-next
+5. DO NOT auto-start next round
+6. require explicit:
+   “NUOVA SFIDA”
+7. clicking:
+   - clears bookedPlayers
+   - clears active dancers
+   - clears votes
+   - returns to booking phase
+   - keeps current selectedTheme
+
+Critical:
+Between rounds:
+ONLY newly booked players become dancers.
+Everyone else remains spectators/voters.
+
+Patch:
+Find and disable any:
+- auto nextRound()
+- auto advanceRound()
+- auto trigger confirm/start
+for:
+mode === 'sfida-ballo'
+
+==================================================
+OUTPUT
+==================================================
+
+A. root cause of old WordBack TV layout
+B. files modified
+C. TV taboo board fixed
+D. indovino response flow added
+E. ballo auto-advance root cause
+F. ballo rebooking restored
+G. typecheck
+H. exact manual test steps

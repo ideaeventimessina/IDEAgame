@@ -1582,6 +1582,11 @@ function AdultController({ payload, timeLeft, onScore }: {
 
 // ── WordBackController ─────────────────────────────────────────────────────────
 
+// Normalize strings for fuzzy word comparison (strip accents, lowercase, trim)
+function normalizeWord(s: string) {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().replace(/[^a-z0-9\s]/g, '');
+}
+
 function WordBackController({ payload, timeLeft, player, sessionId, emit }: {
   payload: Record<string,unknown>;
   timeLeft: number | null;
@@ -1592,10 +1597,87 @@ function WordBackController({ payload, timeLeft, player, sessionId, emit }: {
   const guesserId = String(payload.guesserId ?? '');
   const suggesterId = String(payload.suggesterId ?? '');
   const tabooWords = (payload.tabooWords as string[]) ?? [];
+  const secretWord = String(payload.word ?? '');
+  const pts = Number(payload.points ?? 150);
   const round = typeof payload.roundIndex === 'number' ? payload.roundIndex : 0;
   const isGuesser = !!guesserId && player.id === guesserId;
   const isSuggester = !!suggesterId && player.id === suggesterId;
   const [alarmPressed, setAlarmPressed] = useState(false);
+
+  // ── Guesser speech recognition state ─────────────────────────────────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const _w = typeof window !== 'undefined' ? window as any : null;
+  const speechSupported = !!_w && !!(_w.SpeechRecognition ?? _w.webkitSpeechRecognition);
+  const [recognizing, setRecognizing] = useState(false);
+  const [transcript, setTranscript] = useState('');
+  const [textAnswer, setTextAnswer] = useState('');
+  const [answered, setAnswered] = useState(false);
+  const [matchFail, setMatchFail] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null);
+
+  const emitCorrect = useCallback(() => {
+    if (answered) return;
+    setAnswered(true);
+    emit('home:wordback_correct', { sessionId, guesserId, suggesterId, pts, round });
+  }, [answered, emit, sessionId, guesserId, suggesterId, pts, round]);
+
+  const checkAnswer = useCallback((raw: string) => {
+    const norm = normalizeWord(raw);
+    const target = normalizeWord(secretWord);
+    if (!target || !norm) return false;
+    return norm.includes(target) || target.includes(norm) || norm === target;
+  }, [secretWord]);
+
+  const startSpeech = useCallback(() => {
+    if (recognizing || answered) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any;
+    const SR = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+    if (!SR) return;
+    const rec = new SR();
+    recognitionRef.current = rec;
+    rec.lang = 'it-IT';
+    rec.interimResults = true;
+    rec.maxAlternatives = 3;
+    setRecognizing(true);
+    setTranscript('');
+    setMatchFail(false);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    rec.onresult = (e: any) => {
+      let interim = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) {
+          if (checkAnswer(t)) { rec.stop(); emitCorrect(); return; }
+          for (let a = 0; a < e.results[i].length; a++) {
+            if (checkAnswer(e.results[i][a].transcript)) { rec.stop(); emitCorrect(); return; }
+          }
+          interim += t;
+        } else {
+          interim += t;
+        }
+      }
+      setTranscript(interim);
+    };
+    rec.onerror = () => { setRecognizing(false); };
+    rec.onend = () => {
+      setRecognizing(false);
+      if (!answered) setMatchFail(true);
+    };
+    rec.start();
+  }, [recognizing, answered, checkAnswer, emitCorrect]);
+
+  const submitText = useCallback(() => {
+    if (!textAnswer.trim()) return;
+    if (checkAnswer(textAnswer)) {
+      emitCorrect();
+    } else {
+      setMatchFail(true);
+      setTimeout(() => setMatchFail(false), 1500);
+    }
+  }, [textAnswer, checkAnswer, emitCorrect]);
 
   const handleAlarm = useCallback(() => {
     if (alarmPressed) return;
@@ -1613,18 +1695,79 @@ function WordBackController({ payload, timeLeft, player, sessionId, emit }: {
   ) : null;
 
   if (isGuesser) {
+    if (answered) {
+      return (
+        <div className="flex flex-col items-center gap-5 py-4 text-center">
+          <div className="text-7xl">✅</div>
+          <div className="text-2xl font-black text-white">CORRETTO!</div>
+          <div className="text-sm font-semibold" style={{color:'rgba(34,197,94,0.8)'}}>+{pts} punti assegnati a entrambi</div>
+          {timerBadge}
+        </div>
+      );
+    }
+
     return (
       <div className="flex flex-col items-center gap-5 py-4 text-center">
         <div className="text-6xl">🙈</div>
         <div className="text-xl font-black text-white">Indovina la parola!</div>
-        <div className="rounded-2xl p-5 w-full"
-          style={{background:'rgba(167,139,250,0.12)',border:'1px solid rgba(167,139,250,0.4)'}}>
-          <div className="text-xs font-black uppercase tracking-widest mb-2" style={{color:'rgba(167,139,250,0.9)'}}>IL TUO RUOLO</div>
-          <div className="text-base font-black text-white">INDOVINATORE</div>
-          <div className="mt-2 text-sm text-white/50">Ascolta i suggerimenti e cerca di indovinarla!</div>
+        <div className="rounded-2xl px-4 py-3 w-full text-sm font-semibold"
+          style={{background:'rgba(167,139,250,0.12)',border:'1px solid rgba(167,139,250,0.35)',color:'rgba(167,139,250,0.85)'}}>
+          Ascolta i suggerimenti del Suggeritore e rispondi qui!
         </div>
+
         {timerBadge}
-        <div className="text-xs text-white/35">L'animatore assegna i punti dalla TV</div>
+
+        {/* Live transcript display */}
+        {(recognizing || transcript) && (
+          <div className="w-full rounded-2xl px-4 py-3 text-center"
+            style={{background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.15)',minHeight:48}}>
+            <div className="text-base font-bold text-white/80 italic">
+              {transcript || (recognizing ? '…in ascolto…' : '')}
+            </div>
+          </div>
+        )}
+
+        {/* Match fail feedback */}
+        {matchFail && !recognizing && (
+          <div className="text-sm font-black" style={{color:'#f87171'}}>
+            ❌ Non corrisponde — riprova!
+          </div>
+        )}
+
+        {/* Speech button */}
+        {speechSupported ? (
+          <motion.button onClick={startSpeech} disabled={recognizing || answered}
+            whileHover={{scale:1.04}} whileTap={{scale:0.96}}
+            className="w-full rounded-2xl py-5 text-xl font-black text-white transition-all disabled:opacity-60"
+            style={{
+              background: recognizing
+                ? 'linear-gradient(135deg,rgba(167,139,250,0.5),rgba(124,58,237,0.5))'
+                : 'linear-gradient(135deg,#A78BFA,#7C3AED)',
+              border: `2px solid ${recognizing ? 'rgba(167,139,250,0.9)' : 'rgba(167,139,250,0.6)'}`,
+              boxShadow: recognizing ? '0 0 40px rgba(167,139,250,0.7)' : '0 0 30px rgba(167,139,250,0.4)',
+            }}>
+            {recognizing ? '🎙️ Sto ascoltando…' : '🎤 RISPONDI'}
+          </motion.button>
+        ) : (
+          /* Fallback: text input */
+          <div className="flex w-full gap-2">
+            <input
+              value={textAnswer}
+              onChange={e => setTextAnswer(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') submitText(); }}
+              placeholder="Scrivi la risposta…"
+              className="flex-1 rounded-xl px-4 py-3 text-base font-bold text-white outline-none"
+              style={{background:'rgba(255,255,255,0.08)',border:'1.5px solid rgba(255,255,255,0.2)'}}
+            />
+            <button onClick={submitText}
+              className="rounded-xl px-5 py-3 font-black text-white"
+              style={{background:'linear-gradient(135deg,#A78BFA,#7C3AED)'}}>
+              ✓
+            </button>
+          </div>
+        )}
+
+        <div className="text-xs text-white/30">Solo tu vedi questo pulsante — sei l'Indovinatore!</div>
       </div>
     );
   }

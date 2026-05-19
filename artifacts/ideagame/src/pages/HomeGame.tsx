@@ -1005,21 +1005,11 @@ export default function HomeGame() {
     } finally { setLoading(false); }
   };
 
-  // ── Ballo auto-finish: advance round automatically when timer hits zero ────────
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const nextRoundRef = useRef<() => Promise<void>>(nextRound);
-  useEffect(() => { nextRoundRef.current = nextRound; });
-
-  const balloAutoFinishedRef = useRef(false);
-  // Reset guard whenever the round or game changes so each Ballo round fires exactly once
-  useEffect(() => { balloAutoFinishedRef.current = false; }, [session?.currentRound, session?.gameSlug]);
-  useEffect(() => {
-    if (timeLeft !== 0 || String(session?.roundPayload?.mode ?? '') !== 'home-ballo') return;
-    if (balloAutoFinishedRef.current) return;
-    balloAutoFinishedRef.current = true;
-    void nextRoundRef.current();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timeLeft, session?.roundPayload?.mode]);
+  // ── Ballo auto-finish DISABLED ────────────────────────────────────────────────
+  // Ballo rounds do NOT auto-advance. The host must press "NUOVA SFIDA" after each
+  // dance challenge — which resets bookedPlayers so new dancers can book in.
+  // (Previously: timeLeft===0 → nextRound() for home-ballo; removed to stop skipping
+  //  the results + rebook phase.)
 
   const endGame = async () => {
     if (!session) return;
@@ -1691,7 +1681,7 @@ function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, bal
   if (mode === 'home-coppie')     return <CoppieBoard payload={p} onNext={onNext}/>;
   if (mode === 'home-saramusica') return <SaraMusicaBoard payload={p} revealed={revealed} onReveal={onReveal} winner={saraMusicaWinner ?? null}/>;
   if (mode === 'home-adult')      return <AdultOnlyBoard payload={p} revealed={revealed} onReveal={onReveal} players={players} onScore={onScore}/>;
-  if (mode === 'home-wordback')   return <WordBackBoard payload={p} players={players} onScore={onScore} onReveal={onReveal} tabooAlarm={tabooAlarm ?? null}/>;
+  if (mode === 'home-wordback')   return <WordBackBoard payload={p} players={players} onScore={onScore} onReveal={onReveal} tabooAlarm={tabooAlarm ?? null} sessionId={session.id}/>;
   if (mode === 'home-karaoke')    return <KaraokeBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
   if (mode === 'home-freestyle')  return <FreestyleBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
   return <div className="text-white/40 text-2xl">Caricamento gioco…</div>;
@@ -2212,19 +2202,41 @@ function AdultOnlyBoard({ payload, revealed, onReveal, players, onScore }: {
 
 // ── WordBackBoard ─────────────────────────────────────────────────────────────
 
-function WordBackBoard({ payload, players, onScore, onReveal, tabooAlarm }: {
+function WordBackBoard({ payload, players, onScore, onReveal, tabooAlarm, sessionId }: {
   payload: Record<string,unknown>;
   players: HomePlayer[];
   onScore: (pid: string, pts: number) => Promise<void>;
   onReveal: () => void;
   tabooAlarm: TabooAlarmEvent | null;
+  sessionId: string;
 }) {
   const [awarded, setAwarded] = useState<string|null>(null);
-  const pts = Number(payload.points??150);
+  const [autoAwarded, setAutoAwarded] = useState(false);
+  const pts = Number(payload.points ?? 150);
   const guesserId = String(payload.guesserId ?? '');
   const suggesterId = String(payload.suggesterId ?? '');
+  const word = String(payload.word ?? '');
+  const tabooWords = (payload.tabooWords as string[] | undefined) ?? [];
   const guesser = players.find(p => p.id === guesserId);
   const suggester = players.find(p => p.id === suggesterId);
+
+  // Listen for phone-triggered correct answer
+  const { on } = useHomeSocket(sessionId);
+  useEffect(() => {
+    const unsub = on<{ guesserId: string; suggesterId: string; pts: number }>('home:wordback_correct', async (d) => {
+      if (autoAwarded || awarded) return;
+      setAutoAwarded(true);
+      const tasks: Promise<void>[] = [];
+      const g = players.find(p => p.id === d.guesserId);
+      const s = players.find(p => p.id === d.suggesterId);
+      if (g) tasks.push(onScore(g.id, g.score + d.pts));
+      if (s) tasks.push(onScore(s.id, s.score + d.pts));
+      await Promise.all(tasks);
+      setTimeout(onReveal, 1800);
+    });
+    return unsub;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoAwarded, awarded, players, pts]);
 
   return (
     <motion.div key={String(payload.roundIndex)} initial={{scale:0.9,opacity:0}} animate={{scale:1,opacity:1}}
@@ -2247,59 +2259,98 @@ function WordBackBoard({ payload, players, onScore, onReveal, tabooAlarm }: {
         )}
       </AnimatePresence>
 
-      <div className="flex h-20 w-20 items-center justify-center rounded-3xl text-5xl"
-        style={{background:'linear-gradient(135deg,rgba(34,211,238,0.35),rgba(34,211,238,0.15))',border:'2px solid rgba(34,211,238,0.55)',boxShadow:'0 0 50px rgba(34,211,238,0.4)'}}>
-        💬
-      </div>
+      {/* Auto-correct success overlay */}
+      <AnimatePresence>
+        {autoAwarded && (
+          <motion.div initial={{opacity:0,scale:0.7}} animate={{opacity:1,scale:1}} exit={{opacity:0}}
+            className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+            <div className="rounded-3xl px-14 py-10 text-center"
+              style={{background:'rgba(34,197,94,0.95)',border:'3px solid rgba(74,222,128,0.9)',boxShadow:'0 0 100px rgba(34,197,94,0.9)',backdropFilter:'blur(12px)'}}>
+              <div className="text-7xl mb-4">✅</div>
+              <div className="text-5xl font-black text-white tracking-tight">CORRETTO!</div>
+              <div className="text-2xl text-white/90 mt-3 font-bold">{word.toUpperCase()}</div>
+              <div className="text-lg text-white/70 mt-1">+{pts} a entrambi i giocatori</div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* Role badges */}
+      {/* Top role cards */}
       {(guesser || suggester) && (
         <div className="flex gap-3 w-full">
           {guesser && (
             <div className="flex-1 rounded-2xl px-4 py-3"
               style={{background:'rgba(167,139,250,0.15)',border:'1.5px solid rgba(167,139,250,0.4)'}}>
-              <div className="text-xs font-black uppercase tracking-widest mb-1" style={{color:'rgba(167,139,250,0.9)'}}>🙈 Indovinatore</div>
+              <div className="text-xs font-black uppercase tracking-widest mb-1" style={{color:'rgba(167,139,250,0.9)'}}>🙈 INDOVINATORE</div>
               <div className="font-black text-white text-lg">{guesser.nickname}</div>
             </div>
           )}
           {suggester && (
             <div className="flex-1 rounded-2xl px-4 py-3"
               style={{background:'rgba(34,211,238,0.15)',border:'1.5px solid rgba(34,211,238,0.4)'}}>
-              <div className="text-xs font-black uppercase tracking-widest mb-1" style={{color:'rgba(34,211,238,0.9)'}}>💬 Suggeritore</div>
+              <div className="text-xs font-black uppercase tracking-widest mb-1" style={{color:'rgba(34,211,238,0.9)'}}>💬 SUGGERITORE</div>
               <div className="font-black text-white text-lg">{suggester.nickname}</div>
             </div>
           )}
         </div>
       )}
 
-      <div className="rounded-2xl px-6 py-4 w-full"
-        style={{background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.1)'}}>
-        <div className="text-xs font-black uppercase tracking-widest mb-1" style={{color:'rgba(255,255,255,0.35)'}}>CATEGORIA</div>
-        <div className="text-base text-white/55">{String(payload.category ?? '')} — {String(payload.difficulty ?? 'medium')}</div>
-        <div className="text-sm text-white/30 mt-1.5 italic">🤫 La parola è sul telefono del Suggeritore</div>
+      {/* BIG SECRET WORD */}
+      <motion.div
+        initial={{scale:0.85,opacity:0}} animate={{scale:1,opacity:1}} transition={{delay:0.1,type:'spring',stiffness:260,damping:22}}
+        className="w-full rounded-3xl px-8 py-8"
+        style={{background:'linear-gradient(135deg,rgba(34,211,238,0.22),rgba(34,211,238,0.08))',border:'2px solid rgba(34,211,238,0.55)',boxShadow:'0 0 60px rgba(34,211,238,0.35)'}}>
+        <div className="text-xs font-black uppercase tracking-widest mb-3" style={{color:'rgba(34,211,238,0.6)'}}>
+          💬 PAROLA SEGRETA — {String(payload.category ?? '')}
+        </div>
+        <div className="text-display font-black tracking-wide" style={{fontSize:'clamp(2.5rem,8vw,5rem)',color:'#22D3EE',textShadow:'0 0 50px rgba(34,211,238,0.7)'}}>
+          {word || '???'}
+        </div>
+      </motion.div>
+
+      {/* Taboo words */}
+      <div className="w-full rounded-2xl px-6 py-5"
+        style={{background:'rgba(239,68,68,0.1)',border:'1.5px solid rgba(239,68,68,0.4)'}}>
+        <div className="text-xs font-black uppercase tracking-widest mb-3" style={{color:'rgba(239,68,68,0.9)'}}>
+          🚫 PAROLE VIETATE
+        </div>
+        {tabooWords.length > 0 ? (
+          <div className="flex flex-col gap-1.5">
+            {tabooWords.map((w, i) => (
+              <div key={i} className="text-base font-black text-white/85">{i+1}. {w}</div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-sm text-white/35 italic">Nessuna parola taboo caricata</div>
+        )}
       </div>
 
-      <div className="text-base text-white/50">Chi l'ha indovinata? Assegna i punti:</div>
-      <div className="flex flex-wrap justify-center gap-3">
-        {players.map(p => (
-          <button key={p.id} disabled={!!awarded}
-            onClick={async () => {
-              setAwarded(p.id);
-              await onScore(p.id, p.score + pts);
-              onReveal();
-            }}
-            className="rounded-2xl px-5 py-3 text-sm font-black text-black transition-all disabled:opacity-50"
-            style={awarded===p.id
-              ? {background:'linear-gradient(135deg,#22D3EE,#0891b2)',boxShadow:'0 0 30px rgba(34,211,238,0.6)'}
-              : {background:`linear-gradient(135deg,${p.avatarColor},${p.avatarColor}cc)`}}>
-            {p.nickname} {awarded===p.id && '✓'}
+      {/* Manual score buttons — host override */}
+      <div className="w-full">
+        <div className="text-xs font-black uppercase tracking-widest mb-3 text-center" style={{color:'rgba(255,255,255,0.3)'}}>
+          Override manuale animatore
+        </div>
+        <div className="flex flex-wrap justify-center gap-3">
+          {players.map(p => (
+            <button key={p.id} disabled={!!awarded || autoAwarded}
+              onClick={async () => {
+                setAwarded(p.id);
+                await onScore(p.id, p.score + pts);
+                onReveal();
+              }}
+              className="rounded-2xl px-5 py-3 text-sm font-black text-black transition-all disabled:opacity-40"
+              style={awarded===p.id
+                ? {background:'linear-gradient(135deg,#22D3EE,#0891b2)',boxShadow:'0 0 30px rgba(34,211,238,0.6)'}
+                : {background:`linear-gradient(135deg,${p.avatarColor},${p.avatarColor}cc)`}}>
+              {p.nickname} {awarded===p.id && '✓'}
+            </button>
+          ))}
+          <button disabled={!!awarded || autoAwarded} onClick={() => { onReveal(); }}
+            className="rounded-2xl px-5 py-3 text-sm font-black transition-all"
+            style={{background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.14)',color:'rgba(255,255,255,0.5)'}}>
+            Nessuno
           </button>
-        ))}
-        <button disabled={!!awarded} onClick={() => { onReveal(); }}
-          className="rounded-2xl px-5 py-3 text-sm font-black transition-all"
-          style={{background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.14)',color:'rgba(255,255,255,0.5)'}}>
-          Nessuno
-        </button>
+        </div>
       </div>
     </motion.div>
   );
