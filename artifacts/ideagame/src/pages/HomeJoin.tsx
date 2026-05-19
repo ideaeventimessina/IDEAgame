@@ -1145,9 +1145,22 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
   round?: number;
   adminSensitivity?: number;
 }) {
+  // ── Tournament phase/stage from payload ───────────────────────────────────────
+  const balloPhase = String(payload.balloPhase ?? 'dancing');
+  const balloStage = Number(payload.balloStage ?? 1);
+  type TeamDef = { teamId: string; players: { id: string; nickname: string; avatarColor: string }[]; pendingRequests: { id: string; nickname: string; avatarColor: string }[] };
+  const teams = (payload.teams ?? []) as TeamDef[];
+
   // ── Spectator check ───────────────────────────────────────────────────────────
   const rawBooked = (payload.bookedPlayers ?? []) as Array<{ id: string; nickname: string; avatarColor: string }>;
   const isSpectator = rawBooked.length > 0 && !rawBooked.some(b => b.id === playerId);
+  // In booking phase (stages 2/3), determine player's relationship to teams
+  const myTeam = teams.find(t => t.players.some(p => p.id === playerId));
+  const myPendingTeam = !myTeam ? teams.find(t => t.pendingRequests.some(p => p.id === playerId)) : null;
+  const isInAnyTeam = !!myTeam;
+  const hasSentRequest = !!myPendingTeam;
+  const [joiningTeam, setJoiningTeam] = useState<string | null>(null);
+  const [acceptingPlayer, setAcceptingPlayer] = useState<string | null>(null);
 
   // Spectator voting state — Map<dancerId, stars>
   const [votedFor, setVotedFor] = useState<Record<string, number>>({});
@@ -1309,6 +1322,163 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
   }, [emit, sessionId, playerId]);
 
   const energyColor = energy > 70 ? '#22c55e' : energy > 35 ? '#eab308' : '#A78BFA';
+
+  // ── Booking phase: stages 2/3 team join/accept UI ────────────────────────────
+  if (balloStage >= 2 && balloPhase === 'booking') {
+    const prizePoints = Number(payload.prizePoints ?? 500);
+    const stageLabel = balloStage === 2 ? 'Sfida 2: Coppie' : 'Sfida Finale: Terzetti';
+    const stageIcon = balloStage === 2 ? '👫' : '🏃';
+
+    // Existing team member → show pending requests to accept
+    if (isInAnyTeam && myTeam) {
+      const pendingForMyTeam = myTeam.pendingRequests;
+      return (
+        <div className="flex flex-col items-center gap-5 py-4 text-center">
+          <div className="text-4xl">{stageIcon}</div>
+          <div className="text-xl font-black text-white">{stageLabel}</div>
+          <div className="rounded-2xl px-5 py-3 text-sm font-bold"
+            style={{background:'rgba(167,139,250,0.12)',border:'1px solid rgba(167,139,250,0.3)',color:'#A78BFA'}}>
+            Sei nella Squadra {myTeam.teamId} {myTeam.teamId==='A'?'🔵':'🔴'}
+          </div>
+          {pendingForMyTeam.length === 0 ? (
+            <div className="text-white/40 text-sm animate-pulse">In attesa di richieste di accesso…</div>
+          ) : (
+            <div className="flex flex-col gap-3 w-full">
+              <div className="text-xs font-black uppercase tracking-widest" style={{color:'rgba(255,255,255,0.35)'}}>
+                Richieste di unirsi alla tua squadra
+              </div>
+              {pendingForMyTeam.map(req => (
+                <div key={req.id} className="flex items-center gap-3 rounded-2xl px-4 py-3"
+                  style={{background:`${req.avatarColor}12`,border:`1.5px solid ${req.avatarColor}44`}}>
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-black flex-shrink-0"
+                    style={{background:req.avatarColor,color:'#0a0015'}}>{req.nickname[0]?.toUpperCase()}</div>
+                  <div className="font-black text-white flex-1 text-left">{req.nickname}</div>
+                  <button
+                    disabled={acceptingPlayer === req.id}
+                    onClick={async () => {
+                      setAcceptingPlayer(req.id);
+                      try {
+                        await fetch(`/api/home/sessions/${sessionId}/ballo-accept-player`, {
+                          method: 'POST', credentials: 'include',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ acceptingPlayerId: playerId, newPlayerId: req.id, teamId: myTeam.teamId }),
+                        });
+                      } finally { setAcceptingPlayer(null); }
+                    }}
+                    className="rounded-xl px-4 py-2 text-sm font-black text-white disabled:opacity-50"
+                    style={{background:'linear-gradient(135deg,#A78BFA,#7C3AED)',boxShadow:'0 0 20px rgba(167,139,250,0.4)'}}>
+                    {acceptingPlayer === req.id ? '…' : '✓ ACCETTA'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="text-xs text-white/25">🏆 {prizePoints.toLocaleString()} punti in palio</div>
+        </div>
+      );
+    }
+
+    // Player sent a request — waiting
+    if (hasSentRequest && myPendingTeam) {
+      return (
+        <div className="flex flex-col items-center gap-5 py-4 text-center">
+          <div className="text-4xl">{stageIcon}</div>
+          <div className="text-xl font-black text-white">{stageLabel}</div>
+          <div className="rounded-2xl px-6 py-4 flex flex-col gap-2"
+            style={{background:'rgba(234,179,8,0.1)',border:'1px solid rgba(234,179,8,0.3)'}}>
+            <div className="text-2xl">⏳</div>
+            <div className="font-black text-yellow-400">Richiesta inviata!</div>
+            <div className="text-sm text-white/60">
+              Squadra {myPendingTeam.teamId} {myPendingTeam.teamId==='A'?'🔵':'🔴'} deve accettarti.
+            </div>
+          </div>
+          <div className="text-xs text-white/25">🏆 {prizePoints.toLocaleString()} punti in palio</div>
+          {/* Allow changing team */}
+          <div className="flex gap-3">
+            {teams.filter(t => t.teamId !== myPendingTeam.teamId).map(t => (
+              <button key={t.teamId}
+                disabled={joiningTeam === t.teamId}
+                onClick={async () => {
+                  setJoiningTeam(t.teamId);
+                  try {
+                    await fetch(`/api/home/sessions/${sessionId}/ballo-join-team`, {
+                      method: 'POST', credentials: 'include',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ playerId, nickname: 'giocatore', avatarColor: '#A78BFA', teamId: t.teamId }),
+                    });
+                  } finally { setJoiningTeam(null); }
+                }}
+                className="text-xs rounded-xl px-4 py-2 font-bold disabled:opacity-40"
+                style={{background:'rgba(255,255,255,0.07)',color:'rgba(255,255,255,0.4)',border:'1px solid rgba(255,255,255,0.12)'}}>
+                Cambia → Squadra {t.teamId} {t.teamId==='A'?'🔵':'🔴'}
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // New player — show team selection
+    return (
+      <div className="flex flex-col items-center gap-5 py-4 text-center">
+        <div className="text-4xl">{stageIcon}</div>
+        <div className="text-xl font-black text-white">{stageLabel}</div>
+        <div className="text-sm text-white/60 max-w-xs">
+          {balloStage === 2 ? 'Scegli la squadra in cui vuoi ballare!' : 'Scegli il terzetto in cui vuoi ballare!'}
+        </div>
+        <div className="text-sm font-black" style={{color:'#F5B642'}}>
+          🏆 {prizePoints.toLocaleString()} punti in palio
+        </div>
+        <div className="flex flex-col gap-3 w-full">
+          {teams.map(team => {
+            const isTeamFull = team.players.length >= balloStage;
+            const color = team.teamId === 'A' ? '#60A5FA' : '#F87171';
+            return (
+              <button key={team.teamId}
+                disabled={isTeamFull || joiningTeam === team.teamId}
+                onClick={async () => {
+                  if (isTeamFull) return;
+                  setJoiningTeam(team.teamId);
+                  try {
+                    await fetch(`/api/home/sessions/${sessionId}/ballo-join-team`, {
+                      method: 'POST', credentials: 'include',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ playerId, nickname: 'giocatore', avatarColor: '#A78BFA', teamId: team.teamId }),
+                    });
+                  } finally { setJoiningTeam(null); }
+                }}
+                className="flex items-center gap-4 rounded-2xl px-5 py-4 text-left disabled:opacity-40"
+                style={{background:`${color}12`,border:`2px solid ${isTeamFull ? 'rgba(255,255,255,0.12)' : color+'66'}`,
+                  boxShadow: joiningTeam===team.teamId ? `0 0 30px ${color}50` : 'none'}}>
+                <div className="text-2xl">{team.teamId==='A'?'🔵':'🔴'}</div>
+                <div className="flex-1">
+                  <div className="font-black text-white">Squadra {team.teamId}</div>
+                  <div className="text-xs" style={{color:'rgba(255,255,255,0.5)'}}>
+                    {team.players.map(p=>p.nickname).join(' + ') || 'Nessuno ancora'}
+                    {team.pendingRequests.length>0 ? ` · ${team.pendingRequests.length} in attesa` : ''}
+                  </div>
+                </div>
+                <div className="text-sm font-black" style={{color: isTeamFull ? 'rgba(255,255,255,0.3)' : color}}>
+                  {isTeamFull ? 'COMPLETA' : joiningTeam===team.teamId ? '…' : '→'}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Result phase: show waiting message ────────────────────────────────────────
+  if (balloPhase === 'result') {
+    return (
+      <div className="flex flex-col items-center gap-5 py-4 text-center">
+        <div className="text-5xl">🏆</div>
+        <div className="text-xl font-black text-white">Risultato!</div>
+        <div className="text-sm text-white/50">In attesa della prossima sfida…</div>
+      </div>
+    );
+  }
 
   // ── Spectator voting UI ───────────────────────────────────────────────────────
   if (isSpectator) {

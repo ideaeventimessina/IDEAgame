@@ -1,0 +1,256 @@
+HOME BALLO — PROGRESSIVE TEAM TOURNAMENT FLOW.
+
+FIRST AUDIT, THEN PATCH.
+Do not touch SensorBridge.
+Do not touch audio.
+Do not touch routing.
+Do not touch other games.
+
+Problem:
+Ballo still auto-advances from one dance challenge to the next.
+It does NOT stop for a new booking phase.
+This is wrong.
+
+New required Ballo structure:
+Sfida di Ballo is a 3-stage progressive tournament.
+
+==================================================
+STAGE 1 — DUELLO INGRESSO
+==================================================
+
+Flow:
+1. Booking phase
+2. Exactly 2 players book as solo dancers
+3. Host starts
+4. Countdown
+5. Dance round
+6. Timer ends
+7. Automatically show mini podium
+8. DO NOT auto-start next round
+9. Show button:
+   “PROSSIMA SFIDA”
+
+Result:
+- Two solo players become the two team captains.
+- They remain in tournament.
+
+==================================================
+STAGE 2 — COPPIE
+==================================================
+
+After clicking “PROSSIMA SFIDA”:
+Show explanation:
+“Servono 2 nuovi giocatori. Ognuno dovrà unirsi a uno dei due ballerini in gara.”
+
+Flow:
+1. Booking/linking phase
+2. Two new players book
+3. Each new player chooses one of the two existing captains/team slots
+4. The existing captain/player must accept the request
+5. When both teams have 2 players:
+   Team A = captain A + new player
+   Team B = captain B + new player
+6. Host starts
+7. Countdown
+8. Dance round
+9. Timer ends
+10. Automatically show mini podium
+
+Scoring:
+- Stage 2 prize = 500 points
+- Winning pair receives 500 total
+- split evenly:
+  +250 points each player in winning pair
+
+After mini podium:
+Show button:
+“PROSSIMA SFIDA”
+
+==================================================
+STAGE 3 — TERZETTI / FINALE
+==================================================
+
+After clicking “PROSSIMA SFIDA”:
+Show explanation:
+“Servono altri 2 nuovi giocatori. Si uniranno alle coppie già create per formare due terzetti.”
+
+Flow:
+1. Booking/linking phase
+2. Two new players book
+3. Each chooses one existing team/couple
+4. Existing team must accept
+5. When both teams have 3 players:
+   Team A = captain A + player A2 + player A3
+   Team B = captain B + player B2 + player B3
+6. Host starts
+7. Countdown
+8. Dance round
+9. Timer ends
+10. Automatically show final podium
+
+Scoring:
+- Stage 3 prize = 1800 points
+- Winning trio receives 1800 total
+- split evenly:
+  +600 points each player in winning trio
+
+After Stage 3:
+Show final Ballo podium.
+Then return to Home game flow / next selected game according to existing global logic.
+
+==================================================
+GENERAL RULES
+==================================================
+
+- No Ballo round may auto-start the next Ballo round.
+- After each timer end, show mini podium/result screen.
+- The next stage starts only after host clicks “PROSSIMA SFIDA”.
+- Each stage requires fresh booking/linking.
+- Players who already played stay in their team.
+- New players can join a team only by selection + acceptance.
+- If the same players want to rebook, allow it only if the stage rules allow it.
+- Non-active players are spectators/voters.
+- Only active team players should appear as dancers.
+- Spectator voting remains available during performance.
+- Votes close when timer reaches zero.
+- Do not show all logged players as active dancers.
+
+==================================================
+DATA MODEL IN ROUND PAYLOAD
+==================================================
+
+Add/maintain Ballo tournament payload fields:
+
+{
+  mode: "home-ballo",
+  balloStage: 1 | 2 | 3,
+  teams: [
+    {
+      teamId: "A",
+      players: [{ id, nickname }],
+      pendingRequests: []
+    },
+    {
+      teamId: "B",
+      players: [{ id, nickname }],
+      pendingRequests: []
+    }
+  ],
+  bookedPlayers: [],
+  activeDancerIds: [],
+  prizePoints: 150 | 500 | 1800,
+  splitPrize: true
+}
+
+Stage 1:
+- teams created from the 2 solo players after mini podium
+- prize may stay current sensor winner prize if already implemented
+
+Stage 2:
+- activeDancerIds = all 4 team members
+- prizePoints = 500
+
+Stage 3:
+- activeDancerIds = all 6 team members
+- prizePoints = 1800
+
+==================================================
+SOCKET / API EVENTS NEEDED
+==================================================
+
+Add or patch:
+
+home:ballo_stage_next
+- host clicks “PROSSIMA SFIDA”
+- moves from mini podium to next booking/linking phase
+
+home:ballo_join_team_request
+- new player requests to join team A or B
+
+home:ballo_accept_team_request
+- existing team/captain accepts the request
+
+home:ballo_team_ready
+- broadcast current teams/readiness to TV and phones
+
+home:ballo_stage_result
+- emitted when timer ends
+- includes winnerTeamId, prizePoints, split points, mini podium data
+
+==================================================
+BUG TO FIX
+==================================================
+
+Current bug:
+Ballo auto-advances from round 1 to round 2 without stopping.
+
+Audit and disable for Ballo:
+- nextRound()
+- auto next after timer
+- home:round automatic dispatch
+- postGame auto-board logic
+- any gamesPlayed/currentRound increment that bypasses stage podium
+
+For Ballo:
+timer end must route to:
+balloStageResult / mini podium
+NOT next round.
+
+==================================================
+UI REQUIREMENTS
+==================================================
+
+TV:
+Stage 1:
+- “Sfida 1: Duello d’ingresso”
+- show 2 booked solo players
+- mini podium after timer
+
+Stage 2:
+- “Sfida 2: Coppie”
+- show two team cards
+- new players choose a team
+- show pending join requests
+- show accept buttons for captains/team
+- show 500 punti in palio
+- mini podium after timer
+
+Stage 3:
+- “Sfida Finale: Terzetti”
+- show two team cards
+- show 1800 punti in palio
+- final podium after timer
+
+Phone:
+Stage 1:
+- normal booking as dancer
+
+Stage 2 / 3:
+For new players:
+- choose Team A or Team B
+- wait for acceptance
+
+For existing team players:
+- see pending join request
+- button “ACCETTA”
+
+For spectators:
+- voting UI remains
+
+==================================================
+OUTPUT
+==================================================
+
+A. root cause of auto-advance
+B. files modified
+C. tournament state model
+D. new socket/API events
+E. Stage 1 flow
+F. Stage 2 flow and 500pt split
+G. Stage 3 flow and 1800pt split
+H. how scoring is applied
+I. typecheck result
+J. manual test checklist
+
+DO NOT PATCH OTHER GAMES.
+DO NOT TOUCH SENSORBRIDGE.

@@ -504,7 +504,10 @@ export default function HomeGame() {
   const [postGame, setPostGame] = useState<{gameSlug:string;players:HomePlayer[]}|null>(null);
   const [balloEnergies, setBalloEnergies] = useState<Record<string, number>>({});     // peak — for winner/sorting
   const [balloCurrent, setBalloCurrent]   = useState<Record<string, number>>({});     // current live — for bars
-  const [balloResult, setBalloResult] = useState<{ winnerId: string; winnerNickname: string; points: number } | null>(null);
+  const [balloResult, setBalloResult] = useState<{
+    winnerId: string | null; winnerNickname: string | null; points: number;
+    teamResult?: { winnerTeamId: string; winnerTeamPlayers: { id: string; nickname: string }[]; perPlayer: number; teamScores: { teamId: string; players: { id: string; nickname: string }[]; totalEnergy: number }[] } | null;
+  } | null>(null);
   const [saraMusicaWinner, setSaraMusicaWinner] = useState<{ nickname: string; points: number; round: number } | null>(null);
   // Reset saraMusicaWinner when the round changes
   useEffect(() => { setSaraMusicaWinner(null); }, [session?.currentRound]);
@@ -744,11 +747,14 @@ export default function HomeGame() {
       setBalloCurrent(d.currentEnergies);
       setBalloEnergies(d.peakEnergies);
     });
-    const u9 = on<{ winnerId: string; winnerNickname: string; points: number; energies: Record<string, number> }>('home:ballo_result', (d) => {
-      console.log('[BalloTrace:tv] received home:ballo_result', { winnerId: d.winnerId, points: d.points, energies: d.energies });
-      setPlayers(prev => prev.map(p => p.id === d.winnerId ? { ...p, score: p.score + d.points } : p));
-      setBalloEnergies(d.energies);
-      setBalloResult({ winnerId: d.winnerId, winnerNickname: d.winnerNickname, points: d.points });
+    const u9 = on<{ winnerId: string | null; winnerNickname: string | null; points: number; energies: Record<string, number>; teamResult?: { winnerTeamId: string; winnerTeamPlayers: { id: string; nickname: string }[]; perPlayer: number; teamScores: { teamId: string; players: { id: string; nickname: string }[]; totalEnergy: number }[] } | null }>('home:ballo_result', (d) => {
+      console.log('[BalloTrace:tv] received home:ballo_result', { winnerId: d.winnerId, teamResult: d.teamResult });
+      // Optimistic score update for solo winner
+      if (d.winnerId) setPlayers(prev => prev.map(p => p.id === d.winnerId ? { ...p, score: p.score + d.points } : p));
+      // Optimistic score update for team winners
+      if (d.teamResult) setPlayers(prev => prev.map(p => d.teamResult?.winnerTeamPlayers.some(m => m.id === p.id) ? { ...p, score: p.score + d.teamResult!.perPlayer } : p));
+      setBalloEnergies(d.energies ?? {});
+      setBalloResult({ winnerId: d.winnerId, winnerNickname: d.winnerNickname, points: d.points, teamResult: d.teamResult ?? null });
       setRevealed(true);
       if (timerRef.current) clearInterval(timerRef.current);
       setJonnyMood('winner');
@@ -1005,11 +1011,23 @@ export default function HomeGame() {
     } finally { setLoading(false); }
   };
 
-  // ── Ballo auto-finish DISABLED ────────────────────────────────────────────────
-  // Ballo rounds do NOT auto-advance. The host must press "NUOVA SFIDA" after each
-  // dance challenge — which resets bookedPlayers so new dancers can book in.
-  // (Previously: timeLeft===0 → nextRound() for home-ballo; removed to stop skipping
-  //  the results + rebook phase.)
+  // ── Ballo tournament: call ballo-round-end when dance timer hits zero ─────────
+  // This scores the round and sets balloPhase:'result' WITHOUT advancing the round.
+  // The host then clicks "PROSSIMA SFIDA" (ballo-stage-next) or "FINE BALLO" (end-game).
+  const balloRoundEndedRef = useRef(false);
+  useEffect(() => { balloRoundEndedRef.current = false; }, [session?.id, session?.currentRound]);
+  useEffect(() => {
+    if (timeLeft !== 0) return;
+    if (String(session?.roundPayload?.mode ?? '') !== 'home-ballo') return;
+    const balloPhase = String((session?.roundPayload as Record<string,unknown>)?.balloPhase ?? 'dancing');
+    if (balloPhase !== 'dancing') return; // skip if already in result/booking
+    if (balloRoundEndedRef.current) return;
+    balloRoundEndedRef.current = true;
+    const sid = session?.id;
+    if (!sid) return;
+    void fetch(`/api/home/sessions/${sid}/ballo-round-end`, { method: 'POST', credentials: 'include' });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeLeft, (session?.roundPayload as Record<string,unknown>)?.balloPhase, session?.roundPayload?.mode, session?.id]);
 
   const endGame = async () => {
     if (!session) return;
@@ -1406,6 +1424,16 @@ export default function HomeGame() {
                     setBalloResult(null);
                   } catch { /* server broadcasts state update */ }
                 }}
+                onStageNext={async () => {
+                  if (!session?.id) return;
+                  await fetch(`/api/home/sessions/${session.id}/ballo-stage-next`, { method: 'POST', credentials: 'include' });
+                  setBalloVotes({});
+                  setBalloEnergies({});
+                  setBalloCurrent({});
+                  setBalloResult(null);
+                  balloRoundEndedRef.current = false;
+                }}
+                onEndBallo={endGame}
                 saraMusicaWinner={saraMusicaWinner}
                 balloSensitivity={balloSensitivity} onSensitivity={handleBalloSensitivity} sensorReadyMap={sensorReadyMap}
                 tabooAlarm={tabooAlarm}
@@ -1653,7 +1681,7 @@ export default function HomeGame() {
 
 // ── RoundBoard ─────────────────────────────────────────────────────────────────
 
-function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, balloEnergies, balloCurrent, balloResult, balloVotes, onBalloReset, saraMusicaWinner, balloSensitivity, onSensitivity, sensorReadyMap, tabooAlarm }: {
+function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, balloEnergies, balloCurrent, balloResult, balloVotes, onBalloReset, onStageNext, onEndBallo, saraMusicaWinner, balloSensitivity, onSensitivity, sensorReadyMap, tabooAlarm }: {
   session: HomeSession;
   revealed: boolean;
   onReveal: () => void;
@@ -1662,9 +1690,11 @@ function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, bal
   onScore: (playerId: string, points: number) => Promise<void>;
   balloEnergies?: Record<string, number>;
   balloCurrent?: Record<string, number>;
-  balloResult?: { winnerId: string; winnerNickname: string; points: number } | null;
+  balloResult?: { winnerId: string | null; winnerNickname: string | null; points: number; teamResult?: { winnerTeamId: string; winnerTeamPlayers: { id: string; nickname: string }[]; perPlayer: number; teamScores: { teamId: string; players: { id: string; nickname: string }[]; totalEnergy: number }[] } | null } | null;
   balloVotes?: Record<string, { total: number; count: number }>;
   onBalloReset?: () => void;
+  onStageNext?: () => Promise<void>;
+  onEndBallo?: () => void;
   saraMusicaWinner?: { nickname: string; points: number; round: number } | null;
   balloSensitivity?: number;
   onSensitivity?: (s: number) => void;
@@ -1676,7 +1706,7 @@ function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, bal
 
   if (mode === 'home-flow')       return <GameFlowEngine session={session} players={players} sensorReadyMap={sensorReadyMap}/>;
   if (mode === 'home-quiz')       return <QuizBoard payload={p} revealed={revealed} onReveal={onReveal}/>;
-  if (mode === 'home-ballo')      return <BalloBoard payload={p} players={players} balloEnergies={balloEnergies ?? {}} balloCurrent={balloCurrent ?? {}} balloResult={balloResult ?? null} balloVotes={balloVotes ?? {}} onReset={onBalloReset} sensitivity={balloSensitivity ?? 1} onSensitivity={onSensitivity}/>;
+  if (mode === 'home-ballo')      return <BalloBoard session={session} payload={p} players={players} balloEnergies={balloEnergies ?? {}} balloCurrent={balloCurrent ?? {}} balloResult={balloResult ?? null} balloVotes={balloVotes ?? {}} onReset={onBalloReset} onStageNext={onStageNext} onEndBallo={onEndBallo} sensitivity={balloSensitivity ?? 1} onSensitivity={onSensitivity}/>;
   if (mode === 'home-percorso')   return <PercorsoBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
   if (mode === 'home-coppie')     return <CoppieBoard payload={p} onNext={onNext}/>;
   if (mode === 'home-saramusica') return <SaraMusicaBoard payload={p} revealed={revealed} onReveal={onReveal} winner={saraMusicaWinner ?? null}/>;
@@ -1742,22 +1772,227 @@ function QuizBoard({ payload, revealed, onReveal }: { payload: Record<string,unk
   );
 }
 
-// ── BalloBoard — Guitar Hero style vertical meters ──────────────────────────
+// ── BalloBoard — 3-stage tournament TV view ────────────────────────────────────
 
 type BurstItem = { key: number; label: string };
+type BalloTeamDef = { teamId: string; players: { id: string; nickname: string; avatarColor: string }[]; pendingRequests: { id: string; nickname: string; avatarColor: string }[] };
 
-
-function BalloBoard({ payload, players, balloEnergies, balloCurrent, balloResult, balloVotes, onReset, sensitivity = 1, onSensitivity }: {
+function BalloBoard({ session, payload, players, balloEnergies, balloCurrent, balloResult, balloVotes, onReset, onStageNext, onEndBallo, sensitivity = 1, onSensitivity }: {
+  session: HomeSession;
   payload: Record<string,unknown>;
   players: HomePlayer[];
-  balloEnergies: Record<string, number>;  // peak — used for winner/final sorting
-  balloCurrent: Record<string, number>;   // live current — drives bar height + provisional pts
-  balloResult: { winnerId: string; winnerNickname: string; points: number } | null;
+  balloEnergies: Record<string, number>;
+  balloCurrent: Record<string, number>;
+  balloResult: { winnerId: string | null; winnerNickname: string | null; points: number; teamResult?: { winnerTeamId: string; winnerTeamPlayers: { id: string; nickname: string }[]; perPlayer: number; teamScores: { teamId: string; players: { id: string; nickname: string }[]; totalEnergy: number }[] } | null } | null;
   balloVotes: Record<string, { total: number; count: number }>;
   onReset?: () => void;
+  onStageNext?: () => Promise<void>;
+  onEndBallo?: () => void;
   sensitivity?: number;
   onSensitivity?: (s: number) => void;
 }) {
+  const balloPhase = String(payload.balloPhase ?? 'dancing');
+  const balloStage = Number(payload.balloStage ?? 1);
+  const teams = (payload.teams ?? []) as BalloTeamDef[];
+  const prizePoints = Number(payload.prizePoints ?? 150);
+  const [startingDance, setStartingDance] = useState(false);
+
+  // Stage 1 never has balloPhase in payload (uses old flow path) — treat as dancing
+  const effectivePhase = balloStage >= 2 ? balloPhase : (balloResult ? 'result' : 'dancing');
+
+  // ── BOOKING PHASE (stages 2 & 3 only) ───────────────────────────────────────
+  if (effectivePhase === 'booking') {
+    const requiredPerTeam = balloStage;
+    const teamsReady = teams.every(t => t.players.length >= requiredPerTeam);
+    const stageLabel = balloStage === 2 ? 'Sfida 2: Coppie' : 'Sfida Finale: Terzetti';
+    const stageDesc = balloStage === 2
+      ? 'Servono 2 nuovi giocatori — ognuno sceglie una squadra.'
+      : 'Servono altri 2 giocatori — si uniscono alle coppie per formare i terzetti.';
+    return (
+      <motion.div initial={{opacity:0,y:16}} animate={{opacity:1,y:0}}
+        className="flex w-full flex-col items-center gap-5">
+        {/* Stage header */}
+        <div className="flex flex-col items-center gap-1 text-center">
+          <div className="text-4xl">💃</div>
+          <div className="text-display text-2xl font-black text-white">{stageLabel}</div>
+          <div className="text-sm text-white/50 max-w-sm">{stageDesc}</div>
+          <div className="mt-1 rounded-xl px-5 py-2 text-base font-black"
+            style={{background:'rgba(245,182,66,0.15)',border:'1px solid rgba(245,182,66,0.5)',color:'#F5B642'}}>
+            🏆 {prizePoints.toLocaleString()} punti in palio
+          </div>
+        </div>
+        {/* Team cards */}
+        <div className="flex w-full max-w-2xl gap-4">
+          {teams.map(team => (
+            <div key={team.teamId} className="flex-1 rounded-3xl p-4 flex flex-col gap-3"
+              style={{background:'rgba(167,139,250,0.07)',border:'1.5px solid rgba(167,139,250,0.3)'}}>
+              <div className="text-center font-black text-white text-lg">
+                Squadra {team.teamId} {team.teamId === 'A' ? '🔵' : '🔴'}
+              </div>
+              {/* Existing members */}
+              {team.players.map(p => (
+                <div key={p.id} className="flex items-center gap-2 rounded-xl px-3 py-2"
+                  style={{background:`${p.avatarColor}18`,border:`1px solid ${p.avatarColor}44`}}>
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-black"
+                    style={{background:p.avatarColor,color:'#0a0015'}}>{p.nickname[0]?.toUpperCase()}</div>
+                  <div className="font-bold text-white text-sm flex-1">{p.nickname}</div>
+                  <div className="text-xs" style={{color:'rgba(255,255,255,0.4)'}}>✓</div>
+                </div>
+              ))}
+              {/* Pending requests */}
+              {team.pendingRequests.map(p => (
+                <div key={p.id} className="flex items-center gap-2 rounded-xl px-3 py-2 border-dashed"
+                  style={{background:'rgba(255,255,255,0.03)',border:'1.5px dashed rgba(255,255,255,0.2)'}}>
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-black"
+                    style={{background:p.avatarColor,color:'#0a0015'}}>{p.nickname[0]?.toUpperCase()}</div>
+                  <div className="font-bold text-white/60 text-sm flex-1">{p.nickname}</div>
+                  <div className="text-xs text-yellow-400 animate-pulse">attesa…</div>
+                </div>
+              ))}
+              {/* Empty slots */}
+              {Array.from({length: Math.max(0, requiredPerTeam - team.players.length - team.pendingRequests.length)}).map((_, i) => (
+                <div key={`empty-${i}`} className="flex items-center gap-2 rounded-xl px-3 py-2 border-dashed"
+                  style={{background:'rgba(255,255,255,0.02)',border:'1.5px dashed rgba(255,255,255,0.12)'}}>
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full text-xs text-white/20 border border-dashed border-white/15">?</div>
+                  <div className="text-white/25 text-sm">In attesa…</div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+        {/* Avvia Sfida button */}
+        <motion.button
+          disabled={!teamsReady || startingDance}
+          onClick={async () => {
+            if (!teamsReady || startingDance) return;
+            setStartingDance(true);
+            await fetch(`/api/home/sessions/${session.id}/ballo-start-dance`, { method: 'POST', credentials: 'include' });
+            setStartingDance(false);
+          }}
+          whileHover={teamsReady ? {scale:1.04} : {}}
+          whileTap={teamsReady ? {scale:0.96} : {}}
+          className="flex items-center gap-2 rounded-2xl px-10 py-4 text-xl font-black text-white disabled:opacity-40 disabled:cursor-not-allowed"
+          style={{background: teamsReady ? 'linear-gradient(135deg,#A78BFA,#7C3AED)' : 'rgba(255,255,255,0.07)',
+            boxShadow: teamsReady ? '0 0 40px rgba(167,139,250,0.6)' : 'none',border:'none'}}>
+          {startingDance ? '…' : teamsReady ? '▶ AVVIA SFIDA' : `In attesa giocatori (${teams.map(t=>t.players.length).join('/')})`}
+        </motion.button>
+      </motion.div>
+    );
+  }
+
+  // ── RESULT PHASE ─────────────────────────────────────────────────────────────
+  if (effectivePhase === 'result') {
+    const stageLabels = ['Sfida 1: Duello d\'ingresso','Sfida 2: Coppie','Sfida Finale: Terzetti'];
+    const stageLabel = stageLabels[balloStage - 1] ?? 'Risultato';
+    const isFinal = balloStage >= 3;
+    const teamResult = balloResult?.teamResult;
+    return (
+      <motion.div initial={{opacity:0,y:16}} animate={{opacity:1,y:0}}
+        className="flex w-full flex-col items-center gap-5">
+        <div className="text-display text-xl font-black text-white/60 tracking-widest uppercase">{stageLabel}</div>
+        {/* Solo result (stage 1) */}
+        {!teamResult && balloResult?.winnerId && (
+          <motion.div initial={{scale:0.7,opacity:0}} animate={{scale:1,opacity:1}} transition={{type:'spring',stiffness:280,damping:20}}
+            className="flex flex-col items-center gap-2 rounded-3xl px-10 py-5"
+            style={{background:'linear-gradient(135deg,rgba(245,182,66,0.22),rgba(249,115,22,0.12))',border:'2px solid rgba(245,182,66,0.7)',boxShadow:'0 0 60px rgba(245,182,66,0.4)'}}>
+            <div className="text-5xl">🏆</div>
+            <div className="text-display text-3xl font-black text-yellow-400 tracking-wide">
+              VINCE {(balloResult.winnerNickname ?? '').toUpperCase()}!
+            </div>
+            <div className="text-xl font-black" style={{color:'#F5B642'}}>+{balloResult.points} punti</div>
+          </motion.div>
+        )}
+        {/* Team result (stages 2/3) */}
+        {teamResult && (
+          <motion.div initial={{scale:0.7,opacity:0}} animate={{scale:1,opacity:1}} transition={{type:'spring',stiffness:280,damping:20}}
+            className="flex flex-col items-center gap-3">
+            <div className="flex flex-col items-center gap-2 rounded-3xl px-10 py-5"
+              style={{background:'linear-gradient(135deg,rgba(245,182,66,0.22),rgba(249,115,22,0.12))',border:'2px solid rgba(245,182,66,0.7)',boxShadow:'0 0 60px rgba(245,182,66,0.4)'}}>
+              <div className="text-5xl">🏆</div>
+              <div className="text-display text-2xl font-black text-yellow-400">
+                VINCE SQUADRA {teamResult.winnerTeamId}!
+              </div>
+              <div className="text-base font-bold text-white/70">
+                {teamResult.winnerTeamPlayers.map(p=>p.nickname).join(' + ')}
+              </div>
+              <div className="text-xl font-black" style={{color:'#F5B642'}}>
+                +{teamResult.perPlayer} punti ciascuno · {prizePoints} totali
+              </div>
+            </div>
+            {/* Team energy scores */}
+            <div className="flex gap-4 mt-1">
+              {teamResult.teamScores.map(ts => (
+                <div key={ts.teamId} className="flex flex-col items-center gap-1 rounded-2xl px-5 py-3"
+                  style={{background: ts.teamId===teamResult.winnerTeamId ? 'rgba(245,182,66,0.12)' : 'rgba(255,255,255,0.05)',
+                    border:`1.5px solid ${ts.teamId===teamResult.winnerTeamId ? 'rgba(245,182,66,0.5)' : 'rgba(255,255,255,0.12)'}`}}>
+                  <div className="font-black text-sm" style={{color: ts.teamId===teamResult.winnerTeamId ? '#F5B642' : 'rgba(255,255,255,0.5)'}}>
+                    Squadra {ts.teamId} {ts.teamId===teamResult.winnerTeamId ? '🏆':''}
+                  </div>
+                  <div className="text-xs text-white/40">{ts.players.map(p=>p.nickname).join(' + ')}</div>
+                  <div className="text-base font-black" style={{color:'#A78BFA'}}>⚡ {ts.totalEnergy}</div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+        {/* No motion data */}
+        {!balloResult && (
+          <div className="text-white/40 text-sm">Nessun dato di energia ricevuto</div>
+        )}
+        {/* Votes */}
+        {Object.keys(balloVotes).length > 0 && (
+          <motion.div initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} transition={{delay:0.3}}
+            className="flex flex-wrap justify-center gap-3">
+            {(payload.bookedPlayers as {id:string;nickname:string;avatarColor:string}[]??[]).map(p => {
+              const vd = balloVotes[p.id];
+              if (!vd || vd.count === 0) return null;
+              const avg = vd.total / vd.count;
+              return (
+                <div key={p.id} className="flex flex-col items-center gap-1 rounded-2xl px-4 py-2"
+                  style={{background:`${p.avatarColor}15`,border:`1px solid ${p.avatarColor}44`}}>
+                  <div className="text-xs font-black" style={{color:p.avatarColor}}>{p.nickname}</div>
+                  <div className="text-base">{'⭐'.repeat(Math.round(avg))}{'☆'.repeat(Math.max(0,5-Math.round(avg)))}</div>
+                  <div className="text-xs" style={{color:'rgba(255,255,255,0.35)'}}>{avg.toFixed(1)} · {vd.count} voti</div>
+                </div>
+              );
+            })}
+          </motion.div>
+        )}
+        {/* Action buttons */}
+        <motion.div initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} transition={{delay:0.5}}
+          className="flex flex-col items-center gap-2">
+          {!isFinal && onStageNext && (
+            <motion.button onClick={onStageNext}
+              whileHover={{scale:1.04}} whileTap={{scale:0.96}}
+              className="flex items-center gap-2 rounded-2xl px-10 py-4 text-xl font-black text-white"
+              style={{background:'linear-gradient(135deg,#A78BFA,#7C3AED)',boxShadow:'0 0 40px rgba(167,139,250,0.6)',border:'none'}}>
+              PROSSIMA SFIDA →
+            </motion.button>
+          )}
+          {isFinal && onEndBallo && (
+            <motion.button onClick={onEndBallo}
+              whileHover={{scale:1.04}} whileTap={{scale:0.96}}
+              className="flex items-center gap-2 rounded-2xl px-10 py-4 text-xl font-black text-white"
+              style={{background:'linear-gradient(135deg,#F5B642,#f97316)',boxShadow:'0 0 40px rgba(245,182,66,0.5)',border:'none'}}>
+              🏆 FINE BALLO →
+            </motion.button>
+          )}
+          {onReset && (
+            <button onClick={onReset}
+              className="text-xs font-semibold px-4 py-2 rounded-xl"
+              style={{background:'rgba(255,255,255,0.05)',color:'rgba(255,255,255,0.25)',border:'1px solid rgba(255,255,255,0.1)'}}>
+              ↺ Ricomincia dal Duello
+            </button>
+          )}
+        </motion.div>
+      </motion.div>
+    );
+  }
+
+  // ── DANCING PHASE (all stages) ────────────────────────────────────────────────
+  // Stage header for stages 2/3
+  const dancingStageLabel = balloStage >= 2 ? (balloStage === 2 ? 'Sfida 2: Coppie' : 'Sfida Finale: Terzetti') : null;
+
   const pts = Number(payload.points ?? 150);
   const prevCurrentRef = useRef<Record<string, number>>({});
   const burstKeyRef = useRef(0);
@@ -1771,7 +2006,6 @@ function BalloBoard({ payload, players, balloEnergies, balloCurrent, balloResult
     }, 900);
   }, []);
 
-  // Detect current-energy rises ≥ 5 and spawn floating burst labels
   useEffect(() => {
     if (balloResult) { prevCurrentRef.current = {}; return; }
     for (const [pid, curr] of Object.entries(balloCurrent)) {
@@ -1785,14 +2019,13 @@ function BalloBoard({ payload, players, balloEnergies, balloCurrent, balloResult
 
   const hasLiveData = Object.keys(balloCurrent).length > 0 || Object.keys(balloEnergies).length > 0;
 
-  // Filter to booked players only — spectators must not appear as active dancers.
-  // roundPayload.bookedPlayers is set by the flow booking phase for games like Ballo.
-  // Fallback to all players if bookedPlayers is absent (non-flow / direct round).
+  // Filter to activeDancerIds (stages 2/3) or bookedPlayers (stage 1), fallback all
+  const activeDancerIds = (payload.activeDancerIds ?? []) as string[];
   const rawBooked = (payload.bookedPlayers ?? []) as { id: string }[];
   const bookedIds = new Set(rawBooked.map(b => b.id));
-  const activePlayers = bookedIds.size > 0 ? players.filter(p => bookedIds.has(p.id)) : players;
+  const filterIds = activeDancerIds.length > 0 ? new Set(activeDancerIds) : bookedIds.size > 0 ? bookedIds : null;
+  const activePlayers = filterIds ? players.filter(p => filterIds.has(p.id)) : players;
 
-  // Sort live: by current energy, falling back to peak
   const sortedPlayers = [...activePlayers].sort((a, b) => {
     const ea = balloCurrent[a.id] ?? balloEnergies[a.id] ?? 0;
     const eb = balloCurrent[b.id] ?? balloEnergies[b.id] ?? 0;
@@ -1807,51 +2040,19 @@ function BalloBoard({ payload, players, balloEnergies, balloCurrent, balloResult
       {/* Header */}
       <div className="flex flex-col items-center gap-2 text-center">
         <div className="text-5xl">💃</div>
+        {dancingStageLabel && (
+          <div className="text-xs font-black uppercase tracking-widest" style={{color:'rgba(167,139,250,0.7)'}}>{dancingStageLabel}</div>
+        )}
         <div className="text-display text-3xl font-black text-white" style={{textShadow:'0 0 24px rgba(167,139,250,0.5)'}}>
           {String(payload.name ?? 'Sfida di Ballo')}
         </div>
         <div className="text-sm text-white/55 max-w-md">{String(payload.description ?? '')}</div>
+        {balloStage >= 2 && (
+          <div className="rounded-lg px-4 py-1 text-sm font-black" style={{background:'rgba(245,182,66,0.12)',color:'#F5B642'}}>
+            🏆 {prizePoints.toLocaleString()} punti in palio
+          </div>
+        )}
       </div>
-
-
-      {/* Winner banner */}
-      {balloResult && (
-        <motion.div initial={{scale:0.7,opacity:0}} animate={{scale:1,opacity:1}} transition={{type:'spring',stiffness:300,damping:20}}
-          className="flex flex-col items-center gap-1 rounded-3xl px-10 py-4"
-          style={{background:'linear-gradient(135deg,rgba(245,182,66,0.22),rgba(249,115,22,0.12))',border:'2px solid rgba(245,182,66,0.7)',boxShadow:'0 0 60px rgba(245,182,66,0.4)'}}>
-          <div className="text-4xl">🏆</div>
-          <div className="text-display text-2xl font-black text-yellow-400 tracking-wide">VINCE {balloResult.winnerNickname.toUpperCase()}!</div>
-          <div className="text-xl font-black" style={{color:'#F5B642'}}>+{balloResult.points} punti</div>
-        </motion.div>
-      )}
-
-      {/* Spectator vote tallies — shown after result */}
-      {balloResult && Object.keys(balloVotes).length > 0 && (
-        <motion.div initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} transition={{delay:0.3}}
-          className="flex w-full max-w-xl flex-col gap-2">
-          <div className="text-xs font-black uppercase tracking-widest text-center" style={{color:'rgba(255,255,255,0.35)'}}>
-            ⭐ Voti del Pubblico
-          </div>
-          <div className="flex flex-wrap justify-center gap-3">
-            {sortedPlayers.map(p => {
-              const vd = balloVotes[p.id];
-              if (!vd || vd.count === 0) return null;
-              const avg = vd.total / vd.count;
-              const stars = Math.round(avg);
-              return (
-                <div key={p.id} className="flex flex-col items-center gap-1 rounded-2xl px-4 py-2"
-                  style={{background:`${p.avatarColor}15`,border:`1px solid ${p.avatarColor}44`}}>
-                  <div className="text-xs font-black" style={{color:p.avatarColor}}>{p.nickname}</div>
-                  <div className="text-base">{'⭐'.repeat(stars)}{'☆'.repeat(Math.max(0,5-stars))}</div>
-                  <div className="text-xs font-semibold" style={{color:'rgba(255,255,255,0.35)'}}>
-                    {avg.toFixed(1)} · {vd.count} {vd.count===1?'voto':'voti'}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </motion.div>
-      )}
 
       {/* Contestant cards */}
       {sortedPlayers.length > 0 && (
@@ -1859,13 +2060,12 @@ function BalloBoard({ payload, players, balloEnergies, balloCurrent, balloResult
           {sortedPlayers.map((p, i) => {
             const currE    = balloCurrent[p.id] ?? 0;
             const barPct   = Math.min(100, currE);
-            const isWinner = balloResult?.winnerId === p.id;
-            const isLeader = !balloResult && i === 0 && (currE > 0 || (balloEnergies[p.id] ?? 0) > 0);
+            const isLeader = i === 0 && (currE > 0 || (balloEnergies[p.id] ?? 0) > 0);
             const livePts  = Math.round((currE / 100) * pts);
-            const borderCol = isWinner ? 'rgba(245,182,66,0.85)' : isLeader ? 'rgba(245,182,66,0.45)' : `${p.avatarColor}66`;
-            const glowCol   = isWinner ? '0 0 70px rgba(245,182,66,0.65),0 0 140px rgba(245,182,66,0.2)' : isLeader ? '0 0 40px rgba(245,182,66,0.25)' : '0 0 20px rgba(0,0,0,0.5)';
-            const meterBg   = isWinner || isLeader ? 'linear-gradient(0deg,#F5B642,#f97316)' : `linear-gradient(0deg,${p.avatarColor},${p.avatarColor}bb)`;
-            const meterGlow = isWinner || isLeader ? '0 0 18px rgba(245,182,66,0.8)' : `0 0 12px ${p.avatarColor}88`;
+            const borderCol = isLeader ? 'rgba(245,182,66,0.45)' : `${p.avatarColor}66`;
+            const glowCol   = isLeader ? '0 0 40px rgba(245,182,66,0.25)' : '0 0 20px rgba(0,0,0,0.5)';
+            const meterBg   = isLeader ? 'linear-gradient(0deg,#F5B642,#f97316)' : `linear-gradient(0deg,${p.avatarColor},${p.avatarColor}bb)`;
+            const meterGlow = isLeader ? '0 0 18px rgba(245,182,66,0.8)' : `0 0 12px ${p.avatarColor}88`;
 
             return (
               <motion.div key={p.id}
@@ -1897,7 +2097,7 @@ function BalloBoard({ payload, players, balloEnergies, balloCurrent, balloResult
 
                 {/* Rank + Avatar */}
                 <div className="flex items-center gap-2">
-                  <span className="text-2xl">{isWinner ? '🏆' : isLeader ? '🥇' : `${i+1}`}</span>
+                  <span className="text-2xl">{isLeader ? '🥇' : `${i+1}`}</span>
                   <div className="flex h-12 w-12 items-center justify-center rounded-2xl text-sm font-black"
                     style={{background:p.avatarColor, color:'#000', boxShadow:`0 0 14px ${p.avatarColor}88`}}>
                     {p.nickname.slice(0,2).toUpperCase()}
@@ -1906,7 +2106,7 @@ function BalloBoard({ payload, players, balloEnergies, balloCurrent, balloResult
 
                 {/* Nickname */}
                 <div className="text-center text-sm font-black leading-tight"
-                  style={{color: isWinner || isLeader ? '#F5B642' : 'rgba(255,255,255,0.9)'}}>
+                  style={{color: isLeader ? '#F5B642' : 'rgba(255,255,255,0.9)'}}>
                   {p.nickname}
                 </div>
 
@@ -1947,30 +2147,14 @@ function BalloBoard({ payload, players, balloEnergies, balloCurrent, balloResult
       )}
 
       {/* Waiting for first data */}
-      {!hasLiveData && !balloResult && (
+      {!hasLiveData && (
         <motion.div animate={{opacity:[0.4,1,0.4]}} transition={{repeat:Infinity,duration:1.8}}
           className="text-sm text-white/40">
           💃 Muovete il telefono — l'energia appare in tempo reale!
         </motion.div>
       )}
 
-      <div className="text-xs text-white/20">⚡ +{pts}pt al campione di energia · assegnato automaticamente</div>
-
-      {/* NUOVA SFIDA — reset booking for a fresh pair of dancers */}
-      {balloResult && onReset && (
-        <motion.div initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} transition={{delay:0.6}}
-          className="flex flex-col items-center gap-2">
-          <motion.button onClick={onReset}
-            whileHover={{scale:1.04}} whileTap={{scale:0.96}}
-            className="flex items-center gap-2 rounded-2xl px-8 py-3 text-base font-black text-white"
-            style={{background:'linear-gradient(135deg,#A78BFA,#7C3AED)',boxShadow:'0 0 35px rgba(167,139,250,0.5)',border:'none'}}>
-            💃 NUOVA SFIDA →
-          </motion.button>
-          <div className="text-xs font-semibold" style={{color:'rgba(255,255,255,0.25)'}}>
-            Nuovi ballerini si prenotano dal telefono
-          </div>
-        </motion.div>
-      )}
+      <div className="text-xs text-white/20">⚡ energia assegnata automaticamente al termine del timer</div>
     </motion.div>
   );
 }

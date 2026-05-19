@@ -1518,6 +1518,322 @@ router.post("/home/sessions/:id/next", async (req, res): Promise<void> => {
   res.json({ gameEnded: false, session: updated, payload: nextPayload });
 });
 
+// ── Ballo Tournament: shared types ────────────────────────────────────────────
+type BalloTeamPlayer = { id: string; nickname: string; avatarColor: string };
+type BalloTeam = { teamId: "A" | "B"; players: BalloTeamPlayer[]; pendingRequests: BalloTeamPlayer[] };
+
+// ── autoScoreBalloTournament — scores a completed ballo round ─────────────────
+// Stage 1: highest individual energy wins; Stage 2/3: team with highest combined energy wins.
+async function autoScoreBalloTournament(
+  sessionId: string,
+  players: { id: string; score: number; nickname: string }[],
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const splitPrize = Boolean(payload["splitPrize"]);
+  const prizePoints = Number(payload["prizePoints"] ?? 150);
+  const teams = (payload["teams"] ?? []) as BalloTeam[];
+
+  const energies = getBalloEnergies(sessionId);
+  clearBalloEnergies(sessionId);
+
+  if (!splitPrize || teams.length === 0) {
+    // Stage 1: solo — highest energy player wins
+    if (Object.keys(energies).length === 0) {
+      emitToRoom(`home:${sessionId}`, "home:ballo_result", {
+        winnerId: null, winnerNickname: null, points: prizePoints, energies: {}, teamResult: null,
+      });
+      return;
+    }
+    let winnerId = "", maxEnergy = -1;
+    for (const [pid, e] of Object.entries(energies)) {
+      if (e > maxEnergy) { maxEnergy = e; winnerId = pid; }
+    }
+    const winner = players.find((p) => p.id === winnerId);
+    if (!winner) return;
+    const newScore = winner.score + prizePoints;
+    await db.update(homePlayersTable).set({ score: newScore })
+      .where(and(eq(homePlayersTable.id, winnerId), eq(homePlayersTable.sessionId, sessionId)));
+    logger.info({ sessionId, winnerId, prizePoints, newScore }, "[Ballo] solo winner scored");
+    emitToRoom(`home:${sessionId}`, "home:ballo_result", {
+      winnerId,
+      winnerNickname: winner.nickname,
+      points: prizePoints,
+      energies,
+      teamResult: null,
+    });
+    return;
+  }
+
+  // Stages 2/3: team competition — sum energy per team, winning team splits prize
+  const teamScores = teams.map((team) => {
+    const totalEnergy = team.players.reduce((s, p) => s + (energies[p.id] ?? 0), 0);
+    return { team, totalEnergy };
+  });
+  teamScores.sort((a, b) => b.totalEnergy - a.totalEnergy);
+
+  const winningEntry = teamScores[0];
+  if (!winningEntry || winningEntry.team.players.length === 0) return;
+
+  const perPlayer = Math.floor(prizePoints / winningEntry.team.players.length);
+  for (const member of winningEntry.team.players) {
+    const p = players.find((pl) => pl.id === member.id);
+    if (!p) continue;
+    await db.update(homePlayersTable).set({ score: p.score + perPlayer })
+      .where(and(eq(homePlayersTable.id, member.id), eq(homePlayersTable.sessionId, sessionId)));
+  }
+  logger.info({ sessionId, winnerTeamId: winningEntry.team.teamId, prizePoints, perPlayer }, "[Ballo] team winner scored");
+  emitToRoom(`home:${sessionId}`, "home:ballo_result", {
+    winnerId: null,
+    winnerNickname: null,
+    points: prizePoints,
+    energies,
+    teamResult: {
+      winnerTeamId: winningEntry.team.teamId,
+      winnerTeamPlayers: winningEntry.team.players,
+      perPlayer,
+      teamScores: teamScores.map((ts) => ({
+        teamId: ts.team.teamId, players: ts.team.players, totalEnergy: ts.totalEnergy,
+      })),
+    },
+  });
+}
+
+// ── POST /home/sessions/:id/ballo-round-end ───────────────────────────────────
+// Called by the TV frontend when the dance timer reaches zero.
+// Scores the round and transitions to 'result' phase WITHOUT advancing the round.
+router.post("/home/sessions/:id/ballo-round-end", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (String(rp["mode"] ?? "") !== "home-ballo") {
+    res.status(409).json({ error: "Sessione non in modalità ballo" }); return;
+  }
+  const balloPhase = String(rp["balloPhase"] ?? "dancing");
+  if (balloPhase === "result") {
+    res.json({ ok: true, already: true }); return; // idempotent
+  }
+
+  const players = await getPlayers(id);
+  await autoScoreBalloTournament(id, players, rp);
+
+  // Persist the result phase + store stage1WinnerId for ballo-stage-next
+  const energies = {}; // already consumed by autoScoreBalloTournament
+  const stage1WinnerId = Number(rp["balloStage"] ?? 1) === 1
+    ? String((rp["bookedPlayers"] as BalloTeamPlayer[] ?? [])[0]?.id ?? "")
+    : String(rp["stage1WinnerId"] ?? ""); // carry forward
+
+  const resultRp = { ...rp, balloPhase: "result", stage1WinnerId, lastEnergies: energies };
+  const [updated] = await db.update(homeSessionsTable)
+    .set({ roundPayload: resultRp })
+    .where(eq(homeSessionsTable.id, id)).returning();
+
+  const updatedPlayers = await getPlayers(id);
+  emitToRoom(homeRoom(id), "home:state", { session: updated, players: updatedPlayers });
+  res.json({ ok: true });
+});
+
+// ── POST /home/sessions/:id/ballo-stage-next ──────────────────────────────────
+// Host clicks "PROSSIMA SFIDA" — advances from stage N result to stage N+1 booking.
+// Stage 1 → 2: creates teams A/B from the 2 solo dancers (winner = team A).
+// Stage 2 → 3: keeps existing teams, updates prizePoints to 1800.
+router.post("/home/sessions/:id/ballo-stage-next", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (String(rp["mode"] ?? "") !== "home-ballo" || String(rp["balloPhase"] ?? "") !== "result") {
+    res.status(409).json({ error: "Non in fase risultato ballo" }); return;
+  }
+
+  const balloStage = Number(rp["balloStage"] ?? 1);
+  const nextStage = balloStage + 1;
+  if (nextStage > 3) { res.status(409).json({ error: "Torneo ballo già concluso" }); return; }
+
+  const bookedPlayers = (rp["bookedPlayers"] ?? []) as BalloTeamPlayer[];
+  const existingTeams = (rp["teams"] ?? []) as BalloTeam[];
+
+  let newTeams: BalloTeam[];
+  if (balloStage === 1) {
+    // Create teams from the 2 solo stage-1 dancers
+    const winnerId = String(rp["stage1WinnerId"] ?? "");
+    const teamAPlayer = bookedPlayers.find((p) => p.id === winnerId) ?? bookedPlayers[0];
+    const teamBPlayer = bookedPlayers.find((p) => p.id !== (teamAPlayer?.id ?? "")) ?? bookedPlayers[1];
+    if (!teamAPlayer || !teamBPlayer) {
+      res.status(409).json({ error: "Dati stage 1 non sufficienti per creare le squadre" }); return;
+    }
+    newTeams = [
+      { teamId: "A", players: [teamAPlayer], pendingRequests: [] },
+      { teamId: "B", players: [teamBPlayer], pendingRequests: [] },
+    ];
+  } else {
+    // Carry existing teams forward, clear pending requests for new round
+    newTeams = existingTeams.map((t) => ({ ...t, pendingRequests: [] }));
+  }
+
+  const prizeMap: Record<number, number> = { 2: 500, 3: 1800 };
+  const prizePoints = prizeMap[nextStage] ?? 500;
+
+  // Load a fresh challenge for the next stage
+  const challenges = await db.select().from(danceChallengesTable)
+    .orderBy(desc(danceChallengesTable.createdAt));
+  const raw = challenges.length > 0 ? (shuffleArr(challenges)[0] ?? challenges[0]) : null;
+  const stageName = nextStage === 2 ? "Sfida 2: Coppie" : "Sfida Finale: Terzetti";
+  const stageDesc = nextStage === 2
+    ? "Le coppie si sfidano — 500 punti al duo vincente!"
+    : "Il gran finale! 1800 punti al trio campione!";
+
+  const stageRp: Record<string, unknown> = {
+    mode: "home-ballo",
+    balloPhase: "booking",
+    balloStage: nextStage,
+    teams: newTeams,
+    bookedPlayers: newTeams.flatMap((t) => t.players), // existing members auto-counted
+    activeDancerIds: newTeams.flatMap((t) => t.players.map((p) => p.id)),
+    prizePoints,
+    splitPrize: true,
+    selectedTheme: rp["selectedTheme"] ?? null,
+    stage1WinnerId: String(rp["stage1WinnerId"] ?? ""),
+    roundIndex: session.currentRound,
+    name: raw?.name ?? stageName,
+    description: raw?.description ?? stageDesc,
+    duration: raw?.duration ?? (nextStage === 2 ? 20 : 25),
+    timeLimit: raw?.duration ?? (nextStage === 2 ? 20 : 25),
+    musicHint: raw?.musicHint ?? "",
+    startedAt: null,
+  };
+
+  const [updated] = await db.update(homeSessionsTable)
+    .set({ roundPayload: stageRp })
+    .where(eq(homeSessionsTable.id, id)).returning();
+
+  const players = await getPlayers(id);
+  emitToRoom(homeRoom(id), "home:state", { session: updated, players });
+  res.json({ ok: true, balloStage: nextStage, teams: newTeams });
+});
+
+// ── POST /home/sessions/:id/ballo-join-team ───────────────────────────────────
+// New player requests to join team A or B during stages 2/3 booking.
+router.post("/home/sessions/:id/ballo-join-team", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const { playerId, nickname, avatarColor, teamId } = req.body as {
+    playerId: string; nickname: string; avatarColor: string; teamId: "A" | "B";
+  };
+  if (!playerId || !teamId) { res.status(400).json({ error: "playerId e teamId obbligatori" }); return; }
+
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (String(rp["mode"] ?? "") !== "home-ballo" || String(rp["balloPhase"] ?? "") !== "booking") {
+    res.status(409).json({ error: "Non in fase booking ballo" }); return;
+  }
+
+  const teams: BalloTeam[] = JSON.parse(JSON.stringify((rp["teams"] ?? []) as BalloTeam[]));
+  const target = teams.find((t) => t.teamId === teamId);
+  if (!target) { res.status(404).json({ error: "Squadra non trovata" }); return; }
+
+  // Player already in a team → no-op
+  if (teams.some((t) => t.players.some((p) => p.id === playerId))) {
+    res.status(409).json({ error: "Sei già in una squadra" }); return;
+  }
+  // Remove any existing pending request from this player (changed mind)
+  for (const team of teams) {
+    team.pendingRequests = team.pendingRequests.filter((p) => p.id !== playerId);
+  }
+  target.pendingRequests = [...target.pendingRequests, { id: playerId, nickname: nickname ?? "?", avatarColor: avatarColor ?? "#A78BFA" }];
+
+  const updatedRp = { ...rp, teams };
+  const [updated] = await db.update(homeSessionsTable)
+    .set({ roundPayload: updatedRp }).where(eq(homeSessionsTable.id, id)).returning();
+  const players = await getPlayers(id);
+  emitToRoom(homeRoom(id), "home:state", { session: updated, players });
+  emitToRoom(homeRoom(id), "home:ballo_team_updated", { teams });
+  res.json({ ok: true, teams });
+});
+
+// ── POST /home/sessions/:id/ballo-accept-player ───────────────────────────────
+// Existing team member accepts a pending join request.
+router.post("/home/sessions/:id/ballo-accept-player", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const { acceptingPlayerId, newPlayerId, teamId } = req.body as {
+    acceptingPlayerId: string; newPlayerId: string; teamId: "A" | "B";
+  };
+  if (!acceptingPlayerId || !newPlayerId || !teamId) {
+    res.status(400).json({ error: "acceptingPlayerId, newPlayerId, teamId obbligatori" }); return;
+  }
+
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (String(rp["mode"] ?? "") !== "home-ballo" || String(rp["balloPhase"] ?? "") !== "booking") {
+    res.status(409).json({ error: "Non in fase booking ballo" }); return;
+  }
+
+  const teams: BalloTeam[] = JSON.parse(JSON.stringify((rp["teams"] ?? []) as BalloTeam[]));
+  const target = teams.find((t) => t.teamId === teamId);
+  if (!target) { res.status(404).json({ error: "Squadra non trovata" }); return; }
+  if (!target.players.some((p) => p.id === acceptingPlayerId)) {
+    res.status(403).json({ error: "Non sei membro di questa squadra" }); return;
+  }
+  const pending = target.pendingRequests.find((p) => p.id === newPlayerId);
+  if (!pending) { res.status(404).json({ error: "Richiesta non trovata" }); return; }
+
+  target.pendingRequests = target.pendingRequests.filter((p) => p.id !== newPlayerId);
+  target.players = [...target.players, pending];
+
+  const activeDancerIds = teams.flatMap((t) => t.players.map((p) => p.id));
+  const bookedPlayers = teams.flatMap((t) => t.players);
+
+  const updatedRp = { ...rp, teams, activeDancerIds, bookedPlayers };
+  const [updated] = await db.update(homeSessionsTable)
+    .set({ roundPayload: updatedRp }).where(eq(homeSessionsTable.id, id)).returning();
+  const players = await getPlayers(id);
+  emitToRoom(homeRoom(id), "home:state", { session: updated, players });
+  emitToRoom(homeRoom(id), "home:ballo_team_updated", { teams });
+  res.json({ ok: true, teams });
+});
+
+// ── POST /home/sessions/:id/ballo-start-dance ─────────────────────────────────
+// Host starts the dance for stages 2/3 after all teams are assembled.
+router.post("/home/sessions/:id/ballo-start-dance", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (String(rp["mode"] ?? "") !== "home-ballo" || String(rp["balloPhase"] ?? "") !== "booking") {
+    res.status(409).json({ error: "Non in fase booking ballo" }); return;
+  }
+
+  const teams = (rp["teams"] ?? []) as BalloTeam[];
+  const balloStage = Number(rp["balloStage"] ?? 2);
+  const requiredPerTeam = balloStage; // stage 2: 2 per team, stage 3: 3 per team
+
+  for (const team of teams) {
+    if (team.players.length < requiredPerTeam) {
+      res.status(409).json({ error: `Squadra ${team.teamId}: ${team.players.length}/${requiredPerTeam} giocatori` }); return;
+    }
+  }
+
+  const activeDancerIds = teams.flatMap((t) => t.players.map((p) => p.id));
+  const bookedPlayers = teams.flatMap((t) => t.players);
+  const danceRp = { ...rp, balloPhase: "dancing", activeDancerIds, bookedPlayers, roundStartedAt: new Date().toISOString() };
+
+  const [updated] = await db.update(homeSessionsTable)
+    .set({ roundPayload: danceRp }).where(eq(homeSessionsTable.id, id)).returning();
+  const players = await getPlayers(id);
+  emitToRoom(homeRoom(id), "home:round", { round: session.currentRound, payload: danceRp });
+  emitToRoom(homeRoom(id), "home:state", { session: updated, players });
+  res.json({ ok: true, session: updated });
+});
+
 // ── POST /home/sessions/:id/ballo-reset-booking ───────────────────────────────
 // Resets a running ballo round back to the booking phase so a fresh pair of
 // players can sign up for the next sfida without ending the overall game.
@@ -1570,9 +1886,9 @@ router.post("/home/sessions/:id/end-game", async (req, res): Promise<void> => {
   const slug = session.gameSlug ?? "";
   const newGamesPlayed = slug && !gamesPlayed.includes(slug) ? [...gamesPlayed, slug] : gamesPlayed;
 
-  // Auto-score Ballo before ending — highest peak energy wins
+  // Auto-score Ballo before ending — skip if ballo-round-end already scored this round
   const endGamePayload = (session.roundPayload ?? {}) as Record<string, unknown>;
-  if (String(endGamePayload.mode ?? "") === "home-ballo") {
+  if (String(endGamePayload.mode ?? "") === "home-ballo" && String(endGamePayload.balloPhase ?? "dancing") !== "result") {
     const playersForBallo = await getPlayers(id);
     await autoScoreBallo(id, playersForBallo).catch((err) =>
       logger.error({ err, sessionId: id }, "autoScoreBallo failed in /end-game"),
