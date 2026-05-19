@@ -8,6 +8,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
+import { SensorBridge } from '../lib/SensorBridge';
 import { type FlowPayload, type FlowBookedPlayer, FLOW_GAME_UI, useFlowCountdown } from './GameFlowEngine';
 
 const MOTION_PERM_KEY = 'ideagame:motion-permission';
@@ -65,203 +66,52 @@ export function GameFlowPhone({
     if (booking) return;
     setBooking(true);
 
-    // ── Ballo sensor pipeline ───────────────────────────────────────────────
-    // Correct order for iOS (Safari + Chrome/WKWebView):
-    //   1. requestPermission() — synchronous promise start, still in gesture stack
-    //   2. addEventListener()  — synchronous, SAME gesture stack (no await yet)
-    //   3. await permission result
-    //   4. await ≤2s for first real event (early exit; proves stream is alive)
-    //   5. sensorReady = eventCount > 0   (truth from events, not from permission)
-    //   6. removeEventListener (cleanup — BalloController will re-attach)
-    //   7. ONLY NOW: fetch booking, socket emit, state updates / re-renders
-    //
-    // Chrome iOS (CriOS / WKWebView): no requestPermission API → auto-granted.
-    // Events stream unconditionally on HTTPS without any permission dialog.
-
     let sensorReadyResult = false;
-    // Booking-phase diagnostics — hoisted so every code path can set them
-    let _diagMotionGranted = false;
-    let _diagOrientGranted = false;
-    let _diagTempMotion    = 0;  // -1 = cached (not measured this session)
-    let _diagTempOrient    = 0;
 
     if (action === 'book' && p.gameSlug === 'sfida-ballo') {
-      // Clear undo stack before any sensor work (reduces "Annulla inserimento" on shake)
+      // Clear undo stack before sensor work (reduces "Annulla inserimento" on shake)
       const el = document.activeElement;
       if (el instanceof HTMLElement) el.blur();
       window.getSelection()?.removeAllRanges();
-    }
 
-    if (action === 'book' && p.gameSlug === 'sfida-ballo' && sensorPerm === 'idle') {
-      try {
-        const saved = localStorage.getItem(MOTION_PERM_KEY);
-        if (saved === 'granted') {
-          // Permission is cached — do NOT re-request it.
-          // But we MUST verify the event stream is alive before booking.
-          setSensorPerm('granted');
-          _diagMotionGranted = true; _diagOrientGranted = true;
+      // ── SensorBridge.start() — called SYNCHRONOUSLY inside the gesture ──────
+      // Handles requestPermission() + listener attachment in one shot, idempotent.
+      // Listeners stay alive through this booking POST and into BalloController.
+      const permPromise = SensorBridge.start();
 
-          // ── Warmup: attach temp listeners and wait ≤1500ms for a real event ──
-          let cachedMotionCount = 0;
-          let cachedOrientCount = 0;
-          const onCachedMotion = () => { cachedMotionCount++; };
-          const onCachedOrient = () => { cachedOrientCount++; };
-          window.addEventListener('devicemotion',      onCachedMotion, true);
-          window.addEventListener('deviceorientation', onCachedOrient, true);
-          console.log('[SensorWarmup] cached path — temp listeners attached, waiting ≤1500ms');
+      const perm = await permPromise;
+      localStorage.setItem(MOTION_PERM_KEY, perm);
+      setSensorPerm(perm);
 
-          await new Promise<void>(resolve => {
-            const POLL = 50;
-            const MAX  = 1500;
-            let elapsed = 0;
-            const tick = setInterval(() => {
-              elapsed += POLL;
-              if (cachedMotionCount + cachedOrientCount > 0 || elapsed >= MAX) {
-                clearInterval(tick);
-                resolve();
-              }
-            }, POLL);
-          });
-
-          window.removeEventListener('devicemotion',      onCachedMotion, true);
-          window.removeEventListener('deviceorientation', onCachedOrient, true);
-
-          sensorReadyResult = (cachedMotionCount + cachedOrientCount) > 0;
-          _diagTempMotion = cachedMotionCount;
-          _diagTempOrient = cachedOrientCount;
-          console.log('[SensorWarmup] cached path result — motion:', cachedMotionCount,
-            '| orient:', cachedOrientCount, '| sensorReady:', sensorReadyResult);
-        } else if (saved === 'denied') {
-          setSensorPerm('denied');
-        } else if (typeof DeviceMotionEvent === 'undefined') {
-          setSensorPerm('unsupported');
-        } else {
-          // ── Step 1: fire permission requests SYNCHRONOUSLY ────────────────
-          // Must happen before any await — iOS requires same call stack as gesture.
-          // Chrome iOS / Android / desktop: requestPermission does not exist → skip.
-          const dme = DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> };
-          const doe = typeof DeviceOrientationEvent !== 'undefined'
-            ? DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> }
-            : null;
-
-          let permissionP: Promise<'granted' | 'denied'>;
-          if (typeof dme.requestPermission === 'function') {
-            let motionP: Promise<string>;
-            let orientP: Promise<string> = Promise.resolve('granted');
-            try { motionP = dme.requestPermission(); }
-            catch { motionP = Promise.resolve('denied'); }
-            if (typeof doe?.requestPermission === 'function') {
-              try { orientP = doe.requestPermission(); }
-              catch { orientP = Promise.resolve('denied'); }
+      if (perm === 'granted') {
+        // Wait ≤1500ms for the first real sensor event from the bridge
+        await new Promise<void>(resolve => {
+          const POLL = 50;
+          const MAX  = 1500;
+          let elapsed = 0;
+          const tick = setInterval(() => {
+            elapsed += POLL;
+            const s = SensorBridge.getStatus();
+            if (s.motionEvents + s.orientEvents > 0 || elapsed >= MAX) {
+              clearInterval(tick);
+              resolve();
             }
-            permissionP = (async () => {
-              let m = false, o = false;
-              try { m = (await motionP) === 'granted'; } catch { /* ignore */ }
-              try { o = (await orientP) === 'granted'; } catch { /* ignore */ }
-              _diagMotionGranted = m;
-              _diagOrientGranted = o;
-              console.log('[SensorFinal] permission result — motion:', m, '| orient:', o);
-              return (m || o) ? ('granted' as const) : ('denied' as const);
-            })();
-          } else {
-            // Chrome iOS / WKWebView / Android / desktop: no permission dialog.
-            // Events stream on HTTPS without needing requestPermission.
-            _diagMotionGranted = true;
-            _diagOrientGranted = true;
-            permissionP = Promise.resolve('granted');
-          }
+          }, POLL);
+        });
 
-          // ── Step 2: attach temp listeners SYNCHRONOUSLY ───────────────────
-          // Still in the synchronous part of the gesture call stack (no await yet).
-          // This gives iOS / WKWebView the best possible chance of streaming events.
-          let motionEventCount = 0;
-          let orientEventCount = 0;
-          const onTempMotion = () => { motionEventCount++; };
-          const onTempOrient = () => { orientEventCount++; };
-          window.addEventListener('devicemotion',      onTempMotion, true);
-          window.addEventListener('deviceorientation', onTempOrient, true);
-          console.log('[SensorChain] temp listeners attached (synchronous, pre-await)');
+        const s = SensorBridge.getStatus();
+        sensorReadyResult = s.motionEvents + s.orientEvents > 0;
+        console.log('[SensorBridge] pre-booking status —', { ...s, sensorReadyResult });
+      }
 
-          // ── Step 3: await permission result ───────────────────────────────
-          const perm = await permissionP;
-          localStorage.setItem(MOTION_PERM_KEY, perm);
-          setSensorPerm(perm);
-          console.log('[SensorChain] permission:', perm);
-
-          if (perm === 'granted') {
-            // ── Step 4: wait ≤2 s for first real sensor event ──────────────
-            // Polls every 50 ms; exits immediately on first event arrival.
-            await new Promise<void>(resolve => {
-              const POLL = 50;
-              const MAX  = 2000;
-              let elapsed = 0;
-              const tick = setInterval(() => {
-                elapsed += POLL;
-                if (motionEventCount + orientEventCount > 0 || elapsed >= MAX) {
-                  clearInterval(tick);
-                  resolve();
-                }
-              }, POLL);
-            });
-
-            // ── Step 5: truth from actual events ─────────────────────────────
-            sensorReadyResult = (motionEventCount + orientEventCount) > 0;
-            _diagTempMotion = motionEventCount;
-            _diagTempOrient = orientEventCount;
-            console.log(
-              '[SensorChain] verify — motion:', motionEventCount,
-              '| orient:', orientEventCount,
-              '| sensorReady:', sensorReadyResult,
-            );
-          }
-
-          // ── Step 6: clean up temp listeners ──────────────────────────────
-          // BalloController's useEffect re-attaches the permanent game listeners.
-          window.removeEventListener('devicemotion',      onTempMotion, true);
-          window.removeEventListener('deviceorientation', onTempOrient, true);
-        }
-      } catch { /* ignore localStorage / permission errors */ }
-    } else if (action === 'book' && p.gameSlug === 'sfida-ballo' && sensorPerm === 'granted') {
-      // Permission already in state — still verify the event stream before booking.
-      _diagMotionGranted = true; _diagOrientGranted = true;
-
-      let reGrantMotionCount = 0;
-      let reGrantOrientCount = 0;
-      const onReM = () => { reGrantMotionCount++; };
-      const onReO = () => { reGrantOrientCount++; };
-      window.addEventListener('devicemotion',      onReM, true);
-      window.addEventListener('deviceorientation', onReO, true);
-      console.log('[SensorWarmup] re-tap path — temp listeners attached, waiting ≤1500ms');
-
-      await new Promise<void>(resolve => {
-        const POLL = 50;
-        const MAX  = 1500;
-        let elapsed = 0;
-        const tick = setInterval(() => {
-          elapsed += POLL;
-          if (reGrantMotionCount + reGrantOrientCount > 0 || elapsed >= MAX) {
-            clearInterval(tick);
-            resolve();
-          }
-        }, POLL);
-      });
-
-      window.removeEventListener('devicemotion',      onReM, true);
-      window.removeEventListener('deviceorientation', onReO, true);
-
-      sensorReadyResult = (reGrantMotionCount + reGrantOrientCount) > 0;
-      _diagTempMotion = reGrantMotionCount;
-      _diagTempOrient = reGrantOrientCount;
-      console.log('[SensorWarmup] re-tap path result — motion:', reGrantMotionCount,
-        '| orient:', reGrantOrientCount, '| sensorReady:', sensorReadyResult);
-    }
-
-    // ── Write booking diagnostic (read by BalloController on mount) ──────────
-    if (action === 'book' && p.gameSlug === 'sfida-ballo') {
+      // Write booking diagnostic (read by BalloController on mount)
       const _diag = {
-        motionGranted: _diagMotionGranted, orientGranted: _diagOrientGranted,
-        tempMotion:    _diagTempMotion,    tempOrient:    _diagTempOrient,
-        sensorReady:   sensorReadyResult,  ts:            Date.now(),
+        motionGranted: SensorBridge.getStatus().permMotion,
+        orientGranted: SensorBridge.getStatus().permOrient,
+        tempMotion:    SensorBridge.getStatus().motionEvents,
+        tempOrient:    SensorBridge.getStatus().orientEvents,
+        sensorReady:   sensorReadyResult,
+        ts:            Date.now(),
       };
       try { sessionStorage.setItem('ideagame:ballo-diag', JSON.stringify(_diag)); } catch { /* ignore */ }
       console.log('[SensorFinal] booking complete —', _diag);

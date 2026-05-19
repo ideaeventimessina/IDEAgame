@@ -1,0 +1,148 @@
+BALLO SENSOR — FINAL TARGETED FIX FROM REAL DEVICE DATA.
+
+Do not redesign.
+Do not touch audio.
+Do not touch routing.
+Do not touch scoring backend.
+Do not reintroduce calibration.
+Do not add Safari/Chrome blocking.
+
+CURRENT REAL DATA:
+
+Before starting the match, TV showed:
+- both players booked
+- both players marked “Sensori non disponibili”
+
+Then during the actual Ballo round, all devices show:
+- perm: motion ✅ orient ✅
+- booking: m=0 o=0 ready ❌
+- listeners: ✅ attivi
+- live: m=0 o=0
+- energy: 0%
+- emit: —
+
+After latest patch, cached path was supposedly fixed, but devices still show zero live events.
+
+Meaning:
+- permission state is granted
+- listeners are attached
+- but no devicemotion/deviceorientation events are firing
+- therefore sensorReady false on TV is correct
+- the issue is NOT TV
+- the issue is NOT scoring
+- the issue is NOT socket
+- the issue is that the phone browser is not streaming sensor events even after listener attach
+
+GOAL:
+Make the sensor stream actually start reliably on iPhone/iPad/Chrome/Safari.
+
+AUDIT FIRST:
+1. Is the page running over HTTPS?
+2. Is the page focused/visible when listeners are attached?
+3. Are listeners attached on window or should they be attached on globalThis/window before/after permission?
+4. Is iOS requiring listeners to be attached immediately after a direct tap, not after state changes?
+5. Is the booking button tap still the true user gesture after React state updates?
+6. Is preventDefault/touch handling interfering?
+7. Are devicemotion/deviceorientation events blocked because of iframe/preview/replit domain?
+8. Are events firing only after document.body receives a user interaction after permission?
+9. Are listeners being removed too early after warmup?
+10. Are the permanent listeners attached after temp listeners are removed, causing iOS stream to stop?
+
+PATCH STRATEGY:
+Do not rely on temp listeners then remove them.
+
+Instead:
+When player taps “MI PRENOTO”:
+1. request permissions if needed
+2. attach GLOBAL persistent sensor listeners immediately
+3. keep those listeners alive through booking, countdown, and BalloController
+4. do NOT remove temp listeners after warmup
+5. store latest sensor samples in a shared module-level singleton:
+   window.__ideagameBalloSensor or SensorBridge
+6. BalloController reads from this shared sensor bridge instead of creating a new listener lifecycle
+
+Required architecture:
+Create one client-side SensorBridge for Ballo:
+
+SensorBridge.start()
+- called directly inside MI PRENOTO tap
+- requests permission if needed
+- attaches devicemotion/deviceorientation listeners once
+- never removes them until game end or page unload
+- keeps counters:
+  motionEvents
+  orientEvents
+  lastMotion
+  lastOrientation
+  lastEnergy
+  lastEventAt
+  status
+
+SensorBridge.getStatus()
+- used by GameFlowPhone
+- used by BalloController
+- used by diagnostic panel
+
+SensorBridge.stop()
+- only on leaving game/session end
+
+Booking:
+- after SensorBridge.start()
+- wait max 1500ms for first event
+- if events > 0 → sensorReady=true
+- if events = 0 → sensorReady=false but player can still continue
+- emit sensorReady to TV
+
+BalloController:
+- do NOT attach new listeners
+- read SensorBridge status every 250–400ms
+- compute/emit energy from SensorBridge samples
+- if events arrive later, auto-clear warning
+- if no events, show warning only
+
+IMPORTANT:
+Remove duplicate listener systems from BalloController.
+There must be only ONE listener owner:
+SensorBridge.
+
+Diagnostics:
+Show:
+- bridgeStarted
+- permission result
+- motionEvents
+- orientEvents
+- lastEventAt
+- energy
+- emit timestamp
+
+Logs:
+[SensorBridge] start
+[SensorBridge] permission
+[SensorBridge] listeners attached
+[SensorBridge] first motion
+[SensorBridge] first orientation
+[SensorBridge] status before booking
+[SensorBridge] energy emit
+
+Test:
+1. iPad Safari
+2. iPhone Safari
+3. iPhone Chrome
+4. Android Chrome
+
+Expected:
+- after MI PRENOTO, events should start before booking completes
+- TV should show sensorReady true if events arrive
+- BalloController should not create a second listener system
+- energy should emit during active game
+- no calibration screen
+- no Safari warning
+- no blocking watchdog
+
+Output:
+A. exact reason events were zero
+B. files modified
+C. SensorBridge architecture
+D. removed duplicate listeners
+E. new lifecycle
+F. typecheck result

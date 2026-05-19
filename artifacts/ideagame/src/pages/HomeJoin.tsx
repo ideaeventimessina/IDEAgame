@@ -7,6 +7,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { SensorBridge } from '../lib/SensorBridge';
 import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -1152,22 +1153,7 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
 }) {
   const [energy, setEnergy] = useState(0);
   // Eagerly init from localStorage — if permission was granted during booking, sensors
-  // start immediately on mount with no button shown.
-  const [motionPerm, setMotionPerm] = useState<'unknown'|'granted'|'denied'|'unsupported'>(() => {
-    try {
-      if (typeof DeviceMotionEvent === 'undefined') return 'unsupported';
-      const saved = localStorage.getItem(MOTION_PERM_KEY);
-      if (saved === 'granted') return 'granted';
-      if (saved === 'denied') return 'denied';
-    } catch { /* ignore */ }
-    return 'unknown';
-  });
-  // ── Motion tracking refs ──────────────────────────────────────────────────
-  // Primary: deviceorientation angle-delta samples (no violent shake needed)
-  // Fallback: smoothed accelerometer samples (clamped to prevent spike scoring)
-  const orientSamplesRef  = useRef<number[]>([]);
-  const prevOrientRef     = useRef<{ beta: number; gamma: number; alpha: number } | null>(null);
-  const accelSamplesRef   = useRef<number[]>([]);
+  // SensorBridge owns all sensor listeners — BalloController only reads from it.
   const smoothedEnergyRef = useRef<number>(0);
 
   // adminSensitivity is broadcast by the TV host and applies session-wide.
@@ -1176,10 +1162,7 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
 
   const [sensorError,      setSensorError]      = useState(false);
   const [bookingDiag,      setBookingDiag]      = useState<BalloBookingDiag | null>(null);
-  const [listenerAttached, setListenerAttached] = useState(false);
   const [permStats,        setPermStats]        = useState<{ motion: number; orient: number; emitTs: number | null }>({ motion: 0, orient: 0, emitTs: null });
-  const [reattachKey,      setReattachKey]      = useState(0);
-  const reattachDoneRef = useRef(false);
 
   // Read booking-phase diagnostic written by GameFlowPhone.book()
   useEffect(() => {
@@ -1199,26 +1182,6 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
   const timeLeftRef = useRef(timeLeft);
   useEffect(() => { timeLeftRef.current = timeLeft; }, [timeLeft]);
 
-  // ── Reattach fallback: if 0 events arrive after 2s, tear down and restart ─
-  // Covers the case where permanent listeners attached but the OS stream stalled.
-  // Fires at most once per BalloController mount (reattachDoneRef guard).
-  useEffect(() => {
-    if (motionPerm !== 'granted') return;
-    reattachDoneRef.current = false; // reset on each motionPerm/session change
-    const t = setTimeout(() => {
-      if (
-        diagMotionCountRef.current === 0 &&
-        diagOrientCountRef.current === 0 &&
-        !reattachDoneRef.current
-      ) {
-        reattachDoneRef.current = true;
-        console.log('[SensorReattach] 0 events after 2s — forcing listener reattach (key +1)');
-        setReattachKey(k => k + 1);
-      }
-    }, 2000);
-    return () => clearTimeout(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [motionPerm, sessionId, playerId]);
 
   // ── Diagnostics (visible in dev OR ?debug=1) ────────────────────────────
   const showDiag = typeof window !== 'undefined' &&
@@ -1231,21 +1194,7 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
     (navigator as { standalone?: boolean }).standalone === true ||
     window.matchMedia?.('(display-mode: standalone)').matches === true
   );
-  // Refs updated on every sensor event — never cause re-renders
-  const diagMotionCountRef  = useRef(0);
-  const diagOrientCountRef  = useRef(0);
-  const diagLastOrientRef   = useRef<{ a: number|null; b: number|null; g: number|null }>({ a: null, b: null, g: null });
-  const diagLastAccelRef    = useRef<{ x: number|null; y: number|null; z: number|null }>({ x: null, y: null, z: null });
-  const diagLastEmitRef     = useRef<number|null>(null);
-  // Snapshot read into state by a 400ms refresh interval (only when showDiag)
-  const [diagSnap, setDiagSnap] = useState({
-    mo: 0, or: 0,
-    a: null as number|null, b: null as number|null, g: null as number|null,
-    x: null as number|null, y: null as number|null, z: null as number|null,
-    ts: null as number|null,
-  });
-  const [diagMotionPerm,  setDiagMotionPerm]  = useState('—');
-  const [diagOrientPerm,  setDiagOrientPerm]  = useState('—');
+  // SensorBridge.getStatus() is the source of truth for all sensor diagnostics.
   const [testRunning,     setTestRunning]      = useState(false);
   const [testCountdown,   setTestCountdown]    = useState(0);
   const [diagOpen,        setDiagOpen]         = useState(false);
@@ -1293,231 +1242,69 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
 
   // Permission state is initialised eagerly from localStorage (see useState above).
   // If the player granted permission during the booking phase (GameFlowPhone),
-  // motionPerm starts as 'granted' and the sensor loop kicks off immediately on mount
-  // with no extra button. The button below is kept as a fallback for direct
-  // BalloController access (e.g. non-flow mode or page reload without pre-grant).
+  // SensorBridge.start() was called in GameFlowPhone.book() — listeners are already
+  // attached. BalloController just reads samples via drainSamples() every 400ms.
 
-  const requestMotion = useCallback(async () => {
-    const dme = DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> };
-    const doe = (typeof DeviceOrientationEvent !== 'undefined')
-      ? DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> }
-      : null;
-    console.log('[iPhoneMotion] requestMotion start — dme.rP:', typeof dme.requestPermission,
-      '| doe.rP:', typeof doe?.requestPermission,
-      '| userAgent:', navigator.userAgent.slice(0, 80));
-
-    let motionGranted = false;
-    let orientGranted = false;
-
-    if (typeof dme.requestPermission === 'function') {
-      // ── Fire BOTH synchronously from the user gesture tap (no await before either
-      // call). iOS requires requestPermission() to start within the gesture stack.
-      // Each call gets its own synchronous try/catch so a throw from one cannot
-      // prevent the other from being started — this replaces the old Promise.all
-      // which would collapse both into a single 'denied' if orientation threw.
-      let motionP: Promise<string>;
-      try {
-        motionP = dme.requestPermission();
-      } catch (e) {
-        console.log('[iPhoneMotion] motion rP threw synchronously:', e);
-        motionP = Promise.resolve('denied');
-      }
-
-      let orientP: Promise<string> = Promise.resolve('granted'); // default when no API
-      if (typeof doe?.requestPermission === 'function') {
-        try {
-          orientP = doe.requestPermission();
-        } catch (e) {
-          console.log('[iPhoneMotion] orientation rP threw synchronously:', e);
-          orientP = Promise.resolve('denied');
-        }
-      }
-
-      // ── Await each independently — one rejection cannot deny the other ───────
-      try {
-        const r = await motionP;
-        motionGranted = r === 'granted';
-        console.log('[iPhoneMotion] motion permission result:', r);
-      } catch (err) {
-        console.log('[iPhoneMotion] motion permission error (rejected):', err);
-      }
-
-      try {
-        const r = await orientP;
-        orientGranted = r === 'granted';
-        console.log('[iPhoneMotion] orientation permission result:', r);
-      } catch (err) {
-        console.log('[iPhoneMotion] orientation permission error (rejected):', err);
-      }
-    } else {
-      // Non-iOS / desktop: no requestPermission API — sensors available automatically
-      motionGranted = true;
-      orientGranted = true;
-      console.log('[iPhoneMotion] no requestPermission API — auto-granted (Android/desktop)');
-    }
-
-    // Grant if AT LEAST ONE sensor path works — fallback logic handles the rest
-    const granted = motionGranted || orientGranted;
-    console.log('[iPhoneMotion] final — motionGranted:', motionGranted,
-      '| orientGranted:', orientGranted, '| proceeding:', granted);
-    const perm: 'granted' | 'denied' = granted ? 'granted' : 'denied';
-    localStorage.setItem(MOTION_PERM_KEY, perm);
-    setMotionPerm(perm);
-  }, []);
-
+  // ── SensorBridge polling — drain samples every 400ms, compute energy, emit ─
   useEffect(() => {
-    if (motionPerm !== 'granted') return;
+    const bridge = SensorBridge.getStatus();
+    console.log('[SensorBridge] BalloController mount — started:', bridge.started,
+      '| motion:', bridge.motionEvents, '| orient:', bridge.orientEvents);
+
     setSensorError(false);
-    setListenerAttached(true);
-    console.log('[SensorFinal] permanent listeners attached —',
-      { motionPerm, sessionId, playerId: playerId.slice(-4) },
-      '| DOE:', typeof DeviceOrientationEvent,
-      '| DME:', typeof DeviceMotionEvent);
-
-    // orientActive: true once the first deviceorientation sample arrives.
-    // Used as the hard gate for the accel fallback — avoids the stale-length
-    // race where orientSamplesRef.length is 0 between intervals.
-    let orientActive = false;
-
-    // orientActive: set once orientation fires (even with zero values).
-    // Used only for the 1000ms watchdog log — NOT for gating handleMotion.
-    // Gate logic instead checks orientSamplesRef.current.length (see handleMotion).
-    let accelLoggedOnce = false; // log fallback start only once
-
-    // stalledErrorActive: set by the 5s watchdog, cleared by the first event that arrives.
-    // This lets sensorError auto-dismiss as soon as the sensor stream (re)starts.
     let stalledErrorActive = false;
 
-    // ── PRIMARY: deviceorientation — angle-delta scoring ─────────────────────
-    // Only orientation samples with movement > 0.1° are queued.
-    // iPhone bug: deviceorientation fires but returns alpha/beta/gamma = 0 or null
-    // when DeviceOrientationEvent.requestPermission() was not called separately.
-    // In that case, movement = 0 and NO sample is pushed — allowing accel fallback.
-    const handleOrientation = (e: DeviceOrientationEvent) => {
-      // Auto-clear the watchdog warning as soon as any event arrives
-      if (stalledErrorActive) { stalledErrorActive = false; setSensorError(false); }
-      diagOrientCountRef.current++;
-      diagLastOrientRef.current = { a: e.alpha, b: e.beta, g: e.gamma };
-      if (!orientActive) {
-        orientActive = true;
-        console.log('[Ballo iPhone] orientation first sample — alpha:', e.alpha,
-          'beta:', e.beta, 'gamma:', e.gamma,
-          '| all null?', e.alpha === null && e.beta === null && e.gamma === null);
-      }
-      const beta  = e.beta  ?? 0;
-      const gamma = e.gamma ?? 0;
-      const alpha = e.alpha ?? 0;
-      const prev  = prevOrientRef.current;
-      if (prev !== null) {
-        const db = Math.abs(beta  - prev.beta);
-        const dg = Math.abs(gamma - prev.gamma);
-        let   da = Math.abs(alpha - prev.alpha);
-        if (da > 180) da = 360 - da; // handle alpha 0↔360 wrap
-        const movement = Math.sqrt(db * db + dg * dg + (da * 0.4) * (da * 0.4));
-        if (movement > 0.1) {
-          // Only queue meaningful rotation — threshold filters iPhone zero-lock bug
-          orientSamplesRef.current.push(Math.min(movement, 60));
-        }
-        // else: event fired but no real rotation (iPhone with blocked orientation)
-        // → sample NOT pushed → handleMotion accel fallback remains active
-      }
-      prevOrientRef.current = { beta, gamma, alpha };
-    };
-
-    // ── FALLBACK: clamped accelerometer ───────────────────────────────────────
-    // Active whenever orientation has NOT pushed meaningful samples this interval.
-    // Gated on orientSamplesRef.current.length (not orientActive flag) so that
-    // iPhones where orientation fires but returns zero-deltas still score.
-    const handleMotion = (e: DeviceMotionEvent) => {
-      // Auto-clear the watchdog warning as soon as any event arrives
-      if (stalledErrorActive) { stalledErrorActive = false; setSensorError(false); }
-      diagMotionCountRef.current++;
-      const _da = e.acceleration ?? e.accelerationIncludingGravity;
-      if (_da) diagLastAccelRef.current = { x: _da.x ?? null, y: _da.y ?? null, z: _da.z ?? null };
-      if (orientSamplesRef.current.length > 0) return; // real orientation data this interval
-      if (!accelLoggedOnce) {
-        accelLoggedOnce = true;
-        console.log('[Ballo iPhone] fallback started — using devicemotion accel');
-      }
-      const acc = e.acceleration ?? e.accelerationIncludingGravity;
-      if (!acc) {
-        console.log('[Ballo iPhone] handleMotion — acc null (both acceleration + aig are null)');
-        return;
-      }
-      let mag = Math.sqrt((acc.x ?? 0) ** 2 + (acc.y ?? 0) ** 2 + (acc.z ?? 0) ** 2);
-      if (!e.acceleration) mag = Math.abs(mag - 9.81); // remove gravity baseline
-      accelSamplesRef.current.push(Math.min(mag, 10));
-    };
-
-    window.addEventListener('deviceorientation', handleOrientation);
-    window.addEventListener('devicemotion', handleMotion);
-
-    // 5-second watchdog: if no sensor events at all → show a non-blocking warning banner.
-    // stalledErrorActive is cleared automatically by the first event that arrives.
+    // 5s watchdog: show non-blocking warning if no sensor events arrive
     const sensorWatchdog = setTimeout(() => {
-      if (diagMotionCountRef.current === 0 && diagOrientCountRef.current === 0) {
-        console.log('[Ballo iPhone] 5s watchdog — zero events received, showing warning banner');
+      const s = SensorBridge.getStatus();
+      if (s.motionEvents === 0 && s.orientEvents === 0) {
+        console.log('[SensorBridge] 5s watchdog — zero events');
         stalledErrorActive = true;
         setSensorError(true);
       }
     }, 5000);
 
-    // 1000ms watchdog: diagnose orientation status
-    const orientWatchdog = setTimeout(() => {
-      console.log('[Ballo iPhone] 1000ms watchdog — orientActive:', orientActive,
-        '| orientSamples queued:', orientSamplesRef.current.length,
-        '| accelSamples queued:', accelSamplesRef.current.length,
-        '| accelFallback:', accelLoggedOnce);
-      if (!orientActive) {
-        console.log('[Ballo iPhone] deviceorientation never fired — pure accel mode');
-      } else if (orientSamplesRef.current.length === 0 && accelSamplesRef.current.length === 0) {
-        console.log('[Ballo iPhone] orientation fired but zero movement + no accel — sensor stall');
-      }
-    }, 1000);
-
-    // ── Interval: compute smoothed energy and emit ───────────────────────────
+    // 400ms drain: read samples from SensorBridge, compute smoothed energy, emit
     const interval = setInterval(() => {
-      const orientSamples = orientSamplesRef.current;
-      const accelSamples  = accelSamplesRef.current;
+      const { orient, accel } = SensorBridge.drainSamples();
+      const s = SensorBridge.getStatus();
+
+      // Auto-clear stall warning once events arrive
+      if (stalledErrorActive && (s.motionEvents > 0 || s.orientEvents > 0)) {
+        stalledErrorActive = false;
+        setSensorError(false);
+      }
 
       let rawEnergy = 0;
-      if (orientSamples.length > 0) {
-        const avg = orientSamples.reduce((a, b) => a + b, 0) / orientSamples.length;
-        orientSamples.length = 0;
-        accelSamples.length  = 0; // discard stale accel
-        // Sensitivity: 0–25° avg → 0–100. Normal arm swing ~10–15° → 40–60%.
+      if (orient.length > 0) {
+        const avg = orient.reduce((a, b) => a + b, 0) / orient.length;
+        // 0–25° avg → 0–100. Normal arm swing ~10–15° → 40–60%
         rawEnergy = Math.min(100, Math.round((avg / 25) * 100));
-      } else if (accelSamples.length > 0) {
-        const avg = accelSamples.reduce((a, b) => a + b, 0) / accelSamples.length;
-        accelSamples.length = 0;
-        // Map 0–8 m/s² → 0–100 (more sensitive than before)
+      } else if (accel.length > 0) {
+        const avg = accel.reduce((a, b) => a + b, 0) / accel.length;
+        // 0–8 m/s² → 0–100
         rawEnergy = Math.min(100, Math.round((avg / 8) * 100));
       } else {
-        return; // no samples yet — skip, keep displayed energy
+        setPermStats({ motion: s.motionEvents, orient: s.orientEvents, emitTs: s.lastEmitAt });
+        return; // no samples — keep displayed energy, update diag only
       }
 
-      // Apply admin sensitivity:
       const as = adminSensitivityRef.current;
       const adjusted = Math.min(100, Math.max(0, rawEnergy * as));
       const smoothed = Math.round(smoothedEnergyRef.current * 0.5 + adjusted * 0.5);
       smoothedEnergyRef.current = smoothed;
       setEnergy(smoothed);
 
-      // Emit whenever timeLeft > 0 (null means no timer = always emit)
       const tl = timeLeftRef.current;
       if (tl === null || tl > 0) {
-        console.log('[BalloSensor] emit energy', smoothed,
-          '| orientActive:', orientActive, '| tl:', tl);
         emit('home:ballo_energy', { sessionId, playerId, energy: smoothed, round: round ?? 0 });
-        diagLastEmitRef.current = Date.now();
-        console.log('[SensorFinal] energy emit —', { smoothed, motion: diagMotionCountRef.current, orient: diagOrientCountRef.current });
+        SensorBridge.setLastEmit(smoothed);
+        console.log('[SensorBridge] energy emit —', { smoothed, motion: s.motionEvents, orient: s.orientEvents });
       }
-      // Always update permStats for the always-visible diagnostic panel
-      setPermStats({ motion: diagMotionCountRef.current, orient: diagOrientCountRef.current, emitTs: diagLastEmitRef.current });
+      setPermStats({ motion: s.motionEvents, orient: s.orientEvents, emitTs: SensorBridge.getStatus().lastEmitAt });
     }, 400);
 
-    // Visibility / focus regain — iOS popup briefly hides the page.
-    // When dismissed, re-blur and keep emitting if timer is still running.
+    // Visibility / focus regain — iOS popup briefly hides the page
     const handleVisibility = () => {
       if (document.visibilityState === 'visible' && (timeLeftRef.current ?? 0) > 0) {
         const el = document.activeElement;
@@ -1535,92 +1322,28 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
     window.addEventListener('focus', handleWindowFocus);
 
     return () => {
-      setListenerAttached(false);
       clearTimeout(sensorWatchdog);
-      clearTimeout(orientWatchdog);
-      window.removeEventListener('deviceorientation', handleOrientation);
-      window.removeEventListener('devicemotion', handleMotion);
       clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('focus', handleWindowFocus);
+      SensorBridge.stop(); // remove bridge listeners when BalloController unmounts
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [motionPerm, emit, sessionId, playerId, reattachKey]);
-
-  // ── Diagnostic display-refresh (400ms, only when panel is visible) ───────
-  useEffect(() => {
-    if (!showDiag) return;
-    const id = setInterval(() => setDiagSnap({
-      mo: diagMotionCountRef.current,
-      or: diagOrientCountRef.current,
-      a: diagLastOrientRef.current.a,
-      b: diagLastOrientRef.current.b,
-      g: diagLastOrientRef.current.g,
-      x: diagLastAccelRef.current.x,
-      y: diagLastAccelRef.current.y,
-      z: diagLastAccelRef.current.z,
-      ts: diagLastEmitRef.current,
-    }), 400);
-    return () => clearInterval(id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showDiag]);
+  }, [emit, sessionId, playerId]);
 
   // ── Standalone sensor test (10 s window, triggered by test button) ────────
   const runSensorTest = useCallback(async () => {
     if (testRunning) return;
     setTestRunning(true);
     setTestCountdown(10);
-    // Reset counters for a clean test window
-    diagMotionCountRef.current = 0;
-    diagOrientCountRef.current = 0;
-
-    const dme = DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> };
-    const doe = (typeof DeviceOrientationEvent !== 'undefined')
-      ? DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> }
-      : null;
-
-    if (typeof dme.requestPermission === 'function') {
-      // Fire BOTH synchronously from user gesture tap (no await before either)
-      let mp: Promise<string>;
-      try { mp = dme.requestPermission(); }
-      catch (e) { mp = Promise.resolve('denied'); console.log('[iPhoneMotion:test] motion rP sync throw', e); }
-
-      let op: Promise<string> = Promise.resolve('granted');
-      if (typeof doe?.requestPermission === 'function') {
-        try { op = doe.requestPermission(); }
-        catch (e) { op = Promise.resolve('denied'); console.log('[iPhoneMotion:test] orient rP sync throw', e); }
-      }
-
-      try { const r = await mp; setDiagMotionPerm(r); console.log('[iPhoneMotion:test] motion perm:', r); }
-      catch (e) { setDiagMotionPerm(`error`); console.log('[iPhoneMotion:test] motion perm error', e); }
-      try { const r = await op; setDiagOrientPerm(r); console.log('[iPhoneMotion:test] orient perm:', r); }
-      catch (e) { setDiagOrientPerm(`error`); console.log('[iPhoneMotion:test] orient perm error', e); }
-    } else {
-      setDiagMotionPerm('auto');
-      setDiagOrientPerm('auto');
-    }
-
-    // Attach temporary listeners for 10 s
-    const onM = (e: DeviceMotionEvent) => {
-      diagMotionCountRef.current++;
-      const a = e.acceleration ?? e.accelerationIncludingGravity;
-      if (a) diagLastAccelRef.current = { x: a.x ?? null, y: a.y ?? null, z: a.z ?? null };
-    };
-    const onO = (e: DeviceOrientationEvent) => {
-      diagOrientCountRef.current++;
-      diagLastOrientRef.current = { a: e.alpha, b: e.beta, g: e.gamma };
-    };
-    window.addEventListener('devicemotion', onM);
-    window.addEventListener('deviceorientation', onO);
-
+    // SensorBridge is already running — just show a 10s window so the user
+    // can watch the live event counts update in the debug panel.
     const tick = setInterval(() => setTestCountdown(c => Math.max(0, c - 1)), 1000);
-
     setTimeout(() => {
-      window.removeEventListener('devicemotion', onM);
-      window.removeEventListener('deviceorientation', onO);
       clearInterval(tick);
       setTestRunning(false);
-      console.log('[iPhoneMotion:test] done — motion:', diagMotionCountRef.current, '| orient:', diagOrientCountRef.current);
+      const s = SensorBridge.getStatus();
+      console.log('[SensorBridge:test] done — motion:', s.motionEvents, '| orient:', s.orientEvents);
     }, 10_000);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [testRunning]);
@@ -1636,7 +1359,7 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
       if (!bookingDiag.sensorReady && bookingDiag.tempMotion !== -1)
         return '📡 Nessun evento ricevuto durante la prenotazione';
     }
-    if (listenerAttached && permStats.motion === 0 && permStats.orient === 0 && sensorError)
+    if (SensorBridge.getStatus().started && permStats.motion === 0 && permStats.orient === 0 && sensorError)
       return '📱 Sensori attivi ma nessun movimento ricevuto';
     if (energy > 0 && permStats.emitTs === null)
       return '📤 Energia calcolata ma non inviata';
@@ -1646,13 +1369,14 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
 
   // ── Sensor status (shown in debug mode at top of card) ──────────────────
   const sensorStatus: { icon: string; label: string; color: string } = (() => {
-    if (motionPerm !== 'granted')
+    const sb = SensorBridge.getStatus();
+    if (!sb.started)
       return { icon: '⏳', label: 'In attesa di permesso', color: '#facc15' };
-    if (diagSnap.mo === 0 && diagSnap.or === 0)
+    if (sb.motionEvents === 0 && sb.orientEvents === 0)
       return { icon: '❌', label: 'Nessun evento ricevuto', color: '#f87171' };
     if (energy === 0)
       return { icon: '⚠️', label: 'Eventi ricevuti ma energia 0', color: '#fb923c' };
-    if (diagSnap.ts === null)
+    if (sb.lastEmitAt === null)
       return { icon: '⚠️', label: 'Energia OK ma socket non emette', color: '#fb923c' };
     return { icon: '✅', label: 'Socket emette', color: '#4ade80' };
   })();
@@ -1686,7 +1410,7 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
       }}>
         <div>🔑 perm: motion={bookingDiag ? (bookingDiag.motionGranted ? '✅' : '❌') : '?'} orient={bookingDiag ? (bookingDiag.orientGranted ? '✅' : '❌') : '?'}</div>
         <div>📡 booking: m={bookingDiag ? (bookingDiag.tempMotion === -1 ? 'cached' : String(bookingDiag.tempMotion)) : '?'} o={bookingDiag ? (bookingDiag.tempOrient === -1 ? 'cached' : String(bookingDiag.tempOrient)) : '?'} ready={bookingDiag ? (bookingDiag.sensorReady ? '✅' : '❌') : '?'}</div>
-        <div>🔌 listeners: {listenerAttached ? '✅ attivi' : '⏳'} | live: m={permStats.motion} o={permStats.orient}</div>
+        <div>🔌 listeners: {SensorBridge.getStatus().started ? '✅ attivi' : '⏳'} | live: m={permStats.motion} o={permStats.orient}</div>
         <div>⚡ energy: {energy}% | emit: {permStats.emitTs ? `${Math.round((Date.now() - permStats.emitTs) / 1000)}s fa` : '—'}</div>
       </div>
 
@@ -1703,7 +1427,8 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
         const doe = typeof DeviceOrientationEvent !== 'undefined'
           ? DeviceOrientationEvent as unknown as { requestPermission?: unknown }
           : null;
-        const secAgo = diagSnap.ts ? Math.round((Date.now() - diagSnap.ts) / 1000) : null;
+        const sb = SensorBridge.getStatus();
+        const secAgo = sb.lastEmitAt ? Math.round((Date.now() - sb.lastEmitAt) / 1000) : null;
         return (
           <div style={{
             position: 'fixed', top: 8, left: 8, right: 8,
@@ -1749,14 +1474,14 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
                   <Row label="DeviceOrientEvent"     val={typeof DeviceOrientationEvent !== 'undefined' ? '✅' : '❌ MISSING'} ok={typeof DeviceOrientationEvent !== 'undefined'} />
                   <Row label="DOE.requestPerm"       val={typeof doe?.requestPermission === 'function' ? '✅ fn' : '❌ none'} ok={typeof doe?.requestPermission === 'function'} />
                   <div style={{ borderTop: '1px solid rgba(250,204,21,0.2)', margin: '4px 0' }} />
-                  <Row label="motionPerm (main)"     val={motionPerm} ok={motionPerm === 'granted'} />
-                  <Row label="motionPerm (test)"     val={diagMotionPerm} ok={diagMotionPerm === 'granted' || diagMotionPerm === 'auto'} />
-                  <Row label="orientPerm (test)"     val={diagOrientPerm} ok={diagOrientPerm === 'granted' || diagOrientPerm === 'auto'} />
+                  <Row label="bridge.started"        val={sb.started ? '✅ yes' : '❌ no'} ok={sb.started} />
+                  <Row label="permMotion"            val={sb.permMotion ? '✅ granted' : '❌ denied'} ok={sb.permMotion} />
+                  <Row label="permOrient"            val={sb.permOrient ? '✅ granted' : '❌ denied'} ok={sb.permOrient} />
                   <div style={{ borderTop: '1px solid rgba(250,204,21,0.2)', margin: '4px 0' }} />
-                  <Row label="motionEvents"          val={String(diagSnap.mo)} ok={diagSnap.mo > 0} />
-                  <Row label="orientEvents"          val={String(diagSnap.or)} ok={diagSnap.or > 0} />
-                  <Row label="last α/β/γ"            val={diagSnap.a !== null ? `${n(diagSnap.a)}° ${n(diagSnap.b)}° ${n(diagSnap.g)}°` : '—'} ok={diagSnap.a !== null} />
-                  <Row label="last accel x/y/z"      val={diagSnap.x !== null ? `${n(diagSnap.x)} ${n(diagSnap.y)} ${n(diagSnap.z)}` : '—'} ok={diagSnap.x !== null} />
+                  <Row label="motionEvents"          val={String(sb.motionEvents)} ok={sb.motionEvents > 0} />
+                  <Row label="orientEvents"          val={String(sb.orientEvents)} ok={sb.orientEvents > 0} />
+                  <Row label="last α/β/γ"            val={sb.lastOrientation ? `${n(sb.lastOrientation.a)}° ${n(sb.lastOrientation.b)}° ${n(sb.lastOrientation.g)}°` : '—'} ok={sb.lastOrientation !== null} />
+                  <Row label="last accel x/y/z"      val={sb.lastAccel ? `${n(sb.lastAccel.x)} ${n(sb.lastAccel.y)} ${n(sb.lastAccel.z)}` : '—'} ok={sb.lastAccel !== null} />
                   <div style={{ borderTop: '1px solid rgba(250,204,21,0.2)', margin: '4px 0' }} />
                   <Row label="energy"                val={`${energy}%`} ok={energy > 0} />
                   <Row label="last emit"             val={secAgo !== null ? `${secAgo}s ago` : '—'} ok={secAgo !== null} />
@@ -1776,7 +1501,7 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
                       letterSpacing: '0.05em',
                     }}>
                     {testRunning
-                      ? `⏱ Test… ${testCountdown}s  motion:${diagSnap.mo}  orient:${diagSnap.or}`
+                      ? `⏱ Test… ${testCountdown}s  motion:${SensorBridge.getStatus().motionEvents}  orient:${SensorBridge.getStatus().orientEvents}`
                       : '🧪 Test sensori iPhone (10 s)'}
                   </button>
                 </div>
@@ -1807,55 +1532,20 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
       )}
 
 
-      {/* ── Sensore movimento ── */}
-      {motionPerm === 'unknown' && (
-        <button onClick={() => void requestMotion()}
-          className="flex items-center gap-2 rounded-2xl px-6 py-3 text-sm font-black"
-          style={{background:'linear-gradient(135deg,#A78BFA,#7C3AED)',color:'#fff',boxShadow:'0 0 30px rgba(167,139,250,0.4)'}}>
-          📱 Attiva sensori movimento
-        </button>
-      )}
-      {motionPerm === 'denied' && (
-        <div className="flex flex-col items-center gap-2">
-          <div className="rounded-xl px-4 py-2 text-xs text-white/40 border border-white/10">
-            Sensori negati — balla comunque! 🕺
-          </div>
-          <button
-            onClick={() => {
-              localStorage.removeItem(MOTION_PERM_KEY);
-              setMotionPerm('unknown');
-              void requestMotion();
-            }}
-            className="rounded-xl px-5 py-2 text-xs font-black"
-            style={{
-              background: 'rgba(167,139,250,0.15)',
-              border: '1px solid rgba(167,139,250,0.4)',
-              color: '#c084fc', cursor: 'pointer',
-            }}>
-            🔄 Riprova sensori
-          </button>
+      {/* ── Energy bar — always visible (SensorBridge manages permission) ── */}
+      <div className="w-full space-y-2">
+        <div className="flex items-center justify-between text-xs font-bold" style={{color:'#A78BFA'}}>
+          <span>⚡ Energia</span><span className="tabular-nums">{energy}%</span>
         </div>
-      )}
-      {motionPerm === 'unsupported' && (
-        <div className="rounded-xl px-4 py-2 text-xs text-white/40 border border-white/10">
-          Sensori non supportati su questo dispositivo
-        </div>
-      )}
-      {motionPerm === 'granted' && (
-        <div className="w-full space-y-2">
-          <div className="flex items-center justify-between text-xs font-bold" style={{color:'#A78BFA'}}>
-            <span>⚡ Energia</span><span className="tabular-nums">{energy}%</span>
-          </div>
-          <div className="relative h-8 w-full overflow-hidden rounded-full bg-white/10">
-            <motion.div className="absolute inset-y-0 left-0 rounded-full"
-              animate={{ width: `${energy}%` }} transition={{ duration: 0.2 }}
-              style={{ background: energyColor, boxShadow: `0 0 12px ${energyColor}80` }} />
-            <div className="absolute inset-0 flex items-center justify-center text-xs font-black text-white">
-              {energy > 60 ? '🔥 FUOCO!' : energy > 30 ? '💃 Bene!' : '📱 Muoviti!'}
-            </div>
+        <div className="relative h-8 w-full overflow-hidden rounded-full bg-white/10">
+          <motion.div className="absolute inset-y-0 left-0 rounded-full"
+            animate={{ width: `${energy}%` }} transition={{ duration: 0.2 }}
+            style={{ background: energyColor, boxShadow: `0 0 12px ${energyColor}80` }} />
+          <div className="absolute inset-0 flex items-center justify-center text-xs font-black text-white">
+            {energy > 60 ? '🔥 FUOCO!' : energy > 30 ? '💃 Bene!' : '📱 Muoviti!'}
           </div>
         </div>
-      )}
+      </div>
 
       {timeLeft !== null && (
         <div className="flex items-center gap-2 rounded-xl px-5 py-2"
