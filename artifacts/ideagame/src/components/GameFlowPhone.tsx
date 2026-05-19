@@ -211,6 +211,38 @@ export function GameFlowPhone({
 
   if (p.gameFlowPhase === 'booking') {
 
+    // ── No-booking variant (maxPlayers === 0): everyone plays, no action needed ──
+    if (maxPlayers === 0) {
+      return (
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+          className="flex flex-col items-center gap-5 py-4">
+          <motion.div className="text-5xl"
+            animate={{ scale: [1, 1.1, 1] }} transition={{ duration: 2, repeat: Infinity }}>
+            {gameUI.emoji}
+          </motion.div>
+          <div className="text-display text-2xl font-black text-white">{gameUI.name}</div>
+          {selectedTheme && (
+            <div className="text-sm font-semibold" style={{ color: gameUI.color }}>
+              {selectedTheme.name}
+            </div>
+          )}
+          <div className="rounded-2xl px-5 py-4 text-center"
+            style={{ background: `${gameUI.color}14`, border: `1px solid ${gameUI.color}33` }}>
+            <div className="text-base font-black" style={{ color: 'rgba(255,255,255,0.85)' }}>
+              Tutti i giocatori partecipano!
+            </div>
+            <div className="mt-1 text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.35)' }}>
+              Attendi che l'animatore avvii il gioco
+            </div>
+          </div>
+          <div className="flex items-center gap-2" style={{ color: 'rgba(255,255,255,0.3)' }}>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span className="text-xs font-semibold">In attesa dell'animatore…</span>
+          </div>
+        </motion.div>
+      );
+    }
+
     if (isBooked) {
       return (
         <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
@@ -397,8 +429,8 @@ export function GameFlowPhone({
         </AnimatePresence>
         <div className="text-base font-black" style={{ color: 'rgba(255,255,255,0.5)' }}>
           {isBooked
-            ? (showGo ? '💃 BALLA!' : 'Preparati…')
-            : (showGo ? '👏 Tifa!' : 'Prendi posizione…')}
+            ? (showGo ? `${gameUI.emoji} VIA!` : 'Preparati…')
+            : (showGo ? '👏 Forza!' : 'Prendi posizione…')}
         </div>
       </motion.div>
     );

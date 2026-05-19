@@ -210,71 +210,91 @@ export function GameFlowEngine({
             </div>
             <div className="rounded-full px-4 py-1.5 text-sm font-black"
               style={{ background: `${gameUI.color}20`, color: gameUI.color, border: `1px solid ${gameUI.color}44` }}>
-              Chi vuole sfidare? Prenotatevi dal telefono!
+              {maxPlayers > 0 ? 'Chi vuole partecipare? Prenotatevi dal telefono!' : 'Tutti pronti? Avvia il gioco!'}
             </div>
           </div>
 
-          <div className="flex w-full gap-5">
-            {Array.from({ length: maxPlayers }).map((_, i) => {
-              const booked = bookedPlayers[i];
-              return (
-                <div key={i}
-                  className="flex flex-1 flex-col items-center justify-center gap-3 rounded-2xl px-4 py-7 transition-all"
-                  style={booked
-                    ? {
-                        background: `linear-gradient(135deg,${booked.avatarColor}28,${booked.avatarColor}0e)`,
-                        border: `2px solid ${booked.avatarColor}99`,
-                        boxShadow: `0 0 28px ${booked.avatarColor}33`,
-                      }
-                    : {
-                        background: 'rgba(255,255,255,0.025)',
-                        border: '2px dashed rgba(255,255,255,0.12)',
-                      }
-                  }>
-                  <AnimatePresence mode="wait">
-                    {booked ? (
-                      <motion.div key={booked.id}
-                        initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-                        transition={{ type: 'spring', stiffness: 360, damping: 22 }}
-                        className="flex flex-col items-center gap-2">
-                        <div className="flex h-16 w-16 items-center justify-center rounded-full text-2xl font-black"
-                          style={{ background: booked.avatarColor, color: '#0a0015', boxShadow: `0 0 22px ${booked.avatarColor}55` }}>
-                          {booked.nickname[0]?.toUpperCase()}
-                        </div>
-                        <div className="font-black text-white text-base">{booked.nickname}</div>
-                        <div className="text-xs font-semibold" style={{ color: `${booked.avatarColor}dd` }}>
-                          In gara ✓
-                        </div>
-                        {/* Sensor readiness badge — only shown for sfida-ballo */}
-                        {p.gameSlug === 'sfida-ballo' && sensorReadyMap[booked.id] === false && (
-                          <div className="rounded-xl px-2 py-1 text-xs font-black text-center"
-                            style={{ background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.45)', color: '#f87171' }}>
-                            ⚠️ Sensori non disponibili
+          {/* ── Player slots (only when booking is required) ── */}
+          {maxPlayers > 0 ? (
+            <div className="flex w-full gap-5">
+              {Array.from({ length: maxPlayers }).map((_, i) => {
+                const booked = bookedPlayers[i];
+                return (
+                  <div key={i}
+                    className="flex flex-1 flex-col items-center justify-center gap-3 rounded-2xl px-4 py-7 transition-all"
+                    style={booked
+                      ? {
+                          background: `linear-gradient(135deg,${booked.avatarColor}28,${booked.avatarColor}0e)`,
+                          border: `2px solid ${booked.avatarColor}99`,
+                          boxShadow: `0 0 28px ${booked.avatarColor}33`,
+                        }
+                      : {
+                          background: 'rgba(255,255,255,0.025)',
+                          border: '2px dashed rgba(255,255,255,0.12)',
+                        }
+                    }>
+                    <AnimatePresence mode="wait">
+                      {booked ? (
+                        <motion.div key={booked.id}
+                          initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+                          transition={{ type: 'spring', stiffness: 360, damping: 22 }}
+                          className="flex flex-col items-center gap-2">
+                          <div className="flex h-16 w-16 items-center justify-center rounded-full text-2xl font-black"
+                            style={{ background: booked.avatarColor, color: '#0a0015', boxShadow: `0 0 22px ${booked.avatarColor}55` }}>
+                            {booked.nickname[0]?.toUpperCase()}
                           </div>
-                        )}
-                        {p.gameSlug === 'sfida-ballo' && sensorReadyMap[booked.id] === true && (
-                          <div className="rounded-xl px-2 py-1 text-xs font-black"
-                            style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.35)', color: '#4ade80' }}>
-                            ✅ Sensori pronti
+                          <div className="font-black text-white text-base">{booked.nickname}</div>
+                          <div className="text-xs font-semibold" style={{ color: `${booked.avatarColor}dd` }}>
+                            In gara ✓
                           </div>
-                        )}
-                      </motion.div>
-                    ) : (
-                      <motion.div key={`empty-${i}`} className="flex flex-col items-center gap-2">
-                        <div className="flex h-16 w-16 items-center justify-center rounded-full"
-                          style={{ border: '2px dashed rgba(255,255,255,0.15)' }}>
-                          <Users className="h-7 w-7" style={{ color: 'rgba(255,255,255,0.15)' }} />
-                        </div>
-                        <div className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.2)' }}>
-                          In attesa…
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              );
-            })}
-          </div>
+                          {/* Sensor readiness badge — only shown for sfida-ballo */}
+                          {p.gameSlug === 'sfida-ballo' && sensorReadyMap[booked.id] === false && (
+                            <div className="rounded-xl px-2 py-1 text-xs font-black text-center"
+                              style={{ background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.45)', color: '#f87171' }}>
+                              ⚠️ Sensori non disponibili
+                            </div>
+                          )}
+                          {p.gameSlug === 'sfida-ballo' && sensorReadyMap[booked.id] === true && (
+                            <div className="rounded-xl px-2 py-1 text-xs font-black"
+                              style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.35)', color: '#4ade80' }}>
+                              ✅ Sensori pronti
+                            </div>
+                          )}
+                        </motion.div>
+                      ) : (
+                        <motion.div key={`empty-${i}`} className="flex flex-col items-center gap-2">
+                          <div className="flex h-16 w-16 items-center justify-center rounded-full"
+                            style={{ border: '2px dashed rgba(255,255,255,0.15)' }}>
+                            <Users className="h-7 w-7" style={{ color: 'rgba(255,255,255,0.15)' }} />
+                          </div>
+                          <div className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.2)' }}>
+                            In attesa…
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            /* ── No-booking variant: everyone plays ── */
+            <motion.div
+              initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+              className="flex w-full max-w-md flex-col items-center gap-3 rounded-2xl px-8 py-6"
+              style={{
+                background: `linear-gradient(135deg,${gameUI.color}18,${gameUI.color}08)`,
+                border: `1.5px solid ${gameUI.color}33`,
+              }}>
+              <div className="text-4xl">{gameUI.emoji}</div>
+              <div className="text-display text-xl font-black text-white text-center">
+                Tutti i giocatori partecipano!
+              </div>
+              <div className="text-sm font-semibold text-center" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                Nessuna prenotazione necessaria — premi Avvia quando siete pronti
+              </div>
+            </motion.div>
+          )}
 
           <div className="flex flex-col items-center gap-2">
             <motion.button onClick={confirmFlow}
@@ -291,11 +311,11 @@ export function GameFlowEngine({
                 letterSpacing: '0.06em',
               }}>
               {confirming ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}
-              INIZIA SFIDA
+              {maxPlayers === 0 ? `AVVIA ${gameUI.name.toUpperCase()}` : 'INIZIA SFIDA'}
             </motion.button>
             <div className="text-xs font-semibold text-center" style={{ color: 'rgba(255,255,255,0.22)' }}>
               {canConfirm
-                ? 'Tutti pronti — avvia!'
+                ? (maxPlayers === 0 ? 'Tutti pronti — avvia!' : 'Tutti prenotati — avvia!')
                 : `Servono ${maxPlayers} giocatori prenotati`}
             </div>
           </div>

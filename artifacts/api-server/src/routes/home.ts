@@ -474,6 +474,230 @@ async function loadBalloRoundsForTheme(
   }));
 }
 
+// ── GameFlowEngine: load themes + maxPlayers config for every game ────────────
+
+interface GameFlowConfig {
+  themes: Array<{ id: string; name: string; description: string }>;
+  maxPlayers: number; // 0 = no booking step (everyone plays)
+}
+
+async function loadThemesForGame(gameSlug: string): Promise<GameFlowConfig> {
+  switch (gameSlug) {
+    case "sfida-ballo": {
+      const challenges = await db.select().from(danceChallengesTable)
+        .orderBy(desc(danceChallengesTable.createdAt)).limit(6);
+      const themes = challenges.length > 0
+        ? challenges.map(c => ({ id: c.id, name: c.name, description: c.description ?? "" }))
+        : [{ id: "fallback", name: "SFIDA LIBERA", description: "Balla liberamente — più energia hai, meglio è!" }];
+      return { themes, maxPlayers: 2 };
+    }
+    case "adult-only": {
+      const decks = await db.select().from(adultOnlyDecksTable)
+        .orderBy(desc(adultOnlyDecksTable.createdAt)).limit(6);
+      const themes = decks.length > 0
+        ? decks.map(d => ({ id: d.id, name: d.name, description: d.description ?? "" }))
+        : [{ id: "fallback", name: "Classico", description: "Il mazzo standard di Adult Only" }];
+      return { themes, maxPlayers: 1 };
+    }
+    case "parola-alle-spalle": {
+      const sets = await db.select().from(wordBackSetsTable)
+        .where(eq(wordBackSetsTable.isActive, true))
+        .orderBy(desc(wordBackSetsTable.createdAt)).limit(6);
+      const themes = sets.length > 0
+        ? sets.map(s => ({ id: s.id, name: s.title, description: s.description ?? "" }))
+        : [{ id: "fallback", name: "Classici Italiani", description: "Parole della tradizione italiana" }];
+      return { themes, maxPlayers: 2 };
+    }
+    case "karaoke-battle": {
+      const sets = await db.select().from(karaokeSetsTable)
+        .where(eq(karaokeSetsTable.isActive, true))
+        .orderBy(desc(karaokeSetsTable.createdAt)).limit(6);
+      const themes = sets.length > 0
+        ? sets.map(s => ({ id: s.id, name: s.title, description: s.description ?? "" }))
+        : [{ id: "fallback", name: "Classici Italiani", description: "I grandi successi della musica italiana" }];
+      return { themes, maxPlayers: 1 };
+    }
+    case "percorso-a-risate": {
+      const sets = await db.select().from(laughingPathSetsTable)
+        .orderBy(desc(laughingPathSetsTable.createdAt)).limit(6);
+      const themes = sets.length > 0
+        ? sets.map(s => ({ id: s.id, name: s.name, description: s.description ?? "" }))
+        : [{ id: "fallback", name: "Serata Classica", description: "Sfide e risate per tutti" }];
+      return { themes, maxPlayers: 2 };
+    }
+    case "quizzone": {
+      const packs = await db.select().from(quizPacksTable)
+        .where(eq(quizPacksTable.status, "generated"))
+        .orderBy(desc(quizPacksTable.createdAt)).limit(6);
+      const themes = packs.length > 0
+        ? packs.map(p => ({ id: p.id, name: p.title ?? "Quiz", description: "" }))
+        : [{ id: "fallback", name: "Quiz Generale", description: "Domande di cultura generale" }];
+      return { themes, maxPlayers: 0 };
+    }
+    case "gioco-coppie": {
+      const sets = await db.select().from(cardSetsTable)
+        .orderBy(desc(cardSetsTable.createdAt)).limit(6);
+      const themes = sets.length > 0
+        ? sets.map(s => ({ id: s.id, name: s.name, description: s.description ?? "" }))
+        : [{ id: "fallback", name: "Classici", description: "Abbina le coppie!" }];
+      return { themes, maxPlayers: 0 };
+    }
+    case "saramusica": {
+      const sets = await db.select().from(saraMusicaSetsTable)
+        .where(eq(saraMusicaSetsTable.isActive, true))
+        .orderBy(desc(saraMusicaSetsTable.createdAt)).limit(6);
+      const themes = sets.length > 0
+        ? sets.map(s => ({ id: s.id, name: s.title, description: s.description ?? "" }))
+        : [{ id: "fallback", name: "Classici", description: "Indovina la canzone!" }];
+      return { themes, maxPlayers: 0 };
+    }
+    default:
+      return { themes: [{ id: "fallback", name: "Standard", description: "" }], maxPlayers: 0 };
+  }
+}
+
+// ── GameFlowEngine: load coppie board for a specific set ID ───────────────────
+
+async function loadCoppieByTheme(setId: string): Promise<CoppiePayload> {
+  const [set] = await db.select().from(cardSetsTable).where(eq(cardSetsTable.id, setId));
+  if (!set) return buildCoppiePayload(FALLBACK_COPPIE_PAIRS, 0, "Coppie");
+  const cards = await db.select().from(cardsTable)
+    .where(eq(cardsTable.cardSetId, setId))
+    .orderBy(asc(cardsTable.createdAt));
+  const pairMap = new Map<string, typeof cards>();
+  for (const c of cards) {
+    const pid = c.pairId ?? c.id;
+    if (!pairMap.has(pid)) pairMap.set(pid, []);
+    pairMap.get(pid)!.push(c);
+  }
+  function cardText(c: (typeof cards)[0]): string {
+    const p = c.prompts as Record<string, string> | null;
+    if (!p) return "?";
+    return p["it"] ?? p["en"] ?? Object.values(p)[0] ?? "?";
+  }
+  const pairs: { a: string; b: string; imageA?: string; imageB?: string }[] = [];
+  for (const [, group] of pairMap) {
+    if (group.length >= 2) {
+      pairs.push({ a: cardText(group[0]!), b: cardText(group[1]!), imageA: group[0]!.imageUrl ?? undefined, imageB: group[1]!.imageUrl ?? undefined });
+    } else if (group.length === 1) {
+      pairs.push({ a: cardText(group[0]!), b: "?", imageA: group[0]!.imageUrl ?? undefined });
+    }
+  }
+  if (pairs.length === 0) return buildCoppiePayload(FALLBACK_COPPIE_PAIRS, 0, set.name);
+  return buildCoppiePayload(pairs, 0, set.name);
+}
+
+// ── GameFlowEngine: load rounds for a specific theme (all games) ───────────────
+// Called by flow/confirm after countdown, dispatches to the right content loader.
+
+async function loadGameRoundsForTheme(
+  gameSlug: string,
+  selectedTheme: { id: string; name: string } | null,
+): Promise<RoundPayload[]> {
+  if (gameSlug === "sfida-ballo") return loadBalloRoundsForTheme(selectedTheme);
+
+  const themeId = selectedTheme?.id ?? null;
+  const isFallback = !themeId || themeId === "fallback";
+
+  switch (gameSlug) {
+    case "adult-only": {
+      if (isFallback) return loadAdultOnlyRounds();
+      const cards = await db.select().from(adultOnlyCardsTable)
+        .where(and(eq(adultOnlyCardsTable.deckId, themeId!), eq(adultOnlyCardsTable.isActive, true)))
+        .orderBy(asc(adultOnlyCardsTable.orderIndex));
+      if (cards.length === 0) return loadAdultOnlyRounds();
+      return shuffleArr(cards).map((c, i) => ({
+        mode: "home-adult", roundIndex: i, deckName: selectedTheme!.name,
+        title: c.title, body: c.body, category: c.category ?? "",
+        points: c.points ?? 150, timeLimit: c.timeLimit ?? 90, level: c.level ?? "medium", revealed: false,
+      }));
+    }
+    case "parola-alle-spalle": {
+      if (isFallback) return loadWordBackRounds();
+      const cards = await db.select().from(wordBackCardsTable)
+        .where(and(eq(wordBackCardsTable.setId, themeId!), eq(wordBackCardsTable.isActive, true)))
+        .orderBy(asc(wordBackCardsTable.orderIndex));
+      if (cards.length === 0) return loadWordBackRounds();
+      return shuffleArr(cards).map((c, i) => ({
+        mode: "home-wordback", roundIndex: i, setName: selectedTheme!.name,
+        word: c.word, hint: c.hint ?? "", category: c.category ?? "",
+        difficulty: c.difficulty ?? "medium", points: c.points ?? 150, timeLimit: c.timeLimit ?? 45, guessed: false,
+      }));
+    }
+    case "karaoke-battle": {
+      if (isFallback) return loadKaraokeRounds();
+      const kTracks = await db.select().from(karaokeTracksTable)
+        .where(and(eq(karaokeTracksTable.setId, themeId!), eq(karaokeTracksTable.isActive, true)))
+        .orderBy(asc(karaokeTracksTable.orderIndex));
+      if (kTracks.length === 0) return loadKaraokeRounds();
+      const [fset] = await db.select().from(freestyleSetsTable)
+        .where(eq(freestyleSetsTable.isActive, true))
+        .orderBy(desc(freestyleSetsTable.createdAt)).limit(1);
+      const fWords = fset ? await db.select().from(freestyleWordsTable)
+        .where(and(eq(freestyleWordsTable.setId, fset.id), eq(freestyleWordsTable.isActive, true)))
+        .orderBy(asc(freestyleWordsTable.orderIndex)) : [];
+      const kRounds: RoundPayload[] = [];
+      const kShuffled = shuffleArr(kTracks).slice(0, 8);
+      const fShuffled = shuffleArr(fWords).slice(0, 6);
+      let ki = 0, fi = 0, roundIdx = 0;
+      while (ki < kShuffled.length || fi < fShuffled.length) {
+        for (let n = 0; n < 2 && ki < kShuffled.length; n++, ki++) {
+          const t = kShuffled[ki]!;
+          kRounds.push({ mode: "home-karaoke", roundIndex: roundIdx++, setName: selectedTheme!.name, title: t.title, artist: t.artist ?? "", lyricSnippet: t.lyricSnippet ?? "", audioUrl: t.audioUrl ?? null, durationSeconds: t.durationSeconds ?? 60, points: t.points ?? 150, category: t.category ?? "", started: false });
+        }
+        if (fi < fShuffled.length) {
+          const w = fShuffled[fi++]!;
+          kRounds.push({ mode: "home-freestyle", roundIndex: roundIdx++, setName: fset?.title ?? "Freestyle", word: w.word, timeLimit: 30, points: 200, started: false });
+        }
+      }
+      return kRounds.length > 0 ? kRounds : fallbackKaraoke();
+    }
+    case "percorso-a-risate": {
+      if (isFallback) return loadPercorsoRounds();
+      const steps = await db.select().from(laughingPathStepsTable)
+        .where(and(eq(laughingPathStepsTable.setId, themeId!), eq(laughingPathStepsTable.isActive, true)))
+        .orderBy(asc(laughingPathStepsTable.orderIndex));
+      if (steps.length === 0) return loadPercorsoRounds();
+      return steps.map((s, i) => ({
+        mode: "home-percorso", roundIndex: i, setName: selectedTheme!.name,
+        challengeType: s.challengeType ?? "sfida", title: s.title, description: s.description,
+        points: s.points ?? 150, timeLimit: s.timeLimit ?? 60, timerStartedAt: null,
+      }));
+    }
+    case "quizzone": {
+      if (isFallback) return loadQuizRounds();
+      const [pack] = await db.select().from(quizPacksTable)
+        .where(eq(quizPacksTable.id, themeId!)).limit(1);
+      if (!pack || !Array.isArray(pack.generatedJson)) return loadQuizRounds();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const questions = pack.generatedJson as any[];
+      return questions.map((q, i) => {
+        const rawAnswers: string[] = q.answers ?? ["A", "B", "C", "D"];
+        const rawCorrect: number = q.correctAnswer ?? q.correctIndex ?? q.correct_index ?? 0;
+        const { answers, correctIndex } = shuffleWithCorrectIndex(rawAnswers, rawCorrect);
+        return { mode: "home-quiz", roundIndex: i, category: pack.title ?? "Quiz", question: q.questionText ?? q.question ?? `Domanda ${i + 1}`, answers, correctIndex, explanation: q.explanation ?? q.jonnyLine ?? "", points: q.points ?? 200, timeLimit: q.timeLimit ?? q.time_limit ?? 15, revealed: false };
+      });
+    }
+    case "gioco-coppie": {
+      if (isFallback) return [(await loadCoppieRound(0)) as RoundPayload];
+      return [(await loadCoppieByTheme(themeId!)) as RoundPayload];
+    }
+    case "saramusica": {
+      if (isFallback) return loadSaraMusicaRounds();
+      const tracks = await db.select().from(saraMusicaTracksTable)
+        .where(and(eq(saraMusicaTracksTable.setId, themeId!), eq(saraMusicaTracksTable.isActive, true)))
+        .orderBy(asc(saraMusicaTracksTable.orderIndex));
+      if (tracks.length === 0) return loadSaraMusicaRounds();
+      const allTitles = tracks.map(t => t.title);
+      return tracks.map((t, i) => {
+        const { choices, correctChoiceIndex } = buildSaraChoices(t.title, allTitles);
+        return { mode: "home-saramusica", roundIndex: i, setName: selectedTheme!.name, title: t.title, artist: t.artist ?? "", challengeType: t.challengeType ?? "indovina", snippetHint: t.snippetHint ?? "", audioUrl: t.audioUrl ?? null, durationSeconds: t.durationSeconds ?? 30, points: t.points ?? 100, choices, correctChoiceIndex, revealed: false };
+      });
+    }
+    default: return loadGameRounds(gameSlug);
+  }
+}
+
 // ── Auto-score Ballo: highest peak energy wins ────────────────────────────────
 async function autoScoreBallo(
   sessionId: string,
@@ -906,76 +1130,33 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
     res.status(409).json({ error: "Gioco già completato" }); return;
   }
 
-  // ── GameFlowEngine pilot — sfida-ballo enters pre-game flow ───────────────────
-  // Future flow games: adult-only, percorso-a-risate, karaoke-battle,
-  //                    freestyle-battle, parola-alle-spalle
-  if (gameSlug === "sfida-ballo") {
-    const challenges = await db.select().from(danceChallengesTable)
-      .orderBy(desc(danceChallengesTable.createdAt));
-    const toSlug = (s: string) =>
-      s.toLowerCase().replace(/[àáâãäå]/g,'a').replace(/[èéêë]/g,'e').replace(/[ìíîï]/g,'i').replace(/[òóôõö]/g,'o').replace(/[ùúûü]/g,'u').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
-    const themes = challenges.length > 0
-      ? challenges.slice(0, 6).map((c) => ({
-          id: c.id,
-          slug: toSlug(c.name) || c.id,
-          name: c.name,
-          description: c.description ?? "",
-        }))
-      : [{ id: "fallback", slug: "sfida-libera", name: "SFIDA LIBERA", description: "Balla liberamente — più energia hai, meglio è!" }];
-    req.log.info({ sessionId: id, source: challenges.length > 0 ? "db" : "fallback", themeCount: themes.length, themeIds: themes.map(t => t.id) }, "[BalloTheme] select-game themes loaded");
-    const flowPayload: RoundPayload = {
-      mode: "home-flow",
-      gameFlowPhase: "theme_select",
-      gameSlug,
-      themes,
-      selectedTheme: null,
-      bookedPlayers: [],
-      maxPlayers: 2,
-    };
-    const newFlowCfg = { ...cfg, phase: "playing", gamesPlayed };
-    const [flowUpdated] = await db.update(homeSessionsTable).set({
-      gameSlug,
-      gameConfig: newFlowCfg,
-      status: "playing",
-      currentRound: 0,
-      totalRounds: 0,
-      roundPayload: flowPayload,
-      expiresAt: new Date(Date.now() + 6 * 60 * 60 * 1000),
-    }).where(eq(homeSessionsTable.id, id)).returning();
-    const flowPlayers = await getPlayers(id);
-    emitToRoom(homeRoom(id), "home:game_started", { session: flowUpdated, players: flowPlayers, payload: flowPayload });
-    emitToRoom(homeRoom(id), "home:state", { session: flowUpdated, players: flowPlayers });
-    res.json({ session: flowUpdated, players: flowPlayers });
-    return;
-  }
-  // ── END pilot ─────────────────────────────────────────────────────────────────
-
-  // Load all rounds from DB for this game
-  const preloadedRounds = await loadGameRounds(gameSlug);
-  // Stamp authoritative start time so phones can calculate remaining time on restore
-  const firstRound = { ...(preloadedRounds[0] ?? {}), roundStartedAt: new Date().toISOString() };
-
-  const newCfg = {
-    ...cfg,
-    phase: "playing",
-    gamesPlayed,
-    preloadedRounds,
-  };
-
-  const [updated] = await db.update(homeSessionsTable).set({
+  // ── Universal GameFlowEngine: every game enters the pre-game flow ─────────────
+  // theme_select → booking (if maxPlayers > 0) → confirm → countdown → launch
+  const flowConfig = await loadThemesForGame(gameSlug);
+  req.log.info({ sessionId: id, gameSlug, themeCount: flowConfig.themes.length, maxPlayers: flowConfig.maxPlayers }, "[GameFlow] select-game → entering flow");
+  const flowPayload: RoundPayload = {
+    mode: "home-flow",
+    gameFlowPhase: "theme_select",
     gameSlug,
-    gameConfig: newCfg,
+    themes: flowConfig.themes,
+    selectedTheme: null,
+    bookedPlayers: [],
+    maxPlayers: flowConfig.maxPlayers,
+  };
+  const newFlowCfg = { ...cfg, phase: "playing", gamesPlayed };
+  const [flowUpdated] = await db.update(homeSessionsTable).set({
+    gameSlug,
+    gameConfig: newFlowCfg,
     status: "playing",
     currentRound: 0,
-    totalRounds: preloadedRounds.length,
-    roundPayload: firstRound,
-    expiresAt: new Date(Date.now() + 6 * 60 * 60 * 1000), // playing: 6 h inactivity window
+    totalRounds: 0,
+    roundPayload: flowPayload,
+    expiresAt: new Date(Date.now() + 6 * 60 * 60 * 1000),
   }).where(eq(homeSessionsTable.id, id)).returning();
-
-  const players = await getPlayers(id);
-  emitToRoom(homeRoom(id), "home:game_started", { session: updated, players, payload: firstRound });
-  emitToRoom(homeRoom(id), "home:round", { round: 0, payload: firstRound });
-  res.json({ session: updated, players });
+  const flowPlayers = await getPlayers(id);
+  emitToRoom(homeRoom(id), "home:game_started", { session: flowUpdated, players: flowPlayers, payload: flowPayload });
+  emitToRoom(homeRoom(id), "home:state", { session: flowUpdated, players: flowPlayers });
+  res.json({ session: flowUpdated, players: flowPlayers });
 });
 
 // Backward compat: /start → select-game
@@ -1158,16 +1339,17 @@ router.post("/home/sessions/:id/flow/confirm", async (req, res): Promise<void> =
       logger.info({ sessionId: id }, "[BalloFlow] countdown done — waiting 4s for ballo launch");
       setTimeout(async () => {
         try {
-          logger.info({ sessionId: id, selectedTheme }, "[BalloFlow] launching mode home-ballo");
-          const preloadedRounds = await loadBalloRoundsForTheme(selectedTheme);
-          // Carry bookedPlayers into the round payload so TV BalloBoard filters non-dancers.
+          const launchSlug = String(rp["gameSlug"] ?? "sfida-ballo");
+          logger.info({ sessionId: id, selectedTheme, gameSlug: launchSlug }, "[GameFlow] launching game");
+          const preloadedRounds = await loadGameRoundsForTheme(launchSlug, selectedTheme);
+          // Carry bookedPlayers into the round payload so TV boards can filter participants.
           // 'confirmRp' is captured in this closure and has the full FlowBookedPlayer objects.
           const firstRound: RoundPayload = {
             ...(preloadedRounds[0] ?? {}),
             roundStartedAt: new Date().toISOString(),
             bookedPlayers: (confirmRp as Record<string, unknown>)["bookedPlayers"] ?? [],
           } as RoundPayload;
-          logger.info({ sessionId: id, mode: firstRound["mode"], bookedCount: ((firstRound["bookedPlayers"] as unknown[]) ?? []).length }, "[BalloFlow] payload mode");
+          logger.info({ sessionId: id, mode: firstRound["mode"], bookedCount: ((firstRound["bookedPlayers"] as unknown[]) ?? []).length, gameSlug: launchSlug }, "[GameFlow] payload mode");
           const cfg = (session.gameConfig ?? {}) as Record<string, unknown>;
           const gamesPlayed = (cfg["gamesPlayed"] as string[]) ?? [];
           const newCfg = { ...cfg, phase: "playing", gamesPlayed, preloadedRounds };

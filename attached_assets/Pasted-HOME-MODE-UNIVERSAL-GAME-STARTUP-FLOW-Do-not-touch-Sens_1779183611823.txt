@@ -1,0 +1,166 @@
+HOME MODE — UNIVERSAL GAME STARTUP FLOW.
+
+Do not touch SensorBridge.
+Do not touch Ballo sensor logic.
+Do not touch audio engine.
+Do not redesign visual identity.
+
+Goal:
+Every Home game must start with the same controlled flow:
+
+1. scelta tema
+2. prenotazione giocatori, only where needed
+3. eventuale attivazione sensori/microfono, only where needed
+4. avvia partita
+5. countdown
+6. game starts
+
+No game must jump directly into active gameplay without this flow.
+
+Create/extend a universal Home startup flow engine.
+
+GAME RULES:
+
+1. Quizzone
+- Theme/category selection required
+- No player booking needed
+- All connected players participate
+- Host clicks Avvia partita
+- Countdown
+- First question starts
+
+2. Gioco delle Coppie
+- Theme/category selection required
+- No player booking needed
+- All connected players participate or TV-only if current logic
+- Host clicks Avvia partita
+- Countdown
+- Cards start
+
+3. Sfida di Ballo
+- Theme selection required
+- Player booking required
+- Required players: 2
+- SensorBridge activation on "MI PRENOTO"
+- TV shows sensor ready/not ready
+- Host clicks Avvia sfida
+- Countdown
+- Ballo starts
+
+4. SaraMusica
+- Theme/category/playlist selection required
+- Player booking/auction phase required according to current game logic
+- No sensor needed
+- Host clicks Avvia partita
+- Countdown
+- First clue/song round starts
+
+5. Adult Only
+- Theme/deck selection required
+- Player booking required
+- Required players: 1 performer
+- Other players vote
+- Host clicks Avvia sfida
+- Countdown
+- Challenge starts
+
+6. Parola alle Spalle
+- Theme/category selection required
+- Player booking required
+- Required players: 2
+  - player 1 = guesser
+  - player 2 = suggeritore
+- Host clicks Avvia sfida
+- Countdown
+- Word appears / game starts
+
+7. Karaoke Battle
+- Theme/playlist selection required
+- Player booking required
+- Required players: 1 singer
+- Microphone permission check on booking if implemented
+- Host clicks Avvia performance
+- Countdown
+- Karaoke starts
+
+8. Freestyle Battle
+- Theme/beat selection required
+- Player booking required
+- Required players: 1 performer
+- Microphone permission check on booking if implemented
+- Host clicks Avvia freestyle
+- Countdown
+- Freestyle starts
+
+9. Percorso a Risate
+- Theme/category selection required
+- Player booking required only for challenge types that require performers
+- Default required players: 2
+- Host clicks Avvia sfida
+- Countdown
+- Challenge starts
+
+ARCHITECTURE REQUIREMENTS:
+
+Use one shared payload mode:
+mode: "home-flow"
+
+Common phases:
+- theme_select
+- booking
+- readiness
+- countdown
+- launch
+
+Each game must define config:
+{
+  gameSlug,
+  requiresTheme: true,
+  requiresBooking: boolean,
+  requiredPlayers: number | "all" | dynamic,
+  requiresSensors: boolean,
+  requiresMicrophone: boolean,
+  launchMode: real game mode
+}
+
+Important:
+- No game should skip theme_select.
+- If only one theme exists, still show it and require host confirmation.
+- Booking phase only appears where needed.
+- Readiness phase only appears where sensors/microphone are needed.
+- Countdown starts only after host clicks Avvia.
+- Active game timer starts only after countdown finishes.
+
+DO NOT:
+- duplicate startup code per game
+- hardcode separate flows
+- break existing Ballo SensorBridge
+- reintroduce calibration
+- start timers during setup
+- start active round before countdown
+
+Audit current code first:
+- select-game route
+- flow/select-theme
+- flow/book-player
+- flow/confirm
+- GameFlowEngine
+- GameFlowPhone
+- HomeGame
+- HomeJoin
+
+Output before patch:
+A. current startup behavior per game
+B. which games already use home-flow
+C. which games bypass flow
+D. exact shared config needed
+
+Then patch.
+
+Output after patch:
+A. files modified
+B. universal flow config
+C. behavior per game
+D. countdown/timer rule
+E. typecheck result
+F. manual test checklist
