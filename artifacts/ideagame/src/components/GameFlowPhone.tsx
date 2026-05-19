@@ -9,7 +9,6 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 import { type FlowPayload, type FlowBookedPlayer, FLOW_GAME_UI, useFlowCountdown } from './GameFlowEngine';
-import { isBrowserBlocked } from './SafariGuard';
 
 const MOTION_PERM_KEY = 'ideagame:motion-permission';
 type SensorPerm = 'idle' | 'granted' | 'denied' | 'unsupported';
@@ -66,70 +65,125 @@ export function GameFlowPhone({
     if (booking) return;
     setBooking(true);
 
-    // ── Ballo sensor permission ─────────────────────────────────────────────
-    // Blur any focused element and clear selection BEFORE calling
-    // requestPermission(). This clears the iOS undo stack so that shaking
-    // during Ballo is less likely to trigger "Annulla inserimento".
-    // iOS requires requestPermission() itself to be called synchronously from
-    // the user gesture — so blur/clear happen here, still before the first await.
+    // ── Ballo sensor pipeline ───────────────────────────────────────────────
+    // Correct order for iOS (Safari + Chrome/WKWebView):
+    //   1. requestPermission() — synchronous promise start, still in gesture stack
+    //   2. addEventListener()  — synchronous, SAME gesture stack (no await yet)
+    //   3. await permission result
+    //   4. await ≤2s for first real event (early exit; proves stream is alive)
+    //   5. sensorReady = eventCount > 0   (truth from events, not from permission)
+    //   6. removeEventListener (cleanup — BalloController will re-attach)
+    //   7. ONLY NOW: fetch booking, socket emit, state updates / re-renders
+    //
+    // Chrome iOS (CriOS / WKWebView): no requestPermission API → auto-granted.
+    // Events stream unconditionally on HTTPS without any permission dialog.
+    // Do NOT gate by isBrowserBlocked() — that prevented Chrome from auto-granting.
+
+    let sensorReadyResult = false;
+
     if (action === 'book' && p.gameSlug === 'sfida-ballo') {
+      // Clear undo stack before any sensor work (reduces "Annulla inserimento" on shake)
       const el = document.activeElement;
       if (el instanceof HTMLElement) el.blur();
       window.getSelection()?.removeAllRanges();
     }
-    let permPromise: Promise<SensorPerm> | null = null;
+
     if (action === 'book' && p.gameSlug === 'sfida-ballo' && sensorPerm === 'idle') {
       try {
         const saved = localStorage.getItem(MOTION_PERM_KEY);
         if (saved === 'granted') {
-          setSensorPerm('granted'); // already decided — no dialog
+          // Previously granted — trust the cache; watchdog will catch stalled streams
+          setSensorPerm('granted');
+          sensorReadyResult = true;
         } else if (saved === 'denied') {
           setSensorPerm('denied');
         } else if (typeof DeviceMotionEvent === 'undefined') {
           setSensorPerm('unsupported');
-        } else if (isBrowserBlocked()) {
-          // Chrome iOS / Firefox iOS / in-app browsers: DeviceMotion is blocked.
-          // Skip requestPermission (it would either not exist or silently deny).
-          // Mark as unsupported so the TV host sees the ⚠️ badge.
-          setSensorPerm('unsupported');
         } else {
+          // ── Step 1: fire permission requests SYNCHRONOUSLY ────────────────
+          // Must happen before any await — iOS requires same call stack as gesture.
+          // Chrome iOS / Android / desktop: requestPermission does not exist → skip.
           const dme = DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> };
-          const doe = (typeof DeviceOrientationEvent !== 'undefined')
+          const doe = typeof DeviceOrientationEvent !== 'undefined'
             ? DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> }
             : null;
+
+          let permissionP: Promise<'granted' | 'denied'>;
           if (typeof dme.requestPermission === 'function') {
-            // Fire both synchronously from the user gesture — no await before either call.
-            // Sequential independent try/catch: a throw from orientation cannot kill motion.
-            // OR logic: grant if at least one sensor path works.
             let motionP: Promise<string>;
+            let orientP: Promise<string> = Promise.resolve('granted');
             try { motionP = dme.requestPermission(); }
             catch { motionP = Promise.resolve('denied'); }
-
-            let orientP: Promise<string> = Promise.resolve('granted');
             if (typeof doe?.requestPermission === 'function') {
               try { orientP = doe.requestPermission(); }
               catch { orientP = Promise.resolve('denied'); }
             }
-
-            permPromise = (async (): Promise<SensorPerm> => {
-              let motionGranted = false;
-              let orientGranted = false;
-              try { motionGranted = (await motionP) === 'granted'; } catch { /* ignore */ }
-              try { orientGranted = (await orientP) === 'granted'; } catch { /* ignore */ }
-              const perm: SensorPerm = (motionGranted || orientGranted) ? 'granted' : 'denied';
-              localStorage.setItem(MOTION_PERM_KEY, perm);
-              return perm;
+            permissionP = (async () => {
+              let m = false, o = false;
+              try { m = (await motionP) === 'granted'; } catch { /* ignore */ }
+              try { o = (await orientP) === 'granted'; } catch { /* ignore */ }
+              return (m || o) ? ('granted' as const) : ('denied' as const);
             })();
           } else {
-            // Android / non-iOS: no permission dialog needed
-            localStorage.setItem(MOTION_PERM_KEY, 'granted');
-            setSensorPerm('granted');
+            // Chrome iOS / WKWebView / Android / desktop: no permission dialog.
+            // Events stream on HTTPS without needing requestPermission.
+            permissionP = Promise.resolve('granted');
           }
-        }
-      } catch { /* ignore storage errors */ }
-    }
-    // ───────────────────────────────────────────────────────────────────────
 
+          // ── Step 2: attach temp listeners SYNCHRONOUSLY ───────────────────
+          // Still in the synchronous part of the gesture call stack (no await yet).
+          // This gives iOS / WKWebView the best possible chance of streaming events.
+          let motionEventCount = 0;
+          let orientEventCount = 0;
+          const onTempMotion = () => { motionEventCount++; };
+          const onTempOrient = () => { orientEventCount++; };
+          window.addEventListener('devicemotion',      onTempMotion, true);
+          window.addEventListener('deviceorientation', onTempOrient, true);
+          console.log('[SensorChain] temp listeners attached (synchronous, pre-await)');
+
+          // ── Step 3: await permission result ───────────────────────────────
+          const perm = await permissionP;
+          localStorage.setItem(MOTION_PERM_KEY, perm);
+          setSensorPerm(perm);
+          console.log('[SensorChain] permission:', perm);
+
+          if (perm === 'granted') {
+            // ── Step 4: wait ≤2 s for first real sensor event ──────────────
+            // Polls every 50 ms; exits immediately on first event arrival.
+            await new Promise<void>(resolve => {
+              const POLL = 50;
+              const MAX  = 2000;
+              let elapsed = 0;
+              const tick = setInterval(() => {
+                elapsed += POLL;
+                if (motionEventCount + orientEventCount > 0 || elapsed >= MAX) {
+                  clearInterval(tick);
+                  resolve();
+                }
+              }, POLL);
+            });
+
+            // ── Step 5: truth from actual events ─────────────────────────────
+            sensorReadyResult = (motionEventCount + orientEventCount) > 0;
+            console.log(
+              '[SensorChain] verify — motion:', motionEventCount,
+              '| orient:', orientEventCount,
+              '| sensorReady:', sensorReadyResult,
+            );
+          }
+
+          // ── Step 6: clean up temp listeners ──────────────────────────────
+          // BalloController's useEffect re-attaches the permanent game listeners.
+          window.removeEventListener('devicemotion',      onTempMotion, true);
+          window.removeEventListener('deviceorientation', onTempOrient, true);
+        }
+      } catch { /* ignore localStorage / permission errors */ }
+    } else if (action === 'book' && p.gameSlug === 'sfida-ballo' && sensorPerm === 'granted') {
+      // Already granted from a previous tap — trust cached state
+      sensorReadyResult = true;
+    }
+
+    // ── Step 7: ONLY NOW — fetch, socket emit, UI updates ──────────────────
     try {
       await fetch(`/api/home/sessions/${session.id}/flow/book-player`, {
         method: 'POST',
@@ -141,19 +195,11 @@ export function GameFlowPhone({
           action,
         }),
       });
-      // Resolve sensor permission result now that booking is confirmed
-      let resolvedPerm: SensorPerm = sensorPerm;
-      if (permPromise) {
-        const perm = await permPromise;
-        setSensorPerm(perm);
-        resolvedPerm = perm;
-      }
-      // Broadcast sensor readiness to TV so the host sees ⚠️ for players without sensors
       if (action === 'book' && p.gameSlug === 'sfida-ballo') {
         emit('home:player_sensor_ready', {
           sessionId: session.id,
           playerId: player.id,
-          sensorReady: resolvedPerm === 'granted',
+          sensorReady: sensorReadyResult,
         });
       }
     } finally { setBooking(false); }
