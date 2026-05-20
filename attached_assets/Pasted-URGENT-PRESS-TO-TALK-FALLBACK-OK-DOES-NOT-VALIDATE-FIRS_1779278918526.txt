@@ -1,0 +1,99 @@
+URGENT — PRESS TO TALK FALLBACK OK DOES NOT VALIDATE.
+
+FIRST FIX TEXT FALLBACK, THEN MICROPHONE.
+Do not touch Ballo.
+Do not touch taboo alarm.
+Do not redesign.
+
+Problem:
+In WordBack:
+- microphone does not work
+- fallback text input appears
+- but pressing OK after writing the correct word does NOT validate
+- phone stays stuck
+- TV does not progress correctly
+
+This means PressToTalkAnswer is not calling onCorrect/onWrong correctly OR WordBackController handleCorrect is failing.
+
+==================================================
+PART 1 — TEXT FALLBACK MUST VALIDATE 100%
+==================================================
+
+Audit:
+- PressToTalkAnswer.tsx fallback text input
+- OK button onClick
+- normalize/match function
+- onCorrect callback
+- onWrong callback
+- WordBackController handleCorrect
+- POST /api/home/sessions/:id/wordback-correct
+- server response handling
+
+Required:
+When user writes the correct word and presses OK:
+1. normalize typed text
+2. compare with expectedAnswer
+3. if correct call onCorrect(typedText)
+4. WordBackController must POST /wordback-correct
+5. server validates and awards points
+6. phone shows CORRETTO for 2s
+7. TV shows CORRETTO for 2s
+8. then clears overlay / waits next round
+
+Important:
+Even if microphone is broken, text fallback must complete the whole flow.
+
+Patch:
+- Add explicit submitFallbackAnswer()
+- Bind OK button to submitFallbackAnswer
+- Allow Enter key to submit
+- Do not disable OK unless input is empty
+- Show exact error if POST fails
+- If server returns 409 duplicate, do not freeze; show "Risposta già registrata"
+- If server returns 400 wrong, show "Non ancora, riprova"
+
+Logs:
+[PressToTalkFallback]
+typedText
+expectedAnswer
+normalizedTyped
+normalizedExpected
+matched
+onCorrect called
+
+[WordBackAnswer]
+POST start
+POST status
+POST body
+success/failure
+
+==================================================
+PART 2 — MICROPHONE HARDENING, BUT AFTER FALLBACK WORKS
+==================================================
+
+Audit:
+- SpeechRecognition support
+- secure context
+- recognition.start exception
+- not-allowed
+- audio-capture
+- no-speech
+- onresult
+- onend
+
+Required:
+- If SpeechRecognition unsupported or fails:
+  fallback remains usable
+- microphone failure must never block text fallback
+- show compact error, not freeze
+
+Do NOT keep restarting recognition forever if it fails repeatedly.
+Max 2 auto-restarts per hold.
+
+Output:
+A. root cause
+B. files modified
+C. fallback validation fixed
+D. microphone failure handling
+E. typecheck result
+F. manual test steps

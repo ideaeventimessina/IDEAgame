@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { useEventSocket, getSocket } from '@/hooks/useEventSocket';
 import { GameFlowPhone } from '@/components/GameFlowPhone';
-import PressToTalkAnswer from '@/components/PressToTalkAnswer';
+import PressToTalkAnswer, { type AnswerResult } from '@/components/PressToTalkAnswer';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -1933,10 +1933,13 @@ function WordBackController({ payload, timeLeft, player, sessionId, emit }: {
   // Cleanup on unmount
   useEffect(() => () => { if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current); }, []);
 
-  const handleCorrect = useCallback(async (answerText: string) => {
-    if (answered || scored) return;
+  const handleCorrect = useCallback(async (answerText: string): Promise<AnswerResult | void> => {
+    if (answered || scored) {
+      console.log('[WordBackAnswer] guard — already answered/scored', { answered, scored });
+      return { ok: false, code: '409', message: 'Risposta già registrata per questo round' };
+    }
     setAnswered(true);
-    console.log('[WordBackCorrect] phone answer submitted — overlay shown');
+    console.log('[WordBackAnswer] POST start', { answerText, sessionId, playerId: player.id, round });
     try {
       const res = await fetch(`/api/home/sessions/${sessionId}/wordback-correct`, {
         method: 'POST',
@@ -1944,20 +1947,28 @@ function WordBackController({ payload, timeLeft, player, sessionId, emit }: {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ playerId: player.id, answerText, round }),
       });
+      console.log('[WordBackAnswer] POST status', res.status);
       if (res.ok) {
-        // Server confirmed correct — lock this round and auto-clear the big overlay
+        console.log('[WordBackAnswer] success — overlay shown, locking round');
         setScored(true);
         if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
         overlayTimerRef.current = setTimeout(() => {
-          console.log('[WordBackCorrect] phone overlay cleared — waiting for host next-round');
+          console.log('[WordBackAnswer] overlay cleared — waiting for host next-round');
           setAnswered(false);
         }, 2000);
+        return { ok: true };
       } else {
-        // On any server error (including 409 duplicate), clear the overlay immediately
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        console.log('[WordBackAnswer] POST failure', { status: res.status, body });
         setAnswered(false);
+        if (res.status === 409) return { ok: false, code: '409', message: 'Risposta già registrata per questo round' };
+        if (res.status === 422) return { ok: false, code: '422', message: 'Non ancora, riprova!' };
+        return { ok: false, code: 'error', message: body.error ?? `Errore ${res.status}` };
       }
-    } catch {
+    } catch (err) {
+      console.log('[WordBackAnswer] POST exception', { err: String(err) });
       setAnswered(false);
+      return { ok: false, code: 'error', message: 'Errore di connessione, riprova' };
     }
   }, [answered, scored, sessionId, player.id, round]);
 
