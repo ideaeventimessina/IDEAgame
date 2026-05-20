@@ -1,0 +1,119 @@
+HOME MODE — LOCK PLAYER PHONE UX + STOP WORD BACK TIMER ON PHONES.
+
+Do not redesign.
+Do not touch Ballo SensorBridge.
+Do not touch audio.
+Do not touch scoring.
+Do not touch booking flow.
+
+==================================================
+PART 1 — LOCK PLAYER PHONE GAME EXPERIENCE
+==================================================
+
+Problem:
+On player phones, the UI/image moves left and right.
+This must never happen during gameplay.
+
+Requirement:
+Player phone experience must be locked/blindata:
+- no horizontal scroll
+- no left/right movement
+- no drag
+- no bounce side movement
+- no accidental selection
+- no layout overflow
+
+Patch global mobile/player CSS:
+Apply only to player game surfaces:
+- HomeJoin
+- GameFlowPhone
+- PressToTalkAnswer
+- game controllers on phone
+
+CSS requirements:
+html, body, #root:
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+
+Player wrapper:
+  width: 100vw;
+  max-width: 100vw;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+
+Any animated/image/card container:
+  max-width: 100%;
+  overflow-x: hidden;
+
+Audit:
+- any element using width: 100vw plus padding causing overflow
+- absolute elements extending left/right
+- motion.div drag/translateX
+- negative margins
+- large image without max-width
+
+Output:
+A. files modified
+B. overflow root cause
+C. phone UX lock applied
+D. typecheck result
+
+==================================================
+PART 2 — WORD BACK CORRECT ANSWER MUST STOP PHONE TIMERS
+==================================================
+
+Problem:
+After correct answer in WordBack:
+- TV timer stops
+- phones still show active timer running
+
+Required:
+When home:wordback_correct is emitted:
+- all phones must stop/pause their local timer immediately
+- not only the guesser phone
+- show correct/waiting state
+- do not keep counting down
+- timer must reset only on next home:round
+
+Audit:
+- HomeJoin.tsx timerRef/startTimer/stopTimer
+- home:wordback_correct listener on phone
+- WordBackController state
+- timeLeft display
+- TV timer stop logic
+
+Patch:
+- add phone listener for home:wordback_correct if missing
+- on event:
+  clearInterval(timerRef.current)
+  setTimeLeft(null or frozen value)
+  mark current word as solved/scored
+- all phone controllers must render:
+  “Risposta corretta — attesa prossima parola”
+  instead of active timer
+- on next home:round:
+  reset solved/scored state
+  restart timer normally
+
+Important:
+- do not break taboo alarm
+- do not auto-advance round
+- host still controls next word unless server flow already does
+- all phones must receive the solved state
+
+Logs:
+[WordBackTimer]
+correct received on phone
+timer stopped
+next round reset
+
+Output:
+A. files modified
+B. phone timer stop behavior
+C. solved-state reset behavior
+D. typecheck result

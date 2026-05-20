@@ -87,6 +87,7 @@ export default function HomeJoin() {
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [answered, setAnswered] = useState<number | null>(null);
   const [revealed, setRevealed] = useState(false);
+  const [wordbackSolved, setWordbackSolved] = useState(false);
   const [adminSensitivity, setAdminSensitivity] = useState(3.0);
   const [coppiePreviewUntil, setCoppiePreviewUntil] = useState<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -366,6 +367,8 @@ export default function HomeJoin() {
       setSession(prev => prev ? { ...prev, currentRound: d.round, roundPayload: d.payload } : prev);
       setAnswered(null);
       setRevealed(false);
+      setWordbackSolved(false);
+      console.log('[WordBackTimer] next round reset — wordbackSolved cleared');
       startRoundTimer(d.payload ?? {});
     });
 
@@ -426,7 +429,15 @@ export default function HomeJoin() {
       }
     });
 
-    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); u10?.(); u11?.(); };
+    const u12 = on<{ guesserId: string; guesserNickname?: string; word?: string; pts: number }>('home:wordback_correct', () => {
+      console.log('[WordBackTimer] correct received on phone — stopping timer');
+      if (timerRef.current) clearInterval(timerRef.current);
+      // Freeze timeLeft in place (don't set null — badge stays readable but frozen)
+      setWordbackSolved(true);
+      console.log('[WordBackTimer] timer stopped');
+    });
+
+    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); u10?.(); u11?.(); u12?.(); };
   // Only re-register when the socket `on` function changes (new connection)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [on]);
@@ -543,7 +554,7 @@ export default function HomeJoin() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="relative flex min-h-screen w-full flex-col overflow-hidden"
+    <div className="hj-phone-lock relative flex min-h-screen w-full flex-col overflow-hidden"
       style={{background:'#07061a'}}>
 
       <style>{`
@@ -830,6 +841,7 @@ export default function HomeJoin() {
               emit={emit}
               adminSensitivity={adminSensitivity}
               coppiePreviewUntil={coppiePreviewUntil}
+              wordbackSolved={wordbackSolved}
             />
           </motion.div>
         )}
@@ -884,7 +896,7 @@ export default function HomeJoin() {
 
 function PhoneController({
   session, player, players, revealed, answered, timeLeft,
-  onAnswer, onFlip, onScore, emit, adminSensitivity, coppiePreviewUntil,
+  onAnswer, onFlip, onScore, emit, adminSensitivity, coppiePreviewUntil, wordbackSolved,
 }: {
   session: HomeSession;
   player: HomePlayer;
@@ -898,6 +910,7 @@ function PhoneController({
   emit: (event: string, data: unknown) => void;
   adminSensitivity?: number;
   coppiePreviewUntil?: number | null;
+  wordbackSolved?: boolean;
 }) {
   const p = session.roundPayload;
   const mode = String(p.mode ?? 'home-quiz');
@@ -909,7 +922,7 @@ function PhoneController({
   if (mode === 'home-saramusica') return <SaraMusicaController payload={p} player={player} session={session}/>;
   if (mode === 'home-adult')      return <AdultController payload={p} timeLeft={timeLeft} onScore={onScore}/>;
   if (mode === 'home-ballo')      return <BalloController payload={p} timeLeft={timeLeft} sessionId={session.id} emit={emit} playerId={player.id} round={session.currentRound} adminSensitivity={adminSensitivity ?? 1.0}/>;
-  if (mode === 'home-wordback' || mode === 'home-wordback-booking')   return <WordBackController payload={p} timeLeft={timeLeft} player={player} sessionId={session.id} emit={emit}/>;
+  if (mode === 'home-wordback' || mode === 'home-wordback-booking')   return <WordBackController payload={p} timeLeft={timeLeft} player={player} sessionId={session.id} emit={emit} wordbackSolved={wordbackSolved ?? false}/>;
   if (mode === 'home-karaoke')    return <KaraokeController payload={p} sessionId={session.id}/>;
   if (mode === 'home-freestyle')  return <FreestyleController payload={p} timeLeft={timeLeft}/>;
   return <div className="text-center text-white/40 py-8">In attesa del gioco…</div>;
@@ -1901,12 +1914,13 @@ function WordBackBookingPhone({ payload, player, sessionId }: {
 
 // ── WordBackController ─────────────────────────────────────────────────────────
 
-function WordBackController({ payload, timeLeft, player, sessionId, emit }: {
+function WordBackController({ payload, timeLeft, player, sessionId, emit, wordbackSolved }: {
   payload: Record<string,unknown>;
   timeLeft: number | null;
   player: HomePlayer;
   sessionId: string;
   emit: (event: string, data: unknown) => void;
+  wordbackSolved?: boolean;
 }) {
   const guesserId = String(payload.guesserId ?? '');
   const suggesterId = String(payload.suggesterId ?? '');
@@ -1979,11 +1993,14 @@ function WordBackController({ payload, timeLeft, player, sessionId, emit }: {
     setTimeout(() => setAlarmPressed(false), 2000);
   }, [alarmPressed, emit, sessionId, player.id, player.nickname, round]);
 
+  // When wordbackSolved=true the interval has been cleared in the parent — show frozen value with ✓ tint
   const timerBadge = timeLeft !== null ? (
     <div className="flex items-center gap-2 rounded-xl px-5 py-2"
-      style={{background:'rgba(34,211,238,0.18)',border:'1px solid rgba(34,211,238,0.45)',color:'#22D3EE'}}>
+      style={wordbackSolved
+        ? {background:'rgba(34,197,94,0.18)',border:'1px solid rgba(34,197,94,0.45)',color:'#4ade80'}
+        : {background:'rgba(34,211,238,0.18)',border:'1px solid rgba(34,211,238,0.45)',color:'#22D3EE'}}>
       <Timer className="h-4 w-4"/>
-      <span className="text-2xl font-black tabular-nums">{timeLeft}s</span>
+      <span className="text-2xl font-black tabular-nums">{wordbackSolved ? '✓' : `${timeLeft}s`}</span>
     </div>
   ) : null;
 
@@ -2045,6 +2062,19 @@ function WordBackController({ payload, timeLeft, player, sessionId, emit }: {
   }
 
   if (isSuggester) {
+    if (wordbackSolved) {
+      return (
+        <div className="flex flex-col items-center gap-5 py-4 text-center">
+          <div className="text-5xl">✅</div>
+          <div className="text-xl font-black text-white">Risposta corretta!</div>
+          <div className="rounded-2xl px-4 py-3 w-full text-sm font-semibold"
+            style={{background:'rgba(34,197,94,0.10)',border:'1px solid rgba(34,197,94,0.35)',color:'rgba(34,197,94,0.8)'}}>
+            In attesa del prossimo round…
+          </div>
+          {timerBadge}
+        </div>
+      );
+    }
     return (
       <div className="flex flex-col items-center gap-5 py-4 text-center">
         <div className="text-6xl">💬</div>
@@ -2074,6 +2104,19 @@ function WordBackController({ payload, timeLeft, player, sessionId, emit }: {
   }
 
   // All other players → Controllo Taboo
+  if (wordbackSolved) {
+    return (
+      <div className="flex flex-col items-center gap-5 py-4 text-center">
+        <div className="text-5xl">✅</div>
+        <div className="text-xl font-black text-white">Risposta corretta!</div>
+        <div className="rounded-2xl px-4 py-3 w-full text-sm font-semibold"
+          style={{background:'rgba(34,197,94,0.10)',border:'1px solid rgba(34,197,94,0.35)',color:'rgba(34,197,94,0.8)'}}>
+          In attesa del prossimo round…
+        </div>
+        {timerBadge}
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col items-center gap-5 py-4 text-center">
       <div className="text-6xl">🚨</div>

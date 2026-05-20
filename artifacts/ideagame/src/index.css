@@ -243,3 +243,41 @@ html, body {
   pointer-events: none !important;
   display: none !important;
 }
+
+/* ── Phone player UX lock ────────────────────────────────────────────────────
+   Applied to HomeJoin and all phone game surfaces.
+   Prevents horizontal scroll, bounce, accidental drag and selection.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+html,
+body,
+#root {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
+body {
+  overscroll-behavior-x: none;
+}
+
+.hj-phone-lock {
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.hj-phone-lock * {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.hj-phone-lock img,
+.hj-phone-lock video {
+  max-width: 100%;
+  object-fit: cover;
+}
