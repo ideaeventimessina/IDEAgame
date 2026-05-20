@@ -96,6 +96,16 @@ export default function PressToTalkAnswer({
   const [fallbackError, setFallbackError] = useState<string | null>(null);
   const [textAnswer, setTextAnswer]   = useState('');
 
+  // ── Mic diagnostics state ──────────────────────────────────────────────────
+  const [permState, setPermState]     = useState<'granted'|'prompt'|'denied'|'unknown'>('unknown');
+  const [diag, setDiag]               = useState({
+    startCalled:       false,
+    onstartFired:      false,
+    onaudiostartFired: false,
+    onspeechstartFired:false,
+  });
+  const [startTimeout, setStartTimeout] = useState(false); // fires if onstart doesn't arrive within 800ms
+
   // ── Refs ───────────────────────────────────────────────────────────────────
   const recRef            = useRef<AnySR | null>(null);
   const listeningRef      = useRef(false);   // atomic guard — no React batch delay
@@ -106,6 +116,18 @@ export default function PressToTalkAnswer({
   const interimRef        = useRef('');
   const failTimerRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startListeningRef = useRef<(() => void) | null>(null);
+  const onstartFiredRef   = useRef(false);   // sync flag for 800ms timeout closure
+  const startTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryCountRef     = useRef(0);       // max 1 auto-retry per hold
+
+  // ── Permission query — runs once on mount ─────────────────────────────────
+  useEffect(() => {
+    if (typeof navigator === 'undefined') return;
+    navigator.permissions
+      ?.query({ name: 'microphone' as PermissionName })
+      .then(r => { setPermState(r.state as 'granted'|'prompt'|'denied'); })
+      .catch(() => setPermState('unknown'));
+  }, []);
 
   // ── stop ──────────────────────────────────────────────────────────────────
   const stopListening = useCallback(() => {
@@ -135,15 +157,19 @@ export default function PressToTalkAnswer({
     listeningRef.current = true;
 
     matchedRef.current = false;
+    onstartFiredRef.current = false;
     lastTranscriptRef.current = '';
     interimRef.current = '';
     setTranscript('');
     setMatchFail(false);
     setFallbackError(null);
     setErrorMsg('');
+    setStartTimeout(false);
+    setDiag({ startCalled: true, onstartFired: false, onaudiostartFired: false, onspeechstartFired: false });
     // Waveform animates immediately — status set BEFORE rec.start()
     setStatus('listening');
     if (failTimerRef.current) clearTimeout(failTimerRef.current);
+    if (startTimerRef.current) clearTimeout(startTimerRef.current);
 
     const rec = new SRClass();
     recRef.current = rec;
@@ -151,6 +177,23 @@ export default function PressToTalkAnswer({
     rec.interimResults = true;
     rec.maxAlternatives = 5;
     rec.continuous = true;
+
+    // ── Mic lifecycle hooks ────────────────────────────────────────────────
+    rec.onstart = () => {
+      onstartFiredRef.current = true;
+      if (startTimerRef.current) clearTimeout(startTimerRef.current);
+      setStartTimeout(false);
+      setDiag(d => ({ ...d, onstartFired: true }));
+      console.log('[PressToTalk] onstart fired ✓');
+    };
+    rec.onaudiostart = () => {
+      setDiag(d => ({ ...d, onaudiostartFired: true }));
+      console.log('[PressToTalk] onaudiostart fired ✓');
+    };
+    rec.onspeechstart = () => {
+      setDiag(d => ({ ...d, onspeechstartFired: true }));
+      console.log('[PressToTalk] onspeechstart fired ✓');
+    };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     rec.onresult = (e: any) => {
@@ -260,13 +303,22 @@ export default function PressToTalkAnswer({
     };
 
     try {
-      console.log('[PressToTalk] recognition.start', { lang: language });
+      console.log('[PressToTalk] recognition.start', { lang: language, secureContext: window.isSecureContext });
       rec.start();
+
+      // 800ms guard: if onstart doesn't fire, mic is silently blocked
+      startTimerRef.current = setTimeout(() => {
+        if (!onstartFiredRef.current) {
+          console.warn('[PressToTalk] start-timeout — onstart did not fire within 800ms');
+          setStartTimeout(true);
+        }
+      }, 800);
     } catch (err) {
       console.log('[PressToTalk] start-exception', { err: String(err) });
       listeningRef.current = false;
       setStatus('idle');
       setLastError('start-exception');
+      setStartTimeout(true);
       recRef.current = null;
     }
   }, [disabled, language, expectedAnswer, onCorrect, onWrong]);
@@ -355,6 +407,7 @@ export default function PressToTalkAnswer({
         recRef.current = null;
       }
       if (failTimerRef.current) clearTimeout(failTimerRef.current);
+      if (startTimerRef.current) clearTimeout(startTimerRef.current);
     };
   }, []);
 
@@ -447,6 +500,7 @@ export default function PressToTalkAnswer({
             e.preventDefault();
             e.currentTarget.setPointerCapture(e.pointerId);
             holdingRef.current = true;
+            retryCountRef.current = 0;
             startListening();
           }}
           onPointerUp={stopListening}
@@ -478,13 +532,49 @@ export default function PressToTalkAnswer({
           onSubmit={submitFallbackAnswer} disabled={disabled} submitting={submitting}
           matchFail={matchFail} fallbackError={fallbackError} />
 
-        {/* Tiny diagnostic badge */}
-        <div className="flex items-center gap-3 select-none"
-          style={{opacity:0.28,fontSize:10,fontFamily:'monospace',letterSpacing:'0.03em'}}>
-          <span title="Speech API supportato">🎙 {srSupported ? '✓' : '✗'}</span>
-          <span title="Secure context (HTTPS)">🔒 {secureCtx ? '✓' : '✗'}</span>
-          {lastError && (
-            <span title="Ultimo errore" style={{color:'#f87171',opacity:1}}>⚠ {lastError}</span>
+        {/* Mic diagnostics panel */}
+        <div className="w-full rounded-xl px-3 py-2 select-none"
+          style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.07)'}}>
+          <div className="flex items-center justify-between text-xs"
+            style={{color:'rgba(255,255,255,0.32)',fontFamily:'monospace',letterSpacing:'0.02em'}}>
+            <span title="Secure context (HTTPS)">
+              🔒 {secureCtx ? <span style={{color:'#4ade80'}}>HTTPS ✓</span> : <span style={{color:'#f87171'}}>HTTP ✗</span>}
+            </span>
+            <span title="Speech Recognition API">
+              🎙 {srSupported ? <span style={{color:'#4ade80'}}>SR ✓</span> : <span style={{color:'#f87171'}}>SR ✗</span>}
+            </span>
+            <span title="Permesso microfono">
+              🎤 <span style={{color: permState === 'granted' ? '#4ade80' : permState === 'denied' ? '#f87171' : 'rgba(255,255,255,0.4)'}}>
+                {permState}
+              </span>
+            </span>
+          </div>
+          {diag.startCalled && (
+            <div className="flex items-center gap-1 mt-1 text-xs"
+              style={{color:'rgba(255,255,255,0.25)',fontFamily:'monospace'}}>
+              <span style={{color: diag.onstartFired ? '#4ade80' : 'rgba(255,255,255,0.2)'}}>
+                start{diag.onstartFired ? '✓' : '…'}
+              </span>
+              <span>→</span>
+              <span style={{color: diag.onaudiostartFired ? '#4ade80' : 'rgba(255,255,255,0.2)'}}>
+                audio{diag.onaudiostartFired ? '✓' : '…'}
+              </span>
+              <span>→</span>
+              <span style={{color: diag.onspeechstartFired ? '#4ade80' : 'rgba(255,255,255,0.2)'}}>
+                speech{diag.onspeechstartFired ? '✓' : '…'}
+              </span>
+              {lastError && (
+                <span className="ml-auto" style={{color:'#f87171'}}>⚠ {lastError}</span>
+              )}
+            </div>
+          )}
+          {!diag.startCalled && lastError && (
+            <div className="mt-1 text-xs" style={{color:'#f87171',fontFamily:'monospace'}}>⚠ {lastError}</div>
+          )}
+          {startTimeout && !diag.onstartFired && (
+            <div className="mt-1 text-xs font-bold" style={{color:'#fb923c'}}>
+              ⚠ Microfono non avviato — usa risposta scritta
+            </div>
           )}
         </div>
 

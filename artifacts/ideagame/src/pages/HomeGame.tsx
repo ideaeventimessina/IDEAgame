@@ -7,7 +7,8 @@
  * URL: /home?s=SESSION_ID
  */
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, Component } from 'react';
+import type { ErrorInfo, ReactNode } from 'react';
 import { useLocation } from 'wouter';
 import { motion, AnimatePresence, useAnimation } from 'framer-motion';
 import {
@@ -1497,6 +1498,11 @@ export default function HomeGame() {
 
             {/* Content */}
             <div className="flex flex-1 items-center justify-center overflow-auto px-6 py-3">
+              <GameBoardErrorBoundary
+                key={session.currentRound}
+                gameSlug={session.gameSlug ?? ''}
+                mode={String((session.roundPayload as Record<string,unknown>)?.mode ?? '')}
+                roundPayload={(session.roundPayload as Record<string,unknown>) ?? {}}>
               <RoundBoard key={session.currentRound} session={session} revealed={revealed}
                 onReveal={() => { setRevealed(true); if(timerRef.current) clearInterval(timerRef.current); setJonnyMood('correct'); }}
                 onNext={nextRound} players={players} balloEnergies={balloEnergies} balloCurrent={balloCurrent} balloResult={balloResult}
@@ -1533,6 +1539,7 @@ export default function HomeGame() {
                   });
                   // Socket broadcastState reconciles with authoritative server state
                 }}/>
+              </GameBoardErrorBoundary>
             </div>
 
             {/* Score bar */}
@@ -1768,6 +1775,62 @@ export default function HomeGame() {
 
 // ── RoundBoard ─────────────────────────────────────────────────────────────────
 
+// ── GameBoardErrorBoundary ────────────────────────────────────────────────────
+
+interface GBEBProps {
+  children: ReactNode;
+  gameSlug: string;
+  mode: string;
+  roundPayload: Record<string, unknown>;
+}
+interface GBEBState { hasError: boolean; errorMsg: string }
+
+class GameBoardErrorBoundary extends Component<GBEBProps, GBEBState> {
+  constructor(props: GBEBProps) {
+    super(props);
+    this.state = { hasError: false, errorMsg: '' };
+  }
+  static getDerivedStateFromError(error: Error): GBEBState {
+    return { hasError: true, errorMsg: String(error?.message ?? error) };
+  }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    const { gameSlug, mode, roundPayload } = this.props;
+    console.error('[GameBoardError]', {
+      gameSlug,
+      mode,
+      roundPayloadSummary: {
+        mode: roundPayload.mode,
+        roundIndex: roundPayload.roundIndex,
+        word: roundPayload.word,
+        bookingOpenUntil: roundPayload.bookingOpenUntil,
+      },
+      error: String(error),
+      stack: error.stack,
+      componentStack: info.componentStack,
+    });
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex flex-col items-center gap-6 text-center px-6 py-10">
+          <div className="text-6xl">⚠️</div>
+          <div className="text-2xl font-black text-white">Errore schermata gioco — recupero in corso</div>
+          <div className="text-sm text-white/40 max-w-xs break-words">{this.state.errorMsg}</div>
+          <button
+            onClick={() => { this.setState({ hasError: false, errorMsg: '' }); window.location.reload(); }}
+            className="rounded-2xl px-8 py-3 text-base font-black text-white"
+            style={{ background: 'linear-gradient(135deg,#A78BFA,#7C3AED)', boxShadow: '0 0 30px rgba(167,139,250,0.4)' }}>
+            Ricarica stato
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// ── RoundBoard ────────────────────────────────────────────────────────────────
+
 function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, balloEnergies, balloCurrent, balloResult, balloVotes, onBalloReset, onStageNext, onEndBallo, saraMusicaWinner, balloSensitivity, onSensitivity, sensorReadyMap, tabooAlarm }: {
   session: HomeSession;
   revealed: boolean;
@@ -1798,7 +1861,7 @@ function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, bal
   if (mode === 'home-coppie')     return <CoppieBoard payload={p} onNext={onNext} sessionId={session.id}/>;
   if (mode === 'home-saramusica') return <SaraMusicaBoard payload={p} revealed={revealed} onReveal={onReveal} winner={saraMusicaWinner ?? null}/>;
   if (mode === 'home-adult')      return <AdultOnlyBoard payload={p} revealed={revealed} onReveal={onReveal} players={players} onScore={onScore}/>;
-  if (mode === 'home-wordback')   return <WordBackBoard payload={p} players={players} onScore={onScore} onReveal={onReveal} tabooAlarm={tabooAlarm ?? null} sessionId={session.id}/>;
+  if (mode === 'home-wordback' || mode === 'home-wordback-booking')   return <WordBackBoard payload={p} players={players} onScore={onScore} onReveal={onReveal} tabooAlarm={tabooAlarm ?? null} sessionId={session.id}/>;
   if (mode === 'home-karaoke')    return <KaraokeBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
   if (mode === 'home-freestyle')  return <FreestyleBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
   return <div className="text-white/40 text-2xl">Caricamento gioco…</div>;

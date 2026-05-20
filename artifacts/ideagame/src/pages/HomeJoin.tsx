@@ -909,7 +909,7 @@ function PhoneController({
   if (mode === 'home-saramusica') return <SaraMusicaController payload={p} player={player} session={session}/>;
   if (mode === 'home-adult')      return <AdultController payload={p} timeLeft={timeLeft} onScore={onScore}/>;
   if (mode === 'home-ballo')      return <BalloController payload={p} timeLeft={timeLeft} sessionId={session.id} emit={emit} playerId={player.id} round={session.currentRound} adminSensitivity={adminSensitivity ?? 1.0}/>;
-  if (mode === 'home-wordback')   return <WordBackController payload={p} timeLeft={timeLeft} player={player} sessionId={session.id} emit={emit}/>;
+  if (mode === 'home-wordback' || mode === 'home-wordback-booking')   return <WordBackController payload={p} timeLeft={timeLeft} player={player} sessionId={session.id} emit={emit}/>;
   if (mode === 'home-karaoke')    return <KaraokeController payload={p} sessionId={session.id}/>;
   if (mode === 'home-freestyle')  return <FreestyleController payload={p} timeLeft={timeLeft}/>;
   return <div className="text-center text-white/40 py-8">In attesa del gioco…</div>;

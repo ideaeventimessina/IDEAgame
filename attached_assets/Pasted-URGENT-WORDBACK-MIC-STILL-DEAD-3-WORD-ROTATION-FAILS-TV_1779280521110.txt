@@ -1,0 +1,171 @@
+URGENT — WORDBACK MIC STILL DEAD + 3-WORD ROTATION FAILS / TV MUST NOT CRASH.
+
+FIRST AUDIT, THEN PATCH.
+Do not touch Ballo.
+Do not touch audio.
+Do not redesign.
+
+==================================================
+PART 1 — MICROPHONE STILL DOES NOT START
+==================================================
+
+Problem:
+Press-to-talk mic still does not activate.
+Fallback text works, so game is playable, but voice feature is still dead.
+
+Audit:
+- PressToTalkAnswer.tsx
+- browser support:
+  window.SpeechRecognition
+  window.webkitSpeechRecognition
+- window.isSecureContext
+- permissions:
+  navigator.permissions?.query({name:'microphone'})
+- recognition.start()
+- onstart
+- onaudiostart
+- onspeechstart
+- onresult
+- onerror
+- onend
+
+Required:
+Add a visible, compact mic diagnostics panel only inside PressToTalkAnswer:
+- secure context: yes/no
+- speech API: yes/no
+- permission state: granted/prompt/denied/unknown
+- start called: yes/no
+- onstart fired: yes/no
+- onaudiostart fired: yes/no
+- onspeechstart fired: yes/no
+- last error
+- transcript
+
+Important:
+Do not block fallback.
+If mic fails, text fallback must remain primary.
+
+Patch:
+- On pointerDown, log every lifecycle event.
+- If recognition.start() does not trigger onstart within 800ms, show:
+  “Microfono non avviato — usa risposta scritta”
+- Do not loop forever.
+- Max 1 retry per hold.
+
+Output:
+A. exact mic failure point
+B. files modified
+C. diagnostic panel added
+D. fallback preserved
+E. typecheck
+
+==================================================
+PART 2 — WORDBACK 3-WORD ROTATION FAILS
+==================================================
+
+Problem:
+After the third word:
+- booking phase did NOT start
+- game continued without asking for new players
+- after reload, it continued from the wrong flow
+- TV can appear crashed/stuck
+
+Expected:
+Every 3 completed words:
+- stop normal progression
+- enter home-wordback-booking phase
+- show TV booking countdown 10s
+- phones show role booking buttons
+- if booking incomplete after 10s, server randomly selects 2 players
+- then next word starts
+
+Audit:
+- /next endpoint
+- wordBackPairRoundCount
+- wordBackCurrentPair
+- wordBackPairHistory
+- enterWordBackBookingPhase()
+- autoSelectWordBackPair()
+- advanceToWordBackRound()
+- home:round emit
+- home:state emit
+- HomeGame handling mode === home-wordback-booking
+- HomeJoin handling mode === home-wordback-booking
+- reload behavior from GET /sessions/:id
+
+Find:
+1. Is wordBackPairRoundCount incrementing after correct answer or only after host next?
+2. Does /next check the correct mode before incrementing?
+3. Is mode home-wordback or home-wordback-booking when next is called?
+4. Is booking phase saved in DB roundPayload?
+5. Is booking timer stored server-side or lost on reload?
+6. Does GET session return home-wordback-booking correctly?
+7. Does TV render booking mode or crash because expected word/tabooWords are missing?
+8. Does phone render booking mode or continue old round?
+
+Patch:
+- Rotation must be based on completed words count, not only currentRound index.
+- After every valid wordback_correct, mark current word as completed.
+- When host/flow advances after a completed word:
+  increment pairWordCount.
+- If pairWordCount >= 3:
+  save DB roundPayload:
+  {
+    mode: "home-wordback-booking",
+    gameFlowPhase: "booking",
+    bookingEndsAt,
+    bookedPlayers: [],
+    previousPair,
+    reason: "pair_rotation"
+  }
+  emit home:state and home:round if needed.
+- Do NOT continue to next word before booking.
+- On reload, TV/phones must render booking mode from DB state.
+- Booking timer must survive reload:
+  bookingEndsAt timestamp stored in payload.
+- If timer already expired on reload:
+  immediately auto-select pair and continue.
+
+TV safety:
+If mode === home-wordback-booking:
+- render booking screen.
+- do NOT access word/tabooWords.
+- no crash.
+
+If payload missing expected fields:
+- render safe fallback:
+  "Preparazione prossimo round"
+  not crash.
+
+Phone safety:
+If mode === home-wordback-booking:
+- render role booking.
+- do NOT render answer controller.
+
+==================================================
+PART 3 — TV MUST NEVER CRASH
+==================================================
+
+Add an ErrorBoundary or safe guard around active game board:
+- if a game board throws, show:
+  “Errore schermata gioco — recupero in corso”
+  button:
+  “Ricarica stato”
+- log:
+  [GameBoardError]
+  gameSlug
+  mode
+  roundPayload summary
+  error stack
+
+Do not let whole TV app crash.
+
+Output:
+A. mic failure point
+B. rotation root cause
+C. files modified
+D. booking-after-3-words fixed
+E. reload-safe booking state
+F. TV crash guard
+G. typecheck result
+H. manual test steps
