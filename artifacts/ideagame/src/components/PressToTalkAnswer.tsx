@@ -41,6 +41,26 @@ function WaveformBars({ active }: { active: boolean }) {
   );
 }
 
+// ── Browser detection ─────────────────────────────────────────────────────────
+// Detects Chrome/Firefox/Edge on iOS (CriOS/FxiOS/EdgiOS in UA).
+// These browsers ship WKWebView which has an unreliable SpeechRecognition shim.
+// Safari on iOS/iPadOS uses the native WebKit SR engine and works correctly.
+function detectBrowser() {
+  if (typeof navigator === 'undefined') {
+    return { ua: '', isIOS: false, isSafariIOS: false, isChromeIOS: false, isFirefoxIOS: false, isEdgeIOS: false, isNonSafariIOS: false };
+  }
+  const ua      = navigator.userAgent;
+  // iPad running iPadOS 13+ reports as desktop Safari — check maxTouchPoints
+  const isIOS   = /iP(hone|ad|od)/.test(ua) ||
+    (typeof navigator.platform === 'string' && navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isSafariIOS  = isIOS && /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
+  const isChromeIOS  = isIOS && /CriOS/.test(ua);
+  const isFirefoxIOS = isIOS && /FxiOS/.test(ua);
+  const isEdgeIOS    = isIOS && /EdgiOS/.test(ua);
+  const isNonSafariIOS = isIOS && !isSafariIOS; // any non-Safari iOS browser
+  return { ua, isIOS, isSafariIOS, isChromeIOS, isFirefoxIOS, isEdgeIOS, isNonSafariIOS };
+}
+
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 /**
@@ -122,11 +142,22 @@ export default function PressToTalkAnswer({
   const startTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryCountRef     = useRef(0);
 
-  // ── Permission query — runs once on mount ─────────────────────────────────
+  // ── Permission query + browser diagnosis — runs once on mount ────────────
   useEffect(() => {
-    const secureCtx        = typeof window !== 'undefined' && window.isSecureContext;
-    const srSupported      = !!getSR();
-    const mediaSupported   = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
+    const b              = detectBrowser();
+    const secureCtx      = typeof window !== 'undefined' && window.isSecureContext;
+    const srSupported    = !!getSR();
+    const mediaSupported = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
+
+    console.log('[PressToTalkBrowser]', {
+      browser:       b.ua.slice(0, 120),
+      isSafariIOS:   b.isSafariIOS,
+      isChromeIOS:   b.isChromeIOS,
+      isNonSafariIOS: b.isNonSafariIOS,
+      speechSupported: srSupported,
+      secureContext:   secureCtx,
+      mediaDevicesSupported: mediaSupported,
+    });
     console.log('[MicFix] mount diagnostics', { secureContext: secureCtx, speechSupported: srSupported, mediaDevicesSupported: mediaSupported });
 
     if (typeof navigator === 'undefined') return;
@@ -487,7 +518,62 @@ export default function PressToTalkAnswer({
   const isListening = status === 'listening' || status === 'no-speech' || status === 'speak-again';
   const isWaiting   = status === 'waiting-mic';
 
-  // ── speech API available ────────────────────────────────────────────────────
+  // Browser detection — stable across renders (UA doesn't change)
+  const browser     = detectBrowser();
+  // Non-Safari iOS (Chrome/Firefox/Edge) has unreliable SR in WKWebView → text-first
+  const isChromeIOS = browser.isNonSafariIOS;
+
+  // ── Chrome / non-Safari iOS → text-first, mic secondary ──────────────────
+  if (isChromeIOS && getSR()) {
+    return (
+      <div className="flex flex-col gap-4 w-full">
+        {/* Browser notice */}
+        <div className="rounded-xl px-3 py-2 text-xs font-bold text-center"
+          style={{background:'rgba(251,146,60,0.08)',border:'1px solid rgba(251,146,60,0.28)',color:'rgba(251,146,60,0.8)'}}>
+          Su questo browser usa la risposta scritta.
+        </div>
+
+        <FallbackInput textAnswer={textAnswer} setTextAnswer={setTextAnswer}
+          onSubmit={submitFallbackAnswer} disabled={disabled} submitting={submitting}
+          matchFail={matchFail} fallbackError={fallbackError} large />
+
+        {/* Mic button — optional, visually secondary */}
+        <div className="flex flex-col items-center gap-1">
+          <motion.button
+            onPointerDown={handlePointerDown}
+            onPointerUp={stopListening}
+            onPointerLeave={stopListening}
+            onPointerCancel={stopListening}
+            disabled={disabled}
+            whileTap={{scale:0.97}}
+            className="w-full select-none rounded-xl py-3 font-bold text-white/45 disabled:opacity-30"
+            style={{
+              touchAction: 'none',
+              userSelect: 'none',
+              fontSize: 14,
+              background: 'rgba(167,139,250,0.06)',
+              border: '1px solid rgba(167,139,250,0.18)',
+            }}>
+            {isListening ? '🎙️ Ascolto…' : '🎤 Prova microfono (opzionale)'}
+          </motion.button>
+          <div className="text-xs" style={{color:'rgba(255,255,255,0.2)'}}>
+            Risposta vocale non stabile su questo browser
+          </div>
+        </div>
+
+        {/* Diag pill — only shown while mic is active */}
+        {(isListening || isWaiting) && (
+          <div className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs"
+            style={{background:'rgba(167,139,250,0.08)',border:'1px solid rgba(167,139,250,0.2)',color:'rgba(167,139,250,0.6)',fontFamily:'monospace'}}>
+            <WaveformBars active={isListening} />
+            <span>{transcript || 'ascolto…'}</span>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── speech API available (Safari iOS / desktop) ────────────────────────────
   if (getSR()) {
     let statusChip: string | null = null;
     if (isWaiting)                           statusChip = '🎤 Autorizzazione…';
@@ -666,6 +752,9 @@ export default function PressToTalkAnswer({
 }
 
 // ── FallbackInput ──────────────────────────────────────────────────────────────
+// Stacks vertically (no horizontal flex) so the submit button stays on-screen
+// when the iOS keyboard appears.  Font sizes are always ≥ 16px to prevent
+// the iOS auto-zoom that shifts the viewport and pushes buttons off-screen.
 function FallbackInput({
   textAnswer, setTextAnswer, onSubmit, disabled, submitting, matchFail, fallbackError, large,
 }: {
@@ -678,45 +767,76 @@ function FallbackInput({
   fallbackError: string | null;
   large?: boolean;
 }) {
-  const py = large ? 'py-3' : 'py-2.5';
-  const textSz = large ? 'text-base' : 'text-sm';
+  const inputRef = useRef<HTMLInputElement>(null);
+  const fontSize = large ? 18 : 16; // ≥ 16px prevents iOS viewport zoom
+  const padY     = large ? '12px 14px' : '10px 14px';
 
   return (
-    <div className="flex flex-col gap-2 w-full">
+    <div className="flex flex-col gap-2 w-full"
+      style={{boxSizing:'border-box', paddingBottom:'env(safe-area-inset-bottom)'}}>
+
       {/* Inline error banner */}
       <AnimatePresence>
         {(matchFail || fallbackError) && (
           <motion.div key="inline-err"
             initial={{opacity:0,y:-4}} animate={{opacity:1,y:0}} exit={{opacity:0}}
-            className="rounded-xl px-3 py-2 text-xs font-bold text-center"
-            style={{background:'rgba(239,68,68,0.12)',border:'1px solid rgba(239,68,68,0.3)',color:'#f87171'}}>
+            className="rounded-xl px-3 py-2 font-bold text-center"
+            style={{
+              fontSize: 14,
+              background:'rgba(239,68,68,0.12)',
+              border:'1px solid rgba(239,68,68,0.3)',
+              color:'#f87171',
+              boxSizing:'border-box',
+            }}>
             {fallbackError ?? 'Non ancora, riprova!'}
           </motion.div>
         )}
       </AnimatePresence>
 
-      <div className="flex gap-2 w-full">
-        <input
-          type="text"
-          value={textAnswer}
-          onChange={e => setTextAnswer(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') void onSubmit(); }}
-          placeholder="Scrivi la risposta…"
-          disabled={disabled || submitting}
-          className={`flex-1 rounded-xl border bg-white/5 px-3 ${py} ${textSz} font-semibold text-white placeholder-white/25 outline-none focus:border-purple-500/60 disabled:opacity-40`}
-          style={{borderColor:'rgba(255,255,255,0.12)'}}
-          autoComplete="off"
-          autoCorrect="off"
-          spellCheck={false}
-        />
-        <button
-          onClick={() => void onSubmit()}
-          disabled={disabled || submitting || !textAnswer.trim()}
-          className={`rounded-xl px-4 ${py} text-sm font-black text-white transition-all active:scale-95 disabled:opacity-40`}
-          style={{background:'linear-gradient(135deg,#A78BFA,#7C3AED)',border:'1px solid rgba(167,139,250,0.4)'}}>
-          {submitting ? '…' : '→'}
-        </button>
-      </div>
+      {/* Vertical stack — input full-width, button full-width below */}
+      <input
+        ref={inputRef}
+        type="text"
+        inputMode="text"
+        value={textAnswer}
+        onChange={e => setTextAnswer(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') void onSubmit(); }}
+        onFocus={() => {
+          // Delay lets the keyboard fully open before scrolling
+          setTimeout(() => {
+            inputRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          }, 350);
+        }}
+        placeholder="Scrivi la risposta…"
+        disabled={disabled || submitting}
+        className="w-full rounded-xl border bg-white/5 font-semibold text-white placeholder-white/25 outline-none focus:border-purple-500/60 disabled:opacity-40"
+        style={{
+          fontSize,
+          padding: padY,
+          borderColor:'rgba(255,255,255,0.12)',
+          boxSizing:'border-box',
+          width:'100%',
+          // Disable iOS font size escalation on inputs
+          WebkitTextSizeAdjust: '100%',
+        }}
+        autoComplete="off"
+        autoCorrect="off"
+        spellCheck={false}
+      />
+
+      <button
+        onClick={() => void onSubmit()}
+        disabled={disabled || submitting || !textAnswer.trim()}
+        className="w-full rounded-xl font-black text-white transition-all active:scale-95 disabled:opacity-40"
+        style={{
+          fontSize: 16,
+          padding: padY,
+          background:'linear-gradient(135deg,#A78BFA,#7C3AED)',
+          border:'1px solid rgba(167,139,250,0.4)',
+          boxSizing:'border-box',
+        }}>
+        {submitting ? '…' : 'Invia →'}
+      </button>
     </div>
   );
 }
