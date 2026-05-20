@@ -18,6 +18,8 @@
  */
 
 import { Router, type IRouter } from "express";
+import multer from "multer";
+import OpenAI from "openai";
 import { eq, and, or, lt, asc, desc, isNull } from "drizzle-orm";
 import {
   db,
@@ -2499,5 +2501,139 @@ router.delete("/home/sessions/:id", async (req, res): Promise<void> => {
   await db.delete(homeSessionsTable).where(eq(homeSessionsTable.id, id));
   res.json({ ok: true });
 });
+
+// ── POST /home/sessions/:id/wordback-transcribe-answer ─────────────────────────
+// Chrome iOS path: receives a recorded audio blob, transcribes via Whisper,
+// validates against the current round word, then scores + emits if correct.
+// No session auth required — guesserId check provides the authorization.
+const _transcribeUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ok = /^audio\//.test(file.mimetype) ||
+      /\.(webm|mp4|m4a|wav|mp3|ogg)$/i.test(file.originalname);
+    cb(null, ok);
+  },
+});
+
+router.post(
+  "/home/sessions/:id/wordback-transcribe-answer",
+  _transcribeUpload.single("audio"),
+  async (req, res): Promise<void> => {
+    const id = String(req.params["id"]);
+    if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+
+    const session = await getSession(id);
+    if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+
+    const payload = (session.roundPayload ?? {}) as Record<string, unknown>;
+    if (payload["mode"] !== "home-wordback") {
+      res.status(400).json({ error: "Sessione non in modalità wordback" }); return;
+    }
+
+    const { playerId } = req.body as { playerId?: string };
+    if (!playerId) { res.status(400).json({ error: "playerId obbligatorio" }); return; }
+
+    if (!req.file || !req.file.buffer || req.file.buffer.length < 500) {
+      res.status(400).json({ error: "Audio non ricevuto o troppo corto" }); return;
+    }
+
+    const guesserId   = String(payload["guesserId"]   ?? "");
+    const suggesterId = String(payload["suggesterId"] ?? "");
+    const word        = String(payload["word"]        ?? "");
+    const pts         = Number(payload["points"]      ?? 150);
+    const roundIndex  = typeof payload["roundIndex"] === "number" ? payload["roundIndex"] : 0;
+
+    if (!guesserId || playerId !== guesserId) {
+      res.status(403).json({ error: "Solo l'indovinatore può rispondere" }); return;
+    }
+
+    // Duplicate prevention — reuse the same in-memory guard as wordback-correct
+    const scored = wordbackScoredRounds.get(id) ?? new Set<number>();
+    if (scored.has(roundIndex)) {
+      res.status(409).json({ error: "Risposta già registrata per questo round" }); return;
+    }
+
+    // Transcription — requires AI integration key
+    const baseURL = process.env["AI_INTEGRATIONS_OPENAI_BASE_URL"];
+    const apiKey  = process.env["AI_INTEGRATIONS_OPENAI_API_KEY"];
+    if (!apiKey) {
+      res.status(503).json({ error: "Trascrizione non configurata — usa risposta scritta" }); return;
+    }
+
+    let transcript = "";
+    try {
+      const openai   = new OpenAI({ baseURL, apiKey });
+      const mimeType = req.file.mimetype || "audio/webm";
+      const ext      = mimeType.includes("mp4") ? "mp4"
+                     : mimeType.includes("wav")  ? "wav"
+                     : mimeType.includes("ogg")  ? "ogg"
+                     : "webm";
+      // Node 24 has a global File class
+      const audioFile = new File([new Uint8Array(req.file.buffer)], `answer.${ext}`, { type: mimeType });
+      logger.info({ sessionId: id, size: req.file.size, ext }, "[WordbackTranscribe] transcribing");
+      const result = await openai.audio.transcriptions.create({
+        file: audioFile,
+        model: "whisper-1",
+        language: "it",
+      });
+      transcript = result.text ?? "";
+      logger.info({ transcript }, "[WordbackTranscribe] done");
+    } catch (err) {
+      logger.error({ err }, "[WordbackTranscribe] Whisper error");
+      res.status(503).json({ error: "Errore trascrizione audio — usa risposta scritta" }); return;
+    }
+
+    // Match transcript against the secret word
+    const normT = normalizeWordForMatch(transcript);
+    const normW = normalizeWordForMatch(word);
+    const matched = normW.length > 0 && normT.length > 0 &&
+      (normT === normW || normT.includes(normW) || normW.includes(normT));
+
+    if (!matched) {
+      res.json({ ok: false, correct: false, transcript }); return;
+    }
+
+    // Mark round as scored (same guard as wordback-correct)
+    scored.add(roundIndex);
+    wordbackScoredRounds.set(id, scored);
+
+    // Award scores — identical logic to wordback-correct
+    const players       = await getPlayers(id);
+    const guesserPlayer   = players.find(p => p.id === guesserId);
+    const suggesterPlayer = suggesterId ? players.find(p => p.id === suggesterId) : null;
+
+    const updates: Promise<unknown>[] = [];
+    if (guesserPlayer) {
+      updates.push(
+        db.update(homePlayersTable)
+          .set({ score: Math.max(0, guesserPlayer.score + pts) })
+          .where(and(eq(homePlayersTable.id, guesserId), eq(homePlayersTable.sessionId, id)))
+      );
+    }
+    if (suggesterPlayer) {
+      updates.push(
+        db.update(homePlayersTable)
+          .set({ score: Math.max(0, suggesterPlayer.score + pts) })
+          .where(and(eq(homePlayersTable.id, suggesterId), eq(homePlayersTable.sessionId, id)))
+      );
+    }
+    await Promise.all(updates);
+
+    // Emit to all clients in room — triggers same downstream flow as web-speech path
+    emitToRoom(homeRoom(id), "home:wordback_correct", {
+      guesserId,
+      suggesterId,
+      guesserNickname:   guesserPlayer?.nickname   ?? "",
+      suggesterNickname: suggesterPlayer?.nickname  ?? "",
+      word,
+      answerText: transcript,
+      pts,
+    });
+
+    await broadcastState(id);
+    res.json({ ok: true, transcript, pts });
+  }
+);
 
 export default router;

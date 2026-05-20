@@ -2054,6 +2054,8 @@ function WordBackController({ payload, timeLeft, player, sessionId, emit, wordba
           language="it-IT"
           disabled={answered || scored}
           onCorrect={handleCorrect}
+          sessionId={sessionId}
+          playerId={player.id}
         />
 
         <div className="text-xs text-white/30">Solo tu vedi questo pulsante — sei l'Indovinatore!</div>

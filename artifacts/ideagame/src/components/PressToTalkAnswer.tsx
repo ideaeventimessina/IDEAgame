@@ -79,6 +79,10 @@ export interface PressToTalkAnswerProps {
   onWrong?: (answerText: string) => void;
   language?: string;
   disabled?: boolean;
+  /** Required for the recordAndTranscribe engine (Chrome iOS).
+   *  When omitted the component falls back to text-first for Chrome iOS. */
+  sessionId?: string;
+  playerId?: string;
 }
 
 type SpeechStatus =
@@ -105,6 +109,8 @@ export default function PressToTalkAnswer({
   onWrong,
   language = 'it-IT',
   disabled = false,
+  sessionId,
+  playerId,
 }: PressToTalkAnswerProps) {
   const [status, setStatus]           = useState<SpeechStatus>('idle');
   const [transcript, setTranscript]   = useState('');
@@ -142,6 +148,14 @@ export default function PressToTalkAnswer({
   const startTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryCountRef     = useRef(0);
 
+  // ── recordAndTranscribe state (Chrome iOS path) ────────────────────────────
+  const [recordStatus, setRecordStatus]       = useState<'idle'|'recording'|'uploading'|'ok'|'fail'|'configErr'|'error'>('idle');
+  const [recordTranscript, setRecordTranscript] = useState('');
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef        = useRef<Blob[]>([]);
+  const streamRef        = useRef<MediaStream | null>(null);
+  const recordHoldingRef = useRef(false);
+
   // ── Permission query + browser diagnosis — runs once on mount ────────────
   useEffect(() => {
     const b              = detectBrowser();
@@ -149,7 +163,12 @@ export default function PressToTalkAnswer({
     const srSupported    = !!getSR();
     const mediaSupported = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
 
-    console.log('[PressToTalkBrowser]', {
+    const engine = b.isNonSafariIOS ? 'recordAndTranscribe'
+      : srSupported ? 'webSpeech'
+      : 'textFallback';
+
+    console.log('[VoiceEngine] selected', {
+      engine,
       browser:       b.ua.slice(0, 120),
       isSafariIOS:   b.isSafariIOS,
       isChromeIOS:   b.isChromeIOS,
@@ -158,6 +177,7 @@ export default function PressToTalkAnswer({
       secureContext:   secureCtx,
       mediaDevicesSupported: mediaSupported,
     });
+    console.log('[PressToTalkBrowser]', { engine, isSafariIOS: b.isSafariIOS, isChromeIOS: b.isChromeIOS });
     console.log('[MicFix] mount diagnostics', { secureContext: secureCtx, speechSupported: srSupported, mediaDevicesSupported: mediaSupported });
 
     if (typeof navigator === 'undefined') return;
@@ -419,6 +439,96 @@ export default function PressToTalkAnswer({
       });
   }, [startListening]);
 
+  // ── recordAndTranscribe handlers (Chrome iOS path) ────────────────────────
+  // pointerDown: getUserMedia → MediaRecorder.start
+  // pointerUp:   MediaRecorder.stop → onstop assembles blob → POST to /wordback-transcribe-answer
+  const handleTranscribePointerDown = useCallback(async (e: React.PointerEvent) => {
+    if (recordHoldingRef.current || recordStatus === 'recording' || recordStatus === 'uploading') return;
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    recordHoldingRef.current = true;
+    chunksRef.current = [];
+
+    console.log('[VoiceRecord] recording started');
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+
+      const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'];
+      const mimeType   = candidates.find(f => MediaRecorder.isTypeSupported(f)) ?? '';
+
+      const mr = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      mediaRecorderRef.current = mr;
+
+      mr.ondataavailable = (ev: BlobEvent) => { if (ev.data.size > 0) chunksRef.current.push(ev.data); };
+
+      mr.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
+
+        const blob = new Blob(chunksRef.current, { type: mimeType || 'audio/webm' });
+        console.log('[VoiceRecord] recording stopped, blob size:', blob.size);
+
+        if (blob.size < 500) { setRecordStatus('idle'); return; }
+        if (!sessionId || !playerId) { setRecordStatus('error'); setTimeout(() => setRecordStatus('idle'), 3000); return; }
+
+        setRecordStatus('uploading');
+        const ext = mimeType.includes('mp4') ? 'mp4' : mimeType.includes('ogg') ? 'ogg' : 'webm';
+        const fd  = new FormData();
+        fd.append('audio', blob, `answer.${ext}`);
+        fd.append('playerId', playerId);
+        console.log('[VoiceUpload] sending', { size: blob.size, mimeType });
+
+        try {
+          const resp = await fetch(`/api/home/sessions/${sessionId}/wordback-transcribe-answer`, {
+            method: 'POST', credentials: 'include', body: fd,
+          });
+          const data = await resp.json() as { ok?: boolean; correct?: boolean; transcript?: string; error?: string };
+          const tx = data.transcript ?? '';
+          console.log('[VoiceTranscribe] transcript', tx);
+          console.log('[VoiceMatch] result', { ok: data.ok, correct: data.correct, status: resp.status });
+
+          if (resp.status === 503) {
+            setRecordStatus('configErr'); setTimeout(() => setRecordStatus('idle'), 4000);
+          } else if (resp.ok && data.ok) {
+            setRecordStatus('ok');
+            void onCorrect(tx);
+          } else if (resp.status === 409) {
+            setRecordStatus('ok'); // already scored — treat as success
+          } else {
+            setRecordTranscript(tx);
+            setRecordStatus('fail');
+            onWrong?.(tx);
+            setTimeout(() => setRecordStatus('idle'), 2500);
+          }
+        } catch (err) {
+          console.log('[VoiceUpload] error', err);
+          setRecordStatus('error'); setTimeout(() => setRecordStatus('idle'), 3000);
+        }
+      };
+
+      mr.start(200); // collect chunks every 200ms
+      setRecordStatus('recording');
+    } catch (err) {
+      console.log('[VoiceRecord] getUserMedia failed', err);
+      recordHoldingRef.current = false;
+      setPermDenied(true);
+      setRecordStatus('idle');
+    }
+  }, [sessionId, playerId, onCorrect, onWrong, recordStatus]);
+
+  const handleTranscribePointerUp = useCallback(() => {
+    recordHoldingRef.current = false;
+    const mr = mediaRecorderRef.current;
+    if (mr && mr.state === 'recording') {
+      mr.stop();
+      // onstop will set status to 'uploading' after assembling the blob
+    } else if (recordStatus !== 'uploading') {
+      setRecordStatus('idle');
+    }
+  }, [recordStatus]);
+
   // ── submitFallbackAnswer ───────────────────────────────────────────────────
   const submitFallbackAnswer = useCallback(async () => {
     const trimmed = textAnswer.trim();
@@ -482,6 +592,15 @@ export default function PressToTalkAnswer({
       }
       if (failTimerRef.current) clearTimeout(failTimerRef.current);
       if (startTimerRef.current) clearTimeout(startTimerRef.current);
+      // MediaRecorder cleanup (Chrome iOS path)
+      recordHoldingRef.current = false;
+      if (mediaRecorderRef.current?.state === 'recording') {
+        try { mediaRecorderRef.current.stop(); } catch { /* ignore */ }
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
+      }
     };
   }, []);
 
@@ -523,52 +642,113 @@ export default function PressToTalkAnswer({
   // Non-Safari iOS (Chrome/Firefox/Edge) has unreliable SR in WKWebView → text-first
   const isChromeIOS = browser.isNonSafariIOS;
 
-  // ── Chrome / non-Safari iOS → text-first, mic secondary ──────────────────
+  // ── Chrome / non-Safari iOS → recordAndTranscribe or text-first fallback ──
   if (isChromeIOS && getSR()) {
+    const hasMR    = typeof window !== 'undefined' && typeof (window as unknown as Record<string, unknown>)['MediaRecorder'] !== 'undefined';
+    const canRecord = !!sessionId && !!playerId && hasMR;
+
+    const isRec      = recordStatus === 'recording';
+    const isUploading = recordStatus === 'uploading';
+    const isActive   = isRec || isUploading;
+
     return (
       <div className="flex flex-col gap-4 w-full">
-        {/* Browser notice */}
-        <div className="rounded-xl px-3 py-2 text-xs font-bold text-center"
-          style={{background:'rgba(251,146,60,0.08)',border:'1px solid rgba(251,146,60,0.28)',color:'rgba(251,146,60,0.8)'}}>
-          Su questo browser usa la risposta scritta.
-        </div>
 
+        {/* Jonny listening overlay — mirrors the Safari/webSpeech experience */}
+        <AnimatePresence>
+          {isActive && (
+            <motion.div key="jonny-record"
+              initial={{opacity:0,scale:0.88,y:8}} animate={{opacity:1,scale:1,y:0}} exit={{opacity:0,scale:0.9,y:4}}
+              transition={{duration:0.2}}
+              className="flex w-full flex-col items-center gap-3 rounded-3xl px-5 py-5"
+              style={{
+                background:'linear-gradient(160deg,rgba(167,139,250,0.18),rgba(124,58,237,0.1))',
+                border:'2px solid rgba(167,139,250,0.55)',
+                boxShadow:'0 0 40px rgba(167,139,250,0.35)',
+              }}>
+              <div className="flex items-center gap-3">
+                <JonnyAvatar mood="thinking" size={52} background="none" />
+                <div className="flex flex-col gap-1">
+                  <div className="text-sm font-black" style={{color:'#A78BFA'}}>
+                    {isUploading ? '⏳ Trascrivo…' : 'Jonny ti ascolta…'}
+                  </div>
+                  <WaveformBars active={isRec} />
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Status chips */}
+        <AnimatePresence>
+          {recordStatus === 'fail' && recordTranscript && (
+            <motion.div key="rec-fail"
+              initial={{opacity:0,y:-4}} animate={{opacity:1,y:0}} exit={{opacity:0}}
+              className="w-full rounded-xl px-3 py-2 text-xs font-bold text-center"
+              style={{background:'rgba(239,68,68,0.12)',border:'1px solid rgba(239,68,68,0.3)',color:'#f87171'}}>
+              ❌ Ho sentito: "{recordTranscript}" — riprova!
+            </motion.div>
+          )}
+          {recordStatus === 'configErr' && (
+            <motion.div key="rec-cfg"
+              initial={{opacity:0,y:-4}} animate={{opacity:1,y:0}} exit={{opacity:0}}
+              className="w-full rounded-xl px-3 py-2 text-xs font-bold text-center"
+              style={{background:'rgba(251,146,60,0.1)',border:'1px solid rgba(251,146,60,0.3)',color:'rgba(251,146,60,0.9)'}}>
+              ⚠ Trascrizione non configurata — usa risposta scritta
+            </motion.div>
+          )}
+          {recordStatus === 'error' && (
+            <motion.div key="rec-err"
+              initial={{opacity:0,y:-4}} animate={{opacity:1,y:0}} exit={{opacity:0}}
+              className="w-full rounded-xl px-3 py-2 text-xs font-bold text-center"
+              style={{background:'rgba(239,68,68,0.1)',border:'1px solid rgba(239,68,68,0.25)',color:'#f87171'}}>
+              ⚠ Errore audio — usa risposta scritta
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {canRecord ? (
+          <>
+            {/* Hold-to-record button — same look as the webSpeech button */}
+            <motion.button
+              onPointerDown={handleTranscribePointerDown}
+              onPointerUp={handleTranscribePointerUp}
+              onPointerLeave={handleTranscribePointerUp}
+              onPointerCancel={handleTranscribePointerUp}
+              disabled={disabled || isUploading || recordStatus === 'ok'}
+              whileTap={{scale:0.95}}
+              className="w-full select-none rounded-2xl py-5 text-base font-black text-white disabled:opacity-50"
+              style={{
+                touchAction: 'none',
+                userSelect: 'none',
+                background: isActive
+                  ? 'linear-gradient(135deg,rgba(167,139,250,0.55),rgba(124,58,237,0.55))'
+                  : 'linear-gradient(135deg,#A78BFA,#7C3AED)',
+                border: `2px solid ${isActive ? 'rgba(167,139,250,0.95)' : 'rgba(167,139,250,0.5)'}`,
+                boxShadow: isActive
+                  ? '0 0 50px rgba(167,139,250,0.75), 0 0 100px rgba(124,58,237,0.25)'
+                  : '0 0 30px rgba(167,139,250,0.4)',
+              }}>
+              {isUploading
+                ? '⏳ Trascrivo…'
+                : isRec
+                  ? '🎙️ Rilascia quando finisci…'
+                  : '🎤 TIENI PREMUTO E RISPONDI'}
+            </motion.button>
+            <div className="text-xs text-white/25">Tieni premuto il tasto mentre parli</div>
+          </>
+        ) : (
+          /* No MediaRecorder or sessionId/playerId not provided → show notice only */
+          <div className="rounded-xl px-3 py-2 text-xs font-bold text-center"
+            style={{background:'rgba(251,146,60,0.08)',border:'1px solid rgba(251,146,60,0.28)',color:'rgba(251,146,60,0.8)'}}>
+            Su questo browser usa la risposta scritta.
+          </div>
+        )}
+
+        {/* Text fallback — ALWAYS visible */}
         <FallbackInput textAnswer={textAnswer} setTextAnswer={setTextAnswer}
           onSubmit={submitFallbackAnswer} disabled={disabled} submitting={submitting}
           matchFail={matchFail} fallbackError={fallbackError} large />
-
-        {/* Mic button — optional, visually secondary */}
-        <div className="flex flex-col items-center gap-1">
-          <motion.button
-            onPointerDown={handlePointerDown}
-            onPointerUp={stopListening}
-            onPointerLeave={stopListening}
-            onPointerCancel={stopListening}
-            disabled={disabled}
-            whileTap={{scale:0.97}}
-            className="w-full select-none rounded-xl py-3 font-bold text-white/45 disabled:opacity-30"
-            style={{
-              touchAction: 'none',
-              userSelect: 'none',
-              fontSize: 14,
-              background: 'rgba(167,139,250,0.06)',
-              border: '1px solid rgba(167,139,250,0.18)',
-            }}>
-            {isListening ? '🎙️ Ascolto…' : '🎤 Prova microfono (opzionale)'}
-          </motion.button>
-          <div className="text-xs" style={{color:'rgba(255,255,255,0.2)'}}>
-            Risposta vocale non stabile su questo browser
-          </div>
-        </div>
-
-        {/* Diag pill — only shown while mic is active */}
-        {(isListening || isWaiting) && (
-          <div className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs"
-            style={{background:'rgba(167,139,250,0.08)',border:'1px solid rgba(167,139,250,0.2)',color:'rgba(167,139,250,0.6)',fontFamily:'monospace'}}>
-            <WaveformBars active={isListening} />
-            <span>{transcript || 'ascolto…'}</span>
-          </div>
-        )}
       </div>
     );
   }

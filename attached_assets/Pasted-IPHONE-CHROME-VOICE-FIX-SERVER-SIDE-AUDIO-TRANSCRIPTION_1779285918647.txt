@@ -1,0 +1,99 @@
+IPHONE CHROME VOICE FIX — SERVER-SIDE AUDIO TRANSCRIPTION FALLBACK.
+
+Do not remove Safari Web Speech flow.
+Do not break text fallback.
+Do not touch scoring logic except answer validation path.
+
+Problem:
+Safari iPhone/iPad works with Web Speech API.
+Chrome iOS does not reliably support SpeechRecognition.
+But voice answer must work also on iPhone Chrome.
+
+Required strategy:
+Use two voice engines:
+
+1. Safari / browsers where SpeechRecognition works:
+   keep existing Web Speech flow.
+
+2. Chrome iOS / unsupported browsers:
+   use MediaRecorder + server-side transcription.
+
+Chrome iOS flow:
+- player holds “TIENI PREMUTO E RISPONDI”
+- call getUserMedia({ audio: true })
+- start MediaRecorder
+- show Jonny listening overlay + waveform
+- on release:
+  stop recording
+  send audio blob to backend
+  backend transcribes audio
+  backend compares transcript with expected word
+  backend returns correct/wrong
+- if correct:
+  same existing wordback_correct flow
+- if wrong:
+  show “Non ancora, riprova”
+
+Backend:
+Add endpoint:
+POST /api/home/sessions/:id/wordback-transcribe-answer
+
+Payload:
+multipart/form-data:
+- audio file/webm/m4a/wav
+- playerId
+- round
+
+Server:
+- validate current round mode is home-wordback
+- validate player is guesserId
+- transcribe audio using available transcription provider
+- normalize transcript
+- compare with payload.word
+- if correct:
+  award +100 guesser
+  award +100 suggester
+  prevent duplicate scoring
+  emit home:wordback_correct
+- if wrong:
+  return { correct:false, transcript }
+
+Important:
+If no transcription provider/key is configured:
+- return clear error:
+  “Trascrizione non configurata”
+- keep text fallback active
+
+Frontend:
+PressToTalkAnswer must support:
+mode:
+- webSpeech
+- recordAndTranscribe
+- textFallback
+
+Browser selection:
+- Safari iOS: webSpeech
+- Chrome iOS: recordAndTranscribe
+- Android Chrome: webSpeech if stable, otherwise recordAndTranscribe
+- unsupported: textFallback
+
+UX:
+- Same button
+- Same Jonny overlay
+- Same waveform
+- User should not know which engine is used
+
+Logs:
+[VoiceEngine] selected
+[VoiceRecord] recording started/stopped
+[VoiceUpload] status
+[VoiceTranscribe] transcript
+[VoiceMatch] result
+
+Output:
+A. files modified
+B. voice engine selection
+C. server transcription endpoint
+D. Chrome iPhone working flow
+E. fallback if transcription unavailable
+F. typecheck result
