@@ -1,0 +1,87 @@
+FINAL MICROPHONE FIX — PRESS TO TALK MUST ACTUALLY START.
+
+Do not touch WordBack flow.
+Do not touch scoring.
+Do not touch timers.
+Do not touch Ballo.
+Do not touch UI lock.
+
+Problem:
+PressToTalkAnswer still does not activate the microphone.
+Fallback text works.
+Now fix microphone only.
+
+Audit first:
+- PressToTalkAnswer.tsx
+- browser support:
+  window.SpeechRecognition
+  window.webkitSpeechRecognition
+- navigator.mediaDevices.getUserMedia
+- HTTPS / window.isSecureContext
+- recognition.start()
+- recognition.onstart
+- recognition.onaudiostart
+- recognition.onspeechstart
+- recognition.onerror
+- recognition.onend
+
+Required fix:
+Before starting SpeechRecognition:
+1. call navigator.mediaDevices.getUserMedia({ audio: true }) from the same press gesture
+2. if granted:
+   - stop the media stream tracks immediately
+   - then start SpeechRecognition
+3. if denied:
+   - show “Microfono non autorizzato”
+   - keep fallback text active
+
+Reason:
+On many mobile browsers SpeechRecognition alone does not reliably trigger the microphone permission prompt.
+getUserMedia forces the real microphone permission flow.
+
+Press/hold flow:
+pointerDown:
+- preventDefault
+- set holdingRef true
+- show Jonny overlay immediately
+- call getUserMedia({ audio: true })
+- then recognition.start()
+
+pointerUp:
+- stop recognition
+- match latest transcript
+- if no transcript:
+  show “Non ho sentito nulla, usa risposta scritta”
+
+Important:
+- do not restart forever
+- max 1 restart per hold
+- fallback input must always remain visible
+- if SpeechRecognition unsupported but getUserMedia works, show:
+  “Riconoscimento vocale non supportato — usa risposta scritta”
+
+Add logs:
+[MicFix]
+secureContext
+speechSupported
+mediaDevicesSupported
+getUserMedia start
+getUserMedia granted
+getUserMedia denied/error
+recognition.start
+onstart
+onaudiostart
+onspeechstart
+onresult
+onerror
+onend
+release
+match
+
+Output:
+A. root cause
+B. files modified
+C. getUserMedia permission bridge
+D. final press-to-talk lifecycle
+E. fallback behavior
+F. typecheck result

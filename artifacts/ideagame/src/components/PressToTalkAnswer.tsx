@@ -41,12 +41,11 @@ function WaveformBars({ active }: { active: boolean }) {
   );
 }
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────────────────────
 
 /**
  * Callers may optionally return a typed result so the component can surface
  * inline server errors (409 duplicate, 422 wrong answer, etc.).
- * Returning void / undefined is treated as "success — parent will handle UI".
  */
 export interface AnswerResult {
   ok: boolean;
@@ -64,6 +63,7 @@ export interface PressToTalkAnswerProps {
 
 type SpeechStatus =
   | 'idle'
+  | 'waiting-mic'   // getUserMedia in flight
   | 'listening'
   | 'no-speech'
   | 'speak-again'   // onend fired while still holding → restarted automatically
@@ -95,6 +95,7 @@ export default function PressToTalkAnswer({
   const [submitting, setSubmitting]   = useState(false);
   const [fallbackError, setFallbackError] = useState<string | null>(null);
   const [textAnswer, setTextAnswer]   = useState('');
+  const [srUnsupported, setSrUnsupported] = useState(false); // getUserMedia works but SR doesn't
 
   // ── Mic diagnostics state ──────────────────────────────────────────────────
   const [permState, setPermState]     = useState<'granted'|'prompt'|'denied'|'unknown'>('unknown');
@@ -103,25 +104,31 @@ export default function PressToTalkAnswer({
     onstartFired:      false,
     onaudiostartFired: false,
     onspeechstartFired:false,
+    gumGranted:        false,
   });
-  const [startTimeout, setStartTimeout] = useState(false); // fires if onstart doesn't arrive within 800ms
+  const [startTimeout, setStartTimeout] = useState(false);
 
   // ── Refs ───────────────────────────────────────────────────────────────────
   const recRef            = useRef<AnySR | null>(null);
-  const listeningRef      = useRef(false);   // atomic guard — no React batch delay
-  const holdingRef        = useRef(false);   // true while pointer is physically held
-  const matchedRef        = useRef(false);   // true after speech match — prevents re-match in same session
-  const submittingRef     = useRef(false);   // true during text POST — prevents double-submit
+  const listeningRef      = useRef(false);
+  const holdingRef        = useRef(false);
+  const matchedRef        = useRef(false);
+  const submittingRef     = useRef(false);
   const lastTranscriptRef = useRef('');
   const interimRef        = useRef('');
   const failTimerRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startListeningRef = useRef<(() => void) | null>(null);
-  const onstartFiredRef   = useRef(false);   // sync flag for 800ms timeout closure
+  const onstartFiredRef   = useRef(false);
   const startTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const retryCountRef     = useRef(0);       // max 1 auto-retry per hold
+  const retryCountRef     = useRef(0);
 
   // ── Permission query — runs once on mount ─────────────────────────────────
   useEffect(() => {
+    const secureCtx        = typeof window !== 'undefined' && window.isSecureContext;
+    const srSupported      = !!getSR();
+    const mediaSupported   = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
+    console.log('[MicFix] mount diagnostics', { secureContext: secureCtx, speechSupported: srSupported, mediaDevicesSupported: mediaSupported });
+
     if (typeof navigator === 'undefined') return;
     navigator.permissions
       ?.query({ name: 'microphone' as PermissionName })
@@ -129,31 +136,38 @@ export default function PressToTalkAnswer({
       .catch(() => setPermState('unknown'));
   }, []);
 
-  // ── stop ──────────────────────────────────────────────────────────────────
+  // ── stopListening ─────────────────────────────────────────────────────────
   const stopListening = useCallback(() => {
     holdingRef.current = false;
+    console.log('[MicFix] release — stopping recognition');
     if (recRef.current) {
       try { recRef.current.stop(); } catch { /* ignore */ }
     }
-    // listeningRef reset inside onend
   }, []);
 
-  // ── start ─────────────────────────────────────────────────────────────────
+  // ── startListening — called AFTER getUserMedia permission is already granted ──
+  // Never call this directly from onPointerDown — always go through the
+  // getUserMedia bridge below so the OS permission dialog fires reliably.
   const startListening = useCallback(() => {
-    const SRClass: AnySR | null = typeof window !== 'undefined'
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ? ((window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition ?? null)
-      : null;
+    const SRClass: AnySR | null = getSR();
 
-    console.log('[PressToTalk] pointerDown', {
-      secureContext: window.isSecureContext,
-      supported: !!SRClass,
+    console.log('[MicFix] recognition.start attempt', {
+      secureContext: typeof window !== 'undefined' && window.isSecureContext,
+      speechSupported: !!SRClass,
       listening: listeningRef.current,
       holding: holdingRef.current,
       disabled,
     });
 
-    if (listeningRef.current || disabled || !SRClass) return;
+    if (listeningRef.current || disabled) return;
+
+    if (!SRClass) {
+      console.log('[MicFix] speechSupported=false — falling back to text only');
+      setSrUnsupported(true);
+      holdingRef.current = false;
+      return;
+    }
+
     listeningRef.current = true;
 
     matchedRef.current = false;
@@ -165,8 +179,7 @@ export default function PressToTalkAnswer({
     setFallbackError(null);
     setErrorMsg('');
     setStartTimeout(false);
-    setDiag({ startCalled: true, onstartFired: false, onaudiostartFired: false, onspeechstartFired: false });
-    // Waveform animates immediately — status set BEFORE rec.start()
+    setDiag(d => ({ ...d, startCalled: true, onstartFired: false, onaudiostartFired: false, onspeechstartFired: false }));
     setStatus('listening');
     if (failTimerRef.current) clearTimeout(failTimerRef.current);
     if (startTimerRef.current) clearTimeout(startTimerRef.current);
@@ -178,21 +191,21 @@ export default function PressToTalkAnswer({
     rec.maxAlternatives = 5;
     rec.continuous = true;
 
-    // ── Mic lifecycle hooks ────────────────────────────────────────────────
+    // ── Mic lifecycle hooks ───────────────────────────────────────────────
     rec.onstart = () => {
       onstartFiredRef.current = true;
       if (startTimerRef.current) clearTimeout(startTimerRef.current);
       setStartTimeout(false);
       setDiag(d => ({ ...d, onstartFired: true }));
-      console.log('[PressToTalk] onstart fired ✓');
+      console.log('[MicFix] onstart ✓');
     };
     rec.onaudiostart = () => {
       setDiag(d => ({ ...d, onaudiostartFired: true }));
-      console.log('[PressToTalk] onaudiostart fired ✓');
+      console.log('[MicFix] onaudiostart ✓');
     };
     rec.onspeechstart = () => {
       setDiag(d => ({ ...d, onspeechstartFired: true }));
-      console.log('[PressToTalk] onspeechstart fired ✓');
+      console.log('[MicFix] onspeechstart ✓');
     };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -203,17 +216,12 @@ export default function PressToTalkAnswer({
         if (result.isFinal) {
           for (let a = 0; a < result.length; a++) {
             const t = String(result[a]?.transcript ?? '');
-            console.log('[PressToTalk] final transcript', { t, alt: a, conf: result[a]?.confidence });
+            console.log('[MicFix] onresult final', { t, alt: a, conf: result[a]?.confidence });
             if (isMatch(t, expectedAnswer) && !matchedRef.current) {
               matchedRef.current = true;
               listeningRef.current = false;
               try { rec.stop(); } catch { /* ignore */ }
-              // NOTE: do NOT set corrected=true here.
-              // The parent (WordBackController) will unmount this component by
-              // setting answered=true which renders the overlay instead.
-              // Setting corrected=true before onCorrect resolves caused the
-              // stuck-screen bug: if server returned 409/422, the parent reset
-              // answered=false but this component stayed null (corrected=true).
+              console.log('[MicFix] match ✓', { spoken: t, expected: expectedAnswer });
               setStatus('idle');
               void onCorrect(t);
               return;
@@ -231,14 +239,14 @@ export default function PressToTalkAnswer({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     rec.onerror = (e: any) => {
       const err = String(e.error ?? '');
-      console.log('[PressToTalk] recognition error', { error: err });
+      console.log('[MicFix] onerror', { error: err });
       if (err === 'not-allowed' || err === 'service-not-allowed') {
         listeningRef.current = false;
         setPermDenied(true);
         setLastError('not-allowed');
         setStatus('idle');
       } else if (err === 'aborted') {
-        // Normal when rec.stop() is called from onPointerUp
+        // Normal when rec.stop() is called from onPointerUp — ignore
       } else if (err === 'no-speech') {
         setStatus('no-speech');
         setLastError('no-speech');
@@ -262,22 +270,21 @@ export default function PressToTalkAnswer({
 
     rec.onend = () => {
       const best = lastTranscriptRef.current || interimRef.current;
-      console.log('[PressToTalk] recognition.end', {
+      console.log('[MicFix] onend', {
         matched: matchedRef.current,
         holding: holdingRef.current,
-        lastTranscript: lastTranscriptRef.current,
-        interim: interimRef.current,
         best,
       });
 
       if (matchedRef.current) { listeningRef.current = false; return; }
 
-      // iOS / Chrome early-end: onend while finger still held → restart automatically
-      if (holdingRef.current) {
+      // iOS / Chrome early-end: onend fires while finger still held → restart (max 1 auto-retry per hold)
+      if (holdingRef.current && retryCountRef.current < 1) {
+        retryCountRef.current += 1;
         listeningRef.current = false;
         setStatus('speak-again');
         setTranscript('');
-        console.log('[PressToTalk] onend while holding — restarting');
+        console.log('[MicFix] onend while holding — restarting (retry', retryCountRef.current, ')');
         setTimeout(() => {
           if (holdingRef.current) startListeningRef.current?.();
         }, 120);
@@ -289,9 +296,10 @@ export default function PressToTalkAnswer({
       recRef.current = null;
 
       if (best) {
-        console.log('[PressToTalk] onend — match attempt', { best });
+        console.log('[MicFix] onend match attempt', { best });
         if (isMatch(best, expectedAnswer)) {
           matchedRef.current = true;
+          console.log('[MicFix] match ✓ (onend path)', { spoken: best });
           void onCorrect(best);
         } else {
           setMatchFail(true);
@@ -303,18 +311,18 @@ export default function PressToTalkAnswer({
     };
 
     try {
-      console.log('[PressToTalk] recognition.start', { lang: language, secureContext: window.isSecureContext });
+      console.log('[MicFix] recognition.start → calling rec.start()');
       rec.start();
 
       // 800ms guard: if onstart doesn't fire, mic is silently blocked
       startTimerRef.current = setTimeout(() => {
         if (!onstartFiredRef.current) {
-          console.warn('[PressToTalk] start-timeout — onstart did not fire within 800ms');
+          console.warn('[MicFix] start-timeout — onstart did not fire within 800ms');
           setStartTimeout(true);
         }
       }, 800);
     } catch (err) {
-      console.log('[PressToTalk] start-exception', { err: String(err) });
+      console.log('[MicFix] rec.start() threw exception', { err: String(err) });
       listeningRef.current = false;
       setStatus('idle');
       setLastError('start-exception');
@@ -325,10 +333,62 @@ export default function PressToTalkAnswer({
 
   useEffect(() => { startListeningRef.current = startListening; }, [startListening]);
 
+  // ── getUserMedia permission bridge ────────────────────────────────────────
+  // Must be called directly from the pointer-down gesture so the browser
+  // links the permission prompt to the user action.
+  // After the stream is obtained the tracks are immediately stopped — we only
+  // need the permission grant; SpeechRecognition opens its own stream.
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    holdingRef.current = true;
+    retryCountRef.current = 0;
+
+    const secureCtx      = typeof window !== 'undefined' && window.isSecureContext;
+    const srSupported    = !!getSR();
+    const mediaSupported = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
+
+    console.log('[MicFix] pointerDown', { secureContext: secureCtx, speechSupported: srSupported, mediaDevicesSupported: mediaSupported });
+
+    if (!srSupported) {
+      console.log('[MicFix] speechSupported=false at pointerDown');
+      setSrUnsupported(true);
+      holdingRef.current = false;
+      return;
+    }
+
+    if (!mediaSupported) {
+      // getUserMedia unavailable (HTTP or very old browser) — try SR directly
+      console.log('[MicFix] mediaDevicesSupported=false — skipping getUserMedia bridge');
+      startListening();
+      return;
+    }
+
+    setStatus('waiting-mic');
+    console.log('[MicFix] getUserMedia start');
+    navigator.mediaDevices
+      .getUserMedia({ audio: true })
+      .then((stream) => {
+        console.log('[MicFix] getUserMedia granted — stopping tracks, starting SR');
+        stream.getTracks().forEach(t => t.stop());
+        setDiag(d => ({ ...d, gumGranted: true }));
+        if (holdingRef.current) {
+          startListening();
+        } else {
+          console.log('[MicFix] pointer released before SR could start — aborting');
+          setStatus('idle');
+        }
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.log('[MicFix] getUserMedia denied/error', { msg });
+        holdingRef.current = false;
+        setStatus('idle');
+        setPermDenied(true);
+      });
+  }, [startListening]);
+
   // ── submitFallbackAnswer ───────────────────────────────────────────────────
-  // Explicit text submission path — completely independent of speech recognition.
-  // Guards: empty input, disabled (parent), already in-flight (submittingRef).
-  // ─────────────────────────────────────────────────────────────────────────
   const submitFallbackAnswer = useCallback(async () => {
     const trimmed = textAnswer.trim();
     if (!trimmed || disabled || submittingRef.current) return;
@@ -337,61 +397,44 @@ export default function PressToTalkAnswer({
     const normalizedExpected = normalizeForMatch(expectedAnswer);
     const matched = isMatch(trimmed, expectedAnswer);
 
-    console.log('[PressToTalkFallback] submit', {
-      typedText: trimmed,
-      expectedAnswer,
-      normalizedTyped,
-      normalizedExpected,
-      matched,
-    });
+    console.log('[MicFix] fallback submit', { typedText: trimmed, expectedAnswer, normalizedTyped, normalizedExpected, matched });
 
     setFallbackError(null);
     setMatchFail(false);
 
     if (!matched) {
-      // Local mismatch — show inline "Non ancora" without hitting the server
-      console.log('[PressToTalkFallback] local mismatch');
+      console.log('[MicFix] fallback local mismatch');
       setMatchFail(true);
       onWrong?.(trimmed);
       failTimerRef.current = setTimeout(() => setMatchFail(false), 2500);
       return;
     }
 
-    // Local match — call onCorrect and wait for server verdict
-    // IMPORTANT: do NOT set corrected/dismissed state here.
-    // The parent controls dismissal: when onCorrect resolves successfully,
-    // the parent sets answered=true which unmounts this component entirely.
-    // If the server rejects (409, 422), we receive {ok:false} and show the
-    // inline error — component stays visible and usable.
     submittingRef.current = true;
     setSubmitting(true);
-    console.log('[WordBackAnswer] POST start', { trimmed });
+    console.log('[MicFix] fallback POST start', { trimmed });
 
     try {
       const result = await onCorrect(trimmed);
-      console.log('[WordBackAnswer] POST result', { result });
+      console.log('[MicFix] fallback POST result', { result });
 
       const res = result as AnswerResult | void | undefined;
       if (res && res.ok === false) {
-        // Server explicitly rejected — show inline message, stay usable
         const code = res.code ?? 'error';
         let msg = res.message ?? 'Errore del server, riprova';
         if (code === '409') msg = 'Risposta già registrata per questo round';
         else if (code === '422') msg = 'Non ancora, riprova!';
-        console.log('[WordBackAnswer] server rejection', { code, msg });
+        console.log('[MicFix] fallback server rejection', { code, msg });
         setFallbackError(msg);
         submittingRef.current = false;
         setSubmitting(false);
       } else {
-        // Success (or void/undefined — parent handles UI transition)
-        console.log('[WordBackAnswer] success');
+        console.log('[MicFix] fallback success');
         submittingRef.current = false;
         setSubmitting(false);
-        // Do NOT set corrected=true — parent will unmount us by rendering
-        // the CORRETTO overlay (answered=true in WordBackController).
       }
     } catch (err) {
-      console.log('[WordBackAnswer] POST exception', { err: String(err) });
+      console.log('[MicFix] fallback POST exception', { err: String(err) });
       setFallbackError('Errore di connessione, riprova');
       submittingRef.current = false;
       setSubmitting(false);
@@ -426,27 +469,45 @@ export default function PressToTalkAnswer({
     );
   }
 
+  // ── speech API not available (getUserMedia worked but SR missing) ───────────
+  if (srUnsupported) {
+    return (
+      <div className="flex w-full flex-col gap-3">
+        <div className="text-xs font-bold text-center rounded-xl px-3 py-2"
+          style={{background:'rgba(251,146,60,0.1)',border:'1px solid rgba(251,146,60,0.3)',color:'rgba(251,146,60,0.9)'}}>
+          Riconoscimento vocale non supportato — usa risposta scritta
+        </div>
+        <FallbackInput textAnswer={textAnswer} setTextAnswer={setTextAnswer}
+          onSubmit={submitFallbackAnswer} disabled={disabled} submitting={submitting}
+          matchFail={matchFail} fallbackError={fallbackError} large />
+      </div>
+    );
+  }
+
   const isListening = status === 'listening' || status === 'no-speech' || status === 'speak-again';
+  const isWaiting   = status === 'waiting-mic';
 
   // ── speech API available ────────────────────────────────────────────────────
   if (getSR()) {
     let statusChip: string | null = null;
-    if (status === 'speak-again')            statusChip = '🔄 Parla di nuovo…';
+    if (isWaiting)                           statusChip = '🎤 Autorizzazione…';
+    else if (status === 'speak-again')       statusChip = '🔄 Parla di nuovo…';
     else if (isListening && !transcript)     statusChip = '🎙 Jonny ti ascolta…';
     else if (isListening && transcript)      statusChip = `Ho sentito: "${transcript}"`;
     else if (status === 'no-speech')         statusChip = 'Non ho sentito nulla, continua…';
     else if (status === 'error' && errorMsg) statusChip = `⚠️ ${errorMsg}`;
     else if (matchFail && transcript)        statusChip = `Ho sentito: "${transcript}" — riprova!`;
 
-    const srSupported = !!getSR();
-    const secureCtx   = typeof window !== 'undefined' && window.isSecureContext;
+    const srSupported   = !!getSR();
+    const secureCtx     = typeof window !== 'undefined' && window.isSecureContext;
+    const mediaSupported = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
 
     return (
       <div className="flex flex-col items-center gap-4 w-full">
 
         {/* Jonny listening overlay */}
         <AnimatePresence>
-          {isListening && (
+          {(isListening || isWaiting) && (
             <motion.div key="jonny-listening"
               initial={{opacity:0,scale:0.88,y:8}} animate={{opacity:1,scale:1,y:0}} exit={{opacity:0,scale:0.9,y:4}}
               transition={{duration:0.2}}
@@ -460,7 +521,7 @@ export default function PressToTalkAnswer({
                 <JonnyAvatar mood="thinking" size={52} background="none" />
                 <div className="flex flex-col gap-1">
                   <div className="text-sm font-black" style={{color:'#A78BFA'}}>
-                    {status === 'speak-again' ? '🔄 Parla di nuovo…' : 'Jonny ti ascolta…'}
+                    {isWaiting ? '🎤 Autorizzazione microfono…' : status === 'speak-again' ? '🔄 Parla di nuovo…' : 'Jonny ti ascolta…'}
                   </div>
                   <WaveformBars active={isListening} />
                 </div>
@@ -477,7 +538,7 @@ export default function PressToTalkAnswer({
 
         {/* Status chip — when not in full overlay */}
         <AnimatePresence>
-          {!isListening && statusChip && (
+          {!isListening && !isWaiting && statusChip && (
             <motion.div key="status-chip"
               initial={{opacity:0,y:-4}} animate={{opacity:1,y:0}} exit={{opacity:0}}
               className="w-full rounded-xl px-3 py-2 text-xs font-bold text-center"
@@ -492,17 +553,11 @@ export default function PressToTalkAnswer({
         </AnimatePresence>
 
         {/* Hold-to-talk button.
-            onPointerDown = primary event; subsumes mouse+touch+pen.
+            onPointerDown → getUserMedia bridge → rec.start().
             setPointerCapture blocks the synthetic cascade that double-fires startListening.
             holdingRef is set synchronously so onend can detect early-end-while-holding. */}
         <motion.button
-          onPointerDown={(e) => {
-            e.preventDefault();
-            e.currentTarget.setPointerCapture(e.pointerId);
-            holdingRef.current = true;
-            retryCountRef.current = 0;
-            startListening();
-          }}
+          onPointerDown={handlePointerDown}
           onPointerUp={stopListening}
           onPointerLeave={stopListening}
           onPointerCancel={stopListening}
@@ -512,22 +567,24 @@ export default function PressToTalkAnswer({
           style={{
             touchAction: 'none',
             userSelect: 'none',
-            background: isListening
+            background: (isListening || isWaiting)
               ? 'linear-gradient(135deg,rgba(167,139,250,0.55),rgba(124,58,237,0.55))'
               : 'linear-gradient(135deg,#A78BFA,#7C3AED)',
-            border: `2px solid ${isListening ? 'rgba(167,139,250,0.95)' : 'rgba(167,139,250,0.5)'}`,
-            boxShadow: isListening
+            border: `2px solid ${(isListening || isWaiting) ? 'rgba(167,139,250,0.95)' : 'rgba(167,139,250,0.5)'}`,
+            boxShadow: (isListening || isWaiting)
               ? '0 0 50px rgba(167,139,250,0.75), 0 0 100px rgba(124,58,237,0.25)'
               : '0 0 30px rgba(167,139,250,0.4)',
           }}>
-          {isListening
-            ? (status === 'speak-again' ? '🔄 Parla di nuovo…' : '🎙️ Rilascia quando finisci…')
-            : '🎤 TIENI PREMUTO E RISPONDI'}
+          {isWaiting
+            ? '🎤 Autorizzazione…'
+            : isListening
+              ? (status === 'speak-again' ? '🔄 Parla di nuovo…' : '🎙️ Rilascia quando finisci…')
+              : '🎤 TIENI PREMUTO E RISPONDI'}
         </motion.button>
 
         <div className="text-xs text-white/25">Tieni premuto il tasto mentre parli</div>
 
-        {/* Text fallback — ALWAYS visible as backup. Never blocked by mic state. */}
+        {/* Text fallback — ALWAYS visible as backup. */}
         <FallbackInput textAnswer={textAnswer} setTextAnswer={setTextAnswer}
           onSubmit={submitFallbackAnswer} disabled={disabled} submitting={submitting}
           matchFail={matchFail} fallbackError={fallbackError} />
@@ -543,8 +600,11 @@ export default function PressToTalkAnswer({
             <span title="Speech Recognition API">
               🎙 {srSupported ? <span style={{color:'#4ade80'}}>SR ✓</span> : <span style={{color:'#f87171'}}>SR ✗</span>}
             </span>
+            <span title="getUserMedia disponibile">
+              🎤 {mediaSupported ? <span style={{color:'#4ade80'}}>GUM ✓</span> : <span style={{color:'#f87171'}}>GUM ✗</span>}
+            </span>
             <span title="Permesso microfono">
-              🎤 <span style={{color: permState === 'granted' ? '#4ade80' : permState === 'denied' ? '#f87171' : 'rgba(255,255,255,0.4)'}}>
+              <span style={{color: permState === 'granted' ? '#4ade80' : permState === 'denied' ? '#f87171' : 'rgba(255,255,255,0.4)'}}>
                 {permState}
               </span>
             </span>
@@ -552,6 +612,10 @@ export default function PressToTalkAnswer({
           {diag.startCalled && (
             <div className="flex items-center gap-1 mt-1 text-xs"
               style={{color:'rgba(255,255,255,0.25)',fontFamily:'monospace'}}>
+              <span style={{color: diag.gumGranted ? '#4ade80' : 'rgba(255,255,255,0.2)'}}>
+                gum{diag.gumGranted ? '✓' : '…'}
+              </span>
+              <span>→</span>
               <span style={{color: diag.onstartFired ? '#4ade80' : 'rgba(255,255,255,0.2)'}}>
                 start{diag.onstartFired ? '✓' : '…'}
               </span>
@@ -582,7 +646,7 @@ export default function PressToTalkAnswer({
     );
   }
 
-  // ── text-only fallback (no speech API) ─────────────────────────────────────
+  // ── text-only fallback (no speech API at all) ──────────────────────────────
   return (
     <div className="flex w-full flex-col gap-3">
       <div className="text-xs font-bold text-center text-white/40">
@@ -601,7 +665,7 @@ export default function PressToTalkAnswer({
   );
 }
 
-// ── FallbackInput — shared between speech+perm-denied+no-SR branches ──────────
+// ── FallbackInput ──────────────────────────────────────────────────────────────
 function FallbackInput({
   textAnswer, setTextAnswer, onSubmit, disabled, submitting, matchFail, fallbackError, large,
 }: {
@@ -624,37 +688,35 @@ function FallbackInput({
         {(matchFail || fallbackError) && (
           <motion.div key="inline-err"
             initial={{opacity:0,y:-4}} animate={{opacity:1,y:0}} exit={{opacity:0}}
-            className="w-full rounded-xl px-3 py-2 text-xs font-bold text-center"
+            className="rounded-xl px-3 py-2 text-xs font-bold text-center"
             style={{background:'rgba(239,68,68,0.12)',border:'1px solid rgba(239,68,68,0.3)',color:'#f87171'}}>
-            {fallbackError ?? '❌ Non ancora, riprova!'}
+            {fallbackError ?? 'Non ancora, riprova!'}
           </motion.div>
         )}
       </AnimatePresence>
 
-      <div className="flex gap-2">
+      <div className="flex gap-2 w-full">
         <input
+          type="text"
           value={textAnswer}
           onChange={e => setTextAnswer(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') onSubmit(); }}
-          placeholder="Oppure scrivi la risposta…"
+          onKeyDown={e => { if (e.key === 'Enter') void onSubmit(); }}
+          placeholder="Scrivi la risposta…"
           disabled={disabled || submitting}
-          className={`flex-1 rounded-xl px-4 ${py} ${textSz} font-bold text-white outline-none disabled:opacity-50`}
-          style={{background:'rgba(255,255,255,0.07)',border:'1.5px solid rgba(255,255,255,0.18)'}}
+          className={`flex-1 rounded-xl border bg-white/5 px-3 ${py} ${textSz} font-semibold text-white placeholder-white/25 outline-none focus:border-purple-500/60 disabled:opacity-40`}
+          style={{borderColor:'rgba(255,255,255,0.12)'}}
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
         />
-        {/* OK button — disabled ONLY when input is empty or disabled/submitting */}
         <button
-          onClick={onSubmit}
-          disabled={disabled || !textAnswer.trim() || submitting}
-          className={`rounded-xl px-4 ${py} ${textSz} font-black text-white disabled:opacity-50`}
-          style={{background:'linear-gradient(135deg,#A78BFA,#7C3AED)',minWidth:52}}>
-          {submitting ? '…' : 'OK'}
+          onClick={() => void onSubmit()}
+          disabled={disabled || submitting || !textAnswer.trim()}
+          className={`rounded-xl px-4 ${py} text-sm font-black text-white transition-all active:scale-95 disabled:opacity-40`}
+          style={{background:'linear-gradient(135deg,#A78BFA,#7C3AED)',border:'1px solid rgba(167,139,250,0.4)'}}>
+          {submitting ? '…' : '→'}
         </button>
       </div>
     </div>
   );
-}
-
-// legacy compat export
-export function useCleanupSpeech() {
-  useEffect(() => { return () => { /* component handles its own cleanup */ }; }, []);
 }
