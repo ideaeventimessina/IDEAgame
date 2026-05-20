@@ -2584,15 +2584,29 @@ function WordBackBoard({ payload, players, onScore, onReveal, tabooAlarm, sessio
   const guesser = players.find(p => p.id === guesserId);
   const suggester = players.find(p => p.id === suggesterId);
 
+  // Timer ref — prevents duplicate timers if home:wordback_correct fires more than once
+  const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Listen for server-confirmed correct answer (server already awarded scores)
   const { on } = useHomeSocket(sessionId);
   const [correctData, setCorrectData] = useState<{ guesserNickname: string; word: string } | null>(null);
   useEffect(() => {
     const unsub = on<{ guesserId: string; guesserNickname?: string; word?: string; pts: number }>('home:wordback_correct', (d) => {
       if (autoAwarded || awarded) return;
+      console.log('[WordBackCorrect] correct received — TV overlay shown');
       setAutoAwarded(true);
       setCorrectData({ guesserNickname: d.guesserNickname ?? '', word: d.word ?? word });
-      setTimeout(onReveal, 2400);
+
+      // Guard: cancel any previous timer (duplicate event protection)
+      if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
+
+      // Auto-clear overlay after 2 s, then hand off to host (next-round button)
+      overlayTimerRef.current = setTimeout(() => {
+        console.log('[WordBackCorrect] TV overlay cleared — returning to board');
+        setAutoAwarded(false);
+        setCorrectData(null);
+        onReveal(); // stops the round timer, transitions host view
+      }, 2000);
     });
     // Booking phase — delegate to dedicated component (hooks already called above)
     if (String(payload.mode ?? '') === 'home-wordback-booking') {
@@ -2601,6 +2615,9 @@ function WordBackBoard({ payload, players, onScore, onReveal, tabooAlarm, sessio
     return unsub;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoAwarded, awarded, word]);
+
+  // Cleanup overlay timer on unmount to avoid state-update-after-unmount warnings
+  useEffect(() => () => { if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current); }, []);
 
   // Booking phase dispatches to its own component (after all hooks are called)
   if (String(payload.mode ?? '') === 'home-wordback-booking') {

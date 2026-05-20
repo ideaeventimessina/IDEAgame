@@ -1918,15 +1918,25 @@ function WordBackController({ payload, timeLeft, player, sessionId, emit }: {
   const isSuggester = !!suggesterId && player.id === suggesterId;
   const [alarmPressed, setAlarmPressed] = useState(false);
   const [answered, setAnswered] = useState(false);
+  // `scored` = server confirmed the answer for this round. Persists until round
+  // index changes so the guesser can't re-open the mic after the overlay clears.
+  const [scored, setScored] = useState(false);
+  const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // P5: Reset per-round state when roundIndex changes (new word → new round).
-  // Without this, the "CORRETTO!" overlay sticks across rounds because local state
-  // survives re-renders when only props change.
-  useEffect(() => { setAnswered(false); }, [round]);
+  // Reset all per-round state when the word changes (new round from host).
+  useEffect(() => {
+    setAnswered(false);
+    setScored(false);
+    if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
+  }, [round]);
+
+  // Cleanup on unmount
+  useEffect(() => () => { if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current); }, []);
 
   const handleCorrect = useCallback(async (answerText: string) => {
-    if (answered) return;
+    if (answered || scored) return;
     setAnswered(true);
+    console.log('[WordBackCorrect] phone answer submitted — overlay shown');
     try {
       const res = await fetch(`/api/home/sessions/${sessionId}/wordback-correct`, {
         method: 'POST',
@@ -1934,14 +1944,22 @@ function WordBackController({ payload, timeLeft, player, sessionId, emit }: {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ playerId: player.id, answerText, round }),
       });
-      // On 409 duplicate or any server error (not 403 wrong-role), allow retry.
-      if (!res.ok && res.status !== 403) {
+      if (res.ok) {
+        // Server confirmed correct — lock this round and auto-clear the big overlay
+        setScored(true);
+        if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
+        overlayTimerRef.current = setTimeout(() => {
+          console.log('[WordBackCorrect] phone overlay cleared — waiting for host next-round');
+          setAnswered(false);
+        }, 2000);
+      } else {
+        // On any server error (including 409 duplicate), clear the overlay immediately
         setAnswered(false);
       }
     } catch {
       setAnswered(false);
     }
-  }, [answered, sessionId, player.id, round]);
+  }, [answered, scored, sessionId, player.id, round]);
 
   const handleAlarm = useCallback(() => {
     if (alarmPressed) return;
@@ -1964,12 +1982,29 @@ function WordBackController({ payload, timeLeft, player, sessionId, emit }: {
   }
 
   if (isGuesser) {
+    // Phase 1 (2 s): big green success overlay — auto-dismisses via timer
     if (answered) {
       return (
         <div className="flex flex-col items-center gap-5 py-4 text-center">
           <div className="text-7xl">✅</div>
           <div className="text-2xl font-black text-white">CORRETTO!</div>
           <div className="text-sm font-semibold" style={{color:'rgba(34,197,94,0.8)'}}>+{pts} punti assegnati a entrambi</div>
+          {timerBadge}
+        </div>
+      );
+    }
+
+    // Phase 2 (after overlay clears, same round): quiet waiting state — mic stays closed
+    // so the guesser can't re-open it and trigger a 409 duplicate loop.
+    if (scored) {
+      return (
+        <div className="flex flex-col items-center gap-5 py-4 text-center">
+          <div className="text-5xl">✅</div>
+          <div className="text-xl font-black text-white">Risposta corretta!</div>
+          <div className="rounded-2xl px-4 py-3 w-full text-sm font-semibold"
+            style={{background:'rgba(34,197,94,0.10)',border:'1px solid rgba(34,197,94,0.35)',color:'rgba(34,197,94,0.8)'}}>
+            In attesa del prossimo round…
+          </div>
           {timerBadge}
         </div>
       );
@@ -1989,7 +2024,7 @@ function WordBackController({ payload, timeLeft, player, sessionId, emit }: {
         <PressToTalkAnswer
           expectedAnswer={secretWord}
           language="it-IT"
-          disabled={answered}
+          disabled={answered || scored}
           onCorrect={handleCorrect}
         />
 
