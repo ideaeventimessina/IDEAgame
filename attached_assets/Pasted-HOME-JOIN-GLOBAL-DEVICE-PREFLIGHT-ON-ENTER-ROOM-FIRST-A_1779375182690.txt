@@ -1,0 +1,78 @@
+HOME JOIN — GLOBAL DEVICE PREFLIGHT ON ENTER ROOM.
+
+FIRST AUDIT, THEN PATCH.
+Do not touch scoring.
+Do not touch game logic.
+Do not redesign.
+
+Goal:
+When player taps “ENTRA NELLA STANZA”, run a device preflight so games start faster and with fewer interruptions.
+
+On the same user gesture as Enter Room:
+1. unlock audio context
+2. request motion/orientation permission if available
+3. request microphone permission
+4. detect SpeechRecognition support
+5. save capability state
+6. continue joining the room regardless of granted/denied
+
+Important:
+Do NOT block room entry.
+Do NOT force permissions.
+Do NOT show scary technical errors.
+
+Store:
+sessionStorage/localStorage:
+ideagame:device-capabilities = {
+  audioUnlocked: boolean,
+  motionPermission: "granted" | "denied" | "unsupported" | "unknown",
+  orientationPermission: "granted" | "denied" | "unsupported" | "unknown",
+  microphonePermission: "granted" | "denied" | "unsupported" | "unknown",
+  speechRecognitionSupported: boolean,
+  timestamp
+}
+
+UX:
+After tapping Enter:
+show short status:
+“Preparazione dispositivo…”
+Then:
+- “Pronto”
+or
+- “Alcune funzioni useranno modalità alternativa”
+
+Do not show this for too long.
+Max 1.5–2 seconds.
+
+Games behavior:
+- Ballo reads motion/orientation readiness.
+- WordBack/Karaoke/Freestyle read microphone/speech readiness.
+- If permission already granted, do not ask again.
+- If denied, use fallback UI immediately.
+- If unknown, game can request again from its own direct button.
+
+Implementation rules:
+- Calls must happen from the direct tap gesture.
+- Fire permission requests synchronously before awaits where required by iOS.
+- Use Promise.allSettled, not Promise.all.
+- Never let one denied permission cancel the others.
+- Keep SensorBridge unchanged unless only adding a safe preflight method.
+- Keep PressToTalk unchanged unless only reading device capabilities.
+
+Logs:
+[DevicePreflight]
+audio
+motion
+orientation
+microphone
+speechRecognition
+result
+
+Output:
+A. files audited
+B. files modified
+C. preflight lifecycle
+D. stored capability schema
+E. games using capabilities
+F. fallback behavior
+G. typecheck result

@@ -91,6 +91,7 @@ export default function HomeJoin() {
   const [adminSensitivity, setAdminSensitivity] = useState(3.0);
   const [coppiePreviewUntil, setCoppiePreviewUntil] = useState<number | null>(null);
   const [resyncLoading, setResyncLoading] = useState(false);
+  const [preflightMsg, setPreflightMsg] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const phaseRef = useRef<'code' | 'nickname' | 'lobby' | 'playing' | 'ended'>('code');
   const playerRef = useRef<HomePlayer | null>(null);
@@ -569,6 +570,124 @@ export default function HomeJoin() {
     finally { setLoading(false); }
   };
 
+  /**
+   * handleEnterRoom — wraps joinSession with a global device preflight.
+   *
+   * All permission requests (motion, orientation, microphone) are initiated
+   * SYNCHRONOUSLY before the first await so iOS honours the gesture call stack.
+   * join and preflight run in parallel; preflight is capped at 2 s.
+   * Room entry is NEVER blocked by denied/unsupported permissions.
+   */
+  const handleEnterRoom = async () => {
+    if (!session || !nickname.trim() || loading) return;
+
+    setPreflightMsg('Preparazione dispositivo…');
+
+    // ── 1. Fire ALL permission requests synchronously ───────────────────────
+    // Must happen before any `await` — iOS links requestPermission() to the
+    // gesture call stack; an await breaks that link.
+    console.log('[DevicePreflight] audio — unlocking AudioContext');
+    let audioUnlocked = false;
+    try {
+      const ac = new AudioContext();
+      audioUnlocked = true;
+      void ac.suspend().then(() => ac.close());
+    } catch { /* ignore — iOS 14 quirk */ }
+
+    const dme = typeof DeviceMotionEvent !== 'undefined'
+      ? (DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> })
+      : null;
+    const doe = typeof DeviceOrientationEvent !== 'undefined'
+      ? (DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> })
+      : null;
+
+    let motionPermP: Promise<string>;
+    if (dme && typeof dme.requestPermission === 'function') {
+      let p: Promise<string>;
+      try { p = dme.requestPermission(); } catch { p = Promise.resolve('denied'); }
+      motionPermP = p;
+      console.log('[DevicePreflight] motion — requestPermission kicked');
+    } else {
+      motionPermP = Promise.resolve(typeof DeviceMotionEvent !== 'undefined' ? 'granted' : 'unsupported');
+      console.log('[DevicePreflight] motion — no requestPermission API, auto-resolved');
+    }
+
+    let orientPermP: Promise<string>;
+    if (doe && typeof doe.requestPermission === 'function') {
+      let p: Promise<string>;
+      try { p = doe.requestPermission(); } catch { p = Promise.resolve('denied'); }
+      orientPermP = p;
+      console.log('[DevicePreflight] orientation — requestPermission kicked');
+    } else {
+      orientPermP = Promise.resolve(typeof DeviceOrientationEvent !== 'undefined' ? 'granted' : 'unsupported');
+      console.log('[DevicePreflight] orientation — no requestPermission API, auto-resolved');
+    }
+
+    let micPermP: Promise<string>;
+    if (navigator.mediaDevices?.getUserMedia) {
+      micPermP = navigator.mediaDevices
+        .getUserMedia({ audio: true })
+        .then(stream => { stream.getTracks().forEach(t => t.stop()); return 'granted'; })
+        .catch(() => 'denied');
+      console.log('[DevicePreflight] microphone — getUserMedia kicked');
+    } else {
+      micPermP = Promise.resolve('unsupported');
+      console.log('[DevicePreflight] microphone — getUserMedia unavailable');
+    }
+
+    // ── 2. SpeechRecognition detection (sync, no permission needed) ─────────
+    const speechRecognitionSupported = !!(
+      (window as unknown as Record<string, unknown>).SpeechRecognition ??
+      (window as unknown as Record<string, unknown>).webkitSpeechRecognition
+    );
+    console.log('[DevicePreflight] speechRecognition', { speechRecognitionSupported });
+
+    // ── 3. Join + preflight run in parallel — join is never blocked ─────────
+    void joinSession();
+
+    const preflightCap = new Promise<void>(res => setTimeout(res, 2000));
+    await Promise.race([
+      Promise.allSettled([motionPermP, orientPermP, micPermP]),
+      preflightCap,
+    ]);
+
+    // ── 4. Collect results (take whatever resolved within the cap) ──────────
+    const settled = await Promise.allSettled([motionPermP, orientPermP, micPermP]);
+    const motionPerm = settled[0].status === 'fulfilled' ? settled[0].value : 'unknown';
+    const orientPerm = settled[1].status === 'fulfilled' ? settled[1].value : 'unknown';
+    const micPerm    = settled[2].status === 'fulfilled' ? settled[2].value : 'unknown';
+
+    console.log('[DevicePreflight] motion', motionPerm);
+    console.log('[DevicePreflight] orientation', orientPerm);
+    console.log('[DevicePreflight] microphone', micPerm);
+
+    const caps = {
+      audioUnlocked,
+      motionPermission: motionPerm,
+      orientationPermission: orientPerm,
+      microphonePermission: micPerm,
+      speechRecognitionSupported,
+      timestamp: Date.now(),
+    };
+    console.log('[DevicePreflight] result', caps);
+    try { sessionStorage.setItem('ideagame:device-capabilities', JSON.stringify(caps)); } catch { /* ignore */ }
+
+    // Mirror mic grant to the wordback-specific key so PressToTalkAnswer skips
+    // its own getUserMedia bridge when player later books as INDOVINO.
+    if (micPerm === 'granted') {
+      try { sessionStorage.setItem('ideagame:wordback-mic-ready', 'true'); } catch { /* ignore */ }
+    }
+
+    // Mirror motion grant to localStorage so GameFlowPhone sensorPerm picks it up.
+    if (motionPerm === 'granted') {
+      try { localStorage.setItem('ideagame:motion-permission', 'granted'); } catch { /* ignore */ }
+    }
+
+    const allOk = micPerm === 'granted' && motionPerm !== 'denied' && orientPerm !== 'denied';
+    setPreflightMsg(allOk ? 'Pronto' : 'Alcune funzioni useranno modalità alternativa');
+    setTimeout(() => setPreflightMsg(null), 1500);
+  };
+
   const addScore = async (points: number) => {
     if (!session || !player) return;
     const newScore = player.score + points;
@@ -688,7 +807,7 @@ export default function HomeJoin() {
               </div>
 
               <input type="text" value={nickname} onChange={e => setNickname(e.target.value.slice(0,20))}
-                onKeyDown={e => e.key==='Enter' && nickname.trim() && void joinSession()}
+                onKeyDown={e => e.key==='Enter' && nickname.trim() && void handleEnterRoom()}
                 placeholder="Il tuo nome..." autoFocus
                 autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
                 className="w-full max-w-sm rounded-2xl px-6 py-5 text-center text-xl font-black focus:outline-none"
@@ -701,11 +820,21 @@ export default function HomeJoin() {
                 </div>
               )}
 
-              <button onClick={joinSession} disabled={loading||!nickname.trim()}
+              <button onClick={() => void handleEnterRoom()} disabled={loading||!nickname.trim()}
                 className="flex w-full max-w-sm items-center justify-center gap-3 rounded-2xl py-5 text-xl font-black text-black disabled:opacity-40"
                 style={{background:'linear-gradient(135deg,#A855F7,#7c3aed)',boxShadow:'0 0 50px rgba(168,85,247,0.5)'}}>
                 {loading ? <Loader2 className="h-6 w-6 animate-spin"/> : <Check className="h-6 w-6"/>} Entra!
               </button>
+
+              {preflightMsg && (
+                <div className="flex items-center justify-center gap-2 text-xs font-semibold"
+                  style={{ color: preflightMsg === 'Pronto' ? '#4ade80' : 'rgba(251,146,60,0.85)' }}>
+                  {preflightMsg === 'Pronto'
+                    ? <Check className="h-3.5 w-3.5" />
+                    : <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  {preflightMsg}
+                </div>
+              )}
             </div>
           </motion.div>
         )}

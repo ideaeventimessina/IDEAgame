@@ -72,10 +72,17 @@ export function GameFlowPhone({
   const [sensorPerm, setSensorPerm] = useState<SensorPerm>(() => {
     if (p.gameSlug !== 'sfida-ballo') return 'idle';
     try {
-      const saved = localStorage.getItem(MOTION_PERM_KEY);
       if (typeof DeviceMotionEvent === 'undefined') return 'unsupported';
+      const saved = localStorage.getItem(MOTION_PERM_KEY);
       if (saved === 'granted') return 'granted';
       if (saved === 'denied') return 'denied';
+      // Also check global device preflight written by handleEnterRoom
+      const rawCaps = sessionStorage.getItem('ideagame:device-capabilities');
+      if (rawCaps) {
+        const caps = JSON.parse(rawCaps) as { motionPermission?: string };
+        if (caps.motionPermission === 'granted') return 'granted';
+        if (caps.motionPermission === 'denied')  return 'denied';
+      }
     } catch { /* ignore */ }
     return 'idle';
   });
