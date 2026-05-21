@@ -66,6 +66,7 @@ export function GameFlowPhone({
 
   const [booking, setBooking] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
+  const [micReady, setMicReady] = useState<boolean | null>(null);
 
   // Sensor permission state — only meaningful when gameSlug === 'sfida-ballo'
   const [sensorPerm, setSensorPerm] = useState<SensorPerm>(() => {
@@ -127,6 +128,23 @@ export function GameFlowPhone({
       };
       try { sessionStorage.setItem('ideagame:ballo-diag', JSON.stringify(_diag)); } catch { /* ignore */ }
       console.log('[SensorFinal] booking complete —', _diag);
+    }
+
+    // Mic preflight for INDOVINO — request permission inside the user gesture before the API call
+    if (action === 'book' && role === 'guesser' && navigator.mediaDevices?.getUserMedia) {
+      console.log('[WordBackMicPreflight] booking role: guesser');
+      console.log('[WordBackMicPreflight] getUserMedia start');
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach(t => t.stop());
+        try { sessionStorage.setItem('ideagame:wordback-mic-ready', 'true'); } catch { /* ignore */ }
+        setMicReady(true);
+        console.log('[WordBackMicPreflight] granted — micReady saved');
+      } catch {
+        try { sessionStorage.setItem('ideagame:wordback-mic-ready', 'false'); } catch { /* ignore */ }
+        setMicReady(false);
+        console.log('[WordBackMicPreflight] denied');
+      }
     }
 
     try {
@@ -315,6 +333,24 @@ export function GameFlowPhone({
               Attendi che l'animatore avvii la sfida
             </div>
           </div>
+
+          {/* Mic readiness badge — guesser role only */}
+          {myBooking?.role === 'guesser' && micReady !== null && (
+            <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.15 }}>
+              {micReady ? (
+                <div className="flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-black"
+                  style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', color: '#4ade80' }}>
+                  🎤 Microfono pronto
+                </div>
+              ) : (
+                <div className="rounded-xl px-4 py-2 text-xs font-bold text-center"
+                  style={{ background: 'rgba(251,146,60,0.1)', border: '1px solid rgba(251,146,60,0.3)', color: 'rgba(251,146,60,0.9)' }}>
+                  ✏️ Microfono non autorizzato. Potrai usare la risposta scritta.
+                </div>
+              )}
+            </motion.div>
+          )}
 
           {/* Sensor status badge — Ballo only */}
           {p.gameSlug === 'sfida-ballo' && (

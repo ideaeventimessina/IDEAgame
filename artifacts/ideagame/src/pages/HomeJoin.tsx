@@ -1898,6 +1898,7 @@ function WordBackBookingPhone({ payload, player, sessionId }: {
 
   const [myRole,  setMyRole]  = useState<'guesser' | 'suggester' | null>(null);
   const [booking, setBooking] = useState(false);
+  const [micReady, setMicReady] = useState<boolean | null>(null);
   const [now,     setNow]     = useState(() => Date.now());
 
   useEffect(() => {
@@ -1912,6 +1913,22 @@ function WordBackBookingPhone({ payload, player, sessionId }: {
   const bookRole = useCallback(async (role: 'guesser' | 'suggester') => {
     if (booking || myRole) return;
     setBooking(true);
+    // Mic preflight for INDOVINO — request permission inside the user gesture before the round starts
+    if (role === 'guesser' && navigator.mediaDevices?.getUserMedia) {
+      console.log('[WordBackMicPreflight] booking role: guesser');
+      console.log('[WordBackMicPreflight] getUserMedia start');
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach(t => t.stop());
+        try { sessionStorage.setItem('ideagame:wordback-mic-ready', 'true'); } catch { /* ignore */ }
+        setMicReady(true);
+        console.log('[WordBackMicPreflight] granted — micReady saved');
+      } catch {
+        try { sessionStorage.setItem('ideagame:wordback-mic-ready', 'false'); } catch { /* ignore */ }
+        setMicReady(false);
+        console.log('[WordBackMicPreflight] denied');
+      }
+    }
     try {
       const r = await fetch(`/api/home/sessions/${sessionId}/wordback-book-role`, {
         method: 'POST',
@@ -1940,6 +1957,14 @@ function WordBackBookingPhone({ payload, player, sessionId }: {
             Sei il {myRole === 'guesser' ? 'INDOVINO' : 'SUGGERITORE'}!
           </div>
           <div className="text-xs text-white/40 mt-1">In attesa dell'inizio…</div>
+          {myRole === 'guesser' && micReady !== null && (
+            <div className="mt-2 rounded-lg px-3 py-1 text-xs font-semibold"
+              style={micReady
+                ? { background: 'rgba(34,197,94,0.12)', color: '#4ade80' }
+                : { background: 'rgba(251,146,60,0.1)', color: 'rgba(251,146,60,0.9)' }}>
+              {micReady ? '🎤 Microfono pronto' : '✏️ Microfono non autorizzato. Potrai usare la risposta scritta.'}
+            </div>
+          )}
         </div>
       ) : (
         <div className="flex flex-col gap-3 w-full">

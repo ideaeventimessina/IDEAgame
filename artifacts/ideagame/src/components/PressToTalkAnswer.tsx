@@ -442,6 +442,18 @@ export default function PressToTalkAnswer({
       return;
     }
 
+    // If mic permission was pre-granted during INDOVINO booking — skip the permission bridge entirely
+    const micPreGranted = (() => {
+      try { return sessionStorage.getItem('ideagame:wordback-mic-ready') === 'true'; } catch { return false; }
+    })();
+    if (micPreGranted) {
+      console.log('[MicFix] mic pre-granted during INDOVINO booking — skipping getUserMedia bridge');
+      setDiag(d => ({ ...d, gumGranted: true }));
+      if (holdingRef.current) startListening();
+      else setStatus('idle');
+      return;
+    }
+
     setStatus('waiting-mic');
     console.log('[MicFix] getUserMedia start');
     navigator.mediaDevices
