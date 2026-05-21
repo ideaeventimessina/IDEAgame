@@ -1,0 +1,138 @@
+URGENT — RESTORE CHROME IPHONE MICROPHONE CAPTURE + ADD PHONE RESYNC BUTTON.
+
+FIRST AUDIT, THEN PATCH.
+Do not touch scoring.
+Do not touch taboo alarm.
+Do not touch Ballo.
+Do not redesign.
+
+==================================================
+PART 1 — CHROME IPHONE MICROPHONE REGRESSION
+==================================================
+
+Problem:
+On Chrome iPhone, microphone button activates visually but captures nothing.
+It used to work before.
+So this is a regression.
+
+Do NOT assume Chrome iOS cannot work.
+Find what changed from the last working version.
+
+Audit:
+- PressToTalkAnswer.tsx git history / recent commits
+- browser detection:
+  CriOS / isNonSafariIOS / isChromeIOS
+- any branch that downgrades Chrome iOS to text-first
+- any disabled/secondary mic path on Chrome iOS
+- getUserMedia bridge
+- SpeechRecognition start
+- MediaRecorder availability
+- pointer/touch events
+- preventDefault / pointer capture
+- whether Chrome iOS path actually calls recognition.start()
+- whether Chrome iOS path actually calls getUserMedia()
+- whether transcript refs are updated
+
+Find regression:
+1. Did recent browser-aware UI skip the real mic path on Chrome iOS?
+2. Did it make mic “optional” but not actually wire startListening?
+3. Did it prevent SpeechRecognition from starting on Chrome iOS?
+4. Did getUserMedia grant but recognition never starts?
+5. Are events not firing because pointer is captured/released incorrectly?
+6. Is the transcript cleared before match?
+
+Required:
+Chrome iPhone must try the same real capture path that worked before.
+
+Patch:
+- Remove any Chrome iOS branch that disables/downgrades mic capture.
+- Keep fallback text visible, but do not replace the mic path.
+- On Chrome iPhone, pressing/holding mic must:
+  1. call getUserMedia({audio:true})
+  2. start SpeechRecognition if available
+  3. if SpeechRecognition gives no transcript, use MediaRecorder fallback if available
+  4. if neither works, then fallback text
+
+Important:
+- Visual activation is not enough.
+- Must prove audio capture path is running with logs.
+
+Logs required:
+[ChromeMic]
+browser
+getUserMedia called/granted/error
+speechRecognition available
+recognition.start called
+onstart fired
+onaudiostart fired
+onresult transcript
+onerror
+onend
+mediaRecorder available
+mediaRecorder started/stopped
+audio blob size
+
+Output:
+A. exact regression cause
+B. files modified
+C. restored Chrome iPhone mic path
+D. fallback path
+E. typecheck
+
+==================================================
+PART 2 — PHONE EMERGENCY RESYNC BUTTON
+==================================================
+
+Problem:
+After correct WordBack answer:
+- TV and other phones progress/update
+- the player who answered correctly can remain stuck on old screen.
+This can happen from signal loss, missed socket event, or local state bug.
+
+Required:
+Add a small emergency button on all player phones:
+“🔄 Riaggancia”
+
+Behavior:
+On tap:
+- refetch current session state from server
+- refetch current players
+- re-emit:
+  home:player_register { sessionId, playerId }
+  join:home session room
+- clear local transient game states:
+  answered
+  scored
+  wordbackSolved
+  booking pending
+  mic listening
+  temporary overlays
+- re-render based on current server roundPayload
+
+Placement:
+- small, not primary
+- top-right or bottom corner
+- visible during game
+- not on TV
+- not admin
+
+Must work for:
+- WordBack stuck after correct
+- missed home:round
+- missed home:state
+- reconnect after signal loss
+
+Logs:
+[PhoneResync]
+start
+session fetched
+player found
+state restored
+socket rejoined
+
+Output:
+A. files modified
+B. resync behavior
+C. states cleared
+D. socket rejoin confirmed
+E. typecheck

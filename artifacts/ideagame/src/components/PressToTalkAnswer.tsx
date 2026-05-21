@@ -156,6 +156,20 @@ export default function PressToTalkAnswer({
   const streamRef        = useRef<MediaStream | null>(null);
   const recordHoldingRef = useRef(false);
 
+  // ── Stable prop refs + Chrome iOS shadow mic refs ─────────────────────────
+  // Refs let async closures (MediaRecorder.onstop, fetch) see the latest values
+  // without needing to be in the useCallback deps array.
+  const onCorrectRef    = useRef(onCorrect);
+  const onWrongRef      = useRef<typeof onWrong>(onWrong);
+  const isChromeIOSRef  = useRef(false);
+  const sessionIdRef    = useRef<string | undefined>(sessionId);
+  const playerIdRef     = useRef<string | undefined>(playerId);
+  // Shadow MediaRecorder: runs alongside SR on Chrome iOS as a Whisper fallback
+  const shadowMRRef     = useRef<MediaRecorder | null>(null);
+  const shadowChunksRef = useRef<Blob[]>([]);
+  const shadowMimeRef   = useRef('');
+  const shadowStreamRef = useRef<MediaStream | null>(null);
+
   // ── Permission query + browser diagnosis — runs once on mount ────────────
   useEffect(() => {
     const b              = detectBrowser();
@@ -194,6 +208,12 @@ export default function PressToTalkAnswer({
     if (recRef.current) {
       try { recRef.current.stop(); } catch { /* ignore */ }
     }
+    // Chrome iOS: stop shadow MediaRecorder — its onstop will attempt Whisper fallback
+    if (shadowMRRef.current?.state === 'recording') {
+      console.log('[ChromeMic] mediaRecorder stopped');
+      try { shadowMRRef.current.stop(); } catch { /* ignore */ }
+    }
+    shadowMRRef.current = null;
   }, []);
 
   // ── startListening — called AFTER getUserMedia permission is already granted ──
@@ -384,6 +404,13 @@ export default function PressToTalkAnswer({
 
   useEffect(() => { startListeningRef.current = startListening; }, [startListening]);
 
+  // ── Keep prop refs current (safe to read from async closures) ──────────────
+  useEffect(() => { onCorrectRef.current = onCorrect; }, [onCorrect]);
+  useEffect(() => { onWrongRef.current = onWrong; }, [onWrong]);
+  useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
+  useEffect(() => { playerIdRef.current = playerId; }, [playerId]);
+  useEffect(() => { isChromeIOSRef.current = detectBrowser().isNonSafariIOS; }, []);
+
   // ── getUserMedia permission bridge ────────────────────────────────────────
   // Must be called directly from the pointer-down gesture so the browser
   // links the permission prompt to the user action.
@@ -420,14 +447,115 @@ export default function PressToTalkAnswer({
     navigator.mediaDevices
       .getUserMedia({ audio: true })
       .then((stream) => {
-        console.log('[MicFix] getUserMedia granted — stopping tracks, starting SR');
-        stream.getTracks().forEach(t => t.stop());
         setDiag(d => ({ ...d, gumGranted: true }));
-        if (holdingRef.current) {
-          startListening();
+        const hasMR = typeof window !== 'undefined' && typeof MediaRecorder !== 'undefined';
+        console.log('[MicFix] getUserMedia granted', { isChromeIOS: isChromeIOSRef.current, hasMR });
+        console.log('[ChromeMic] getUserMedia granted', { hasMR, speechRecognitionAvailable: !!getSR() });
+
+        if (isChromeIOSRef.current && hasMR) {
+          // Chrome iOS: keep the stream alive so MediaRecorder can use it as a
+          // Whisper fallback in case SR gives no transcript.
+          shadowChunksRef.current = [];
+          shadowStreamRef.current = stream;
+          const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'];
+          const mimeType   = candidates.find(f => MediaRecorder.isTypeSupported(f)) ?? '';
+          shadowMimeRef.current = mimeType;
+          console.log('[ChromeMic] mediaRecorder available, mimeType:', mimeType || '(default)');
+
+          try {
+            const mr = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+            shadowMRRef.current = mr;
+
+            mr.ondataavailable = (ev: BlobEvent) => {
+              if (ev.data.size > 0) shadowChunksRef.current.push(ev.data);
+            };
+
+            mr.onstop = async () => {
+              // Stop stream tracks — both SR and MR are now done
+              stream.getTracks().forEach(t => t.stop());
+              shadowStreamRef.current = null;
+
+              // If SR matched first — Whisper not needed
+              if (matchedRef.current) {
+                console.log('[ChromeMic] shadowMR stopped — SR already matched, skipping Whisper');
+                return;
+              }
+
+              const blob = new Blob(shadowChunksRef.current, { type: mimeType || 'audio/webm' });
+              console.log('[ChromeMic] audio blob size:', blob.size);
+
+              if (blob.size < 500) {
+                console.log('[ChromeMic] blob too small — Whisper skipped');
+                return;
+              }
+              const sid = sessionIdRef.current;
+              const pid = playerIdRef.current;
+              if (!sid || !pid) {
+                console.log('[ChromeMic] no sessionId/playerId — Whisper skipped (non-wordback game)');
+                return;
+              }
+
+              console.log('[ChromeMic] SR gave no transcript — sending to Whisper fallback');
+              const ext = mimeType.includes('mp4') ? 'mp4' : mimeType.includes('ogg') ? 'ogg' : 'webm';
+              const fd  = new FormData();
+              fd.append('audio', blob, `answer.${ext}`);
+              fd.append('playerId', pid);
+
+              try {
+                const resp = await fetch(`/api/home/sessions/${sid}/wordback-transcribe-answer`, {
+                  method: 'POST', credentials: 'include', body: fd,
+                });
+                const data = await resp.json() as {
+                  ok?: boolean; correct?: boolean; transcript?: string; error?: string;
+                };
+                const tx = data.transcript ?? '';
+                console.log('[ChromeMic] Whisper transcript:', tx);
+                console.log('[ChromeMic] Whisper match result:', { ok: data.ok, status: resp.status });
+
+                if (resp.ok && data.ok) {
+                  matchedRef.current = true;
+                  void onCorrectRef.current(tx);
+                } else if (resp.status === 409) {
+                  matchedRef.current = true; // already scored — treat as success
+                } else if (!matchedRef.current) {
+                  if (tx) { setTranscript(tx); setMatchFail(true); onWrongRef.current?.(tx); }
+                  else      { setMatchFail(true); }
+                  if (failTimerRef.current) clearTimeout(failTimerRef.current);
+                  failTimerRef.current = setTimeout(() => setMatchFail(false), 2200);
+                }
+              } catch (err) {
+                console.log('[ChromeMic] Whisper POST error:', err);
+              }
+            };
+
+            mr.start(200); // collect 200ms chunks
+            console.log('[ChromeMic] mediaRecorder started');
+          } catch (err) {
+            console.log('[ChromeMic] MediaRecorder init failed — stream will be stopped:', err);
+            stream.getTracks().forEach(t => t.stop());
+            shadowStreamRef.current = null;
+          }
+
+          // Start SR alongside MediaRecorder
+          if (holdingRef.current) {
+            console.log('[ChromeMic] recognition.start called, speechRecognition:', !!getSR());
+            startListening();
+          } else {
+            console.log('[ChromeMic] pointer released before SR started — aborting');
+            stream.getTracks().forEach(t => t.stop());
+            shadowStreamRef.current = null;
+            setStatus('idle');
+          }
         } else {
-          console.log('[MicFix] pointer released before SR could start — aborting');
-          setStatus('idle');
+          // Safari / desktop: stop stream immediately (SR opens its own stream)
+          console.log('[MicFix] getUserMedia granted — stopping tracks, starting SR');
+          stream.getTracks().forEach(t => t.stop());
+          if (holdingRef.current) {
+            startListening();
+          } else {
+            console.log('[MicFix] pointer released before SR could start — aborting');
+            setStatus('idle');
+          }
         }
       })
       .catch((err: unknown) => {
@@ -601,6 +729,14 @@ export default function PressToTalkAnswer({
         streamRef.current.getTracks().forEach(t => t.stop());
         streamRef.current = null;
       }
+      // Shadow MediaRecorder cleanup (Chrome iOS SR+Whisper dual path)
+      if (shadowMRRef.current?.state === 'recording') {
+        try { shadowMRRef.current.stop(); } catch { /* ignore */ }
+      }
+      if (shadowStreamRef.current) {
+        shadowStreamRef.current.getTracks().forEach(t => t.stop());
+        shadowStreamRef.current = null;
+      }
     };
   }, []);
 
@@ -642,118 +778,15 @@ export default function PressToTalkAnswer({
   // Non-Safari iOS (Chrome/Firefox/Edge) has unreliable SR in WKWebView → text-first
   const isChromeIOS = browser.isNonSafariIOS;
 
-  // ── Chrome / non-Safari iOS → recordAndTranscribe or text-first fallback ──
-  if (isChromeIOS && getSR()) {
-    const hasMR    = typeof window !== 'undefined' && typeof (window as unknown as Record<string, unknown>)['MediaRecorder'] !== 'undefined';
-    const canRecord = !!sessionId && !!playerId && hasMR;
-
-    const isRec      = recordStatus === 'recording';
-    const isUploading = recordStatus === 'uploading';
-    const isActive   = isRec || isUploading;
-
-    return (
-      <div className="flex flex-col gap-4 w-full">
-
-        {/* Jonny listening overlay — mirrors the Safari/webSpeech experience */}
-        <AnimatePresence>
-          {isActive && (
-            <motion.div key="jonny-record"
-              initial={{opacity:0,scale:0.88,y:8}} animate={{opacity:1,scale:1,y:0}} exit={{opacity:0,scale:0.9,y:4}}
-              transition={{duration:0.2}}
-              className="flex w-full flex-col items-center gap-3 rounded-3xl px-5 py-5"
-              style={{
-                background:'linear-gradient(160deg,rgba(167,139,250,0.18),rgba(124,58,237,0.1))',
-                border:'2px solid rgba(167,139,250,0.55)',
-                boxShadow:'0 0 40px rgba(167,139,250,0.35)',
-              }}>
-              <div className="flex items-center gap-3">
-                <JonnyAvatar mood="thinking" size={52} background="none" />
-                <div className="flex flex-col gap-1">
-                  <div className="text-sm font-black" style={{color:'#A78BFA'}}>
-                    {isUploading ? '⏳ Trascrivo…' : 'Jonny ti ascolta…'}
-                  </div>
-                  <WaveformBars active={isRec} />
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Status chips */}
-        <AnimatePresence>
-          {recordStatus === 'fail' && recordTranscript && (
-            <motion.div key="rec-fail"
-              initial={{opacity:0,y:-4}} animate={{opacity:1,y:0}} exit={{opacity:0}}
-              className="w-full rounded-xl px-3 py-2 text-xs font-bold text-center"
-              style={{background:'rgba(239,68,68,0.12)',border:'1px solid rgba(239,68,68,0.3)',color:'#f87171'}}>
-              ❌ Ho sentito: "{recordTranscript}" — riprova!
-            </motion.div>
-          )}
-          {recordStatus === 'configErr' && (
-            <motion.div key="rec-cfg"
-              initial={{opacity:0,y:-4}} animate={{opacity:1,y:0}} exit={{opacity:0}}
-              className="w-full rounded-xl px-3 py-2 text-xs font-bold text-center"
-              style={{background:'rgba(251,146,60,0.1)',border:'1px solid rgba(251,146,60,0.3)',color:'rgba(251,146,60,0.9)'}}>
-              ⚠ Trascrizione non configurata — usa risposta scritta
-            </motion.div>
-          )}
-          {recordStatus === 'error' && (
-            <motion.div key="rec-err"
-              initial={{opacity:0,y:-4}} animate={{opacity:1,y:0}} exit={{opacity:0}}
-              className="w-full rounded-xl px-3 py-2 text-xs font-bold text-center"
-              style={{background:'rgba(239,68,68,0.1)',border:'1px solid rgba(239,68,68,0.25)',color:'#f87171'}}>
-              ⚠ Errore audio — usa risposta scritta
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {canRecord ? (
-          <>
-            {/* Hold-to-record button — same look as the webSpeech button */}
-            <motion.button
-              onPointerDown={handleTranscribePointerDown}
-              onPointerUp={handleTranscribePointerUp}
-              onPointerLeave={handleTranscribePointerUp}
-              onPointerCancel={handleTranscribePointerUp}
-              disabled={disabled || isUploading || recordStatus === 'ok'}
-              whileTap={{scale:0.95}}
-              className="w-full select-none rounded-2xl py-5 text-base font-black text-white disabled:opacity-50"
-              style={{
-                touchAction: 'none',
-                userSelect: 'none',
-                background: isActive
-                  ? 'linear-gradient(135deg,rgba(167,139,250,0.55),rgba(124,58,237,0.55))'
-                  : 'linear-gradient(135deg,#A78BFA,#7C3AED)',
-                border: `2px solid ${isActive ? 'rgba(167,139,250,0.95)' : 'rgba(167,139,250,0.5)'}`,
-                boxShadow: isActive
-                  ? '0 0 50px rgba(167,139,250,0.75), 0 0 100px rgba(124,58,237,0.25)'
-                  : '0 0 30px rgba(167,139,250,0.4)',
-              }}>
-              {isUploading
-                ? '⏳ Trascrivo…'
-                : isRec
-                  ? '🎙️ Rilascia quando finisci…'
-                  : '🎤 TIENI PREMUTO E RISPONDI'}
-            </motion.button>
-            <div className="text-xs text-white/25">Tieni premuto il tasto mentre parli</div>
-          </>
-        ) : (
-          /* No MediaRecorder or sessionId/playerId not provided → show notice only */
-          <div className="rounded-xl px-3 py-2 text-xs font-bold text-center"
-            style={{background:'rgba(251,146,60,0.08)',border:'1px solid rgba(251,146,60,0.28)',color:'rgba(251,146,60,0.8)'}}>
-            Su questo browser usa la risposta scritta.
-          </div>
-        )}
-
-        {/* Text fallback — ALWAYS visible */}
-        <FallbackInput textAnswer={textAnswer} setTextAnswer={setTextAnswer}
-          onSubmit={submitFallbackAnswer} disabled={disabled} submitting={submitting}
-          matchFail={matchFail} fallbackError={fallbackError} large />
-      </div>
-    );
+  // Chrome iOS / non-Safari iOS: falls through to the webSpeech SR path below.
+  // handlePointerDown starts a shadow MediaRecorder (Whisper fallback) when
+  // isChromeIOSRef.current is true — no separate render branch needed.
+  // Logs: [ChromeMic] browser / getUserMedia / mediaRecorder / blob size.
+  if (isChromeIOS) {
+    console.log('[ChromeMic] browser:', browser.ua.slice(0, 80));
   }
 
-  // ── speech API available (Safari iOS / desktop) ────────────────────────────
+  // ── speech API available (Safari iOS / Chrome iOS / desktop) ───────────────
   if (getSR()) {
     let statusChip: string | null = null;
     if (isWaiting)                           statusChip = '🎤 Autorizzazione…';

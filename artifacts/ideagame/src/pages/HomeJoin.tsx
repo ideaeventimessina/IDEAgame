@@ -90,6 +90,7 @@ export default function HomeJoin() {
   const [wordbackSolved, setWordbackSolved] = useState(false);
   const [adminSensitivity, setAdminSensitivity] = useState(3.0);
   const [coppiePreviewUntil, setCoppiePreviewUntil] = useState<number | null>(null);
+  const [resyncLoading, setResyncLoading] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const phaseRef = useRef<'code' | 'nickname' | 'lobby' | 'playing' | 'ended'>('code');
   const playerRef = useRef<HomePlayer | null>(null);
@@ -207,6 +208,45 @@ export default function HomeJoin() {
     if (!session?.id || !player?.id) return;
     emit('home:player_register', { sessionId: session.id, playerId: player.id });
   }, [session?.id, player?.id, emit]);
+
+  // ── Emergency resync ───────────────────────────────────────────────────────
+  // Refetches server state, clears transient UI state, and re-emits socket room
+  // join + player registration. Fixes stuck screens after missed socket events.
+  const handleResync = useCallback(async () => {
+    const sid = session?.id;
+    const pid = player?.id;
+    if (!sid || !pid || resyncLoading) return;
+    console.log('[PhoneResync] start', { sessionId: sid, playerId: pid });
+    setResyncLoading(true);
+    try {
+      const resp = await fetch(`/api/home/sessions/${sid}`);
+      if (!resp.ok) { console.log('[PhoneResync] fetch failed', resp.status); return; }
+      const data = await resp.json() as { session: HomeSession; players: HomePlayer[] };
+      console.log('[PhoneResync] session fetched', { status: data.session.status, round: data.session.currentRound });
+
+      setSession(data.session);
+      setPlayers(data.players);
+      const me = data.players.find(p => p.id === pid);
+      if (me) { setPlayer(me); console.log('[PhoneResync] player found', { score: me.score }); }
+      else { console.log('[PhoneResync] player not found in session'); }
+
+      // Clear all transient game state so render uses fresh server payload
+      setAnswered(null);
+      setRevealed(false);
+      setWordbackSolved(false);
+      setCoppiePreviewUntil(null);
+      console.log('[PhoneResync] state restored');
+
+      // Re-join socket room and re-register player
+      emit('join:home', sid);
+      emit('home:player_register', { sessionId: sid, playerId: pid });
+      console.log('[PhoneResync] socket rejoined');
+    } catch (err) {
+      console.log('[PhoneResync] error', err);
+    } finally {
+      setResyncLoading(false);
+    }
+  }, [session?.id, player?.id, resyncLoading, emit, setPlayer]);
 
   // Polling fallback in lobby
   useEffect(() => {
@@ -748,14 +788,33 @@ export default function HomeJoin() {
                   <div className="text-sm font-black text-white">{player.nickname}</div>
                 </div>
               </div>
-              <div className="rounded-xl px-4 py-2 text-center transition-all"
-                style={timeLeft!==null&&timeLeft<=5
-                  ? {background:'rgba(239,68,68,0.22)',border:'2px solid rgba(239,68,68,0.65)'}
-                  : {background:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.14)'}}>
-                <div className="text-2xl font-black tabular-nums"
-                  style={{color:timeLeft!==null&&timeLeft<=5?'#F87171':'#fff'}}>
-                  {timeLeft ?? '—'}
+              <div className="flex items-center gap-2">
+                <div className="rounded-xl px-4 py-2 text-center transition-all"
+                  style={timeLeft!==null&&timeLeft<=5
+                    ? {background:'rgba(239,68,68,0.22)',border:'2px solid rgba(239,68,68,0.65)'}
+                    : {background:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.14)'}}>
+                  <div className="text-2xl font-black tabular-nums"
+                    style={{color:timeLeft!==null&&timeLeft<=5?'#F87171':'#fff'}}>
+                    {timeLeft ?? '—'}
+                  </div>
                 </div>
+                {/* 🔄 Riaggancia — emergency resync button */}
+                <button
+                  onClick={() => { void handleResync(); }}
+                  disabled={resyncLoading}
+                  title="Riaggancia — risincronizza con il server"
+                  style={{
+                    background: 'rgba(255,255,255,0.06)',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    borderRadius: 10,
+                    padding: '6px 8px',
+                    fontSize: 16,
+                    color: resyncLoading ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.45)',
+                    cursor: resyncLoading ? 'not-allowed' : 'pointer',
+                    lineHeight: 1,
+                  }}>
+                  {resyncLoading ? '⏳' : '🔄'}
+                </button>
               </div>
             </div>
 
