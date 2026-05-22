@@ -67,10 +67,10 @@ function getSavedJoin(): { sessionId: string; joinCode: string; playerId: string
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-const BUILD_STAMP_JOIN = `${new Date().toISOString().slice(0,16).replace('T',' ')} / HomeJoin v-check`;
+const BUILD_STAMP_JOIN = `bfb3131 · ${new Date().toISOString().slice(0,16).replace('T',' ')} · HomeJoin`;
 export default function HomeJoin() {
   useEffect(() => {
-    console.log('[RuntimeCheck] HomeJoin mounted FILE=src/pages/HomeJoin.tsx BUILD=' + BUILD_STAMP_JOIN);
+    console.log('[BuildCheck] HomeJoin BUILD=' + BUILD_STAMP_JOIN);
   }, []);
   const [, navigate] = useLocation();
   const urlParams = new URLSearchParams(window.location.search);
@@ -738,6 +738,11 @@ export default function HomeJoin() {
         .hj-ring{animation:hjPulse 2.5s ease infinite}
         .hj-float{animation:hjFloat 3s ease-in-out infinite}
       `}</style>
+
+      {/* Build badge — always visible for verification */}
+      <div className="pointer-events-none fixed bottom-1 left-2 z-[9999] text-[10px] font-mono px-1.5 py-0.5 rounded" style={{background:'rgba(0,0,0,0.75)',color:'#F5B642',border:'1px solid #F5B64260'}}>
+        build: {BUILD_STAMP_JOIN}
+      </div>
 
       {/* ── ROOT-LEVEL PREFLIGHT OVERLAYS ─────────────────────────────────────
            Fixed position — survive AnimatePresence phase transitions.
