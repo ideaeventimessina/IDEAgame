@@ -1,0 +1,97 @@
+WORDBACK — FIX WRONG ANSWER PENALTY RULE ONLY.
+
+Do not touch microphone logic.
+Do not touch PressToTalkAnswer.
+Do not touch Chrome iPhone voice path.
+Do not touch timeout rule.
+Do not redesign.
+
+Current status:
+- Chrome iPhone microphone now works, sometimes drops but acceptable for now.
+- Do NOT refactor it.
+- Timeout rule works.
+- Wrong answer rule does NOT work.
+
+Required rule:
+The INDOVINO has 3 wrong attempts.
+
+On each wrong answer:
+1st wrong:
+- INDOVINO loses 1/3 of current points OR fixed -50 if current architecture already uses fixed penalty.
+- Show attempts remaining: 2.
+
+2nd wrong:
+- INDOVINO loses another 1/3 OR fixed -50.
+- Show attempts remaining: 1.
+
+3rd wrong:
+- word is failed / closed.
+- INDOVINO gets 0 points for the word.
+- SUGGERITORE gets 0 points for the word.
+- all other connected active players, excluding INDOVINO and SUGGERITORE, get +50.
+- no more answers accepted.
+- TV shows “PAROLA PERSA”.
+- phones show “Parola persa”.
+
+Important:
+If the system already implemented fixed -50, audit why it is not firing.
+Do not invent a second system.
+Fix the existing /wordback-correct wrong-answer branch.
+
+Audit:
+- PressToTalkAnswer onWrong/onCorrect return path
+- WordBackController handleWrong / handleCorrect
+- POST /wordback-correct
+- server normalized comparison
+- server wrong branch
+- response status for wrong answer
+- phone handling of 422 wrong
+- TV listener home:wordback_wrong
+- scoring update SQL
+- wordbackRoundState map key: sessionId + roundIndex
+- duplicate/closed guard
+
+Find:
+1. Does wrong local answer stop before POST and never reach server?
+2. Does PressToTalkAnswer call onWrong locally instead of sending wrong answer to server?
+3. Is /wordback-correct only called when local match is correct?
+4. Is the server wrong-answer branch unreachable?
+5. Is the frontend swallowing 422 and not showing penalty?
+6. Are score updates affecting 0 rows?
+7. Is home:wordback_wrong not emitted or not listened to?
+
+Likely issue:
+The component probably compares locally first.
+If answer is wrong locally, it calls onWrong and never posts to server.
+Therefore server never increments wrongAttempts or applies penalty.
+
+Required patch:
+ALL submitted answers, correct or wrong, must be sent to the server.
+Server is the source of truth.
+
+Flow:
+- User submits answer text/voice.
+- Client sends answerText to /wordback-correct regardless of local match.
+- Server normalizes and decides correct/wrong/closed.
+- Server applies penalties/scoring.
+- Server returns:
+  correct true/false
+  wrongAttempts
+  remainingAttempts
+  penalty
+  roundClosed
+
+Client:
+- if correct: show correct overlay
+- if wrong and not closed: show -points + attempts remaining
+- if wrong and closed: show parola persa
+- if 409 round_closed: show round already closed
+
+Output:
+A. root cause
+B. files modified
+C. wrong answer now reaches server
+D. penalty applied
+E. third wrong closes round
+F. other players +50
+G. typecheck result

@@ -2209,6 +2209,9 @@ function WordBackController({ payload, timeLeft, player, sessionId, emit, wordba
   // Cleanup on unmount
   useEffect(() => () => { if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current); }, []);
 
+  // isPostingRef prevents a duplicate wrong-answer POST while one is already in flight
+  const isPostingRef = useRef(false);
+
   const handleCorrect = useCallback(async (answerText: string): Promise<AnswerResult | void> => {
     if (answered || scored) {
       console.log('[WordBackAnswer] guard — already answered/scored', { answered, scored });
@@ -2216,7 +2219,7 @@ function WordBackController({ payload, timeLeft, player, sessionId, emit, wordba
     }
     setAnswered(true);
     setWrongInfo(null);
-    console.log('[WordBackAnswer] POST start', { answerText, sessionId, playerId: player.id, round });
+    console.log('[WordBackAnswer] POST correct', { answerText, sessionId, playerId: player.id, round });
     try {
       const res = await fetch(`/api/home/sessions/${sessionId}/wordback-correct`, {
         method: 'POST',
@@ -2248,19 +2251,15 @@ function WordBackController({ payload, timeLeft, player, sessionId, emit, wordba
         setAnswered(false);
 
         if (res.status === 409) {
-          // Round is closed — either correct was already registered or timeout
           return { ok: false, code: '409', message: 'Risposta già registrata per questo round' };
         }
         if (res.status === 422) {
-          // Wrong answer — server sent back penalty details
           const wAttempts = body.wrongAttempts ?? 1;
           const remaining = body.remainingAttempts ?? 2;
           const penalty   = body.penalty ?? 50;
           if (!body.roundClosed) {
             setWrongInfo({ attempts: wAttempts, remaining, penalty });
           }
-          // If roundClosed=true the home:wordback_timeout socket event arrives simultaneously
-          // and wordbackTimedOut becomes true via the parent — we just return the quiet error.
           return { ok: false, code: '422', message: remaining > 0 ? `Sbagliato! Tentativi rimasti: ${remaining}` : 'Parola persa' };
         }
         return { ok: false, code: 'error', message: body.error ?? `Errore ${res.status}` };
@@ -2271,6 +2270,58 @@ function WordBackController({ payload, timeLeft, player, sessionId, emit, wordba
       return { ok: false, code: 'error', message: 'Errore di connessione, riprova' };
     }
   }, [answered, scored, sessionId, player.id, round]);
+
+  // handleWrong — called by PressToTalkAnswer when local match fails.
+  // POSTs to /wordback-correct so the server can enforce the penalty rule.
+  // Does NOT set answered=true (avoids false "CORRETTO!" flash).
+  const handleWrong = useCallback(async (answerText: string): Promise<void> => {
+    if (scored || isPostingRef.current) {
+      console.log('[WordBackWrong] guard — scored or posting in flight', { scored });
+      return;
+    }
+    if (!answerText.trim()) return;
+    isPostingRef.current = true;
+    console.log('[WordBackWrong] POST wrong answer to server', { answerText, round });
+    try {
+      const res = await fetch(`/api/home/sessions/${sessionId}/wordback-correct`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId: player.id, answerText, round }),
+      });
+      const body = await res.json().catch(() => ({})) as {
+        error?: string;
+        wrongAttempts?: number;
+        remainingAttempts?: number;
+        penalty?: number;
+        roundClosed?: boolean;
+      };
+      console.log('[WordBackWrong] POST result', { status: res.status, body });
+      if (res.status === 422) {
+        const wAttempts = body.wrongAttempts ?? 1;
+        const remaining = body.remainingAttempts ?? 2;
+        const penalty   = body.penalty ?? 50;
+        if (!body.roundClosed) {
+          setWrongInfo({ attempts: wAttempts, remaining, penalty });
+        }
+        // If roundClosed=true the home:wordback_timeout socket arrives and
+        // wordbackTimedOut becomes true in parent — no extra UI needed here.
+      } else if (res.ok) {
+        // Server normalization accepted it as correct even though local match failed.
+        // Treat as correct: lock the round.
+        console.log('[WordBackWrong] server accepted as correct despite local mismatch');
+        setScored(true);
+        setAnswered(true);
+        if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
+        overlayTimerRef.current = setTimeout(() => setAnswered(false), 2000);
+      }
+      // 409 = already closed, nothing to do
+    } catch (err) {
+      console.log('[WordBackWrong] POST exception', { err: String(err) });
+    } finally {
+      isPostingRef.current = false;
+    }
+  }, [scored, sessionId, player.id, round]);
 
   const handleAlarm = useCallback(() => {
     if (alarmPressed) return;
@@ -2366,6 +2417,7 @@ function WordBackController({ payload, timeLeft, player, sessionId, emit, wordba
           language="it-IT"
           disabled={answered || scored}
           onCorrect={handleCorrect}
+          onWrong={handleWrong}
           sessionId={sessionId}
           playerId={player.id}
         />
