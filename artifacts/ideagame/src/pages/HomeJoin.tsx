@@ -88,6 +88,7 @@ export default function HomeJoin() {
   const [answered, setAnswered] = useState<number | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [wordbackSolved, setWordbackSolved] = useState(false);
+  const [wordbackTimedOut, setWordbackTimedOut] = useState(false);
   const [adminSensitivity, setAdminSensitivity] = useState(3.0);
   const [coppiePreviewUntil, setCoppiePreviewUntil] = useState<number | null>(null);
   const [resyncLoading, setResyncLoading] = useState(false);
@@ -410,7 +411,8 @@ export default function HomeJoin() {
       setAnswered(null);
       setRevealed(false);
       setWordbackSolved(false);
-      console.log('[WordBackTimer] next round reset — wordbackSolved cleared');
+      setWordbackTimedOut(false);
+      console.log('[WordBackTimer] next round reset — wordbackSolved + wordbackTimedOut cleared');
       startRoundTimer(d.payload ?? {});
     });
 
@@ -474,12 +476,17 @@ export default function HomeJoin() {
     const u12 = on<{ guesserId: string; guesserNickname?: string; word?: string; pts: number }>('home:wordback_correct', () => {
       console.log('[WordBackTimer] correct received on phone — stopping timer');
       if (timerRef.current) clearInterval(timerRef.current);
-      // Freeze timeLeft in place (don't set null — badge stays readable but frozen)
       setWordbackSolved(true);
       console.log('[WordBackTimer] timer stopped');
     });
 
-    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); u10?.(); u11?.(); u12?.(); };
+    const u13Phone = on<{ reason: string; guesserId: string; suggesterId: string; word: string; bonusPlayerIds: string[]; bonusPoints: number }>('home:wordback_timeout', () => {
+      console.log('[WordBackTimer] timeout received on phone — locking round');
+      if (timerRef.current) clearInterval(timerRef.current);
+      setWordbackTimedOut(true);
+    });
+
+    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); u10?.(); u11?.(); u12?.(); u13Phone?.(); };
   // Only re-register when the socket `on` function changes (new connection)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [on]);
@@ -1061,6 +1068,7 @@ export default function HomeJoin() {
               adminSensitivity={adminSensitivity}
               coppiePreviewUntil={coppiePreviewUntil}
               wordbackSolved={wordbackSolved}
+              wordbackTimedOut={wordbackTimedOut}
             />
           </motion.div>
         )}
@@ -1115,7 +1123,7 @@ export default function HomeJoin() {
 
 function PhoneController({
   session, player, players, revealed, answered, timeLeft,
-  onAnswer, onFlip, onScore, emit, adminSensitivity, coppiePreviewUntil, wordbackSolved,
+  onAnswer, onFlip, onScore, emit, adminSensitivity, coppiePreviewUntil, wordbackSolved, wordbackTimedOut,
 }: {
   session: HomeSession;
   player: HomePlayer;
@@ -1130,6 +1138,7 @@ function PhoneController({
   adminSensitivity?: number;
   coppiePreviewUntil?: number | null;
   wordbackSolved?: boolean;
+  wordbackTimedOut?: boolean;
 }) {
   const p = session.roundPayload;
   const mode = String(p.mode ?? 'home-quiz');
@@ -1141,7 +1150,7 @@ function PhoneController({
   if (mode === 'home-saramusica') return <SaraMusicaController payload={p} player={player} session={session}/>;
   if (mode === 'home-adult')      return <AdultController payload={p} timeLeft={timeLeft} onScore={onScore}/>;
   if (mode === 'home-ballo')      return <BalloController payload={p} timeLeft={timeLeft} sessionId={session.id} emit={emit} playerId={player.id} round={session.currentRound} adminSensitivity={adminSensitivity ?? 1.0}/>;
-  if (mode === 'home-wordback' || mode === 'home-wordback-booking')   return <WordBackController payload={p} timeLeft={timeLeft} player={player} sessionId={session.id} emit={emit} wordbackSolved={wordbackSolved ?? false}/>;
+  if (mode === 'home-wordback' || mode === 'home-wordback-booking')   return <WordBackController payload={p} timeLeft={timeLeft} player={player} sessionId={session.id} emit={emit} wordbackSolved={wordbackSolved ?? false} wordbackTimedOut={wordbackTimedOut ?? false}/>;
   if (mode === 'home-karaoke')    return <KaraokeController payload={p} sessionId={session.id}/>;
   if (mode === 'home-freestyle')  return <FreestyleController payload={p} timeLeft={timeLeft}/>;
   return <div className="text-center text-white/40 py-8">In attesa del gioco…</div>;
@@ -2158,13 +2167,14 @@ function WordBackBookingPhone({ payload, player, sessionId }: {
 
 // ── WordBackController ─────────────────────────────────────────────────────────
 
-function WordBackController({ payload, timeLeft, player, sessionId, emit, wordbackSolved }: {
+function WordBackController({ payload, timeLeft, player, sessionId, emit, wordbackSolved, wordbackTimedOut }: {
   payload: Record<string,unknown>;
   timeLeft: number | null;
   player: HomePlayer;
   sessionId: string;
   emit: (event: string, data: unknown) => void;
   wordbackSolved?: boolean;
+  wordbackTimedOut?: boolean;
 }) {
   const guesserId = String(payload.guesserId ?? '');
   const suggesterId = String(payload.suggesterId ?? '');
@@ -2180,11 +2190,14 @@ function WordBackController({ payload, timeLeft, player, sessionId, emit, wordba
   // index changes so the guesser can't re-open the mic after the overlay clears.
   const [scored, setScored] = useState(false);
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Wrong-answer inline feedback: {attempts: number, remaining: number} | null
+  const [wrongInfo, setWrongInfo] = useState<{ attempts: number; remaining: number; penalty: number } | null>(null);
 
   // Reset all per-round state when the word changes (new round from host).
   useEffect(() => {
     setAnswered(false);
     setScored(false);
+    setWrongInfo(null);
     if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
   }, [round]);
 
@@ -2197,6 +2210,7 @@ function WordBackController({ payload, timeLeft, player, sessionId, emit, wordba
       return { ok: false, code: '409', message: 'Risposta già registrata per questo round' };
     }
     setAnswered(true);
+    setWrongInfo(null);
     console.log('[WordBackAnswer] POST start', { answerText, sessionId, playerId: player.id, round });
     try {
       const res = await fetch(`/api/home/sessions/${sessionId}/wordback-correct`, {
@@ -2216,11 +2230,34 @@ function WordBackController({ payload, timeLeft, player, sessionId, emit, wordba
         }, 2000);
         return { ok: true };
       } else {
-        const body = await res.json().catch(() => ({})) as { error?: string };
+        const body = await res.json().catch(() => ({})) as {
+          error?: string;
+          correct?: boolean;
+          wrongAttempts?: number;
+          remainingAttempts?: number;
+          penalty?: number;
+          roundClosed?: boolean;
+          reason?: string;
+        };
         console.log('[WordBackAnswer] POST failure', { status: res.status, body });
         setAnswered(false);
-        if (res.status === 409) return { ok: false, code: '409', message: 'Risposta già registrata per questo round' };
-        if (res.status === 422) return { ok: false, code: '422', message: 'Non ancora, riprova!' };
+
+        if (res.status === 409) {
+          // Round is closed — either correct was already registered or timeout
+          return { ok: false, code: '409', message: 'Risposta già registrata per questo round' };
+        }
+        if (res.status === 422) {
+          // Wrong answer — server sent back penalty details
+          const wAttempts = body.wrongAttempts ?? 1;
+          const remaining = body.remainingAttempts ?? 2;
+          const penalty   = body.penalty ?? 50;
+          if (!body.roundClosed) {
+            setWrongInfo({ attempts: wAttempts, remaining, penalty });
+          }
+          // If roundClosed=true the home:wordback_timeout socket event arrives simultaneously
+          // and wordbackTimedOut becomes true via the parent — we just return the quiet error.
+          return { ok: false, code: '422', message: remaining > 0 ? `Sbagliato! Tentativi rimasti: ${remaining}` : 'Parola persa' };
+        }
         return { ok: false, code: 'error', message: body.error ?? `Errore ${res.status}` };
       }
     } catch (err) {
@@ -2254,6 +2291,21 @@ function WordBackController({ payload, timeLeft, player, sessionId, emit, wordba
   }
 
   if (isGuesser) {
+    // Round timed-out or 3 wrong answers: lock screen
+    if (wordbackTimedOut) {
+      return (
+        <div className="flex flex-col items-center gap-5 py-4 text-center">
+          <div className="text-7xl">⏰</div>
+          <div className="text-2xl font-black text-white">Parola persa!</div>
+          <div className="rounded-2xl px-4 py-3 w-full text-sm font-semibold"
+            style={{background:'rgba(239,68,68,0.12)',border:'1px solid rgba(239,68,68,0.4)',color:'rgba(239,68,68,0.9)'}}>
+            Tempo scaduto — in attesa del prossimo round…
+          </div>
+          {timerBadge}
+        </div>
+      );
+    }
+
     // Phase 1 (2 s): big green success overlay — auto-dismisses via timer
     if (answered) {
       return (
@@ -2266,8 +2318,7 @@ function WordBackController({ payload, timeLeft, player, sessionId, emit, wordba
       );
     }
 
-    // Phase 2 (after overlay clears, same round): quiet waiting state — mic stays closed
-    // so the guesser can't re-open it and trigger a 409 duplicate loop.
+    // Phase 2 (after overlay clears, same round): quiet waiting state
     if (scored) {
       return (
         <div className="flex flex-col items-center gap-5 py-4 text-center">
@@ -2290,6 +2341,18 @@ function WordBackController({ payload, timeLeft, player, sessionId, emit, wordba
           style={{background:'rgba(167,139,250,0.12)',border:'1px solid rgba(167,139,250,0.35)',color:'rgba(167,139,250,0.85)'}}>
           Ascolta i suggerimenti del Suggeritore e rispondi qui sotto!
         </div>
+
+        {/* Wrong-answer inline feedback — shown after each failed attempt */}
+        {wrongInfo && (
+          <div className="rounded-2xl px-4 py-3 w-full text-sm font-black"
+            style={{background:'rgba(239,68,68,0.15)',border:'1px solid rgba(239,68,68,0.5)',color:'rgba(239,68,68,1)'}}>
+            <div>❌ Risposta sbagliata: -{wrongInfo.penalty} punti</div>
+            <div className="mt-1" style={{color: wrongInfo.remaining <= 1 ? 'rgba(251,146,60,1)' : 'rgba(239,68,68,0.8)'}}>
+              Tentativi rimasti: {wrongInfo.remaining}
+              {wrongInfo.remaining === 1 && ' — ultimo tentativo!'}
+            </div>
+          </div>
+        )}
 
         {timerBadge}
 

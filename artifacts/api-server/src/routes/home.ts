@@ -2179,8 +2179,22 @@ async function autoSelectWordBackPair(
   await advanceToWordBackRound(sessionId, guesser, suggester);
 }
 
-// ── In-memory duplicate guard for wordback scoring ─────────────────────────────
-const wordbackScoredRounds = new Map<string, Set<number>>();
+// ── WordBack per-round state ────────────────────────────────────────────────────
+// Tracks wrong-attempt count + closed flag per sessionId+roundIndex so the server
+// owns all game-rule enforcement (penalty, 3-strike close, timer-expire close).
+interface WBRoundState {
+  wrongAttempts: number;
+  closed: boolean;
+  closeReason: "correct" | "timer_expired" | "too_many_wrong_answers" | null;
+}
+const wordbackRoundState = new Map<string, Map<number, WBRoundState>>();
+
+function getWBState(sessionId: string, roundIndex: number): WBRoundState {
+  if (!wordbackRoundState.has(sessionId)) wordbackRoundState.set(sessionId, new Map());
+  const m = wordbackRoundState.get(sessionId)!;
+  if (!m.has(roundIndex)) m.set(roundIndex, { wrongAttempts: 0, closed: false, closeReason: null });
+  return m.get(roundIndex)!;
+}
 
 function normalizeWordForMatch(s: string): string {
   return s
@@ -2190,6 +2204,30 @@ function normalizeWordForMatch(s: string): string {
     .trim()
     .replace(/[^a-z0-9\s]/g, "")
     .replace(/\s+/g, " ");
+}
+
+// Shared helper: close a wordback round (timeout or 3-wrong), award +50 to others.
+async function closeWordBackRoundFailed(
+  sessionId: string,
+  roundIndex: number,
+  reason: "timer_expired" | "too_many_wrong_answers",
+  guesserId: string,
+  suggesterId: string,
+  players: Array<{ id: string; score: number; nickname: string }>,
+): Promise<{ bonusPlayerIds: string[]; bonusNicknames: string[] }> {
+  const state = getWBState(sessionId, roundIndex);
+  state.closed = true;
+  state.closeReason = reason;
+
+  const eligible = players.filter(p => p.id !== guesserId && p.id !== suggesterId);
+  await Promise.all(
+    eligible.map(p =>
+      db.update(homePlayersTable)
+        .set({ score: p.score + 50 })
+        .where(and(eq(homePlayersTable.id, p.id), eq(homePlayersTable.sessionId, sessionId)))
+    ),
+  );
+  return { bonusPlayerIds: eligible.map(p => p.id), bonusNicknames: eligible.map(p => p.nickname) };
 }
 
 // ── POST /home/sessions/:id/wordback-correct ────────────────────────────────────
@@ -2220,27 +2258,115 @@ router.post("/home/sessions/:id/wordback-correct", async (req, res): Promise<voi
     res.status(403).json({ error: "Solo l'indovinatore può rispondere" }); return;
   }
 
-  // Duplicate prevention — same round already scored
-  const scored = wordbackScoredRounds.get(id) ?? new Set<number>();
-  if (scored.has(roundIndex)) {
-    res.status(409).json({ error: "Risposta già registrata per questo round" }); return;
+  const wbState = getWBState(id, roundIndex);
+
+  // ── Round already closed (correct answer or timeout or 3-wrong) ──────────────
+  if (wbState.closed) {
+    res.status(409).json({ error: "round_closed" }); return;
   }
 
-  // Answer matching
+  // ── Server-side timer check ───────────────────────────────────────────────────
+  const roundStartedAt = payload["roundStartedAt"] as string | null;
+  const timeLimit      = Number(payload["timeLimit"] ?? 45);
+  if (roundStartedAt) {
+    const elapsed = (Date.now() - new Date(roundStartedAt).getTime()) / 1000;
+    if (elapsed > timeLimit) {
+      // Timer already expired — close now (idempotent, TV may or may not have fired yet)
+      const players = await getPlayers(id);
+      const guesserPlayer = players.find(p => p.id === guesserId);
+      const { bonusPlayerIds, bonusNicknames } = await closeWordBackRoundFailed(
+        id, roundIndex, "timer_expired", guesserId, suggesterId, players,
+      );
+      emitToRoom(homeRoom(id), "home:wordback_timeout", {
+        reason: "timer_expired",
+        guesserId,
+        suggesterId,
+        guesserNickname: guesserPlayer?.nickname ?? "",
+        word,
+        bonusPlayerIds,
+        bonusNicknames,
+        bonusPoints: 50,
+      });
+      await broadcastState(id);
+      res.status(409).json({ error: "round_closed", reason: "timer_expired" }); return;
+    }
+  }
+
+  // ── Answer matching ───────────────────────────────────────────────────────────
   const normAnswer = normalizeWordForMatch(answerText);
   const normWord   = normalizeWordForMatch(word);
   const matched = normWord.length > 0 && normAnswer.length > 0 &&
     (normAnswer === normWord || normAnswer.includes(normWord) || normWord.includes(normAnswer));
 
   if (!matched) {
-    res.status(422).json({ error: "Risposta non corrisponde", answerText }); return;
+    // ── Wrong answer: apply -50 penalty, track attempts ──────────────────────
+    const players = await getPlayers(id);
+    const guesserPlayer = players.find(p => p.id === guesserId);
+    const PENALTY = 50;
+    wbState.wrongAttempts += 1;
+    const wrongAttempts = wbState.wrongAttempts;
+    const MAX_ATTEMPTS  = 3;
+
+    // Apply -50 to guesser (clamped at 0)
+    if (guesserPlayer) {
+      await db.update(homePlayersTable)
+        .set({ score: Math.max(0, guesserPlayer.score - PENALTY) })
+        .where(and(eq(homePlayersTable.id, guesserId), eq(homePlayersTable.sessionId, id)));
+    }
+
+    if (wrongAttempts >= MAX_ATTEMPTS) {
+      // ── 3-strike: close round, award +50 to others, emit timeout ─────────
+      const { bonusPlayerIds, bonusNicknames } = await closeWordBackRoundFailed(
+        id, roundIndex, "too_many_wrong_answers", guesserId, suggesterId, players,
+      );
+      emitToRoom(homeRoom(id), "home:wordback_timeout", {
+        reason: "too_many_wrong_answers",
+        guesserId,
+        suggesterId,
+        guesserNickname: guesserPlayer?.nickname ?? "",
+        word,
+        wrongAttempts,
+        bonusPlayerIds,
+        bonusNicknames,
+        bonusPoints: 50,
+      });
+      await broadcastState(id);
+      res.status(422).json({
+        correct: false,
+        wrongAttempts,
+        remainingAttempts: 0,
+        penalty: PENALTY,
+        roundClosed: true,
+      });
+      return;
+    }
+
+    // ── Still has attempts left — emit wrong-answer event for TV overlay ──
+    emitToRoom(homeRoom(id), "home:wordback_wrong", {
+      guesserId,
+      guesserNickname: guesserPlayer?.nickname ?? "",
+      word,
+      wrongAttempts,
+      remainingAttempts: MAX_ATTEMPTS - wrongAttempts,
+      penalty: PENALTY,
+    });
+    await broadcastState(id);
+    res.status(422).json({
+      correct: false,
+      wrongAttempts,
+      remainingAttempts: MAX_ATTEMPTS - wrongAttempts,
+      penalty: PENALTY,
+      roundClosed: false,
+    });
+    return;
   }
 
-  // Mark round as scored
-  scored.add(roundIndex);
-  wordbackScoredRounds.set(id, scored);
+  // ── Correct answer ────────────────────────────────────────────────────────────
+  // Idempotent: if state was closed between the check above and here, skip.
+  if (wbState.closed) { res.status(409).json({ error: "round_closed" }); return; }
+  wbState.closed = true;
+  wbState.closeReason = "correct";
 
-  // Award scores
   const players = await getPlayers(id);
   const guesserPlayer   = players.find(p => p.id === guesserId);
   const suggesterPlayer = suggesterId ? players.find(p => p.id === suggesterId) : null;
@@ -2262,7 +2388,6 @@ router.post("/home/sessions/:id/wordback-correct", async (req, res): Promise<voi
   }
   await Promise.all(updates);
 
-  // Emit to room (TV board + all clients)
   emitToRoom(homeRoom(id), "home:wordback_correct", {
     guesserId,
     suggesterId,
@@ -2275,6 +2400,57 @@ router.post("/home/sessions/:id/wordback-correct", async (req, res): Promise<voi
 
   await broadcastState(id);
   res.json({ ok: true, pts });
+});
+
+// ── POST /home/sessions/:id/wordback-timeout ─────────────────────────────────
+// Called by the TV client when the client-side countdown reaches 0.
+// Idempotent: if the round is already closed (e.g. server already caught it via
+// the answer-endpoint timer-check) the request is silently accepted (200).
+router.post("/home/sessions/:id/wordback-timeout", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+
+  const payload = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (payload["mode"] !== "home-wordback") {
+    res.status(400).json({ error: "Sessione non in modalità wordback" }); return;
+  }
+
+  const roundIndex  = typeof payload["roundIndex"] === "number" ? payload["roundIndex"] : 0;
+  const guesserId   = String(payload["guesserId"]   ?? "");
+  const suggesterId = String(payload["suggesterId"] ?? "");
+  const word        = String(payload["word"]        ?? "");
+
+  const wbState = getWBState(id, roundIndex);
+
+  // Already closed — idempotent, acknowledge without re-emitting
+  if (wbState.closed) {
+    res.json({ ok: true, alreadyClosed: true, closeReason: wbState.closeReason }); return;
+  }
+
+  const players = await getPlayers(id);
+  const guesserPlayer = players.find(p => p.id === guesserId);
+
+  const { bonusPlayerIds, bonusNicknames } = await closeWordBackRoundFailed(
+    id, roundIndex, "timer_expired", guesserId, suggesterId, players,
+  );
+
+  emitToRoom(homeRoom(id), "home:wordback_timeout", {
+    reason: "timer_expired",
+    guesserId,
+    suggesterId,
+    guesserNickname: guesserPlayer?.nickname ?? "",
+    word,
+    wrongAttempts: wbState.wrongAttempts,
+    bonusPlayerIds,
+    bonusNicknames,
+    bonusPoints: 50,
+  });
+
+  await broadcastState(id);
+  res.json({ ok: true, bonusPlayerIds, bonusPoints: 50 });
 });
 
 // ── POST /home/sessions/:id/wordback-book-role ────────────────────────────────
@@ -2548,9 +2724,9 @@ router.post(
       res.status(403).json({ error: "Solo l'indovinatore può rispondere" }); return;
     }
 
-    // Duplicate prevention — reuse the same in-memory guard as wordback-correct
-    const scored = wordbackScoredRounds.get(id) ?? new Set<number>();
-    if (scored.has(roundIndex)) {
+    // Duplicate prevention — reuse the unified per-round state guard
+    const wbStateTranscribe = getWBState(id, roundIndex);
+    if (wbStateTranscribe.closed) {
       res.status(409).json({ error: "Risposta già registrata per questo round" }); return;
     }
 
@@ -2594,9 +2770,9 @@ router.post(
       res.json({ ok: false, correct: false, transcript }); return;
     }
 
-    // Mark round as scored (same guard as wordback-correct)
-    scored.add(roundIndex);
-    wordbackScoredRounds.set(id, scored);
+    // Mark round as scored via the unified state guard
+    wbStateTranscribe.closed = true;
+    wbStateTranscribe.closeReason = "correct";
 
     // Award scores — identical logic to wordback-correct
     const players       = await getPlayers(id);

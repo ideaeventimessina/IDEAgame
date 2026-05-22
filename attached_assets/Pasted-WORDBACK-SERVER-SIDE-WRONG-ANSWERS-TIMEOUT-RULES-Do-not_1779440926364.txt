@@ -1,0 +1,184 @@
+WORDBACK — SERVER-SIDE WRONG ANSWERS + TIMEOUT RULES.
+
+Do not touch Ballo.
+Do not touch audio.
+Do not redesign.
+Do not keep chasing Chrome iPhone microphone now.
+
+Context:
+- Safari iPad microphone works perfectly.
+- Chrome iPhone still unreliable even after preflight.
+- Text fallback works and must remain primary-safe path.
+- Now we need correct game rules.
+
+==================================================
+PART 1 — WRONG ANSWER PENALTY
+==================================================
+
+Current:
+If INDOVINO gives a wrong answer, the game just continues forever.
+
+Required:
+Each wrong answer by INDOVINO:
+- subtract 50 points from INDOVINO
+- track wrong attempt count for current word
+- after 3 wrong answers:
+  - force TIMEOUT / failed word
+  - INDOVINO gets 0 for the word
+  - SUGGERITORE gets 0 for the word
+  - all other active players in the session who are NOT indovino and NOT suggeritore get +50
+  - round closes
+  - no more answers accepted for that word
+
+Important:
+Do not allow score below 0 if current score is less than 50, unless negative scores are already allowed. Prefer clamp at 0.
+
+Server must own this logic.
+
+Patch:
+In /wordback-correct or answer endpoint:
+- if answer wrong:
+  - increment wrongAttempts for sessionId + round
+  - apply -50 to guesser
+  - if wrongAttempts < 3:
+      return {
+        correct:false,
+        wrongAttempts,
+        remainingAttempts: 3 - wrongAttempts,
+        penalty: -50
+      }
+  - if wrongAttempts >= 3:
+      close round as failed
+      award +50 to all eligible other players
+      emit:
+        home:wordback_timeout
+        {
+          reason:"too_many_wrong_answers",
+          guesserId,
+          suggesterId,
+          word,
+          wrongAttempts,
+          bonusPlayers,
+          bonusPoints:50
+        }
+
+Phone:
+- after wrong answer:
+  show:
+  “Risposta sbagliata: -50”
+  “Tentativi rimasti: X”
+- after third wrong answer:
+  show:
+  “Tempo scaduto / parola persa”
+  wait for next round
+
+TV:
+- show red overlay:
+  “RISPOSTA SBAGLIATA”
+  “-50 a [indovino]”
+- after 3 wrong:
+  show:
+  “PAROLA PERSA”
+  “+50 agli altri giocatori”
+
+==================================================
+PART 2 — TIMER EXPIRED RULE
+==================================================
+
+Problem:
+When timer expires, the system does not mark timeout and still accepts answers.
+
+Required:
+When time reaches 0:
+- stop accepting answers immediately
+- mark current word as closed/expired server-side
+- INDOVINO gets 0
+- SUGGERITORE gets 0
+- all other active connected players get +50
+- emit:
+  home:wordback_timeout
+  {
+    reason:"timer_expired",
+    guesserId,
+    suggesterId,
+    word,
+    bonusPlayers,
+    bonusPoints:50
+  }
+
+After timeout:
+- any late /wordback-correct request must return 409:
+  { error:"round_closed" }
+- phone must not validate late answers
+- TV must show timeout overlay
+- after overlay, wait for host next / existing round progression
+
+Audit:
+- timer source on TV
+- phone timer
+- server knows timeLimit? startedAt?
+- /wordback-correct endpoint
+- home:wordback_correct
+- next round endpoint
+- score update logic
+
+Patch options:
+Preferred:
+- server stores roundStartedAt and timeLimit in roundPayload when round starts
+- /wordback-correct checks Date.now() > roundStartedAt + timeLimit
+- if expired, runs timeout logic and rejects answer
+
+If current architecture only has TV timer:
+- TV must emit/POST /wordback-timeout when timer reaches 0
+- server closes round and broadcasts timeout
+- late answers rejected after closed flag
+
+Important:
+Timeout/closed state must survive reload:
+store in roundPayload or server memory with sessionId+round key.
+
+==================================================
+PART 3 — CLOSED ROUND STATE
+==================================================
+
+Create per-session/round state:
+{
+  wrongAttempts,
+  closed: boolean,
+  closeReason: "correct" | "timer_expired" | "too_many_wrong_answers"
+}
+
+Rules:
+- correct answer closes round
+- 3 wrong answers closes round
+- timer expired closes round
+- once closed, no more scoring accepted
+- duplicate events must not double-award points
+
+==================================================
+PART 4 — CHROME IPHONE MICROPHONE STATUS
+==================================================
+
+Do not remove mic button.
+Do not block.
+But if Chrome iPhone mic gives no transcript:
+- show:
+  “Usa risposta scritta”
+- fallback text remains primary safe path
+
+No more large microphone refactor in this patch.
+
+==================================================
+OUTPUT
+==================================================
+
+A. files audited
+B. files modified
+C. wrong answer penalty logic
+D. 3-wrong timeout logic
+E. timer timeout logic
+F. late answer rejection
+G. phone UI messages
+H. TV overlays
+I. typecheck result
+J. manual test steps

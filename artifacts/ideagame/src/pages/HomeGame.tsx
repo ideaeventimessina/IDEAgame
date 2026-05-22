@@ -527,6 +527,10 @@ export default function HomeGame() {
   const [saraMusicaWinner, setSaraMusicaWinner] = useState<{ nickname: string; points: number; round: number } | null>(null);
   // Reset saraMusicaWinner when the round changes
   useEffect(() => { setSaraMusicaWinner(null); }, [session?.currentRound]);
+  const [wordbackTimeoutOverlay, setWordbackTimeoutOverlay] = useState<{ reason: string; guesserNickname: string; word: string; bonusNicknames: string[]; bonusPoints: number } | null>(null);
+  const [wordbackWrongOverlay, setWordbackWrongOverlay] = useState<{ guesserNickname: string; wrongAttempts: number; remainingAttempts: number } | null>(null);
+  // Reset wordback overlays when round changes
+  useEffect(() => { setWordbackTimeoutOverlay(null); setWordbackWrongOverlay(null); }, [session?.currentRound]);
   const [spinning, setSpinning] = useState(false);
   const [wheelSelected, setWheelSelected] = useState<string | null>(null);
   const [postSpinModal, setPostSpinModal] = useState(false);
@@ -814,7 +818,17 @@ export default function HomeGame() {
       setBalloVotes(d.totals);
     });
 
-    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); u10?.(); u11?.(); u12?.(); u13?.(); u14?.(); };
+    const u15 = on<{ reason: string; guesserId: string; suggesterId: string; guesserNickname?: string; word: string; wrongAttempts?: number; bonusPlayerIds: string[]; bonusNicknames: string[]; bonusPoints: number }>('home:wordback_timeout', (d) => {
+      setWordbackTimeoutOverlay({ reason: d.reason, guesserNickname: d.guesserNickname ?? '', word: d.word, bonusNicknames: d.bonusNicknames, bonusPoints: d.bonusPoints });
+      if (timerRef.current) clearInterval(timerRef.current);
+    });
+
+    const u16 = on<{ guesserId: string; guesserNickname: string; word: string; wrongAttempts: number; remainingAttempts: number; penalty: number }>('home:wordback_wrong', (d) => {
+      setWordbackWrongOverlay({ guesserNickname: d.guesserNickname, wrongAttempts: d.wrongAttempts, remainingAttempts: d.remainingAttempts });
+      setTimeout(() => setWordbackWrongOverlay(null), 2500);
+    });
+
+    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); u10?.(); u11?.(); u12?.(); u13?.(); u14?.(); u15?.(); u16?.(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [on]);
 
@@ -892,6 +906,25 @@ export default function HomeGame() {
   }, []);
 
   useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
+
+  // ── WordBack timer-zero: notify server when TV countdown hits 0 ──────────────
+  // The server will close the round, award +50 to eligible players, and emit
+  // home:wordback_timeout so all clients (phone + TV) lock the round.
+  const wordbackTimeoutFiredRef = useRef(false);
+  useEffect(() => {
+    if (timeLeft !== 0) { wordbackTimeoutFiredRef.current = false; return; }
+    if (!session?.id) return;
+    const mode = String(session.roundPayload?.mode ?? '');
+    if (mode !== 'home-wordback') return;
+    if (wordbackTimeoutFiredRef.current) return;
+    wordbackTimeoutFiredRef.current = true;
+    console.log('[WordBackTimer:tv] timeLeft=0 — POST /wordback-timeout');
+    fetch(`/api/home/sessions/${session.id}/wordback-timeout`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+    }).catch((err) => console.log('[WordBackTimer:tv] timeout POST failed', err));
+  }, [timeLeft, session?.id, session?.roundPayload?.mode]);
 
   // ── Fetch home media (intro videos tagged home_intro_{slug}) ───────────────
   useEffect(() => {
@@ -1530,6 +1563,8 @@ export default function HomeGame() {
                 saraMusicaWinner={saraMusicaWinner}
                 balloSensitivity={balloSensitivity} onSensitivity={handleBalloSensitivity} sensorReadyMap={sensorReadyMap}
                 tabooAlarm={tabooAlarm}
+                wordbackTimeoutOverlay={wordbackTimeoutOverlay}
+                wordbackWrongOverlay={wordbackWrongOverlay}
                 onScore={async (pid,pts) => {
                   // Optimistic update — score appears immediately in bar + partial leaderboard
                   setPlayers(prev => prev.map(p => p.id === pid ? { ...p, score: pts } : p));
@@ -1831,7 +1866,7 @@ class GameBoardErrorBoundary extends Component<GBEBProps, GBEBState> {
 
 // ── RoundBoard ────────────────────────────────────────────────────────────────
 
-function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, balloEnergies, balloCurrent, balloResult, balloVotes, onBalloReset, onStageNext, onEndBallo, saraMusicaWinner, balloSensitivity, onSensitivity, sensorReadyMap, tabooAlarm }: {
+function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, balloEnergies, balloCurrent, balloResult, balloVotes, onBalloReset, onStageNext, onEndBallo, saraMusicaWinner, balloSensitivity, onSensitivity, sensorReadyMap, tabooAlarm, wordbackTimeoutOverlay, wordbackWrongOverlay }: {
   session: HomeSession;
   revealed: boolean;
   onReveal: () => void;
@@ -1850,6 +1885,8 @@ function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, bal
   onSensitivity?: (s: number) => void;
   sensorReadyMap?: Record<string, boolean>;
   tabooAlarm?: TabooAlarmEvent | null;
+  wordbackTimeoutOverlay?: { reason: string; guesserNickname: string; word: string; bonusNicknames: string[]; bonusPoints: number } | null;
+  wordbackWrongOverlay?: { guesserNickname: string; wrongAttempts: number; remainingAttempts: number } | null;
 }) {
   const p = session.roundPayload;
   const mode = String(p.mode ?? 'home-quiz');
@@ -1861,7 +1898,7 @@ function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, bal
   if (mode === 'home-coppie')     return <CoppieBoard payload={p} onNext={onNext} sessionId={session.id}/>;
   if (mode === 'home-saramusica') return <SaraMusicaBoard payload={p} revealed={revealed} onReveal={onReveal} winner={saraMusicaWinner ?? null}/>;
   if (mode === 'home-adult')      return <AdultOnlyBoard payload={p} revealed={revealed} onReveal={onReveal} players={players} onScore={onScore}/>;
-  if (mode === 'home-wordback' || mode === 'home-wordback-booking')   return <WordBackBoard payload={p} players={players} onScore={onScore} onReveal={onReveal} tabooAlarm={tabooAlarm ?? null} sessionId={session.id}/>;
+  if (mode === 'home-wordback' || mode === 'home-wordback-booking')   return <WordBackBoard payload={p} players={players} onScore={onScore} onReveal={onReveal} tabooAlarm={tabooAlarm ?? null} sessionId={session.id} timeoutOverlay={wordbackTimeoutOverlay} wrongOverlay={wordbackWrongOverlay}/>;
   if (mode === 'home-karaoke')    return <KaraokeBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
   if (mode === 'home-freestyle')  return <FreestyleBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
   return <div className="text-white/40 text-2xl">Caricamento gioco…</div>;
@@ -2629,13 +2666,15 @@ function WordBackBookingBoard({ payload }: { payload: Record<string, unknown> })
 
 // ── WordBackBoard ─────────────────────────────────────────────────────────────
 
-function WordBackBoard({ payload, players, onScore, onReveal, tabooAlarm, sessionId }: {
+function WordBackBoard({ payload, players, onScore, onReveal, tabooAlarm, sessionId, timeoutOverlay, wrongOverlay }: {
   payload: Record<string,unknown>;
   players: HomePlayer[];
   onScore: (pid: string, pts: number) => Promise<void>;
   onReveal: () => void;
   tabooAlarm: TabooAlarmEvent | null;
   sessionId: string;
+  timeoutOverlay?: { reason: string; guesserNickname: string; word: string; bonusNicknames: string[]; bonusPoints: number } | null;
+  wrongOverlay?: { guesserNickname: string; wrongAttempts: number; remainingAttempts: number } | null;
 }) {
   const [awarded, setAwarded] = useState<string|null>(null);
   const [autoAwarded, setAutoAwarded] = useState(false);
@@ -2724,6 +2763,54 @@ function WordBackBoard({ payload, players, onScore, onReveal, tabooAlarm, sessio
                 {(correctData?.word ?? word).toUpperCase()}
               </div>
               <div className="text-lg text-white/60 mt-2">+{pts} a entrambi i giocatori</div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Wrong-answer TV overlay — flashes briefly (2.5 s, auto-dismissed in parent) */}
+      <AnimatePresence>
+        {wrongOverlay && (
+          <motion.div initial={{opacity:0,scale:0.7}} animate={{opacity:1,scale:1}} exit={{opacity:0,scale:0.9}}
+            transition={{type:'spring',stiffness:380,damping:28}}
+            className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+            <div className="rounded-3xl px-14 py-10 text-center"
+              style={{background:'rgba(239,68,68,0.95)',border:'3px solid rgba(255,100,100,0.9)',boxShadow:'0 0 100px rgba(239,68,68,0.9)',backdropFilter:'blur(12px)'}}>
+              <div className="text-7xl mb-4">❌</div>
+              <div className="text-5xl font-black text-white tracking-tight">RISPOSTA SBAGLIATA</div>
+              <div className="text-2xl text-white/85 mt-3">-50 a <span className="font-black">{wrongOverlay.guesserNickname}</span></div>
+              <div className="mt-4 text-xl font-bold"
+                style={{color: wrongOverlay.remainingAttempts <= 1 ? 'rgba(251,146,60,1)' : 'rgba(255,255,255,0.7)'}}>
+                Tentativi rimasti: {wrongOverlay.remainingAttempts}
+                {wrongOverlay.remainingAttempts === 1 && ' — ULTIMO TENTATIVO!'}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Timeout / 3-wrong TV overlay — stays until next round */}
+      <AnimatePresence>
+        {timeoutOverlay && (
+          <motion.div initial={{opacity:0,scale:0.7}} animate={{opacity:1,scale:1}} exit={{opacity:0}}
+            className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+            <div className="rounded-3xl px-14 py-10 text-center"
+              style={{background:'rgba(30,10,60,0.97)',border:'3px solid rgba(239,68,68,0.7)',boxShadow:'0 0 100px rgba(239,68,68,0.6)',backdropFilter:'blur(12px)'}}>
+              <div className="text-7xl mb-4">⏰</div>
+              <div className="text-5xl font-black tracking-tight" style={{color:'#f87171'}}>
+                {timeoutOverlay.reason === 'too_many_wrong_answers' ? 'PAROLA PERSA' : 'TEMPO SCADUTO'}
+              </div>
+              {timeoutOverlay.reason === 'too_many_wrong_answers' && (
+                <div className="text-2xl text-white/75 mt-3">Troppi errori di <span className="font-black text-white">{timeoutOverlay.guesserNickname}</span></div>
+              )}
+              {timeoutOverlay.bonusNicknames.length > 0 && (
+                <div className="mt-5 rounded-2xl px-6 py-4"
+                  style={{background:'rgba(34,197,94,0.15)',border:'1px solid rgba(34,197,94,0.4)'}}>
+                  <div className="text-lg font-black" style={{color:'#4ade80'}}>+{timeoutOverlay.bonusPoints} agli altri giocatori</div>
+                  <div className="text-base text-white/60 mt-1">{timeoutOverlay.bonusNicknames.join(', ')}</div>
+                </div>
+              )}
+              <div className="text-xl text-white/40 mt-5">In attesa del prossimo round…</div>
             </div>
           </motion.div>
         )}
