@@ -92,6 +92,7 @@ export default function HomeJoin() {
   const [coppiePreviewUntil, setCoppiePreviewUntil] = useState<number | null>(null);
   const [resyncLoading, setResyncLoading] = useState(false);
   const [preflightMsg, setPreflightMsg] = useState<string | null>(null);
+  const [preflightActive, setPreflightActive] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const phaseRef = useRef<'code' | 'nickname' | 'lobby' | 'playing' | 'ended'>('code');
   const playerRef = useRef<HomePlayer | null>(null);
@@ -579,7 +580,14 @@ export default function HomeJoin() {
    * Room entry is NEVER blocked by denied/unsupported permissions.
    */
   const handleEnterRoom = async () => {
+    // ── VERY FIRST LINE — proof of execution ────────────────────────────────
+    console.log('[DevicePreflight] HANDLE ENTER CALLED');
+
     if (!session || !nickname.trim() || loading) return;
+
+    // Debug badge — visible for 3 s regardless of phase transition
+    setPreflightActive(true);
+    setTimeout(() => setPreflightActive(false), 3000);
 
     setPreflightMsg('Preparazione dispositivo…');
 
@@ -724,6 +732,37 @@ export default function HomeJoin() {
         .hj-float{animation:hjFloat 3s ease-in-out infinite}
       `}</style>
 
+      {/* ── ROOT-LEVEL PREFLIGHT OVERLAYS ─────────────────────────────────────
+           Fixed position — survive AnimatePresence phase transitions.
+           preflightMsg: status text shown after join tapped.
+           preflightActive: red debug badge for 3 s (proof of execution).    ── */}
+      {preflightActive && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none">
+          <div className="rounded-xl px-4 py-2 text-sm font-black tracking-wide"
+            style={{background:'#dc2626',color:'#fff',boxShadow:'0 0 20px rgba(220,38,38,0.7)'}}>
+            PREFLIGHT ACTIVE
+          </div>
+        </div>
+      )}
+      {preflightMsg && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9998] pointer-events-none">
+          <div className="flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-black"
+            style={{
+              background: preflightMsg === 'Pronto'
+                ? 'rgba(34,197,94,0.92)'
+                : 'rgba(251,146,60,0.92)',
+              color: '#0a0015',
+              boxShadow: '0 4px 30px rgba(0,0,0,0.5)',
+              backdropFilter: 'blur(8px)',
+            }}>
+            {preflightMsg === 'Pronto'
+              ? <Check className="h-4 w-4 flex-shrink-0" />
+              : <Loader2 className="h-4 w-4 flex-shrink-0 animate-spin" />}
+            {preflightMsg}
+          </div>
+        </div>
+      )}
+
       <AnimatePresence mode="wait">
 
         {/* ── CODE ── */}
@@ -826,15 +865,7 @@ export default function HomeJoin() {
                 {loading ? <Loader2 className="h-6 w-6 animate-spin"/> : <Check className="h-6 w-6"/>} Entra!
               </button>
 
-              {preflightMsg && (
-                <div className="flex items-center justify-center gap-2 text-xs font-semibold"
-                  style={{ color: preflightMsg === 'Pronto' ? '#4ade80' : 'rgba(251,146,60,0.85)' }}>
-                  {preflightMsg === 'Pronto'
-                    ? <Check className="h-3.5 w-3.5" />
-                    : <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  {preflightMsg}
-                </div>
-              )}
+              {/* preflightMsg is now shown at root level — survives phase transition */}
             </div>
           </motion.div>
         )}
