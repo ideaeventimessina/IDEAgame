@@ -93,3 +93,27 @@ export function remainingSessionSeconds(state: KaraokeHomeState): number {
   if (!state.sessionEndAt) return 0;
   return Math.max(0, (new Date(state.sessionEndAt).getTime() - Date.now()) / 1000);
 }
+
+export function queuedSecondsClient(state: KaraokeHomeState): number {
+  return state.queue
+    .filter(q => q.status === "queued")
+    .reduce((sum, q) => sum + q.estimatedSlotDuration, 0);
+}
+
+/** Returns true if there's enough time left for at least one more song (uses 2-min minimum). */
+export function canQueueAnyMore(state: KaraokeHomeState): boolean {
+  if (!state.sessionEndAt) return false;
+  const rem = remainingSessionSeconds(state);
+  const queued = queuedSecondsClient(state);
+  return rem - queued >= 120 + 90; // 2 min song + 90s overhead
+}
+
+/** Human-readable wait estimate for a new booking. */
+export function waitEstimateLabel(state: KaraokeHomeState): string {
+  const queued = queuedSecondsClient(state);
+  const waitingCount = state.queue.filter(q => q.status === "queued").length;
+  if (waitingCount === 0 || queued < 60) return "Tocca quasi a te";
+  if (waitingCount === 1) return "Canterai tra pochi minuti";
+  const m = Math.round(queued / 60);
+  return `Canterai tra circa ${m} minut${m === 1 ? "o" : "i"}`;
+}

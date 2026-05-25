@@ -18,8 +18,9 @@ import { useEventSocket, getSocket } from '@/hooks/useEventSocket';
 import { RISATE_MISSIONS, REACTION_EMOJIS, type RisateState } from '@/data/risate-missions';
 import {
   type KaraokeHomeState, type YTSearchResult, type VotingBallot,
-  ALL_REACTIONS, POSITIVE_REACTIONS,
+  ALL_REACTIONS,
   formatCountdown, remainingSessionSeconds, getPlayerQueueItem,
+  canQueueAnyMore, waitEstimateLabel,
 } from '@/data/karaoke-home';
 import { GameFlowPhone } from '@/components/GameFlowPhone';
 import PressToTalkAnswer, { type AnswerResult } from '@/components/PressToTalkAnswer';
@@ -3254,15 +3255,36 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
       );
     }
 
-    // Not booked yet: search
+    // Not booked yet: dynamic CTA + search
+    const canBook = canQueueAnyMore(s);
+    const waitLabel = waitEstimateLabel(s);
+
+    if (!canBook) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full gap-5 text-center px-4">
+          <div className="text-5xl">⚠️</div>
+          <div className="rounded-3xl p-6 w-full" style={{ background: 'rgba(239,68,68,0.12)', border: '2px solid rgba(239,68,68,0.35)' }}>
+            <div className="text-lg font-black text-red-400">Coda al completo</div>
+            <div className="text-sm text-white/50 mt-2 leading-relaxed">
+              Non c'è più tempo sufficiente per aggiungere un altro brano in questa sessione.
+            </div>
+          </div>
+          <div className="text-xs text-white/25">Tempo rimasto: {formatCountdown(remaining)}</div>
+        </div>
+      );
+    }
+
     return (
       <div className="flex flex-col gap-4 px-4 py-6 h-full">
-        <div className="text-center">
-          <div className="text-2xl font-black text-white">🎤 Prenota il tuo brano</div>
-          <div className="text-sm text-white/40 mt-1">Tempo rimasto: <span className="font-black" style={{ color: KK_J }}>{formatCountdown(remaining)}</span></div>
+        {/* Dynamic CTA */}
+        <div className="rounded-3xl p-5 text-center shrink-0"
+          style={{ background: `${KK_J}18`, border: `2px solid ${KK_J}55` }}>
+          <div className="text-2xl font-black text-white">🎤 Prenotati adesso</div>
+          <div className="mt-1 font-bold text-base" style={{ color: KK_J }}>{waitLabel}</div>
+          <div className="mt-2 text-xs text-white/30">Tempo rimasto: {formatCountdown(remaining)}</div>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 shrink-0">
           <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && void doSearch()}
             placeholder="Cerca un brano karaoke…"
@@ -3293,6 +3315,9 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
           ))}
           {searchResults.length === 0 && searchQuery && !searching && (
             <div className="text-center text-white/30 text-sm py-8">Nessun risultato — prova con un altro brano</div>
+          )}
+          {searchResults.length === 0 && !searchQuery && (
+            <div className="text-center text-white/20 text-sm py-4">Cerca il tuo brano preferito sopra</div>
           )}
         </div>
         {error && <div className="text-sm text-red-400 text-center rounded-xl p-2 bg-red-500/10">{error}</div>}
