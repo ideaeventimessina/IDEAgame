@@ -1,0 +1,539 @@
+PERCORSO A RISATE — MISSIONI IMPROVVISE 2.0.
+
+FIRST AUDIT, THEN PATCH.
+Do not touch Ballo.
+Do not touch WordBack.
+Do not touch Quizzone.
+Do not touch Coppie.
+Do not touch audio engine unless adding optional existing stingers.
+Do not redesign global Home Mode.
+
+GOAL:
+Transform "Percorso a Risate" into a simple, fast, phone-driven party game based on IMPROVISED MISSIONS.
+
+Core idea:
+- TV explains the mission clearly.
+- Phones allow booking, voting, validation, and public interaction.
+- No new hardware.
+- No complex AI.
+- Every mission must be understandable in 3 seconds.
+
+GENERAL RULES:
+- The game contains 10 mini-missions.
+- Each mission has 2 main players unless mission-specific rule says otherwise.
+- Players change every mission.
+- Other connected players become PUBLIC ACTIVE.
+- Public can vote, validate, choose prompts, or trigger choices from phones.
+- Each completed mission gives 200 points.
+- If player fails, the player or public member who caused/validated failure may gain 50 points when applicable.
+- Voting missions use 1–5 stars.
+- Each star is worth 20 points.
+- Max vote score = 100 unless mission has fixed 200-point success.
+
+COMMON FLOW FOR EACH MISSION:
+1. TV shows mission title + one-line rule.
+2. Booking phase: 2 players book.
+3. Public interaction phase where needed:
+   - vote prompt
+   - choose object
+   - choose song
+   - choose yoga pose
+   - choose tongue-twister
+4. Mission starts.
+5. TV becomes battlefield:
+   - timer
+   - mission instruction
+   - selected prompt/image/song
+   - public actions/validations
+6. Public validates/votes from phones.
+7. Server assigns points.
+8. TV shows result.
+9. Move to next mission with new booking.
+
+IMPORTANT:
+- Do not create 10 separate hardcoded games.
+- Create a mission engine/config:
+{
+  missionId,
+  title,
+  type,
+  playerCount,
+  duration,
+  publicActionType,
+  scoringType,
+  payload
+}
+
+MISSION ENGINE PHASES:
+- mission_intro
+- booking
+- public_choice
+- active
+- voting
+- result
+
+PHONE ROLES:
+- booked players: see their mission instructions.
+- public players: see voting/validation/action UI.
+- all phones must stay locked as app experience, no horizontal scroll.
+
+TV:
+- clear huge mission title
+- clear role labels
+- huge timer
+- huge selected prompt/object/song/image
+- visible public events
+- result overlay
+
+==================================================
+MISSION 1 — IL GIORNALISTA / NON DIRE SÌ
+==================================================
+
+Players:
+- Player A = concorrente
+- Player B = giornalista
+
+TV:
+MISSIONE: NON DIRE "SÌ"
+Regola: rispondi a 10 domande in 30 secondi senza dire "sì".
+Errori: 0/2
+
+Journalist phone:
+Shows 10 fast questions designed to make the player answer “yes”.
+One question at a time.
+Button: "PROSSIMA DOMANDA".
+
+Example questions:
+- Ti stai divertendo?
+- Vuoi vincere?
+- Ti piace la pizza?
+- Sei pronto?
+- Hai mai mentito?
+- Hai fame?
+- Hai Instagram?
+- Sei competitivo?
+- Ti piace questa festa?
+- Vuoi continuare?
+
+Public phone:
+Huge button:
+"HA DETTO SÌ"
+
+Validation:
+If enough public validations arrive, count as one error.
+Threshold:
+- at least 2 public validations
+OR 40% of connected public, whichever is smaller but minimum 1.
+
+Rules:
+- 2 errors = mission failed.
+- If player survives 30s / 10 questions = player +200.
+- If journalist makes player fail = journalist +100.
+- If journalist fails = journalist -100, clamp score to 0 if negative scores not allowed.
+
+==================================================
+MISSION 2 — YOGA IMPOSSIBILE
+==================================================
+
+Players:
+- 2 main players.
+
+Database:
+Create/expect 30 yoga pose records:
+{
+  id,
+  name,
+  imageUrl,
+  difficulty
+}
+
+Public phone:
+Shows random subset of possible yoga poses.
+Players/public can request up to 5 pose changes total.
+Public taps an image to choose next pose.
+
+TV:
+Shows selected yoga pose image very large.
+When a pose appears:
+- 5 seconds to reach pose
+- 30 seconds to hold still
+
+Validation:
+At end public votes 1–5 stars for each player.
+Score:
+20 points per star.
+Average star score rounded.
+Optional max 100 from vote; if mission completion bonus exists, cap to 200.
+
+==================================================
+MISSION 3 — RACCONTA UNA BARZELLETTA
+==================================================
+
+Players:
+- 1 or 2 players depending current booking engine; prefer 2 players one after the other.
+
+TV:
+MISSIONE: RACCONTA UNA BARZELLETTA
+Timer: 45 seconds each.
+
+Public phone:
+After performance, vote 1–5 stars.
+During performance optional reaction buttons:
+😂
+😐
+👏
+💀
+
+Scoring:
+20 points per star average.
+Highest voted player wins mission bonus if needed.
+
+==================================================
+MISSION 4 — DICHIARAZIONE D’AMORE
+==================================================
+
+Players:
+- 1 performer.
+- Random target selected from connected players.
+
+TV:
+MISSIONE: DICHIARAZIONE D’AMORE
+"Dichiara il tuo amore a: [nickname]"
+Timer: 40 seconds.
+
+Phone public:
+Live reactions:
+❤️ Tenerissimo
+😂 Mi fa ridere
+🔥 Passionale
+💀 Cringe
+Final vote 1–5 stars.
+
+Scoring:
+20 points per star average.
+If score >= 60, mission passed and player can receive up to 200 depending scoring config.
+
+==================================================
+MISSION 5 — SCIOGLILINGUA
+==================================================
+
+Players:
+- 1 or 2 players.
+
+Public choice:
+Before mission, public chooses one tongue-twister from 3 options.
+
+TV:
+Shows selected tongue-twister in huge readable text.
+Timer: 25 seconds.
+
+Public phone:
+Vote performance 1–5 stars:
+- clarity
+- speed
+- comedy
+
+Optional public button:
+"RIPETILO"
+If majority presses, player must repeat faster once.
+
+Scoring:
+20 points per star average.
+
+==================================================
+MISSION 6 — VENDITORE AMBULANTE
+==================================================
+
+Players:
+- 1 or 2 players.
+
+Public choice:
+Choose product:
+- limoni
+- angurie
+- patate
+- melanzane
+- cipolle
+- lattuga
+- zucchine
+- pomodori
+- banane
+- arance
+
+TV:
+MISSIONE: VENDITORE AMBULANTE
+"Vendi: [product]"
+Timer: 40 seconds.
+Show big fake market sign.
+
+Player:
+Must imitate a street market vendor selling the chosen item.
+
+Public phone:
+Vote 1–5 stars.
+Criteria:
+- simpatia
+- volume
+- credibilità
+- interpretazione
+
+Scoring:
+20 points per star average.
+
+==================================================
+MISSION 7 — POLIGLOTTA IMPROVVISATO
+==================================================
+
+Players:
+- 1 or 2 players.
+
+Public choice:
+Choose language:
+- English
+- Spanish
+- French
+- German
+- Japanese
+- Russian
+
+TV:
+Shows phrase in selected language.
+Timer: 20 seconds.
+
+Examples:
+French: "Je voudrais un croissant au chocolat"
+Spanish: "Necesito una paella gigante para bailar"
+German: "Ich tanze mit einer Kartoffel"
+English: "I am the king of the dance floor"
+Japanese/Russian: use romanized text for readability.
+
+Public phone:
+Vote 1–5 stars:
+- pronunciation
+- confidence
+- comedy
+
+Scoring:
+20 points per star average.
+
+==================================================
+MISSION 8 — TROVA L’OGGETTO
+==================================================
+
+Players:
+- 2 players.
+
+Public choice:
+Choose target:
+- oggetto rosso
+- oggetto bianco
+- oggetto nero
+- oggetto a punta
+- oggetto rotondo
+- oggetto che brilla
+- ospite più grande in sala
+- ospite più piccolo in sala
+- qualcuno con occhiali
+- qualcuno con cravatta
+
+TV:
+MISSIONE: TROVA L’OGGETTO
+"Trova: [target]"
+Timer: 40 seconds.
+
+Public phone:
+Buttons:
+- "Player 1 l’ha trovato"
+- "Player 2 l’ha trovato"
+
+Validation:
+The player with most confirmations wins.
+If both validated, faster timestamp wins.
+Winner +200.
+
+==================================================
+MISSION 9 — SFILATA SEXY
+==================================================
+
+Players:
+- 2 players.
+
+Public choice:
+Before each player performs, public chooses song/mood from 6 options:
+- latino caliente
+- disco anni 80
+- sax sexy
+- fashion runway
+- funky
+- romantic slow
+
+TV:
+MISSIONE: SFILATA SEXY
+"Convinci il pubblico con la tua passerella da urlo"
+Each player performs 20–30 seconds.
+
+Public phone:
+After both performances, choose winner OR rate each with 1–5 stars.
+Preferred:
+head-to-head vote:
+"Chi ha sfilato meglio?"
+
+Scoring:
+Winner +200.
+Optional loser gets average star points only if implemented safely.
+
+==================================================
+MISSION 10 — COREOGRAFIA IMPROVVISATA
+==================================================
+
+Players:
+- 2 players.
+
+Public choice:
+Choose one of 6 music moods:
+- reggaeton
+- disco
+- classica epica
+- country
+- pop anni 2000
+- trap assurda
+
+TV:
+MISSIONE: COREOGRAFIA IMPROVVISATA
+"Inventate una coreografia sulla musica scelta dal pubblico"
+20 seconds prep
+30 seconds performance.
+
+Public phone:
+Vote 1–5 stars:
+- originalità
+- energia
+- comicità
+- coordinazione
+
+Optional live event:
+"CAMBIO STILE"
+If majority presses, TV shows:
+CAMBIO STILE!
+and players must switch style for 10 seconds.
+
+Scoring:
+20 points per star average.
+
+==================================================
+DATA / CONFIG REQUIREMENTS
+==================================================
+
+Create mission config list in code first.
+If DB tables already exist, map later.
+Keep fallback static config so the game works immediately.
+
+Config example:
+const RISATE_MISSIONS = [
+  {
+    id: 'giornalista',
+    title: 'Il Giornalista',
+    players: 2,
+    phases: ['booking','active','result'],
+    duration: 30,
+    scoring: 'success_or_journalist',
+  },
+  ...
+]
+
+For yoga:
+Allow imageUrl placeholders now, but structure must support DB uploaded images.
+If no images, use text cards temporarily.
+
+==================================================
+SOCKET / API EVENTS
+==================================================
+
+Use shared events:
+home:risate_booking
+home:risate_public_choice
+home:risate_public_vote
+home:risate_validation
+home:risate_result
+home:risate_next_mission
+
+Or REST endpoints if current Home architecture prefers routes.
+
+Required server ownership:
+- booking
+- selected mission
+- public choices
+- votes
+- validation counts
+- scoring
+- progression
+
+Do not rely only on client state.
+
+==================================================
+PHONE UI
+==================================================
+
+Booked player phone:
+- mission title
+- role
+- personal instruction
+- timer
+- "attesa voto pubblico" after performance
+
+Public phone:
+- if public choice phase: vote/select prompt/image/song/object
+- if validation phase: validation buttons
+- if voting phase: 1–5 stars
+- if no action: "Guarda la TV"
+
+==================================================
+TV UI
+==================================================
+
+Must always show:
+- mission number / 10
+- mission title
+- players
+- selected prompt/item/song/pose
+- timer
+- public interaction state
+- result
+
+No tiny text.
+No hidden instructions.
+Everything readable from far away.
+
+==================================================
+SCORING RULES
+==================================================
+
+Default:
+- mission completed = +200 to performing player/team
+- public star vote = average stars * 20
+- fail reward = +50 to validating/public-causing player when mission supports it
+- journalist mission special:
+  player survives = +200 player
+  player fails = +100 journalist
+  journalist fails = -100 journalist
+
+Clamp scores to 0 unless negative scores are explicitly supported.
+
+==================================================
+OUTPUT
+==================================================
+
+Before patch:
+A. current Percorso a Risate architecture
+B. what can be reused
+C. what must be added
+
+After patch:
+D. files modified
+E. mission engine config
+F. TV behavior
+G. phone behavior
+H. socket/API events
+I. scoring behavior
+J. typecheck result
+K. manual test checklist with 4 phones
