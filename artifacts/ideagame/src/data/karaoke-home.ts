@@ -12,12 +12,64 @@ export const DURATION_OPTIONS = [15, 30, 45, 60, 90, 120] as const;
 export interface KaraokePlayer {
   id: string; nickname: string; avatarColor: string; score: number;
 }
+export interface KaraokeAward {
+  id: string;
+  emoji: string;
+  title: string;
+  playerId: string;
+  nickname: string;
+  valueLabel: string;
+}
+
+export function computeAwards(results: KaraokePerformanceResult[]): KaraokeAward[] {
+  if (results.length === 0) return [];
+  const awards: KaraokeAward[] = [];
+
+  const best = (fn: (r: KaraokePerformanceResult) => number) =>
+    results.reduce((a, b) => fn(a) >= fn(b) ? a : b);
+
+  // 1. Best Score
+  const winner = best(r => r.score);
+  awards.push({ id: 'best_score', emoji: '🏆', title: 'Vincitore Assoluto', playerId: winner.playerId, nickname: winner.nickname, valueLabel: `${winner.score} pt` });
+
+  if (results.length >= 2) {
+    // 2. Best Voice (intonazione)
+    const voice = best(r => r.categoryAverages.intonazione);
+    awards.push({ id: 'best_voice', emoji: '🎤', title: 'Miglior Voce', playerId: voice.playerId, nickname: voice.nickname, valueLabel: `${Math.round(voice.categoryAverages.intonazione * 20)}/100` });
+
+    // 3. Best Stage Presence (presenza)
+    const stage = best(r => r.categoryAverages.presenza);
+    awards.push({ id: 'best_stage', emoji: '🔥', title: stage.nickname.endsWith('a') ? 'Regina del Palco' : 'Re del Palco', playerId: stage.playerId, nickname: stage.nickname, valueLabel: `${Math.round(stage.categoryAverages.presenza * 20)}/100` });
+
+    // 4. Most Emotional (emozione)
+    const emo = best(r => r.categoryAverages.emozione);
+    awards.push({ id: 'most_emotional', emoji: '❤️', title: 'Premio Emozione', playerId: emo.playerId, nickname: emo.nickname, valueLabel: `${Math.round(emo.categoryAverages.emozione * 20)}/100` });
+
+    // 5. Most Original (originalita)
+    const orig = best(r => r.categoryAverages.originalita);
+    awards.push({ id: 'most_original', emoji: '✨', title: 'Performance più Originale', playerId: orig.playerId, nickname: orig.nickname, valueLabel: `${Math.round(orig.categoryAverages.originalita * 20)}/100` });
+
+    // 6. Crowd Favorite (positive reactions)
+    const crowd = best(r => r.positiveReactions);
+    awards.push({ id: 'crowd_fav', emoji: '👏', title: 'Più Amato dal Pubblico', playerId: crowd.playerId, nickname: crowd.nickname, valueLabel: `${crowd.positiveReactions} ❤️🔥👏😍` });
+
+    // 7. Funniest (😂+😬+💀)
+    const funny = best(r => (r.reactionsByType['😂'] ?? 0) + (r.reactionsByType['😬'] ?? 0) + (r.reactionsByType['💀'] ?? 0));
+    const funnyCount = (funny.reactionsByType['😂'] ?? 0) + (funny.reactionsByType['😬'] ?? 0) + (funny.reactionsByType['💀'] ?? 0);
+    awards.push({ id: 'funniest', emoji: '😂', title: 'Performance più Folle', playerId: funny.playerId, nickname: funny.nickname, valueLabel: `${funnyCount} 😂😬💀` });
+  }
+
+  return awards;
+}
+
 export interface KaraokeQueueItem {
   id: string; playerId: string; nickname: string; avatarColor: string;
   videoId: string; title: string; channel: string; thumbnailUrl: string;
   durationSeconds: number; estimatedSlotDuration: number;
   estimatedStartAt: string | null;
   status: "queued" | "playing" | "voting" | "completed" | "skipped";
+  dedicationTargetPlayerId?: string | null;
+  dedicationTargetNickname?: string | null;
 }
 export interface VotingBallot {
   intonazione: number; presenza: number; emozione: number; originalita: number;

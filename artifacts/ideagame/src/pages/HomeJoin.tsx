@@ -20,7 +20,7 @@ import {
   type KaraokeHomeState, type YTSearchResult, type VotingBallot,
   ALL_REACTIONS,
   formatCountdown, remainingSessionSeconds, getPlayerQueueItem,
-  canQueueAnyMore, waitEstimateLabel,
+  canQueueAnyMore, waitEstimateLabel, computeAwards,
 } from '@/data/karaoke-home';
 import { GameFlowPhone } from '@/components/GameFlowPhone';
 import PressToTalkAnswer, { type AnswerResult } from '@/components/PressToTalkAnswer';
@@ -2934,6 +2934,11 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
   const [reactionSent, setReactionSent] = useState('');
   const [remaining, setRemaining] = useState(0);
   const [error, setError] = useState('');
+  // Dedication flow
+  const [selectedVideo, setSelectedVideo] = useState<YTSearchResult | null>(null);
+  const [dedicateeId, setDedicateeId] = useState<string | null>(null);
+  const [dedicateeNick, setDedicateeNick] = useState<string | null>(null);
+  const [dedicationStep, setDedicationStep] = useState<'confirm' | 'pick_player' | null>(null);
 
   useEffect(() => { setState(initialState); }, [initialState]);
   useEffect(() => {
@@ -2971,16 +2976,26 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
     } finally { setSearching(false); }
   }, [searchQuery, sessionId]);
 
-  const doBook = useCallback(async (video: YTSearchResult) => {
+  const doBook = useCallback(async (
+    video: YTSearchResult,
+    dedId: string | null,
+    dedNick: string | null,
+  ) => {
     setBooking(true);
     try {
       await post('/karaoke/book-song', {
         playerId, nickname, avatarColor,
         videoId: video.videoId, title: video.title, channel: video.channel,
         thumbnailUrl: video.thumbnailUrl, durationSeconds: video.durationSeconds,
+        dedicationTargetPlayerId: dedId ?? null,
+        dedicationTargetNickname: dedNick ?? null,
       });
       setSearchResults([]);
       setSearchQuery('');
+      setSelectedVideo(null);
+      setDedicationStep(null);
+      setDedicateeId(null);
+      setDedicateeNick(null);
     } finally { setBooking(false); }
   }, [post, playerId, nickname, avatarColor]);
 
@@ -3255,6 +3270,90 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
       );
     }
 
+    // Not booked yet: dedication step panel (shown after song selection)
+    if (selectedVideo && dedicationStep) {
+      const connectedPlayers = s.players.filter(p => p.id !== playerId);
+
+      if (dedicationStep === 'pick_player') {
+        return (
+          <div className="flex flex-col gap-4 px-4 py-6 h-full">
+            <button onClick={() => setDedicationStep('confirm')}
+              className="self-start text-xs text-white/40 flex items-center gap-1">
+              ← Indietro
+            </button>
+            <div className="text-display text-lg font-black text-white text-center">A chi dedichi il brano?</div>
+            <div className="text-sm text-white/40 text-center truncate">🎵 {selectedVideo.title}</div>
+            <div className="flex-1 overflow-y-auto space-y-2">
+              {connectedPlayers.map(p => (
+                <button key={p.id} onClick={() => { setDedicateeId(p.id); setDedicateeNick(p.nickname); setDedicationStep('confirm'); }}
+                  className="w-full rounded-2xl p-4 flex items-center gap-3 text-left transition-all"
+                  style={{
+                    background: dedicateeId === p.id ? `${KK_J}25` : 'rgba(255,255,255,0.05)',
+                    border: `2px solid ${dedicateeId === p.id ? KK_J : 'rgba(255,255,255,0.1)'}`,
+                  }}>
+                  <div className="h-10 w-10 rounded-full flex items-center justify-center text-base font-black text-black shrink-0"
+                    style={{ background: p.avatarColor }}>{p.nickname[0]?.toUpperCase()}</div>
+                  <span className="font-bold text-white">{p.nickname}</span>
+                  {dedicateeId === p.id && <span className="ml-auto text-xl">❤️</span>}
+                </button>
+              ))}
+              {connectedPlayers.length === 0 && (
+                <div className="text-center text-white/30 text-sm py-8">Nessun altro giocatore collegato</div>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      // confirm step
+      return (
+        <div className="flex flex-col gap-5 px-4 py-6 h-full">
+          <button onClick={() => { setSelectedVideo(null); setDedicationStep(null); setDedicateeId(null); setDedicateeNick(null); }}
+            className="self-start text-xs text-white/40 flex items-center gap-1">
+            ← Torna alla ricerca
+          </button>
+
+          {/* Song confirm card */}
+          <div className="rounded-3xl p-4 flex items-center gap-3"
+            style={{ background: `${KK_J}18`, border: `2px solid ${KK_J}55` }}>
+            <img src={selectedVideo.thumbnailUrl} alt={selectedVideo.title} className="h-14 w-20 rounded-xl object-cover shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-black text-white leading-tight line-clamp-2">{selectedVideo.title}</div>
+              <div className="text-xs text-white/40 mt-0.5">{selectedVideo.channel} • {selectedVideo.durationFormatted}</div>
+            </div>
+          </div>
+
+          {/* Dedication choice */}
+          {dedicateeNick ? (
+            <div className="rounded-2xl p-4 text-center" style={{ background: 'rgba(239,68,68,0.1)', border: '1.5px solid rgba(239,68,68,0.35)' }}>
+              <div className="text-sm text-white/60 mb-1">Dedica selezionata</div>
+              <div className="text-lg font-black text-white">❤️ {dedicateeNick}</div>
+              <button onClick={() => { setDedicateeId(null); setDedicateeNick(null); }}
+                className="mt-2 text-xs text-red-400/60 underline">Rimuovi dedica</button>
+            </div>
+          ) : (
+            <div className="rounded-2xl p-4 text-center" style={{ background: 'rgba(255,255,255,0.04)', border: '1.5px solid rgba(255,255,255,0.12)' }}>
+              <div className="text-sm text-white/40 mb-3">Vuoi dedicare questo brano a qualcuno?</div>
+              <button onClick={() => setDedicationStep('pick_player')}
+                className="w-full rounded-2xl py-3 font-black mb-2"
+                style={{ background: `${KK_J}20`, border: `1.5px solid ${KK_J}50`, color: KK_J }}>
+                ❤️ Dedica il brano
+              </button>
+            </div>
+          )}
+
+          {error && <div className="text-sm text-red-400 text-center rounded-xl p-2 bg-red-500/10">{error}</div>}
+
+          <button onClick={() => void doBook(selectedVideo, dedicateeId, dedicateeNick)}
+            disabled={booking}
+            className="mt-auto rounded-3xl py-5 text-xl font-black disabled:opacity-40"
+            style={{ background: `linear-gradient(135deg,${KK_J},#ea580c)`, boxShadow: `0 0 30px ${KK_J}55` }}>
+            {booking ? <Loader2 className="h-5 w-5 animate-spin inline" /> : '🎤 Conferma prenotazione'}
+          </button>
+        </div>
+      );
+    }
+
     // Not booked yet: dynamic CTA + search
     const canBook = canQueueAnyMore(s);
     const waitLabel = waitEstimateLabel(s);
@@ -3306,10 +3405,10 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
                 <div className="text-sm font-bold text-white leading-tight line-clamp-2">{r.title}</div>
                 <div className="text-xs text-white/40">{r.channel} • {r.durationFormatted}</div>
               </div>
-              <button onClick={() => void doBook(r)} disabled={booking}
+              <button onClick={() => { setSelectedVideo(r); setDedicateeId(null); setDedicateeNick(null); setDedicationStep('confirm'); }}
                 className="shrink-0 rounded-xl px-3 py-2 text-xs font-black"
                 style={{ background: `${KK_J}25`, border: `1px solid ${KK_J}55`, color: KK_J }}>
-                {booking ? <Loader2 className="h-3 w-3 animate-spin" /> : '➕'}
+                ➕
               </button>
             </div>
           ))}
@@ -3330,6 +3429,9 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
     const sorted = [...s.results].sort((a, b) => b.score - a.score);
     const myRank = sorted.findIndex(r => r.playerId === playerId) + 1;
     const myResult = sorted.find(r => r.playerId === playerId);
+    const myAwards = s.karaokePhase === 'finale'
+      ? computeAwards(s.results).filter(a => a.playerId === playerId)
+      : [];
     return (
       <div className="flex flex-col items-center justify-center h-full gap-5 text-center px-4">
         <div className="text-4xl">{s.karaokePhase === 'finale' ? '🏆' : '⏸️'}</div>
@@ -3341,6 +3443,21 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
           </div>
         ) : (
           <div className="text-white/40">Non hai ancora cantato questa serata</div>
+        )}
+        {myAwards.length > 0 && (
+          <div className="w-full space-y-2">
+            <div className="text-xs font-black uppercase tracking-widest text-white/30">I tuoi premi</div>
+            {myAwards.map(a => (
+              <div key={a.id} className="rounded-2xl p-3 flex items-center gap-3"
+                style={{ background: `${KK_J}15`, border: `1.5px solid ${KK_J}44` }}>
+                <div className="text-2xl shrink-0">{a.emoji}</div>
+                <div className="text-left">
+                  <div className="text-xs font-black text-white/80">{a.title}</div>
+                  <div className="text-xs text-white/40">{a.valueLabel}</div>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     );

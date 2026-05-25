@@ -21,9 +21,9 @@ import { JonnyAvatar } from '@/components/JonnyAvatar';
 import { useEventSocket, getSocket } from '@/hooks/useEventSocket';
 import { RISATE_MISSIONS, type RisateState } from '@/data/risate-missions';
 import {
-  type KaraokeHomeState, type KaraokePerformanceResult,
+  type KaraokeHomeState, type KaraokePerformanceResult, type KaraokeAward,
   POSITIVE_REACTIONS, NEGATIVE_REACTIONS, DURATION_OPTIONS,
-  formatCountdown, remainingSessionSeconds,
+  formatCountdown, remainingSessionSeconds, computeAwards,
 } from '@/data/karaoke-home';
 import { GameFlowEngine } from '@/components/GameFlowEngine';
 import { AudioManager } from '@/audio/AudioManager';
@@ -3321,6 +3321,12 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
   const [remaining, setRemaining] = useState(0);
   const [votingCountdown, setVotingCountdown] = useState(30);
   const votingTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Dedication intro
+  const [dedicationIntro, setDedicationIntro] = useState(false);
+  const lastDedicationItemId = useRef<string | null>(null);
+  // Awards carousel
+  const [awardsPhase, setAwardsPhase] = useState(false);
+  const [awardsIdx, setAwardsIdx] = useState(0);
 
   // Sync incoming state from parent or socket
   useEffect(() => { setLiveState(state); }, [state]);
@@ -3341,6 +3347,27 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
     const i = setInterval(tick, 1000);
     return () => clearInterval(i);
   }, [liveState.sessionEndAt]);
+
+  // Dedication intro: show 4s card when a new song starts with a dedication
+  useEffect(() => {
+    const item = liveState.queue.find(q => q.id === liveState.currentQueueItemId);
+    if (liveState.karaokePhase === 'playing' && item?.dedicationTargetNickname && item.id !== lastDedicationItemId.current) {
+      lastDedicationItemId.current = item.id;
+      setDedicationIntro(true);
+      const t = setTimeout(() => setDedicationIntro(false), 4000);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [liveState.currentQueueItemId, liveState.karaokePhase, liveState.queue]);
+
+  // Awards carousel: auto-advance every 2.5s
+  useEffect(() => {
+    if (!awardsPhase) return;
+    const awards = computeAwards(liveState.results);
+    if (awardsIdx >= awards.length) return;
+    const t = setTimeout(() => setAwardsIdx(i => i + 1), 2500);
+    return () => clearTimeout(t);
+  }, [awardsPhase, awardsIdx, liveState.results]);
 
   // Voting countdown (30s)
   useEffect(() => {
@@ -3514,6 +3541,25 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
 
   // ── Playing ──────────────────────────────────────────────────────────────
   if (s.karaokePhase === 'playing' && currentItem) {
+    // Dedication intro overlay
+    if (dedicationIntro && currentItem.dedicationTargetNickname) {
+      return (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+          className="flex flex-col items-center justify-center h-full gap-6 text-center"
+          style={{ background: 'radial-gradient(ellipse at center, rgba(245,182,66,0.18) 0%, transparent 70%)' }}>
+          <div className="text-7xl">🎤</div>
+          <div className="text-display text-4xl font-black text-white leading-tight">
+            {currentItem.nickname}
+          </div>
+          <div className="text-xl text-white/60">dedica questo brano a</div>
+          <div className="text-display text-5xl font-black" style={{ color: KK }}>
+            {currentItem.dedicationTargetNickname} ❤️
+          </div>
+        </motion.div>
+      );
+    }
+
     const embedUrl = `https://www.youtube-nocookie.com/embed/${currentItem.videoId}?autoplay=1&modestbranding=1&rel=0&playsinline=1`;
     return (
       <div className="flex h-full gap-5 p-4">
@@ -3524,6 +3570,9 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
             <div>
               <div className="text-display text-2xl font-black text-white">{currentItem.nickname}</div>
               <div className="text-sm text-white/50">{currentItem.title}</div>
+              {currentItem.dedicationTargetNickname && (
+                <div className="text-xs mt-0.5" style={{ color: KK }}>❤️ dedicato a {currentItem.dedicationTargetNickname}</div>
+              )}
             </div>
             <div className="ml-auto flex gap-2">
               <button onClick={() => void post('/karaoke/open-voting')}
@@ -3672,11 +3721,48 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
     );
   }
 
-  // ── Finale ───────────────────────────────────────────────────────────────
+  // ── Finale — Awards carousel then final podium ────────────────────────────
   if (s.karaokePhase === 'finale') {
+    const awards = computeAwards(s.results);
     const winner = sortedResults[0];
+
+    // Awards carousel phase
+    if (awardsPhase && awards.length > 0) {
+      if (awardsIdx < awards.length) {
+        const award = awards[awardsIdx];
+        return (
+          <motion.div key={award.id}
+            initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }}
+            className="flex flex-col items-center justify-center h-full gap-6 text-center px-8">
+            <div className="text-[5rem] leading-none">{award.emoji}</div>
+            <div>
+              <div className="text-xs font-black uppercase tracking-[0.25em] mb-3" style={{ color: `${KK}99` }}>
+                🏆 PREMIAZIONI FINALI  {awardsIdx + 1} / {awards.length}
+              </div>
+              <div className="text-display text-3xl font-black mb-1" style={{ color: KK }}>{award.title}</div>
+              <div className="text-display text-5xl font-black text-white mt-2">{award.nickname}</div>
+              <div className="text-2xl font-black mt-3 text-white/50">{award.valueLabel}</div>
+            </div>
+            {/* Progress dots */}
+            <div className="flex gap-2">
+              {awards.map((_, i) => (
+                <div key={i} className={`h-2 w-2 rounded-full transition-all ${i === awardsIdx ? 'scale-125' : 'opacity-30'}`}
+                  style={{ background: i === awardsIdx ? KK : 'white' }} />
+              ))}
+            </div>
+            <button onClick={() => setAwardsIdx(i => i + 1)}
+              className="rounded-2xl px-6 py-2 text-sm font-black text-white/50 border border-white/10">
+              Avanti →
+            </button>
+          </motion.div>
+        );
+      }
+      // All awards shown → fall through to final podium
+    }
+
+    // Final podium
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-6 text-center px-8">
+      <div className="flex flex-col items-center justify-center h-full gap-5 text-center px-8">
         <motion.div initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring' }}>
           <div className="text-8xl mb-2">🏆</div>
           <div className="text-display text-5xl font-black text-white">Karaoke Finale!</div>
@@ -3690,16 +3776,25 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
           </div>
         )}
         <KaraokeRankingMini results={s.results} />
-        {winner && (
-          <button onClick={() => {
-            const url = `https://www.youtube-nocookie.com/embed/${winner.videoId}?autoplay=1&modestbranding=1&rel=0`;
-            window.open(url, '_blank');
-          }}
-            className="rounded-2xl px-6 py-3 font-black text-white/80 border"
-            style={{ borderColor: `${KK}55`, background: `${KK}15` }}>
-            ▶ Ricanta il brano vincitore
-          </button>
-        )}
+        <div className="flex gap-3">
+          {!awardsPhase && awards.length > 0 && (
+            <button onClick={() => { setAwardsPhase(true); setAwardsIdx(0); }}
+              className="rounded-2xl px-6 py-3 font-black text-black"
+              style={{ background: `linear-gradient(135deg,${KK},${KK2})`, boxShadow: `0 0 30px ${KK}55` }}>
+              🏆 Premiazioni speciali
+            </button>
+          )}
+          {winner && (
+            <button onClick={() => {
+              const url = `https://www.youtube-nocookie.com/embed/${winner.videoId}?autoplay=1&modestbranding=1&rel=0`;
+              window.open(url, '_blank');
+            }}
+              className="rounded-2xl px-6 py-3 font-black text-white/80 border"
+              style={{ borderColor: `${KK}55`, background: `${KK}15` }}>
+              ▶ Ricanta il vincitore
+            </button>
+          )}
+        </div>
       </div>
     );
   }

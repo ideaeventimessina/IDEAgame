@@ -183,8 +183,11 @@ router.post("/home/sessions/:id/karaoke/book-song", async (req: Request, res: Re
     playerId?: string; nickname?: string; avatarColor?: string;
     videoId?: string; title?: string; channel?: string;
     thumbnailUrl?: string; durationSeconds?: number;
+    dedicationTargetPlayerId?: string | null;
+    dedicationTargetNickname?: string | null;
   };
-  const { playerId, nickname, avatarColor, videoId, title, channel, thumbnailUrl, durationSeconds } = body;
+  const { playerId, nickname, avatarColor, videoId, title, channel, thumbnailUrl, durationSeconds,
+    dedicationTargetPlayerId, dedicationTargetNickname } = body;
   if (!playerId || !nickname || !videoId || !title || !durationSeconds) {
     res.status(400).json({ error: "playerId, nickname, videoId, title, durationSeconds richiesti" }); return;
   }
@@ -198,6 +201,8 @@ router.post("/home/sessions/:id/karaoke/book-song", async (req: Request, res: Re
     playerId, nickname, avatarColor: avatarColor ?? "#F5B642",
     videoId, title, channel: channel ?? "", thumbnailUrl: thumbnailUrl ?? "",
     durationSeconds,
+    dedicationTargetPlayerId: dedicationTargetPlayerId ?? null,
+    dedicationTargetNickname: dedicationTargetNickname ?? null,
   });
   if (result.error) { res.status(400).json({ error: result.error }); return; }
   await saveState(id, result.state, cfg);
@@ -212,8 +217,11 @@ router.post("/home/sessions/:id/karaoke/change-song", async (req: Request, res: 
     playerId?: string; nickname?: string; avatarColor?: string;
     videoId?: string; title?: string; channel?: string;
     thumbnailUrl?: string; durationSeconds?: number;
+    dedicationTargetPlayerId?: string | null;
+    dedicationTargetNickname?: string | null;
   };
-  const { playerId, nickname, avatarColor, videoId, title, channel, thumbnailUrl, durationSeconds } = body;
+  const { playerId, nickname, avatarColor, videoId, title, channel, thumbnailUrl, durationSeconds,
+    dedicationTargetPlayerId, dedicationTargetNickname } = body;
   if (!playerId || !nickname || !videoId || !title || !durationSeconds) {
     res.status(400).json({ error: "playerId, nickname, videoId, title, durationSeconds richiesti" }); return;
   }
@@ -227,6 +235,8 @@ router.post("/home/sessions/:id/karaoke/change-song", async (req: Request, res: 
     playerId, nickname, avatarColor: avatarColor ?? "#F5B642",
     videoId, title, channel: channel ?? "", thumbnailUrl: thumbnailUrl ?? "",
     durationSeconds,
+    dedicationTargetPlayerId: dedicationTargetPlayerId ?? null,
+    dedicationTargetNickname: dedicationTargetNickname ?? null,
   });
   if (result.error) { res.status(400).json({ error: result.error }); return; }
   await saveState(id, result.state, cfg);

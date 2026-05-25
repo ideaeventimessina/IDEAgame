@@ -38,6 +38,8 @@ export interface KaraokeQueueItem {
   durationSeconds: number; estimatedSlotDuration: number;
   estimatedStartAt: string | null;
   status: "queued" | "playing" | "voting" | "completed" | "skipped";
+  dedicationTargetPlayerId?: string | null;
+  dedicationTargetNickname?: string | null;
 }
 export interface VotingBallot {
   intonazione: number; presenza: number; emozione: number; originalita: number;
