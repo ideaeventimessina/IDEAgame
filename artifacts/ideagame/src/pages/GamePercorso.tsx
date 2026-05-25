@@ -9,6 +9,7 @@ import {
   ArenaBg, ArenaHeader, JonnyWaitingScreen, ArenaScoreBar, WinPodium,
   SocketBadge, FlashOverlay, NeonTimerBar, NeonTitle, ARENA,
 } from '@/components/JonnyWorldTheme';
+import { RISATE_MISSIONS, type RisateState } from '@/data/risate-missions';
 
 const CHALLENGE_IMAGES: Record<string, string> = {
   sfida:    '/challenges/sfida.png',
@@ -77,6 +78,186 @@ function useTimer(timerStartedAt: string | null, timeLimit: number) {
 }
 
 const T = ARENA.percorso;
+
+/* ══════════════════════════════════════════════════════════════════════════
+   RISATE BOARD TV — Missioni Improvvise v2 (event mode projector)
+══════════════════════════════════════════════════════════════════════════ */
+
+const RISATE_PHASE_LABELS: Record<string, { label: string; color: string }> = {
+  mission_intro: { label: '📋 Presentazione',      color: '#60A5FA' },
+  booking:       { label: '🙋 Prenotazioni',        color: '#34D399' },
+  public_choice: { label: '🗳️ Scelta del Pubblico', color: '#A78BFA' },
+  active:        { label: '⚡ In Gioco!',            color: '#F5B642' },
+  voting:        { label: '⭐ Votazione',            color: '#FB923C' },
+  result:        { label: '🏆 Risultati',            color: '#34D399' },
+};
+
+function RisateBoardTV({ rs, eventId, connected, on }: {
+  rs: RisateState;
+  eventId: string;
+  connected: boolean;
+  on: <T>(event: string, cb: (d: T) => void) => () => void;
+}) {
+  const [state, setState] = useState<RisateState>(rs);
+
+  useEffect(() => { setState(rs); }, [rs]);
+
+  useEffect(() => {
+    if (!eventId) return;
+    const unsub = on<{ state: RisateState }>('path:state_update', ({ state: s }) => {
+      if ((s as unknown as { version?: number }).version === 2) setState(s);
+    });
+    return unsub;
+  }, [eventId, on]);
+
+  const mission = RISATE_MISSIONS[state.missionIndex >= 0 ? state.missionIndex : 0];
+  const sortedTeams = [...state.teams].sort((a, b) => b.score - a.score);
+  const phaseInfo = RISATE_PHASE_LABELS[state.phase] ?? { label: state.phase, color: '#60A5FA' };
+
+  if (state.status === 'ended' || (state.status === 'idle' && state.missionIndex > 9)) {
+    return (
+      <ArenaBg theme={T}>
+        <WinPodium theme={T} teams={state.teams} winnerName={sortedTeams[0]?.name ?? null} onHome={() => {}} />
+        <SocketBadge connected={connected} />
+      </ArenaBg>
+    );
+  }
+
+  return (
+    <ArenaBg theme={T}>
+      <SocketBadge connected={connected} />
+
+      {/* Flash overlay for reactions */}
+      {state.lastFlash && <FlashOverlay flash={state.lastFlash.text} color={T.accent} />}
+
+      {/* Header */}
+      <ArenaHeader theme={T}
+        right={
+          <div className="flex items-center gap-3">
+            <div className="rounded-xl px-3 py-1 text-xs font-black uppercase tracking-widest"
+              style={{ background: `${phaseInfo.color}25`, border: `1px solid ${phaseInfo.color}50`, color: phaseInfo.color }}>
+              {phaseInfo.label}
+            </div>
+            <div className="text-xs text-white/40">Missione {state.missionIndex + 1}/10</div>
+            <div className="flex gap-1">
+              {Array.from({ length: 10 }, (_, i) => (
+                <div key={i} className="rounded-full transition-all"
+                  style={{
+                    width: i === state.missionIndex ? 18 : 7, height: 7,
+                    background: i < state.missionIndex ? T.accent : i === state.missionIndex ? T.accent : 'rgba(255,255,255,0.15)',
+                  }} />
+              ))}
+            </div>
+          </div>
+        }
+      />
+
+      {/* Main content */}
+      <div className="flex flex-1 flex-col items-center justify-center gap-6 px-8 text-center overflow-hidden">
+        {mission && (
+          <motion.div key={`${state.missionIndex}-${state.phase}`}
+            initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 0.4 }}
+            className="flex flex-col items-center gap-4 max-w-2xl">
+
+            <div className="text-8xl drop-shadow-2xl">{mission.emoji}</div>
+            <NeonTitle text={mission.title} color={T.accent} className="text-5xl" />
+            <div className="text-xl text-white/60 leading-relaxed max-w-lg">{mission.subtitle}</div>
+
+            {/* public_choice options */}
+            {state.phase === 'public_choice' && state.publicChoiceOptions.length > 0 && (
+              <div className="flex flex-wrap justify-center gap-3 mt-2">
+                {state.publicChoiceOptions.map(opt => (
+                  <div key={opt} className="rounded-2xl px-6 py-3 text-lg font-black"
+                    style={state.publicChoice === opt
+                      ? { background: `linear-gradient(135deg,${T.accent},#059669)`, color: '#000', boxShadow: `0 0 30px ${T.accent}66` }
+                      : { background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.7)' }}>
+                    {opt}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Active mission 1: current question */}
+            {state.phase === 'active' && mission.questions && (
+              <motion.div key={state.questionIndex} initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
+                className="rounded-3xl px-8 py-4 text-2xl font-black text-white max-w-xl"
+                style={{ background: 'rgba(245,182,66,0.12)', border: '3px solid rgba(245,182,66,0.4)' }}>
+                ❓ {mission.questions[state.questionIndex] ?? '— Fine domande —'}
+                <div className="text-sm font-normal text-white/45 mt-2">Errori: {state.errorCount}/2</div>
+              </motion.div>
+            )}
+
+            {/* Bookings display */}
+            {state.bookings.length > 0 && (
+              <div className="flex flex-wrap justify-center gap-3 mt-1">
+                {state.bookings.map(b => (
+                  <motion.div key={b.playerId} initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+                    className="rounded-2xl px-5 py-2.5 text-base font-black"
+                    style={{ background: `${T.accent}18`, border: `2px solid ${T.accent}45` }}>
+                    <span style={{ color: T.accent }}>{b.role}</span>
+                    <span className="text-white/50 mx-1.5">→</span>
+                    <span className="text-white">{b.nickname}</span>
+                  </motion.div>
+                ))}
+                {state.phase === 'booking' && Array.from({ length: Math.max(0, mission.playerCount - state.bookings.length) }, (_, i) => (
+                  <div key={`slot-${i}`} className="rounded-2xl px-5 py-2.5 text-base font-bold"
+                    style={{ background: 'rgba(255,255,255,0.04)', border: '1.5px dashed rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.3)' }}>
+                    {mission.roles[state.bookings.length + i] ?? '?'} · libero
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Voting: live stars */}
+            {state.phase === 'voting' && state.bookings.length > 0 && (
+              <div className="flex flex-wrap justify-center gap-4 mt-2">
+                {state.bookings.map(b => {
+                  const vs = state.votes[b.playerId] ?? [];
+                  const avg = vs.length > 0 ? vs.reduce((s, v) => s + v.score, 0) / vs.length : 0;
+                  return (
+                    <div key={b.playerId} className="rounded-2xl px-5 py-3 min-w-[160px]"
+                      style={{ background: 'rgba(245,182,66,0.1)', border: '1.5px solid rgba(245,182,66,0.3)' }}>
+                      <div className="text-base font-black text-white">{b.nickname}</div>
+                      <div className="text-2xl text-yellow-400 mt-1">{'⭐'.repeat(Math.round(avg)) || '—'}</div>
+                      <div className="text-xs text-white/40 mt-0.5">{avg > 0 ? avg.toFixed(1) : '0'} ({vs.length} voti)</div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Result text */}
+            {state.phase === 'result' && state.missionResult && (
+              <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+                className="rounded-3xl px-8 py-5 text-2xl font-black text-white text-center max-w-xl"
+                style={{ background: `${T.accent}15`, border: `2.5px solid ${T.accent}45` }}>
+                {state.missionResult.text}
+              </motion.div>
+            )}
+
+            {/* Public reactions stream */}
+            {state.phase === 'active' && state.publicEvents.length > 0 && (
+              <div className="flex flex-wrap justify-center gap-2 mt-1 max-w-lg">
+                {state.publicEvents.slice(-8).map((ev, i) => (
+                  <motion.div key={`${ev.ts}-${i}`} initial={{ scale: 0 }} animate={{ scale: 1 }}
+                    className="rounded-xl px-3 py-1 text-sm font-bold"
+                    style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)' }}>
+                    {ev.emoji} {ev.nickname}
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </motion.div>
+        )}
+      </div>
+
+      {/* Score bar */}
+      {state.teams.length > 0 && (
+        <ArenaScoreBar teams={state.teams} accent={T.accent} />
+      )}
+    </ArenaBg>
+  );
+}
 
 export default function GamePercorso() {
   const search = useSearch();
@@ -184,6 +365,12 @@ export default function GamePercorso() {
         label="URL: /percorso-risate?s=SESSION_ID&e=EVENT_ID" />
     </ArenaBg>
   );
+
+  // ── v2 Risate Missioni Improvvise ─────────────────────────────────────────
+  if ((state as unknown as { version?: number }).version === 2) {
+    const rs = state as unknown as RisateState;
+    return <RisateBoardTV rs={rs} eventId={eventId} connected={connected} on={on} />;
+  }
 
   if (state.status === 'ended') {
     return (

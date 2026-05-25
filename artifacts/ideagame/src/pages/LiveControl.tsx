@@ -2750,6 +2750,60 @@ export default function LiveControl() {
               </>
             )}
 
+            {/* ─── Risate v2 mode — Missioni Improvvise ─── */}
+            {(percorsoState as { version?: number } | null)?.version === 2 && (() => {
+              const rs = percorsoState as unknown as {
+                phase: string; missionIndex: number; status: string;
+                bookings: { nickname: string; role: string }[];
+                missionResult?: { text: string } | null;
+              };
+              const PHASE_ADV: Record<string, string> = {
+                mission_intro: '🙋 Apri Prenotazioni →',
+                booking:       '⚡ Inizia Missione →',
+                public_choice: '🚀 Avanza →',
+                active:        '⭐ Chiudi Fase →',
+                voting:        '🏆 Risultati →',
+                result:        rs.missionIndex < 9 ? `🎯 Missione ${rs.missionIndex + 2}/10 →` : '🏁 Fine Serata',
+              };
+              return (
+                <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 space-y-2.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-black text-primary uppercase tracking-widest">✨ Risate v2</span>
+                    <span className="text-muted-foreground">Missione {rs.missionIndex + 1}/10 · {rs.phase}</span>
+                  </div>
+                  {rs.bookings.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {rs.bookings.map((b, i) => (
+                        <span key={i} className="rounded-lg bg-primary/10 border border-primary/30 px-2 py-0.5 text-[10px] font-bold text-primary">
+                          {b.role}: {b.nickname}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {rs.missionResult && rs.phase === 'result' && (
+                    <div className="text-xs text-muted-foreground italic">{rs.missionResult.text}</div>
+                  )}
+                  {rs.status !== 'ended' && (
+                    <button
+                      disabled={percorsoBusy}
+                      onClick={async () => {
+                        setPercorsoBusy(true); setPercorsoMsg('');
+                        try {
+                          const s = await apiFetch(`/percorso/sessions/${session.id}/risate/advance`, { method: 'POST', headers: { 'Content-Type': 'application/json' } }) as { state: typeof percorsoState };
+                          if (s.state) setPercorsoState(s.state as typeof percorsoState);
+                          setPercorsoMsg('✓ Fase avanzata');
+                        } catch (e) { setPercorsoMsg((e as Error).message); }
+                        finally { setPercorsoBusy(false); }
+                      }}
+                      className="w-full flex items-center justify-center gap-2 rounded-xl bg-primary py-2.5 text-sm font-black text-primary-foreground disabled:opacity-40">
+                      {percorsoBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                      {PHASE_ADV[rs.phase] ?? '→ Avanza Fase'}
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+
             {/* Ended */}
             {percorsoState?.status === 'ended' && (
               <div className="rounded-xl border border-border bg-background/50 px-4 py-3 text-center text-sm text-muted-foreground">

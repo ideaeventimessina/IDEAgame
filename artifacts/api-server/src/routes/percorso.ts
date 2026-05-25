@@ -8,12 +8,20 @@ import {
   gameSessionsTable,
   eventsTable,
   teamsTable,
+  playersTable,
   scoresTable,
 } from "@workspace/db";
-import type { PercorsoState, PercorsoStepInState, PercorsoTeam } from "@workspace/db";
+import type { PercorsoState, PercorsoStepInState, PercorsoTeam, RisateState, RisateTeam, RisatePlayer } from "@workspace/db";
 import { type AuthedRequest, requireAuth } from "../middlewares/auth";
 import { emitToEvent } from "../socket";
 import { uploadBufferToStorage } from "../lib/objectStorage";
+import {
+  createBlankRisateState, advancePhase as advanceRisatePhase,
+  applyBooking as applyRisateBooking,
+  applyPublicChoice as applyRisateChoice,
+  applyVote as applyRisateVote,
+  applyPublicAction as applyRisateAction,
+} from "../lib/risate-engine";
 
 const router: IRouter = Router();
 
@@ -662,6 +670,155 @@ router.post("/percorso/sessions/:id/end", requireAuth, async (req: AuthedRequest
 
   emitToEvent(eventId, "path:ended", { state: updated });
   res.json(updated);
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+   RISATE STATE v2 — Missioni Improvvise (event mode)
+   State stored in laughingPathSessionsTable.state (version-discriminated union)
+══════════════════════════════════════════════════════════════════════════ */
+
+async function getRisateState(sessionId: string): Promise<RisateState | null> {
+  const raw = await getPercorsoState(sessionId);
+  if (raw && (raw as unknown as { version?: number }).version === 2) {
+    return raw as unknown as RisateState;
+  }
+  return null;
+}
+
+async function saveRisateState(sessionId: string, state: RisateState): Promise<void> {
+  await savePercorsoState(sessionId, state as unknown as PercorsoState);
+}
+
+async function applyAndSaveRisate(
+  sessionId: string,
+  eventId: string,
+  updater: (s: RisateState) => { state: RisateState; error?: string; autoAdvance?: boolean },
+  res: Response,
+): Promise<void> {
+  const state = await getRisateState(sessionId);
+  if (!state) { res.status(404).json({ error: "Stato Risate non inizializzato" }); return; }
+
+  const result = updater(state);
+  if (result.error) { res.status(400).json({ error: result.error }); return; }
+
+  await saveRisateState(sessionId, result.state);
+  emitToEvent(eventId, "path:state_update", { state: result.state });
+
+  if (result.autoAdvance) {
+    const { state: next, scores } = advanceRisatePhase(result.state);
+    await saveRisateState(sessionId, next);
+    emitToEvent(eventId, "path:state_update", { state: next });
+    for (const sc of scores) {
+      await db.insert(scoresTable).values({ eventId, teamId: sc.teamId, gameSlug: "percorso-a-risate", points: sc.pts, round: sc.round }).catch(() => {});
+    }
+    res.json({ state: next, autoAdvanced: true });
+    return;
+  }
+
+  res.json({ state: result.state });
+}
+
+/* POST /percorso/sessions/:id/risate/init */
+router.post("/percorso/sessions/:id/risate/init", requireAuth, async (req: AuthedRequest, res: Response): Promise<void> => {
+  const sessionId = String(req.params["id"]);
+  if (!isUUID(sessionId)) { res.status(400).json({ error: "sessionId non valido" }); return; }
+
+  const eventId = await guardSessionAuth(req, sessionId);
+  if (!eventId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const [dbTeams, dbPlayers] = await Promise.all([
+    db.select().from(teamsTable).where(eq(teamsTable.eventId, eventId)),
+    db.select().from(playersTable).where(eq(playersTable.eventId, eventId)),
+  ]);
+
+  if (dbTeams.length === 0) { res.status(400).json({ error: "Nessuna squadra nell'evento" }); return; }
+
+  const teams: RisateTeam[] = dbTeams.map(t => ({
+    id: t.id, name: t.name, color: t.color ?? "#F5B642", score: 0,
+  }));
+
+  const players: RisatePlayer[] = dbPlayers.map(p => {
+    const team = dbTeams.find(t => t.id === p.teamId);
+    return {
+      id: p.id, nickname: p.nickname,
+      teamId: p.teamId ?? dbTeams[0]!.id,
+      teamName: team?.name ?? "—",
+      teamColor: team?.color ?? "#F5B642",
+    };
+  });
+
+  const state = createBlankRisateState(teams, players);
+  await saveRisateState(sessionId, state);
+  emitToEvent(eventId, "path:state_update", { state });
+  res.status(201).json({ state });
+});
+
+/* POST /percorso/sessions/:id/risate/advance */
+router.post("/percorso/sessions/:id/risate/advance", requireAuth, async (req: AuthedRequest, res: Response): Promise<void> => {
+  const sessionId = String(req.params["id"]);
+  if (!isUUID(sessionId)) { res.status(400).json({ error: "sessionId non valido" }); return; }
+
+  const eventId = await guardSessionAuth(req, sessionId);
+  if (!eventId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const state = await getRisateState(sessionId);
+  if (!state) { res.status(404).json({ error: "Stato Risate non inizializzato" }); return; }
+
+  const { state: next, scores } = advanceRisatePhase(state);
+  await saveRisateState(sessionId, next);
+  emitToEvent(eventId, "path:state_update", { state: next });
+
+  for (const sc of scores) {
+    await db.insert(scoresTable).values({ eventId, teamId: sc.teamId, gameSlug: "percorso-a-risate", points: sc.pts, round: sc.round }).catch(() => {});
+  }
+
+  res.json({ state: next, scored: scores });
+});
+
+/* POST /percorso/sessions/:id/risate/book (public) */
+router.post("/percorso/sessions/:id/risate/book", async (req: Request, res: Response): Promise<void> => {
+  const sessionId = String(req.params["id"]);
+  if (!isUUID(sessionId)) { res.status(400).json({ error: "sessionId non valido" }); return; }
+  const eventId = await getSessionEventId(sessionId);
+  if (!eventId) { res.status(404).json({ error: "Sessione non trovata" }); return; }
+  const { playerId, nickname, teamId } = req.body as { playerId?: string; nickname?: string; teamId?: string };
+  if (!playerId || !nickname || !teamId) { res.status(400).json({ error: "playerId, nickname, teamId richiesti" }); return; }
+  await applyAndSaveRisate(sessionId, eventId, s => applyRisateBooking(s, playerId, nickname, teamId), res);
+});
+
+/* POST /percorso/sessions/:id/risate/choice (public) */
+router.post("/percorso/sessions/:id/risate/choice", async (req: Request, res: Response): Promise<void> => {
+  const sessionId = String(req.params["id"]);
+  if (!isUUID(sessionId)) { res.status(400).json({ error: "sessionId non valido" }); return; }
+  const eventId = await getSessionEventId(sessionId);
+  if (!eventId) { res.status(404).json({ error: "Sessione non trovata" }); return; }
+  const { choice } = req.body as { choice?: string };
+  if (!choice) { res.status(400).json({ error: "choice richiesto" }); return; }
+  await applyAndSaveRisate(sessionId, eventId, s => applyRisateChoice(s, choice), res);
+});
+
+/* POST /percorso/sessions/:id/risate/vote (public) */
+router.post("/percorso/sessions/:id/risate/vote", async (req: Request, res: Response): Promise<void> => {
+  const sessionId = String(req.params["id"]);
+  if (!isUUID(sessionId)) { res.status(400).json({ error: "sessionId non valido" }); return; }
+  const eventId = await getSessionEventId(sessionId);
+  if (!eventId) { res.status(404).json({ error: "Sessione non trovata" }); return; }
+  const { playerId, score, voterId } = req.body as { playerId?: string; score?: number; voterId?: string };
+  if (!playerId || score === undefined || !voterId) { res.status(400).json({ error: "playerId, score, voterId richiesti" }); return; }
+  await applyAndSaveRisate(sessionId, eventId, s => applyRisateVote(s, playerId, score, voterId), res);
+});
+
+/* POST /percorso/sessions/:id/risate/action (public) */
+router.post("/percorso/sessions/:id/risate/action", async (req: Request, res: Response): Promise<void> => {
+  const sessionId = String(req.params["id"]);
+  if (!isUUID(sessionId)) { res.status(400).json({ error: "sessionId non valido" }); return; }
+  const eventId = await getSessionEventId(sessionId);
+  if (!eventId) { res.status(404).json({ error: "Sessione non trovata" }); return; }
+  const { action, playerId, nickname, targetPlayerId, emoji } = req.body as {
+    action?: string; playerId?: string; nickname?: string; targetPlayerId?: string; emoji?: string;
+  };
+  if (!action || !playerId || !nickname) { res.status(400).json({ error: "action, playerId, nickname richiesti" }); return; }
+  await applyAndSaveRisate(sessionId, eventId, s => applyRisateAction(s, action, playerId, nickname, { targetPlayerId, emoji }), res);
 });
 
 export default router;

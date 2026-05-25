@@ -15,6 +15,7 @@ import {
   Laugh, Zap, ShieldAlert, MessageSquare, Mic, Timer,
 } from 'lucide-react';
 import { useEventSocket, getSocket } from '@/hooks/useEventSocket';
+import { RISATE_MISSIONS, REACTION_EMOJIS, type RisateState } from '@/data/risate-missions';
 import { GameFlowPhone } from '@/components/GameFlowPhone';
 import PressToTalkAnswer, { type AnswerResult } from '@/components/PressToTalkAnswer';
 
@@ -1151,7 +1152,7 @@ function PhoneController({
   if (mode === 'home-flow')       return <GameFlowPhone session={session} player={player} emit={emit}/>;
   if (mode === 'home-quiz')       return <QuizController payload={p} revealed={revealed} answered={answered} onAnswer={onAnswer}/>;
   if (mode === 'home-coppie')     return <CoppieController payload={p} onFlip={onFlip} player={player} previewUntil={coppiePreviewUntil ?? null}/>;
-  if (mode === 'home-percorso')   return <PercorsoHomeController payload={p} timeLeft={timeLeft}/>;
+  if (mode === 'home-percorso')   return <PercorsoHomeController sessionId={session.id} player={player} payload={p} timeLeft={timeLeft}/>;
   if (mode === 'home-saramusica') return <SaraMusicaController payload={p} player={player} session={session}/>;
   if (mode === 'home-adult')      return <AdultController payload={p} timeLeft={timeLeft} onScore={onScore}/>;
   if (mode === 'home-ballo')      return <BalloController payload={p} timeLeft={timeLeft} sessionId={session.id} emit={emit} playerId={player.id} round={session.currentRound} adminSensitivity={adminSensitivity ?? 1.0}/>;
@@ -1286,127 +1287,309 @@ function CoppieController({ payload, onFlip, player, previewUntil }: {
   );
 }
 
-// ── PercorsoHomeController — sfida dinamica per home-percorso ─────────────────
+// ── PercorsoHomeController — Risate Missioni Improvvise 2.0 (player phone) ────
 
-const HOME_PERCORSO_EMOJIS: Record<string, string> = {
-  sfida: '⚡', domanda: '❓', mimo: '🎭', ballo: '💃',
-  veloce: '🏃', coppia: '👫', reazione: '😱', fantasia: '🌟',
-};
-
-function PercorsoHomeBallo({ timeLeft }: { timeLeft: number | null }) {
-  const [energy, setEnergy] = useState(0);
-  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
-  const handlerRef = useRef<((e: DeviceMotionEvent) => void) | null>(null);
-
-  // Blur any focused input to prevent iOS "Shake to Undo" popup
-  useEffect(() => {
-    const el = document.activeElement;
-    if (el instanceof HTMLElement) el.blur();
-    window.getSelection()?.removeAllRanges();
-  }, []);
-
-  const startSensor = useCallback(() => {
-    const h = (e: DeviceMotionEvent) => {
-      const a = e.accelerationIncludingGravity;
-      if (!a) return;
-      const mag = Math.sqrt((a.x ?? 0) ** 2 + (a.y ?? 0) ** 2 + (a.z ?? 0) ** 2);
-      setEnergy(prev => Math.min(100, Math.max(0, prev * 0.7 + Math.min(100, (mag / 25) * 100) * 0.3)));
-    };
-    handlerRef.current = h;
-    window.addEventListener('devicemotion', h);
-    setHasPermission(true);
-  }, []);
-
-  useEffect(() => {
-    const DM = DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> };
-    if (typeof DM.requestPermission !== 'function') { startSensor(); }
-    else { setHasPermission(false); }
-    return () => { if (handlerRef.current) window.removeEventListener('devicemotion', handlerRef.current); };
-  }, [startSensor]);
-
-  useEffect(() => {
-    const id = setInterval(() => setEnergy(prev => Math.max(0, prev - 2)), 80);
-    return () => clearInterval(id);
-  }, []);
-
-  const color = energy > 70 ? '#22c55e' : energy > 35 ? '#eab308' : '#34D399';
-
-  return (
-    <div className="flex flex-col items-center gap-4 py-2 text-center w-full">
-      <div className="text-5xl">💃</div>
-      <div className="text-xl font-black text-white">BALLA!</div>
-      {timeLeft !== null && (
-        <div className="flex items-center gap-2 rounded-xl px-5 py-2"
-          style={{background:'rgba(52,211,153,0.18)',border:'1px solid rgba(52,211,153,0.45)',color:'#34D399'}}>
-          <Timer className="h-4 w-4"/>
-          <span className="text-2xl font-black tabular-nums">{timeLeft}s</span>
-        </div>
-      )}
-      {hasPermission === false ? (
-        <button onClick={async () => {
-          const DM = DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> };
-          if (typeof DM.requestPermission === 'function') {
-            const r = await DM.requestPermission();
-            if (r === 'granted') startSensor();
-          }
-        }} className="w-full rounded-2xl py-3 text-sm font-black text-white"
-           style={{background:'linear-gradient(135deg,#34D399,#059669)'}}>
-          🎯 Attiva sensore di movimento
-        </button>
-      ) : (
-        <div className="w-full space-y-1">
-          <div className="flex justify-between text-xs font-bold text-white/60">
-            <span>Energia</span>
-            <span className="tabular-nums" style={{color}}>{energy}%</span>
-          </div>
-          <div className="relative h-10 overflow-hidden rounded-2xl bg-white/10">
-            <motion.div className="absolute inset-y-0 left-0 rounded-2xl"
-              animate={{width:`${energy}%`}} transition={{duration:0.08}}
-              style={{background:`linear-gradient(90deg,${color}88,${color})`,boxShadow:`0 0 20px ${color}66`}}/>
-            <div className="absolute inset-0 flex items-center justify-center text-sm font-black text-white">
-              {energy > 75 ? '🔥 Che energia!' : energy > 40 ? '💪 Continua!' : '🎭 Muoviti!'}
-            </div>
-          </div>
-        </div>
-      )}
-      <div className="text-xs text-white/35">L'animatore assegna i punti dalla TV</div>
-    </div>
-  );
-}
-
-function PercorsoHomeController({ payload, timeLeft }: {
+function PercorsoHomeController({ sessionId, player, payload, timeLeft }: {
+  sessionId: string;
+  player: HomePlayer;
   payload: Record<string, unknown>;
   timeLeft: number | null;
 }) {
-  const ct = String(payload.challengeType ?? 'sfida');
-  const emoji = HOME_PERCORSO_EMOJIS[ct] ?? '🎯';
-  const goLabel: Record<string, string> = {
-    mimo: '🎭 Recita!', sfida: '⚡ Forza!', veloce: '🏃 Corri!',
-    coppia: '👫 Insieme!', reazione: '😱 Reagisci!', fantasia: '🌟 Improvvisa!', domanda: '❓ Rispondi!',
+  const BASE = (import.meta.env.BASE_URL as string) ?? '/';
+  const { on } = useEventSocket(null);
+  const [rs, setRs] = useState<RisateState | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  useEffect(() => {
+    fetch(`${BASE}api/home/sessions/${sessionId}/risate/state`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d && !d.error) setRs(d as RisateState); })
+      .catch(() => {});
+  }, [sessionId, BASE]);
+
+  useEffect(() => {
+    return on<{ state: RisateState }>('home:percorso_update', ({ state }) => setRs(state));
+  }, [on]);
+
+  const post = async (path: string, body?: Record<string, unknown>) => {
+    setBusy(true); setMsg('');
+    try {
+      const r = await fetch(`${BASE}api/home/sessions/${sessionId}/risate/${path}`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const d = await r.json() as { state?: RisateState; error?: string };
+      if (d.state) setRs(d.state); else if (d.error) setMsg(d.error);
+    } catch (e) { setMsg((e as Error).message); }
+    finally { setBusy(false); }
   };
 
-  if (ct === 'ballo') return <PercorsoHomeBallo timeLeft={timeLeft} />;
+  // Not initialized yet
+  if (!rs) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-6 text-center">
+        <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 2, ease: 'linear' }}
+          className="text-4xl">⏳</motion.div>
+        <div className="text-sm text-white/50">In attesa dell'animatore…</div>
+      </div>
+    );
+  }
+
+  const myBooking = rs.bookings.find(b => b.playerId === player.id);
+  const mission = RISATE_MISSIONS[rs.missionIndex ?? 0];
+  const isBooked = !!myBooking;
+
+  if (rs.status === 'ended') {
+    const me = rs.teams.find(t => t.id === player.id);
+    return (
+      <div className="flex flex-col items-center gap-4 py-6 text-center">
+        <div className="text-5xl">🏆</div>
+        <div className="text-xl font-black text-white">Missioni completate!</div>
+        <div className="text-display text-4xl font-black" style={{ color: '#F5B642' }}>
+          {me?.score ?? 0}pt
+        </div>
+      </div>
+    );
+  }
+
+  // ── mission_intro ────────────────────────────────────────────────────────
+  if (rs.phase === 'mission_intro') {
+    return (
+      <div className="flex flex-col items-center gap-4 py-4 text-center">
+        <div className="text-6xl">{mission?.emoji ?? '🎭'}</div>
+        <div className="text-xl font-black text-white">{mission?.title ?? 'Prossima Missione'}</div>
+        <div className="text-sm text-white/55 leading-relaxed px-3">{mission?.subtitle}</div>
+        <div className="rounded-xl px-4 py-2 text-xs font-bold"
+          style={{ background: 'rgba(52,211,153,0.10)', border: '1px solid rgba(52,211,153,0.3)', color: '#34D399' }}>
+          {mission?.playerCount ?? '?'} giocator{(mission?.playerCount ?? 0) === 1 ? 'e' : 'i'} •  {mission?.roles.join(' & ')}
+        </div>
+        <div className="text-xs text-white/30">Missione {rs.missionIndex + 1}/10 — l'animatore presenta…</div>
+      </div>
+    );
+  }
+
+  // ── booking ────────────────────────────────────────────────────────────────
+  if (rs.phase === 'booking') {
+    const slotsUsed = rs.bookings.length;
+    const slotsTotal = mission?.playerCount ?? 0;
+    return (
+      <div className="flex flex-col items-center gap-4 py-4 text-center">
+        <div className="text-5xl">{mission?.emoji ?? '🎭'}</div>
+        <div className="text-lg font-black text-white">{mission?.title}</div>
+        <div className="text-sm text-white/50">{slotsUsed}/{slotsTotal} prenotati</div>
+        <div className="flex flex-wrap justify-center gap-2">
+          {rs.bookings.map(b => (
+            <div key={b.playerId} className="rounded-xl px-4 py-1.5 text-xs font-bold"
+              style={{ background: 'rgba(52,211,153,0.12)', border: '1px solid rgba(52,211,153,0.35)', color: '#34D399' }}>
+              {b.role}: {b.nickname}
+            </div>
+          ))}
+        </div>
+        {!isBooked && slotsUsed < slotsTotal ? (
+          <motion.button onClick={() => void post('book', { playerId: player.id, nickname: player.nickname, teamId: player.id })}
+            disabled={busy} whileTap={{ scale: 0.93 }}
+            className="rounded-2xl px-8 py-4 text-xl font-black text-black w-full"
+            style={{ background: 'linear-gradient(135deg,#34D399,#059669)', boxShadow: '0 0 40px rgba(52,211,153,0.5)' }}>
+            {busy ? '⏳…' : '🙋 PRENOTA!'}
+          </motion.button>
+        ) : isBooked ? (
+          <div className="rounded-xl px-5 py-3 text-base font-black w-full text-center"
+            style={{ background: 'rgba(52,211,153,0.18)', border: '2px solid rgba(52,211,153,0.55)', color: '#34D399' }}>
+            ✅ Sei: {myBooking.role}
+          </div>
+        ) : (
+          <div className="text-sm text-white/40 py-2">Posti esauriti — osserva!</div>
+        )}
+        {msg && <div className="text-xs text-red-400">{msg}</div>}
+      </div>
+    );
+  }
+
+  // ── public_choice ─────────────────────────────────────────────────────────
+  if (rs.phase === 'public_choice') {
+    return (
+      <div className="flex flex-col items-center gap-3 py-4 text-center">
+        <div className="text-4xl">{mission?.emoji ?? '🗳️'}</div>
+        <div className="text-base font-black text-white">{mission?.choiceLabel ?? 'Scegli!'}</div>
+        <div className="flex flex-col gap-2.5 w-full">
+          {rs.publicChoiceOptions.map(opt => (
+            <motion.button key={opt} whileTap={{ scale: 0.95 }}
+              onClick={() => void post('choice', { choice: opt })} disabled={busy}
+              className="w-full rounded-2xl px-5 py-3.5 text-base font-black"
+              style={rs.publicChoice === opt
+                ? { background: 'linear-gradient(135deg,#34D399,#059669)', color: '#000', boxShadow: '0 0 20px rgba(52,211,153,0.5)' }
+                : { background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.14)', color: 'rgba(255,255,255,0.85)' }}>
+              {opt}
+            </motion.button>
+          ))}
+        </div>
+        {rs.publicChoice && <div className="text-xs text-white/45">Tuo voto: {rs.publicChoice}</div>}
+        {msg && <div className="text-xs text-red-400">{msg}</div>}
+      </div>
+    );
+  }
+
+  // ── active ─────────────────────────────────────────────────────────────────
+  if (rs.phase === 'active') {
+    const ap = mission?.activePublicAction ?? 'none';
+    return (
+      <div className="flex flex-col items-center gap-4 py-4 text-center">
+        <div className="text-5xl">{mission?.emoji}</div>
+        {rs.publicChoice && (
+          <div className="rounded-xl px-5 py-2 text-sm font-bold text-white"
+            style={{ background: 'rgba(52,211,153,0.12)', border: '1px solid rgba(52,211,153,0.35)' }}>
+            {rs.publicChoice}
+          </div>
+        )}
+        {mission?.questions && (
+          <div className="rounded-xl px-5 py-3 text-sm font-black text-white max-w-xs"
+            style={{ background: 'rgba(245,182,66,0.12)', border: '2px solid rgba(245,182,66,0.35)' }}>
+            ❓ {mission.questions[rs.questionIndex] ?? '—'}
+          </div>
+        )}
+        {isBooked && (
+          <div className="rounded-xl px-4 py-2 text-xs font-bold"
+            style={{ background: 'rgba(52,211,153,0.12)', border: '1px solid rgba(52,211,153,0.35)', color: '#34D399' }}>
+            Il tuo ruolo: {myBooking.role}
+          </div>
+        )}
+
+        {ap === 'validate' && !isBooked && (
+          <motion.button onClick={() => void post('action', { action: 'validate', playerId: player.id, nickname: player.nickname })}
+            disabled={busy} whileTap={{ scale: 0.92 }}
+            className="rounded-2xl px-8 py-5 text-2xl font-black text-white w-full"
+            style={{ background: 'linear-gradient(135deg,#ef4444,#b91c1c)', boxShadow: '0 0 50px rgba(239,68,68,0.45)' }}>
+            🚨 {mission?.activePublicLabel ?? 'HA DETTO SÌ!'}
+          </motion.button>
+        )}
+
+        {ap === 'react' && (
+          <div className="grid grid-cols-3 gap-2 w-full">
+            {REACTION_EMOJIS.map(em => (
+              <motion.button key={em} whileTap={{ scale: 0.88 }}
+                onClick={() => void post('action', { action: 'react', playerId: player.id, nickname: player.nickname, emoji: em })}
+                disabled={busy}
+                className="flex items-center justify-center rounded-2xl py-5 text-3xl"
+                style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.14)' }}>
+                {em}
+              </motion.button>
+            ))}
+          </div>
+        )}
+
+        {ap === 'ripetilo' && !isBooked && (
+          <motion.button onClick={() => void post('action', { action: 'ripetilo', playerId: player.id, nickname: player.nickname })}
+            disabled={busy} whileTap={{ scale: 0.92 }}
+            className="rounded-2xl px-8 py-5 text-2xl font-black text-white w-full"
+            style={{ background: 'linear-gradient(135deg,#a78bfa,#7c3aed)', boxShadow: '0 0 40px rgba(167,139,250,0.4)' }}>
+            🔁 RIPETILO!
+          </motion.button>
+        )}
+
+        {ap === 'cambio_stile' && !isBooked && (
+          <motion.button onClick={() => void post('action', { action: 'cambio_stile', playerId: player.id, nickname: player.nickname })}
+            disabled={busy} whileTap={{ scale: 0.92 }}
+            className="rounded-2xl px-8 py-5 text-2xl font-black text-white w-full"
+            style={{ background: 'linear-gradient(135deg,#f472b6,#be185d)', boxShadow: '0 0 40px rgba(244,114,182,0.4)' }}>
+            🔀 CAMBIO STILE!
+          </motion.button>
+        )}
+
+        {ap === 'found' && (
+          <div className="flex flex-col gap-2 w-full">
+            <div className="text-xs text-white/50 mb-1">Chi ha trovato per primo?</div>
+            {rs.bookings.map(b => (
+              <motion.button key={b.playerId} whileTap={{ scale: 0.95 }}
+                onClick={() => void post('action', { action: 'found', playerId: player.id, nickname: player.nickname, targetPlayerId: b.playerId })}
+                disabled={busy}
+                className="w-full rounded-2xl px-5 py-3.5 text-base font-black text-white"
+                style={{ background: 'rgba(52,211,153,0.12)', border: '1px solid rgba(52,211,153,0.35)' }}>
+                {b.nickname} ✅
+              </motion.button>
+            ))}
+          </div>
+        )}
+
+        {mission?.id === 'giornalista' && myBooking?.role === 'Giornalista' && (
+          <motion.button onClick={() => void post('action', { action: 'next_question', playerId: player.id, nickname: player.nickname })}
+            disabled={busy} whileTap={{ scale: 0.95 }}
+            className="rounded-2xl px-8 py-3 text-base font-black w-full"
+            style={{ background: 'rgba(245,182,66,0.18)', border: '2px solid rgba(245,182,66,0.55)', color: '#F5B642' }}>
+            ❓ Prossima Domanda
+          </motion.button>
+        )}
+
+        {msg && <div className="text-xs text-red-400">{msg}</div>}
+        <div className="text-xs text-white/25">Missione {rs.missionIndex + 1}/10</div>
+      </div>
+    );
+  }
+
+  // ── voting ─────────────────────────────────────────────────────────────────
+  if (rs.phase === 'voting') {
+    return (
+      <div className="flex flex-col items-center gap-4 py-4 text-center">
+        <div className="text-5xl">⭐</div>
+        <div className="text-xl font-black text-white">Dai il tuo voto!</div>
+        {isBooked ? (
+          <div className="text-sm text-white/45 px-4">Sei in gara — il pubblico ti valuta!</div>
+        ) : (
+          <div className="flex flex-col gap-3 w-full">
+            {rs.bookings.map(b => {
+              const myVote = (rs.votes[b.playerId] ?? []).find(v => v.voterId === player.id);
+              return (
+                <div key={b.playerId} className="rounded-2xl p-3.5 space-y-2.5"
+                  style={{ background: 'rgba(245,182,66,0.08)', border: '1px solid rgba(245,182,66,0.25)' }}>
+                  <div className="text-base font-black text-white">{b.nickname}</div>
+                  <div className="flex justify-center gap-2">
+                    {[1, 2, 3, 4, 5].map(s => (
+                      <motion.button key={s} whileTap={{ scale: 0.88 }}
+                        onClick={() => void post('vote', { playerId: b.playerId, score: s, voterId: player.id })}
+                        disabled={busy}
+                        className="h-12 w-12 rounded-xl text-2xl font-black"
+                        style={(myVote?.score ?? 0) >= s
+                          ? { background: 'rgba(245,182,66,0.3)', border: '2px solid rgba(245,182,66,0.7)', color: '#F5B642' }
+                          : { background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.14)', color: 'rgba(255,255,255,0.35)' }}>
+                        ⭐
+                      </motion.button>
+                    ))}
+                  </div>
+                  {myVote && <div className="text-xs text-white/40">{myVote.score}/5 stelle</div>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {msg && <div className="text-xs text-red-400">{msg}</div>}
+      </div>
+    );
+  }
+
+  // ── result ─────────────────────────────────────────────────────────────────
+  if (rs.phase === 'result') {
+    const me = rs.teams.find(t => t.id === player.id);
+    return (
+      <div className="flex flex-col items-center gap-4 py-4 text-center">
+        <div className="text-5xl">{mission?.emoji}</div>
+        {rs.missionResult && (
+          <div className="rounded-2xl px-5 py-3 text-sm font-bold text-white max-w-xs leading-relaxed"
+            style={{ background: 'rgba(52,211,153,0.12)', border: '2px solid rgba(52,211,153,0.35)' }}>
+            {rs.missionResult.text}
+          </div>
+        )}
+        <div className="text-xs text-white/45">Il tuo punteggio</div>
+        <div className="text-display text-4xl font-black" style={{ color: '#F5B642' }}>{me?.score ?? 0}pt</div>
+        <div className="text-xs text-white/30">Aspetta la prossima missione…</div>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col items-center gap-4 py-2 text-center">
-      <div className="text-5xl">{emoji}</div>
-      <div className="text-xl font-black text-white">{String(payload.title ?? 'Sfida!')}</div>
-      {!!payload.description && (
-        <div className="text-sm text-white/55 leading-relaxed px-2">{String(payload.description)}</div>
-      )}
-      {timeLeft !== null && (
-        <div className="flex items-center gap-2 rounded-xl px-5 py-2"
-          style={{background:'rgba(52,211,153,0.18)',border:'1px solid rgba(52,211,153,0.45)',color:'#34D399'}}>
-          <Timer className="h-4 w-4"/>
-          <span className="text-2xl font-black tabular-nums">{timeLeft}s</span>
-        </div>
-      )}
-      <motion.div animate={{scale:[1,1.06,1]}} transition={{repeat:Infinity,duration:1.5}}
-        className="rounded-xl px-6 py-2 text-xl font-black text-white"
-        style={{background:'rgba(52,211,153,0.2)',border:'1px solid rgba(52,211,153,0.45)'}}>
-        {goLabel[ct] ?? '💪 Forza!'}
-      </motion.div>
-      <div className="text-xs text-white/35">L'animatore assegna i punti dalla TV</div>
+    <div className="flex flex-col items-center gap-3 py-6 text-center">
+      <div className="text-4xl">🎭</div>
+      <div className="text-sm text-white/45">Fase: {rs.phase}</div>
     </div>
   );
 }

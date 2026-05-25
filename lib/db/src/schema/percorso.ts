@@ -88,6 +88,79 @@ export const laughingPathSessionsTable = pgTable("laughing_path_sessions", {
     .$onUpdate(() => new Date()),
 });
 
+/* ─── RisateState — Missioni Improvvise v2 (JSONB in laughing_path_sessions) ─ */
+
+export type RisatePhase =
+  | 'mission_intro'
+  | 'booking'
+  | 'public_choice'
+  | 'active'
+  | 'voting'
+  | 'result';
+
+export interface RisateTeam {
+  id: string;
+  name: string;
+  color: string;
+  score: number;
+}
+
+export interface RisatePlayer {
+  id: string;
+  nickname: string;
+  teamId: string;
+  teamName: string;
+  teamColor: string;
+}
+
+export interface RisateBooking {
+  playerId: string;
+  nickname: string;
+  role: string;
+  teamId: string;
+}
+
+export interface RisateMissionResult {
+  text: string;
+  scores: { playerId: string; nickname: string; teamId: string; pts: number }[];
+}
+
+export interface RisateState {
+  version: 2;
+  status: 'idle' | 'running' | 'ended';
+  missionIndex: number;        // -1 = not started, 0-9 = current mission
+  phase: RisatePhase;
+  teams: RisateTeam[];
+  players: RisatePlayer[];     // all connected players
+  bookings: RisateBooking[];   // up to playerCount for current mission
+  publicChoiceOptions: string[];
+  publicChoice: string | null;
+  votingOpen: boolean;
+  votes: Record<string, { voterId: string; score: number }[]>;
+  missionStartedAt: string | null;
+  lastFlash: { text: string; type: string } | null;
+  missionResult: RisateMissionResult | null;
+  // mission 1 — journalist
+  questionIndex: number;
+  errorCount: number;
+  validations: { playerId: string; nickname: string; ts: number }[];
+  // mission 2 — yoga
+  currentPoseId: string | null;
+  poseChangesUsed: number;
+  // mission 5 — scioglilingua
+  repeatVoteCount: number;
+  repeatTriggered: boolean;
+  // mission 8 — trova l'oggetto
+  foundConfirmations: Record<string, { count: number; firstTs: number; nickname: string }>;
+  // mission 9/10 — head2head / cambio stile
+  cambioStileVoteCount: number;
+  cambioStileTriggered: boolean;
+  // public event log — reactions stream on TV
+  publicEvents: { emoji: string; nickname: string; ts: number }[];
+  // mission 4 — love target
+  loveTarget: string | null;
+}
+
 /* ─── Zod insert schemas ─────────────────────────────────────────────── */
 export const insertLaughingPathSetSchema = createInsertSchema(laughingPathSetsTable).omit({ id: true, createdAt: true });
 export type InsertLaughingPathSet = z.infer<typeof insertLaughingPathSetSchema>;

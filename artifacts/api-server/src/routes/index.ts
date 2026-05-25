@@ -40,6 +40,7 @@ import jonnyPosesRouter from "./jonny-poses";
 import panicRouter from "./panic";
 import networkRouter from "./network";
 import homeRouter from "./home";
+import homeRisateRouter from "./home-risate";
 import storageRouter from "./storage";
 import setupRouter from "./setup";
 
@@ -90,6 +91,7 @@ router.use(jonnyRouter);
 router.use(jonnyPosesRouter);
 router.use(panicRouter);
 router.use(homeRouter);
+router.use(homeRisateRouter);
 router.use(storageRouter);
 router.use(setupRouter);
 

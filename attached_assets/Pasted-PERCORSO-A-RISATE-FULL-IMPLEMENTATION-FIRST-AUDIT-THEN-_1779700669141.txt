@@ -1,0 +1,602 @@
+PERCORSO A RISATE — FULL IMPLEMENTATION
+FIRST AUDIT → THEN PATCH
+
+IMPORTANT:
+Do NOT touch:
+- Ballo
+- WordBack
+- Quizzone
+- Coppie
+- Karaoke
+- Adult Only
+- Sara Musica
+
+Work ONLY on:
+PERCORSO A RISATE
+
+--------------------------------------------------
+GOAL
+--------------------------------------------------
+
+Transform "Percorso a Risate" into a complete phone-driven party game made of 10 IMPROVISED MISSIONS.
+
+Core idea:
+- TV = battlefield
+- phones = booking + voting + validation + audience interaction
+- no extra hardware
+- no AI required
+- no complex setup
+- must be playable instantly
+- every mission must be understandable within 3 seconds
+
+--------------------------------------------------
+GENERAL GAME FLOW
+--------------------------------------------------
+
+Each mission follows this structure:
+
+1. TV INTRO
+- mission title
+- short explanation
+- mission number X / 10
+
+2. BOOKING
+- 2 players book for the challenge
+
+3. PUBLIC CHOICE (if mission requires it)
+public chooses:
+- object
+- pose
+- music
+- phrase
+- language
+etc.
+
+4. ACTIVE MISSION
+players perform
+
+5. PUBLIC VOTE / VALIDATION
+phones:
+- stars
+- button validation
+- prompt selection
+
+6. RESULT
+TV:
+- winner
+- points assigned
+
+7. NEXT MISSION
+new booking
+
+--------------------------------------------------
+MISSION ENGINE
+--------------------------------------------------
+
+Do NOT create 10 separate disconnected games.
+
+Create reusable mission config system:
+
+const RISATE_MISSIONS = [
+  {...},
+  {...}
+]
+
+Each mission config:
+
+{
+  id,
+  title,
+  playerCount,
+  duration,
+  publicActionType,
+  scoringType,
+  payload
+}
+
+Reusable phases:
+
+- mission_intro
+- booking
+- public_choice
+- active
+- voting
+- result
+
+Server must own:
+- current mission
+- booking players
+- choices
+- votes
+- validation
+- scoring
+- progression
+
+No client-only progression.
+
+--------------------------------------------------
+MISSION 1 — IL GIORNALISTA / NON DIRE SI
+--------------------------------------------------
+
+Players:
+2
+
+Roles:
+- Player A = concorrente
+- Player B = giornalista
+
+TV:
+MISSIONE:
+NON DIRE "SI"
+
+Rule:
+Answer 10 fast questions without saying "SI"
+
+Time:
+30 sec
+
+2 mistakes = failed
+
+Journalist phone:
+Shows 10 quick questions
+Button:
+PROSSIMA DOMANDA
+
+Examples:
+- Ti stai divertendo?
+- Hai fame?
+- Vuoi vincere?
+- Ti piace questa festa?
+- Hai Instagram?
+
+Public phone:
+Button:
+"HA DETTO SI"
+
+Validation:
+If enough public players confirm:
+error +1
+
+Scoring:
+player survives:
++200
+
+player fails:
+journalist +100
+
+journalist fails:
+-100
+
+--------------------------------------------------
+MISSION 2 — YOGA IMPOSSIBILE
+--------------------------------------------------
+
+Players:
+2
+
+Public phone:
+choose yoga pose
+
+Need:
+30 yoga poses in DB
+
+Structure:
+{
+ id,
+ name,
+ imageUrl
+}
+
+TV:
+show pose huge
+
+Countdown:
+5 sec to enter pose
+
+Then:
+30 sec hold pose
+
+Public:
+can request max 5 pose changes
+
+At end:
+vote 1–5 stars
+
+Scoring:
+20 pts per star
+
+--------------------------------------------------
+MISSION 3 — RACCONTA UNA BARZELLETTA
+--------------------------------------------------
+
+Players:
+1 or 2
+
+TV:
+MISSIONE:
+RACCONTA UNA BARZELLETTA
+
+Timer:
+45 sec
+
+Public:
+react during performance:
+😂
+👏
+😐
+💀
+
+At end:
+vote 1–5 stars
+
+20 pts per star
+
+--------------------------------------------------
+MISSION 4 — DICHIARAZIONE D’AMORE
+--------------------------------------------------
+
+Players:
+1 performer
+
+Target:
+random connected player
+
+TV:
+"Dichiara il tuo amore a: [nickname]"
+
+Time:
+40 sec
+
+Public reactions:
+❤️
+😂
+🔥
+💀
+
+Final:
+1–5 stars
+
+20 pts per star
+
+--------------------------------------------------
+MISSION 5 — SCIOGLILINGUA
+--------------------------------------------------
+
+Players:
+1 or 2
+
+Before mission:
+public chooses 1 tongue-twister among 3
+
+TV:
+shows giant text
+
+Time:
+25 sec
+
+Public votes:
+1–5 stars
+
+Button:
+RIPETILO
+
+If majority presses:
+repeat faster
+
+--------------------------------------------------
+MISSION 6 — VENDITORE AMBULANTE
+--------------------------------------------------
+
+Players:
+1 or 2
+
+Public chooses object:
+
+- limoni
+- angurie
+- patate
+- melanzane
+- cipolle
+- lattuga
+- zucchine
+- pomodori
+- banane
+- arance
+
+TV:
+"VENDI QUESTO:
+[object]"
+
+Player must imitate a street market seller
+
+Time:
+40 sec
+
+Public votes:
+1–5 stars
+
+--------------------------------------------------
+MISSION 7 — POLIGLOTTA IMPROVVISATO
+--------------------------------------------------
+
+Players:
+1 or 2
+
+Public chooses language:
+
+- English
+- French
+- German
+- Spanish
+- Japanese
+- Russian
+
+TV:
+shows phrase huge
+
+Player reads aloud
+
+Time:
+20 sec
+
+Public votes:
+1–5 stars
+
+--------------------------------------------------
+MISSION 8 — TROVA L’OGGETTO
+--------------------------------------------------
+
+Players:
+2
+
+Public chooses target:
+
+- qualcosa di rosso
+- qualcosa di bianco
+- qualcosa di nero
+- qualcosa a punta
+- qualcosa di rotondo
+- qualcosa che brilla
+- ospite più anziano
+- ospite più giovane
+- qualcuno con occhiali
+- qualcuno con cravatta
+
+TV:
+"TROVA:
+[target]"
+
+Timer:
+40 sec
+
+Public phone:
+buttons:
+
+PLAYER 1 L’HA TROVATO
+PLAYER 2 L’HA TROVATO
+
+Winner:
+most confirmations
+
++200
+
+--------------------------------------------------
+MISSION 9 — SFILATA SEXY
+--------------------------------------------------
+
+Players:
+2
+
+Public first chooses music for each player:
+
+6 options:
+- latino caliente
+- disco anni 80
+- sax sexy
+- fashion runway
+- funky
+- romantic slow
+
+TV:
+MISSIONE:
+SFILATA SEXY
+
+Each player performs 20–30 sec
+
+Then public votes:
+
+Who performed better?
+
+Player 1
+Player 2
+
+Winner:
++200
+
+--------------------------------------------------
+MISSION 10 — COREOGRAFIA IMPROVVISATA
+--------------------------------------------------
+
+Players:
+2
+
+Public chooses music:
+
+6 options:
+- reggaeton
+- disco
+- classica epica
+- country
+- pop anni 2000
+- trap assurda
+
+TV:
+MISSIONE:
+COREOGRAFIA IMPROVVISATA
+
+20 sec prep
+
+30 sec performance
+
+Public votes:
+1–5 stars
+
+Optional:
+CAMBIO STILE event mid-performance
+
+--------------------------------------------------
+MEDIA PACK REQUIRED
+--------------------------------------------------
+
+Build the system so it works EVEN IF FILES ARE MISSING.
+
+If file missing:
+fallback to:
+- large text
+- emoji
+- colored cards
+
+Never break gameplay.
+
+MEDIA PATH:
+
+/public/media/percorso-risate/
+
+folders:
+
+/missions/
+/sfx/
+/music/
+/images/
+/yoga/
+/ui/
+
+--------------------------------------------------
+SFX REQUIRED
+--------------------------------------------------
+
+mission-intro.mp3
+2.5 sec
+
+countdown-short.mp3
+5 sec
+
+mission-success.mp3
+2 sec
+
+mission-fail.mp3
+2 sec
+
+mission-transition.mp3
+3 sec
+
+tap-confirm.mp3
+0.3 sec
+
+alarm-hit.mp3
+1 sec
+
+--------------------------------------------------
+BACKGROUND MUSIC
+--------------------------------------------------
+
+bg-yoga-loop.mp3
+45 sec
+
+bg-joke-loop.mp3
+45 sec
+
+bg-love-loop.mp3
+40 sec
+
+bg-market-loop.mp3
+40 sec
+
+bg-world-loop.mp3
+30 sec
+
+bg-search-loop.mp3
+40 sec
+
+catwalk-01.mp3 → catwalk-06.mp3
+20–30 sec
+
+dance-01.mp3 → dance-06.mp3
+30 sec
+
+--------------------------------------------------
+IMAGES REQUIRED
+--------------------------------------------------
+
+YOGA:
+30 transparent PNG silhouettes
+
+Recommended:
+2000x2000
+transparent background
+
+Also:
+- flags png for languages
+- icons png for objects
+- runway background
+- love background
+- comedy stage background
+
+--------------------------------------------------
+TV UI RULES
+--------------------------------------------------
+
+Must always be readable from far away.
+
+Huge:
+- mission title
+- timer
+- selected object/pose/song/text
+- players
+- public actions
+
+No tiny text.
+
+Everything must be visible from 20–30 meters.
+
+--------------------------------------------------
+PHONE UI RULES
+--------------------------------------------------
+
+Booked player:
+- role
+- mission instructions
+- timer
+
+Public player:
+- vote
+- choose
+- validate
+
+If no action:
+show:
+"Guarda la TV"
+
+Lock mobile UI:
+- no horizontal scroll
+- no zoom drift
+- no movement of layout
+
+--------------------------------------------------
+OUTPUT REQUIRED AFTER PATCH
+--------------------------------------------------
+
+Before coding:
+A. current Percorso a Risate architecture
+B. reusable parts
+C. files to modify
+
+After coding:
+D. files modified
+E. mission config
+F. TV behavior
+G. phone behavior
+H. API / socket events
+I. scoring rules
+J. typecheck result
+K. manual test checklist using 4 phones
