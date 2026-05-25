@@ -1,0 +1,223 @@
+==================================================
+KARAOKE LIVE — EXTRA FEATURES PATCH (HOME MODE ONLY)
+==================================================
+
+Patch only Karaoke Live mode.
+
+Do not touch other games.
+
+Home Mode only.
+No admin controls required here.
+
+--------------------------------------------------
+FEATURE 1 — SPECIAL AWARDS AT END OF SESSION
+--------------------------------------------------
+
+At the end of karaoke session,
+after final ranking,
+
+TV must show:
+
+🏆 PREMIAZIONI FINALI
+
+Not only winner.
+
+Create additional fun award categories.
+
+--------------------------------------------------
+REQUIRED CATEGORIES
+--------------------------------------------------
+
+1. BEST SCORE
+highest final score
+
+title:
+🏆 Vincitore Assoluto
+
+--------------------------------------------------
+
+2. BEST VOICE
+highest average Intonazione
+
+title:
+🎤 Miglior Voce
+
+--------------------------------------------------
+
+3. BEST STAGE PRESENCE
+highest average Presenza Scenica
+
+title:
+🔥 Re del Palco
+
+or
+🔥 Regina del Palco
+
+--------------------------------------------------
+
+4. MOST EMOTIONAL
+highest average Emozione
+
+title:
+❤️ Premio Emozione
+
+--------------------------------------------------
+
+5. MOST ORIGINAL
+highest average Originalità
+
+title:
+✨ Performance più originale
+
+--------------------------------------------------
+
+6. CROWD FAVORITE
+highest positive reactions total
+
+calculated from:
+❤️
+🔥
+👏
+😍
+
+title:
+👏 Più amato dal pubblico
+
+--------------------------------------------------
+
+7. FUNNIEST PERFORMANCE
+highest funny/negative reactions:
+
+😂
+😬
+💀
+
+title:
+😂 Performance più folle
+
+--------------------------------------------------
+TV BEHAVIOR
+--------------------------------------------------
+
+Each award shown as full-screen card.
+
+Example:
+
+🎤 MIGLIOR VOCE
+VALENTINA
+95/100
+
+Then transition to next.
+
+2–3 sec each.
+
+Then final winner card.
+
+--------------------------------------------------
+PHONE BEHAVIOR
+--------------------------------------------------
+
+All phones show:
+award winner
+category
+score
+
+Player sees if they won a badge.
+
+Optional:
+display earned badge icons in profile/session recap.
+
+--------------------------------------------------
+FEATURE 2 — SONG DEDICATION BEFORE PERFORMANCE
+--------------------------------------------------
+
+Before confirming a booked song,
+phone must ask:
+
+"Vuoi dedicare questo brano a qualcuno?"
+
+Options:
+
+A.
+No dedica
+
+B.
+Scegli un giocatore collegato
+
+Show connected player list.
+
+Player selects one nickname.
+
+Optional text:
+"Con dedica speciale a..."
+
+--------------------------------------------------
+DATA MODEL
+--------------------------------------------------
+
+Store on queue item:
+
+{
+  dedicationTargetPlayerId,
+  dedicationTargetNickname
+}
+
+nullable.
+
+--------------------------------------------------
+TV INTRO BEFORE SONG STARTS
+--------------------------------------------------
+
+If dedication exists:
+
+Before video starts:
+
+show fullscreen:
+
+🎤 [nickname] dedica questo brano a [targetNickname] ❤️
+
+duration:
+4 sec
+
+Then start song.
+
+--------------------------------------------------
+
+If no dedication:
+skip intro card completely.
+
+--------------------------------------------------
+PHONE UI
+--------------------------------------------------
+
+Singer phone after selecting song:
+
+step 1:
+confirm song
+
+step 2:
+dedication choice
+
+Buttons:
+
+❤️ Dedica il brano
+⏭ Continua senza dedica
+
+If Dedica:
+show connected players list.
+
+Then:
+CONFIRMA PRENOTAZIONE
+
+--------------------------------------------------
+GOAL
+--------------------------------------------------
+
+Make Karaoke feel:
+more emotional
+more memorable
+more social
+without slowing down queue flow.
+
+No extra manual host interaction required.
+Everything automatic.

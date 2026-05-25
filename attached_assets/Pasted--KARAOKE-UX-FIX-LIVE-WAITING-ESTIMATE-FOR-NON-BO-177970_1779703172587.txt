@@ -1,0 +1,121 @@
+==================================================
+KARAOKE UX FIX — LIVE WAITING ESTIMATE FOR NON-BOOKED PLAYERS
+==================================================
+
+Improve booking CTA for players who are NOT yet booked.
+
+Current:
+generic "Prenotati"
+
+Replace with dynamic booking invitation based on queue.
+
+--------------------------------------------------
+PHONE UI — PLAYER WITHOUT BOOKING
+--------------------------------------------------
+
+If player has NO active karaoke booking
+AND queue is still open:
+
+show primary CTA:
+
+🎤 Prenotati adesso
+
+subtitle:
+
+Canterai tra circa XX min
+
+Example:
+
+🎤 Prenotati adesso
+Canterai tra circa 18 minuti
+
+or
+
+🎤 Prenotati adesso
+Canterai tra circa 42 minuti
+
+--------------------------------------------------
+HOW TO CALCULATE
+--------------------------------------------------
+
+estimatedWaitForNewBooking = queuedSeconds
+
+Where:
+
+queuedSeconds =
+sum(all estimatedSlotDuration currently queued before the new player)
+
+estimatedSlotDuration =
+songDurationSeconds + 30 sec voting + 60 sec transition
+
+Example:
+
+3 songs already queued:
+4:10
+3:40
+5:00
+
+Total queue estimate:
+~16 min
+
+Phone shows:
+
+"Prenotati adesso
+Canterai tra circa 16 minuti"
+
+--------------------------------------------------
+IF QUEUE IS ALMOST EMPTY
+--------------------------------------------------
+
+If estimatedWait < 60 sec:
+
+show:
+
+🎤 Prenotati adesso
+Tocca quasi a te
+
+--------------------------------------------------
+IF ONLY 1 SONG AHEAD
+--------------------------------------------------
+
+show:
+
+🎤 Prenotati adesso
+Canterai tra pochi minuti
+
+--------------------------------------------------
+IF QUEUE FULL
+--------------------------------------------------
+
+disable button
+
+show:
+
+⚠️ Coda al completo
+Non c’è più tempo sufficiente per aggiungere un altro brano in questa sessione
+
+--------------------------------------------------
+REAL TIME UPDATE
+--------------------------------------------------
+
+This wait estimate must update live:
+- after every new booking
+- after every song ends
+- after skip
+- after song change
+- after queue reorder
+
+Broadcast via home:karaoke_queue_update
+
+All phones refresh automatically.
+
+--------------------------------------------------
+GOAL
+--------------------------------------------------
+
+Every player not yet booked should immediately understand:
+
+1. if they can still sing
+2. approximately when they will sing
+
+without needing to ask the host.

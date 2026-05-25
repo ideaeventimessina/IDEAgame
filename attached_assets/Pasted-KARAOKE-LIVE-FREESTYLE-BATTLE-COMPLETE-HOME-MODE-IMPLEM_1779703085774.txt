@@ -1,0 +1,635 @@
+KARAOKE LIVE + FREESTYLE BATTLE — COMPLETE HOME MODE IMPLEMENTATION.
+
+FIRST AUDIT, THEN PATCH.
+Do not touch:
+- Ballo
+- WordBack
+- Quizzone
+- Coppie
+- Percorso a Risate
+- Adult Only
+- SaraMusica
+
+Work only on:
+- Karaoke Battle
+- Freestyle Battle
+- shared Home Flow only where needed for Karaoke/Freestyle
+
+==================================================
+CORE PRODUCT IDEA
+==================================================
+
+Karaoke is not a short mini-game.
+Karaoke is an OPEN LIVE SESSION for the whole evening.
+
+Freestyle is a separate competitive battle mode.
+
+When host selects Karaoke/Freestyle game, TV must first ask:
+
+1. Karaoke Live
+2. Freestyle Battle
+3. Mixed Mode
+
+==================================================
+PART 1 — KARAOKE LIVE SESSION TIMER
+==================================================
+
+When host chooses Karaoke Live:
+
+Before opening bookings, host must choose session duration:
+
+- 15 min
+- 30 min
+- 45 min
+- 60 min
+- 90 min
+- 120 min
+- Custom
+
+Store:
+
+{
+  karaokeSessionDurationMinutes,
+  karaokeSessionStartAt,
+  karaokeSessionEndAt,
+  karaokeQueueIsOpen
+}
+
+TV must show:
+- Karaoke Live
+- tempo rimanente sessione
+- coda aperta / coda piena
+- prossimo cantante
+- numero cantanti in coda
+
+==================================================
+PART 2 — YOUTUBE SEARCH / SONG SELECTION
+==================================================
+
+Phone player flow:
+
+Button:
+“🎤 Prenotati per cantare”
+
+Then search field:
+“Scrivi titolo o artista”
+
+Example:
+“bella stronza masini”
+
+App automatically searches:
+“bella stronza masini karaoke”
+
+Show top 5 YouTube results:
+
+Each result:
+- thumbnail
+- title
+- channel
+- duration
+- videoId
+
+Player taps:
+“Usa questo brano”
+
+Important:
+Do NOT download the video.
+Use YouTube streaming/embed.
+
+Preferred embed:
+youtube-nocookie.com/embed/{videoId}
+
+Use:
+autoplay=1
+controls=0 or 1 depending current player needs
+modestbranding=1
+rel=0
+playsinline=1
+
+No hard dependency on ad-free playback.
+If YouTube shows ads, do not crash.
+Just keep flow stable.
+
+==================================================
+PART 3 — SMART QUEUE CAPACITY
+==================================================
+
+Every song has durationSeconds from YouTube result.
+
+Estimated slot duration:
+
+estimatedSlotDuration =
+durationSeconds + 30 + 60
+
+Where:
+- durationSeconds = song length
+- 30 sec = final voting
+- 60 sec = transition / next singer setup
+
+When player selects song:
+
+remainingSeconds =
+karaokeSessionEndAt - now
+
+queuedSeconds =
+sum(estimatedSlotDuration of all pending queue items)
+
+availableSeconds =
+remainingSeconds - queuedSeconds
+
+If:
+availableSeconds >= estimatedSlotDuration
+
+booking allowed.
+
+Else:
+booking blocked.
+
+Phone message:
+“Non c’è purtroppo tempo per inserire questa richiesta in coda.”
+
+==================================================
+PART 4 — PLAYER BOOKING RULES
+==================================================
+
+Each player can have only ONE active karaoke booking at a time.
+
+States:
+
+A. No active booking and queue has time:
+button active:
+“🎤 Prenotati per cantare”
+
+B. Player already has a queued song:
+button disabled:
+“Hai già un brano in coda”
+
+Show:
+- song title
+- queue position
+- estimated start time
+- countdown:
+  “Canterai tra: 18:42”
+
+C. Player is currently singing:
+button disabled:
+“Stai cantando adesso”
+
+D. Player has finished singing:
+if queue has time:
+button active again
+“Prenotati di nuovo”
+
+E. Queue full:
+button disabled:
+“Coda completa”
+
+Important:
+After a player sings, they may book again if time remains.
+
+==================================================
+PART 5 — CHANGE SONG RULE
+==================================================
+
+Player with queued song can change it.
+
+Button:
+“Cambia brano”
+
+Rule:
+If player changes song:
+- old queue item is removed
+- new song is added at the END of the queue
+- queue position recalculated
+- estimated start recalculated
+
+Phone warning:
+“Se cambi brano, finirai in fondo alla coda.”
+
+This keeps the evening smooth and fair.
+
+==================================================
+PART 6 — PHONE COUNTDOWN TO TURN
+==================================================
+
+Each queued player phone must show:
+
+- queue position
+- current singer
+- own selected song
+- estimated start time
+- live countdown:
+  “Canterai tra: 12:35”
+
+Countdown updates every second.
+
+If queue changes:
+- recompute countdown
+- update all phones via socket/home state
+
+==================================================
+PART 7 — KARAOKE PLAYBACK ON TV
+==================================================
+
+When queue starts:
+
+TV:
+- embeds selected YouTube karaoke video
+- shows singer nickname
+- shows song title
+- shows live reactions overlay
+- shows queue sidebar/minimal next singer info
+
+When video/song ends:
+- enter voting phase for 30 sec
+- after voting phase:
+  show mini ranking
+- transition phase 60 sec:
+  “Prossimo cantante: [nickname]”
+- preload/prepare next video if possible
+- start next item
+
+If video cannot autoplay:
+show manual host button:
+“Avvia brano”
+
+==================================================
+PART 8 — LIVE REACTIONS DURING SONG
+==================================================
+
+During performance, public phones show reaction buttons:
+
+Positive:
+❤️
+🔥
+👏
+😍
+
+Negative/funny:
+😂
+😬
+💀
+🙉
+
+Each reaction emits:
+home:karaoke_reaction
+
+TV:
+floating emoji overlay.
+
+Server stores/counts:
+
+{
+  positiveCount,
+  negativeCount,
+  reactionsByType
+}
+
+At end of song show:
+- positive reactions
+- negative reactions
+- most used emoji
+
+==================================================
+PART 9 — FINAL VOTING AFTER EACH SONG
+==================================================
+
+After each song, public votes 1–5 stars on 4 categories:
+
+1. Intonazione
+2. Presenza scenica
+3. Emozione
+4. Originalità
+
+Each category:
+1–5 stars.
+
+Score formula:
+average of all categories and voters × 20
+
+Max score:
+100
+
+Store result per performance:
+
+{
+  playerId,
+  nickname,
+  videoId,
+  title,
+  score,
+  categoryAverages,
+  positiveReactions,
+  negativeReactions,
+  timestamp
+}
+
+Voting duration:
+30 sec.
+
+==================================================
+PART 10 — MINI RANKING AFTER EACH SONG
+==================================================
+
+After each voting phase:
+
+TV shows:
+“Classifica provvisoria”
+
+Top 5:
+1. nickname — score
+2. nickname — score
+...
+
+Phone:
+shows own score and current ranking.
+
+Then transition to next singer.
+
+==================================================
+PART 11 — END OF KARAOKE SESSION
+==================================================
+
+When time expires and queue is empty OR host ends session:
+
+TV shows:
+“Karaoke Finale”
+
+Final ranking:
+- best score
+- most emotional
+- most loved
+- most chaotic
+optional badges.
+
+Winner:
+top score.
+
+Final option:
+Button:
+“Ricanta il brano vincitore”
+
+If clicked:
+TV replays winner’s selected YouTube video.
+No new voting required unless host wants repeat performance.
+
+==================================================
+PART 12 — DATA MODEL
+==================================================
+
+Create or extend karaoke session state:
+
+{
+  mode: "home-karaoke-live",
+  karaokePhase:
+    "duration_select" |
+    "queue_open" |
+    "playing" |
+    "voting" |
+    "transition" |
+    "finale",
+
+  karaokeSessionDurationMinutes,
+  karaokeSessionStartAt,
+  karaokeSessionEndAt,
+
+  currentQueueItemId,
+  queue: KaraokeQueueItem[],
+  results: KaraokePerformanceResult[],
+  reactionsCurrentSong,
+  queueIsOpen
+}
+
+Queue item:
+
+{
+  id,
+  playerId,
+  nickname,
+  videoId,
+  title,
+  channel,
+  thumbnailUrl,
+  durationSeconds,
+  estimatedSlotDuration,
+  queuePosition,
+  estimatedStartAt,
+  status:
+    "queued" |
+    "playing" |
+    "voting" |
+    "completed" |
+    "skipped"
+}
+
+==================================================
+PART 13 — API / SOCKET EVENTS
+==================================================
+
+Use server as source of truth.
+
+Suggested events/routes:
+
+POST /karaoke/set-duration
+POST /karaoke/search-youtube
+POST /karaoke/book-song
+POST /karaoke/change-song
+POST /karaoke/start-next
+POST /karaoke/skip-current
+POST /karaoke/submit-vote
+POST /karaoke/end-session
+
+Socket events:
+home:karaoke_state
+home:karaoke_reaction
+home:karaoke_vote_update
+home:karaoke_queue_update
+home:karaoke_result
+home:karaoke_finale
+
+Important:
+If YouTube API key is missing:
+- return clear error
+- keep UI stable
+- allow mocked/static search results in dev only
+
+==================================================
+PART 14 — FREESTYLE BATTLE
+==================================================
+
+Freestyle is separate from Karaoke Live.
+
+Flow:
+- 2 players book
+- host starts battle
+- app chooses beat from uploaded beat list
+- TV shows active word prompts
+- public validates words
+
+Beat DB/config:
+10 beats:
+
+{
+  id,
+  title,
+  audioUrl,
+  bpm,
+  durationSeconds
+}
+
+TV:
+- beat title
+- active rapper
+- active word
+- countdown
+- validated words
+- score
+
+Word prompts:
+random words every 4–6 sec.
+
+Example:
+- luna
+- strada
+- fuoco
+- amore
+- estate
+- pizza
+- soldi
+- notte
+
+Public phone:
+shows current word and button:
+“L’ha detta”
+
+Validation:
+If enough public confirms, word validated.
+
+Threshold:
+minimum 2 validations OR 40% of public, whichever is smaller but minimum 1.
+
+Scoring:
++50 for each validated word.
+Combo:
+3 validated words in a row = +100 bonus.
+
+Winner:
+highest score.
+
+Do NOT use microphone validation yet.
+Use public validation for stability.
+
+==================================================
+PART 15 — MIXED MODE
+==================================================
+
+If host chooses Mixed Mode:
+- alternate Karaoke and Freestyle slots.
+- Karaoke queue remains active.
+- Freestyle battles can be inserted between singers if time allows.
+
+Simpler first version:
+Mixed Mode may just allow both:
+- karaoke bookings
+- freestyle battle booking
+but host manually starts each.
+
+Do not overcomplicate.
+
+==================================================
+PART 16 — PHONE UI SUMMARY
+==================================================
+
+Karaoke phone:
+
+If not booked:
+- search song
+- book
+
+If booked:
+- show selected song
+- queue position
+- countdown to turn
+- change song button
+
+If current singer:
+- show:
+  “Sei sul palco”
+  song title
+
+If public:
+- reaction buttons during performance
+- vote stars after song
+
+Freestyle phone:
+- if performer:
+  see current word target
+- if public:
+  validation button
+- voting if needed
+
+==================================================
+PART 17 — TV UI SUMMARY
+==================================================
+
+Karaoke TV:
+- duration select
+- live queue
+- YouTube player
+- current singer
+- live emoji overlay
+- voting phase
+- provisional ranking
+- finale ranking
+
+Freestyle TV:
+- rapper cards
+- beat player
+- active word
+- validations
+- score
+- winner
+
+==================================================
+PART 18 — IMPORTANT SAFETY / STABILITY
+==================================================
+
+- Never block the app if YouTube search fails.
+- Never accept bookings beyond available time.
+- Queue must survive reload.
+- Phone countdown must survive reload.
+- Player can rebook only after completed/skipped previous song.
+- Changing song sends player to end of queue.
+- All timings must be server-based timestamps, not only local client timers.
+
+==================================================
+OUTPUT REQUIRED
+==================================================
+
+Before patch:
+A. current Karaoke/Freestyle architecture
+B. existing reusable parts
+C. files to modify
+
+After patch:
+D. files modified
+E. Karaoke session timer flow
+F. YouTube search flow
+G. smart queue logic
+H. phone countdown behavior
+I. change song behavior
+J. reactions/voting/ranking
+K. final winner/replay behavior
+L. Freestyle battle behavior
+M. typecheck result
+N. manual test checklist:
+   - 15 min session
+   - book 3 songs
+   - verify estimated start
+   - change song
+   - queue full
+   - play song
+   - react
+   - vote
+   - mini ranking
+   - final ranking
