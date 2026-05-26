@@ -4,6 +4,7 @@
 ──────────────────────────────────────────────────────────────────────────── */
 
 import { Router, type IRouter, type Request, type Response } from "express";
+import { logger } from "../lib/logger";
 import { eq } from "drizzle-orm";
 import { db, homeSessionsTable, homePlayersTable } from "@workspace/db";
 import { emitToRoom } from "../socket";
@@ -112,26 +113,69 @@ interface YTSearchResult {
   thumbnailUrl: string; durationSeconds: number; durationFormatted: string;
 }
 
-async function searchYouTube(query: string): Promise<YTSearchResult[]> {
+// Keywords that indicate a real karaoke track (higher = better)
+const KARAOKE_POSITIVE: [string, number][] = [
+  ["karaoke version", 100],
+  ["official karaoke", 90],
+  ["instrumental karaoke", 85],
+  ["versione karaoke", 80],
+  ["karaoke hd", 70],
+  ["backing track", 65],
+  ["karaoke", 60],
+  ["base musicale", 50],
+  ["instrumental", 40],
+];
+// Keywords that penalise a result (likely not a karaoke track)
+const KARAOKE_PENALTY_RE = /official\s*(music\s*)?video|live\s+(at|performance|concert)|music\s*video|videoclip|intervista|interview|reaction|lyrics?\s*video|acoustic/i;
+
+function rankKaraokeResults(items: YTSearchResult[], rawInput: string): YTSearchResult[] {
+  const artistWords = rawInput.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+  type Scored = YTSearchResult & { _score: number };
+  const scored: Scored[] = items.map(r => {
+    const tl = r.title.toLowerCase();
+    const ch = r.channel.toLowerCase();
+    let score = 0;
+    for (const [kw, pts] of KARAOKE_POSITIVE) {
+      if (tl.includes(kw)) { score += pts; break; }
+    }
+    if (artistWords.some(w => tl.includes(w) || ch.includes(w))) score += 20;
+    if (KARAOKE_PENALTY_RE.test(r.title)) score -= 40;
+    return { ...r, _score: score };
+  });
+  scored.sort((a, b) => b._score - a._score);
+  return scored.map(({ _score: _s, ...rest }) => rest as YTSearchResult);
+}
+
+async function searchYouTube(rawInput: string): Promise<{ results: YTSearchResult[]; noKaraokeFound: boolean }> {
+  const youtubeQuery = `${rawInput} karaoke`;
+
   if (!YOUTUBE_API_KEY) {
-    // Return mock results in dev
-    return [
-      { videoId: "dQw4w9WgXcQ", title: `${query} - Karaoke Version`, channel: "Karaoke IT",    thumbnailUrl: "https://img.youtube.com/vi/dQw4w9WgXcQ/mqdefault.jpg", durationSeconds: 213, durationFormatted: "3:33" },
-      { videoId: "9bZkp7q19f0", title: `${query} - Testo e Musica`,  channel: "Karaoke World", thumbnailUrl: "https://img.youtube.com/vi/9bZkp7q19f0/mqdefault.jpg", durationSeconds: 252, durationFormatted: "4:12" },
-      { videoId: "CevxZvSJLk8", title: `${query} - Official Karaoke`,channel: "Sing Along",    thumbnailUrl: "https://img.youtube.com/vi/CevxZvSJLk8/mqdefault.jpg", durationSeconds: 198, durationFormatted: "3:18" },
-      { videoId: "OPf0YbXqDm0", title: `${query} karaoke HD`,        channel: "Karaoke Bar",   thumbnailUrl: "https://img.youtube.com/vi/OPf0YbXqDm0/mqdefault.jpg", durationSeconds: 225, durationFormatted: "3:45" },
-      { videoId: "pRpeEdMmmQ0", title: `${query} - Versione karaoke`, channel: "KaraokeFun IT", thumbnailUrl: "https://img.youtube.com/vi/pRpeEdMmmQ0/mqdefault.jpg", durationSeconds: 240, durationFormatted: "4:00" },
+    // Mock mode — plausible karaoke placeholders (no real API call)
+    const mock: YTSearchResult[] = [
+      { videoId: "dQw4w9WgXcQ", title: `${rawInput} - Karaoke Version`,    channel: "Karaoke IT",    thumbnailUrl: "https://img.youtube.com/vi/dQw4w9WgXcQ/mqdefault.jpg", durationSeconds: 213, durationFormatted: "3:33" },
+      { videoId: "9bZkp7q19f0", title: `${rawInput} - Official Karaoke`,   channel: "Karaoke World", thumbnailUrl: "https://img.youtube.com/vi/9bZkp7q19f0/mqdefault.jpg", durationSeconds: 252, durationFormatted: "4:12" },
+      { videoId: "CevxZvSJLk8", title: `${rawInput} - Instrumental Karaoke`,channel: "Sing Along",   thumbnailUrl: "https://img.youtube.com/vi/CevxZvSJLk8/mqdefault.jpg", durationSeconds: 198, durationFormatted: "3:18" },
+      { videoId: "OPf0YbXqDm0", title: `${rawInput} karaoke HD`,            channel: "Karaoke Bar",  thumbnailUrl: "https://img.youtube.com/vi/OPf0YbXqDm0/mqdefault.jpg", durationSeconds: 225, durationFormatted: "3:45" },
+      { videoId: "pRpeEdMmmQ0", title: `${rawInput} - Versione karaoke`,    channel: "KaraokeFun IT",thumbnailUrl: "https://img.youtube.com/vi/pRpeEdMmmQ0/mqdefault.jpg", durationSeconds: 240, durationFormatted: "4:00" },
     ];
+    logger.info({ rawInput, youtubeQuery, mock: true, count: mock.length, chosenVideoTitle: mock[0]?.title, chosenVideoId: mock[0]?.videoId }, "[KARAOKE_SEARCH] mock mode — no YOUTUBE_API_KEY");
+    return { results: mock, noKaraokeFound: false };
   }
 
   try {
-    const searchQ = encodeURIComponent(`${query} karaoke`);
-    const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${searchQ}&type=video&maxResults=5&key=${YOUTUBE_API_KEY}`;
+    // Fetch 10 results so ranking has more candidates to work with
+    const searchQ = encodeURIComponent(youtubeQuery);
+    const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${searchQ}&type=video&maxResults=10&key=${YOUTUBE_API_KEY}`;
     const searchResp = await fetch(searchUrl);
     if (!searchResp.ok) throw new Error(`YouTube search error: ${searchResp.status}`);
-    const searchData = await searchResp.json() as { items?: { id: { videoId: string }; snippet: { title: string; channelTitle: string; thumbnails: { medium: { url: string } } } }[] };
+    const searchData = await searchResp.json() as {
+      items?: { id: { videoId: string }; snippet: { title: string; channelTitle: string; thumbnails: { medium: { url: string } } } }[]
+    };
     const items = searchData.items ?? [];
-    if (items.length === 0) return [];
+    if (items.length === 0) {
+      logger.warn({ rawInput, youtubeQuery }, "[KARAOKE_SEARCH] no results from YouTube API");
+      return { results: [], noKaraokeFound: true };
+    }
 
     const ids = items.map(i => i.id.videoId).join(",");
     const durUrl = `https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${ids}&key=${YOUTUBE_API_KEY}`;
@@ -139,10 +183,9 @@ async function searchYouTube(query: string): Promise<YTSearchResult[]> {
     const durData = await durResp.json() as { items?: { id: string; contentDetails: { duration: string } }[] };
     const durMap = new Map((durData.items ?? []).map(v => [v.id, v.contentDetails.duration]));
 
-    return items.map(item => {
+    const raw: YTSearchResult[] = items.map(item => {
       const videoId = item.id.videoId;
-      const iso = durMap.get(videoId) ?? "PT0S";
-      const durationSeconds = parseDuration(iso);
+      const durationSeconds = parseDuration(durMap.get(videoId) ?? "PT0S");
       return {
         videoId,
         title: item.snippet.title,
@@ -152,8 +195,24 @@ async function searchYouTube(query: string): Promise<YTSearchResult[]> {
         durationFormatted: formatDuration(durationSeconds),
       };
     });
-  } catch {
-    return [];
+
+    const ranked = rankKaraokeResults(raw, rawInput).slice(0, 5);
+    const noKaraokeFound = !ranked.some(r => /karaoke|base musicale|backing track|instrumental/i.test(r.title));
+
+    logger.info({
+      rawInput,
+      youtubeQuery,
+      totalFetched: raw.length,
+      returned: ranked.length,
+      noKaraokeFound,
+      chosenVideoTitle: ranked[0]?.title,
+      chosenVideoId: ranked[0]?.videoId,
+    }, "[KARAOKE_SEARCH]");
+
+    return { results: ranked, noKaraokeFound };
+  } catch (err) {
+    logger.error({ rawInput, youtubeQuery, err }, "[KARAOKE_SEARCH] error fetching from YouTube API");
+    return { results: [], noKaraokeFound: true };
   }
 }
 
@@ -172,8 +231,9 @@ router.post("/home/sessions/:id/karaoke/search", async (req: Request, res: Respo
   if (!query?.trim()) { res.status(400).json({ error: "query richiesta" }); return; }
   const session = await getSession(String(req.params["id"]));
   if (!session) { res.status(404).json({ error: "Sessione non trovata" }); return; }
-  const results = await searchYouTube(query.trim());
-  res.json({ results, mock: !YOUTUBE_API_KEY });
+  const rawInput = query.trim();
+  const { results, noKaraokeFound } = await searchYouTube(rawInput);
+  res.json({ results, noKaraokeFound, mock: !YOUTUBE_API_KEY, youtubeQuery: `${rawInput} karaoke` });
 });
 
 /* ── POST book-song ──────────────────────────────────────────────────────── */
