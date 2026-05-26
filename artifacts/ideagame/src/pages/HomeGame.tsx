@@ -1911,7 +1911,16 @@ function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, bal
   // FIX: version=3 check MUST come before mode-based routing (mode is still 'home-karaoke' even for new system)
   const ks = _ks_probe;
   if (session.gameSlug === 'karaoke-battle' && ks?.version === 3) {
-    return <KaraokeLiveBoard sessionId={session.id} state={ks} players={players} />;
+    const karaokeShowQR = ks.karaokePhase === 'queue_open' || ks.karaokePhase === 'playing'
+      || ks.karaokePhase === 'voting' || ks.karaokePhase === 'transition';
+    const karaokeJoinUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}${(import.meta.env.BASE_URL as string ?? '/')}home/join?s=${session.joinCode}`
+      .replace(/([^:])\/\//g, '$1/');
+    return (
+      <>
+        <KaraokeLiveBoard sessionId={session.id} state={ks} players={players} />
+        {karaokeShowQR && <KaraokeQROverlay joinUrl={karaokeJoinUrl} />}
+      </>
+    );
   }
   if (mode === 'home-karaoke')    return <KaraokeBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
   if (mode === 'home-freestyle')  return <FreestyleBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
@@ -3808,6 +3817,29 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
   }
 
   return null;
+}
+
+function KaraokeQROverlay({ joinUrl }: { joinUrl: string }) {
+  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=88x88&bgcolor=0d0600&color=FB923C&data=${encodeURIComponent(joinUrl)}`;
+  return (
+    <div style={{
+      position: 'fixed', top: 14, right: 14, zIndex: 9995,
+      background: 'rgba(13,6,0,0.90)', border: '1.5px solid rgba(251,146,60,0.55)',
+      borderRadius: 14, padding: '10px 12px',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
+      backdropFilter: 'blur(12px)', pointerEvents: 'none',
+      boxShadow: '0 4px 24px rgba(0,0,0,0.55)',
+    }}>
+      <img src={qrSrc} alt="" style={{ width: 72, height: 72, borderRadius: 8, imageRendering: 'pixelated', display: 'block' }} />
+      <div style={{ color: 'rgba(251,146,60,0.95)', fontSize: 9, fontWeight: 800,
+        textAlign: 'center', letterSpacing: '0.08em', textTransform: 'uppercase', lineHeight: 1.5 }}>
+        Scansiona e<br/>prenotati ora
+      </div>
+      <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 8, textAlign: 'center', fontWeight: 600, lineHeight: 1.4 }}>
+        Richiedi il tuo<br/>brano live
+      </div>
+    </div>
+  );
 }
 
 function KaraokeRankingMini({ results }: { results: KaraokePerformanceResult[] }) {
