@@ -2483,6 +2483,9 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
   const [rs, setRs] = useState<RisateState | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
+  // ── Mission countdown timer ────────────────────────────────────────────────
+  const [missionTimeLeft, setMissionTimeLeft] = useState<number | null>(null);
+  const autoAdvancedRef = useRef(false); // guard: advance called at most once per active phase
 
   useEffect(() => {
     fetch(`${BASE}api/home/sessions/${sessionId}/risate/state`, { credentials: 'include' })
@@ -2492,8 +2495,44 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
   }, [sessionId, BASE]);
 
   useEffect(() => {
-    return on<{ state: RisateState }>('home:percorso_update', ({ state }) => setRs(state));
+    return on<{ state: RisateState }>('home:percorso_update', ({ state }) => {
+      setRs(state);
+      // Reset auto-advance guard when phase changes away from active
+      if (state.phase !== 'active') autoAdvancedRef.current = false;
+    });
   }, [on]);
+
+  // ── Client-side mission countdown ─────────────────────────────────────────
+  useEffect(() => {
+    if (!rs || rs.phase !== 'active' || !rs.missionStartedAt) {
+      setMissionTimeLeft(null);
+      return;
+    }
+    const mission = RISATE_MISSIONS[rs.missionIndex ?? 0];
+    const duration = mission?.duration ?? 60;
+
+    const tick = () => {
+      const elapsed = (Date.now() - new Date(rs.missionStartedAt!).getTime()) / 1000;
+      return Math.max(0, Math.round(duration - elapsed));
+    };
+
+    setMissionTimeLeft(tick());
+    const interval = setInterval(() => {
+      const tl = tick();
+      setMissionTimeLeft(tl);
+      if (tl <= 0) clearInterval(interval);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [rs?.phase, rs?.missionStartedAt, rs?.missionIndex]);
+
+  // ── Auto-advance when mission timer expires ────────────────────────────────
+  useEffect(() => {
+    if (missionTimeLeft === 0 && rs?.phase === 'active' && !autoAdvancedRef.current && !busy) {
+      autoAdvancedRef.current = true;
+      void apiPost('advance');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [missionTimeLeft, rs?.phase, busy]);
 
   const apiPost = async (path: string) => {
     setBusy(true); setMsg('');
@@ -2608,6 +2647,25 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
                   {opt}
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Active: countdown timer */}
+          {rs.phase === 'active' && missionTimeLeft !== null && (
+            <div className="flex items-center gap-3 rounded-2xl px-6 py-3"
+              style={{
+                background: missionTimeLeft <= 5 ? 'rgba(239,68,68,0.18)' : 'rgba(52,211,153,0.10)',
+                border: `2px solid ${missionTimeLeft <= 5 ? 'rgba(239,68,68,0.55)' : 'rgba(52,211,153,0.35)'}`,
+              }}>
+              <span style={{ color: missionTimeLeft <= 5 ? '#f87171' : PERCORSO_ACCENT, fontSize: '2.5rem', fontWeight: 900, fontFamily: 'var(--font-display, monospace)', lineHeight: 1 }}>
+                {missionTimeLeft}s
+              </span>
+              {missionTimeLeft <= 5 && missionTimeLeft > 0 && (
+                <span className="text-sm font-black animate-pulse" style={{ color: '#f87171' }}>⏱ Ultimi secondi!</span>
+              )}
+              {missionTimeLeft === 0 && (
+                <span className="text-sm font-black" style={{ color: '#f87171' }}>⏰ Tempo scaduto!</span>
+              )}
             </div>
           )}
 
@@ -3312,8 +3370,9 @@ function CoppieBoard({ payload, onNext, sessionId }: { payload: Record<string,un
   };
   useEffect(() => () => { if (previewTimer.current) clearInterval(previewTimer.current); }, []);
 
-  // Larger cards: clamp(140px, 14vw, 260px) wide, 4:3 aspect ratio visible from far away
-  const cardSize = `clamp(130px, ${Math.floor(82 / cols)}vw, 250px)`;
+  // Card width: slightly larger for TV readability; aspect ratio 3:2 gives more height for text
+  const cardW = `clamp(140px, ${Math.floor(84 / cols)}vw, 260px)`;
+  const cardH = `clamp(93px, ${Math.floor(56 / cols)}vw, 174px)`;  // 2:3 height → 3:2 landscape
 
   return (
     <div className="flex w-full max-w-6xl flex-col items-center gap-4">
@@ -3340,7 +3399,7 @@ function CoppieBoard({ payload, onNext, sessionId }: { payload: Record<string,un
         )}
       </div>
       <div className="grid gap-3" style={{
-        gridTemplateColumns: `repeat(${cols}, ${cardSize})`,
+        gridTemplateColumns: `repeat(${cols}, ${cardW})`,
         justifyContent: 'center',
       }}>
         {cards.map(card => {
@@ -3349,7 +3408,7 @@ function CoppieBoard({ payload, onNext, sessionId }: { payload: Record<string,un
             <div key={card.id}
               className="relative overflow-hidden rounded-2xl"
               style={{
-                width: cardSize, height: cardSize, aspectRatio: '1/1',
+                width: cardW, height: cardH,
                 ...(card.matched
                   ? {background:'linear-gradient(135deg,#22c55e,#16a34a)',border:'3px solid #4ade80',boxShadow:'0 0 30px rgba(34,197,94,0.5)'}
                   : showFace
@@ -3357,19 +3416,31 @@ function CoppieBoard({ payload, onNext, sessionId }: { payload: Record<string,un
                   : {background:'rgba(255,255,255,0.06)',border:'3px solid rgba(244,114,182,0.35)'}),
               }}>
               {showFace ? (
-                card.imageUrl
-                  ? <img src={card.imageUrl} alt={card.text}
+                card.imageUrl ? (
+                  <>
+                    <img src={card.imageUrl} alt={card.text}
                       className="absolute inset-0 h-full w-full object-cover"
                       style={{borderRadius:'inherit'}}/>
-                  : <div className="flex h-full w-full items-center justify-center p-2">
-                      <span className="text-center font-black text-white leading-tight"
-                        style={{fontSize:'clamp(0.85rem,1.8vw,1.4rem)'}}>{card.text}</span>
-                    </div>
+                    {/* text label overlay for image cards when matched */}
+                    {card.matched && (
+                      <div className="absolute inset-x-0 bottom-0 flex items-center justify-center px-2 py-1"
+                        style={{background:'rgba(0,0,0,0.55)',backdropFilter:'blur(2px)'}}>
+                        <span className="text-center font-black text-white leading-tight"
+                          style={{fontSize:'clamp(0.75rem,1.4vw,1.1rem)'}}>{card.text}</span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center p-3">
+                    <span className="text-center font-black text-white leading-tight"
+                      style={{fontSize:'clamp(1rem,2.2vw,1.8rem)'}}>{card.text}</span>
+                  </div>
+                )
               ) : (
                 card.imageUrl
                   ? <img src={card.imageUrl} alt=""
                       className="absolute inset-0 h-full w-full object-cover"
-                      style={{borderRadius:'inherit',filter:'blur(12px)',opacity:0.12}}/>
+                      style={{borderRadius:'inherit',filter:'blur(14px)',opacity:0.1}}/>
                   : null
               )}
               {!showFace && (

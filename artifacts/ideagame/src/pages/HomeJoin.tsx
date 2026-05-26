@@ -2683,11 +2683,16 @@ function WordBackBookingPhone({ payload, player, sessionId }: {
           </div>
           <div className="text-xs text-white/40 mt-1">In attesa dell'inizio…</div>
           {myRole === 'guesser' && micReady !== null && (
-            <div className="mt-2 rounded-lg px-3 py-1 text-xs font-semibold"
+            <div className="mt-2 rounded-lg px-3 py-2 text-xs font-semibold"
               style={micReady
                 ? { background: 'rgba(34,197,94,0.12)', color: '#4ade80' }
-                : { background: 'rgba(251,146,60,0.1)', color: 'rgba(251,146,60,0.9)' }}>
-              {micReady ? '🎤 Microfono pronto' : '✏️ Microfono non autorizzato. Potrai usare la risposta scritta.'}
+                : { background: 'rgba(251,146,60,0.1)', border: '1px solid rgba(251,146,60,0.35)', color: 'rgba(251,146,60,0.9)' }}>
+              {micReady ? '🎤 Microfono pronto — puoi rispondere a voce' : (
+                <span>
+                  ✏️ Microfono non autorizzato — userai la risposta scritta.<br/>
+                  <span style={{color:'rgba(251,146,60,0.7)',fontWeight:400}}>Su iPhone funziona meglio con Safari.</span>
+                </span>
+              )}
             </div>
           )}
         </div>

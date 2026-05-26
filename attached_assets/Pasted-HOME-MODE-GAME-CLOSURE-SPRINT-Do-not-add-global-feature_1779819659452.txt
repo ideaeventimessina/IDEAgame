@@ -1,0 +1,103 @@
+HOME MODE — GAME CLOSURE SPRINT.
+
+Do not add global features.
+Do not touch Karaoke Live.
+Do not touch Secret Messages.
+Do not touch Ballo SensorBridge.
+
+Goal:
+Close the remaining Home games so they follow the new IDEAgame direction:
+- simple rules
+- phones active
+- TV as battlefield
+- public voting/validation
+- no broken timers
+- no dead-end screens
+
+PRIORITY 1 — PERCORSO A RISATE BUG FIX
+Problem:
+When timer reaches 0, the game continues.
+When clicking "Prossima sfida", it does not exit/advance correctly.
+
+Audit:
+- PercorsoBoard
+- risate mission engine
+- timer state
+- missionPhase
+- result phase
+- next mission button
+- server route/state for percorso
+- socket/state updates
+
+Required:
+- when timer reaches 0:
+  - close active mission
+  - stop accepting votes/actions
+  - enter result phase
+  - show result screen
+- button "Prossima sfida":
+  - advances to next mission if available
+  - resets booking
+  - clears votes/actions
+  - starts next mission intro
+- after mission 10:
+  - show final ranking
+  - exit/complete Percorso mode cleanly
+
+Add guard:
+No mission can remain active with timeLeft <= 0.
+
+PRIORITY 2 — ADULT ONLY NEW DIRECTION
+Audit current Adult Only.
+Propose and implement simple phone-driven flow:
+- 2 players or 1 performer depending challenge
+- public chooses/votes/validates
+- TV shows clear adult-safe challenge
+- phone shows action/vote
+- no explicit unsafe content
+- 10 challenge config similar to Percorso if possible
+Output concept before patch.
+
+PRIORITY 3 — SARA’MUSICA NEW DIRECTION
+Audit current Sara’Musica.
+Redesign as simple music party game:
+- audio/song clue
+- public/players answer
+- fast buzz/vote/choice
+- TV reveal
+- points
+Output concept before patch.
+
+PRIORITY 4 — COPPIE GRAPHIC POLISH
+Problem:
+Game works but visuals are weak.
+Fix:
+- TV card images larger but never overflow
+- better image selection/fallback
+- consistent aspect ratio
+- responsive grid
+- no bottom row hidden
+- phone remains controller, not mini TV
+- image assets must be readable from 20–30m.
+
+PRIORITY 5 — WORDBACK MIC DEVICE-SPECIFIC ISSUE
+Do not rewrite mic.
+Current:
+- iPad works
+- another iPhone works
+- one iPhone fails and uses fallback
+Therefore:
+- add "reset microphone permissions / usa Safari / usa risposta scritta" helper
+- keep fallback as reliable path
+- do not destabilize working devices.
+
+OUTPUT:
+A. current state per game
+B. files to modify
+C. Percorso timer/next fix
+D. Adult Only proposed flow
+E. Sara’Musica proposed flow
+F. Coppie visual fixes
+G. WordBack mic handling
+H. typecheck result
+I. manual test checklist

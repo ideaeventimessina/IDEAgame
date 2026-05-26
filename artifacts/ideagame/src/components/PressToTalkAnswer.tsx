@@ -754,12 +754,24 @@ export default function PressToTalkAnswer({
 
   // ── permission denied ───────────────────────────────────────────────────────
   if (permDenied) {
+    const { isIOS, isSafariIOS } = detectBrowser();
+    const isNonSafariIOS = isIOS && !isSafariIOS;
     return (
       <div className="flex flex-col items-center gap-3 rounded-2xl px-5 py-4 text-center"
         style={{background:'rgba(239,68,68,0.12)',border:'1.5px solid rgba(239,68,68,0.4)'}}>
         <div className="text-2xl">🚫</div>
         <div className="text-sm font-black" style={{color:'#f87171'}}>Microfono non autorizzato</div>
-        <div className="text-xs text-white/45">Attiva il microfono nelle impostazioni del browser, poi ricarica.</div>
+        {isNonSafariIOS ? (
+          <div className="flex flex-col gap-1.5 text-left w-full rounded-xl px-3 py-2.5"
+            style={{background:'rgba(251,146,60,0.10)',border:'1px solid rgba(251,146,60,0.35)'}}>
+            <div className="text-xs font-black" style={{color:'#FB923C'}}>📱 Suggerimento iPhone</div>
+            <div className="text-xs text-white/65">Su iPhone il microfono funziona meglio con <span className="font-black text-white">Safari</span>. Apri questo link in Safari e riprova.</div>
+            <div className="text-xs text-white/45">Oppure: Impostazioni → Privacy → Microfono → abilita il browser.</div>
+          </div>
+        ) : (
+          <div className="text-xs text-white/45">Attiva il microfono nelle impostazioni del browser, poi ricarica la pagina.</div>
+        )}
+        <div className="text-xs text-white/40 w-full text-center pt-1">✏️ Puoi comunque usare la risposta scritta:</div>
         <FallbackInput textAnswer={textAnswer} setTextAnswer={setTextAnswer}
           onSubmit={submitFallbackAnswer} disabled={disabled} submitting={submitting}
           matchFail={matchFail} fallbackError={fallbackError} />
