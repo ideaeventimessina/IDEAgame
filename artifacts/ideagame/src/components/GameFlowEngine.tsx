@@ -170,6 +170,9 @@ export function GameFlowEngine({
   void players; // used via sensorReadyMap for per-player sensor status badges
 
   console.log('[BalloFlow] GameFlowEngine render — phase:', p.gameFlowPhase, '| mode:', p.mode, '| session:', session.id);
+  // ── RUNTIME PROBE ──────────────────────────────────────────────────────────
+  console.log('[RUNTIME_KARAOKE] GameFlowEngine src/components/GameFlowEngine.tsx | mode:home-flow | gameFlowPhase:', p.gameFlowPhase, '| gameSlug:', p.gameSlug, '| session:', session.id, '| If karaoke: this phase will transition to home-karaoke after countdown');
+  console.log('[RUNTIME_RISATE] GameFlowEngine src/components/GameFlowEngine.tsx | mode:home-flow | gameFlowPhase:', p.gameFlowPhase, '| gameSlug:', p.gameSlug, '| session:', session.id);
 
   return (
     <AnimatePresence mode="wait">

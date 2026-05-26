@@ -1,0 +1,68 @@
+URGENT — REPLIT PREVIEW ALSO SHOWS OLD KARAOKE/PERCORSO UI.
+
+Do not patch game logic.
+The user confirms the old UI is visible inside Replit preview, not only production.
+
+Therefore this is NOT only production deploy.
+The active runtime route is still mounting legacy Home Mode components.
+
+Problem:
+- Karaoke still shows old text/microphone model.
+- Percorso a Risate still shows first prototype.
+- This happens in Replit preview after latest local code.
+
+Required:
+Find the exact active runtime render path.
+
+Add hard runtime probes directly inside every possible component:
+
+For Karaoke:
+- old KaraokeBoard
+- new KaraokeLiveBoard
+- GameFlowEngine karaoke phase
+- HomeGame RoundBoard karaoke branch
+- any component rendering mode home-karaoke / home-karaoke-live
+
+Each component must console.log:
+[RUNTIME_KARAOKE] componentName filePath mode payloadVersion
+
+And visibly render a temporary red badge:
+KARAOKE COMPONENT: <componentName>
+
+For Percorso:
+- old PercorsoBoard
+- new RisateMissions/PercorsoBoard
+- GameFlowEngine risate phase
+- HomeGame RoundBoard percorso branch
+
+Each component must console.log:
+[RUNTIME_RISATE] componentName filePath mode payloadVersion
+
+And visibly render:
+RISATE COMPONENT: <componentName>
+
+Audit:
+1. Which mode is actually in roundPayload when selecting Karaoke?
+   - home-karaoke?
+   - home-karaoke-live?
+   - home-karaoke-old?
+2. Which branch in RoundBoard handles it?
+3. Is new component imported but never used?
+4. Is select-game returning old mode/payload?
+5. Is loadGameRoundsForTheme returning old karaoke rounds?
+6. Is there a DB-stored old preloadedRounds payload overriding new code?
+7. Is session cached with old gameConfig from previous run?
+8. Is Replit preview using another package/root?
+9. Are there two HomeGame.tsx files or two built apps?
+
+Critical:
+Reset/create a BRAND NEW session after patch.
+Old sessions may contain old roundPayload/preloadedRounds in DB.
+
+Output:
+A. runtime component actually rendered for Karaoke
+B. runtime component actually rendered for Percorso
+C. roundPayload.mode and gameFlowPhase
+D. whether DB old session payload is overriding
+E. exact file/branch to replace
+F. minimal fix

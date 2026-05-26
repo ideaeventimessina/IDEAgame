@@ -1894,6 +1894,26 @@ function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, bal
 }) {
   const p = session.roundPayload;
   const mode = String(p.mode ?? 'home-quiz');
+  const _ks_probe = session.gameConfig?.karaokeHomeState as KaraokeHomeState | undefined;
+  // ── RUNTIME PROBE ──────────────────────────────────────────────────────────
+  console.log(
+    '[RUNTIME_KARAOKE] RoundBoard HomeGame.tsx',
+    '| mode:', mode,
+    '| gameSlug:', session.gameSlug,
+    '| p.mode (raw):', p.mode,
+    '| ks.version:', _ks_probe?.version ?? 'MISSING — KaraokeLiveBoard will NOT render',
+    '| ks.karaokePhase:', _ks_probe?.karaokePhase ?? 'n/a',
+    '| roundPayload keys:', Object.keys(p).join(','),
+  );
+  console.log(
+    '[RUNTIME_RISATE] RoundBoard HomeGame.tsx',
+    '| mode:', mode,
+    '| gameSlug:', session.gameSlug,
+    '| p.mode (raw):', p.mode,
+    '| percorsoRound:', p.percorsoRound ?? 'n/a',
+    '| roundPayload keys:', Object.keys(p).join(','),
+  );
+  // ───────────────────────────────────────────────────────────────────────────
 
   if (mode === 'home-flow')       return <GameFlowEngine session={session} players={players} sensorReadyMap={sensorReadyMap}/>;
   if (mode === 'home-quiz')       return <QuizBoard payload={p} revealed={revealed} onReveal={onReveal}/>;
@@ -1906,11 +1926,12 @@ function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, bal
   if (mode === 'home-karaoke')    return <KaraokeBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
   if (mode === 'home-freestyle')  return <FreestyleBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
   // New Karaoke Live / Freestyle Battle system (version 3 — detected from gameConfig)
-  const ks = session.gameConfig?.karaokeHomeState as KaraokeHomeState | undefined;
+  const ks = _ks_probe;
   if (session.gameSlug === 'karaoke-battle' && ks?.version === 3) {
     return <KaraokeLiveBoard sessionId={session.id} state={ks} players={players} />;
   }
-  return <div className="text-white/40 text-2xl">Caricamento gioco…</div>;
+  console.log('[RUNTIME_KARAOKE] RoundBoard — FALLBACK: no branch matched. mode:', mode, 'slug:', session.gameSlug, 'ks.version:', ks?.version);
+  return <div className="text-white/40 text-2xl">Caricamento gioco… (mode: {mode} / slug: {session.gameSlug} / ks.v: {String(ks?.version ?? 'none')})</div>;
 }
 
 // ── QuizBoard ─────────────────────────────────────────────────────────────────
@@ -2389,6 +2410,10 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
   const [rs, setRs] = useState<RisateState | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
+  // ── RUNTIME PROBE ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    console.log('[RUNTIME_RISATE] PercorsoBoard HomeGame.tsx | mode:home-percorso | payloadVersion: Risate2.0 | sessionId:', sessionId, '| payload.percorsoRound:', payload.percorsoRound ?? 'n/a', '| THIS IS THE NEW 2.0 PERCORSO COMPONENT ✅');
+  }, [sessionId, payload.percorsoRound]);
 
   useEffect(() => {
     fetch(`${BASE}api/home/sessions/${sessionId}/risate/state`, { credentials: 'include' })
@@ -3094,9 +3119,18 @@ function KaraokeBoard({ payload, onReveal, players, onScore }: {
 }) {
   const [awarded, setAwarded] = useState<string|null>(null);
   const pts = Number(payload.points ?? 150);
+  // ── RUNTIME PROBE ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    console.log('[RUNTIME_KARAOKE] KaraokeBoard HomeGame.tsx | mode:home-karaoke | payloadVersion: OLD_BOARD | roundIndex:', payload.roundIndex, '| title:', payload.title, '| THIS IS THE OLD COMPONENT — NEW KaraokeLiveBoard DID NOT RENDER');
+  }, [payload.roundIndex]);
+  // ───────────────────────────────────────────────────────────────────────────
   return (
     <motion.div key={String(payload.roundIndex)} initial={{scale:0.9,opacity:0}} animate={{scale:1,opacity:1}}
       className="flex w-full max-w-2xl flex-col items-center gap-7 text-center">
+      {/* RUNTIME PROBE BADGE */}
+      <div style={{position:'fixed',top:8,left:'50%',transform:'translateX(-50%)',zIndex:99999,background:'#dc2626',color:'white',fontFamily:'monospace',fontWeight:900,fontSize:12,padding:'4px 16px',borderRadius:6,border:'2px solid #fff',boxShadow:'0 0 20px rgba(220,38,38,0.8)',pointerEvents:'none'}}>
+        KARAOKE COMPONENT: KaraokeBoard (OLD — v1)
+      </div>
       <div className="flex h-24 w-24 items-center justify-center rounded-3xl text-6xl"
         style={{background:'linear-gradient(135deg,rgba(251,146,60,0.35),rgba(251,146,60,0.15))',border:'2px solid rgba(251,146,60,0.55)',boxShadow:'0 0 60px rgba(251,146,60,0.4)'}}>
         🎤
@@ -3316,6 +3350,10 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
 }) {
   const { on } = useEventSocket(null);
   const [liveState, setLiveState] = useState<KaraokeHomeState>(state);
+  // ── RUNTIME PROBE ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    console.log('[RUNTIME_KARAOKE] KaraokeLiveBoard HomeGame.tsx | mode:home-karaoke-live | payloadVersion:3 | karaokePhase:', state.karaokePhase, '| sessionId:', sessionId, '| THIS IS THE NEW COMPONENT ✅');
+  }, [sessionId, state.karaokePhase]);
   const [floatingEmojis, setFloatingEmojis] = useState<{ id: number; emoji: string; x: number }[]>([]);
   const emojiCtr = useRef(0);
   const [remaining, setRemaining] = useState(0);
