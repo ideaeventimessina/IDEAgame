@@ -1,0 +1,290 @@
+QUIZZONE HOME — LIVE SHOW MODE.
+
+FIRST AUDIT, THEN PATCH.
+Do not touch Karaoke.
+Do not touch WordBack.
+Do not touch Ballo.
+Do not touch Percorso.
+Do not touch Secret Messages.
+
+Goal:
+Transform Quizzone Home into an autonomous mini live show.
+
+Home Quizzone flow must be:
+
+1. Host chooses theme
+2. Host chooses number of questions
+3. Jonny generates/prepares the quiz
+4. Countdown
+5. Quiz Live Show starts
+
+No static old-only quiz flow.
+
+==================================================
+PART 1 — QUIZ SETUP FLOW
+==================================================
+
+When host selects Quizzone:
+
+TV must show:
+
+"Che tema vuoi per il Quizzone?"
+
+Theme options:
+- Cultura generale
+- Cinema
+- Musica
+- Sport
+- Matrimonio
+- Anni 90
+- Sicilia
+- Bambini
+- Custom
+
+Then:
+
+"Quante domande?"
+
+Options:
+- 5
+- 10
+- 15
+- 20
+
+Then:
+
+"Jonny sta creando la gara perfetta..."
+
+Show loading animation 3–5 seconds.
+
+Then:
+Countdown 3,2,1.
+
+==================================================
+PART 2 — QUIZ ROUND TYPES
+==================================================
+
+Generated quiz must contain mixed round types:
+
+1. multiple_choice
+- question
+- 4 answers
+
+2. true_false
+- statement
+- true/false buttons
+
+3. image_vs_image
+- imageA
+- imageB
+- question
+- answer A/B
+
+4. speed_round
+- very simple fast question
+- 3–5 seconds
+- correct + speed bonus
+
+5. progressive_clue
+- clue1
+- clue2
+- clue3
+- points decrease over time
+
+6. order_choice
+- 3 items to order
+- for MVP use 3 prebuilt answer-order buttons, no drag
+
+7. final_bomb
+- last question
+- double points
+
+==================================================
+PART 3 — DATA MODEL
+==================================================
+
+QuizQuestion:
+
+{
+  id,
+  type,
+  theme,
+  question,
+  answers,
+  correctAnswer,
+  imageA,
+  imageB,
+  clues,
+  orderOptions,
+  points,
+  timeLimit
+}
+
+QuizConfig:
+
+{
+  theme,
+  questionCount,
+  generatedAt,
+  questions: QuizQuestion[],
+  currentIndex,
+  phase:
+    "setup_theme" |
+    "setup_count" |
+    "generating" |
+    "countdown" |
+    "question" |
+    "reveal" |
+    "ranking" |
+    "finale"
+}
+
+==================================================
+PART 4 — GENERATION
+==================================================
+
+Do not depend on external AI for first version unless already available.
+
+Create deterministic generator first:
+- local question bank by theme
+- mix question types
+- fallback generic questions
+
+If OpenAI/Jonny generator already exists:
+- use it later
+- but MVP must work without it.
+
+Important:
+"Jonny sta creando" can be a loading animation while deterministic generator prepares the set.
+
+==================================================
+PART 5 — PHONE UI
+==================================================
+
+Phones must adapt by question type:
+
+multiple_choice:
+- A/B/C/D buttons
+
+true_false:
+- VERO / FALSO
+
+image_vs_image:
+- SINISTRA / DESTRA
+
+speed_round:
+- huge answer buttons
+- show "Rispondi veloce!"
+
+progressive_clue:
+- show current clue
+- answer buttons always available
+- points visible decreasing
+
+order_choice:
+- show 3 order options as buttons
+
+final_bomb:
+- show red/gold theme
+- "vale doppio"
+
+After answer:
+- lock selection
+- show "Risposta inviata"
+- wait for reveal
+
+==================================================
+PART 6 — TV UI
+==================================================
+
+TV must look like a live show:
+
+- huge question
+- timer
+- player answer count
+- type badge
+- images huge when image question
+- reveal animation
+- ranking after every 2–3 questions
+- final podium
+
+When all connected players answered:
+- reveal immediately.
+Do not wait full timer.
+
+==================================================
+PART 7 — SCORING
+==================================================
+
+multiple_choice:
+correct +100
+
+true_false:
+correct +80
+
+image_vs_image:
+correct +100
+
+speed_round:
+correct +100 + speed bonus up to +50
+
+progressive_clue:
+clue1 +150
+clue2 +100
+clue3 +50
+
+order_choice:
+correct +120
+
+final_bomb:
+double points
+
+Wrong:
+0
+
+==================================================
+PART 8 — SERVER / SOCKET
+==================================================
+
+Server owns:
+- current question
+- submitted answers
+- scoring
+- reveal timing
+- generated quiz config
+
+Events/routes:
+home:quiz_setup_theme
+home:quiz_setup_count
+home:quiz_generate
+home:quiz_answer
+home:quiz_reveal
+home:quiz_next
+home:quiz_ranking
+home:quiz_finale
+
+Late answers after reveal:
+reject.
+
+Duplicate answers:
+reject.
+
+==================================================
+PART 9 — OUTPUT
+==================================================
+
+Before patch:
+A. current Quizzone architecture
+B. reusable parts
+C. files to modify
+
+After patch:
+D. files modified
+E. setup flow
+F. question generator
+G. supported round types
+H. phone behavior
+I. TV behavior
+J. scoring logic
+K. typecheck result
+L. manual test checklist with 4 phones

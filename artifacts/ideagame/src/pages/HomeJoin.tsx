@@ -1514,6 +1514,7 @@ function PhoneController({
 
   if (mode === 'home-flow')       return <GameFlowPhone session={session} player={player} emit={emit}/>;
   if (mode === 'home-quiz')       return <QuizController payload={p} revealed={revealed} answered={answered} onAnswer={onAnswer}/>;
+  if (mode === 'home-quizzone')   return <QuizzoneController payload={p} session={session} player={player}/>;
   if (mode === 'home-coppie')     return <CoppieController payload={p} onFlip={onFlip} player={player} previewUntil={coppiePreviewUntil ?? null}/>;
   if (mode === 'home-percorso')   return <PercorsoHomeController sessionId={session.id} player={player} payload={p} timeLeft={timeLeft}/>;
   if (mode === 'home-saramusica') return <SaraMusicaController payload={p} player={player} session={session}/>;
@@ -1586,6 +1587,227 @@ function QuizController({ payload, revealed, answered, onAnswer }: {
       )}
     </div>
   );
+}
+
+// ── QuizzoneController — phone for live Quizzone ─────────────────────────────
+
+interface QzcQuestion { type: string; question: string; answers: string[]; correctAnswerIndex: number; imageA?: string; imageB?: string; clues?: string[]; timeLimit: number; }
+interface QzcRevealResult { playerId: string; answerIndex: number | null; correct: boolean; points: number; }
+interface QzcRevealData { correctAnswerIndex: number; playerResults: QzcRevealResult[]; }
+
+function QuizzoneController({ payload, session, player }: {
+  payload: Record<string,unknown>;
+  session: HomeSession;
+  player: HomePlayer;
+}) {
+  const [answeredIdx, setAnsweredIdx] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+  const phase = String(payload.phase ?? 'setup_theme');
+  const currentIndex = Number(payload.currentIndex ?? -1);
+  const questions = (payload.questions as QzcQuestion[]) ?? [];
+  const currentQ = currentIndex >= 0 && currentIndex < questions.length ? questions[currentIndex] : null;
+  const revealData = payload.revealData as QzcRevealData | null;
+  const countdownValue = payload.countdownValue as number | null;
+  const currentClueIndex = Number(payload.currentClueIndex ?? 0);
+  const myResult = revealData?.playerResults.find(r => r.playerId === player.id) ?? null;
+  const questionCount = Number(payload.questionCount ?? 10);
+  const themeName = String(payload.themeName ?? '');
+
+  // Reset answer when question changes
+  useEffect(() => { setAnsweredIdx(null); }, [currentIndex]);
+
+  const submitAnswer = async (idx: number) => {
+    if (busy || answeredIdx !== null || phase !== 'question') return;
+    setAnsweredIdx(idx);
+    setBusy(true);
+    try {
+      await fetch(`/api/home/sessions/${session.id}/quiz/answer`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId: player.id, answerIndex: idx }),
+      });
+    } finally { setBusy(false); }
+  };
+
+  const LETTERS = ['A','B','C','D'];
+  const ANS_COLORS = ['#3B82F6','#EC4899','#EAB308','#10B981'];
+  const TF_COLORS = ['#22c55e', '#ef4444'];
+
+  // Waiting phases
+  if (['setup_theme','setup_count','generating'].includes(phase)) return (
+    <div className="flex flex-col items-center gap-4 py-8 text-center">
+      <motion.div animate={{ scale:[1,1.05,1], opacity:[0.6,1,0.6] }} transition={{ repeat:Infinity, duration:2 }}
+        className="text-6xl">⭐</motion.div>
+      <div className="text-display text-xl font-black text-white">Il host sta configurando</div>
+      <div className="text-base font-bold" style={{ color:'#F5B642' }}>il Quizzone…</div>
+    </div>
+  );
+
+  // Countdown
+  if (phase === 'countdown') return (
+    <div className="flex flex-col items-center gap-4 py-8 text-center">
+      <div className="text-base font-bold text-white/50">{themeName} · {questionCount} domande</div>
+      <motion.div key={countdownValue} initial={{ scale:0.3, opacity:0 }} animate={{ scale:1, opacity:1 }}
+        transition={{ type:'spring', stiffness:300, damping:15 }}
+        className="text-display font-black" style={{ fontSize:'10rem', lineHeight:1, color:'#F5B642', textShadow:'0 0 60px rgba(245,182,66,0.6)' }}>
+        {countdownValue ?? ''}
+      </motion.div>
+      <div className="text-xl font-black text-white/70">Preparati!</div>
+    </div>
+  );
+
+  // Reveal phase — show personal result
+  if (phase === 'reveal' && revealData && currentQ) {
+    const correctAns = currentQ.answers[revealData.correctAnswerIndex] ?? '';
+    return (
+      <div className="flex flex-col gap-4 py-6 text-center">
+        {myResult ? (
+          <motion.div initial={{ scale:0.8, opacity:0 }} animate={{ scale:1, opacity:1 }}
+            className="rounded-3xl p-8 flex flex-col items-center gap-3"
+            style={{ background: myResult.correct ? 'linear-gradient(135deg,rgba(34,197,94,0.2),rgba(34,197,94,0.08))' : 'linear-gradient(135deg,rgba(239,68,68,0.2),rgba(239,68,68,0.08))', border:`2px solid ${myResult.correct ? 'rgba(34,197,94,0.5)' : 'rgba(239,68,68,0.5)'}` }}>
+            <div className="text-5xl">{myResult.correct ? '✅' : '❌'}</div>
+            <div className="text-display text-2xl font-black text-white">
+              {myResult.correct ? 'Risposta corretta!' : 'Risposta sbagliata'}
+            </div>
+            {myResult.correct && (
+              <div className="text-4xl font-black" style={{ color:'#4ade80' }}>+{myResult.points} pt</div>
+            )}
+            {!myResult.correct && (
+              <div className="text-sm text-white/60">Era: <span className="font-bold text-white">{correctAns}</span></div>
+            )}
+          </motion.div>
+        ) : (
+          <div className="text-white/50 text-base">Aspetta la prossima domanda…</div>
+        )}
+        <div className="text-sm text-white/40">Punteggio: <span className="font-black text-white">{player.score} pt</span></div>
+      </div>
+    );
+  }
+
+  // Ranking & finale — show score
+  if (phase === 'ranking' || phase === 'finale') return (
+    <div className="flex flex-col items-center gap-4 py-8 text-center">
+      <div className="text-2xl">{phase === 'finale' ? '🏆' : '📊'}</div>
+      <div className="text-display text-xl font-black text-white">
+        {phase === 'finale' ? 'Fine Quizzone!' : 'Classifica'}
+      </div>
+      <div className="rounded-2xl px-8 py-5 text-center" style={{ background:'rgba(245,182,66,0.12)', border:'1px solid rgba(245,182,66,0.35)' }}>
+        <div className="text-sm text-white/50 mb-1">Il tuo punteggio</div>
+        <div className="text-display text-5xl font-black" style={{ color:'#F5B642' }}>{player.score}</div>
+        <div className="text-sm text-white/40">punti</div>
+      </div>
+      <div className="text-sm text-white/40">Aspetta che il host continui…</div>
+    </div>
+  );
+
+  // Question phase
+  if (phase === 'question' && currentQ) {
+    const type = currentQ.type;
+    const clues = currentQ.clues ?? [];
+    const visibleClue = type === 'progressive_clue' ? clues[currentClueIndex] : null;
+
+    // Header
+    const headerEl = (
+      <div className="flex flex-col gap-2">
+        {type === 'final_bomb' && (
+          <div className="rounded-xl px-3 py-2 text-center text-xs font-black" style={{ background:'rgba(239,68,68,0.2)', border:'1px solid rgba(239,68,68,0.5)', color:'#ef4444' }}>
+            💣 DOMANDA FINALE — VALE DOPPIO!
+          </div>
+        )}
+        {type === 'speed_round' && (
+          <motion.div animate={{ scale:[1,1.02,1] }} transition={{ repeat:Infinity, duration:0.6 }}
+            className="rounded-xl px-3 py-2 text-center text-xs font-black" style={{ background:'rgba(249,115,22,0.2)', border:'1px solid rgba(249,115,22,0.5)', color:'#F97316' }}>
+            ⚡ SPEED ROUND — Rispondi veloce!
+          </motion.div>
+        )}
+        <div className="rounded-2xl px-4 py-3 text-center text-xs font-bold text-white" style={{ background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.12)' }}>
+          {type === 'progressive_clue' && visibleClue ? (
+            <span>🔍 Indizio: <strong>{visibleClue}</strong></span>
+          ) : type === 'image_vs_image' ? (
+            <span>🖼️ Scegli la risposta corretta</span>
+          ) : (
+            currentQ.question
+          )}
+        </div>
+      </div>
+    );
+
+    // Already answered — lock screen
+    if (answeredIdx !== null) {
+      return (
+        <div className="flex flex-col gap-4">
+          {headerEl}
+          <div className="flex flex-col items-center gap-3 rounded-3xl py-10 px-6 text-center" style={{ background:'rgba(245,182,66,0.10)', border:'1px solid rgba(245,182,66,0.35)' }}>
+            <div className="text-4xl">✅</div>
+            <div className="text-display text-lg font-black text-white">Risposta inviata</div>
+            <div className="rounded-xl px-4 py-2 text-xs font-bold text-white/70" style={{ background:'rgba(255,255,255,0.08)' }}>
+              Hai scelto: <strong className="text-white">{currentQ.answers[answeredIdx]}</strong>
+            </div>
+            <div className="text-xs text-white/40 mt-1">Aspetta che il host riveli…</div>
+          </div>
+        </div>
+      );
+    }
+
+    // Image vs image — show images + two big buttons
+    if (type === 'image_vs_image') {
+      return (
+        <div className="flex flex-col gap-3">
+          {headerEl}
+          <div className="flex gap-3">
+            {[0,1].map(i => (
+              <button key={i} onClick={() => void submitAnswer(i)}
+                className="flex flex-col flex-1 items-center gap-2 rounded-2xl p-3 transition-all active:scale-95"
+                style={{ background:`${ANS_COLORS[i]}22`, border:`2px solid ${ANS_COLORS[i]}55` }}>
+                {(i === 0 ? currentQ.imageA : currentQ.imageB) && (
+                  <img src={i === 0 ? currentQ.imageA : currentQ.imageB} alt="" className="h-28 w-full rounded-xl object-cover" />
+                )}
+                <div className="text-xs font-black text-white">{currentQ.answers[i]}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // True/false — 2 big vertical buttons
+    if (type === 'true_false') {
+      return (
+        <div className="flex flex-col gap-3">
+          {headerEl}
+          <div className="flex flex-col gap-3">
+            {currentQ.answers.map((ans, i) => (
+              <button key={i} onClick={() => void submitAnswer(i)}
+                className="rounded-2xl py-7 text-xl font-black text-white transition-all active:scale-95"
+                style={{ background:`${TF_COLORS[i] ?? ANS_COLORS[i]}22`, border:`2px solid ${TF_COLORS[i] ?? ANS_COLORS[i]}55` }}>
+                {ans}
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // Default (multiple_choice, speed_round, progressive_clue, order_choice, final_bomb) — 2×2 grid
+    return (
+      <div className="flex flex-col gap-3">
+        {headerEl}
+        <div className="grid grid-cols-2 gap-2">
+          {currentQ.answers.map((ans, i) => (
+            <button key={i} onClick={() => void submitAnswer(i)}
+              className="flex items-start gap-2 rounded-xl p-3 text-left text-xs font-black text-white transition-all active:scale-95"
+              style={{ background:`${ANS_COLORS[i] ?? '#A78BFA'}22`, border:`2px solid ${ANS_COLORS[i] ?? '#A78BFA'}55` }}>
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-black" style={{ background: ANS_COLORS[i] ?? '#A78BFA', color:'#000' }}>
+                {LETTERS[i]}
+              </span>
+              <span className="leading-tight pt-0.5">{ans}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return <div className="text-white/40 text-center py-8">Caricamento…</div>;
 }
 
 // ── CoppieController ──────────────────────────────────────────────────────────

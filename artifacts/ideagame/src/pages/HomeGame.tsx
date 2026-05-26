@@ -1981,6 +1981,7 @@ function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, bal
 
   if (mode === 'home-flow')       return <GameFlowEngine session={session} players={players} sensorReadyMap={sensorReadyMap}/>;
   if (mode === 'home-quiz')       return <QuizBoard payload={p} revealed={revealed} onReveal={onReveal}/>;
+  if (mode === 'home-quizzone')   return <QuizzoneBoard payload={p} session={session} players={players}/>;
   if (mode === 'home-ballo')      return <BalloBoard session={session} payload={p} players={players} balloEnergies={balloEnergies ?? {}} balloCurrent={balloCurrent ?? {}} balloResult={balloResult ?? null} balloVotes={balloVotes ?? {}} onReset={onBalloReset} onStageNext={onStageNext} onEndBallo={onEndBallo} sensitivity={balloSensitivity ?? 1} onSensitivity={onSensitivity}/>;
   if (mode === 'home-percorso')   return <PercorsoBoard sessionId={session.id} payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
   if (mode === 'home-coppie')     return <CoppieBoard payload={p} onNext={onNext} sessionId={session.id}/>;
@@ -2060,6 +2061,375 @@ function QuizBoard({ payload, revealed, onReveal }: { payload: Record<string,unk
       </div>
     </div>
   );
+}
+
+// ── QuizzoneBoard — full live show TV view ────────────────────────────────────
+
+const QZ = '#F5B642';
+const QZ_GLOW = 'rgba(245,182,66,0.55)';
+const TYPE_BADGE: Record<string, { label: string; emoji: string; color: string }> = {
+  multiple_choice:  { label: 'Risposta Multipla', emoji: '❓', color: '#A78BFA' },
+  true_false:       { label: 'Vero o Falso',       emoji: '⚖️', color: '#60A5FA' },
+  image_vs_image:   { label: 'Immagine vs Immagine',emoji: '🖼️', color: '#F472B6' },
+  speed_round:      { label: 'Speed Round ⚡',      emoji: '⚡', color: '#F97316' },
+  progressive_clue: { label: 'Indizi Progressivi',  emoji: '🔍', color: '#34D399' },
+  order_choice:     { label: 'Metti in Ordine',     emoji: '📋', color: '#818CF8' },
+  final_bomb:       { label: '🔥 DOMANDA FINALE',   emoji: '💣', color: '#EF4444' },
+};
+const QZ_THEMES_CLIENT = [
+  { id:'cultura_generale', label:'Cultura Generale', emoji:'🎓' },
+  { id:'cinema',           label:'Cinema',           emoji:'🎬' },
+  { id:'musica',           label:'Musica',           emoji:'🎵' },
+  { id:'sport',            label:'Sport',            emoji:'⚽' },
+  { id:'matrimonio',       label:'Matrimonio',       emoji:'💍' },
+  { id:'anni90',           label:'Anni 90',          emoji:'📼' },
+  { id:'sicilia',          label:'Sicilia',          emoji:'🍋' },
+  { id:'bambini',          label:'Bambini',          emoji:'🎈' },
+  { id:'custom',           label:'Custom Mix',       emoji:'✨' },
+];
+interface QzQuestion {
+  id: string; type: string; question: string;
+  answers: string[]; correctAnswerIndex: number;
+  imageA?: string; imageB?: string; clues?: string[];
+  points: number; timeLimit: number;
+}
+interface QzRevealData {
+  correctAnswerIndex: number;
+  playerResults: { playerId: string; nickname: string; answerIndex: number | null; correct: boolean; points: number }[];
+}
+interface QzRankingEntry { playerId: string; nickname: string; score: number; delta: number; avatarColor: string }
+
+function QuizzoneBoard({ payload, session, players }: {
+  payload: Record<string,unknown>;
+  session: HomeSession;
+  players: HomePlayer[];
+}) {
+  const [busy, setBusy] = useState(false);
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const phase = String(payload.phase ?? 'setup_theme');
+  const questions = (payload.questions as QzQuestion[]) ?? [];
+  const currentIndex = Number(payload.currentIndex ?? -1);
+  const currentQ = currentIndex >= 0 && currentIndex < questions.length ? questions[currentIndex] : null;
+  const questionCount = Number(payload.questionCount ?? 10);
+  const allAnswered = Boolean(payload.allAnsweredForCurrent);
+  const answeredCount = Number(payload.answeredCount ?? 0);
+  const revealData = payload.revealData as QzRevealData | null;
+  const rankingData = (payload.rankingData as QzRankingEntry[]) ?? null;
+  const countdownValue = payload.countdownValue as number | null;
+  const currentClueIndex = Number(payload.currentClueIndex ?? 0);
+  const themeName = String(payload.themeName ?? '');
+
+  // Client-side countdown timer (visual only — server is authoritative)
+  useEffect(() => {
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    if (phase !== 'question' || !currentQ || !payload.questionStartedAt) { setTimeLeft(null); return; }
+    const startedAt = new Date(String(payload.questionStartedAt)).getTime();
+    const limitMs = currentQ.timeLimit * 1000;
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((limitMs - (Date.now() - startedAt)) / 1000));
+      setTimeLeft(left);
+    };
+    tick();
+    timerRef.current = setInterval(tick, 250);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, currentIndex]);
+
+  const post = async (path: string, body?: Record<string,unknown>) => {
+    if (busy) return;
+    setBusy(true);
+    try { await fetch(`/api/home/sessions/${session.id}${path}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body ?? {}) }); }
+    finally { setBusy(false); }
+  };
+
+  const badge = currentQ ? (TYPE_BADGE[currentQ.type] ?? TYPE_BADGE['multiple_choice']!) : null;
+  const LETTERS = ['A','B','C','D'];
+  const ANS_COLORS = ['#3B82F6','#EC4899','#EAB308','#10B981'];
+
+  // ── setup_theme ────────────────────────────────────────────────────────────
+  if (phase === 'setup_theme') return (
+    <div className="flex flex-col items-center gap-8 w-full max-w-4xl">
+      <div className="text-center">
+        <div className="text-display text-4xl font-black text-white mb-2">Che tema vuoi per il</div>
+        <div className="text-display text-5xl font-black" style={{ color: QZ, textShadow: `0 0 40px ${QZ_GLOW}` }}>⭐ QUIZZONE?</div>
+      </div>
+      <div className="grid grid-cols-3 gap-4 w-full">
+        {QZ_THEMES_CLIENT.map(t => (
+          <button key={t.id} onClick={() => void post('/quiz/select-theme', { themeId: t.id })}
+            disabled={busy}
+            className="flex flex-col items-center gap-3 rounded-2xl p-6 transition-all hover:scale-105"
+            style={{ background:'rgba(245,182,66,0.08)', border:`2px solid rgba(245,182,66,0.25)`, backdropFilter:'blur(10px)' }}>
+            <span style={{ fontSize:'3rem' }}>{t.emoji}</span>
+            <span className="text-base font-black text-white text-center leading-snug">{t.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  // ── setup_count ────────────────────────────────────────────────────────────
+  if (phase === 'setup_count') return (
+    <div className="flex flex-col items-center gap-10 w-full max-w-2xl">
+      <div className="text-center">
+        <div className="text-xl font-bold text-white/50 mb-1">Tema: <span style={{ color: QZ }}>{themeName}</span></div>
+        <div className="text-display text-4xl font-black text-white">Quante domande?</div>
+      </div>
+      <div className="grid grid-cols-2 gap-5 w-full">
+        {[5,10,15,20].map(n => (
+          <button key={n} onClick={() => void post('/quiz/select-count', { count: n })}
+            disabled={busy}
+            className="flex flex-col items-center gap-1 rounded-3xl py-8 transition-all hover:scale-105"
+            style={{ background:`linear-gradient(135deg,${QZ}22,${QZ}08)`, border:`2px solid ${QZ}55`, boxShadow: busy ? 'none' : `0 0 30px ${QZ}22` }}>
+            <span className="text-display text-6xl font-black" style={{ color: QZ }}>{n}</span>
+            <span className="text-sm font-bold text-white/50">domande</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  // ── generating ─────────────────────────────────────────────────────────────
+  if (phase === 'generating') return (
+    <div className="flex flex-col items-center gap-8 text-center">
+      <motion.div animate={{ scale:[1,1.05,1], opacity:[0.7,1,0.7] }} transition={{ repeat:Infinity, duration:1.8 }}
+        className="text-8xl">⭐</motion.div>
+      <div className="text-display text-3xl font-black text-white">Jonny sta creando</div>
+      <div className="text-display text-4xl font-black" style={{ color: QZ }}>la gara perfetta…</div>
+      <div className="flex gap-2 mt-2">
+        {[0,1,2,3,4].map(i => (
+          <motion.div key={i} className="h-3 w-3 rounded-full" style={{ background: QZ }}
+            animate={{ y:[0,-10,0] }} transition={{ repeat:Infinity, duration:0.8, delay:i*0.15 }} />
+        ))}
+      </div>
+    </div>
+  );
+
+  // ── countdown ──────────────────────────────────────────────────────────────
+  if (phase === 'countdown') return (
+    <div className="flex flex-col items-center gap-6 text-center">
+      <div className="text-xl font-bold text-white/50">{questionCount} domande · {themeName}</div>
+      <motion.div key={countdownValue} initial={{ scale:0.4, opacity:0 }} animate={{ scale:1, opacity:1 }}
+        exit={{ scale:1.4, opacity:0 }} transition={{ type:'spring', stiffness:300, damping:18 }}
+        className="text-display font-black" style={{ fontSize:'18rem', lineHeight:1, color: QZ, textShadow:`0 0 120px ${QZ_GLOW}` }}>
+        {countdownValue ?? ''}
+      </motion.div>
+      <div className="text-2xl font-bold text-white/60">Preparatevi!</div>
+    </div>
+  );
+
+  // ── question ───────────────────────────────────────────────────────────────
+  if (phase === 'question' && currentQ) {
+    const timerPct = timeLeft !== null && currentQ.timeLimit > 0 ? timeLeft / currentQ.timeLimit : 1;
+    const timerColor = timerPct > 0.5 ? '#4ade80' : timerPct > 0.25 ? '#facc15' : '#ef4444';
+    const clues = currentQ.clues ?? [];
+    const visibleClues = clues.slice(0, currentClueIndex + 1);
+    return (
+      <div className="flex flex-col gap-5 w-full max-w-4xl">
+        {/* Header row */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {badge && (
+              <div className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-black"
+                style={{ background:`${badge.color}22`, border:`1px solid ${badge.color}55`, color: badge.color }}>
+                {badge.emoji} {badge.label}
+              </div>
+            )}
+            <div className="rounded-full px-3 py-1 text-sm font-bold" style={{ background:'rgba(255,255,255,0.08)', color:'rgba(255,255,255,0.5)' }}>
+              {currentIndex + 1} / {questionCount}
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {allAnswered && <div className="rounded-full px-4 py-2 text-sm font-black text-white" style={{ background:'rgba(34,197,94,0.2)', border:'1px solid rgba(34,197,94,0.5)' }}>✅ Tutti hanno risposto!</div>}
+            {!allAnswered && <div className="text-sm font-bold text-white/40">{answeredCount} risposto</div>}
+            {timeLeft !== null && (
+              <div className="text-3xl font-black" style={{ color: timerColor, textShadow:`0 0 20px ${timerColor}88` }}>
+                {timeLeft}s
+              </div>
+            )}
+          </div>
+        </div>
+        {/* Timer bar */}
+        <div className="h-2 w-full rounded-full overflow-hidden" style={{ background:'rgba(255,255,255,0.08)' }}>
+          <motion.div className="h-full rounded-full" style={{ background: timerColor, width:`${timerPct * 100}%`, transition:'width 0.25s linear' }} />
+        </div>
+        {/* Question */}
+        <div className="rounded-3xl p-7 text-center" style={{ background:`linear-gradient(135deg,${badge?.color ?? QZ}18,rgba(0,0,0,0.3))`, border:`1px solid ${badge?.color ?? QZ}44` }}>
+          {currentQ.type === 'progressive_clue' ? (
+            <div className="flex flex-col gap-3">
+              {visibleClues.map((clue, ci) => (
+                <div key={ci} className="text-lg font-bold" style={{ color: ci < currentClueIndex ? 'rgba(255,255,255,0.45)' : 'white' }}>
+                  {ci === 0 ? '🔍' : ci === 1 ? '🔎' : '💡'} Indizio {ci+1}: {clue}
+                </div>
+              ))}
+              <div className="text-display text-2xl font-black text-white/70 mt-2">{currentQ.question}</div>
+            </div>
+          ) : currentQ.type === 'image_vs_image' ? (
+            <div>
+              <div className="text-display text-2xl font-black text-white mb-4">{currentQ.question}</div>
+              <div className="flex gap-4 justify-center">
+                {currentQ.imageA && <img src={currentQ.imageA} alt="A" className="h-40 w-48 rounded-2xl object-cover" />}
+                <div className="text-3xl font-black text-white/40 self-center">VS</div>
+                {currentQ.imageB && <img src={currentQ.imageB} alt="B" className="h-40 w-48 rounded-2xl object-cover" />}
+              </div>
+            </div>
+          ) : (
+            <div className="text-display text-2xl font-black text-white leading-snug">{currentQ.question}</div>
+          )}
+        </div>
+        {/* Answers */}
+        <div className={currentQ.type === 'true_false' || currentQ.type === 'image_vs_image' ? 'flex gap-4' : 'grid grid-cols-2 gap-3'}>
+          {currentQ.answers.map((ans, i) => (
+            <div key={i} className="flex items-center gap-3 rounded-2xl px-5 py-4"
+              style={{ background:`${ANS_COLORS[i] ?? QZ}18`, border:`2px solid ${ANS_COLORS[i] ?? QZ}44`, flex: (currentQ.type === 'true_false' || currentQ.type === 'image_vs_image') ? '1' : undefined }}>
+              {currentQ.type !== 'true_false' && currentQ.type !== 'image_vs_image' && (
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-black text-sm"
+                  style={{ background: ANS_COLORS[i] ?? QZ, color:'#000' }}>{LETTERS[i]}</div>
+              )}
+              <div className="font-black text-base text-white text-center flex-1">{ans}</div>
+            </div>
+          ))}
+        </div>
+        {/* Host controls */}
+        <div className="flex items-center justify-between mt-1">
+          {currentQ.type === 'progressive_clue' && currentClueIndex < (clues.length - 1) && (
+            <button onClick={() => void post('/quiz/next-clue')} disabled={busy}
+              className="rounded-xl px-5 py-3 text-sm font-black"
+              style={{ background:'rgba(52,211,153,0.15)', border:'1px solid rgba(52,211,153,0.4)', color:'#34D399' }}>
+              🔎 Prossimo indizio
+            </button>
+          )}
+          <div className="flex-1" />
+          <button onClick={() => void post('/quiz/reveal')} disabled={busy}
+            className="rounded-2xl px-8 py-4 text-base font-black text-black transition-all hover:scale-105"
+            style={{ background:`linear-gradient(135deg,${QZ},#F97316)`, boxShadow:`0 0 30px ${QZ_GLOW}` }}>
+            {busy ? '…' : '🎯 Rivela risposta'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── reveal ─────────────────────────────────────────────────────────────────
+  if (phase === 'reveal' && revealData && currentQ) {
+    const correctIdx = revealData.correctAnswerIndex;
+    const correctAns = currentQ.answers[correctIdx] ?? '';
+    const correctCount = revealData.playerResults.filter(r => r.correct).length;
+    return (
+      <div className="flex flex-col gap-5 w-full max-w-4xl">
+        {/* Correct answer highlight */}
+        <div className="rounded-3xl p-7 text-center" style={{ background:'linear-gradient(135deg,rgba(34,197,94,0.18),rgba(34,197,94,0.06))', border:'2px solid rgba(34,197,94,0.55)' }}>
+          <div className="text-xl font-bold text-white/50 mb-2">✅ Risposta corretta</div>
+          <div className="text-display text-4xl font-black" style={{ color:'#4ade80' }}>{correctAns}</div>
+          <div className="text-sm text-white/40 mt-2">{correctCount}/{revealData.playerResults.length} hanno risposto correttamente</div>
+        </div>
+        {/* Per-player results */}
+        <div className="grid grid-cols-3 gap-3 max-h-40 overflow-y-auto">
+          {revealData.playerResults.map(r => (
+            <div key={r.playerId} className="flex items-center gap-2 rounded-xl px-3 py-2"
+              style={{ background: r.correct ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.10)', border:`1px solid ${r.correct ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.25)'}` }}>
+              <span>{r.correct ? '✅' : '❌'}</span>
+              <span className="text-xs font-bold text-white/80 flex-1 truncate">{r.nickname}</span>
+              {r.correct && <span className="text-xs font-black" style={{ color:'#4ade80' }}>+{r.points}</span>}
+            </div>
+          ))}
+        </div>
+        {/* Scoreboard mini */}
+        <div className="flex gap-2 flex-wrap">
+          {[...players].sort((a,b) => b.score - a.score).slice(0,6).map((p,i) => (
+            <div key={p.id} className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.12)' }}>
+              <span className="text-xs font-black text-white/40">#{i+1}</span>
+              <span className="text-xs font-bold text-white">{p.nickname}</span>
+              <span className="text-sm font-black" style={{ color: QZ }}>{p.score}</span>
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-end">
+          <button onClick={() => void post('/quiz/next')} disabled={busy}
+            className="rounded-2xl px-8 py-4 text-base font-black text-black"
+            style={{ background:`linear-gradient(135deg,${QZ},#F97316)`, boxShadow:`0 0 30px ${QZ_GLOW}` }}>
+            {currentIndex + 1 >= questionCount ? '🏆 Finale →' : busy ? '…' : 'Prossima →'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── ranking ────────────────────────────────────────────────────────────────
+  if (phase === 'ranking' && rankingData) {
+    return (
+      <div className="flex flex-col items-center gap-6 w-full max-w-2xl">
+        <div className="text-display text-4xl font-black" style={{ color: QZ }}>📊 Classifica</div>
+        <div className="flex flex-col gap-3 w-full">
+          {rankingData.slice(0,8).map((r,i) => (
+            <motion.div key={r.playerId} initial={{ x:-30, opacity:0 }} animate={{ x:0, opacity:1 }} transition={{ delay:i*0.07 }}
+              className="flex items-center gap-4 rounded-2xl px-5 py-3"
+              style={{ background: i < 3 ? `${QZ}18` : 'rgba(255,255,255,0.07)', border:`1px solid ${i < 3 ? QZ+'44' : 'rgba(255,255,255,0.12)'}` }}>
+              <div className="text-2xl font-black w-8 text-center" style={{ color: i === 0 ? '#FCD34D' : i === 1 ? '#CBD5E1' : i === 2 ? '#D97706' : 'rgba(255,255,255,0.4)' }}>
+                {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`}
+              </div>
+              <div className="flex-1 text-base font-black text-white">{r.nickname}</div>
+              {r.delta > 0 && <div className="text-sm font-black" style={{ color:'#4ade80' }}>+{r.delta}</div>}
+              <div className="text-xl font-black" style={{ color: QZ }}>{r.score}</div>
+            </motion.div>
+          ))}
+        </div>
+        <button onClick={() => void post('/quiz/next')} disabled={busy}
+          className="rounded-2xl px-8 py-4 text-base font-black text-black mt-2"
+          style={{ background:`linear-gradient(135deg,${QZ},#F97316)`, boxShadow:`0 0 30px ${QZ_GLOW}` }}>
+          {busy ? '…' : 'Continua →'}
+        </button>
+      </div>
+    );
+  }
+
+  // ── finale ─────────────────────────────────────────────────────────────────
+  if (phase === 'finale') {
+    const podium = (rankingData ?? [...players].sort((a,b) => b.score - a.score).map(p => ({ ...p, delta: 0 }))).slice(0, 3);
+    return (
+      <div className="flex flex-col items-center gap-8 w-full max-w-3xl text-center">
+        <motion.div initial={{ scale:0, opacity:0 }} animate={{ scale:1, opacity:1 }} transition={{ type:'spring', stiffness:200 }}
+          className="text-display text-5xl font-black" style={{ color: QZ, textShadow:`0 0 60px ${QZ_GLOW}` }}>
+          🏆 QUIZZONE FINITO!
+        </motion.div>
+        <div className="text-xl text-white/60">Tema: {themeName} · {questionCount} domande</div>
+        {/* Podium */}
+        <div className="flex items-end gap-6">
+          {[podium[1], podium[0], podium[2]].map((p, vi) => {
+            if (!p) return <div key={vi} />;
+            const rank = vi === 1 ? 0 : vi === 0 ? 1 : 2;
+            const heights = ['h-32','h-24','h-20'];
+            const medals = ['🥇','🥈','🥉'];
+            const colors = ['#FCD34D','#CBD5E1','#D97706'];
+            return (
+              <motion.div key={p.playerId} initial={{ y:50, opacity:0 }} animate={{ y:0, opacity:1 }} transition={{ delay:rank*0.15+0.3 }}
+                className="flex flex-col items-center gap-2">
+                <div className="text-2xl">{medals[rank]}</div>
+                <div className="text-base font-black text-white max-w-24 text-center truncate">{p.nickname}</div>
+                <div className="text-xl font-black" style={{ color: colors[rank] }}>{p.score}</div>
+                <div className={`${heights[rank]} w-20 rounded-t-2xl flex items-end justify-center pb-2 font-black text-lg`}
+                  style={{ background:`${colors[rank]}22`, border:`2px solid ${colors[rank]}55`, color: colors[rank] }}>
+                  #{rank+1}
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+        {/* Full ranking */}
+        {(rankingData ?? []).slice(3).map((r,i) => (
+          <div key={r.playerId} className="flex items-center gap-3 w-full max-w-sm rounded-xl px-4 py-2"
+            style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)' }}>
+            <span className="text-sm text-white/40">#{i+4}</span>
+            <span className="flex-1 text-sm font-bold text-white">{r.nickname}</span>
+            <span className="font-black" style={{ color: QZ }}>{r.score}</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return <div className="text-white/40 text-xl">Caricamento Quizzone…</div>;
 }
 
 // ── BalloBoard — 3-stage tournament TV view ────────────────────────────────────

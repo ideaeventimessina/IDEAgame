@@ -21,6 +21,7 @@ import { Router, type IRouter } from "express";
 import multer from "multer";
 import OpenAI from "openai";
 import { createBlankKaraokeState } from "../lib/karaoke-home-engine.js";
+import { generateQuiz, QUIZ_THEMES } from "../lib/quiz-generator.js";
 import { eq, and, or, lt, asc, desc, isNull } from "drizzle-orm";
 import {
   db,
@@ -73,6 +74,8 @@ function homeRoom(id: string) { return `home:${id}`; }
 const quizAnswerMap = new Map<string, Map<number, Map<string, number>>>();
 // sessionId → round → winnerId (first correct player per round)
 const saraMusicaWinnerMap = new Map<string, Map<number, string>>();
+// Quizzone: sessionId → questionIndex → playerId → { answerIndex, answeredAt }
+const quizzoneAnswerMap = new Map<string, Map<number, Map<string, { answerIndex: number; answeredAt: number }>>>();
 
 /** Fisher-Yates shuffle that tracks where the correct answer moved. */
 function shuffleWithCorrectIndex(
@@ -1174,6 +1177,252 @@ router.post("/home/sessions/:id/saramusica-answer", async (req, res): Promise<vo
   res.json({ ok: true, correct: isCorrect });
 });
 
+// ── Quizzone Home Live Show routes ────────────────────────────────────────────
+
+// Helper: update quizzone payload and emit home:state
+async function qzUpdate(id: string, patch: Record<string, unknown>): Promise<void> {
+  const sess = await getSession(id);
+  if (!sess) return;
+  const rp = (sess.roundPayload ?? {}) as Record<string, unknown>;
+  const updated = await db.update(homeSessionsTable)
+    .set({ roundPayload: { ...rp, ...patch } })
+    .where(eq(homeSessionsTable.id, id)).returning();
+  const players = await getPlayers(id);
+  emitToRoom(homeRoom(id), "home:state", { session: updated[0], players });
+}
+
+// POST /home/sessions/:id/quiz/select-theme
+router.post("/home/sessions/:id/quiz/select-theme", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-quizzone") { res.status(409).json({ error: "Non in modalità quizzone" }); return; }
+  if (rp["phase"] !== "setup_theme") { res.status(409).json({ error: "Fase non corretta" }); return; }
+  const { themeId } = req.body as { themeId: string };
+  if (!themeId) { res.status(400).json({ error: "themeId obbligatorio" }); return; }
+  const themeObj = QUIZ_THEMES.find(t => t.id === themeId);
+  await qzUpdate(id, { theme: themeId, themeName: themeObj?.label ?? themeId, phase: "setup_count" });
+  res.json({ ok: true });
+});
+
+// POST /home/sessions/:id/quiz/select-count
+router.post("/home/sessions/:id/quiz/select-count", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-quizzone") { res.status(409).json({ error: "Non in modalità quizzone" }); return; }
+  if (rp["phase"] !== "setup_count") { res.status(409).json({ error: "Fase non corretta" }); return; }
+  const count = Number(req.body?.count ?? 10);
+  const validCounts = [5, 10, 15, 20];
+  const questionCount = validCounts.includes(count) ? count : 10;
+  const themeId = String(rp["theme"] ?? "cultura_generale");
+  // Start generating
+  await qzUpdate(id, { phase: "generating", questionCount });
+  res.json({ ok: true });
+  // After 3s generate questions and start countdown
+  setTimeout(async () => {
+    try {
+      const questions = generateQuiz(themeId, questionCount);
+      const sess2 = await getSession(id);
+      if (!sess2) return;
+      const rp2 = (sess2.roundPayload ?? {}) as Record<string, unknown>;
+      // Countdown 3
+      await qzUpdate(id, { ...rp2, questions, phase: "countdown", countdownValue: 3 });
+      setTimeout(async () => {
+        await qzUpdate(id, { countdownValue: 2 });
+        setTimeout(async () => {
+          await qzUpdate(id, { countdownValue: 1 });
+          setTimeout(async () => {
+            const firstQ = questions[0];
+            await qzUpdate(id, {
+              phase: "question",
+              currentIndex: 0,
+              countdownValue: null,
+              questionStartedAt: new Date().toISOString(),
+              currentClueIndex: 0,
+              allAnsweredForCurrent: false,
+              answeredCount: 0,
+              revealData: null,
+              rankingData: null,
+              totalRounds: questionCount,
+            });
+            await db.update(homeSessionsTable)
+              .set({ totalRounds: questionCount, currentRound: 0 })
+              .where(eq(homeSessionsTable.id, id));
+            logger.info({ sessionId: id, firstQ: firstQ?.type }, "[QuizzoneHome] first question ready");
+          }, 1200);
+        }, 1000);
+      }, 1000);
+    } catch (err) {
+      logger.error({ err, sessionId: id }, "[QuizzoneHome] generate failed");
+    }
+  }, 3000);
+});
+
+// POST /home/sessions/:id/quiz/answer — phone submits answer
+router.post("/home/sessions/:id/quiz/answer", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const { playerId, answerIndex } = req.body as { playerId: string; answerIndex: number };
+  if (!playerId || typeof answerIndex !== "number") { res.status(400).json({ error: "Parametri mancanti" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-quizzone") { res.status(409).json({ error: "Non in modalità quizzone" }); return; }
+  if (rp["phase"] !== "question") { res.status(409).json({ error: "Non in fase domanda" }); return; }
+  const currentIndex = Number(rp["currentIndex"] ?? 0);
+  if (!quizzoneAnswerMap.has(id)) quizzoneAnswerMap.set(id, new Map());
+  const sessionMap = quizzoneAnswerMap.get(id)!;
+  if (!sessionMap.has(currentIndex)) sessionMap.set(currentIndex, new Map());
+  const qMap = sessionMap.get(currentIndex)!;
+  if (qMap.has(playerId)) { res.json({ ok: true, duplicate: true }); return; }
+  qMap.set(playerId, { answerIndex, answeredAt: Date.now() });
+  // Update answeredCount in payload and check if all answered
+  const players = await getPlayers(id);
+  const connected = players.filter(p => p.isConnected);
+  const effectiveCount = connected.length > 0 ? connected.length : players.length;
+  const answeredCount = qMap.size;
+  const allAnswered = effectiveCount > 0 && answeredCount >= effectiveCount;
+  await qzUpdate(id, { answeredCount, allAnsweredForCurrent: allAnswered });
+  if (allAnswered) {
+    emitToRoom(homeRoom(id), "home:quiz_all_answered", { sessionId: id, round: currentIndex, correctIndex: 0 });
+  }
+  res.json({ ok: true });
+});
+
+// POST /home/sessions/:id/quiz/next-clue — advance progressive clue
+router.post("/home/sessions/:id/quiz/next-clue", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-quizzone" || rp["phase"] !== "question") { res.status(409).json({ error: "Fase non corretta" }); return; }
+  const current = Number(rp["currentClueIndex"] ?? 0);
+  await qzUpdate(id, { currentClueIndex: Math.min(current + 1, 2) });
+  res.json({ ok: true });
+});
+
+// POST /home/sessions/:id/quiz/reveal — reveal answer + score
+router.post("/home/sessions/:id/quiz/reveal", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-quizzone" || rp["phase"] !== "question") { res.status(409).json({ error: "Fase non corretta" }); return; }
+  const currentIndex = Number(rp["currentIndex"] ?? 0);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const questions = (rp["questions"] as any[]) ?? [];
+  const q = questions[currentIndex];
+  if (!q) { res.status(400).json({ error: "Domanda non trovata" }); return; }
+  const correctAnswerIndex = Number(q.correctAnswerIndex ?? 0);
+  const qType = String(q.type ?? "multiple_choice");
+  const basePoints = Number(q.points ?? 100);
+  const timeLimit = Number(q.timeLimit ?? 15);
+  const currentClueIndex = Number(rp["currentClueIndex"] ?? 0);
+  const questionStartedAt = rp["questionStartedAt"] ? new Date(String(rp["questionStartedAt"])).getTime() : Date.now();
+  // Compute per-player results
+  const players = await getPlayers(id);
+  const qMap = quizzoneAnswerMap.get(id)?.get(currentIndex);
+  const playerResults: { playerId: string; nickname: string; answerIndex: number | null; correct: boolean; points: number }[] = [];
+  const scoreUpdates: Promise<unknown>[] = [];
+  for (const player of players) {
+    const ans = qMap?.get(player.id);
+    const correct = ans !== undefined && ans.answerIndex === correctAnswerIndex;
+    let points = 0;
+    if (correct) {
+      switch (qType) {
+        case "true_false":       points = 80; break;
+        case "speed_round": {
+          const elapsed = (ans?.answeredAt ?? Date.now()) - questionStartedAt;
+          const speedBonus = Math.round(50 * Math.max(0, 1 - elapsed / (timeLimit * 1000)));
+          points = 100 + speedBonus;
+          break;
+        }
+        case "progressive_clue": points = Math.max(50, 150 - currentClueIndex * 50); break;
+        case "order_choice":     points = 120; break;
+        case "final_bomb":       points = 200; break;
+        default:                 points = basePoints;
+      }
+      const newScore = player.score + points;
+      scoreUpdates.push(
+        db.update(homePlayersTable)
+          .set({ score: newScore })
+          .where(eq(homePlayersTable.id, player.id))
+      );
+    }
+    playerResults.push({ playerId: player.id, nickname: player.nickname, answerIndex: ans?.answerIndex ?? null, correct, points });
+  }
+  await Promise.all(scoreUpdates);
+  // Clear answer map for this question
+  quizzoneAnswerMap.get(id)?.delete(currentIndex);
+  const revealData = { correctAnswerIndex, playerResults };
+  await qzUpdate(id, { phase: "reveal", revealData, allAnsweredForCurrent: false });
+  emitToRoom(homeRoom(id), "home:quizzone_reveal", { sessionId: id, questionIndex: currentIndex, revealData });
+  res.json({ ok: true });
+});
+
+// POST /home/sessions/:id/quiz/next — advance to next question / ranking / finale
+router.post("/home/sessions/:id/quiz/next", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-quizzone") { res.status(409).json({ error: "Non in modalità quizzone" }); return; }
+  if (rp["phase"] !== "reveal" && rp["phase"] !== "ranking") { res.status(409).json({ error: "Fase non corretta" }); return; }
+  const currentIndex = Number(rp["currentIndex"] ?? 0);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const questions = (rp["questions"] as any[]) ?? [];
+  const nextIndex = currentIndex + 1;
+  // Build ranking data from current player scores
+  const players = await getPlayers(id);
+  const sortedPlayers = [...players].sort((a, b) => b.score - a.score);
+  const prevRankingData = (rp["rankingData"] as { playerId: string; score: number }[] | null) ?? null;
+  const rankingData = sortedPlayers.map(p => ({
+    playerId: p.id,
+    nickname: p.nickname,
+    avatarColor: (p as Record<string, unknown>).avatarColor as string ?? "#A78BFA",
+    score: p.score,
+    delta: p.score - (prevRankingData?.find(r => r.playerId === p.id)?.score ?? p.score),
+  }));
+  if (nextIndex >= questions.length) {
+    // FINALE
+    await qzUpdate(id, { phase: "finale", rankingData, revealData: null });
+    await db.update(homeSessionsTable).set({ currentRound: nextIndex }).where(eq(homeSessionsTable.id, id));
+    res.json({ ok: true });
+    return;
+  }
+  // Show ranking every 3 questions (at indices 2, 5, 8, ...) when coming from reveal
+  const showRanking = rp["phase"] === "reveal" && nextIndex > 0 && nextIndex % 3 === 0;
+  if (showRanking) {
+    await qzUpdate(id, { phase: "ranking", rankingData, revealData: null });
+    await db.update(homeSessionsTable).set({ currentRound: nextIndex }).where(eq(homeSessionsTable.id, id));
+    res.json({ ok: true });
+    return;
+  }
+  // Next question
+  const nextQ = questions[nextIndex];
+  await qzUpdate(id, {
+    phase: "question",
+    currentIndex: nextIndex,
+    questionStartedAt: new Date().toISOString(),
+    currentClueIndex: 0,
+    allAnsweredForCurrent: false,
+    answeredCount: 0,
+    revealData: null,
+    rankingData: rp["phase"] === "ranking" ? rankingData : rp["rankingData"],
+  });
+  await db.update(homeSessionsTable).set({ currentRound: nextIndex }).where(eq(homeSessionsTable.id, id));
+  logger.info({ sessionId: id, nextIndex, qType: nextQ?.type }, "[QuizzoneHome] advanced to next question");
+  res.json({ ok: true });
+});
+
 // ── POST /home/sessions/:id/ready — pass to game-board ─────────────────────────
 router.post("/home/sessions/:id/ready", async (req, res): Promise<void> => {
   const id = String(req.params["id"]);
@@ -1234,6 +1483,40 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
     emitToRoom(homeRoom(id), "home:game_started", { session: karaokeUpdated, players: kPlayersAfter, payload: karaokePayload });
     emitToRoom(homeRoom(id), "home:state", { session: karaokeUpdated, players: kPlayersAfter });
     res.json({ session: karaokeUpdated, players: kPlayersAfter });
+    return;
+  }
+
+  // ── BYPASS: quizzone → direct QuizzoneBoard with full setup flow ─────────────
+  if (gameSlug === "quizzone") {
+    req.log.info({ sessionId: id }, "[FLOW_BYPASS] quizzone → QuizzoneBoard setup flow");
+    const qPayload: RoundPayload = {
+      mode: "home-quizzone",
+      phase: "setup_theme",
+      theme: null,
+      themeName: null,
+      questionCount: 10,
+      questions: [],
+      currentIndex: -1,
+      countdownValue: null,
+      currentClueIndex: 0,
+      allAnsweredForCurrent: false,
+      revealData: null,
+      rankingData: null,
+    };
+    const qCfg = { ...cfg, phase: "playing", gamesPlayed };
+    const [qUpdated] = await db.update(homeSessionsTable).set({
+      gameSlug,
+      gameConfig: qCfg,
+      status: "playing",
+      currentRound: 0,
+      totalRounds: 0,
+      roundPayload: qPayload,
+      expiresAt: new Date(Date.now() + 6 * 60 * 60 * 1000),
+    }).where(eq(homeSessionsTable.id, id)).returning();
+    const qPlayers = await getPlayers(id);
+    emitToRoom(homeRoom(id), "home:game_started", { session: qUpdated, players: qPlayers, payload: qPayload });
+    emitToRoom(homeRoom(id), "home:state", { session: qUpdated, players: qPlayers });
+    res.json({ session: qUpdated, players: qPlayers });
     return;
   }
 
