@@ -1,0 +1,128 @@
+URGENT — KARAOKE LIVE AND PERCORSO RISATE STILL ENTER OLD THEME FLOW.
+
+Do not delete legacy files yet.
+Do not patch UI randomly.
+
+Problem confirmed:
+When selecting Karaoke, app still asks/show old theme such as Disney.
+But new Karaoke Live must NOT use theme Disney flow.
+
+Expected new Karaoke:
+- QR always visible
+- players can join/book songs
+- no Disney theme selection
+- no old lyric/microphone game
+- first screen must be Karaoke Live duration/session setup
+- queue/search YouTube/booking flow
+
+Problem also on Percorso:
+It still shows old obstacle/Disney themed flow.
+But new Percorso a Risate must use mission engine with 10 missions, not Disney theme.
+
+ROOT HYPOTHESIS:
+select-game is still sending karaoke-battle and percorso-a-risate into old universal theme_select flow.
+Then loadGameRoundsForTheme loads old preloadedRounds with Disney.
+So even if new components exist, the server creates old payloads.
+
+AUDIT:
+- POST /api/home/sessions/:id/flow/select-game
+- GameFlowEngine selectGame
+- game config for karaoke-battle
+- game config for percorso-a-risate
+- loadGameRoundsForTheme
+- loadKaraokeRoundsForTheme
+- loadPercorsoRoundsForTheme
+- flow/confirm
+- preloadedRounds
+- roundPayload.mode
+- gameFlowPhase
+- selectedTheme
+
+Find:
+1. Why Karaoke still enters theme_select.
+2. Why Karaoke still loads Disney theme.
+3. Why Percorso still enters Disney/old obstacle flow.
+4. Which old loader creates those rounds.
+5. Which condition should bypass theme_select.
+
+REQUIRED FIX — KARAOKE:
+When selected gameSlug === "karaoke-battle":
+
+DO NOT enter theme_select.
+DO NOT call loadKaraokeRoundsForTheme.
+DO NOT create old home-karaoke round from Disney.
+
+Instead set roundPayload immediately to:
+{
+  mode: "home-karaoke-live",
+  gameFlowPhase: "karaoke_duration_select",
+  karaokeHomeState: {
+    version: 3,
+    karaokePhase: "duration_select",
+    queue: [],
+    results: [],
+    reactionsCurrentSong: {},
+    queueIsOpen: false
+  }
+}
+
+Or if architecture requires gameConfig:
+store karaokeHomeState.version = 3 in gameConfig immediately on select-game.
+
+TV must render KaraokeLiveBoard directly.
+
+REQUIRED FIX — PERCORSO:
+When selected gameSlug === "percorso-a-risate":
+
+DO NOT load old Disney/obstacle theme rounds.
+DO NOT enter old theme_select unless it is selecting mission pack only.
+
+Instead initialize new mission engine:
+
+{
+  mode: "home-percorso-risate",
+  gameFlowPhase: "mission_intro" or "booking",
+  percorsoState: {
+    version: 2,
+    currentMissionIndex: 0,
+    missionPhase: "intro",
+    missions: RISATE_MISSIONS
+  }
+}
+
+TV must render new Risate mission engine, not old Percorso Disney board.
+
+IMPORTANT:
+Karaoke Live is a full evening mode, not a themed round game.
+Percorso a Risate is a 10-mission engine, not a Disney obstacle theme game.
+
+ADD HARD BLOCK:
+If gameSlug === "karaoke-battle" and selectedTheme includes Disney or any theme:
+throw/log:
+[FLOW_BUG] Karaoke should not receive selectedTheme.
+
+If gameSlug === "percorso-a-risate" and old Disney theme rounds are loaded:
+throw/log:
+[FLOW_BUG] Percorso Risate should not load old theme rounds.
+
+RUNTIME PROOF:
+Add visible badges:
+KARAOKE FLOW: LIVE_V3
+PERCORSO FLOW: RISATE_MISSIONS_V2
+
+These badges must appear on TV when those games start.
+
+OUTPUT:
+A. exact old loader causing Disney theme
+B. files modified
+C. Karaoke bypasses theme_select
+D. Percorso bypasses old Disney theme loader
+E. new roundPayload shapes
+F. runtime proof badges
+G. typecheck result
+H. manual test:
+   - create brand new session
+   - select Karaoke
+   - must show Karaoke Live duration/queue, no Disney
+   - select Percorso
+   - must show mission engine, no Disney
