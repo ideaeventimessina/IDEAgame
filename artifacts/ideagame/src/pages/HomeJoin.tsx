@@ -2981,14 +2981,27 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
     setSearchWarning(null);
     try {
       const r = await homeFetch(`/home/sessions/${sessionId}/karaoke/search`, { query: rawInput });
-      const d = await r.json() as { results: YTSearchResult[]; noKaraokeFound?: boolean; warning?: string | null; youtubeQuery?: string };
+      const d = await r.json() as
+        | { ok: true;  results: YTSearchResult[]; noKaraokeFound: boolean; warning?: string | null; mock?: boolean; youtubeQuery: string }
+        | { ok: false; error: string; youtubeQuery: string; status?: number; code?: number; message?: string };
+
+      if (!d.ok) {
+        // Surface the real YouTube error to the user (temporarily, for diagnosis)
+        const msg =
+          d.error === "youtube_api_error"    ? `Errore YouTube ${d.status ?? ''}: ${d.message ?? 'API error'}` :
+          d.error === "youtube_zero_results" ? `YouTube ha restituito 0 risultati per: ${d.youtubeQuery}` :
+                                               `Errore ricerca: ${d.message ?? d.error}`;
+        setSearchWarning(msg);
+        setNoKaraokeFound(true);
+        console.warn(`[KARAOKE_SEARCH] error=${d.error} | youtubeQuery="${d.youtubeQuery}" | status=${(d as {status?:number}).status ?? '-'} | message=${(d as {message?:string}).message ?? '-'}`);
+        return;
+      }
+
       const results = d.results ?? [];
       setSearchResults(results);
-      // noKaraokeFound = true ONLY when YouTube returned 0 results or API error
       setNoKaraokeFound(d.noKaraokeFound ?? results.length === 0);
-      // warning = advisory when results exist but none look explicitly like karaoke
       setSearchWarning(results.length > 0 ? (d.warning ?? null) : null);
-      console.log(`[KARAOKE_SEARCH] rawInput: "${rawInput}" | youtubeQuery: "${d.youtubeQuery ?? rawInput + ' karaoke'}" | results: ${results.length} | noKaraokeFound: ${d.noKaraokeFound ?? false} | warning: ${d.warning ?? null} | chosenVideoTitle: "${results[0]?.title ?? 'none'}" | chosenVideoId: "${results[0]?.videoId ?? 'none'}"`);
+      console.log(`[KARAOKE_SEARCH] ok | youtubeQuery="${d.youtubeQuery}" | mock=${d.mock ?? false} | results=${results.length} | noKaraokeFound=${d.noKaraokeFound} | warning=${d.warning ?? null} | first="${results[0]?.title ?? 'none'}" (${results[0]?.videoId ?? 'none'})`);
     } finally { setSearching(false); }
   }, [searchQuery, sessionId]);
 
