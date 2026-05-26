@@ -3302,6 +3302,7 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
   const [reactionSent, setReactionSent] = useState('');
   const [remaining, setRemaining] = useState(0);
   const [error, setError] = useState('');
+  const [backstageReadyVideoId, setBackstageReadyVideoId] = useState<string | null>(null);
   // Dedication flow
   const [selectedVideo, setSelectedVideo] = useState<YTSearchResult | null>(null);
   const [dedicateeId, setDedicateeId] = useState<string | null>(null);
@@ -3310,12 +3311,16 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
 
   useEffect(() => { setState(initialState); }, [initialState]);
   useEffect(() => {
-    const u = on<{ state: KaraokeHomeState }>('home:karaoke_state', ({ state: s }) => {
+    const u1 = on<{ state: KaraokeHomeState }>('home:karaoke_state', ({ state: s }) => {
       setState(s);
       // Reset vote state when phase changes away from voting
       if (s.karaokePhase !== 'voting') { setVoted(false); }
     });
-    return u;
+    const u2 = on<{ nextVideoId: string; status: string }>('home:karaoke_backstage_update', ({ nextVideoId, status }) => {
+      if (status === 'ready') setBackstageReadyVideoId(nextVideoId);
+      else setBackstageReadyVideoId(null);
+    });
+    return () => { u1(); u2(); };
   }, [on]);
 
   useEffect(() => {
@@ -3741,10 +3746,18 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
         {/* BOTTOM: booking strip — always visible */}
         {myQueueItem ? (
           <div className="shrink-0 rounded-2xl px-4 py-3 flex items-center gap-3"
-            style={{ background: `${KK_J}12`, border: `1px solid ${KK_J}30` }}>
+            style={{ background: myQueueItem.videoId === backstageReadyVideoId
+              ? 'rgba(34,197,94,0.1)'
+              : `${KK_J}12`,
+              border: myQueueItem.videoId === backstageReadyVideoId
+              ? '1px solid rgba(34,197,94,0.4)'
+              : `1px solid ${KK_J}30` }}>
             <div className="text-base shrink-0">🎤</div>
             <div className="flex-1 min-w-0">
-              <div className="text-[11px] text-white/40">Sei in coda</div>
+              <div className="text-[11px] flex items-center gap-1"
+                style={{ color: myQueueItem.videoId === backstageReadyVideoId ? '#4ade80' : 'rgba(255,255,255,0.4)' }}>
+                {myQueueItem.videoId === backstageReadyVideoId ? '🟢 Il tuo brano è pronto!' : 'Sei in coda'}
+              </div>
               <div className="text-sm font-bold text-white truncate">{myQueueItem.title}</div>
             </div>
             {myPos > 0 && <div className="shrink-0 text-sm font-black" style={{ color: KK_J }}>#{myPos}</div>}

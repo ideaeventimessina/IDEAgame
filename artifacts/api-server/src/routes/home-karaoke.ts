@@ -522,6 +522,17 @@ router.post("/home/sessions/:id/karaoke/end-session", async (req: Request, res: 
   res.json({ state: next });
 });
 
+/* ── POST backstage-status (relay only — no DB write) ────────────────────── */
+router.post("/home/sessions/:id/karaoke/backstage-status", async (req: Request, res: Response): Promise<void> => {
+  const id = String(req.params["id"]);
+  const { nextVideoId, status } = req.body as { nextVideoId?: string; status?: string };
+  if (!nextVideoId || !status) { res.status(400).json({ error: "nextVideoId e status richiesti" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Sessione non trovata" }); return; }
+  emitToRoom(homeRoom(id), "home:karaoke_backstage_update", { nextVideoId, status });
+  res.json({ ok: true });
+});
+
 /* ── Freestyle: POST book ────────────────────────────────────────────────── */
 router.post("/home/sessions/:id/freestyle/book", async (req: Request, res: Response): Promise<void> => {
   const id = String(req.params["id"]);

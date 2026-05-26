@@ -3432,6 +3432,20 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
   // Awards carousel
   const [awardsPhase, setAwardsPhase] = useState(false);
   const [awardsIdx, setAwardsIdx] = useState(0);
+  // ── Backstage preload engine ──────────────────────────────────────────────
+  const slotARef = useRef<HTMLIFrameElement>(null);
+  const slotBRef = useRef<HTMLIFrameElement>(null);
+  const [slotAVideoId, setSlotAVideoId] = useState<string | null>(null);
+  const [slotBVideoId, setSlotBVideoId] = useState<string | null>(null);
+  const [liveSlot, setLiveSlot] = useState<'A' | 'B'>('A');
+  const [backstageStatus, setBackstageStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [backstageReadyVideoId, setBackstageReadyVideoId] = useState<string | null>(null);
+  // Refs for stable closures (avoid stale state in listeners)
+  const liveSlotRef = useRef<'A' | 'B'>('A');
+  const slotAVideoIdRef = useRef<string | null>(null);
+  const slotBVideoIdRef = useRef<string | null>(null);
+  const backstageStatusRef = useRef<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const prevCurrentItemIdRef = useRef<string | null>(null);
 
   // Sync incoming state from parent or socket
   useEffect(() => { setLiveState(state); }, [state]);
@@ -3484,6 +3498,107 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
     }
     return () => { if (votingTimer.current) clearInterval(votingTimer.current); };
   }, [liveState.karaokePhase]);
+
+  // ── Keep refs in sync with state ─────────────────────────────────────────
+  useEffect(() => { liveSlotRef.current = liveSlot; }, [liveSlot]);
+  useEffect(() => { slotAVideoIdRef.current = slotAVideoId; }, [slotAVideoId]);
+  useEffect(() => { slotBVideoIdRef.current = slotBVideoId; }, [slotBVideoId]);
+  useEffect(() => { backstageStatusRef.current = backstageStatus; }, [backstageStatus]);
+
+  // ── YouTube postMessage listener — detect backstage readiness ─────────────
+  useEffect(() => {
+    const handler = (e: MessageEvent) => {
+      try {
+        const data = JSON.parse(e.data as string) as { event?: string; info?: unknown };
+        if (data.event !== 'onStateChange') return;
+        const ytState = typeof data.info === 'number' ? data.info : -99;
+        const isSlotA = e.source === slotARef.current?.contentWindow;
+        const isSlotB = e.source === slotBRef.current?.contentWindow;
+        const isBackstage = (isSlotA && liveSlotRef.current === 'B') || (isSlotB && liveSlotRef.current === 'A');
+        if (!isBackstage) return;
+        const vid = liveSlotRef.current === 'B' ? slotAVideoIdRef.current : slotBVideoIdRef.current;
+        if (ytState === 1 || ytState === 5) {
+          if (backstageStatusRef.current !== 'ready') {
+            console.log(`[KARAOKE_BACKSTAGE] ready | videoId=${vid ?? '?'}`);
+            setBackstageStatus('ready');
+            backstageStatusRef.current = 'ready';
+            setBackstageReadyVideoId(vid);
+            if (vid) void apiFetch(`/home/sessions/${sessionId}/karaoke/backstage-status`, { nextVideoId: vid, status: 'ready' });
+          }
+        } else if (ytState === 3) {
+          console.log(`[KARAOKE_BACKSTAGE] buffering | videoId=${vid ?? '?'}`);
+          if (backstageStatusRef.current === 'idle') {
+            setBackstageStatus('loading');
+            backstageStatusRef.current = 'loading';
+          }
+        }
+      } catch { /* ignore non-JSON */ }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
+
+  // ── Slot manager — swap or load when current song changes ─────────────────
+  useEffect(() => {
+    if (liveState.karaokePhase !== 'playing' || !liveState.currentQueueItemId) return;
+    const queue = liveState.queue ?? [];
+    const currentItem = queue.find(q => q.id === liveState.currentQueueItemId);
+    if (!currentItem) return;
+    if (prevCurrentItemIdRef.current === currentItem.id) return;
+    prevCurrentItemIdRef.current = currentItem.id;
+
+    const vid = currentItem.videoId;
+    const waitingQ = queue.filter(q => q.status === 'queued')
+      .sort((a, b) => (a.estimatedStartAt ?? '').localeCompare(b.estimatedStartAt ?? ''));
+    const nextVid = waitingQ[0]?.videoId ?? null;
+    const curLive = liveSlotRef.current;
+    const backstageVid = curLive === 'A' ? slotBVideoIdRef.current : slotAVideoIdRef.current;
+    const liveIframeRef  = curLive === 'A' ? slotARef : slotBRef;
+    const bkstIframeRef  = curLive === 'A' ? slotBRef : slotARef;
+
+    const ytCmd = (ref: React.RefObject<HTMLIFrameElement | null>, func: string) =>
+      ref.current?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func, args: '' }), '*');
+
+    if (backstageVid === vid && backstageStatusRef.current === 'ready') {
+      // ── INSTANT SWAP ────────────────────────────────────────────────────
+      console.log(`[KARAOKE_BACKSTAGE] live swap | in=${vid}`);
+      ytCmd(bkstIframeRef, 'unMute');
+      ytCmd(liveIframeRef, 'mute');
+      const newLive = curLive === 'A' ? 'B' : 'A';
+      setLiveSlot(newLive);
+      liveSlotRef.current = newLive;
+      setBackstageStatus('idle');
+      backstageStatusRef.current = 'idle';
+      setBackstageReadyVideoId(null);
+      // Reload old live slot (new backstage) with next video
+      if (nextVid) {
+        if (curLive === 'A') { setSlotAVideoId(nextVid); slotAVideoIdRef.current = nextVid; }
+        else                  { setSlotBVideoId(nextVid); slotBVideoIdRef.current = nextVid; }
+        setBackstageStatus('loading');
+        backstageStatusRef.current = 'loading';
+        console.log(`[KARAOKE_BACKSTAGE] preload start | videoId=${nextVid}`);
+        void apiFetch(`/home/sessions/${sessionId}/karaoke/backstage-status`, { nextVideoId: nextVid, status: 'loading' });
+      }
+    } else {
+      // ── NORMAL LOAD (fallback — no ready preload) ─────────────────────
+      console.log(`[KARAOKE_BACKSTAGE] preload missed — loading normally | videoId=${vid}`);
+      if (curLive === 'A') { setSlotAVideoId(vid); slotAVideoIdRef.current = vid; }
+      else                  { setSlotBVideoId(vid); slotBVideoIdRef.current = vid; }
+      // Unmute live after brief init delay
+      setTimeout(() => ytCmd(liveIframeRef, 'unMute'), 900);
+      // Preload next in backstage
+      if (nextVid) {
+        if (curLive === 'A') { setSlotBVideoId(nextVid); slotBVideoIdRef.current = nextVid; }
+        else                  { setSlotAVideoId(nextVid); slotAVideoIdRef.current = nextVid; }
+        setBackstageStatus('loading');
+        backstageStatusRef.current = 'loading';
+        console.log(`[KARAOKE_BACKSTAGE] preload start | videoId=${nextVid}`);
+        void apiFetch(`/home/sessions/${sessionId}/karaoke/backstage-status`, { nextVideoId: nextVid, status: 'loading' });
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveState.karaokePhase, liveState.currentQueueItemId]);
 
   const post = useCallback(async (path: string, body?: unknown) => {
     await apiFetch(`/home/sessions/${sessionId}${path}`, body ?? {});
@@ -3666,7 +3781,16 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
       );
     }
 
-    const embedUrl = `https://www.youtube-nocookie.com/embed/${currentItem.videoId}?autoplay=1&modestbranding=1&rel=0&playsinline=1`;
+    // Dual-slot URLs: both start muted (unmute via postMessage after mount/swap)
+    const slotAUrl = slotAVideoId
+      ? `https://www.youtube-nocookie.com/embed/${slotAVideoId}?autoplay=1&mute=1&enablejsapi=1&rel=0&modestbranding=1&playsinline=1`
+      : null;
+    const slotBUrl = slotBVideoId
+      ? `https://www.youtube-nocookie.com/embed/${slotBVideoId}?autoplay=1&mute=1&enablejsapi=1&rel=0&modestbranding=1&playsinline=1`
+      : null;
+    const nextInQueue = waitingQueue[0];
+    const nextIsReady = backstageStatus === 'ready' && nextInQueue?.videoId === backstageReadyVideoId;
+
     return (
       <div className="flex h-full gap-5 p-4">
         <div className="flex flex-[3] flex-col gap-4">
@@ -3693,10 +3817,41 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
               </button>
             </div>
           </div>
+
+          {/* ── Dual-slot video player ── */}
           <div className="flex-1 rounded-2xl overflow-hidden relative" style={{ minHeight: 0 }}>
-            <iframe src={embedUrl} className="w-full h-full" allow="autoplay; encrypted-media" allowFullScreen title="karaoke" />
+            {/* Slot A */}
+            {slotAUrl && (
+              <iframe
+                key={`slot-a-${slotAVideoId}`}
+                ref={slotARef}
+                src={slotAUrl}
+                className="absolute inset-0 w-full h-full"
+                style={liveSlot === 'A'
+                  ? { visibility: 'visible' }
+                  : { position: 'absolute', left: '-99999px', width: '1px', height: '1px', opacity: 0 }}
+                allow="autoplay; encrypted-media"
+                allowFullScreen
+                title="karaoke-live-a"
+              />
+            )}
+            {/* Slot B */}
+            {slotBUrl && (
+              <iframe
+                key={`slot-b-${slotBVideoId}`}
+                ref={slotBRef}
+                src={slotBUrl}
+                className="absolute inset-0 w-full h-full"
+                style={liveSlot === 'B'
+                  ? { visibility: 'visible' }
+                  : { position: 'absolute', left: '-99999px', width: '1px', height: '1px', opacity: 0 }}
+                allow="autoplay; encrypted-media"
+                allowFullScreen
+                title="karaoke-live-b"
+              />
+            )}
             {/* Floating emoji reactions */}
-            <div className="absolute inset-0 pointer-events-none overflow-hidden">
+            <div className="absolute inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 1 }}>
               <AnimatePresence>
                 {floatingEmojis.map(e => (
                   <motion.div key={e.id}
@@ -3713,6 +3868,7 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
             </div>
           </div>
         </div>
+
         <div className="flex flex-[1] flex-col gap-3 min-w-[180px] max-w-[220px]">
           <div className="rounded-xl p-3" style={{ background: `${KK}12`, border: `1px solid ${KK}30` }}>
             <div className="text-xs uppercase tracking-widest mb-2" style={{ color: `${KK}88` }}>Tempo sessione</div>
@@ -3722,14 +3878,26 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
             <div className="rounded-xl p-3 flex-1 overflow-hidden" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)' }}>
               <div className="text-xs uppercase tracking-widest text-white/30 mb-2">Coda ({waitingQueue.length})</div>
               <div className="space-y-2 overflow-y-auto max-h-40">
-                {waitingQueue.slice(0, 6).map((item, i) => (
-                  <div key={item.id} className="flex items-center gap-2">
-                    <span className="text-xs text-white/20 w-3">{i + 1}</span>
-                    <div className="h-6 w-6 rounded-full flex items-center justify-center text-xs font-black text-black shrink-0"
-                      style={{ background: item.avatarColor }}>{item.nickname[0]?.toUpperCase()}</div>
-                    <span className="text-xs font-bold text-white/60 truncate">{item.nickname}</span>
-                  </div>
-                ))}
+                {waitingQueue.slice(0, 6).map((item, i) => {
+                  const isNext = i === 0;
+                  const itemReady = isNext && nextIsReady;
+                  return (
+                    <div key={item.id} className="flex items-center gap-2">
+                      <span className="text-xs text-white/20 w-3">{i + 1}</span>
+                      <div className="h-6 w-6 rounded-full flex items-center justify-center text-xs font-black text-black shrink-0"
+                        style={{ background: item.avatarColor }}>{item.nickname[0]?.toUpperCase()}</div>
+                      <span className="text-xs font-bold text-white/60 truncate flex-1">{item.nickname}</span>
+                      {isNext && (
+                        <span className="text-[9px] font-black shrink-0 rounded px-1 py-0.5"
+                          style={itemReady
+                            ? { background: 'rgba(34,197,94,0.2)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.4)' }
+                            : { background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.25)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                          {itemReady ? '🟢' : '⏳'}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
