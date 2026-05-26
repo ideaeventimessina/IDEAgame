@@ -849,13 +849,8 @@ export default function HomeJoin() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="hj-phone-lock relative flex min-h-screen w-full flex-col overflow-hidden"
+    <div className="hj-phone-lock relative flex min-h-dvh w-full flex-col overflow-hidden"
       style={{background:'#07061a'}}>
-
-      {/* ── AUDIT BADGE ── */}
-      <div style={{position:'fixed',top:4,left:'50%',transform:'translateX(-50%)',zIndex:99999,background:'rgba(0,0,0,0.85)',color:'#60A5FA',fontFamily:'monospace',fontSize:10,padding:'2px 10px',borderRadius:5,border:'1px solid #60A5FA80',pointerEvents:'none',whiteSpace:'nowrap'}}>
-        ACTIVE ROUTE: /home/join · COMPONENT: HomeJoin · FILE: src/pages/HomeJoin.tsx
-      </div>
 
       <style>{`
         @keyframes hjAurora { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
@@ -865,10 +860,6 @@ export default function HomeJoin() {
         .hj-float{animation:hjFloat 3s ease-in-out infinite}
       `}</style>
 
-      {/* Build badge — always visible for verification */}
-      <div className="pointer-events-none fixed bottom-1 left-2 z-[9999] text-[10px] font-mono px-1.5 py-0.5 rounded" style={{background:'rgba(0,0,0,0.75)',color:'#F5B642',border:'1px solid #F5B64260'}}>
-        build: {BUILD_STAMP_JOIN}
-      </div>
 
       {/* ── Messaggi Segreti: floating ✉️ button ── */}
       {player && (
@@ -952,7 +943,7 @@ export default function HomeJoin() {
         {/* ── CODE ── */}
         {phase === 'code' && (
           <motion.div key="code" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0,y:-20}}
-            className="relative flex min-h-screen w-full flex-col">
+            className="relative flex min-h-dvh w-full flex-col">
 
             {/* Hero image — top 55% */}
             <div className="relative w-full overflow-hidden" style={{height:'55vh',minHeight:260}}>
@@ -1000,7 +991,7 @@ export default function HomeJoin() {
         {/* ── NICKNAME ── */}
         {phase === 'nickname' && session && (
           <motion.div key="nickname" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0,y:-20}}
-            className="relative flex min-h-screen w-full flex-col">
+            className="relative flex min-h-dvh w-full flex-col">
 
             {/* Hero image — compact top */}
             <div className="relative w-full overflow-hidden" style={{height:'45vh',minHeight:220}}>
@@ -1364,7 +1355,7 @@ export default function HomeJoin() {
                               <input value={replyText} onChange={e => setReplyText(e.target.value.slice(0,160))}
                                 placeholder="Rispondi… (max 160)" maxLength={160}
                                 className="flex-1 rounded-xl px-3 py-2 text-sm text-white focus:outline-none"
-                                style={{background:'rgba(255,255,255,0.08)',border:'1px solid rgba(168,85,247,0.4)'}}/>
+                                style={{background:'rgba(255,255,255,0.08)',border:'1px solid rgba(168,85,247,0.4)',fontSize:16}}/>
                               <button onClick={() => replyText.trim() && sendReaction(msg,'💬',replyText)}
                                 className="rounded-xl px-4 py-2 text-sm font-black"
                                 style={{background:'rgba(168,85,247,0.3)',color:'#c084fc'}}>
@@ -3641,7 +3632,8 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
               <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && void doSearch()}
                 placeholder="Prenota prossimo brano…"
-                className="flex-1 rounded-xl px-3 py-2.5 text-white bg-white/08 border border-white/15 text-xs outline-none focus:border-orange-400/60"
+                className="flex-1 rounded-xl px-3 py-2.5 text-white bg-white/08 border border-white/15 text-sm outline-none focus:border-orange-400/60"
+                style={{fontSize:16}}
               />
               <button onClick={() => void doSearch()} disabled={searching}
                 className="rounded-xl px-3 py-2.5 font-black text-sm"
@@ -3694,7 +3686,8 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
             <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && void doSearch()}
               placeholder="Prenota prossimo brano…"
-              className="flex-1 rounded-xl px-3 py-2.5 text-white bg-white/08 border border-white/15 text-xs outline-none focus:border-orange-400/60"
+              className="flex-1 rounded-xl px-3 py-2.5 text-white bg-white/08 border border-white/15 text-sm outline-none focus:border-orange-400/60"
+              style={{fontSize:16}}
             />
             <button onClick={() => void doSearch()} disabled={searching}
               className="rounded-xl px-3 py-2.5 font-black text-sm"
@@ -3769,6 +3762,7 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
                 onKeyDown={e => e.key === 'Enter' && void doSearch()}
                 placeholder="Prenota il prossimo brano…"
                 className="flex-1 rounded-2xl px-4 py-3 text-white bg-white/08 border border-white/15 text-sm outline-none focus:border-orange-400/60"
+                style={{fontSize:16}}
               />
               <button onClick={() => void doSearch()} disabled={searching}
                 className="rounded-2xl px-4 py-3 font-black"
@@ -3838,6 +3832,7 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
               onKeyDown={e => e.key === 'Enter' && void doSearch()}
               placeholder="Cerca su YouTube…"
               className="flex-1 rounded-2xl px-4 py-3 text-white bg-white/08 border border-white/15 text-sm outline-none focus:border-orange-400/60"
+              style={{fontSize:16}}
             />
             <button onClick={() => void doSearch()} disabled={searching}
               className="rounded-2xl px-4 py-3 font-black"
@@ -3910,6 +3905,7 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
             onKeyDown={e => e.key === 'Enter' && void doSearch()}
             placeholder="Cerca un brano karaoke…"
             className="flex-1 rounded-2xl px-4 py-3 text-white bg-white/08 border border-white/15 text-sm outline-none focus:border-orange-400/60"
+            style={{fontSize:16}}
           />
           <button onClick={() => void doSearch()} disabled={searching}
             className="rounded-2xl px-4 py-3 font-black"

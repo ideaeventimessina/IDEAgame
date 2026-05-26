@@ -1,0 +1,265 @@
+IDEAGAME HOME MODE — PRODUCT STABILIZATION SPRINT.
+
+STOP adding new gameplay features.
+
+Goal:
+Make the current Home Mode usable, responsive, polished and presentable.
+
+Do not touch game rules unless required by layout bugs.
+Do not add new games.
+Do not add new mechanics.
+
+Work only on:
+1. responsive system
+2. mobile/tablet layout
+3. TV readability
+4. animations
+5. music/SFX placeholders
+6. UI consistency
+7. performance cleanup
+
+==================================================
+PART 1 — RESPONSIVE AUDIT
+==================================================
+
+Audit all active Home routes:
+
+TV:
+- /home?s=SESSION_ID
+
+Phone:
+- /home/join?s=CODE
+- /join/:code
+
+Hub:
+- /home-v4
+- /mode-select
+- /home-setup
+- /home-lobby
+
+Breakpoints:
+- iPhone small: 375x667
+- iPhone modern: 390x844
+- Android: 412x915
+- iPad portrait: 768x1024
+- iPad landscape: 1024x768
+- TV 16:9: 1920x1080
+
+Find:
+- horizontal overflow
+- buttons outside screen
+- text too small
+- cards too large
+- cards too small
+- footer overlap
+- keyboard zoom issues
+- fixed vh bugs
+- unsafe 100vh usage
+- missing safe-area padding
+
+Output audit table:
+route | component | issue | device | fix
+
+==================================================
+PART 2 — GLOBAL RESPONSIVE RULES
+==================================================
+
+Create global layout tokens:
+
+--safe-top
+--safe-bottom
+--phone-padding
+--tablet-padding
+--tv-padding
+--radius-card
+--font-scale-phone
+--font-scale-tablet
+--font-scale-tv
+
+Rules:
+
+Phone:
+- no horizontal scroll
+- max-width 100vw
+- font minimum 16px on inputs
+- main CTA always visible
+- sticky bottom action area where needed
+- use 100dvh not 100vh
+
+Tablet:
+- do not just scale phone UI
+- use 2-column layouts where useful
+- buttons larger than phone
+- avoid huge empty spaces
+- avoid microscopic cards
+
+TV:
+- everything readable from 20–30 meters
+- titles huge
+- instructions short
+- QR always large when needed
+- no tiny sidebars
+
+==================================================
+PART 3 — COMPONENT FIXES
+==================================================
+
+Fix active Home components:
+
+- HomeJoin phone wrapper
+- GameFlowPhone
+- HomeGame / RoundBoard
+- KaraokeLiveBoard
+- PercorsoBoard
+- WordBackController
+- BalloController
+- Coppie phone/TV
+- Quizzone phone/TV
+- SecretMessages overlay if present
+
+Each must:
+- fit phone
+- fit tablet
+- fit TV
+- not overflow
+- not hide CTA
+- not move sideways
+
+==================================================
+PART 4 — TABLET MODE
+==================================================
+
+Add explicit tablet layout class/hook:
+
+isTablet =
+width >= 700 && width <= 1200
+
+Tablet behavior:
+- larger touch targets
+- two-column content
+- avoid phone-stretched layout
+- avoid TV-compressed layout
+
+Output:
+which components now have tablet-specific layout.
+
+==================================================
+PART 5 — MUSIC / SFX PLAN
+==================================================
+
+Create a centralized media manifest, even if files are missing.
+
+File:
+src/lib/mediaManifest.ts
+
+Define slots:
+
+GLOBAL:
+- ui_click
+- countdown_3_2_1
+- round_start
+- round_end
+- success
+- fail
+- applause
+- error_buzzer
+- transition
+
+KARAOKE:
+- karaoke_intro
+- karaoke_voting
+- karaoke_winner
+- karaoke_transition
+
+BALLO:
+- ballo_intro
+- ballo_countdown
+- ballo_result
+- ballo_podium
+
+WORDBACK:
+- wordback_correct
+- wordback_wrong
+- wordback_timeout
+- taboo_alarm
+
+PERCORSO:
+- risate_mission_intro
+- risate_success
+- risate_fail
+- risate_vote
+
+QUIZZONE:
+- quiz_question
+- quiz_correct
+- quiz_wrong
+- quiz_reveal
+
+COPPIE:
+- card_flip
+- card_match
+- card_miss
+
+Important:
+If media file is missing:
+- do not crash
+- console.warn only once
+- continue silently
+
+==================================================
+PART 6 — ANIMATIONS
+==================================================
+
+Standardize animations:
+- page transitions
+- overlay pop
+- success/fail feedback
+- ranking reveal
+- countdown pulse
+- emoji float
+- vote confirmation
+- booking confirmation
+
+Use existing animation library if present.
+Do not overanimate.
+
+Phone:
+animations must be light.
+
+TV:
+animations can be bigger.
+
+==================================================
+PART 7 — PERFORMANCE CLEANUP
+==================================================
+
+Find and report:
+- zombie routes
+- unused HomeV2/HomeV3/HomeV5/HomeRoom
+- debug badges/logs still active
+- excessive polling
+- duplicate socket listeners
+- huge inline components causing lag
+
+Do NOT delete yet.
+Output cleanup plan first.
+
+==================================================
+PART 8 — DELIVERABLE
+==================================================
+
+Before patch:
+A. responsive audit table
+B. media/SFX missing list
+C. performance/zombie report
+
+After patch:
+D. files modified
+E. responsive system implemented
+F. tablet fixes
+G. phone fixes
+H. TV fixes
+I. media manifest created
+J. animations standardized
+K. typecheck result
+L. manual QA checklist by device

@@ -1267,7 +1267,7 @@ export default function HomeGame() {
   // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="relative flex h-screen w-screen flex-col overflow-hidden"
+    <div className="relative flex h-dvh w-full flex-col overflow-hidden"
       style={{ background: 'linear-gradient(-45deg,#07061a,#1d0545,#0a1845,#1a0800,#07061a)', backgroundSize: '500% 500%', animation: 'hgAurora 18s ease infinite' }}>
 
       <style>{`
@@ -1290,11 +1290,6 @@ export default function HomeGame() {
         {Array.from({length:50}).map((_,i)=>{const cs=['#fff','#F5B642','#A855F7','#22D3EE','#F472B6','#34D399'];return<div key={i} className="absolute rounded-full" style={{left:`${(i*37+11)%100}%`,top:`${(i*53+7)%100}%`,width:1.5+(i%3),height:1.5+(i%3),background:cs[i%cs.length],opacity:0.10+(i%5)*0.05}}/>;})}
       </div>
 
-      {/* Build badge — bottom left */}
-      <div className="pointer-events-none fixed bottom-1 left-2 z-[9999] text-[10px] font-mono px-1.5 py-0.5 rounded" style={{background:'rgba(0,0,0,0.75)',color:'#F5B642',border:'1px solid #F5B64260'}}>
-        build: {BUILD_STAMP}
-      </div>
-
       {/* ── Messaggi Segreti: TV batch overlay ── */}
       {tvChatVisible && tvChatBatch.length > 0 && (
         <div className="fixed inset-x-6 z-[9990] rounded-2xl p-5 shadow-2xl"
@@ -1314,11 +1309,6 @@ export default function HomeGame() {
           </div>
         </div>
       )}
-
-      {/* ── AUDIT BADGE — top center ── */}
-      <div style={{position:'fixed',top:6,left:'50%',transform:'translateX(-50%)',zIndex:99999,background:'rgba(0,0,0,0.85)',color:'#34D399',fontFamily:'monospace',fontSize:11,padding:'3px 12px',borderRadius:5,border:'1px solid #34D39980',pointerEvents:'none',whiteSpace:'nowrap'}}>
-        ACTIVE ROUTE: /home · COMPONENT: HomeGame · FILE: src/pages/HomeGame.tsx · BUILD: {BUILD_STAMP}
-      </div>
 
       {/* ── Global audio toggle — bottom-right ──────────────────────────────── */}
       <div className="absolute bottom-5 right-5 z-50 flex flex-col items-end gap-2">
@@ -2524,7 +2514,6 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
     return (
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
         className="flex flex-col items-center gap-6 text-center">
-        <div style={{position:'fixed',top:34,left:'50%',transform:'translateX(-50%)',zIndex:99998,background:'rgba(52,211,153,0.9)',color:'#000',fontFamily:'monospace',fontSize:10,padding:'2px 10px',borderRadius:4,pointerEvents:'none',whiteSpace:'nowrap',fontWeight:700}}>PERCORSO FLOW: RISATE_MISSIONS_V2</div>
         <div className="text-6xl">🎭</div>
         <div className="text-display text-4xl font-black text-white">Percorso a Risate</div>
         <div className="text-sm text-white/45">10 Missioni Improvvise • tutti sul telefono</div>
@@ -3615,7 +3604,6 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
   if (s.subMode === 'mode_select') {
     return (
       <div className="flex flex-col items-center justify-center gap-8 text-center h-full">
-        <div style={{position:'fixed',top:34,left:'50%',transform:'translateX(-50%)',zIndex:99998,background:'rgba(168,85,247,0.9)',color:'#fff',fontFamily:'monospace',fontSize:10,padding:'2px 10px',borderRadius:4,pointerEvents:'none',whiteSpace:'nowrap',fontWeight:700}}>KARAOKE FLOW: LIVE_V3</div>
         <div className="text-6xl">🎤</div>
         <div className="text-display text-5xl font-black text-white">Scegli la modalità</div>
         <div className="flex flex-col gap-4 w-full max-w-sm">
