@@ -2426,6 +2426,7 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
     return (
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
         className="flex flex-col items-center gap-6 text-center">
+        <div style={{position:'fixed',top:34,left:'50%',transform:'translateX(-50%)',zIndex:99998,background:'rgba(52,211,153,0.9)',color:'#000',fontFamily:'monospace',fontSize:10,padding:'2px 10px',borderRadius:4,pointerEvents:'none',whiteSpace:'nowrap',fontWeight:700}}>PERCORSO FLOW: RISATE_MISSIONS_V2</div>
         <div className="text-6xl">🎭</div>
         <div className="text-display text-4xl font-black text-white">Percorso a Risate</div>
         <div className="text-sm text-white/45">10 Missioni Improvvise • tutti sul telefono</div>
@@ -3401,6 +3402,7 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
   if (s.subMode === 'mode_select') {
     return (
       <div className="flex flex-col items-center justify-center gap-8 text-center h-full">
+        <div style={{position:'fixed',top:34,left:'50%',transform:'translateX(-50%)',zIndex:99998,background:'rgba(168,85,247,0.9)',color:'#fff',fontFamily:'monospace',fontSize:10,padding:'2px 10px',borderRadius:4,pointerEvents:'none',whiteSpace:'nowrap',fontWeight:700}}>KARAOKE FLOW: LIVE_V3</div>
         <div className="text-6xl">🎤</div>
         <div className="text-display text-5xl font-black text-white">Scegli la modalità</div>
         <div className="flex flex-col gap-4 w-full max-w-sm">

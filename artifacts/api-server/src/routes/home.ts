@@ -631,6 +631,7 @@ async function loadGameRoundsForTheme(
       }));
     }
     case "karaoke-battle": {
+      logger.error({ gameSlug, selectedTheme }, "[FLOW_BUG] karaoke-battle hit loadGameRoundsForTheme — it should have bypassed GameFlowEngine in select-game");
       if (isFallback) return loadKaraokeRounds();
       const subtype = selectedSubtype ?? "mixed";
 
@@ -687,6 +688,7 @@ async function loadGameRoundsForTheme(
       return kRounds.length > 0 ? kRounds : fallbackKaraoke();
     }
     case "percorso-a-risate": {
+      logger.error({ gameSlug, selectedTheme }, "[FLOW_BUG] percorso-a-risate hit loadGameRoundsForTheme — it should have bypassed GameFlowEngine in select-game");
       if (isFallback) return loadPercorsoRounds();
       const steps = await db.select().from(laughingPathStepsTable)
         .where(and(eq(laughingPathStepsTable.setId, themeId!), eq(laughingPathStepsTable.isActive, true)))
@@ -1210,16 +1212,59 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
     res.status(409).json({ error: "Gioco già completato" }); return;
   }
 
-  // ── Universal GameFlowEngine: every game enters the pre-game flow ─────────────
+  // ── BYPASS: karaoke-battle → direct KaraokeLiveBoard (no theme_select / booking) ──
+  if (gameSlug === "karaoke-battle") {
+    req.log.info({ sessionId: id }, "[FLOW_BYPASS] karaoke-battle → KaraokeLiveBoard direct, skipping GameFlowEngine");
+    const kPlayers = await getPlayers(id);
+    const karaokeState = createBlankKaraokeState(
+      kPlayers.map(p => ({ id: p.id, nickname: p.nickname, avatarColor: (p as Record<string,unknown>)["avatarColor"] as string ?? "#A78BFA" }))
+    );
+    const karaokePayload: RoundPayload = { mode: "home-karaoke-live", gameSlug: "karaoke-battle" } as RoundPayload;
+    const karaokeCfg = { ...cfg, phase: "playing", gamesPlayed, karaokeHomeState: karaokeState };
+    const [karaokeUpdated] = await db.update(homeSessionsTable).set({
+      gameSlug,
+      gameConfig: karaokeCfg,
+      status: "playing",
+      currentRound: 0,
+      totalRounds: 1,
+      roundPayload: karaokePayload,
+      expiresAt: new Date(Date.now() + 6 * 60 * 60 * 1000),
+    }).where(eq(homeSessionsTable.id, id)).returning();
+    const kPlayersAfter = await getPlayers(id);
+    emitToRoom(homeRoom(id), "home:game_started", { session: karaokeUpdated, players: kPlayersAfter, payload: karaokePayload });
+    emitToRoom(homeRoom(id), "home:state", { session: karaokeUpdated, players: kPlayersAfter });
+    res.json({ session: karaokeUpdated, players: kPlayersAfter });
+    return;
+  }
+
+  // ── BYPASS: percorso-a-risate → direct PercorsoBoard/RisateEngine (no theme_select) ──
+  if (gameSlug === "percorso-a-risate") {
+    req.log.info({ sessionId: id }, "[FLOW_BYPASS] percorso-a-risate → PercorsoBoard direct, skipping GameFlowEngine");
+    const percorsoPayload: RoundPayload = { mode: "home-percorso", gameSlug: "percorso-a-risate" } as RoundPayload;
+    const percorsoCfg = { ...cfg, phase: "playing", gamesPlayed };
+    const [percorsoUpdated] = await db.update(homeSessionsTable).set({
+      gameSlug,
+      gameConfig: percorsoCfg,
+      status: "playing",
+      currentRound: 0,
+      totalRounds: 1,
+      roundPayload: percorsoPayload,
+      expiresAt: new Date(Date.now() + 6 * 60 * 60 * 1000),
+    }).where(eq(homeSessionsTable.id, id)).returning();
+    const pPlayers = await getPlayers(id);
+    emitToRoom(homeRoom(id), "home:game_started", { session: percorsoUpdated, players: pPlayers, payload: percorsoPayload });
+    emitToRoom(homeRoom(id), "home:state", { session: percorsoUpdated, players: pPlayers });
+    res.json({ session: percorsoUpdated, players: pPlayers });
+    return;
+  }
+
+  // ── Universal GameFlowEngine: all other games enter the pre-game flow ──────────
   // theme_select → booking (if maxPlayers > 0) → confirm → countdown → launch
   const flowConfig = await loadThemesForGame(gameSlug);
   req.log.info({ sessionId: id, gameSlug, themeCount: flowConfig.themes.length, maxPlayers: flowConfig.maxPlayers }, "[GameFlow] select-game → entering flow");
-  // P6: karaoke-battle starts at subtype_select (karaoke-only / freestyle-only / mixed)
-  // rather than jumping directly to theme_select.
-  const initialPhase = gameSlug === "karaoke-battle" ? "subtype_select" : "theme_select";
   const flowPayload: RoundPayload = {
     mode: "home-flow",
-    gameFlowPhase: initialPhase,
+    gameFlowPhase: "theme_select",
     gameSlug,
     themes: flowConfig.themes,
     selectedTheme: null,
@@ -1331,6 +1376,9 @@ router.post("/home/sessions/:id/flow/select-subtype", async (req, res): Promise<
 
   const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
   if (rp["mode"] !== "home-flow") { res.status(409).json({ error: "Sessione non in modalità flow" }); return; }
+  if (rp["gameSlug"] === "karaoke-battle") {
+    req.log.error({ sessionId: id }, "[FLOW_BUG] karaoke-battle hit select-subtype — it should have bypassed GameFlowEngine in select-game");
+  }
   if (rp["gameFlowPhase"] !== "subtype_select") { res.status(409).json({ error: "Fase non corretta" }); return; }
 
   const { subtype } = req.body as { subtype?: string };
