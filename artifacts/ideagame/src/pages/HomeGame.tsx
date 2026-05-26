@@ -1923,13 +1923,14 @@ function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, bal
   if (mode === 'home-saramusica') return <SaraMusicaBoard payload={p} revealed={revealed} onReveal={onReveal} winner={saraMusicaWinner ?? null}/>;
   if (mode === 'home-adult')      return <AdultOnlyBoard payload={p} revealed={revealed} onReveal={onReveal} players={players} onScore={onScore}/>;
   if (mode === 'home-wordback' || mode === 'home-wordback-booking')   return <WordBackBoard payload={p} players={players} onScore={onScore} onReveal={onReveal} tabooAlarm={tabooAlarm ?? null} sessionId={session.id} timeoutOverlay={wordbackTimeoutOverlay} wrongOverlay={wordbackWrongOverlay}/>;
-  if (mode === 'home-karaoke')    return <KaraokeBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
-  if (mode === 'home-freestyle')  return <FreestyleBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
-  // New Karaoke Live / Freestyle Battle system (version 3 — detected from gameConfig)
+  // FIX: version=3 check MUST come before mode-based routing (mode is still 'home-karaoke' even for new system)
   const ks = _ks_probe;
   if (session.gameSlug === 'karaoke-battle' && ks?.version === 3) {
     return <KaraokeLiveBoard sessionId={session.id} state={ks} players={players} />;
   }
+  if (mode === 'home-karaoke')    return <KaraokeBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
+  if (mode === 'home-freestyle')  return <FreestyleBoard payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
+
   console.log('[RUNTIME_KARAOKE] RoundBoard — FALLBACK: no branch matched. mode:', mode, 'slug:', session.gameSlug, 'ks.version:', ks?.version);
   return <div className="text-white/40 text-2xl">Caricamento gioco… (mode: {mode} / slug: {session.gameSlug} / ks.v: {String(ks?.version ?? 'none')})</div>;
 }

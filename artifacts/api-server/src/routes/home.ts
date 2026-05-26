@@ -20,6 +20,7 @@
 import { Router, type IRouter } from "express";
 import multer from "multer";
 import OpenAI from "openai";
+import { createBlankKaraokeState } from "../lib/karaoke-home-engine.js";
 import { eq, and, or, lt, asc, desc, isNull } from "drizzle-orm";
 import {
   db,
@@ -1499,7 +1500,13 @@ router.post("/home/sessions/:id/flow/confirm", async (req, res): Promise<void> =
           logger.info({ sessionId: id, mode: firstRound["mode"], bookedCount: bp.length, gameSlug: launchSlug }, "[GameFlow] payload mode");
           const cfg = (session.gameConfig ?? {}) as Record<string, unknown>;
           const gamesPlayed = (cfg["gamesPlayed"] as string[]) ?? [];
-          const newCfg = { ...cfg, phase: "playing", gamesPlayed, preloadedRounds: stampedRounds };
+          // FIX: auto-init karaokeHomeState v3 so KaraokeLiveBoard can mount
+          const karaokeInit = launchSlug === "karaoke-battle"
+            ? { karaokeHomeState: createBlankKaraokeState(
+                bp.map(p => ({ id: p.id, nickname: p.nickname, avatarColor: (p as Record<string,unknown>)["avatarColor"] as string ?? "#A78BFA" }))
+              ) }
+            : {};
+          const newCfg = { ...cfg, phase: "playing", gamesPlayed, preloadedRounds: stampedRounds, ...karaokeInit };
           const [gameUpdated] = await db.update(homeSessionsTable).set({
             gameConfig: newCfg,
             currentRound: 0,
