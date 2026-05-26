@@ -738,6 +738,11 @@ export default function HomeJoin() {
     <div className="hj-phone-lock relative flex min-h-screen w-full flex-col overflow-hidden"
       style={{background:'#07061a'}}>
 
+      {/* ── AUDIT BADGE ── */}
+      <div style={{position:'fixed',top:4,left:'50%',transform:'translateX(-50%)',zIndex:99999,background:'rgba(0,0,0,0.85)',color:'#60A5FA',fontFamily:'monospace',fontSize:10,padding:'2px 10px',borderRadius:5,border:'1px solid #60A5FA80',pointerEvents:'none',whiteSpace:'nowrap'}}>
+        ACTIVE ROUTE: /home/join · COMPONENT: HomeJoin · FILE: src/pages/HomeJoin.tsx
+      </div>
+
       <style>{`
         @keyframes hjAurora { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
         @keyframes hjPulse { 0%,100%{box-shadow:0 0 20px var(--ac,#F5B642)} 50%{box-shadow:0 0 40px var(--ac,#F5B642)} }

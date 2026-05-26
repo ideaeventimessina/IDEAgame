@@ -1,0 +1,178 @@
+DEEP ROUTE AUDIT — FIND THE REAL HOMEV4 RUNTIME PATH.
+
+Do not patch gameplay.
+Do not add features.
+Do not touch Karaoke logic yet.
+Do not touch Percorso logic yet.
+
+Problem:
+Even after confirmed fixes, Replit preview and/or HomeV4 still show:
+- old Karaoke system
+- old Percorso a Risate system
+
+Therefore the code being patched is NOT the code path actually rendered from HomeV4.
+
+Goal:
+Find the exact active runtime path starting from every Home entry point, then remove legacy/zombie branches.
+
+==================================================
+PART 1 — MAP ALL HOME ROUTES
+==================================================
+
+Audit all routes in:
+- App.tsx
+- router files
+- Hub
+- HomeV4
+- HomeGame
+- HomeJoin
+- HomeLobby
+- HomeSetup
+- ModeSelect
+- any /home, /home-v2, /home-v3, /home-v4, /home-v5, /home-room route
+
+Output table:
+
+route | component | file path | status
+/home
+/home-v2
+/home-v3
+/home-v4
+/home-v5
+/home-room
+/home-setup
+/home-lobby
+/home/join
+/join
+/mode-select
+
+Mark:
+ACTIVE / LEGACY / DUPLICATE / DEAD
+
+==================================================
+PART 2 — TRACE ACTUAL HOMEV4 FLOW
+==================================================
+
+Starting from /home-v4, trace exactly:
+
+/home-v4
+→ button clicked
+→ session created by which endpoint
+→ navigate to which URL
+→ which page renders TV
+→ which component renders game board
+→ which RoundBoard branch handles Karaoke
+→ which RoundBoard branch handles Percorso
+
+Print exact file paths and function names.
+
+Required proof:
+Add temporary runtime badge at TOP CENTER, not hidden:
+
+ACTIVE ROUTE:
+<route>
+ACTIVE COMPONENT:
+<componentName>
+FILE:
+<filePath>
+BUILD:
+<hash/time>
+
+This badge must show on:
+- HomeV4 screen
+- TV game screen
+- phone join screen
+
+==================================================
+PART 3 — FIND WHERE PATCHES WERE APPLIED
+==================================================
+
+For last 20 commits or latest changed files, list:
+- files changed
+- whether they are imported by active HomeV4 runtime path
+- whether they are dead/legacy
+
+Output:
+
+file | changed recently? | imported by active route? | used at runtime?
+
+This will tell us where the fixes were applied.
+
+==================================================
+PART 4 — SEARCH DUPLICATE GAME COMPONENTS
+==================================================
+
+Search repo for:
+
+KaraokeBoard
+KaraokeLiveBoard
+KaraokeBattle
+home-karaoke
+home-karaoke-live
+PercorsoBoard
+RisateMissions
+PercorsoRisate
+percorso-a-risate
+RoundBoard
+HomeGame
+
+For every match output:
+symbol | file | imported by | active/dead
+
+==================================================
+PART 5 — DATABASE / OLD SESSION CHECK
+==================================================
+
+Create a BRAND NEW session from /home-v4 only.
+
+Then inspect DB:
+
+sessionId
+gameSlug
+currentRound
+roundPayload.mode
+roundPayload.gameFlowPhase
+gameConfig.karaokeHomeState
+gameConfig.percorsoState / risateMissionState
+preloadedRounds[0].mode
+
+Check whether old payload is being generated before frontend even renders.
+
+==================================================
+PART 6 — PERFORMANCE / ZAVORRA AUDIT
+==================================================
+
+App is now slow and laggy.
+
+Find:
+- legacy routes still bundled
+- duplicate Home versions still imported
+- debug probes left active
+- runtime badges/logs spamming
+- huge unused components bundled into HomeV4
+- socket duplicate listeners
+- polling loops too frequent
+- intervals not cleaned up
+
+Output:
+A. all duplicate legacy pages
+B. safe-to-delete components
+C. heavy imports in active Home path
+D. duplicate socket listeners
+E. polling intervals
+F. cleanup plan
+
+==================================================
+PART 7 — DO NOT DELETE YET
+==================================================
+
+Do not delete anything yet.
+
+First output:
+A. actual route path from /home-v4 to game board
+B. actual Karaoke component shown at runtime
+C. actual Percorso component shown at runtime
+D. where latest fixes were applied
+E. why user still sees old UI
+F. exact minimal remount fix
+G. list of zavorra to delete after confirmation

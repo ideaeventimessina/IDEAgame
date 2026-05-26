@@ -1222,9 +1222,13 @@ export default function HomeGame() {
         {Array.from({length:50}).map((_,i)=>{const cs=['#fff','#F5B642','#A855F7','#22D3EE','#F472B6','#34D399'];return<div key={i} className="absolute rounded-full" style={{left:`${(i*37+11)%100}%`,top:`${(i*53+7)%100}%`,width:1.5+(i%3),height:1.5+(i%3),background:cs[i%cs.length],opacity:0.10+(i%5)*0.05}}/>;})}
       </div>
 
-      {/* Build badge — always visible for verification */}
+      {/* Build badge — bottom left */}
       <div className="pointer-events-none fixed bottom-1 left-2 z-[9999] text-[10px] font-mono px-1.5 py-0.5 rounded" style={{background:'rgba(0,0,0,0.75)',color:'#F5B642',border:'1px solid #F5B64260'}}>
         build: {BUILD_STAMP}
+      </div>
+      {/* ── AUDIT BADGE — top center ── */}
+      <div style={{position:'fixed',top:6,left:'50%',transform:'translateX(-50%)',zIndex:99999,background:'rgba(0,0,0,0.85)',color:'#34D399',fontFamily:'monospace',fontSize:11,padding:'3px 12px',borderRadius:5,border:'1px solid #34D39980',pointerEvents:'none',whiteSpace:'nowrap'}}>
+        ACTIVE ROUTE: /home · COMPONENT: HomeGame · FILE: src/pages/HomeGame.tsx · BUILD: {BUILD_STAMP}
       </div>
 
       {/* ── Global audio toggle — bottom-right ──────────────────────────────── */}
