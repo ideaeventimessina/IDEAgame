@@ -189,6 +189,13 @@ function App() {
                 <BackToCockpit />
                 <AudioUnlockFab />
               </WouterRouter>
+              {/* Debug version badge */}
+              <div className="fixed bottom-2 right-2 z-[9999] select-none pointer-events-none">
+                <div style={{ background:'rgba(0,0,0,0.75)', border:'1px solid rgba(255,255,255,0.15)', borderRadius:6, padding:'2px 8px', fontFamily:'monospace', fontSize:10, color:'rgba(255,255,255,0.5)', lineHeight:1.5 }}>
+                  <div>{__COMMIT_HASH__}</div>
+                  <div>{__BUILD_DATE__}</div>
+                </div>
+              </div>
               <Toaster />
             </TooltipProvider>
             </AudioOrchestratorProvider>

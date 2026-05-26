@@ -1,0 +1,131 @@
+URGENT DEPLOY AUDIT ONLY — DO NOT PATCH GAME LOGIC YET
+
+Problem:
+GitHub appears updated, but public app still shows OLD versions of:
+- Karaoke Battle (old text/microphone version still visible)
+- Percorso a Risate (first prototype still visible)
+
+Expected:
+new architecture should be active.
+
+Need a precise audit to understand WHY public app is serving old UI.
+
+Check all of the following:
+
+--------------------------------------------------
+1. WHICH BUILD IS LIVE
+--------------------------------------------------
+
+Verify:
+- what commit hash is currently deployed in production
+- what commit hash exists on origin/main
+- what commit hash exists locally in workspace
+
+Print all 3.
+
+Expected output:
+LOCAL HEAD:
+GITHUB origin/main:
+PRODUCTION DEPLOY:
+
+If different → identify mismatch immediately.
+
+--------------------------------------------------
+2. VERIFY WHICH ROUTES ARE RENDERING
+--------------------------------------------------
+
+Find which component is currently rendered for:
+
+- karaoke-battle
+- percorso-risate
+
+Print exact file path.
+
+Example:
+src/pages/...
+src/components/...
+
+Need to know if app is still mounting legacy components.
+
+--------------------------------------------------
+3. SEARCH FOR DUPLICATE COMPONENTS
+--------------------------------------------------
+
+Search entire repo for:
+
+Karaoke
+KaraokeBattle
+FreestyleBattle
+PercorsoRisate
+PercorsoARisate
+RisateMission
+home-karaoke
+home-risate
+
+Need list of duplicates.
+
+Likely old components still mounted instead of new ones.
+
+--------------------------------------------------
+4. CHECK ROUTER MAPPING
+--------------------------------------------------
+
+Audit:
+App.tsx
+router.tsx
+gameFlowEngine
+select-game flow
+
+Verify:
+
+Which component is mounted when selecting:
+- karaoke-battle
+- percorso-risate
+
+Need actual runtime mapping.
+
+--------------------------------------------------
+5. CHECK IF DEPLOY BUILD IS STALE
+--------------------------------------------------
+
+Verify:
+did production deploy rebuild after latest push?
+
+Check:
+- build timestamp
+- deploy timestamp
+- latest successful deployment
+- current active deployment id
+
+--------------------------------------------------
+6. ADD TEMP VERSION BADGE
+--------------------------------------------------
+
+For debug only:
+show bottom-right fixed badge in app:
+
+BUILD:
+[commit hash]
+[build date/time]
+
+Example:
+a6bc11d
+26/05 22:41
+
+Visible on TV and phone.
+
+This lets us confirm instantly if browser is running old or new build.
+
+--------------------------------------------------
+OUTPUT REQUIRED
+--------------------------------------------------
+
+A. Local HEAD commit
+B. GitHub HEAD commit
+C. Production deployed commit
+D. Which karaoke component is rendered
+E. Which percorso a risate component is rendered
+F. Duplicate files found
+G. Whether deploy is stale or not
+H. Why public app still shows old UI
+I. Fastest fix
