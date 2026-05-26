@@ -2934,6 +2934,7 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
   const [searchResults, setSearchResults] = useState<YTSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [noKaraokeFound, setNoKaraokeFound] = useState(false);
+  const [searchWarning, setSearchWarning] = useState<string | null>(null);
   const [booking, setBooking] = useState(false);
   const [myBallot, setMyBallot] = useState<VotingBallot>({ intonazione: 0, presenza: 0, emozione: 0, originalita: 0 });
   const [voted, setVoted] = useState(false);
@@ -2977,13 +2978,17 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
     if (!rawInput) return;
     setSearching(true);
     setNoKaraokeFound(false);
+    setSearchWarning(null);
     try {
       const r = await homeFetch(`/home/sessions/${sessionId}/karaoke/search`, { query: rawInput });
-      const d = await r.json() as { results: YTSearchResult[]; noKaraokeFound?: boolean; youtubeQuery?: string };
+      const d = await r.json() as { results: YTSearchResult[]; noKaraokeFound?: boolean; warning?: string | null; youtubeQuery?: string };
       const results = d.results ?? [];
       setSearchResults(results);
+      // noKaraokeFound = true ONLY when YouTube returned 0 results or API error
       setNoKaraokeFound(d.noKaraokeFound ?? results.length === 0);
-      console.log(`[KARAOKE_SEARCH] rawInput: "${rawInput}" | youtubeQuery: "${d.youtubeQuery ?? rawInput + ' karaoke'}" | results: ${results.length} | chosenVideoTitle: "${results[0]?.title ?? 'none'}" | chosenVideoId: "${results[0]?.videoId ?? 'none'}"`);
+      // warning = advisory when results exist but none look explicitly like karaoke
+      setSearchWarning(results.length > 0 ? (d.warning ?? null) : null);
+      console.log(`[KARAOKE_SEARCH] rawInput: "${rawInput}" | youtubeQuery: "${d.youtubeQuery ?? rawInput + ' karaoke'}" | results: ${results.length} | noKaraokeFound: ${d.noKaraokeFound ?? false} | warning: ${d.warning ?? null} | chosenVideoTitle: "${results[0]?.title ?? 'none'}" | chosenVideoId: "${results[0]?.videoId ?? 'none'}"`);
     } finally { setSearching(false); }
   }, [searchQuery, sessionId]);
 
@@ -3004,6 +3009,7 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
       setSearchResults([]);
       setSearchQuery('');
       setNoKaraokeFound(false);
+      setSearchWarning(null);
       setSelectedVideo(null);
       setDedicationStep(null);
       setDedicateeId(null);
@@ -3022,6 +3028,7 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
       setSearchResults([]);
       setSearchQuery('');
       setNoKaraokeFound(false);
+      setSearchWarning(null);
     } finally { setBooking(false); }
   }, [post, playerId, nickname, avatarColor]);
 
@@ -3282,6 +3289,11 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
                 🎤 Nessuna base karaoke trovata — prova a scrivere titolo + artista
               </div>
             )}
+            {searchWarning && !searching && searchResults.length > 0 && (
+              <div className="rounded-xl px-3 py-2 text-center text-xs text-amber-300/70" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.18)' }}>
+                ⚠️ {searchWarning}
+              </div>
+            )}
           </div>
           {error && <div className="text-sm text-red-400 text-center rounded-xl p-2 bg-red-500/10">{error}</div>}
         </div>
@@ -3430,12 +3442,17 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
               </button>
             </div>
           ))}
+          {searchWarning && !searching && searchResults.length > 0 && (
+            <div className="rounded-xl px-3 py-2 text-center text-xs text-amber-300/70" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.18)' }}>
+              ⚠️ {searchWarning}
+            </div>
+          )}
           {noKaraokeFound && !searching && searchResults.length === 0 && (
             <div className="rounded-2xl p-4 text-center text-sm text-amber-400/80" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)' }}>
               🎤 Nessuna base karaoke trovata — prova a scrivere titolo + artista
             </div>
           )}
-          {!noKaraokeFound && searchResults.length === 0 && searchQuery && !searching && (
+          {!noKaraokeFound && !searchWarning && searchResults.length === 0 && searchQuery && !searching && (
             <div className="text-center text-white/30 text-sm py-8">Nessun risultato — prova con un altro brano</div>
           )}
           {searchResults.length === 0 && !searchQuery && (
