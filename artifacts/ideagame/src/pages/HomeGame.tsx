@@ -19,7 +19,7 @@ import {
 import { QrPlaceholder } from '@/components/QrPlaceholder';
 import { JonnyAvatar } from '@/components/JonnyAvatar';
 import { useEventSocket, getSocket } from '@/hooks/useEventSocket';
-import { RISATE_MISSIONS, type RisateState } from '@/data/risate-missions';
+import { RISATE_MISSIONS, YOGA_POSES, type RisateState } from '@/data/risate-missions';
 import {
   type KaraokeHomeState, type KaraokePerformanceResult, type KaraokeAward,
   POSITIVE_REACTIONS, NEGATIVE_REACTIONS, DURATION_OPTIONS,
@@ -2637,18 +2637,75 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
           <div className="text-base text-white/55 leading-relaxed max-w-lg">{mission.subtitle}</div>
 
           {/* public_choice options */}
-          {rs.phase === 'public_choice' && rs.publicChoiceOptions.length > 0 && (
-            <div className="flex flex-wrap justify-center gap-2 mt-1">
-              {rs.publicChoiceOptions.map(opt => (
-                <div key={opt} className="rounded-xl px-5 py-2 text-sm font-bold"
-                  style={rs.publicChoice === opt
-                    ? { background: `linear-gradient(135deg,${PERCORSO_ACCENT},#059669)`, color: '#000', boxShadow: `0 0 20px ${PERCORSO_ACCENT}66` }
-                    : { background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.14)', color: 'rgba(255,255,255,0.7)' }}>
-                  {opt}
+          {rs.phase === 'public_choice' && rs.publicChoiceOptions.length > 0 && (() => {
+            const isYogaChoice = mission?.id === 'yoga';
+            if (isYogaChoice) {
+              return (
+                <div className="flex flex-wrap justify-center gap-4 mt-2">
+                  {rs.publicChoiceOptions.map(opt => {
+                    const pose = YOGA_POSES.find(p => opt.includes(p.name));
+                    const isSelected = rs.publicChoice === opt;
+                    return (
+                      <div key={opt}
+                        className="flex flex-col items-center gap-2 rounded-2xl px-5 py-4"
+                        style={{
+                          minWidth: 130,
+                          background: isSelected
+                            ? `linear-gradient(135deg,${PERCORSO_ACCENT},#059669)`
+                            : 'rgba(255,255,255,0.07)',
+                          border: isSelected ? `2px solid ${PERCORSO_ACCENT}` : '1px solid rgba(255,255,255,0.14)',
+                          boxShadow: isSelected ? `0 0 28px ${PERCORSO_ACCENT}66` : 'none',
+                        }}>
+                        <span style={{ fontSize: '3.5rem', lineHeight: 1 }}>{pose?.emoji ?? '🧘'}</span>
+                        <span className="font-black text-sm text-center leading-tight"
+                          style={{ color: isSelected ? '#000' : 'rgba(255,255,255,0.8)' }}>
+                          {pose?.name ?? opt}
+                        </span>
+                        {isSelected && <span className="text-base">✅</span>}
+                      </div>
+                    );
+                  })}
                 </div>
-              ))}
-            </div>
-          )}
+              );
+            }
+            return (
+              <div className="flex flex-wrap justify-center gap-2 mt-1">
+                {rs.publicChoiceOptions.map(opt => (
+                  <div key={opt} className="rounded-xl px-5 py-2 text-sm font-bold"
+                    style={rs.publicChoice === opt
+                      ? { background: `linear-gradient(135deg,${PERCORSO_ACCENT},#059669)`, color: '#000', boxShadow: `0 0 20px ${PERCORSO_ACCENT}66` }
+                      : { background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.14)', color: 'rgba(255,255,255,0.7)' }}>
+                    {opt}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
+          {/* Active: yoga pose display — big on TV */}
+          {rs.phase === 'active' && mission?.id === 'yoga' && (() => {
+            const yogaPose = rs.publicChoice
+              ? YOGA_POSES.find(p => rs.publicChoice!.includes(p.name)) : null;
+            return (
+              <div className="flex flex-col items-center gap-3 rounded-3xl px-8 py-6 w-full max-w-md"
+                style={{ background: 'rgba(52,211,153,0.10)', border: '2px solid rgba(52,211,153,0.4)' }}>
+                {yogaPose ? (
+                  <>
+                    <span style={{ fontSize: '6rem', lineHeight: 1 }}>{yogaPose.emoji}</span>
+                    <div className="text-display text-3xl font-black" style={{ color: '#34D399' }}>
+                      {yogaPose.name}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <span style={{ fontSize: '5rem', lineHeight: 1 }}>🧘</span>
+                    <div className="text-base font-bold text-white/50">Posa non ancora scelta</div>
+                  </>
+                )}
+                <div className="text-sm text-white/40">Mantenete la posa per 30 secondi!</div>
+              </div>
+            );
+          })()}
 
           {/* Active: countdown timer */}
           {rs.phase === 'active' && missionTimeLeft !== null && (
@@ -3500,7 +3557,10 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
   const [liveSlot, setLiveSlot] = useState<'A' | 'B'>('A');
   const [backstageStatus, setBackstageStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [backstageReadyVideoId, setBackstageReadyVideoId] = useState<string | null>(null);
+  // YouTube player error tracking
+  const [videoError, setVideoError] = useState<{ videoId: string; title: string; errorCode: number } | null>(null);
   // Refs for stable closures (avoid stale state in listeners)
+  const liveStateRef = useRef<KaraokeHomeState>(state);
   const liveSlotRef = useRef<'A' | 'B'>('A');
   const slotAVideoIdRef = useRef<string | null>(null);
   const slotBVideoIdRef = useRef<string | null>(null);
@@ -3510,7 +3570,7 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
   // Sync incoming state from parent or socket
   useEffect(() => { setLiveState(state); }, [state]);
   useEffect(() => {
-    const u1 = on<{ state: KaraokeHomeState }>('home:karaoke_state', ({ state: s }) => setLiveState(s));
+    const u1 = on<{ state: KaraokeHomeState }>('home:karaoke_state', ({ state: s }) => { setLiveState(s); liveStateRef.current = s; });
     const u2 = on<{ emoji: string }>('home:karaoke_reaction', ({ emoji }) => {
       const id = emojiCtr.current++;
       setFloatingEmojis(prev => [...prev.slice(-12), { id, emoji, x: Math.random() * 80 + 10 }]);
@@ -3565,15 +3625,28 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
   useEffect(() => { slotBVideoIdRef.current = slotBVideoId; }, [slotBVideoId]);
   useEffect(() => { backstageStatusRef.current = backstageStatus; }, [backstageStatus]);
 
-  // ── YouTube postMessage listener — detect backstage readiness ─────────────
+  // ── YouTube postMessage listener — detect backstage readiness + errors ────
   useEffect(() => {
     const handler = (e: MessageEvent) => {
       try {
         const data = JSON.parse(e.data as string) as { event?: string; info?: unknown };
-        if (data.event !== 'onStateChange') return;
-        const ytState = typeof data.info === 'number' ? data.info : -99;
         const isSlotA = e.source === slotARef.current?.contentWindow;
         const isSlotB = e.source === slotBRef.current?.contentWindow;
+        const isLive = (isSlotA && liveSlotRef.current === 'A') || (isSlotB && liveSlotRef.current === 'B');
+
+        // ── Error detection ──────────────────────────────────────────────────
+        if (data.event === 'onError' && isLive) {
+          const errorCode = typeof data.info === 'number' ? data.info : -1;
+          const liveVid = liveSlotRef.current === 'A' ? slotAVideoIdRef.current : slotBVideoIdRef.current;
+          const queue = liveStateRef.current?.queue ?? [];
+          const item = queue.find(q => q.videoId === liveVid);
+          console.log(`[KARAOKE_PLAYER_ERROR] videoId=${liveVid ?? '?'} title="${item?.title ?? '?'}" errorCode=${errorCode} embedUrl=https://www.youtube-nocookie.com/embed/${liveVid ?? '?'}`);
+          setVideoError({ videoId: liveVid ?? '', title: item?.title ?? '', errorCode });
+          return;
+        }
+
+        if (data.event !== 'onStateChange') return;
+        const ytState = typeof data.info === 'number' ? data.info : -99;
         const isBackstage = (isSlotA && liveSlotRef.current === 'B') || (isSlotB && liveSlotRef.current === 'A');
         if (!isBackstage) return;
         const vid = liveSlotRef.current === 'B' ? slotAVideoIdRef.current : slotBVideoIdRef.current;
@@ -3602,6 +3675,7 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
   // ── Slot manager — swap or load when current song changes ─────────────────
   useEffect(() => {
     if (liveState.karaokePhase !== 'playing' || !liveState.currentQueueItemId) return;
+    setVideoError(null); // clear any previous error when song changes
     const queue = liveState.queue ?? [];
     const currentItem = queue.find(q => q.id === liveState.currentQueueItemId);
     if (!currentItem) return;
@@ -3909,6 +3983,37 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
                 title="karaoke-live-b"
               />
             )}
+            {/* ── YouTube error fallback overlay ── */}
+            {videoError && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 text-center z-10 rounded-2xl"
+                style={{ background: 'rgba(13,6,0,0.92)', border: '2px solid rgba(239,68,68,0.45)' }}>
+                <div className="text-4xl">⚠️</div>
+                <div className="text-lg font-black text-white leading-snug px-6">
+                  Questo video non può essere<br/>riprodotto nell'app
+                </div>
+                {videoError.title && (
+                  <div className="text-sm text-white/45 px-6">"{videoError.title}"</div>
+                )}
+                <div className="flex gap-3 flex-wrap justify-center px-4">
+                  <a href={`https://www.youtube.com/watch?v=${videoError.videoId}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="rounded-xl px-5 py-3 text-sm font-black text-white"
+                    style={{ background: '#FF0000', border: '1px solid rgba(255,0,0,0.5)' }}>
+                    ▶ Apri su YouTube
+                  </a>
+                  <button onClick={() => void post('/karaoke/open-voting')}
+                    className="rounded-xl px-5 py-3 text-sm font-black"
+                    style={{ background: `${KK}20`, border: `1px solid ${KK}50`, color: KK }}>
+                    ⭐ Salta e vota
+                  </button>
+                  <button onClick={() => setVideoError(null)}
+                    className="rounded-xl px-5 py-3 text-sm font-black text-white/40"
+                    style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)' }}>
+                    ✕ Chiudi avviso
+                  </button>
+                </div>
+              </div>
+            )}
             {/* Floating emoji reactions */}
             <div className="absolute inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 1 }}>
               <AnimatePresence>
@@ -4136,22 +4241,22 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
 }
 
 function KaraokeQROverlay({ joinUrl }: { joinUrl: string }) {
-  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=88x88&bgcolor=0d0600&color=FB923C&data=${encodeURIComponent(joinUrl)}`;
+  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&bgcolor=0d0600&color=FB923C&data=${encodeURIComponent(joinUrl)}`;
   return (
     <div style={{
-      position: 'fixed', top: 14, right: 14, zIndex: 9995,
-      background: 'rgba(13,6,0,0.90)', border: '1.5px solid rgba(251,146,60,0.55)',
-      borderRadius: 14, padding: '10px 12px',
-      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
-      backdropFilter: 'blur(12px)', pointerEvents: 'none',
-      boxShadow: '0 4px 24px rgba(0,0,0,0.55)',
+      position: 'fixed', top: 14, right: 14, zIndex: 99999,
+      background: 'rgba(13,6,0,0.92)', border: '2px solid rgba(251,146,60,0.65)',
+      borderRadius: 16, padding: '12px 14px',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+      backdropFilter: 'blur(14px)', pointerEvents: 'none',
+      boxShadow: '0 4px 32px rgba(0,0,0,0.7), 0 0 0 1px rgba(251,146,60,0.2)',
     }}>
-      <img src={qrSrc} alt="" style={{ width: 72, height: 72, borderRadius: 8, imageRendering: 'pixelated', display: 'block' }} />
-      <div style={{ color: 'rgba(251,146,60,0.95)', fontSize: 9, fontWeight: 800,
-        textAlign: 'center', letterSpacing: '0.08em', textTransform: 'uppercase', lineHeight: 1.5 }}>
+      <img src={qrSrc} alt="" style={{ width: 96, height: 96, borderRadius: 10, imageRendering: 'pixelated', display: 'block' }} />
+      <div style={{ color: 'rgba(251,146,60,0.98)', fontSize: 10, fontWeight: 900,
+        textAlign: 'center', letterSpacing: '0.06em', textTransform: 'uppercase', lineHeight: 1.5 }}>
         Scansiona e<br/>prenotati ora
       </div>
-      <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 8, textAlign: 'center', fontWeight: 600, lineHeight: 1.4 }}>
+      <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: 9, textAlign: 'center', fontWeight: 600, lineHeight: 1.4 }}>
         Richiedi il tuo<br/>brano live
       </div>
     </div>

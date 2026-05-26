@@ -95,7 +95,7 @@ export const RISATE_MISSIONS: RisateMission[] = [
     phases: ['mission_intro', 'booking', 'active', 'voting', 'result'],
     duration: 45,
     scoringType: 'star_vote',
-    activePublicAction: 'react',
+    activePublicAction: 'none',
     bgMusic: 'bg-joke-loop',
   },
   {

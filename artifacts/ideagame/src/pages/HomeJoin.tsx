@@ -16,7 +16,7 @@ import {
   Mail, Bell, BellOff, X, Send, ArrowLeft,
 } from 'lucide-react';
 import { useEventSocket, getSocket } from '@/hooks/useEventSocket';
-import { RISATE_MISSIONS, REACTION_EMOJIS, type RisateState } from '@/data/risate-missions';
+import { RISATE_MISSIONS, YOGA_POSES, REACTION_EMOJIS, type RisateState } from '@/data/risate-missions';
 import {
   type KaraokeHomeState, type YTSearchResult, type VotingBallot,
   ALL_REACTIONS,
@@ -1657,6 +1657,93 @@ function CoppieController({ payload, onFlip, player, previewUntil }: {
 
 // ── PercorsoHomeController — Risate Missioni Improvvise 2.0 (player phone) ────
 
+// ── PercorsoVotePanel — separated to allow local votedFor state ────────────────
+function PercorsoVotePanel({ rs, player, post, msg, isBooked }: {
+  rs: RisateState;
+  player: HomePlayer;
+  post: (path: string, body?: Record<string, unknown>) => Promise<void>;
+  msg: string;
+  isBooked: boolean;
+}) {
+  const [votedFor, setVotedFor] = useState<Record<string, number>>({});
+  if (isBooked) {
+    return (
+      <div className="flex flex-col items-center gap-4 py-4 text-center">
+        <div className="text-5xl">⭐</div>
+        <div className="text-xl font-black text-white">Votazione in corso!</div>
+        <div className="text-sm text-white/45 px-4">Sei in gara — il pubblico ti valuta!</div>
+      </div>
+    );
+  }
+  if (rs.bookings.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-4 py-4 text-center">
+        <div className="text-5xl">⭐</div>
+        <div className="text-xl font-black text-white">Votazione in corso</div>
+        <div className="text-sm text-white/45">Aspetta i risultati…</div>
+      </div>
+    );
+  }
+  const allVoted = rs.bookings.every(b => votedFor[b.playerId] != null);
+  return (
+    <div className="flex flex-col items-center gap-4 py-4 text-center">
+      <div className="text-5xl">⭐</div>
+      <div className="text-xl font-black text-white">Dai il tuo voto!</div>
+      {allVoted ? (
+        <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+          className="rounded-2xl px-6 py-4 text-center w-full"
+          style={{ background: 'rgba(52,211,153,0.15)', border: '2px solid rgba(52,211,153,0.5)' }}>
+          <div className="text-2xl mb-1">✅</div>
+          <div className="text-base font-black" style={{ color: '#34D399' }}>Voto inviato!</div>
+          <div className="text-xs text-white/45 mt-1">Attendi i risultati…</div>
+        </motion.div>
+      ) : (
+        <div className="flex flex-col gap-3 w-full">
+          {rs.bookings.map(b => {
+            const localVote = votedFor[b.playerId] ?? 0;
+            const serverVote = (rs.votes[b.playerId] ?? []).find(v => v.voterId === player.id)?.score ?? 0;
+            const displayVote = localVote || serverVote;
+            const hasVoted = displayVote > 0;
+            return (
+              <div key={b.playerId} className="rounded-2xl p-4 space-y-3"
+                style={{
+                  background: hasVoted ? 'rgba(245,182,66,0.12)' : 'rgba(255,255,255,0.05)',
+                  border: hasVoted ? '2px solid rgba(245,182,66,0.45)' : '1px solid rgba(255,255,255,0.12)',
+                }}>
+                <div className="flex items-center justify-between">
+                  <div className="text-base font-black text-white">{b.nickname}</div>
+                  {hasVoted && <div className="text-xs font-black" style={{ color: '#F5B642' }}>{displayVote}/5 ⭐</div>}
+                </div>
+                <div className="grid grid-cols-5 gap-2">
+                  {[1, 2, 3, 4, 5].map(s => (
+                    <motion.button key={s} whileTap={{ scale: 0.85 }}
+                      onClick={() => {
+                        setVotedFor(prev => ({ ...prev, [b.playerId]: s }));
+                        void post('vote', { playerId: b.playerId, score: s, voterId: player.id });
+                      }}
+                      className="flex items-center justify-center rounded-2xl text-3xl"
+                      style={{
+                        height: 56,
+                        background: displayVote >= s
+                          ? 'rgba(245,182,66,0.30)' : 'rgba(255,255,255,0.06)',
+                        border: displayVote >= s
+                          ? '2px solid rgba(245,182,66,0.75)' : '1px solid rgba(255,255,255,0.14)',
+                        color: displayVote >= s ? '#F5B642' : 'rgba(255,255,255,0.30)',
+                      }}>
+                      ⭐
+                    </motion.button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {msg && <div className="text-xs text-red-400">{msg}</div>}
+    </div>
+  );
+}
+
 function PercorsoHomeController({ sessionId, player, payload, timeLeft }: {
   sessionId: string;
   player: HomePlayer;
@@ -1777,22 +1864,44 @@ function PercorsoHomeController({ sessionId, player, payload, timeLeft }: {
 
   // ── public_choice ─────────────────────────────────────────────────────────
   if (rs.phase === 'public_choice') {
+    const isYoga = mission?.id === 'yoga';
     return (
       <div className="flex flex-col items-center gap-3 py-4 text-center">
         <div className="text-4xl">{mission?.emoji ?? '🗳️'}</div>
         <div className="text-base font-black text-white">{mission?.choiceLabel ?? 'Scegli!'}</div>
-        <div className="flex flex-col gap-2.5 w-full">
-          {rs.publicChoiceOptions.map(opt => (
-            <motion.button key={opt} whileTap={{ scale: 0.95 }}
-              onClick={() => void post('choice', { choice: opt })} disabled={busy}
-              className="w-full rounded-2xl px-5 py-3.5 text-base font-black"
-              style={rs.publicChoice === opt
-                ? { background: 'linear-gradient(135deg,#34D399,#059669)', color: '#000', boxShadow: '0 0 20px rgba(52,211,153,0.5)' }
-                : { background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.14)', color: 'rgba(255,255,255,0.85)' }}>
-              {opt}
-            </motion.button>
-          ))}
-        </div>
+        {isYoga ? (
+          <div className="grid grid-cols-1 gap-2.5 w-full">
+            {rs.publicChoiceOptions.map(opt => {
+              const pose = YOGA_POSES.find(p => opt.includes(p.name));
+              const isSelected = rs.publicChoice === opt;
+              return (
+                <motion.button key={opt} whileTap={{ scale: 0.97 }}
+                  onClick={() => void post('choice', { choice: opt })} disabled={busy}
+                  className="w-full rounded-2xl px-4 py-3 flex items-center gap-3 text-left"
+                  style={isSelected
+                    ? { background: 'linear-gradient(135deg,#34D399,#059669)', color: '#000', boxShadow: '0 0 24px rgba(52,211,153,0.55)' }
+                    : { background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.14)', color: 'rgba(255,255,255,0.85)' }}>
+                  <span style={{ fontSize: '2.2rem', lineHeight: 1, flexShrink: 0 }}>{pose?.emoji ?? '🧘'}</span>
+                  <span className="font-black text-base leading-tight">{pose?.name ?? opt}</span>
+                  {isSelected && <span className="ml-auto text-xl">✅</span>}
+                </motion.button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2.5 w-full">
+            {rs.publicChoiceOptions.map(opt => (
+              <motion.button key={opt} whileTap={{ scale: 0.95 }}
+                onClick={() => void post('choice', { choice: opt })} disabled={busy}
+                className="w-full rounded-2xl px-5 py-3.5 text-base font-black"
+                style={rs.publicChoice === opt
+                  ? { background: 'linear-gradient(135deg,#34D399,#059669)', color: '#000', boxShadow: '0 0 20px rgba(52,211,153,0.5)' }
+                  : { background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.14)', color: 'rgba(255,255,255,0.85)' }}>
+                {opt}
+              </motion.button>
+            ))}
+          </div>
+        )}
         {rs.publicChoice && <div className="text-xs text-white/45">Tuo voto: {rs.publicChoice}</div>}
         {msg && <div className="text-xs text-red-400">{msg}</div>}
       </div>
@@ -1802,10 +1911,22 @@ function PercorsoHomeController({ sessionId, player, payload, timeLeft }: {
   // ── active ─────────────────────────────────────────────────────────────────
   if (rs.phase === 'active') {
     const ap = mission?.activePublicAction ?? 'none';
+    const isYogaActive = mission?.id === 'yoga';
+    const yogaPose = isYogaActive && rs.publicChoice
+      ? YOGA_POSES.find(p => rs.publicChoice!.includes(p.name)) : null;
     return (
       <div className="flex flex-col items-center gap-4 py-4 text-center">
         <div className="text-5xl">{mission?.emoji}</div>
-        {rs.publicChoice && (
+        {/* Yoga: show chosen pose prominently on phones */}
+        {isYogaActive && yogaPose && (
+          <div className="flex flex-col items-center gap-2 rounded-2xl px-6 py-5 w-full"
+            style={{ background: 'rgba(52,211,153,0.10)', border: '2px solid rgba(52,211,153,0.4)' }}>
+            <div style={{ fontSize: '4.5rem', lineHeight: 1 }}>{yogaPose.emoji}</div>
+            <div className="text-lg font-black" style={{ color: '#34D399' }}>{yogaPose.name}</div>
+            <div className="text-xs text-white/40">Mantieni la posa per 30 secondi!</div>
+          </div>
+        )}
+        {!isYogaActive && rs.publicChoice && (
           <div className="rounded-xl px-5 py-2 text-sm font-bold text-white"
             style={{ background: 'rgba(52,211,153,0.12)', border: '1px solid rgba(52,211,153,0.35)' }}>
             {rs.publicChoice}
@@ -1897,42 +2018,7 @@ function PercorsoHomeController({ sessionId, player, payload, timeLeft }: {
 
   // ── voting ─────────────────────────────────────────────────────────────────
   if (rs.phase === 'voting') {
-    return (
-      <div className="flex flex-col items-center gap-4 py-4 text-center">
-        <div className="text-5xl">⭐</div>
-        <div className="text-xl font-black text-white">Dai il tuo voto!</div>
-        {isBooked ? (
-          <div className="text-sm text-white/45 px-4">Sei in gara — il pubblico ti valuta!</div>
-        ) : (
-          <div className="flex flex-col gap-3 w-full">
-            {rs.bookings.map(b => {
-              const myVote = (rs.votes[b.playerId] ?? []).find(v => v.voterId === player.id);
-              return (
-                <div key={b.playerId} className="rounded-2xl p-3.5 space-y-2.5"
-                  style={{ background: 'rgba(245,182,66,0.08)', border: '1px solid rgba(245,182,66,0.25)' }}>
-                  <div className="text-base font-black text-white">{b.nickname}</div>
-                  <div className="flex justify-center gap-2">
-                    {[1, 2, 3, 4, 5].map(s => (
-                      <motion.button key={s} whileTap={{ scale: 0.88 }}
-                        onClick={() => void post('vote', { playerId: b.playerId, score: s, voterId: player.id })}
-                        disabled={busy}
-                        className="h-12 w-12 rounded-xl text-2xl font-black"
-                        style={(myVote?.score ?? 0) >= s
-                          ? { background: 'rgba(245,182,66,0.3)', border: '2px solid rgba(245,182,66,0.7)', color: '#F5B642' }
-                          : { background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.14)', color: 'rgba(255,255,255,0.35)' }}>
-                        ⭐
-                      </motion.button>
-                    ))}
-                  </div>
-                  {myVote && <div className="text-xs text-white/40">{myVote.score}/5 stelle</div>}
-                </div>
-              );
-            })}
-          </div>
-        )}
-        {msg && <div className="text-xs text-red-400">{msg}</div>}
-      </div>
-    );
+    return <PercorsoVotePanel rs={rs} player={player} post={post} msg={msg} isBooked={isBooked} />;
   }
 
   // ── result ─────────────────────────────────────────────────────────────────

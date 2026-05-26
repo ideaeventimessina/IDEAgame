@@ -1,0 +1,111 @@
+HOME MODE — URGENT BUG FIXES: PERCORSO VOTE, KARAOKE QR/VIDEO, YOGA IMAGES, USELESS EMOJIS.
+
+Do not add new features.
+Do not touch unrelated games.
+Fix only these issues.
+
+1) PERCORSO A RISATE — STARS NOT SHOWN ON PLAYER PHONES
+
+Bug:
+During voting phase, players do not see the star buttons.
+
+Required:
+- During mission voting phase, all eligible public/player phones must show 1–5 star voting.
+- Voting UI must appear clearly on phone and tablet.
+- Button size must be touch-friendly.
+- After vote, show “Voto inviato”.
+- TV must receive vote update.
+
+Audit:
+- Percorso phone controller
+- missionPhase === "voting"
+- public vote component
+- eligibility conditions
+
+2) KARAOKE TV — QR CODE NOT ALWAYS VISIBLE
+
+Bug:
+QR is not always visible on TV.
+
+Required:
+- QR fixed top-right during entire Karaoke Live session:
+  queue_open, playing, voting, transition, waiting.
+- Hide only during final ceremony if necessary.
+- QR must not be covered by YouTube iframe.
+- z-index higher than player.
+
+Text:
+“Scansiona e prenotati ora”
+“Richiedi il tuo brano live”
+
+3) KARAOKE — YOUTUBE VIDEO FAILS TO START
+
+Bug:
+Some YouTube videos play normally on YouTube but do not start inside app.
+
+Required:
+- Detect iframe/player error.
+- If embed fails, show clear fallback:
+  “Questo video non può essere riprodotto nell’app”
+  button:
+  “Apri su YouTube”
+  button:
+  “Scegli altro risultato”
+- Do not crash.
+- Do not block queue.
+- Allow host/player to skip/change song.
+
+Add logs:
+[KARAOKE_PLAYER_ERROR]
+videoId
+title
+errorCode
+embedUrl
+
+4) YOGA MISSION — NEED POSE IMAGES
+
+Bug:
+Yoga mission shows only pose names. Player cannot know how to pose.
+
+Required:
+- TV must show the yoga pose image huge.
+- Player phones must also show selected pose image.
+- Public phones choosing pose must show image cards, not only names.
+- If image is missing, use large placeholder silhouette + pose name.
+- Data must support 30 yoga pose images:
+  id, name, imageUrl
+
+Use fallback:
+if no imageUrl:
+show emoji/silhouette placeholder, not blank.
+
+5) BARZELLETTA — REMOVE USELESS EMOJI BUTTONS IF NOT FUNCTIONAL
+
+Bug:
+On tablet/player phones, emoji buttons appear but do nothing.
+
+Required:
+Choose one:
+A. If reactions are not connected to TV/audio yet:
+   remove emoji buttons from Barzelletta mission.
+   Keep only final star voting.
+B. If easy:
+   connect emoji buttons to TV floating reactions.
+   No sound required.
+
+Preferred now:
+Remove useless emoji buttons.
+Keep UI clean:
+- instruction
+- timer
+- final star vote
+
+Output:
+A. files modified
+B. Percorso voting fixed
+C. Karaoke QR fixed
+D. Karaoke player error fallback
+E. Yoga image support
+F. Barzelletta emoji cleanup
+G. typecheck result
+H. manual test steps
