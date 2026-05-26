@@ -167,7 +167,10 @@ async function searchYouTube(rawInput: string): Promise<{ results: YTSearchResul
     const searchQ = encodeURIComponent(youtubeQuery);
     const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${searchQ}&type=video&maxResults=10&key=${YOUTUBE_API_KEY}`;
     const searchResp = await fetch(searchUrl);
-    if (!searchResp.ok) throw new Error(`YouTube search error: ${searchResp.status}`);
+    if (!searchResp.ok) {
+      const body = await searchResp.text().catch(() => "(no body)");
+      throw new Error(`YouTube search error: ${searchResp.status} — ${body}`);
+    }
     const searchData = await searchResp.json() as {
       items?: { id: { videoId: string }; snippet: { title: string; channelTitle: string; thumbnails: { medium: { url: string } } } }[]
     };
