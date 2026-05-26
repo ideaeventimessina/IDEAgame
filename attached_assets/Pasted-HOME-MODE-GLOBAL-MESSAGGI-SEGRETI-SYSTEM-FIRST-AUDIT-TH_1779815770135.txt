@@ -1,0 +1,466 @@
+HOME MODE — GLOBAL “MESSAGGI SEGRETI” SYSTEM
+FIRST AUDIT, THEN PATCH.
+
+Do not touch gameplay logic.
+Do not touch scoring.
+Do not touch Karaoke queue.
+Do not touch Ballo SensorBridge.
+Do not redesign existing game screens.
+
+Add a GLOBAL social messaging layer active during the entire Home session.
+
+The feature must work on top of every Home game:
+- Karaoke
+- Freestyle
+- Ballo
+- WordBack
+- Quizzone
+- Coppie
+- Percorso a Risate
+- Adult Only
+- SaraMusica
+
+==================================================
+GOAL
+==================================================
+
+Create a lightweight live social messaging system.
+
+Players can:
+1. send private messages to another connected player
+2. send anonymous private messages
+3. send signed private messages
+4. send messages to TV queue
+5. react to received messages
+6. enable/disable Do Not Disturb
+
+This is NOT a full chat thread.
+It is a one-shot message system.
+
+==================================================
+PART 1 — AUDIT FIRST
+==================================================
+
+Before patching, audit:
+
+Frontend:
+- HomeJoin.tsx
+- phone global layout/wrapper
+- player state
+- socket connection
+- existing floating buttons
+- active player role/game status
+
+TV:
+- HomeGame.tsx
+- safe moments between rounds
+- current phase/mode detection
+- overlays
+
+Backend:
+- home.ts
+- socket.ts
+- home session/player model
+- current in-memory session maps
+- DB schema if persistence exists
+
+Output before patch:
+A. where to mount phone floating button
+B. where to mount TV message overlay
+C. where to store messages
+D. how to detect safe TV windows
+
+==================================================
+PART 2 — DATA MODEL
+==================================================
+
+Implement a Home chat/message model.
+
+Use database if current project already has DB tables.
+If too heavy for first pass, use in-memory per-session Map, but structure must allow DB migration later.
+
+Message shape:
+
+{
+  id: string,
+  sessionId: string,
+  senderPlayerId: string,
+  senderNickname: string,
+  receiverPlayerId: string | null,
+  receiverNickname: string | null,
+  text: string,
+  isAnonymous: boolean,
+  destination: "private" | "tv",
+  createdAt: number,
+  readAt: number | null,
+  reactions: Array<{
+    playerId: string,
+    emoji: string,
+    createdAt: number
+  }>
+}
+
+Player chat preferences:
+
+{
+  playerId: string,
+  dnd: boolean
+}
+
+Per-session state:
+
+{
+  privateMessages: ChatMessage[],
+  tvMessageQueue: ChatMessage[],
+  tvShownMessageIds: string[]
+}
+
+==================================================
+PART 3 — BACKEND / SOCKET EVENTS
+==================================================
+
+Add socket events or REST endpoints according to existing architecture.
+
+Required events:
+
+home:chat_send
+payload:
+{
+  sessionId,
+  senderPlayerId,
+  receiverPlayerId,
+  text,
+  isAnonymous,
+  destination
+}
+
+home:chat_receive
+sent only to receiver phone for private messages
+
+home:chat_inbox_update
+sent to receiver phone after new private message or reaction
+
+home:chat_reaction
+payload:
+{
+  sessionId,
+  messageId,
+  playerId,
+  emoji,
+  textReply?: string
+}
+
+home:chat_mark_read
+payload:
+{
+  sessionId,
+  playerId,
+  messageId
+}
+
+home:chat_toggle_dnd
+payload:
+{
+  sessionId,
+  playerId,
+  dnd
+}
+
+home:chat_tv_queue_update
+broadcast to TV when new TV message is queued
+
+home:chat_tv_show_batch
+TV uses this when showing up to 5 messages
+
+Server rules:
+- max text length 160 chars
+- trim empty messages
+- block duplicate consecutive same text from same sender to same target
+- if destination private and receiver has 3 unread messages from same sender, reject:
+  "L’utente ha già messaggi in attesa."
+- if receiver DND is active:
+  save message to inbox but do not send popup/badge
+- destination tv:
+  receiverPlayerId can be null or specific target for "message for X"
+  message goes into tvMessageQueue, never appears immediately during active gameplay
+
+==================================================
+PART 4 — PHONE UI GLOBAL FLOATING BUTTON
+==================================================
+
+In HomeJoin phone UI, add a global floating button visible during all Home session phases after player joined:
+
+Position:
+top-right
+
+Button:
+✉️
+
+If unread messages > 0:
+show red badge with number.
+
+Do not show on TV.
+Do not show in admin.
+
+Button opens full-screen modal:
+“Messaggi Segreti”
+
+Tabs:
+1. Inbox
+2. Nuovo
+
+==================================================
+PART 5 — INBOX UI
+==================================================
+
+Inbox shows received messages.
+
+Each card:
+- sender:
+  if anonymous: “Qualcuno in sala…”
+  if signed: sender nickname
+- text
+- created time
+- reactions
+
+If anonymous message:
+allowed response:
+emoji only:
+❤️ 🔥 😂 😳 👀 🙈
+
+If signed message:
+allowed response:
+- emoji
+- one text reply max 160 chars
+
+If DND active:
+messages are still listed in inbox when opened, but no live popup.
+
+Add toggle:
+🔕 Non disturbare
+
+If enabled:
+- no popup
+- no vibration
+- no unread badge live
+- messages stored silently
+
+==================================================
+PART 6 — NEW MESSAGE UI
+==================================================
+
+Composer flow:
+
+Step 1:
+Choose recipient from connected players list.
+Show:
+- nickname
+- online status
+- avatar/color if available
+
+Options:
+- specific player
+- TV / Sala
+
+Step 2:
+Choose signature:
+- Firmato
+- Anonimo
+
+Step 3:
+Choose destination:
+- Privato
+- Pubblico TV
+
+Rules:
+If destination = private:
+receiverPlayerId required.
+
+If destination = tv:
+message enters TV queue.
+Optional receiver can be selected as “messaggio per [nickname]”.
+
+Step 4:
+Text textarea/input:
+max 160 chars.
+Counter visible.
+
+Button:
+INVIA
+
+After send:
+show success:
+“Messaggio inviato”
+
+==================================================
+PART 7 — PRIVATE MESSAGE POPUP
+==================================================
+
+When a private message arrives and receiver DND is OFF:
+
+show temporary elegant popup on phone:
+- sender label
+- text preview
+- buttons:
+  Apri
+  Reagisci
+
+If receiver is currently active performer/player in a live round:
+do NOT popup.
+Instead store silently in inbox.
+
+Active performer/player means:
+- current singer in Karaoke
+- active Ballo dancer
+- WordBack guesser/suggester
+- Quizzone answering live
+- active player in Percorso mission
+- Adult performer
+- SaraMusica active contestant
+- Freestyle performer
+
+Use best available current session/roundPayload data.
+
+==================================================
+PART 8 — TV MESSAGE QUEUE
+==================================================
+
+TV messages must NEVER interrupt gameplay.
+
+They are shown only in safe windows.
+
+Safe windows include:
+- between games
+- between rounds
+- result screen
+- ranking screen
+- booking phase
+- waiting phase
+- karaoke transition between singers
+- karaoke voting phase
+- mini podium
+- session idle
+
+Unsafe windows include:
+- active timer gameplay
+- live quiz question
+- active WordBack word
+- active Ballo performance
+- active Karaoke singer
+- active Freestyle battle
+- active Percorso mission
+- any moment where the message could suggest or distract
+
+Implement function:
+
+isSafeToShowTvMessages(session, roundPayload, phase): boolean
+
+When safe:
+- if tvMessageQueue has messages:
+  show batch overlay for max 5 seconds
+  max 5 messages per batch
+  mark them as shown
+  remove from queue or move to shown list
+- if queue empty:
+  do nothing, no delay
+
+If more than 5 messages:
+keep remaining in queue for next safe window.
+
+TV overlay:
+Title:
+💌 Messaggi dalla sala
+
+Each message:
+- if anonymous: “Anonimo”
+- if signed: sender nickname
+- if target exists: “per [receiverNickname]”
+- text
+
+Do not show during active gameplay.
+
+==================================================
+PART 9 — TV BATCH TIMING
+==================================================
+
+When safe window starts:
+- show up to 5 TV messages
+- total duration 5 seconds
+- then disappear automatically
+- game continues normally
+
+If no messages:
+- do not wait 5 seconds
+- continue immediately
+
+Important:
+TV overlay must be non-blocking.
+It should not change game phase.
+It should not stop timers.
+It should not require host action.
+
+==================================================
+PART 10 — STYLE
+==================================================
+
+Use current IDEAgame visual language:
+- dark premium
+- soft glow
+- rounded cards
+- readable typography
+- mobile-first
+- no horizontal scroll
+- no layout shift
+
+Phone modal must not break gameplay layout.
+Keep it as overlay with high z-index.
+
+==================================================
+PART 11 — LOGS
+==================================================
+
+Add logs:
+
+[SecretMessages] send
+[SecretMessages] receive
+[SecretMessages] dnd
+[SecretMessages] tv queued
+[SecretMessages] tv batch shown
+[SecretMessages] tv unsafe skip
+[SecretMessages] reaction
+
+==================================================
+PART 12 — MANUAL TEST
+==================================================
+
+Test with 4 phones:
+
+1. Phone A sends signed private message to Phone B.
+2. Phone B receives popup and replies with text.
+3. Phone A sends anonymous message to Phone B.
+4. Phone B can react only with emoji, no text reply.
+5. Phone B enables Non disturbare.
+6. Phone A sends message; Phone B receives no popup, but sees it in inbox.
+7. Phone A sends TV message during active game; TV does NOT show it.
+8. End round / booking phase starts; TV shows message batch max 5 sec.
+9. Send 7 TV messages; TV shows 5, keeps 2 for next safe window.
+10. Active performer does not get popup mid-performance.
+
+==================================================
+OUTPUT
+==================================================
+
+Before patch:
+A. files audited
+B. mount points identified
+C. storage strategy
+
+After patch:
+D. files modified
+E. backend/socket events added
+F. phone floating button behavior
+G. inbox/composer behavior
+H. DND behavior
+I. TV queue safe-window behavior
+J. typecheck result
+K. manual test checklist

@@ -13,6 +13,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Loader2, Check, ChevronRight, Star, Music,
   Laugh, Zap, ShieldAlert, MessageSquare, Mic, Timer,
+  Mail, Bell, BellOff, X, Send, ArrowLeft,
 } from 'lucide-react';
 import { useEventSocket, getSocket } from '@/hooks/useEventSocket';
 import { RISATE_MISSIONS, REACTION_EMOJIS, type RisateState } from '@/data/risate-missions';
@@ -102,6 +103,40 @@ export default function HomeJoin() {
   const [preflightMsg, setPreflightMsg] = useState<string | null>(null);
   const [preflightActive, setPreflightActive] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ── Messaggi Segreti ──────────────────────────────────────────────────────
+  interface ChatMsg {
+    id: string; sessionId: string;
+    senderPlayerId: string; senderNickname: string;
+    receiverPlayerId: string | null; receiverNickname: string | null;
+    text: string; isAnonymous: boolean; destination: 'private' | 'tv';
+    createdAt: number; readAt: number | null;
+    reactions: Array<{ playerId: string; emoji: string; createdAt: number }>;
+  }
+  const [chatInbox, setChatInbox] = useState<ChatMsg[]>([]);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatTab, setChatTab] = useState<'inbox' | 'nuovo'>('inbox');
+  const [chatDndEnabled, setChatDndEnabled] = useState(false);
+  const [chatPopup, setChatPopup] = useState<ChatMsg | null>(null);
+  const chatPopupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Composer state
+  const [compStep, setCompStep] = useState<1|2|3|4>(1);
+  const [compReceiver, setCompReceiver] = useState<{ id: string; nickname: string } | null>(null);
+  const [compAnon, setCompAnon] = useState(false);
+  const [compDest, setCompDest] = useState<'private'|'tv'>('private');
+  const [compText, setCompText] = useState('');
+  const [compSending, setCompSending] = useState(false);
+  const [compSent, setCompSent] = useState(false);
+  const [compError, setCompError] = useState('');
+  // Reaction state
+  const [reactingTo, setReactingTo] = useState<ChatMsg | null>(null);
+  const [replyText, setReplyText] = useState('');
+
+  const chatUnread = chatInbox.filter(m => !m.readAt).length;
+  const EMOJI_REACTIONS = ['❤️','🔥','😂','😳','👀','🙈'];
+  // Keep DND ref in sync so socket listeners (which close over [on]) always see current value
+  const chatDndRef = useRef(false);
+  useEffect(() => { chatDndRef.current = chatDndEnabled; }, [chatDndEnabled]);
   const phaseRef = useRef<'code' | 'nickname' | 'lobby' | 'playing' | 'ended'>('code');
   const playerRef = useRef<HomePlayer | null>(null);
   const prevGameSlugRef = useRef<string | null>(null);
@@ -493,7 +528,38 @@ export default function HomeJoin() {
       setWordbackTimedOut(true);
     });
 
-    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); u10?.(); u11?.(); u12?.(); u13Phone?.(); };
+    // ── Messaggi Segreti socket listeners ────────────────────────────────────
+    const uChat1 = on<{ message: unknown }>('home:chat_receive', (d) => {
+      const msg = d.message as ChatMsg;
+      if (!msg?.id) return;
+      setChatInbox(prev => {
+        if (prev.some(m => m.id === msg.id)) return prev;
+        return [...prev, msg];
+      });
+      // Suppress popup during active performing modes (use ref to avoid stale closure)
+      const mode = currentModeRef.current;
+      const isPerforming = ['home-karaoke', 'home-ballo', 'home-wordback', 'home-percorso', 'home-adult', 'home-saramusica'].includes(mode);
+      if (!chatDndRef.current && !isPerforming) {
+        setChatPopup(msg);
+        if (chatPopupTimerRef.current) clearTimeout(chatPopupTimerRef.current);
+        chatPopupTimerRef.current = setTimeout(() => setChatPopup(null), 7000);
+      }
+    });
+
+    const uChat2 = on<{ inbox?: unknown[]; updatedMessage?: unknown }>('home:chat_inbox_update', (d) => {
+      if (d.inbox) {
+        setChatInbox(d.inbox as ChatMsg[]);
+      } else if (d.updatedMessage) {
+        const updated = d.updatedMessage as ChatMsg;
+        setChatInbox(prev => prev.map(m => m.id === updated.id ? updated : m));
+      }
+    });
+
+    const uChat3 = on<{ playerId: string; dnd: boolean }>('home:chat_dnd_updated', (d) => {
+      if (d.playerId === playerRef.current?.id) setChatDndEnabled(d.dnd);
+    });
+
+    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); u10?.(); u11?.(); u12?.(); u13Phone?.(); uChat1?.(); uChat2?.(); uChat3?.(); };
   // Only re-register when the socket `on` function changes (new connection)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [on]);
@@ -732,6 +798,54 @@ export default function HomeJoin() {
     });
   };
 
+  // ── Chat helpers ──────────────────────────────────────────────────────────
+  const resetComposer = useCallback(() => {
+    setCompStep(1); setCompReceiver(null); setCompAnon(false);
+    setCompDest('private'); setCompText(''); setCompSent(false); setCompError('');
+  }, []);
+
+  const sendChatMessage = useCallback(async () => {
+    if (!session || !player || !compText.trim() || compSending) return;
+    if (compDest === 'private' && !compReceiver) return;
+    setCompSending(true); setCompError('');
+    emit('home:chat_send', {
+      sessionId: session.id,
+      senderPlayerId: player.id,
+      senderNickname: player.nickname,
+      receiverPlayerId: compReceiver?.id ?? null,
+      receiverNickname: compReceiver?.nickname ?? null,
+      text: compText.trim(),
+      isAnonymous: compAnon,
+      destination: compDest,
+    });
+    setCompSent(true); setCompText('');
+    setTimeout(() => { setCompSent(false); resetComposer(); }, 2000);
+    setCompSending(false);
+  }, [session, player, compText, compSending, compDest, compReceiver, compAnon, emit, resetComposer]);
+
+  const toggleDnd = useCallback(() => {
+    if (!session || !player) return;
+    const next = !chatDndEnabled;
+    setChatDndEnabled(next);
+    emit('home:chat_toggle_dnd', { sessionId: session.id, playerId: player.id, dnd: next });
+  }, [session, player, chatDndEnabled, emit]);
+
+  const sendReaction = useCallback((msg: ChatMsg, emoji: string, textReply?: string) => {
+    if (!session || !player) return;
+    emit('home:chat_reaction', { sessionId: session.id, messageId: msg.id, playerId: player.id, emoji, textReply });
+    setReactingTo(null); setReplyText('');
+  }, [session, player, emit]);
+
+  const markRead = useCallback((msg: ChatMsg) => {
+    if (!session || !player || msg.readAt) return;
+    emit('home:chat_mark_read', { sessionId: session.id, playerId: player.id, messageId: msg.id });
+  }, [session, player, emit]);
+
+  const openInbox = useCallback(() => {
+    setChatOpen(true); setChatTab('inbox');
+    if (session && player) emit('home:chat_get_inbox', { sessionId: session.id, playerId: player.id });
+  }, [session, player, emit]);
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -755,6 +869,52 @@ export default function HomeJoin() {
       <div className="pointer-events-none fixed bottom-1 left-2 z-[9999] text-[10px] font-mono px-1.5 py-0.5 rounded" style={{background:'rgba(0,0,0,0.75)',color:'#F5B642',border:'1px solid #F5B64260'}}>
         build: {BUILD_STAMP_JOIN}
       </div>
+
+      {/* ── Messaggi Segreti: floating ✉️ button ── */}
+      {player && (
+        <button onClick={openInbox}
+          className="fixed z-[9990] flex h-11 w-11 items-center justify-center rounded-full"
+          style={{top:46,right:12,background:'linear-gradient(135deg,#7c3aed,#4f1d96)',boxShadow:'0 0 20px rgba(124,58,237,0.5)',border:'1px solid rgba(168,85,247,0.6)'}}>
+          <Mail className="h-5 w-5 text-white"/>
+          {chatUnread > 0 && (
+            <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-black text-white">
+              {chatUnread > 9 ? '9+' : chatUnread}
+            </span>
+          )}
+        </button>
+      )}
+
+      {/* ── Messaggi Segreti: incoming popup ── */}
+      {chatPopup && (
+        <div className="fixed bottom-24 inset-x-3 z-[9991] rounded-2xl p-4 shadow-2xl"
+          style={{background:'rgba(20,10,50,0.96)',border:'1px solid rgba(168,85,247,0.5)',backdropFilter:'blur(16px)'}}>
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg"
+              style={{background:'rgba(168,85,247,0.2)',border:'1px solid rgba(168,85,247,0.4)'}}>✉️</div>
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-black uppercase tracking-widest mb-0.5" style={{color:'#A855F7'}}>
+                {chatPopup.isAnonymous ? 'Qualcuno in sala…' : chatPopup.senderNickname}
+              </div>
+              <div className="text-sm text-white/90 line-clamp-2">{chatPopup.text}</div>
+            </div>
+            <button onClick={() => setChatPopup(null)} className="shrink-0 text-white/30">
+              <X className="h-4 w-4"/>
+            </button>
+          </div>
+          <div className="flex gap-2 mt-3">
+            <button onClick={() => { setChatPopup(null); openInbox(); }}
+              className="flex-1 rounded-xl py-2 text-sm font-black"
+              style={{background:'rgba(168,85,247,0.25)',border:'1px solid rgba(168,85,247,0.5)',color:'#c084fc'}}>
+              Apri
+            </button>
+            <button onClick={() => { markRead(chatPopup); setReactingTo(chatPopup); setChatPopup(null); setChatOpen(true); setChatTab('inbox'); }}
+              className="flex-1 rounded-xl py-2 text-sm font-black"
+              style={{background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.15)',color:'rgba(255,255,255,0.6)'}}>
+              Reagisci
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── ROOT-LEVEL PREFLIGHT OVERLAYS ─────────────────────────────────────
            Fixed position — survive AnimatePresence phase transitions.
@@ -1132,6 +1292,207 @@ export default function HomeJoin() {
         )}
 
       </AnimatePresence>
+
+      {/* ── Messaggi Segreti: full-screen modal ── */}
+      {chatOpen && player && session && (
+        <div className="fixed inset-0 z-[99990] flex flex-col" style={{background:'rgba(7,6,26,0.97)',backdropFilter:'blur(10px)'}}>
+          {/* Header */}
+          <div className="flex items-center justify-between border-b px-4 pb-3 pt-10" style={{borderColor:'rgba(124,58,237,0.3)'}}>
+            <button onClick={() => { setChatOpen(false); setReactingTo(null); resetComposer(); }}>
+              <X className="h-6 w-6 text-white/60"/>
+            </button>
+            <div className="text-lg font-black text-white">💌 Messaggi Segreti</div>
+            <button onClick={toggleDnd}
+              className="flex items-center gap-1 rounded-full px-3 py-1 text-xs font-bold"
+              style={{background:chatDndEnabled?'rgba(239,68,68,0.2)':'rgba(255,255,255,0.08)',border:chatDndEnabled?'1px solid rgba(239,68,68,0.5)':'1px solid rgba(255,255,255,0.15)',color:chatDndEnabled?'#f87171':'rgba(255,255,255,0.5)'}}>
+              {chatDndEnabled ? <BellOff className="h-3 w-3"/> : <Bell className="h-3 w-3"/>} DND
+            </button>
+          </div>
+          {/* Tabs */}
+          <div className="flex border-b" style={{borderColor:'rgba(124,58,237,0.2)'}}>
+            {(['inbox','nuovo'] as const).map(t => (
+              <button key={t} onClick={() => { setChatTab(t); if (t==='nuovo') resetComposer(); }}
+                className="flex-1 py-3 text-sm font-black uppercase tracking-widest"
+                style={{color:chatTab===t?'#A855F7':'rgba(255,255,255,0.35)',borderBottom:chatTab===t?'2px solid #A855F7':'2px solid transparent'}}>
+                {t==='inbox'?`📬 Inbox${chatInbox.length>0?` (${chatInbox.length})`:''}` : '✏️ Nuovo'}
+              </button>
+            ))}
+          </div>
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto p-4">
+            {chatTab==='inbox' ? (
+              chatInbox.length===0 ? (
+                <div className="flex flex-col items-center gap-3 py-16 text-center">
+                  <div className="text-4xl">📭</div>
+                  <div className="text-white/40 text-sm">Nessun messaggio ricevuto</div>
+                  {chatDndEnabled && <div className="text-xs text-red-400/70">🔕 Non disturbare attivo</div>}
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {chatInbox.slice().reverse().map(msg => (
+                    <div key={msg.id} className="rounded-2xl p-4" onClick={() => markRead(msg)}
+                      style={{background:msg.readAt?'rgba(255,255,255,0.04)':'rgba(168,85,247,0.12)',border:msg.readAt?'1px solid rgba(255,255,255,0.08)':'1px solid rgba(168,85,247,0.4)'}}>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="text-xs font-black" style={{color:msg.readAt?'rgba(255,255,255,0.5)':'#A855F7'}}>
+                          {msg.isAnonymous ? '🎭 Qualcuno in sala…' : `💬 ${msg.senderNickname}`}
+                        </div>
+                        <div className="text-[10px] text-white/25">
+                          {new Date(msg.createdAt).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})}
+                        </div>
+                      </div>
+                      <div className="text-sm text-white/90 mb-2">{msg.text}</div>
+                      {msg.reactions.length>0 && (
+                        <div className="flex flex-wrap gap-1 mb-2">
+                          {msg.reactions.map((r,i) => (
+                            <span key={i} className="rounded-full px-2 py-0.5 text-xs" style={{background:'rgba(255,255,255,0.1)'}}>{r.emoji}</span>
+                          ))}
+                        </div>
+                      )}
+                      {reactingTo?.id===msg.id ? (
+                        <div className="mt-2">
+                          <div className="flex flex-wrap gap-2 mb-2">
+                            {EMOJI_REACTIONS.map(em => (
+                              <button key={em} onClick={() => sendReaction(msg, em)}
+                                className="text-xl rounded-full w-9 h-9 flex items-center justify-center"
+                                style={{background:'rgba(255,255,255,0.1)'}}>
+                                {em}
+                              </button>
+                            ))}
+                          </div>
+                          {!msg.isAnonymous && (
+                            <div className="flex gap-2">
+                              <input value={replyText} onChange={e => setReplyText(e.target.value.slice(0,160))}
+                                placeholder="Rispondi… (max 160)" maxLength={160}
+                                className="flex-1 rounded-xl px-3 py-2 text-sm text-white focus:outline-none"
+                                style={{background:'rgba(255,255,255,0.08)',border:'1px solid rgba(168,85,247,0.4)'}}/>
+                              <button onClick={() => replyText.trim() && sendReaction(msg,'💬',replyText)}
+                                className="rounded-xl px-4 py-2 text-sm font-black"
+                                style={{background:'rgba(168,85,247,0.3)',color:'#c084fc'}}>
+                                <Send className="h-4 w-4"/>
+                              </button>
+                            </div>
+                          )}
+                          <button onClick={() => { setReactingTo(null); setReplyText(''); }}
+                            className="mt-1 text-xs text-white/30">annulla</button>
+                        </div>
+                      ) : (
+                        <button onClick={() => { setReactingTo(msg); setReplyText(''); }}
+                          className="text-xs font-black rounded-full px-3 py-1"
+                          style={{background:'rgba(255,255,255,0.07)',color:'rgba(255,255,255,0.4)'}}>
+                          Reagisci
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )
+            ) : (
+              /* ── Composer ── */
+              compSent ? (
+                <div className="flex flex-col items-center gap-4 py-16 text-center">
+                  <div className="text-5xl">✅</div>
+                  <div className="text-xl font-black text-white">Messaggio inviato</div>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-4">
+                  {/* Step 1: Recipient */}
+                  {compStep===1 && (
+                    <>
+                      <div className="text-sm font-black uppercase tracking-widest text-white/50">Scegli il destinatario</div>
+                      <button onClick={() => { setCompReceiver(null); setCompDest('tv'); setCompStep(3); }}
+                        className="flex items-center gap-3 rounded-2xl p-4 text-left"
+                        style={{background:'rgba(245,182,66,0.1)',border:'1px solid rgba(245,182,66,0.3)'}}>
+                        <div className="text-2xl">📺</div>
+                        <div>
+                          <div className="font-black text-white">TV / Sala</div>
+                          <div className="text-xs text-white/40">Mostrato sullo schermo durante le pause</div>
+                        </div>
+                      </button>
+                      {players.filter(p => p.id!==player.id).map(p => (
+                        <button key={p.id} onClick={() => { setCompReceiver({id:p.id,nickname:p.nickname}); setCompDest('private'); setCompStep(2); }}
+                          className="flex items-center gap-3 rounded-2xl p-4 text-left"
+                          style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.1)'}}>
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-black text-sm"
+                            style={{background:p.avatarColor,color:'#000'}}>
+                            {p.nickname.slice(0,2).toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="font-black text-white">{p.nickname}</div>
+                            <div className="text-xs" style={{color:p.isConnected?'#34D399':'#f87171'}}>
+                              {p.isConnected?'● online':'○ offline'}
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </>
+                  )}
+                  {/* Step 2: Firma (private) */}
+                  {compStep===2 && (
+                    <>
+                      <button onClick={() => setCompStep(1)} className="flex items-center gap-1 text-xs text-white/40">
+                        <ArrowLeft className="h-3 w-3"/> indietro
+                      </button>
+                      <div className="text-sm font-black uppercase tracking-widest text-white/50">Come vuoi firmare?</div>
+                      {[{label:'Firmato',sub:'Il tuo nome è visibile',anon:false},{label:'Anonimo',sub:'Nessuno sa chi sei',anon:true}].map(opt => (
+                        <button key={opt.label} onClick={() => { setCompAnon(opt.anon); setCompStep(4); }}
+                          className="flex items-center gap-4 rounded-2xl p-4 text-left"
+                          style={{background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.1)'}}>
+                          <div className="text-2xl">{opt.anon?'🎭':'👤'}</div>
+                          <div>
+                            <div className="font-black text-white">{opt.label}</div>
+                            <div className="text-xs text-white/40">{opt.sub}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </>
+                  )}
+                  {/* Step 3: Firma (TV) */}
+                  {compStep===3 && (
+                    <>
+                      <button onClick={() => setCompStep(1)} className="flex items-center gap-1 text-xs text-white/40">
+                        <ArrowLeft className="h-3 w-3"/> indietro
+                      </button>
+                      <div className="text-sm font-black uppercase tracking-widest text-white/50">Come vuoi firmare?</div>
+                      {[{label:'Firmato',anon:false},{label:'Anonimo',anon:true}].map(opt => (
+                        <button key={opt.label} onClick={() => { setCompAnon(opt.anon); setCompStep(4); }}
+                          className="flex items-center gap-4 rounded-2xl p-4 text-left"
+                          style={{background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.1)'}}>
+                          <div className="text-2xl">{opt.anon?'🎭':'👤'}</div>
+                          <div className="font-black text-white">{opt.label}</div>
+                        </button>
+                      ))}
+                    </>
+                  )}
+                  {/* Step 4: Testo */}
+                  {compStep===4 && (
+                    <>
+                      <button onClick={() => setCompStep(compDest==='tv'?3:2)} className="flex items-center gap-1 text-xs text-white/40">
+                        <ArrowLeft className="h-3 w-3"/> indietro
+                      </button>
+                      <div className="text-sm font-black uppercase tracking-widest text-white/50">
+                        {compDest==='tv'?'📺 Messaggio per la sala':`💬 A: ${compReceiver?.nickname??''}`}
+                        <span className="ml-2 text-xs normal-case text-white/25">{compAnon?'(anonimo)':`(da: ${player.nickname})`}</span>
+                      </div>
+                      <textarea value={compText} onChange={e => setCompText(e.target.value.slice(0,160))}
+                        placeholder="Scrivi il tuo messaggio…" maxLength={160} rows={4}
+                        className="w-full rounded-2xl px-4 py-3 text-sm text-white resize-none focus:outline-none"
+                        style={{background:'rgba(255,255,255,0.07)',border:'1px solid rgba(168,85,247,0.4)'}}/>
+                      <div className="text-right text-xs text-white/30">{compText.length}/160</div>
+                      {compError && <div className="rounded-xl px-4 py-2 text-sm text-red-400" style={{background:'rgba(239,68,68,0.1)'}}>{compError}</div>}
+                      <button onClick={() => void sendChatMessage()} disabled={!compText.trim()||compSending}
+                        className="flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-base font-black text-black disabled:opacity-40"
+                        style={{background:'linear-gradient(135deg,#A855F7,#7c3aed)',boxShadow:'0 0 30px rgba(168,85,247,0.4)'}}>
+                        {compSending?<Loader2 className="h-5 w-5 animate-spin"/>:<Send className="h-5 w-5"/>} INVIA
+                      </button>
+                    </>
+                  )}
+                </div>
+              )
+            )}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

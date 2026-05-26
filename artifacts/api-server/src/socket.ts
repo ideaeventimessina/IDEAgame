@@ -23,6 +23,31 @@ const balloEnergyMap = new Map<string, { round: number; players: Map<string, num
 // Key = `${sessionId}:${round}` → Map<voterId → Map<dancerId → stars (1-5)>>
 const balloVoteMap = new Map<string, Map<string, Map<string, number>>>();
 
+// ── Home Mode: Messaggi Segreti — in-memory chat state (ephemeral) ───────────
+export interface ChatMessage {
+  id: string;
+  sessionId: string;
+  senderPlayerId: string;
+  senderNickname: string;
+  receiverPlayerId: string | null;
+  receiverNickname: string | null;
+  text: string;
+  isAnonymous: boolean;
+  destination: "private" | "tv";
+  createdAt: number;
+  readAt: number | null;
+  reactions: Array<{ playerId: string; emoji: string; createdAt: number }>;
+}
+
+// sessionId → all messages (private + tv)
+const chatMessages = new Map<string, ChatMessage[]>();
+// sessionId → TV queue (unseen TV messages)
+const chatTvQueue = new Map<string, ChatMessage[]>();
+// `${sessionId}:${playerId}` → DND enabled
+const chatDnd = new Map<string, boolean>();
+// Reverse lookup: home playerId → current socketId (maintained alongside homePlayerSockets)
+const homePlayerToSocket = new Map<string, string>();
+
 export function getBalloEnergies(sessionId: string): Record<string, number> {
   const entry = balloEnergyMap.get(sessionId);
   if (!entry) return {};
@@ -127,6 +152,7 @@ export function initSocket(server: HttpServer): SocketServer {
       const homeReg = homePlayerSockets.get(socket.id);
       if (homeReg) {
         homePlayerSockets.delete(socket.id);
+        homePlayerToSocket.delete(homeReg.playerId);
         db.update(homePlayersTable)
           .set({ isConnected: false })
           .where(eq(homePlayersTable.id, homeReg.playerId))
@@ -217,6 +243,7 @@ export function initHomeSocketHandlers(io: SocketServer): void {
       const playerId = typeof d["playerId"] === "string" ? d["playerId"] : null;
       if (!sessionId || !playerId) return;
       homePlayerSockets.set(socket.id, { sessionId, playerId });
+      homePlayerToSocket.set(playerId, socket.id);
       db.update(homePlayersTable)
         .set({ isConnected: true })
         .where(eq(homePlayersTable.id, playerId))
@@ -342,5 +369,185 @@ export function initHomeSocketHandlers(io: SocketServer): void {
 
     // home:wordback_correct is now fully handled server-side via
     // POST /home/sessions/:id/wordback-correct — no socket relay needed.
+
+    // ── Messaggi Segreti ─────────────────────────────────────────────────────
+
+    socket.on("home:chat_send", (data: unknown) => {
+      if (!data || typeof data !== "object") return;
+      const d = data as Record<string, unknown>;
+      const sessionId        = typeof d["sessionId"]        === "string" ? d["sessionId"]        : null;
+      const senderPlayerId   = typeof d["senderPlayerId"]   === "string" ? d["senderPlayerId"]   : null;
+      const senderNickname   = typeof d["senderNickname"]   === "string" ? d["senderNickname"]   : null;
+      const receiverPlayerId = typeof d["receiverPlayerId"] === "string" ? d["receiverPlayerId"] : null;
+      const receiverNickname = typeof d["receiverNickname"] === "string" ? d["receiverNickname"] : null;
+      const rawText          = typeof d["text"]             === "string" ? d["text"].trim()       : "";
+      const isAnonymous      = d["isAnonymous"] === true;
+      const destination      = d["destination"] === "tv" ? "tv" : "private";
+
+      if (!sessionId || !senderPlayerId || !senderNickname || !rawText) return;
+      const text = rawText.slice(0, 160);
+      if (!text) return;
+
+      // Private requires a receiver
+      if (destination === "private" && !receiverPlayerId) {
+        socket.emit("home:chat_error", { error: "Seleziona un destinatario." });
+        return;
+      }
+
+      const allMsgs = chatMessages.get(sessionId) ?? [];
+
+      // Block duplicate consecutive same text from same sender to same target
+      const lastSame = [...allMsgs].reverse().find(
+        (m) => m.senderPlayerId === senderPlayerId && m.receiverPlayerId === receiverPlayerId && m.destination === destination
+      );
+      if (lastSame?.text === text) {
+        socket.emit("home:chat_error", { error: "Messaggio duplicato." });
+        return;
+      }
+
+      // Block: private receiver has ≥3 unread from same sender
+      if (destination === "private" && receiverPlayerId) {
+        const unread = allMsgs.filter(
+          (m) => m.senderPlayerId === senderPlayerId && m.receiverPlayerId === receiverPlayerId && m.readAt === null
+        ).length;
+        if (unread >= 3) {
+          socket.emit("home:chat_error", { error: "L'utente ha già messaggi in attesa." });
+          return;
+        }
+      }
+
+      const receiverDnd = receiverPlayerId ? (chatDnd.get(`${sessionId}:${receiverPlayerId}`) ?? false) : false;
+
+      const msg: ChatMessage = {
+        id: `cm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        sessionId,
+        senderPlayerId,
+        senderNickname,
+        receiverPlayerId,
+        receiverNickname,
+        text,
+        isAnonymous,
+        destination,
+        createdAt: Date.now(),
+        readAt: null,
+        reactions: [],
+      };
+
+      if (!chatMessages.has(sessionId)) chatMessages.set(sessionId, []);
+      chatMessages.get(sessionId)!.push(msg);
+
+      if (destination === "tv") {
+        if (!chatTvQueue.has(sessionId)) chatTvQueue.set(sessionId, []);
+        chatTvQueue.get(sessionId)!.push(msg);
+        emitToRoom(`home:${sessionId}`, "home:chat_tv_queue_update", {
+          queue: chatTvQueue.get(sessionId)!,
+        });
+        logger.info({ sessionId, msgId: msg.id, isAnonymous }, "[SecretMessages] tv queued");
+      } else {
+        const receiverSocketId = receiverPlayerId ? homePlayerToSocket.get(receiverPlayerId) : null;
+        if (receiverSocketId) {
+          if (!receiverDnd) {
+            // Live popup + inbox update
+            _io?.to(receiverSocketId).emit("home:chat_receive", { message: msg });
+            logger.info({ sessionId, msgId: msg.id, receiverPlayerId }, "[SecretMessages] receive");
+          } else {
+            // DND: silent inbox update only
+            const inbox = chatMessages.get(sessionId)!.filter((m) => m.receiverPlayerId === receiverPlayerId);
+            _io?.to(receiverSocketId).emit("home:chat_inbox_update", { inbox });
+            logger.info({ sessionId, msgId: msg.id, receiverPlayerId }, "[SecretMessages] dnd — silent inbox");
+          }
+        }
+        logger.info({ sessionId, msgId: msg.id, receiverPlayerId, isAnonymous }, "[SecretMessages] send");
+      }
+
+      socket.emit("home:chat_sent", { messageId: msg.id });
+    });
+
+    socket.on("home:chat_reaction", (data: unknown) => {
+      if (!data || typeof data !== "object") return;
+      const d = data as Record<string, unknown>;
+      const sessionId  = typeof d["sessionId"]  === "string" ? d["sessionId"]  : null;
+      const messageId  = typeof d["messageId"]  === "string" ? d["messageId"]  : null;
+      const playerId   = typeof d["playerId"]   === "string" ? d["playerId"]   : null;
+      const emoji      = typeof d["emoji"]      === "string" ? d["emoji"]      : null;
+      const textReply  = typeof d["textReply"]  === "string" ? d["textReply"].trim().slice(0, 160) : null;
+      if (!sessionId || !messageId || !playerId || !emoji) return;
+
+      const msgs = chatMessages.get(sessionId);
+      if (!msgs) return;
+      const msg = msgs.find((m) => m.id === messageId);
+      if (!msg) return;
+
+      // One reaction per player per message — replace if already reacted
+      msg.reactions = msg.reactions.filter((r) => r.playerId !== playerId);
+      msg.reactions.push({ playerId, emoji, createdAt: Date.now() });
+
+      logger.info({ sessionId, messageId, playerId, emoji }, "[SecretMessages] reaction");
+
+      // Notify sender and receiver
+      const senderSocketId   = homePlayerToSocket.get(msg.senderPlayerId);
+      const receiverSocketId = msg.receiverPlayerId ? homePlayerToSocket.get(msg.receiverPlayerId) : null;
+      const updatedMsg = { ...msg, textReply: textReply ?? undefined };
+      if (senderSocketId)   _io?.to(senderSocketId).emit("home:chat_inbox_update", { updatedMessage: updatedMsg });
+      if (receiverSocketId && receiverSocketId !== senderSocketId)
+        _io?.to(receiverSocketId).emit("home:chat_inbox_update", { updatedMessage: updatedMsg });
+    });
+
+    socket.on("home:chat_mark_read", (data: unknown) => {
+      if (!data || typeof data !== "object") return;
+      const d = data as Record<string, unknown>;
+      const sessionId = typeof d["sessionId"] === "string" ? d["sessionId"] : null;
+      const playerId  = typeof d["playerId"]  === "string" ? d["playerId"]  : null;
+      const messageId = typeof d["messageId"] === "string" ? d["messageId"] : null;
+      if (!sessionId || !playerId || !messageId) return;
+
+      const msgs = chatMessages.get(sessionId);
+      if (!msgs) return;
+      const msg = msgs.find((m) => m.id === messageId && m.receiverPlayerId === playerId);
+      if (!msg || msg.readAt) return;
+      msg.readAt = Date.now();
+
+      const inbox = msgs.filter((m) => m.receiverPlayerId === playerId);
+      socket.emit("home:chat_inbox_update", { inbox });
+    });
+
+    socket.on("home:chat_toggle_dnd", (data: unknown) => {
+      if (!data || typeof data !== "object") return;
+      const d = data as Record<string, unknown>;
+      const sessionId = typeof d["sessionId"] === "string" ? d["sessionId"] : null;
+      const playerId  = typeof d["playerId"]  === "string" ? d["playerId"]  : null;
+      const dnd       = d["dnd"] === true;
+      if (!sessionId || !playerId) return;
+
+      chatDnd.set(`${sessionId}:${playerId}`, dnd);
+      socket.emit("home:chat_dnd_updated", { playerId, dnd });
+      logger.info({ sessionId, playerId, dnd }, "[SecretMessages] dnd");
+    });
+
+    socket.on("home:chat_tv_batch_shown", (data: unknown) => {
+      if (!data || typeof data !== "object") return;
+      const d = data as Record<string, unknown>;
+      const sessionId  = typeof d["sessionId"] === "string" ? d["sessionId"] : null;
+      const messageIds = Array.isArray(d["messageIds"])
+        ? (d["messageIds"] as unknown[]).filter((x): x is string => typeof x === "string")
+        : [];
+      if (!sessionId || messageIds.length === 0) return;
+
+      const queue = chatTvQueue.get(sessionId) ?? [];
+      chatTvQueue.set(sessionId, queue.filter((m) => !messageIds.includes(m.id)));
+      logger.info({ sessionId, shownCount: messageIds.length, remaining: chatTvQueue.get(sessionId)!.length }, "[SecretMessages] tv batch shown");
+    });
+
+    socket.on("home:chat_get_inbox", (data: unknown) => {
+      if (!data || typeof data !== "object") return;
+      const d = data as Record<string, unknown>;
+      const sessionId = typeof d["sessionId"] === "string" ? d["sessionId"] : null;
+      const playerId  = typeof d["playerId"]  === "string" ? d["playerId"]  : null;
+      if (!sessionId || !playerId) return;
+
+      const msgs = chatMessages.get(sessionId) ?? [];
+      const inbox = msgs.filter((m) => m.receiverPlayerId === playerId);
+      socket.emit("home:chat_inbox_update", { inbox });
+    });
   });
 }

@@ -1,0 +1,303 @@
+KARAOKE HOME / BASE MODE — BACKSTAGE PRELOAD SYSTEM
+PATCH EXISTING KARAOKE LIVE V3
+DO NOT TOUCH BOOKING / QUEUE / SCORING
+
+==================================================
+GOAL
+==================================================
+
+Implement a “Johnny Backstage Preload Engine”.
+
+While current singer is performing:
+
+Johnny automatically prepares the NEXT booked karaoke video in background.
+
+The audience never sees:
+
+- search loading
+- buffering
+- ad preload
+- player loading state
+- black frame
+- youtube spinner
+
+The public TV only sees the current performance.
+
+When the next video is fully ready:
+
+show a GREEN READY indicator in queue UI.
+
+When current song ends:
+
+switch instantly to the prepared next video.
+
+==================================================
+CORE LOGIC
+==================================================
+
+Two video states:
+
+A.
+LIVE PLAYER
+visible on TV
+currently playing singer
+
+B.
+BACKSTAGE PLAYER
+hidden
+used only by Johnny preload engine
+
+==================================================
+FLOW
+==================================================
+
+Singer A starts singing
+LIVE PLAYER = Song A
+
+Immediately:
+
+Johnny takes Song B from queue
+
+Loads Song B inside hidden backstage player
+
+State:
+
+loading
+buffering
+ready
+
+When ready:
+
+mark Song B:
+
+READY_TO_GO = true
+
+Show UI:
+
+🟢 Brano pronto
+
+inside queue list
+
+Then:
+
+Song A finishes
+
+instant swap:
+
+LIVE PLAYER becomes Song B
+
+BACKSTAGE PLAYER gets Song C
+
+repeat forever
+
+==================================================
+QUEUE UI
+==================================================
+
+Every booked singer sees queue list.
+
+Each item shows:
+
+- singer nickname
+- song title
+- ETA
+- status
+
+Possible statuses:
+
+🔄 Preparazione...
+🟢 Pronto
+🎤 In esecuzione
+⏳ In attesa
+
+==================================================
+GREEN READY INDICATOR
+==================================================
+
+Between songs do NOT show loading spinner.
+
+Do NOT show YouTube player state.
+
+Only show:
+
+small green glowing dot:
+
+🟢
+
+with text:
+
+Brano pronto
+
+This can appear:
+
+- in TV queue sidebar
+- on singer phone countdown card
+
+==================================================
+PHONE UX
+==================================================
+
+Booked player sees:
+
+🎤 Stai cantando tra 12 min
+
+Then when Johnny prepared the video:
+
+🟢 Il tuo brano è pronto
+
+Then:
+
+🎤 Tocca a te
+
+==================================================
+TV UX
+==================================================
+
+TV NEVER shows backstage player.
+
+TV only sees:
+
+current singer
+queue
+next singer info
+
+optional queue widget:
+
+PROSSIMO IN PREPARAZIONE
+🟢 PRONTO
+
+No iframe visible.
+No loading skeleton.
+No black flash.
+
+==================================================
+TECHNICAL IMPLEMENTATION
+==================================================
+
+Add karaoke state:
+
+karaokeBackstageState:
+
+{
+  currentLiveVideoId: string | null,
+  currentLiveReady: boolean,
+
+  nextVideoId: string | null,
+  nextVideoReady: boolean,
+
+  nextPreparedAt: number | null,
+
+  preloadStatus:
+    "idle"
+    "loading"
+    "ready"
+    "error"
+}
+
+==================================================
+FRONTEND
+==================================================
+
+Use 2 YouTube iframes:
+
+1 visible
+1 hidden off-screen
+
+Hidden player:
+
+position absolute
+left -99999px
+width 1px
+height 1px
+opacity 0
+pointer-events none
+
+Used only for preload lifecycle.
+
+==================================================
+PLAYER SWAP
+==================================================
+
+When current song ends:
+
+if nextVideoReady === true:
+
+swap players instantly
+
+without new search
+without waiting
+
+then preload next in queue.
+
+==================================================
+FAILSAFE
+==================================================
+
+If backstage preload fails:
+
+keep current queue running
+
+show:
+
+⚠️ preparazione in corso
+
+and retry every 3 sec
+
+==================================================
+LOGS
+==================================================
+
+[KARAOKE_BACKSTAGE] preload start
+[KARAOKE_BACKSTAGE] buffering
+[KARAOKE_BACKSTAGE] ready
+[KARAOKE_BACKSTAGE] live swap
+[KARAOKE_BACKSTAGE] preload failed
+[KARAOKE_BACKSTAGE] retry
+
+==================================================
+DO NOT CHANGE
+==================================================
+
+Do not modify:
+
+- booking
+- voting
+- emoji reactions
+- leaderboard
+- singer scoring
+- queue ETA calculations
+
+Patch only:
+
+video preparation flow
+video handoff
+ready indicator
+background preload engine
+
+==================================================
+FINAL TEST
+==================================================
+
+Test with queue:
+
+Singer A
+Singer B
+Singer C
+
+Expected:
+
+A live
+B hidden preload
+
+A ends
+B starts instantly
+
+C hidden preload
+
+B ends
+C starts instantly
+
+No loading visible on TV
+No spinner visible on TV
+No queue interruption
+Green READY indicator visible before every swap

@@ -485,6 +485,50 @@ function useHomeSocket(sessionId: string | null) {
   return { on, emit };
 }
 
+// ── isSafeToShowTvMessages ────────────────────────────────────────────────────
+// Returns true when it is safe to show the TV message batch overlay.
+// Unsafe = any moment where players are actively performing / answering.
+function isSafeToShowTvMessages(session: HomeSession | null, phase: string): boolean {
+  if (!session) return false;
+  if (phase === 'board' || phase === 'champion') return true;
+  if (session.status !== 'playing') return true;
+
+  const rp = session.roundPayload as Record<string, unknown>;
+  const mode = String(rp['mode'] ?? '');
+
+  if (!mode) return true; // no game active
+
+  if (mode === 'home-karaoke') {
+    const ks = rp['karaokeState'] as Record<string, unknown> | undefined;
+    const kp = String(ks?.['phase'] ?? '');
+    return kp === 'voting' || kp === 'transition' || kp === 'queue_open' || kp === 'finale';
+  }
+  if (mode === 'home-ballo') {
+    const bp = String(rp['balloPhase'] ?? '');
+    return bp === 'result' || bp === 'booking' || bp === '';
+  }
+  if (mode === 'home-wordback-booking') return true;
+  if (mode === 'home-wordback') return String(rp['phase'] ?? '') === 'result';
+  if (mode === 'home-quizzone') {
+    const qp = String(rp['phase'] ?? '');
+    return qp === 'result' || qp === 'podium';
+  }
+  if (mode === 'home-percorso') {
+    return rp['timerStartedAt'] === null || rp['timerStartedAt'] === undefined;
+  }
+  if (mode === 'home-flow') {
+    const gfp = String(rp['gameFlowPhase'] ?? '');
+    return gfp === 'booking' || gfp === 'theme_select';
+  }
+  if (mode === 'home-adult') return String(rp['phase'] ?? '') !== 'performing';
+  if (mode === 'home-saramusica') return String(rp['phase'] ?? '') !== 'playing';
+  if (mode === 'home-freestyle') {
+    const fp = String(rp['phase'] ?? '');
+    return fp !== 'performing' && fp !== 'battle';
+  }
+  return false; // default unsafe (home-coppie, unknown modes)
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 type Phase = 'welcome' | 'join' | 'board' | 'playing' | 'champion';
@@ -557,6 +601,14 @@ export default function HomeGame() {
   const [sensorReadyMap, setSensorReadyMap] = useState<Record<string, boolean>>({});
   // Spectator votes per dancer: Record<dancerId, { total: number; count: number }>
   const [balloVotes, setBalloVotes] = useState<Record<string, { total: number; count: number }>>({});
+
+  // ── TV Messaggi Segreti state ─────────────────────────────────────────────
+  interface TvChatMsg { id: string; senderNickname: string; isAnonymous: boolean; text: string; createdAt: string; }
+  const [tvChatQueue, setTvChatQueue] = useState<TvChatMsg[]>([]);
+  const [tvChatBatch, setTvChatBatch] = useState<TvChatMsg[]>([]);
+  const [tvChatVisible, setTvChatVisible] = useState(false);
+  const tvChatTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const handleBalloSensitivity = useCallback((s: number) => {
     setBalloSensitivity(s);
     if (session?.id) emit('home:set_ballo_sensitivity', { sessionId: session.id, sensitivity: s });
@@ -834,9 +886,25 @@ export default function HomeGame() {
       setTimeout(() => setWordbackWrongOverlay(null), 2500);
     });
 
-    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); u10?.(); u11?.(); u12?.(); u13?.(); u14?.(); u15?.(); u16?.(); };
+    const u17 = on<{ queue: unknown[] }>('home:chat_tv_queue_update', (d) => {
+      setTvChatQueue(d.queue as TvChatMsg[]);
+    });
+    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); u10?.(); u11?.(); u12?.(); u13?.(); u14?.(); u15?.(); u16?.(); u17?.(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [on]);
+
+  // ── TV Messaggi Segreti: safe-window batch display ───────────────────────────
+  useEffect(() => {
+    if (tvChatQueue.length === 0 || tvChatVisible) return;
+    if (!isSafeToShowTvMessages(session, phase)) return;
+    const batch = tvChatQueue.slice(0, 5);
+    setTvChatBatch(batch);
+    setTvChatVisible(true);
+    setTvChatQueue(prev => prev.slice(batch.length));
+    if (session?.id) emit('home:chat_tv_batch_shown', { sessionId: session.id, messageIds: batch.map(m => m.id) });
+    if (tvChatTimerRef.current) clearTimeout(tvChatTimerRef.current);
+    tvChatTimerRef.current = setTimeout(() => { setTvChatVisible(false); setTvChatBatch([]); }, 6000);
+  }, [tvChatQueue.length, tvChatVisible, session, phase, emit]);
 
   // ── Polling fallback in playing phase (home-flow sessions only) ──────────────
   // Catches gameFlowPhase transitions (theme_select→booking, booking→confirm, etc.)
@@ -1226,6 +1294,27 @@ export default function HomeGame() {
       <div className="pointer-events-none fixed bottom-1 left-2 z-[9999] text-[10px] font-mono px-1.5 py-0.5 rounded" style={{background:'rgba(0,0,0,0.75)',color:'#F5B642',border:'1px solid #F5B64260'}}>
         build: {BUILD_STAMP}
       </div>
+
+      {/* ── Messaggi Segreti: TV batch overlay ── */}
+      {tvChatVisible && tvChatBatch.length > 0 && (
+        <div className="fixed inset-x-6 z-[9990] rounded-2xl p-5 shadow-2xl"
+          style={{top:80,background:'rgba(7,6,26,0.93)',border:'1px solid rgba(168,85,247,0.45)',backdropFilter:'blur(20px)'}}>
+          <div className="mb-3 text-center text-xs font-black uppercase tracking-widest" style={{color:'#A855F7'}}>
+            💌 Messaggi dalla sala
+          </div>
+          <div className="flex flex-col gap-2">
+            {tvChatBatch.map(msg => (
+              <div key={msg.id} className="rounded-xl px-4 py-2.5 text-sm" style={{background:'rgba(255,255,255,0.06)'}}>
+                <span className="font-black" style={{color:'#F5B642'}}>
+                  {msg.isAnonymous ? '🎭 Anonimo' : msg.senderNickname}
+                </span>
+                <span className="ml-2 text-white/80">{msg.text}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ── AUDIT BADGE — top center ── */}
       <div style={{position:'fixed',top:6,left:'50%',transform:'translateX(-50%)',zIndex:99999,background:'rgba(0,0,0,0.85)',color:'#34D399',fontFamily:'monospace',fontSize:11,padding:'3px 12px',borderRadius:5,border:'1px solid #34D39980',pointerEvents:'none',whiteSpace:'nowrap'}}>
         ACTIVE ROUTE: /home · COMPONENT: HomeGame · FILE: src/pages/HomeGame.tsx · BUILD: {BUILD_STAMP}
