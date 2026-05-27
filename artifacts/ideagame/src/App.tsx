@@ -14,6 +14,12 @@ import { AudioProvider } from "@/contexts/AudioContext";
 import { AudioOrchestratorProvider } from "@/contexts/AudioOrchestrator";
 import { PresenterModeProvider } from "@/contexts/PresenterModeContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { IS_PS4 } from "@/hooks/useLowPower";
+
+// Apply PS4 browser class immediately (before any render) so CSS vars take effect
+if (IS_PS4 && typeof document !== 'undefined') {
+  document.documentElement.classList.add('ps4-browser');
+}
 
 // ── Static imports: tiny shell pages needed immediately ───────────────────────
 import Hub from "@/pages/Hub";

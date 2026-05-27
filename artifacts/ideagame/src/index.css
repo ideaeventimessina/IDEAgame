@@ -281,3 +281,46 @@ body {
   max-width: 100%;
   object-fit: cover;
 }
+
+/* ── TV / PS4 safe-area ────────────────────────────────────────────────────────
+   TV screens (projectors, smart TVs, PS4 browser) suffer from overscan: the
+   hardware crops 4–8% of each edge. We define CSS vars that get applied
+   as padding/inset on every TV-facing screen.  On PS4 we push to 6 vw/5 vh.
+   ───────────────────────────────────────────────────────────────────────────── */
+:root {
+  --tv-safe-x: max(4vw, 48px);
+  --tv-safe-y: max(3vh, 32px);
+}
+
+/* Stronger override for PS4 browser (class applied in App.tsx via useLowPower) */
+html.ps4-browser {
+  --tv-safe-x: max(6vw, 56px);
+  --tv-safe-y: max(5vh, 42px);
+}
+
+/* Utility classes */
+.tv-safe {
+  padding-left:   var(--tv-safe-x);
+  padding-right:  var(--tv-safe-x);
+  padding-top:    var(--tv-safe-y);
+  padding-bottom: var(--tv-safe-y);
+  box-sizing: border-box;
+}
+.tv-safe-x {
+  padding-left:  var(--tv-safe-x);
+  padding-right: var(--tv-safe-x);
+  box-sizing: border-box;
+}
+.tv-safe-y {
+  padding-top:    var(--tv-safe-y);
+  padding-bottom: var(--tv-safe-y);
+  box-sizing: border-box;
+}
+
+/* Hub header: override px-8/py-5 with safe values on TV screens */
+.hub-tv-header {
+  padding-left:  var(--tv-safe-x);
+  padding-right: var(--tv-safe-x);
+  padding-top:   var(--tv-safe-y);
+  padding-bottom: calc(var(--tv-safe-y) * 0.6);
+}

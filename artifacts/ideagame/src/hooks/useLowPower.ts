@@ -3,6 +3,11 @@
  * Used to gate heavy animations, blur filters, and particle effects.
  */
 
+/** True when running on a PlayStation 4 browser */
+export const IS_PS4 =
+  typeof window !== 'undefined' &&
+  /PlayStation\s*4|PLAYSTATION\s*4/i.test(navigator.userAgent);
+
 function detectLowPower(): boolean {
   if (typeof window === 'undefined') return false;
   const ua = navigator.userAgent;

@@ -828,7 +828,7 @@ export default function Hub() {
           style={{ background: 'radial-gradient(ellipse, rgba(120,50,255,0.25) 0%, transparent 70%)', filter: 'blur(60px)' }} />
 
         {/* Header */}
-        <header className="relative z-20 flex shrink-0 items-center justify-between px-8 py-5">
+        <header className="hub-tv-header relative z-20 flex shrink-0 items-center justify-between">
           <img src="/jonny-world-hero.png" alt="Jonny's World" className="h-14 w-auto object-contain"
             style={{ filter: 'drop-shadow(0 0 16px rgba(245,182,66,0.55))' }} />
           <div className="flex items-center gap-3">
@@ -934,7 +934,7 @@ export default function Hub() {
       <div className="relative h-screen w-full overflow-hidden select-none flex flex-col"
         style={{ background: 'radial-gradient(ellipse 160% 90% at 50% -10%, #2d0d52 0%, #130628 45%, #060213 100%)' }}>
         <HubStars />
-        <header className="relative z-20 flex shrink-0 items-center justify-between px-8 py-5">
+        <header className="hub-tv-header relative z-20 flex shrink-0 items-center justify-between">
           <img src="/jonny-world-hero.png" alt="Jonny's World" className="h-14 w-auto object-contain"
             style={{ filter: 'drop-shadow(0 0 16px rgba(245,182,66,0.55))' }} />
           <div className="flex items-center gap-3">
@@ -961,9 +961,9 @@ export default function Hub() {
     return (
       <div className="relative h-screen w-full overflow-hidden select-none">
 
-        {/* Full-screen hero poster */}
+        {/* Full-screen hero poster — object-contain so edges aren't cropped on TV overscan */}
         <motion.img src="/jonny-world-hero.png" alt="Jonny's World"
-          className="absolute inset-0 w-full h-full object-cover object-top"
+          className="absolute inset-0 w-full h-full object-contain object-center"
           style={{ filter: 'brightness(0.92) saturate(1.1)' }}
           initial={{ opacity: 0, scale: 1.06 }} animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 1.2, ease: 'easeOut' }} />
@@ -985,7 +985,7 @@ export default function Hub() {
         </AnimatePresence>
 
         {/* Waiting badge — bottom center */}
-        <div className="absolute bottom-0 left-0 right-0 z-10 flex flex-col items-center pb-8 sm:pb-12">
+        <div className="absolute bottom-0 left-0 right-0 z-10 flex flex-col items-center" style={{ paddingBottom:'var(--tv-safe-y)' }}>
           <motion.div animate={{ opacity: [0.6, 1, 0.6] }} transition={{ duration: 2.5, repeat: Infinity }}
             className="rounded-2xl border px-8 sm:px-14 py-3 sm:py-4 text-sm sm:text-base font-black tracking-[0.25em] uppercase"
             style={{ borderColor: 'rgba(245,182,66,0.5)', background: 'rgba(4,2,16,0.7)', color: '#F5B642', backdropFilter: 'blur(12px)' }}>

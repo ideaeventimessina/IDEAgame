@@ -806,7 +806,7 @@ function ShowLanding({ onArena }: { onArena:()=>void }) {
 
       {/* bottom-left: CTA */}
       <motion.div className="absolute z-20"
-        style={{ left:'clamp(20px,3vw,48px)', bottom:'clamp(20px,3vh,44px)' }}
+        style={{ left:'var(--tv-safe-x)', bottom:'var(--tv-safe-y)' }}
         initial={{ y:16, opacity:0 }} animate={{ y:0, opacity:1 }}
         transition={{ delay:0.2, duration:0.5 }}>
         <motion.button onClick={onArena}
@@ -835,7 +835,7 @@ function ShowLanding({ onArena }: { onArena:()=>void }) {
 
       {/* bottom-right: IDEAgames logo */}
       <motion.div className="absolute z-20"
-        style={{ right:'clamp(20px,3vw,48px)', bottom:'clamp(20px,3vh,44px)' }}
+        style={{ right:'var(--tv-safe-x)', bottom:'var(--tv-safe-y)' }}
         initial={{ opacity:0 }} animate={{ opacity:1 }}
         transition={{ delay:0.3, duration:0.5 }}>
         <img src={pub('/logo.png')} alt="IDEAgames"
@@ -922,7 +922,7 @@ function Arena({ onPodium }: { onPodium:()=>void }) {
       {/* ── TOP ── */}
 
       {/* logo top-left */}
-      <div className="flex items-center pl-5 pt-3 pb-1 z-20">
+      <div className="flex items-center pb-1 z-20" style={{ paddingLeft:'var(--tv-safe-x)', paddingTop:'var(--tv-safe-y)' }}>
         <img src={pub('/logo.png')} alt="" className="object-contain"
           style={{ height:'clamp(1.6rem,2.8vh,2.4rem)',
             filter:'brightness(1.3) drop-shadow(0 0 12px rgba(245,182,66,0.7)) drop-shadow(0 0 25px rgba(168,85,247,0.4))' }}/>
@@ -938,7 +938,7 @@ function Arena({ onPodium }: { onPodium:()=>void }) {
       </motion.div>
 
       {/* top-right: join code + QR */}
-      <div className="flex flex-col items-end justify-center pr-4 pt-2 z-20">
+      <div className="flex flex-col items-end justify-center z-20" style={{ paddingRight:'var(--tv-safe-x)', paddingTop:'var(--tv-safe-y)' }}>
         {live.event && (
           <motion.div initial={{ opacity:0, x:20 }} animate={{ opacity:1, x:0 }} transition={{ delay:0.15 }}
             style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4,
@@ -964,7 +964,7 @@ function Arena({ onPodium }: { onPodium:()=>void }) {
       {/* ── MAIN ── */}
 
       {/* left: classifica */}
-      <div className="flex flex-col pl-4 pr-2 pb-1 z-20">
+      <div className="flex flex-col pr-2 pb-1 z-20" style={{ paddingLeft:'var(--tv-safe-x)' }}>
         <Classifica players={live.players} scoreboard={scoreboardData}/>
       </div>
 
@@ -987,7 +987,7 @@ function Arena({ onPodium }: { onPodium:()=>void }) {
       </div>
 
       {/* right: game card — Jonny è outside/absolute separato */}
-      <div className="flex flex-col pr-3 pl-1 pb-1 z-20 relative justify-end">
+      <div className="flex flex-col pl-1 pb-1 z-20 relative justify-end" style={{ paddingRight:'var(--tv-safe-x)' }}>
         <GameCard game={selected}/>
       </div>
 
