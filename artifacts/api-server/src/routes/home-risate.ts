@@ -11,6 +11,7 @@ import { emitToRoom } from "../socket";
 import {
   createBlankRisateState, advancePhase,
   applyBooking, applyPublicChoice, applyVote, applyPublicAction,
+  applyAutoBook, applyAutoChoice, applyPerPlayerChoice,
 } from "../lib/risate-engine";
 
 const router: IRouter = Router();
@@ -157,6 +158,26 @@ router.post("/home/sessions/:id/risate/book", async (req: Request, res: Response
   if (!playerId || !nickname || !teamId) { res.status(400).json({ error: "playerId, nickname, teamId richiesti" }); return; }
 
   await applyAndSave(id, s => applyBooking(s, playerId, nickname, teamId), res);
+});
+
+/* ── POST /home/sessions/:id/risate/auto-book ────────────────────────────── */
+router.post("/home/sessions/:id/risate/auto-book", async (req: Request, res: Response): Promise<void> => {
+  const id = String(req.params["id"]);
+  await applyAndSave(id, s => applyAutoBook(s), res);
+});
+
+/* ── POST /home/sessions/:id/risate/auto-choice ──────────────────────────── */
+router.post("/home/sessions/:id/risate/auto-choice", async (req: Request, res: Response): Promise<void> => {
+  const id = String(req.params["id"]);
+  await applyAndSave(id, s => applyAutoChoice(s), res);
+});
+
+/* ── POST /home/sessions/:id/risate/per-player-choice ────────────────────── */
+router.post("/home/sessions/:id/risate/per-player-choice", async (req: Request, res: Response): Promise<void> => {
+  const id = String(req.params["id"]);
+  const { choice, slot } = req.body as { choice?: string; slot?: number };
+  if (!choice || slot === undefined) { res.status(400).json({ error: "choice e slot richiesti" }); return; }
+  await applyAndSave(id, s => applyPerPlayerChoice(s, choice, slot), res);
 });
 
 /* ── POST /home/sessions/:id/risate/choice ───────────────────────────────── */

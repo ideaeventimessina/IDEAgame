@@ -159,6 +159,11 @@ export interface RisateState {
   publicEvents: { emoji: string; nickname: string; ts: number }[];
   // mission 4 — love target
   loveTarget: string | null;
+  // server timestamps for client-side timer alignment
+  bookingStartedAt: string | null;
+  publicChoiceStartedAt: string | null;
+  // per-player choices: index matches booking slot (venditore, sfilata)
+  perPlayerChoices: string[];
 }
 
 /* ─── Zod insert schemas ─────────────────────────────────────────────── */

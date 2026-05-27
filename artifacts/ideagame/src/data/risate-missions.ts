@@ -39,6 +39,15 @@ export interface RisateMission {
   choiceOptions?: string[];
   questions?: string[];
   bgMusic?: string;
+  /** true = each booked player gets a different choice (e.g. venditore, sfilata) */
+  perPlayerChoice?: boolean;
+}
+
+export interface YogaPose {
+  id: string;
+  name: string;
+  emoji: string;
+  imageUrl?: string;
 }
 
 export const RISATE_MISSIONS: RisateMission[] = [
@@ -161,6 +170,7 @@ export const RISATE_MISSIONS: RisateMission[] = [
       'arance 🍊',
     ],
     bgMusic: 'bg-market-loop',
+    perPlayerChoice: true,
   },
   {
     id: 'poliglotta',
@@ -233,6 +243,7 @@ export const RISATE_MISSIONS: RisateMission[] = [
       'funky 🎸',
       'romantic slow 🌹',
     ],
+    perPlayerChoice: true,
   },
   {
     id: 'coreografia',
@@ -261,7 +272,7 @@ export const RISATE_MISSIONS: RisateMission[] = [
 ];
 
 /* ─── Yoga poses — 30 entries ─────────────────────────────────────────── */
-export const YOGA_POSES = [
+export const YOGA_POSES: YogaPose[] = [
   { id: 'mountain',        name: 'Posizione della Montagna', emoji: '🏔️' },
   { id: 'warrior1',        name: 'Guerriero 1',              emoji: '⚔️' },
   { id: 'warrior2',        name: 'Guerriero 2',              emoji: '🗡️' },
@@ -341,4 +352,9 @@ export interface RisateState {
   cambioStileTriggered: boolean;
   publicEvents: { emoji: string; nickname: string; ts: number }[];
   loveTarget: string | null;
+  // server timestamps for client-side timer alignment
+  bookingStartedAt: string | null;
+  publicChoiceStartedAt: string | null;
+  // per-player choices: index matches booking slot (venditore, sfilata)
+  perPlayerChoices: string[];
 }

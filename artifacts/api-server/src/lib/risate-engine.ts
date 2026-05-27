@@ -46,6 +46,7 @@ function resetMission(s: RisateState): RisateState {
     foundConfirmations: {},
     cambioStileVoteCount: 0, cambioStileTriggered: false,
     publicEvents: [], loveTarget: null,
+    bookingStartedAt: null, publicChoiceStartedAt: null, perPlayerChoices: [],
   };
 }
 
@@ -67,6 +68,7 @@ export function createBlankRisateState(
     foundConfirmations: {},
     cambioStileVoteCount: 0, cambioStileTriggered: false,
     publicEvents: [], loveTarget: null,
+    bookingStartedAt: null, publicChoiceStartedAt: null, perPlayerChoices: [],
   };
 }
 
@@ -154,6 +156,7 @@ export function advancePhase(state: RisateState): AdvanceResult {
     case "mission_intro":
       s.phase = "booking";
       s.bookings = [];
+      s.bookingStartedAt = new Date().toISOString();
       s.lastFlash = { text: "🙋 Prenota il tuo posto!", type: "step" };
       break;
 
@@ -162,6 +165,14 @@ export function advancePhase(state: RisateState): AdvanceResult {
         s.phase = "public_choice";
         s.publicChoiceOptions = buildChoiceOptions(s);
         s.publicChoice = null;
+        s.publicChoiceStartedAt = new Date().toISOString();
+        // per-player missions: pre-assign 2 random different choices
+        if (mission.perPlayerChoice) {
+          const preOpts = shuffled(s.publicChoiceOptions);
+          s.perPlayerChoices = preOpts.slice(0, mission.playerCount);
+        } else {
+          s.perPlayerChoices = [];
+        }
         s.lastFlash = { text: mission.choiceLabel ?? "Scegli!", type: "step" };
       } else {
         s = startActive(s, mission.id);
@@ -255,6 +266,78 @@ export function applyBooking(
   if (state.bookings.some(b => b.playerId === playerId)) return { state, error: "Già prenotato" };
   const role = m.roles[state.bookings.length] ?? "Performer";
   return { state: { ...state, bookings: [...state.bookings, { playerId, nickname, role, teamId }] } };
+}
+
+/* ─── Auto-book: fill empty booking slots with random players ──────────────── */
+export function applyAutoBook(
+  state: RisateState,
+): { state: RisateState; error?: string } {
+  if (state.phase !== "booking") return { state, error: "Non è la fase di prenotazione" };
+  const m = RISATE_MISSIONS[state.missionIndex];
+  if (!m) return { state, error: "Missione non trovata" };
+
+  const bookedIds = new Set(state.bookings.map(b => b.playerId));
+  const available = shuffled(state.players.filter(p => !bookedIds.has(p.id)));
+
+  if (state.bookings.length + available.length < m.playerCount) {
+    return { state, error: "Servono almeno 2 giocatori per procedere" };
+  }
+
+  let s = { ...state, bookings: [...state.bookings] };
+  let ai = 0;
+  while (s.bookings.length < m.playerCount && ai < available.length) {
+    const p = available[ai++]!;
+    const role = m.roles[s.bookings.length] ?? "Performer";
+    s = { ...s, bookings: [...s.bookings, { playerId: p.id, nickname: p.nickname, role, teamId: p.teamId }] };
+  }
+  return { state: s };
+}
+
+/* ─── Auto-choice: random selection when public choice timer expires ────────── */
+export function applyAutoChoice(
+  state: RisateState,
+): { state: RisateState; error?: string } {
+  if (state.phase !== "public_choice") return { state, error: "Non è la fase di scelta pubblica" };
+  const m = RISATE_MISSIONS[state.missionIndex];
+  if (!m) return { state, error: "Missione non trovata" };
+  const opts = state.publicChoiceOptions;
+  if (opts.length === 0) return { state, error: "Nessuna opzione disponibile" };
+
+  if (m.perPlayerChoice) {
+    // Already pre-assigned in advancePhase — just ensure all slots are filled with different choices
+    const shuffledOpts = shuffled(opts);
+    const choices: string[] = [];
+    for (let i = 0; i < m.playerCount; i++) {
+      const current = state.perPlayerChoices[i];
+      if (current) {
+        choices.push(current);
+      } else {
+        const unused = shuffledOpts.find(o => !choices.includes(o));
+        choices.push(unused ?? shuffledOpts[i % shuffledOpts.length]!);
+      }
+    }
+    return { state: { ...state, perPlayerChoices: choices, publicChoice: choices[0] ?? null } };
+  }
+
+  const choice = state.publicChoice ?? shuffled(opts)[0]!;
+  return { state: { ...state, publicChoice: choice } };
+}
+
+/* ─── Per-player choice: public assigns a specific slot ──────────────────────── */
+export function applyPerPlayerChoice(
+  state: RisateState, choice: string, slot: number,
+): { state: RisateState; error?: string } {
+  if (state.phase !== "public_choice") return { state, error: "Non è la fase di scelta pubblica" };
+  const m = RISATE_MISSIONS[state.missionIndex];
+  if (!m?.perPlayerChoice) return { state, error: "Non è una missione con scelta per giocatore" };
+  if (!state.publicChoiceOptions.includes(choice)) return { state, error: "Scelta non valida" };
+  if (slot < 0 || slot >= m.playerCount) return { state, error: "Slot non valido" };
+
+  // ensure the two slots have different choices
+  const newChoices = [...(state.perPlayerChoices.length >= m.playerCount ? state.perPlayerChoices : Array(m.playerCount).fill(''))];
+  newChoices[slot] = choice;
+
+  return { state: { ...state, perPlayerChoices: newChoices, publicChoice: newChoices[0] ?? null } };
 }
 
 /* ─── Public choice ───────────────────────────────────────────────────────── */

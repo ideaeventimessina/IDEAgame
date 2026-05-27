@@ -38,6 +38,8 @@ export interface RisateMission {
   choiceOptions?: string[];
   questions?: string[];
   bgMusic?: string;
+  /** true = each booked player gets a different choice (e.g. venditore, sfilata) */
+  perPlayerChoice?: boolean;
 }
 
 export const RISATE_MISSIONS: RisateMission[] = [
@@ -152,6 +154,7 @@ export const RISATE_MISSIONS: RisateMission[] = [
       'lattuga 🥬', 'zucchine 🥒', 'pomodori 🍅', 'banane 🍌', 'arance 🍊',
     ],
     bgMusic: 'bg-market-loop',
+    perPlayerChoice: true,
   },
   {
     id: 'poliglotta',
@@ -210,6 +213,7 @@ export const RISATE_MISSIONS: RisateMission[] = [
       'latino caliente 🌶️', 'disco anni 80 🕺', 'sax sexy 🎷',
       'fashion runway 👠', 'funky 🎸', 'romantic slow 🌹',
     ],
+    perPlayerChoice: true,
   },
   {
     id: 'coreografia',

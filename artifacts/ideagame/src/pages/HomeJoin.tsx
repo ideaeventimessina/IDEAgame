@@ -282,6 +282,15 @@ export default function HomeJoin() {
       setCoppiePreviewUntil(null);
       console.log('[PhoneResync] state restored');
 
+      // Re-align round timer using server timestamp (skip for full-session modes)
+      if (data.session.status === 'playing') {
+        const rMode = String(data.session.roundPayload?.mode ?? '');
+        if (rMode !== 'home-percorso') {
+          startRoundTimer(data.session.roundPayload ?? {});
+        }
+        console.log('[PhoneResync] timer realigned, mode=', rMode);
+      }
+
       // Re-join socket room and re-register player
       emit('join:home', sid);
       emit('home:player_register', { sessionId: sid, playerId: pid });
@@ -291,6 +300,7 @@ export default function HomeJoin() {
     } finally {
       setResyncLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.id, player?.id, resyncLoading, emit, setPlayer]);
 
   // Polling fallback in lobby
@@ -1977,6 +1987,7 @@ function PercorsoHomeController({ sessionId, player, payload, timeLeft }: {
   const [rs, setRs] = useState<RisateState | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
+  const [phoneBookingTL, setPhoneBookingTL] = useState<number | null>(null);
 
   useEffect(() => {
     fetch(`${BASE}api/home/sessions/${sessionId}/risate/state`, { credentials: 'include' })
@@ -1984,6 +1995,15 @@ function PercorsoHomeController({ sessionId, player, payload, timeLeft }: {
       .then(d => { if (d && !d.error) setRs(d as RisateState); })
       .catch(() => {});
   }, [sessionId, BASE]);
+
+  // Booking countdown aligned to server bookingStartedAt (Fix 8)
+  useEffect(() => {
+    if (!rs || rs.phase !== 'booking' || !rs.bookingStartedAt) { setPhoneBookingTL(null); return; }
+    const tick = () => Math.max(0, Math.round(10 - (Date.now() - new Date(rs.bookingStartedAt!).getTime()) / 1000));
+    setPhoneBookingTL(tick());
+    const iv = setInterval(() => { const t = tick(); setPhoneBookingTL(t); if (t <= 0) clearInterval(iv); }, 1000);
+    return () => clearInterval(iv);
+  }, [rs?.phase, rs?.bookingStartedAt]);
 
   useEffect(() => {
     return on<{ state: RisateState }>('home:percorso_update', ({ state }) => setRs(state));
@@ -2079,6 +2099,13 @@ function PercorsoHomeController({ sessionId, player, payload, timeLeft }: {
         ) : (
           <div className="text-sm text-white/40 py-2">Posti esauriti — osserva!</div>
         )}
+        {/* Server-aligned booking countdown (Fix 8) */}
+        {!isBooked && slotsUsed < slotsTotal && phoneBookingTL !== null && (
+          <div className="text-xs font-black"
+            style={{ color: phoneBookingTL <= 3 ? '#f87171' : 'rgba(255,255,255,0.3)' }}>
+            ⏱ Auto-prenota in {phoneBookingTL}s
+          </div>
+        )}
         {msg && <div className="text-xs text-red-400">{msg}</div>}
       </div>
     );
@@ -2086,7 +2113,56 @@ function PercorsoHomeController({ sessionId, player, payload, timeLeft }: {
 
   // ── public_choice ─────────────────────────────────────────────────────────
   if (rs.phase === 'public_choice') {
+    // Booked performers can't vote — they're the ones performing
+    if (isBooked) {
+      return (
+        <div className="flex flex-col items-center gap-4 py-4 text-center">
+          <div className="text-5xl">{mission?.emoji ?? '🎭'}</div>
+          <div className="text-base font-black text-white">{mission?.title}</div>
+          <div className="rounded-xl px-4 py-3 text-sm font-bold w-full"
+            style={{ background: 'rgba(52,211,153,0.14)', border: '2px solid rgba(52,211,153,0.4)', color: '#34D399' }}>
+            ✅ Sei in scena: {myBooking!.role}
+          </div>
+          <div className="text-sm text-white/40">Il pubblico sta scegliendo…</div>
+        </div>
+      );
+    }
+
     const isYoga = mission?.id === 'yoga';
+    const isPerPlayer = mission?.perPlayerChoice ?? false;
+
+    // Per-player choice missions (venditore, sfilata): public reassigns slots
+    if (isPerPlayer) {
+      return (
+        <div className="flex flex-col items-center gap-4 py-4 text-center">
+          <div className="text-4xl">{mission?.emoji ?? '🗳️'}</div>
+          <div className="text-base font-black text-white">{mission?.choiceLabel ?? 'Scegli!'}</div>
+          <div className="text-xs text-white/40">Tocca un'opzione per cambiarla</div>
+          {rs.bookings.map((b, slotIdx) => (
+            <div key={b.playerId} className="w-full">
+              <div className="text-xs font-bold mb-1.5" style={{ color: '#34D399' }}>
+                {b.role}: {b.nickname}
+              </div>
+              <div className="flex flex-wrap gap-2 justify-center">
+                {rs.publicChoiceOptions.map(opt => (
+                  <motion.button key={opt} whileTap={{ scale: 0.95 }}
+                    onClick={() => void post('per-player-choice', { choice: opt, slot: slotIdx })}
+                    disabled={busy}
+                    className="rounded-xl px-3 py-2 text-sm font-black"
+                    style={rs.perPlayerChoices[slotIdx] === opt
+                      ? { background: 'linear-gradient(135deg,#34D399,#059669)', color: '#000', boxShadow: '0 0 16px rgba(52,211,153,0.45)' }
+                      : { background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.14)', color: 'rgba(255,255,255,0.8)' }}>
+                    {opt}
+                  </motion.button>
+                ))}
+              </div>
+            </div>
+          ))}
+          {msg && <div className="text-xs text-red-400">{msg}</div>}
+        </div>
+      );
+    }
+
     return (
       <div className="flex flex-col items-center gap-3 py-4 text-center">
         <div className="text-4xl">{mission?.emoji ?? '🗳️'}</div>
@@ -2103,7 +2179,10 @@ function PercorsoHomeController({ sessionId, player, payload, timeLeft }: {
                   style={isSelected
                     ? { background: 'linear-gradient(135deg,#34D399,#059669)', color: '#000', boxShadow: '0 0 24px rgba(52,211,153,0.55)' }
                     : { background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.14)', color: 'rgba(255,255,255,0.85)' }}>
-                  <span style={{ fontSize: '2.2rem', lineHeight: 1, flexShrink: 0 }}>{pose?.emoji ?? '🧘'}</span>
+                  {pose?.imageUrl
+                    ? <img src={pose.imageUrl} alt={pose.name} className="rounded-lg object-cover flex-shrink-0" style={{ width: '2.2rem', height: '2.2rem' }} />
+                    : <span style={{ fontSize: '2.2rem', lineHeight: 1, flexShrink: 0 }}>{pose?.emoji ?? '🧘'}</span>
+                  }
                   <span className="font-black text-base leading-tight">{pose?.name ?? opt}</span>
                   {isSelected && <span className="ml-auto text-xl">✅</span>}
                 </motion.button>
@@ -2143,7 +2222,10 @@ function PercorsoHomeController({ sessionId, player, payload, timeLeft }: {
         {isYogaActive && yogaPose && (
           <div className="flex flex-col items-center gap-2 rounded-2xl px-6 py-5 w-full"
             style={{ background: 'rgba(52,211,153,0.10)', border: '2px solid rgba(52,211,153,0.4)' }}>
-            <div style={{ fontSize: '4.5rem', lineHeight: 1 }}>{yogaPose.emoji}</div>
+            {yogaPose.imageUrl
+              ? <img src={yogaPose.imageUrl} alt={yogaPose.name} className="rounded-2xl object-cover" style={{ width: '4.5rem', height: '4.5rem' }} />
+              : <div style={{ fontSize: '4.5rem', lineHeight: 1 }}>{yogaPose.emoji}</div>
+            }
             <div className="text-lg font-black" style={{ color: '#34D399' }}>{yogaPose.name}</div>
             <div className="text-xs text-white/40">Mantieni la posa per 30 secondi!</div>
           </div>

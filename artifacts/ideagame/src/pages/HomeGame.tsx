@@ -1576,7 +1576,12 @@ export default function HomeGame() {
                 </div>
               </div>
 
-              {/* Timer */}
+              {/* Timer — hidden for full-session modes (Percorso a Risate, Karaoke Live) */}
+              {!(
+                String((session.roundPayload as Record<string,unknown>)?.mode ?? '') === 'home-percorso' ||
+                (session.gameSlug === 'karaoke-battle' &&
+                  ((session.gameConfig as Record<string,unknown>)?.karaokeHomeState as {version?:number}|undefined)?.version === 3)
+              ) && (
               <div className="rounded-2xl px-7 py-2 text-center transition-all"
                 style={timeLeft!==null&&timeLeft<=5
                   ? {background:'rgba(239,68,68,0.22)',border:'2px solid rgba(239,68,68,0.65)',boxShadow:'0 0 35px rgba(239,68,68,0.35)'}
@@ -1589,14 +1594,21 @@ export default function HomeGame() {
                   </div>
                 </div>
               </div>
+              )}
 
               <div className="flex gap-2">
+                {!(
+                  String((session.roundPayload as Record<string,unknown>)?.mode ?? '') === 'home-percorso' ||
+                  (session.gameSlug === 'karaoke-battle' &&
+                    ((session.gameConfig as Record<string,unknown>)?.karaokeHomeState as {version?:number}|undefined)?.version === 3)
+                ) && (
                 <button onClick={nextRound}
                   disabled={loading}
                   className="flex items-center gap-2 rounded-2xl px-5 py-2 text-sm font-bold disabled:opacity-40"
                   style={{background:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.14)',color:'rgba(255,255,255,0.65)'}}>
                   {loading ? <Loader2 className="h-4 w-4 animate-spin"/> : <SkipForward className="h-4 w-4"/>} Avanti
                 </button>
+                )}
                 <button onClick={endGame} disabled={loading}
                   className="flex items-center gap-2 rounded-2xl px-4 py-2 text-xs font-bold disabled:opacity-40"
                   style={{background:'rgba(239,68,68,0.12)',border:'1px solid rgba(239,68,68,0.35)',color:'rgba(239,68,68,0.7)'}}>
@@ -2904,6 +2916,54 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [missionTimeLeft, rs?.phase, busy]);
 
+  // ── Booking countdown (10s, server-authoritative from bookingStartedAt) ───
+  const [bookingTimeLeft, setBookingTimeLeft] = useState<number | null>(null);
+  const autoBookFiredRef = useRef(false);
+
+  useEffect(() => {
+    if (!rs || rs.phase !== 'booking' || !rs.bookingStartedAt) {
+      setBookingTimeLeft(null);
+      return;
+    }
+    autoBookFiredRef.current = false;
+    const tick = () => Math.max(0, Math.round(10 - (Date.now() - new Date(rs.bookingStartedAt!).getTime()) / 1000));
+    setBookingTimeLeft(tick());
+    const iv = setInterval(() => { const tl = tick(); setBookingTimeLeft(tl); if (tl <= 0) clearInterval(iv); }, 1000);
+    return () => clearInterval(iv);
+  }, [rs?.phase, rs?.bookingStartedAt]);
+
+  useEffect(() => {
+    if (bookingTimeLeft === 0 && rs?.phase === 'booking' && !autoBookFiredRef.current && !busy) {
+      autoBookFiredRef.current = true;
+      void apiPost('auto-book');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookingTimeLeft, rs?.phase, busy]);
+
+  // ── Public choice countdown (10s) ─────────────────────────────────────────
+  const [choiceTimeLeft, setChoiceTimeLeft] = useState<number | null>(null);
+  const autoChoiceFiredRef = useRef(false);
+
+  useEffect(() => {
+    if (!rs || rs.phase !== 'public_choice' || !rs.publicChoiceStartedAt) {
+      setChoiceTimeLeft(null);
+      return;
+    }
+    autoChoiceFiredRef.current = false;
+    const tick2 = () => Math.max(0, Math.round(10 - (Date.now() - new Date(rs.publicChoiceStartedAt!).getTime()) / 1000));
+    setChoiceTimeLeft(tick2());
+    const iv2 = setInterval(() => { const tl = tick2(); setChoiceTimeLeft(tl); if (tl <= 0) clearInterval(iv2); }, 1000);
+    return () => clearInterval(iv2);
+  }, [rs?.phase, rs?.publicChoiceStartedAt]);
+
+  useEffect(() => {
+    if (choiceTimeLeft === 0 && rs?.phase === 'public_choice' && !autoChoiceFiredRef.current && !busy) {
+      autoChoiceFiredRef.current = true;
+      void apiPost('auto-choice');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [choiceTimeLeft, rs?.phase, busy]);
+
   const apiPost = async (path: string) => {
     setBusy(true); setMsg('');
     try {
@@ -3026,7 +3086,10 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
                           border: isSelected ? `2px solid ${PERCORSO_ACCENT}` : '1px solid rgba(255,255,255,0.14)',
                           boxShadow: isSelected ? `0 0 28px ${PERCORSO_ACCENT}66` : 'none',
                         }}>
-                        <span style={{ fontSize: '3.5rem', lineHeight: 1 }}>{pose?.emoji ?? '🧘'}</span>
+                        {pose?.imageUrl
+                          ? <img src={pose.imageUrl} alt={pose.name} className="rounded-xl object-cover" style={{ width: '3.5rem', height: '3.5rem' }} />
+                          : <span style={{ fontSize: '3.5rem', lineHeight: 1 }}>{pose?.emoji ?? '🧘'}</span>
+                        }
                         <span className="font-black text-sm text-center leading-tight"
                           style={{ color: isSelected ? '#000' : 'rgba(255,255,255,0.8)' }}>
                           {pose?.name ?? opt}
@@ -3052,6 +3115,28 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
             );
           })()}
 
+          {/* public_choice: per-player assignments for venditore/sfilata */}
+          {rs.phase === 'public_choice' && mission?.perPlayerChoice && rs.perPlayerChoices.length > 0 && (
+            <div className="flex flex-wrap justify-center gap-3 mt-1">
+              {rs.bookings.map((b, i) => (
+                <div key={b.playerId} className="flex flex-col items-center gap-1 rounded-xl px-5 py-3 text-sm font-black"
+                  style={{ background: `${PERCORSO_ACCENT}14`, border: `1.5px solid ${PERCORSO_ACCENT}30`, minWidth: 130 }}>
+                  <span className="text-xs uppercase tracking-widest" style={{ color: PERCORSO_ACCENT }}>{b.role}</span>
+                  <span className="text-white font-black">{b.nickname}</span>
+                  <span className="text-base">{rs.perPlayerChoices[i] ?? '…'}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* public_choice countdown */}
+          {rs.phase === 'public_choice' && choiceTimeLeft !== null && (
+            <div className="flex items-center gap-2 text-xs font-black"
+              style={{ color: choiceTimeLeft <= 3 ? '#f87171' : 'rgba(255,255,255,0.3)' }}>
+              ⏱ {choiceTimeLeft > 0 ? `Auto-scelta in ${choiceTimeLeft}s` : 'Selezione automatica…'}
+            </div>
+          )}
+
           {/* Active: yoga pose display — big on TV */}
           {rs.phase === 'active' && mission?.id === 'yoga' && (() => {
             const yogaPose = rs.publicChoice
@@ -3061,7 +3146,10 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
                 style={{ background: 'rgba(52,211,153,0.10)', border: '2px solid rgba(52,211,153,0.4)' }}>
                 {yogaPose ? (
                   <>
-                    <span style={{ fontSize: '6rem', lineHeight: 1 }}>{yogaPose.emoji}</span>
+                    {yogaPose.imageUrl
+                    ? <img src={yogaPose.imageUrl} alt={yogaPose.name} className="rounded-2xl object-cover" style={{ width: '6rem', height: '6rem' }} />
+                    : <span style={{ fontSize: '6rem', lineHeight: 1 }}>{yogaPose.emoji}</span>
+                  }
                     <div className="text-display text-3xl font-black" style={{ color: '#34D399' }}>
                       {yogaPose.name}
                     </div>
@@ -3106,7 +3194,7 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
           )}
 
           {/* Bookings */}
-          {rs.bookings.length > 0 && (
+          {(rs.bookings.length > 0 || rs.phase === 'booking') && (
             <div className="flex flex-wrap justify-center gap-2">
               {rs.bookings.map(b => (
                 <div key={b.playerId} className="rounded-xl px-4 py-2 text-sm font-black"
@@ -3117,11 +3205,19 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
                 </div>
               ))}
               {rs.phase === 'booking' && Array.from({ length: Math.max(0, (mission.playerCount) - rs.bookings.length) }, (_, i) => (
-                <div key={`empty-${i}`} className="rounded-xl px-4 py-2 text-sm font-black"
+                <div key={`empty-${i}`} className="rounded-xl px-4 py-2 text-sm font-black animate-pulse"
                   style={{ background: 'rgba(255,255,255,0.05)', border: '1px dashed rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.3)' }}>
                   {mission.roles[rs.bookings.length + i] ?? '?'} · libero
                 </div>
               ))}
+              {rs.phase === 'booking' && bookingTimeLeft !== null && rs.bookings.length < mission.playerCount && (
+                <div className="w-full flex justify-center mt-1">
+                  <div className="flex items-center gap-2 rounded-xl px-4 py-1.5 text-xs font-black"
+                    style={{ background: bookingTimeLeft <= 3 ? 'rgba(239,68,68,0.18)' : 'rgba(255,255,255,0.07)', color: bookingTimeLeft <= 3 ? '#f87171' : 'rgba(255,255,255,0.35)' }}>
+                    ⏱ Auto-prenota in {bookingTimeLeft}s
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -3141,10 +3237,23 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
 
           {/* Result */}
           {rs.phase === 'result' && rs.missionResult && (
-            <div className="rounded-2xl px-6 py-4 text-base font-bold text-white text-center max-w-lg"
-              style={{ background: `${PERCORSO_ACCENT}15`, border: `2px solid ${PERCORSO_ACCENT}40` }}>
-              {rs.missionResult.text}
-            </div>
+            <>
+              <div className="rounded-2xl px-6 py-4 text-base font-bold text-white text-center max-w-lg"
+                style={{ background: `${PERCORSO_ACCENT}15`, border: `2px solid ${PERCORSO_ACCENT}40` }}>
+                {rs.missionResult.text}
+              </div>
+              {rs.missionIndex < 9 && (() => {
+                const nextM = RISATE_MISSIONS[rs.missionIndex + 1];
+                return nextM ? (
+                  <div className="flex items-center gap-3 rounded-xl px-5 py-3 text-sm font-bold mt-1"
+                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                    <span className="text-white/35 text-xs uppercase tracking-widest">Prossima</span>
+                    <span style={{ fontSize: '1.4rem' }}>{nextM.emoji}</span>
+                    <span className="text-white/55">{nextM.title}</span>
+                  </div>
+                ) : null;
+              })()}
+            </>
           )}
         </motion.div>
       )}
