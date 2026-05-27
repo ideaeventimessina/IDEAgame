@@ -1,0 +1,212 @@
+IDEAGAME HOME — PERFORMANCE EMERGENCY SPRINT.
+
+STOP all feature work.
+The whole Home Mode feels slow from lobby entry onward.
+
+Do not change gameplay rules.
+Do not redesign.
+Do not add features.
+
+Goal:
+Make the app fast and responsive.
+
+==================================================
+PART 1 — PERFORMANCE AUDIT
+==================================================
+
+Audit from first entry:
+
+/home-v4
+/mode-select
+/home-setup
+/home-lobby
+/home
+/home/join
+
+Measure:
+- initial JS bundle size
+- largest files/components
+- number of mounted components
+- number of socket listeners
+- number of setInterval/setTimeout loops
+- number of console.log per second
+- rerenders per second in HomeGame and HomeJoin
+- YouTube iframes mounted even when not needed
+- chat overlay mounted cost
+- audio manager cost
+
+Output table:
+component | issue | cost | fix
+
+==================================================
+PART 2 — SPLIT HUGE COMPONENTS
+==================================================
+
+HomeGame.tsx is too large.
+HomeJoin.tsx is too large.
+
+Implement lazy loading / code splitting:
+
+Only load active game component.
+
+Example:
+const KaraokeLiveBoard = lazy(...)
+const QuizzoneBoard = lazy(...)
+const CoppieBoard = lazy(...)
+const AdultOnlyBoard = lazy(...)
+const PercorsoBoard = lazy(...)
+
+Same for phone controllers.
+
+Inactive games must NOT mount.
+Inactive heavy logic must NOT run.
+
+==================================================
+PART 3 — REMOVE ZOMBIE ROUTES FROM BUNDLE
+==================================================
+
+Remove unused legacy routes:
+
+HomeV2
+HomeV3
+HomeV5
+HomeRoom
+
+Remove:
+- imports from App.tsx
+- routes
+- dead files if safe
+
+Do not remove active:
+/home-v4
+/home
+/home/join
+/home-setup
+/home-lobby
+/mode-select
+
+==================================================
+PART 4 — SOCKET LISTENER CLEANUP
+==================================================
+
+Audit useEffect listeners.
+
+Problem to prevent:
+- listener registered multiple times after state changes
+- no cleanup
+- duplicated home:state handlers
+- duplicated game-specific handlers
+
+Required:
+- every socket.on must have socket.off cleanup
+- stable handler refs if needed
+- no listener inside render
+- log listener counts in dev only
+
+==================================================
+PART 5 — POLLING CLEANUP
+==================================================
+
+Audit all polling intervals.
+
+Required:
+- no polling faster than needed
+- HomeJoin fallback polling max every 5s
+- HomeLobby players polling every 2s ok
+- timers use requestAnimationFrame or 1s interval only when visible
+- stop intervals when tab hidden where possible
+- cleanup on unmount
+
+==================================================
+PART 6 — CONSOLE LOG CLEANUP
+==================================================
+
+Remove or gate verbose logs.
+
+Keep only:
+- real errors
+- important warnings
+- dev-only logs behind DEBUG flag
+
+Remove spam:
+- per-frame logs
+- per-timer logs
+- per-socket-event logs in production
+- audio trace spam
+- sensor spam unless debug enabled
+
+==================================================
+PART 7 — IFRAME / MEDIA LAZY MOUNT
+==================================================
+
+YouTube iframe must mount only in:
+- Karaoke playing/preload
+- SaraMusica clip mode if active
+
+Never mount YouTube if:
+- not in karaoke
+- not in saramusica
+- game not active
+- in lobby/setup
+
+Backstage/preload player:
+- mount only when karaoke has queue/current item
+- unmount when leaving karaoke
+
+==================================================
+PART 8 — CHAT PERFORMANCE
+==================================================
+
+Secret Messages feature must be global but light.
+
+Required:
+- floating button always available
+- heavy inbox modal only mounts when opened
+- TV message overlay only mounts when queue has items
+- no expensive filtering every render
+- memoize connected players list
+
+==================================================
+PART 9 — ANIMATION PERFORMANCE
+==================================================
+
+Audit Framer Motion / heavy animations.
+
+Required:
+- no continuous heavy animation on hidden screens
+- bottle animation only while adult spin active
+- emoji float cleanup after animation
+- no infinite animations on lobby except lightweight background
+
+==================================================
+PART 10 — BUILD OPTIMIZATION
+==================================================
+
+Check Vite bundle.
+
+Required:
+- manual chunks if needed
+- lazy import game modules
+- avoid bundling all games into first load
+- report before/after bundle size
+
+==================================================
+OUTPUT REQUIRED
+==================================================
+
+Before patch:
+A. performance bottlenecks found
+B. bundle/file size report
+C. listeners/intervals report
+D. zombie route list
+
+After patch:
+E. files modified
+F. routes removed
+G. lazy loading implemented
+H. listener cleanup
+I. polling cleanup
+J. logs gated/removed
+K. iframe lazy mount
+L. typecheck result
+M. before/after performance notes

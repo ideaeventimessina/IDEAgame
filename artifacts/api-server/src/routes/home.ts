@@ -75,6 +75,18 @@ function homeRoom(id: string) { return `home:${id}`; }
 // In-memory answer tracking for quiz rounds. Map: sessionId → round → playerId → answerIndex.
 // Round entries are deleted once the all-answered event fires to avoid re-emitting.
 const quizAnswerMap = new Map<string, Map<number, Map<string, number>>>();
+
+// ── State version counter ──────────────────────────────────────────────────────
+// Monotonic version per session. Increments on every home:state broadcast so clients
+// can detect missed socket events via polling comparison. Resets on server restart
+// (phones recover via socket reconnect + auto-resync).
+const homeStateVersions = new Map<string, number>();
+
+function emitHomeState(sessionId: string, session: unknown, players: unknown): void {
+  const v = (homeStateVersions.get(sessionId) ?? 0) + 1;
+  homeStateVersions.set(sessionId, v);
+  emitToRoom(homeRoom(sessionId), "home:state", { session, players, stateVersion: v });
+}
 // sessionId → round → winnerId (first correct player per round)
 const saraMusicaWinnerMap = new Map<string, Map<number, string>>();
 // Quizzone: sessionId → questionIndex → playerId → { answerIndex, answeredAt }
@@ -109,7 +121,7 @@ async function broadcastState(sessionId: string) {
   const session = await getSession(sessionId);
   if (!session) return;
   const players = await getPlayers(sessionId);
-  emitToRoom(homeRoom(sessionId), "home:state", { session, players });
+  emitHomeState(sessionId, session, players);
 }
 
 /**
@@ -1090,7 +1102,8 @@ router.get("/home/sessions/:id", async (req, res): Promise<void> => {
   if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
 
   const players = await getPlayers(session.id);
-  res.json({ session, players });
+  const stateVersion = homeStateVersions.get(session.id) ?? 0;
+  res.json({ session, players, stateVersion });
 });
 
 // ── POST /home/sessions/:id/join ───────────────────────────────────────────────
@@ -1238,7 +1251,7 @@ async function qzUpdate(id: string, patch: Record<string, unknown>): Promise<voi
     .set({ roundPayload: { ...rp, ...patch } })
     .where(eq(homeSessionsTable.id, id)).returning();
   const players = await getPlayers(id);
-  emitToRoom(homeRoom(id), "home:state", { session: updated[0], players });
+  emitHomeState(id, updated[0], players);
 }
 
 /** Shared reveal logic — called by route handler and auto-reveal timer */
@@ -1551,7 +1564,7 @@ async function smUpdate(id: string, patch: Record<string, unknown>): Promise<voi
     .set({ roundPayload: { ...rp, ...patch } })
     .where(eq(homeSessionsTable.id, id)).returning();
   const players = await getPlayers(id);
-  emitToRoom(homeRoom(id), "home:state", { session: updated[0], players });
+  emitHomeState(id, updated[0], players);
 }
 
 async function performSmReveal(id: string, expectedIndex: number): Promise<void> {
@@ -1814,7 +1827,7 @@ async function adultUpdate(id: string, patch: Record<string, unknown>): Promise<
     .set({ roundPayload: { ...rp, ...patch } })
     .where(eq(homeSessionsTable.id, id)).returning();
   const players = await getPlayers(id);
-  emitToRoom(homeRoom(id), "home:state", { session: updated[0], players });
+  emitHomeState(id, updated[0], players);
 }
 
 type AoPlayer = Awaited<ReturnType<typeof getPlayers>>[number];
@@ -2200,7 +2213,7 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
     }).where(eq(homeSessionsTable.id, id)).returning();
     const kPlayersAfter = await getPlayers(id);
     emitToRoom(homeRoom(id), "home:game_started", { session: karaokeUpdated, players: kPlayersAfter, payload: karaokePayload });
-    emitToRoom(homeRoom(id), "home:state", { session: karaokeUpdated, players: kPlayersAfter });
+    emitHomeState(id, karaokeUpdated, kPlayersAfter);
     res.json({ session: karaokeUpdated, players: kPlayersAfter });
     return;
   }
@@ -2234,7 +2247,7 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
     }).where(eq(homeSessionsTable.id, id)).returning();
     const qPlayers = await getPlayers(id);
     emitToRoom(homeRoom(id), "home:game_started", { session: qUpdated, players: qPlayers, payload: qPayload });
-    emitToRoom(homeRoom(id), "home:state", { session: qUpdated, players: qPlayers });
+    emitHomeState(id, qUpdated, qPlayers);
     res.json({ session: qUpdated, players: qPlayers });
     return;
   }
@@ -2255,7 +2268,7 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
     }).where(eq(homeSessionsTable.id, id)).returning();
     const pPlayers = await getPlayers(id);
     emitToRoom(homeRoom(id), "home:game_started", { session: percorsoUpdated, players: pPlayers, payload: percorsoPayload });
-    emitToRoom(homeRoom(id), "home:state", { session: percorsoUpdated, players: pPlayers });
+    emitHomeState(id, percorsoUpdated, pPlayers);
     res.json({ session: percorsoUpdated, players: pPlayers });
     return;
   }
@@ -2277,7 +2290,7 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
     if (!coppieUpdated) { res.status(500).json({ error: "Errore avvio coppie" }); return; }
     const coppPlayers = await getPlayers(id);
     emitToRoom(homeRoom(id), "home:game_started", { session: coppieUpdated, players: coppPlayers, payload: coppiePayload });
-    emitToRoom(homeRoom(id), "home:state", { session: coppieUpdated, players: coppPlayers });
+    emitHomeState(id, coppieUpdated, coppPlayers);
     res.json({ session: coppieUpdated, players: coppPlayers });
     return;
   }
@@ -2313,7 +2326,7 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
     if (!smUpdated) { res.status(500).json({ error: "Errore avvio saramusica" }); return; }
     const smPlayers = await getPlayers(id);
     emitToRoom(homeRoom(id), "home:game_started", { session: smUpdated, players: smPlayers, payload: smPayload });
-    emitToRoom(homeRoom(id), "home:state", { session: smUpdated, players: smPlayers });
+    emitHomeState(id, smUpdated, smPlayers);
     res.json({ session: smUpdated, players: smPlayers });
     return;
   }
@@ -2363,7 +2376,7 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
     if (!adultUpdated) { res.status(500).json({ error: "Errore avvio adult-only" }); return; }
     const adultPlayers = await getPlayers(id);
     emitToRoom(homeRoom(id), "home:game_started", { session: adultUpdated, players: adultPlayers, payload: adultPayload });
-    emitToRoom(homeRoom(id), "home:state", { session: adultUpdated, players: adultPlayers });
+    emitHomeState(id, adultUpdated, adultPlayers);
     res.json({ session: adultUpdated, players: adultPlayers });
     return;
   }
@@ -2393,7 +2406,7 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
   }).where(eq(homeSessionsTable.id, id)).returning();
   const flowPlayers = await getPlayers(id);
   emitToRoom(homeRoom(id), "home:game_started", { session: flowUpdated, players: flowPlayers, payload: flowPayload });
-  emitToRoom(homeRoom(id), "home:state", { session: flowUpdated, players: flowPlayers });
+  emitHomeState(id, flowUpdated, flowPlayers);
   res.json({ session: flowUpdated, players: flowPlayers });
 });
 
@@ -2444,7 +2457,7 @@ router.post("/home/sessions/:id/flow/select-theme", async (req, res): Promise<vo
   if (rp["selectedTheme"] != null && rp["gameFlowPhase"] !== "theme_select") {
     req.log.info({ sessionId: id, gameFlowPhase: rp["gameFlowPhase"] }, "[HomeFlow] select-theme already past theme_select — re-emitting home:state");
     const players = await getPlayers(id);
-    emitToRoom(homeRoom(id), "home:state", { session, players });
+    emitHomeState(id, session, players);
     res.json({ session, players });
     return;
   }
@@ -2473,7 +2486,7 @@ router.post("/home/sessions/:id/flow/select-theme", async (req, res): Promise<vo
   req.log.info({ sessionId: id, phaseAfter, selectedTheme }, "[BalloTheme] phase after select-theme");
 
   const players = await getPlayers(id);
-  emitToRoom(homeRoom(id), "home:state", { session: updated, players });
+  emitHomeState(id, updated, players);
   res.json({ session: updated, players });
 });
 
@@ -2517,7 +2530,7 @@ router.post("/home/sessions/:id/flow/select-subtype", async (req, res): Promise<
   if (!updated) { res.status(500).json({ error: "Errore interno: sessione non aggiornata" }); return; }
 
   const players = await getPlayers(id);
-  emitToRoom(homeRoom(id), "home:state", { session: updated, players });
+  emitHomeState(id, updated, players);
   res.json({ session: updated, players });
 });
 
@@ -2572,7 +2585,7 @@ router.post("/home/sessions/:id/flow/book-player", async (req, res): Promise<voi
     .set({ roundPayload: updatedRp })
     .where(eq(homeSessionsTable.id, id)).returning();
   req.log.info({ sessionId: id, action, playerId, bookedCount: booked.length, bookedIds: booked.map(b => b.id) }, "[BalloTheme] bookedPlayers after book-player");
-  emitToRoom(homeRoom(id), "home:state", { session: updated, players });
+  emitHomeState(id, updated, players);
   emitToRoom(homeRoom(id), "home:player_booked", { bookedPlayers: booked });
   res.json({ session: updated, bookedPlayers: booked });
 });
@@ -2611,7 +2624,7 @@ router.post("/home/sessions/:id/flow/confirm", async (req, res): Promise<void> =
   const [confirmUpdated] = await db.update(homeSessionsTable)
     .set({ roundPayload: confirmRp })
     .where(eq(homeSessionsTable.id, id)).returning();
-  emitToRoom(homeRoom(id), "home:state", { session: confirmUpdated, players });
+  emitHomeState(id, confirmUpdated, players);
   res.json({ ok: true });
 
   // After a brief pause: move to countdown, then load real ballo rounds
@@ -2623,7 +2636,7 @@ router.post("/home/sessions/:id/flow/confirm", async (req, res): Promise<void> =
         .set({ roundPayload: countdownRp })
         .where(eq(homeSessionsTable.id, id)).returning();
       const cdPlayers = await getPlayers(id);
-      emitToRoom(homeRoom(id), "home:state", { session: cdUpdated, players: cdPlayers });
+      emitHomeState(id, cdUpdated, cdPlayers);
 
       // After countdown (4s) load real ballo rounds and fire home:round
       logger.info({ sessionId: id }, "[BalloFlow] countdown done — waiting 4s for ballo launch");
@@ -2673,7 +2686,7 @@ router.post("/home/sessions/:id/flow/confirm", async (req, res): Promise<void> =
           }).where(eq(homeSessionsTable.id, id)).returning();
           const gamePlayers = await getPlayers(id);
           emitToRoom(homeRoom(id), "home:round", { round: 0, payload: firstRound });
-          emitToRoom(homeRoom(id), "home:state", { session: gameUpdated, players: gamePlayers });
+          emitHomeState(id, gameUpdated, gamePlayers);
           logger.info({ sessionId: id }, "[BalloFlow] home:round emitted");
         } catch (err) {
           logger.error({ err, sessionId: id }, "flow/confirm: ballo round load failed");
@@ -2919,7 +2932,7 @@ router.post("/home/sessions/:id/ballo-round-end", async (req, res): Promise<void
     .where(eq(homeSessionsTable.id, id)).returning();
 
   const updatedPlayers = await getPlayers(id);
-  emitToRoom(homeRoom(id), "home:state", { session: updated, players: updatedPlayers });
+  emitHomeState(id, updated, updatedPlayers);
   res.json({ ok: true });
 });
 
@@ -3000,7 +3013,7 @@ router.post("/home/sessions/:id/ballo-stage-next", async (req, res): Promise<voi
     .where(eq(homeSessionsTable.id, id)).returning();
 
   const players = await getPlayers(id);
-  emitToRoom(homeRoom(id), "home:state", { session: updated, players });
+  emitHomeState(id, updated, players);
   res.json({ ok: true, balloStage: nextStage, teams: newTeams });
 });
 
@@ -3039,7 +3052,7 @@ router.post("/home/sessions/:id/ballo-join-team", async (req, res): Promise<void
   const [updated] = await db.update(homeSessionsTable)
     .set({ roundPayload: updatedRp }).where(eq(homeSessionsTable.id, id)).returning();
   const players = await getPlayers(id);
-  emitToRoom(homeRoom(id), "home:state", { session: updated, players });
+  emitHomeState(id, updated, players);
   emitToRoom(homeRoom(id), "home:ballo_team_updated", { teams });
   res.json({ ok: true, teams });
 });
@@ -3082,7 +3095,7 @@ router.post("/home/sessions/:id/ballo-accept-player", async (req, res): Promise<
   const [updated] = await db.update(homeSessionsTable)
     .set({ roundPayload: updatedRp }).where(eq(homeSessionsTable.id, id)).returning();
   const players = await getPlayers(id);
-  emitToRoom(homeRoom(id), "home:state", { session: updated, players });
+  emitHomeState(id, updated, players);
   emitToRoom(homeRoom(id), "home:ballo_team_updated", { teams });
   res.json({ ok: true, teams });
 });
@@ -3118,7 +3131,7 @@ router.post("/home/sessions/:id/ballo-start-dance", async (req, res): Promise<vo
     .set({ roundPayload: danceRp }).where(eq(homeSessionsTable.id, id)).returning();
   const players = await getPlayers(id);
   emitToRoom(homeRoom(id), "home:round", { round: session.currentRound, payload: danceRp });
-  emitToRoom(homeRoom(id), "home:state", { session: updated, players });
+  emitHomeState(id, updated, players);
   res.json({ ok: true, session: updated });
 });
 
@@ -3157,7 +3170,7 @@ router.post("/home/sessions/:id/ballo-reset-booking", async (req, res): Promise<
   }).where(eq(homeSessionsTable.id, id)).returning();
   const players = await getPlayers(id);
   req.log.info({ sessionId: id }, "[BalloReset] reset to fresh booking phase");
-  emitToRoom(homeRoom(id), "home:state", { session: updated, players });
+  emitHomeState(id, updated, players);
   res.json({ session: updated, players });
 });
 
@@ -3249,7 +3262,7 @@ async function advanceToWordBackRound(
     .where(eq(homeSessionsTable.id, sessionId)).returning();
   if (updated) {
     emitToRoom(homeRoom(sessionId), "home:round", { round: pendingRoundIndex, payload: nextPayload });
-    emitToRoom(homeRoom(sessionId), "home:state", { session: updated, players });
+    emitHomeState(sessionId, updated, players);
   }
 }
 
@@ -3282,7 +3295,7 @@ async function enterWordBackBookingPhase(
     .where(eq(homeSessionsTable.id, sessionId)).returning();
   if (updated) {
     emitToRoom(homeRoom(sessionId), "home:round", { round: nextRoundIndex, payload: bookingPayload });
-    emitToRoom(homeRoom(sessionId), "home:state", { session: updated, players });
+    emitHomeState(sessionId, updated, players);
   }
 
   const existing = wordbackBookingTimers.get(sessionId);
@@ -3311,7 +3324,7 @@ async function autoSelectWordBackPair(
     const [updated] = await db.update(homeSessionsTable)
       .set({ roundPayload: errPayload })
       .where(eq(homeSessionsTable.id, sessionId)).returning();
-    if (updated) emitToRoom(homeRoom(sessionId), "home:state", { session: updated, players });
+    if (updated) emitHomeState(sessionId, updated, players);
     return;
   }
 
@@ -3646,7 +3659,7 @@ router.post("/home/sessions/:id/wordback-book-role", async (req, res): Promise<v
   const [updated] = await db.update(homeSessionsTable)
     .set({ roundPayload: updatedRp })
     .where(eq(homeSessionsTable.id, id)).returning();
-  if (updated) emitToRoom(homeRoom(id), "home:state", { session: updated, players });
+  if (updated) emitHomeState(id, updated, players);
   res.json({ ok: true, bookedRoles });
 
   // If both roles are now filled: cancel the 10-second timer and advance immediately
@@ -3827,7 +3840,7 @@ router.post("/home/sessions/:id/coppie/propose-theme", async (req, res): Promise
   const newPayload: CoppiePayload = { ...payload, proposedThemes };
   await db.update(homeSessionsTable).set({ roundPayload: newPayload }).where(eq(homeSessionsTable.id, id));
   const players = await getPlayers(id);
-  emitToRoom(homeRoom(id), "home:state", { session: { ...session, roundPayload: newPayload }, players });
+  emitHomeState(id, { ...session, roundPayload: newPayload }, players);
   res.json({ ok: true, themes: proposedThemes });
 });
 
@@ -3849,7 +3862,7 @@ router.post("/home/sessions/:id/coppie/select-theme", async (req, res): Promise<
     const newPayload = await loadCoppieByTheme(setId) as RoundPayload;
     await db.update(homeSessionsTable).set({ roundPayload: newPayload }).where(eq(homeSessionsTable.id, id));
     const players = await getPlayers(id);
-    emitToRoom(homeRoom(id), "home:state", { session: { ...session, roundPayload: newPayload }, players });
+    emitHomeState(id, { ...session, roundPayload: newPayload }, players);
     res.json({ ok: true, theme: (newPayload as Record<string,unknown>)["category"] ?? setId });
     return;
   }
@@ -3869,7 +3882,7 @@ router.post("/home/sessions/:id/coppie/select-theme", async (req, res): Promise<
   const newPayload = buildCoppieFromWords(words!, payload.roundIndex, selected);
   await db.update(homeSessionsTable).set({ roundPayload: newPayload }).where(eq(homeSessionsTable.id, id));
   const players = await getPlayers(id);
-  emitToRoom(homeRoom(id), "home:state", { session: { ...session, roundPayload: newPayload }, players });
+  emitHomeState(id, { ...session, roundPayload: newPayload }, players);
   res.json({ ok: true, theme: selected });
 });
 
@@ -3904,7 +3917,7 @@ router.post("/home/sessions/:id/coppie/request-visibility", async (req, res): Pr
   await db.update(homeSessionsTable).set({ roundPayload: newPayload }).where(eq(homeSessionsTable.id, id));
   emitToRoom(homeRoom(id), "home:coppie_visibility_preview", { sessionId: id, until });
   const players = await getPlayers(id);
-  emitToRoom(homeRoom(id), "home:state", { session: { ...session, roundPayload: newPayload }, players });
+  emitHomeState(id, { ...session, roundPayload: newPayload }, players);
   res.json({ ok: true, until });
 });
 

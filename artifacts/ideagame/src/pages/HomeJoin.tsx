@@ -6,7 +6,7 @@
  * Flusso: code → nickname → lobby → playing (controller per ogni gioco) → ended
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { SensorBridge } from '../lib/SensorBridge';
 import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -73,10 +73,42 @@ function getSavedJoin(): { sessionId: string; joinCode: string; playerId: string
   try { const r = localStorage.getItem(STORAGE_KEY); return r ? JSON.parse(r) as { sessionId: string; joinCode: string; playerId: string; nickname: string } : null; } catch { return null; }
 }
 
+// ── Error Boundary ────────────────────────────────────────────────────────────
+
+interface EBState { hasError: boolean; error?: Error }
+class HomeJoinErrorBoundary extends React.Component<{ children: React.ReactNode; onResync: () => void }, EBState> {
+  constructor(props: { children: React.ReactNode; onResync: () => void }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError(error: Error): EBState { return { hasError: true, error }; }
+  componentDidCatch(err: Error) { console.error('[HomeSync] render error caught by boundary', err); }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-screen gap-6 px-6 text-center"
+          style={{ background: '#0A0A0F' }}>
+          <div className="text-5xl">⚠️</div>
+          <div className="text-xl font-black text-white">Errore di visualizzazione</div>
+          <div className="text-sm text-white/40">Lo schermo ha avuto un problema. Prova a riallinearti.</div>
+          <button
+            onClick={() => { this.setState({ hasError: false }); this.props.onResync(); }}
+            className="rounded-2xl px-8 py-4 text-lg font-black text-white"
+            style={{ background: 'linear-gradient(135deg,#F5B642,#FF69B4)' }}>
+            🔄 Riallinea
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 const BUILD_STAMP_JOIN = `bfb3131 · ${new Date().toISOString().slice(0,16).replace('T',' ')} · HomeJoin`;
-export default function HomeJoin() {
+
+function HomeJoinInner() {
   useEffect(() => {
     console.log('[BuildCheck] HomeJoin BUILD=' + BUILD_STAMP_JOIN);
   }, []);
@@ -145,6 +177,9 @@ export default function HomeJoin() {
   // Tracks the last known roundPayload.mode so home:state can detect flow→game transitions
   // even when slug/round haven't changed (flow uses same slot: gameSlug=sfida-ballo, round=0).
   const currentModeRef = useRef<string>('');
+  // ── Sync state tracking ────────────────────────────────────────────────────
+  const lastSeenVersionRef = useRef<number>(0);
+  const lastStateAtRef = useRef<number>(Date.now());
 
   const { on, emit, connected: socketConnected } = useEventSocket(null);
 
@@ -255,52 +290,61 @@ export default function HomeJoin() {
     emit('home:player_register', { sessionId: session.id, playerId: player.id });
   }, [session?.id, player?.id, emit]);
 
-  // ── Emergency resync ───────────────────────────────────────────────────────
-  // Refetches server state, clears transient UI state, and re-emits socket room
-  // join + player registration. Fixes stuck screens after missed socket events.
-  const handleResync = useCallback(async () => {
+  // ── forceResync ────────────────────────────────────────────────────────────
+  // Canonical resync: fetches fresh server state, replaces all local state,
+  // re-registers socket, aligns timers from server timestamps.
+  const forceResync = useCallback(async (reason: string) => {
     const sid = session?.id;
     const pid = player?.id;
     if (!sid || !pid || resyncLoading) return;
-    console.log('[PhoneResync] start', { sessionId: sid, playerId: pid });
+    console.log('[HomeSync] forceResync start');
+    console.log('[HomeSync] reason:', reason);
     setResyncLoading(true);
     try {
       const resp = await fetch(`/api/home/sessions/${sid}`);
-      if (!resp.ok) { console.log('[PhoneResync] fetch failed', resp.status); return; }
-      const data = await resp.json() as { session: HomeSession; players: HomePlayer[] };
-      console.log('[PhoneResync] session fetched', { status: data.session.status, round: data.session.currentRound });
+      if (!resp.ok) { console.log('[HomeSync] fetch failed', resp.status); return; }
+      const data = await resp.json() as { session: HomeSession; players: HomePlayer[]; stateVersion?: number };
+      const fetchedVersion = data.stateVersion ?? 0;
+      console.log('[HomeSync] fetched version:', fetchedVersion);
+      console.log('[HomeSync] local version:', lastSeenVersionRef.current);
 
+      // Replace session + players entirely
       setSession(data.session);
       setPlayers(data.players);
       const me = data.players.find(p => p.id === pid);
-      if (me) { setPlayer(me); console.log('[PhoneResync] player found', { score: me.score }); }
-      else { console.log('[PhoneResync] player not found in session'); }
+      if (me) setPlayer(me);
 
-      // Clear all transient game state so render uses fresh server payload
+      // Update version tracking
+      if (fetchedVersion > 0) {
+        lastSeenVersionRef.current = fetchedVersion;
+      }
+      lastStateAtRef.current = Date.now();
+
+      // Reset transient UI state
       setAnswered(null);
       setRevealed(false);
       setWordbackSolved(false);
       setCoppiePreviewUntil(null);
-      console.log('[PhoneResync] state restored');
 
-      // Re-align round timer using server timestamp (skip for full-session modes)
+      // Re-align timer from server timestamps (not from full duration)
       if (data.session.status === 'playing') {
         const rMode = String(data.session.roundPayload?.mode ?? '');
         if (rMode !== 'home-percorso') {
           startRoundTimer(data.session.roundPayload ?? {});
+          console.log('[HomeSync] timer aligned from server timestamps, mode=', rMode);
         }
-        console.log('[PhoneResync] timer realigned, mode=', rMode);
       }
 
-      // Re-join socket room and re-register player
+      // Re-join socket room + re-register player
       emit('join:home', sid);
       emit('home:player_register', { sessionId: sid, playerId: pid });
-      console.log('[PhoneResync] socket rejoined');
+      console.log('[HomeSync] socket rejoined');
+      console.log('[HomeSync] state replaced');
 
       setReconnectedMsg(true);
       setTimeout(() => setReconnectedMsg(false), 3000);
     } catch (err) {
-      console.log('[PhoneResync] error', err);
+      console.log('[HomeSync] error', err);
     } finally {
       setResyncLoading(false);
     }
@@ -312,13 +356,55 @@ export default function HomeJoin() {
     const socket = getSocket();
     const onConnect = () => {
       if (phaseRef.current === 'playing') {
-        console.log('[HomeJoin] socket reconnected while playing — auto-resyncing');
-        setTimeout(() => { void handleResync(); }, 800);
+        console.log('[HomeSync] socket reconnected while playing — auto-resyncing');
+        setTimeout(() => { void forceResync('socket-reconnect'); }, 800);
       }
     };
     socket.on('connect', onConnect);
     return () => { socket.off('connect', onConnect); };
-  }, [handleResync]);
+  }, [forceResync]);
+
+  // ── Heartbeat watchdog ─────────────────────────────────────────────────────
+  // Every 3s while playing: if no state update for >8s → forceResync.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (phaseRef.current !== 'playing') return;
+      const staleSince = Date.now() - lastStateAtRef.current;
+      if (staleSince > 8000) {
+        console.log('[HomeSync] heartbeat: no update for', staleSince, 'ms — forcing resync');
+        void forceResync('heartbeat-stale');
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [forceResync]);
+
+  // ── Visibility / focus / online listeners ─────────────────────────────────
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && phaseRef.current === 'playing') {
+        console.log('[HomeSync] tab became visible — resyncing');
+        void forceResync('visibilitychange');
+      }
+    };
+    const onFocus = () => {
+      if (phaseRef.current === 'playing') {
+        console.log('[HomeSync] window focused — resyncing');
+        void forceResync('window-focus');
+      }
+    };
+    const onOnline = () => {
+      console.log('[HomeSync] network back online — resyncing');
+      void forceResync('online');
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('online', onOnline);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('online', onOnline);
+    };
+  }, [forceResync]);
 
   // Polling fallback in lobby
   useEffect(() => {
@@ -350,8 +436,10 @@ export default function HomeJoin() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, session?.id]);
 
-  // Polling fallback in playing phase — recovers from missed home:game_started / home:game_ended / home:round
-  // Also catches home-flow gameFlowPhase transitions (theme_select→booking, etc.) without slug/round change.
+  // Polling fallback in playing phase — recovers from missed socket events.
+  // PRIMARY FIX: stateVersion comparison catches ANY server-side change within the same round
+  // (e.g. Sara'Musica question→reveal, Adult challenge→voting, Quizzone phase changes).
+  // Legacy slug/round/flowPhase checks are kept as secondary safety net.
   const flowPhaseRef = useRef<string>('');
   flowPhaseRef.current = String(session?.roundPayload?.gameFlowPhase ?? '');
   const knownFlowModeRef = useRef<string>('');
@@ -365,11 +453,10 @@ export default function HomeJoin() {
     const interval = setInterval(() => {
       fetch(`/api/home/sessions/${sid}`)
         .then(r => r.ok ? r.json() : null)
-        .then((data: { session: HomeSession; players: HomePlayer[] } | null) => {
+        .then((data: { session: HomeSession; players: HomePlayer[]; stateVersion?: number } | null) => {
           if (!data) return;
-          setPlayers(data.players);
-          const cur = playerRef.current;
-          if (cur) { const me = data.players.find(p => p.id === cur.id); if (me) setPlayer(me); }
+
+          const polledVersion = data.stateVersion ?? 0;
           const slugChanged = data.session.gameSlug !== knownSlug;
           const roundChanged = data.session.currentRound !== knownRound;
           const notPlaying = data.session.status !== 'playing';
@@ -377,7 +464,21 @@ export default function HomeJoin() {
           const polledFlowPhase = String(data.session.roundPayload?.gameFlowPhase ?? '');
           const isFlow = polledMode === 'home-flow' || knownFlowModeRef.current === 'home-flow';
           const flowPhaseChanged = isFlow && polledFlowPhase !== flowPhaseRef.current;
-          if (slugChanged || roundChanged || notPlaying || flowPhaseChanged) {
+          // Version-driven: any server state change (even same round, same slug) triggers replace
+          const versionStale = polledVersion > 0 && polledVersion > lastSeenVersionRef.current;
+
+          if (versionStale) {
+            console.log('[HomeSync] polling caught stale state version', lastSeenVersionRef.current, '→', polledVersion);
+            lastSeenVersionRef.current = polledVersion;
+            lastStateAtRef.current = Date.now();
+          }
+
+          // Always update players
+          setPlayers(data.players);
+          const cur = playerRef.current;
+          if (cur) { const me = data.players.find(p => p.id === cur.id); if (me) setPlayer(me); }
+
+          if (versionStale || slugChanged || roundChanged || notPlaying || flowPhaseChanged) {
             if (flowPhaseChanged) {
               console.log('[HomeFlow] phone polling: gameFlowPhase', flowPhaseRef.current, '→', polledFlowPhase);
             }
@@ -387,12 +488,19 @@ export default function HomeJoin() {
             } else if (data.session.status === 'ended') {
               setPhase('ended');
               clearJoin();
-            } else if (data.session.status === 'playing' && (slugChanged || roundChanged)) {
-              prevGameSlugRef.current = data.session.gameSlug;
-              prevCurrentRoundRef.current = data.session.currentRound;
-              setAnswered(null);
-              setRevealed(false);
-              startRoundTimer(data.session.roundPayload ?? {});
+            } else if (data.session.status === 'playing') {
+              if (slugChanged || roundChanged) {
+                prevGameSlugRef.current = data.session.gameSlug;
+                prevCurrentRoundRef.current = data.session.currentRound;
+                setAnswered(null);
+                setRevealed(false);
+                startRoundTimer(data.session.roundPayload ?? {});
+              } else if (versionStale) {
+                // Same round but state changed (phase change inside game) — reset transient UI
+                setAnswered(null);
+                setRevealed(false);
+                startRoundTimer(data.session.roundPayload ?? {});
+              }
             }
           }
         })
@@ -406,7 +514,12 @@ export default function HomeJoin() {
   // Use phaseRef/playerRef (not state) to avoid re-registration on every phase change,
   // which would cause missed events during the cleanup/setup window.
   useEffect(() => {
-    const u1 = on<{ session: HomeSession; players: HomePlayer[] }>('home:state', (d) => {
+    const u1 = on<{ session: HomeSession; players: HomePlayer[]; stateVersion?: number }>('home:state', (d) => {
+      // Track version + timestamp for heartbeat watchdog and polling comparison
+      if (d.stateVersion !== undefined && d.stateVersion > lastSeenVersionRef.current) {
+        lastSeenVersionRef.current = d.stateVersion;
+      }
+      lastStateAtRef.current = Date.now();
       const newMode  = String(d.session.roundPayload?.mode ?? '');
       const prevMode = currentModeRef.current;
       const cur = playerRef.current;
@@ -1162,7 +1275,7 @@ export default function HomeJoin() {
                 </div>
                 {/* 🔄 Riaggancia — emergency resync button */}
                 <button
-                  onClick={() => { void handleResync(); }}
+                  onClick={() => { void forceResync('manual-button'); }}
                   disabled={resyncLoading}
                   title="Riaggancia — risincronizza con il server"
                   style={{
@@ -3318,9 +3431,9 @@ function AdultController({ payload, player, session }: {
     return () => clearInterval(t);
   }, [challengeEndsAt, phase]);
 
-  const [starRatings, setStarRatings] = useState<AoStarVotePhone>({ intensity: 3, courage: 3, show: 3, performance: 3 });
+  const [starRatings, setStarRatings] = useState<AoStarVotePhone>({ intensity: 0, courage: 0, show: 0, performance: 0 });
   useEffect(() => {
-    setStarRatings({ intensity: 3, courage: 3, show: 3, performance: 3 });
+    setStarRatings({ intensity: 0, courage: 0, show: 0, performance: 0 });
   }, [phase]);
 
   const [busy, setBusy] = useState(false);
@@ -3472,11 +3585,14 @@ function AdultController({ payload, player, session }: {
       { key: 'show',        emoji: '😂', label: 'Spettacolo' },
       { key: 'performance', emoji: '👑', label: 'Performance' },
     ];
+    const allVoted = Object.values(starRatings).every(v => v >= 1);
     const StarRow = ({ cat }: { cat: typeof CATS[0] }) => (
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
           <span className="text-sm font-black text-white">{cat.emoji} {cat.label}</span>
-          <span className="text-sm font-bold" style={{ color: AC }}>{starRatings[cat.key]} ⭐</span>
+          <span className="text-sm font-bold" style={{ color: starRatings[cat.key] === 0 ? 'rgba(255,255,255,0.2)' : AC }}>
+            {starRatings[cat.key] === 0 ? '— ⭐' : `${starRatings[cat.key]} ⭐`}
+          </span>
         </div>
         <div className="flex gap-2">
           {[1,2,3,4,5].map(s => (
@@ -3537,10 +3653,13 @@ function AdultController({ payload, player, session }: {
         <div className="flex flex-col gap-4">
           {CATS.map(cat => <StarRow key={cat.key} cat={cat} />)}
         </div>
-        <button disabled={busy}
+        {!allVoted && (
+          <div className="text-center text-xs text-white/30 -mb-1">Assegna almeno 1 stella per ogni categoria</div>
+        )}
+        <button disabled={busy || !allVoted}
           onClick={() => void aoPost('vote', { playerId: player.id, ...starRatings })}
-          className="w-full rounded-2xl py-5 text-xl font-black text-white disabled:opacity-50 transition-all active:scale-95"
-          style={{ background: `linear-gradient(135deg,${AC},${AC}88)`, boxShadow: `0 0 40px ${AC}44` }}>
+          className="w-full rounded-2xl py-5 text-xl font-black text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95"
+          style={{ background: allVoted ? `linear-gradient(135deg,${AC},${AC}88)` : 'rgba(255,255,255,0.08)', boxShadow: allVoted ? `0 0 40px ${AC}44` : 'none' }}>
           {busy ? '…' : '⭐ INVIA VOTO'}
         </button>
       </div>
@@ -5078,4 +5197,13 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
   }
 
   return null;
+}
+
+export default function HomeJoin() {
+  const resyncRef = useRef<(() => void) | null>(null);
+  return (
+    <HomeJoinErrorBoundary onResync={() => { resyncRef.current?.(); }}>
+      <HomeJoinInner />
+    </HomeJoinErrorBoundary>
+  );
 }
