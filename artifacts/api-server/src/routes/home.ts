@@ -1957,7 +1957,17 @@ router.post("/home/sessions/:id/adult/use-power", async (req, res): Promise<void
   res.json({ ok: true });
 });
 
-// POST /adult/complete — challenge done → voting (if allowPublicVote) or instant result
+// Helper — calculate star-vote score
+type StarVote = { intensity: number; courage: number; show: number; performance: number };
+function calcStarScore(votes: Record<string, StarVote>, doublePoints: boolean): number {
+  const entries = Object.values(votes);
+  if (entries.length === 0) return 0;
+  const avgStars = entries.reduce((sum, v) => sum + (v.intensity + v.courage + v.show + v.performance) / 4, 0) / entries.length;
+  const base = Math.round(avgStars * 20); // 1–5 stars → 20–100 pts
+  return doublePoints ? base * 2 : base;
+}
+
+// POST /adult/complete — challenge done → always opens performance voting (15s)
 router.post("/home/sessions/:id/adult/complete", async (req, res): Promise<void> => {
   const id = String(req.params["id"]);
   if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
@@ -1965,23 +1975,21 @@ router.post("/home/sessions/:id/adult/complete", async (req, res): Promise<void>
   if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
   const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
   if (rp["mode"] !== "home-adult" || String(rp["phase"]) !== "challenge") { res.status(409).json({ error: "Non in fase sfida" }); return; }
-  const challenge = rp["currentChallenge"] as BottleChallenge | null;
   const selectedId = String(rp["selectedPlayerId"] ?? "");
-  const basePoints = (challenge?.durationSeconds ?? 60) >= 90 ? 200 : 150;
-  const pts = Boolean(rp["doublePoints"]) ? basePoints * 2 : basePoints;
-  const players = await getPlayers(id);
   if (Boolean(rp["forcedValidate"])) {
+    // Auto-Valida superpower: skip voting, award base points directly
+    const challenge = rp["currentChallenge"] as BottleChallenge | null;
+    const base = (challenge?.durationSeconds ?? 60) >= 90 ? 200 : 150;
+    const pts  = Boolean(rp["doublePoints"]) ? base * 2 : base;
+    const players = await getPlayers(id);
     const sel = players.find(p => p.id === selectedId);
     if (sel) await db.update(homePlayersTable).set({ score: sel.score + pts }).where(eq(homePlayersTable.id, selectedId));
     const updated = await getPlayers(id);
     await adultUpdate(id, { phase: "result", lastValidated: true, lastPoints: pts, rankingData: aoRanking(updated, { [selectedId]: pts }), activePower: null });
-  } else if ((challenge?.allowPublicVote ?? false) || Boolean(rp["forcePublicVote"])) {
-    await adultUpdate(id, { phase: "voting", votes: {}, votingEndsAt: new Date(Date.now() + 30_000).toISOString(), activePower: null });
   } else {
-    const sel = players.find(p => p.id === selectedId);
-    if (sel) await db.update(homePlayersTable).set({ score: sel.score + pts }).where(eq(homePlayersTable.id, selectedId));
-    const updated = await getPlayers(id);
-    await adultUpdate(id, { phase: "result", lastValidated: true, lastPoints: pts, rankingData: aoRanking(updated, { [selectedId]: pts }), activePower: null });
+    // Always open performance voting (4-category star rating, 15 s)
+    req.log.info({ sessionId: id }, "[ADULT_VOTE] phase_started");
+    await adultUpdate(id, { phase: "voting", votes: {}, votingEndsAt: new Date(Date.now() + 15_000).toISOString(), activePower: null });
   }
   res.json({ ok: true });
 });
@@ -1998,7 +2006,7 @@ router.post("/home/sessions/:id/adult/skip", async (req, res): Promise<void> => 
   res.json({ ok: true });
 });
 
-// POST /adult/vote — player votes ok/fail during voting phase
+// POST /adult/vote — player submits 4-category star performance vote
 router.post("/home/sessions/:id/adult/vote", async (req, res): Promise<void> => {
   const id = String(req.params["id"]);
   if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
@@ -2006,28 +2014,44 @@ router.post("/home/sessions/:id/adult/vote", async (req, res): Promise<void> => 
   if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
   const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
   if (rp["mode"] !== "home-adult" || String(rp["phase"]) !== "voting") { res.status(409).json({ error: "Votazione non aperta" }); return; }
-  const { playerId, vote } = req.body as { playerId: string; vote: "ok" | "fail" };
-  if (!["ok", "fail"].includes(vote)) { res.status(400).json({ error: "Voto non valido" }); return; }
-  const votes = { ...((rp["votes"] ?? {}) as Record<string, string>), [playerId]: vote };
-  const players = await getPlayers(id);
   const selectedId = String(rp["selectedPlayerId"] ?? "");
+  const { playerId, intensity, courage, show, performance } = req.body as { playerId: string; intensity: number; courage: number; show: number; performance: number };
+  // Performer cannot vote for themselves
+  if (playerId === selectedId) {
+    req.log.info({ sessionId: id, playerId }, "[ADULT_VOTE] vote_rejected performer");
+    res.status(403).json({ error: "Non puoi votare la tua performance" }); return;
+  }
+  // Validate stars (1–5 each)
+  if ([intensity, courage, show, performance].some(v => typeof v !== "number" || v < 1 || v > 5)) {
+    req.log.info({ sessionId: id, playerId }, "[ADULT_VOTE] vote_rejected invalid");
+    res.status(400).json({ error: "Stelle non valide (1–5 per categoria)" }); return;
+  }
+  // Reject late votes
+  const votingEndsAt = String(rp["votingEndsAt"] ?? "");
+  if (votingEndsAt && new Date(votingEndsAt).getTime() < Date.now()) {
+    req.log.info({ sessionId: id, playerId }, "[ADULT_VOTE] vote_rejected late");
+    res.status(409).json({ error: "Tempo scaduto" }); return;
+  }
+  const votes = { ...((rp["votes"] ?? {}) as Record<string, StarVote>), [playerId]: { intensity, courage, show, performance } };
+  req.log.info({ sessionId: id, playerId, intensity, courage, show, performance }, "[ADULT_VOTE] vote_received");
+  const players = await getPlayers(id);
   const voterIds = [...new Set([...(rp["activePlayers"] ?? []) as string[], ...(rp["spectatorPlayers"] ?? []) as string[]])].filter(v => v !== selectedId);
-  if (voterIds.every(vid => votes[vid])) {
-    const ok = Object.values(votes).filter(v => v === "ok").length;
-    const validated = ok >= Object.values(votes).filter(v => v === "fail").length;
-    const challenge = rp["currentChallenge"] as BottleChallenge | null;
-    const base = (challenge?.durationSeconds ?? 60) >= 90 ? 200 : 150;
-    const pts = validated ? (Boolean(rp["doublePoints"]) ? base * 2 : base) : 0;
-    if (validated) { const sel = players.find(p => p.id === selectedId); if (sel) await db.update(homePlayersTable).set({ score: sel.score + pts }).where(eq(homePlayersTable.id, selectedId)); }
+  if (voterIds.length > 0 && voterIds.every(vid => votes[vid])) {
+    // All eligible players have voted — auto-close
+    const pts = calcStarScore(votes, Boolean(rp["doublePoints"]));
+    req.log.info({ sessionId: id, pts }, "[ADULT_VOTE] vote_closed auto");
+    const sel = players.find(p => p.id === selectedId);
+    if (sel && pts > 0) await db.update(homePlayersTable).set({ score: sel.score + pts }).where(eq(homePlayersTable.id, selectedId));
     const updated = await getPlayers(id);
-    await adultUpdate(id, { votes, phase: "result", lastValidated: validated, lastPoints: pts, rankingData: aoRanking(updated, validated ? { [selectedId]: pts } : {}) });
+    req.log.info({ sessionId: id, pts }, "[ADULT_VOTE] score_calculated");
+    await adultUpdate(id, { votes, phase: "result", lastValidated: true, lastPoints: pts, rankingData: aoRanking(updated, pts > 0 ? { [selectedId]: pts } : {}) });
   } else {
     await adultUpdate(id, { votes });
   }
   res.json({ ok: true });
 });
 
-// POST /adult/close-vote — host closes voting early
+// POST /adult/close-vote — TV auto-closes when timer expires (or host closes early)
 router.post("/home/sessions/:id/adult/close-vote", async (req, res): Promise<void> => {
   const id = String(req.params["id"]);
   if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
@@ -2035,17 +2059,16 @@ router.post("/home/sessions/:id/adult/close-vote", async (req, res): Promise<voi
   if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
   const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
   if (rp["mode"] !== "home-adult" || String(rp["phase"]) !== "voting") { res.status(409).json({ error: "Votazione non aperta" }); return; }
-  const votes = (rp["votes"] ?? {}) as Record<string, string>;
-  const ok = Object.values(votes).filter(v => v === "ok").length;
-  const validated = ok >= Object.values(votes).filter(v => v === "fail").length;
-  const challenge = rp["currentChallenge"] as BottleChallenge | null;
-  const base = (challenge?.durationSeconds ?? 60) >= 90 ? 200 : 150;
-  const pts = validated ? (Boolean(rp["doublePoints"]) ? base * 2 : base) : 0;
+  const votes = (rp["votes"] ?? {}) as Record<string, StarVote>;
   const selectedId = String(rp["selectedPlayerId"] ?? "");
+  const pts = calcStarScore(votes, Boolean(rp["doublePoints"]));
+  req.log.info({ sessionId: id, voteCount: Object.keys(votes).length, pts }, "[ADULT_VOTE] vote_closed manual");
   const players = await getPlayers(id);
-  if (validated) { const sel = players.find(p => p.id === selectedId); if (sel) await db.update(homePlayersTable).set({ score: sel.score + pts }).where(eq(homePlayersTable.id, selectedId)); }
+  const sel = players.find(p => p.id === selectedId);
+  if (sel && pts > 0) await db.update(homePlayersTable).set({ score: sel.score + pts }).where(eq(homePlayersTable.id, selectedId));
   const updated = await getPlayers(id);
-  await adultUpdate(id, { phase: "result", lastValidated: validated, lastPoints: pts, rankingData: aoRanking(updated, validated ? { [selectedId]: pts } : {}) });
+  req.log.info({ sessionId: id, pts }, "[ADULT_VOTE] score_calculated");
+  await adultUpdate(id, { phase: "result", lastValidated: true, lastPoints: pts, rankingData: aoRanking(updated, pts > 0 ? { [selectedId]: pts } : {}) });
   res.json({ ok: true });
 });
 

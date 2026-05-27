@@ -3283,6 +3283,9 @@ function AdultController({ payload, player, session }: {
   const myPower     = spectatorPowers[player.id] ?? null;
   const myConsent   = consentMap[player.id];
 
+  type AoStarVotePhone = { intensity: number; courage: number; show: number; performance: number };
+  const votesTyped = (payload.votes ?? {}) as Record<string, AoStarVotePhone>;
+
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   useEffect(() => {
     if (!challengeEndsAt || phase !== 'challenge') { setTimeLeft(null); return; }
@@ -3291,6 +3294,11 @@ function AdultController({ payload, player, session }: {
     const t = setInterval(tick, 250);
     return () => clearInterval(t);
   }, [challengeEndsAt, phase]);
+
+  const [starRatings, setStarRatings] = useState<AoStarVotePhone>({ intensity: 3, courage: 3, show: 3, performance: 3 });
+  useEffect(() => {
+    setStarRatings({ intensity: 3, courage: 3, show: 3, performance: 3 });
+  }, [phase]);
 
   const [busy, setBusy] = useState(false);
   const aoPost = async (sub: string, body?: Record<string, unknown>) => {
@@ -3433,31 +3441,85 @@ function AdultController({ payload, player, session }: {
 
   // ── voting ────────────────────────────────────────────────────────────────
   if (phase === 'voting') {
-    const myVote = votes[player.id];
+    const myVote    = votesTyped[player.id];
+    const isPerf    = player.id === selectedId;
+    const CATS: { key: keyof AoStarVotePhone; emoji: string; label: string }[] = [
+      { key: 'intensity',   emoji: '🔥', label: 'Intensità'  },
+      { key: 'courage',     emoji: '😈', label: 'Coraggio'   },
+      { key: 'show',        emoji: '😂', label: 'Spettacolo' },
+      { key: 'performance', emoji: '👑', label: 'Performance' },
+    ];
+    const StarRow = ({ cat }: { cat: typeof CATS[0] }) => (
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-black text-white">{cat.emoji} {cat.label}</span>
+          <span className="text-sm font-bold" style={{ color: AC }}>{starRatings[cat.key]} ⭐</span>
+        </div>
+        <div className="flex gap-2">
+          {[1,2,3,4,5].map(s => (
+            <button key={s}
+              onClick={() => setStarRatings(prev => ({ ...prev, [cat.key]: s }))}
+              className="flex-1 rounded-xl py-2.5 text-xl transition-all active:scale-90"
+              style={{
+                background: s <= starRatings[cat.key] ? `${AC}33` : 'rgba(255,255,255,0.06)',
+                border: `2px solid ${s <= starRatings[cat.key] ? AC : 'rgba(255,255,255,0.12)'}`,
+              }}>
+              {s <= starRatings[cat.key] ? '⭐' : '☆'}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+
+    if (isPerf) {
+      return (
+        <div className="flex flex-col items-center gap-5 py-8 text-center">
+          <div className="text-5xl">🎭</div>
+          <div className="text-xl font-black text-white">Non puoi votare</div>
+          <div className="text-sm text-white/40">la tua performance</div>
+          <div className="rounded-2xl px-5 py-3 font-black text-sm"
+            style={{ background: `${AC}18`, border: `1px solid ${AC}40`, color: AC }}>
+            {selectedNickname ?? '?'} — in attesa dei voti…
+          </div>
+        </div>
+      );
+    }
+
+    if (myVote) {
+      return (
+        <div className="flex flex-col items-center gap-5 py-8 text-center">
+          <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring' }}
+            className="text-5xl">✅</motion.div>
+          <div className="text-xl font-black text-white">Voto inviato!</div>
+          <div className="text-white/40 text-sm">Aspetta il risultato…</div>
+          <div className="grid grid-cols-2 gap-2 w-full mt-2">
+            {CATS.map(cat => (
+              <div key={cat.key} className="rounded-xl px-4 py-2 flex items-center justify-between"
+                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <span className="text-xs text-white/60">{cat.emoji} {cat.label}</span>
+                <span className="text-xs font-black" style={{ color: AC }}>{myVote[cat.key]}⭐</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
     return (
-      <div className="flex flex-col items-center gap-5 py-6 text-center">
-        <div className="text-2xl font-black text-white">Ha completato la sfida?</div>
-        <div className="text-white/50 text-sm">{selectedNickname ?? '?'}</div>
-        {myVote ? (
-          <div className="rounded-2xl p-5 w-full" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)' }}>
-            <div className="text-3xl mb-1">{myVote === 'ok' ? '✅' : '❌'}</div>
-            <div className="font-black text-white">{myVote === 'ok' ? 'Hai votato SÌ' : 'Hai votato NO'}</div>
-            <div className="text-white/30 text-xs mt-1">Aspetta gli altri…</div>
-          </div>
-        ) : (
-          <div className="flex gap-4 w-full">
-            <button disabled={busy} onClick={() => void aoPost('vote', { playerId: player.id, vote: 'fail' })}
-              className="flex-1 rounded-2xl py-5 text-2xl font-black disabled:opacity-50"
-              style={{ background: 'rgba(239,68,68,0.2)', border: '2px solid rgba(239,68,68,0.5)', color: '#EF4444' }}>
-              ❌ No
-            </button>
-            <button disabled={busy} onClick={() => void aoPost('vote', { playerId: player.id, vote: 'ok' })}
-              className="flex-1 rounded-2xl py-5 text-2xl font-black disabled:opacity-50"
-              style={{ background: 'rgba(74,222,128,0.2)', border: '2px solid rgba(74,222,128,0.5)', color: '#4ADE80' }}>
-              ✅ Sì
-            </button>
-          </div>
-        )}
+      <div className="flex flex-col gap-5 py-4">
+        <div className="text-center">
+          <div className="text-xs font-black uppercase tracking-widest text-white/40 mb-1">VALUTA LA PERFORMANCE</div>
+          <div className="text-xl font-black" style={{ color: AC }}>{selectedNickname ?? '?'}</div>
+        </div>
+        <div className="flex flex-col gap-4">
+          {CATS.map(cat => <StarRow key={cat.key} cat={cat} />)}
+        </div>
+        <button disabled={busy}
+          onClick={() => void aoPost('vote', { playerId: player.id, ...starRatings })}
+          className="w-full rounded-2xl py-5 text-xl font-black text-white disabled:opacity-50 transition-all active:scale-95"
+          style={{ background: `linear-gradient(135deg,${AC},${AC}88)`, boxShadow: `0 0 40px ${AC}44` }}>
+          {busy ? '…' : '⭐ INVIA VOTO'}
+        </button>
       </div>
     );
   }

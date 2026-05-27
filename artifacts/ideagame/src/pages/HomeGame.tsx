@@ -3830,7 +3830,8 @@ function AdultOnlyBoard({ payload, session, players }: {
   const selectedNickname  = payload.selectedPlayerNickname as string | null;
   const challenge         = payload.currentChallenge as { text: string; category: string; durationSeconds: number; allowPublicVote: boolean } | null;
   const challengeEndsAt   = payload.challengeEndsAt as string | null;
-  const votes             = (payload.votes ?? {}) as Record<string, string>;
+  type AoStarVote = { intensity: number; courage: number; show: number; performance: number };
+  const votes             = (payload.votes ?? {}) as Record<string, AoStarVote>;
   const lastValidated     = payload.lastValidated as boolean | null;
   const lastPoints        = Number(payload.lastPoints ?? 0);
   const doublePoints      = Boolean(payload.doublePoints);
@@ -3843,6 +3844,7 @@ function AdultOnlyBoard({ payload, session, players }: {
   const spinFinalAngle    = Number(payload.spinFinalAngle ?? 1440);
   const spinDurationMs    = Number(payload.spinDurationMs ?? 4000);
   const spinStartedAt     = payload.spinStartedAt as string | null;
+  const votingEndsAt      = payload.votingEndsAt as string | null;
 
   const levelObj  = AO_BOARD_LEVELS.find(l => l.level === level) ?? AO_BOARD_LEVELS[0]!;
   const AC        = levelObj.color;
@@ -3856,6 +3858,23 @@ function AdultOnlyBoard({ payload, session, players }: {
     const t = setInterval(tick, 250);
     return () => clearInterval(t);
   }, [challengeEndsAt, phase]);
+
+  const [votingTimeLeft, setVotingTimeLeft] = useState<number | null>(null);
+  useEffect(() => {
+    if (!votingEndsAt || phase !== 'voting') { setVotingTimeLeft(null); return; }
+    const tick = () => setVotingTimeLeft(Math.max(0, Math.ceil((new Date(votingEndsAt).getTime() - Date.now()) / 1000)));
+    tick();
+    const t = setInterval(tick, 250);
+    return () => clearInterval(t);
+  }, [votingEndsAt, phase]);
+
+  const autoCloseVoteCalledRef = useRef(false);
+  useEffect(() => {
+    if (phase !== 'voting') { autoCloseVoteCalledRef.current = false; return; }
+    if (votingTimeLeft !== 0 || autoCloseVoteCalledRef.current) return;
+    autoCloseVoteCalledRef.current = true;
+    void fetch(`/api/home/sessions/${session.id}/adult/close-vote`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  }, [votingTimeLeft, phase, session.id]);
 
   const [busy, setBusy] = useState(false);
   // ── MUST be declared here (top level), NOT inside any conditional branch ──────
@@ -3976,8 +3995,8 @@ function AdultOnlyBoard({ payload, session, players }: {
   // ── spinning (bottle animation) ───────────────────────────────────────────
   if (phase === 'spinning') {
     const N      = Math.max(1, activePlayers.length);
-    const R      = N <= 3 ? 110 : N <= 6 ? 130 : 145;
-    const SZ     = 360;
+    const R      = N <= 3 ? 160 : N <= 6 ? 178 : 192;
+    const SZ     = 460;
     const CENTER = SZ / 2;
     return (
       <div className="flex flex-col items-center gap-5 w-full max-w-3xl">
@@ -4019,8 +4038,8 @@ function AdultOnlyBoard({ payload, session, players }: {
             left: CENTER, top: CENTER,
             transform: `translate(-50%, -50%) rotate(${bottleTargetAngle}deg)`,
             transition: `transform ${(spinDurationMs / 1000).toFixed(1)}s cubic-bezier(0.17, 0.67, 0.12, 0.99)`,
-            fontSize: 72, lineHeight: 1,
-            filter: `drop-shadow(0 0 24px ${AC}88)`,
+            fontSize: 'clamp(120px, 13vw, 220px)', lineHeight: 1,
+            filter: `drop-shadow(0 0 48px ${AC}cc) drop-shadow(0 0 20px ${AC}88)`,
             userSelect: 'none',
           }}>🍾</div>
 
@@ -4128,32 +4147,72 @@ function AdultOnlyBoard({ payload, session, players }: {
 
   // ── voting ─────────────────────────────────────────────────────────────────
   if (phase === 'voting') {
-    const okCount   = Object.values(votes).filter(v => v === 'ok').length;
-    const failCount = Object.values(votes).filter(v => v === 'fail').length;
-    const total     = Object.values(votes).length;
-    const voters    = [...activePlayers, ...spectatorPlayers].filter(id => id !== payload.selectedPlayerId);
+    const starEntries = Object.values(votes);
+    const total       = starEntries.length;
+    const voters      = [...activePlayers, ...spectatorPlayers].filter(id => id !== payload.selectedPlayerId);
+    const avgCat = (key: keyof typeof starEntries[0]) =>
+      total > 0 ? (starEntries.reduce((s, v) => s + (v[key] ?? 0), 0) / total) : 0;
+    const CATS: { key: keyof AoStarVote; emoji: string; label: string }[] = [
+      { key: 'intensity',   emoji: '🔥', label: 'Intensità'  },
+      { key: 'courage',     emoji: '😈', label: 'Coraggio'   },
+      { key: 'show',        emoji: '😂', label: 'Spettacolo' },
+      { key: 'performance', emoji: '👑', label: 'Performance' },
+    ];
+    const timerColor = (votingTimeLeft ?? 15) <= 5 ? '#ef4444' : (votingTimeLeft ?? 15) <= 8 ? '#facc15' : '#4ade80';
     return (
       <div className="flex flex-col gap-5 w-full max-w-2xl">
+        {/* Header */}
         <div className="flex items-center justify-between">
           <LevelBadge />
-          <div className="text-white/40 text-sm">{total} / {voters.length} hanno votato</div>
-        </div>
-        <div className="rounded-3xl p-7 text-center" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)' }}>
-          <div className="text-display text-3xl font-black text-white mb-2">{selectedNickname ?? '?'}</div>
-          <div className="text-white/50 text-sm mb-4">Ha completato la sfida?</div>
-          <div className="flex justify-center gap-12">
-            <div className="flex flex-col items-center gap-1">
-              <div className="text-4xl font-black text-green-400">{okCount}</div>
-              <div className="text-xs text-white/30">✅ SÌ</div>
-            </div>
-            <div className="flex flex-col items-center gap-1">
-              <div className="text-4xl font-black text-red-400">{failCount}</div>
-              <div className="text-xs text-white/30">❌ NO</div>
-            </div>
+          <div className="flex items-center gap-3">
+            <div className="text-sm text-white/40">{total} / {voters.length} voti</div>
+            {votingTimeLeft !== null && (
+              <div className="text-3xl font-black tabular-nums" style={{ color: timerColor, textShadow: `0 0 20px ${timerColor}88` }}>
+                {votingTimeLeft}s
+              </div>
+            )}
           </div>
         </div>
-        <div className="h-2 w-full rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
-          <div className="h-full rounded-full transition-all duration-500" style={{ background: '#4ADE80', width: voters.length > 0 ? `${(total / voters.length) * 100}%` : '0%' }}/>
+
+        {/* Timer bar */}
+        <div className="h-1.5 w-full rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+          <div className="h-full rounded-full transition-all duration-[250ms] ease-linear"
+            style={{ background: timerColor, width: `${((votingTimeLeft ?? 0) / 15) * 100}%` }}/>
+        </div>
+
+        {/* Performer card */}
+        <div className="rounded-3xl p-6 text-center" style={{ background: `${AC}18`, border: `2px solid ${AC}44` }}>
+          <div className="text-xs font-black uppercase tracking-widest text-white/40 mb-2">VOTAZIONE PERFORMANCE</div>
+          <div className="text-display text-4xl font-black" style={{ color: AC }}>{selectedNickname ?? '?'}</div>
+          <div className="text-white/40 text-sm mt-1">Valuta la performance dal tuo telefono</div>
+        </div>
+
+        {/* Category averages */}
+        <div className="grid grid-cols-2 gap-3">
+          {CATS.map(cat => {
+            const avg = avgCat(cat.key);
+            return (
+              <div key={cat.key} className="rounded-2xl px-5 py-4"
+                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-black text-white/70">{cat.emoji} {cat.label}</span>
+                  <span className="text-sm font-black" style={{ color: AC }}>{total > 0 ? avg.toFixed(1) : '—'}</span>
+                </div>
+                <div className="flex gap-0.5">
+                  {[1,2,3,4,5].map(s => (
+                    <div key={s} className="h-1.5 flex-1 rounded-full"
+                      style={{ background: s <= Math.round(avg) ? AC : 'rgba(255,255,255,0.12)' }}/>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Progress + close button */}
+        <div className="h-1.5 w-full rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+          <div className="h-full rounded-full transition-all duration-500"
+            style={{ background: AC, width: voters.length > 0 ? `${(total / voters.length) * 100}%` : '0%' }}/>
         </div>
         <button onClick={() => void aoPost('close-vote')} disabled={busy}
           className="rounded-2xl px-10 py-4 text-lg font-black text-white disabled:opacity-50"
