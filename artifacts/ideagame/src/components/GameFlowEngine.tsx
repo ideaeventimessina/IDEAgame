@@ -230,34 +230,38 @@ export function GameFlowEngine({
         <motion.div key="theme_select"
           initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
           transition={{ duration: 0.25 }}
-          className="flex w-full max-w-3xl flex-col items-center gap-7">
+          className="flex w-full max-w-4xl flex-col items-center gap-8">
 
-          <div className="flex flex-col items-center gap-2 text-center">
-            <motion.div className="text-6xl"
-              animate={{ scale: [1, 1.1, 1] }} transition={{ duration: 2.2, repeat: Infinity }}>
+          {/* Header */}
+          <div className="flex flex-col items-center gap-3 text-center">
+            <motion.div className="text-7xl"
+              animate={{ scale: [1, 1.08, 1] }} transition={{ duration: 2.4, repeat: Infinity }}>
               {gameUI.emoji}
             </motion.div>
-            <div className="text-display text-3xl font-black text-white"
-              style={{ textShadow: `0 0 30px ${gameUI.glow}55` }}>
+            <div className="text-display text-5xl font-black text-white"
+              style={{ textShadow: `0 0 48px ${gameUI.glow}66` }}>
               Scegli il tema
             </div>
-            <div className="text-sm font-semibold" style={{ color: 'rgba(255,255,255,0.4)' }}>
-              Tocca un tema per selezionarlo
+            <div className="text-sm font-semibold" style={{ color: 'rgba(255,255,255,0.35)' }}>
+              Seleziona un tema per iniziare
             </div>
           </div>
 
-          <div className={`grid w-full gap-4 ${themes.length <= 4 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+          {/* Theme grid — Quizzone-style cards */}
+          <div className={`grid w-full gap-5 ${themes.length <= 4 ? 'grid-cols-2' : 'grid-cols-3'}`}>
             {themes.map((theme) => (
               <motion.button key={theme.id} onClick={() => selectTheme(theme)} disabled={selecting}
-                whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-                className="flex flex-col gap-2 rounded-2xl px-5 py-5 text-left disabled:opacity-50"
+                whileHover={{ scale: 1.04, boxShadow: `0 0 40px ${gameUI.color}44` }}
+                whileTap={{ scale: 0.97 }}
+                className="flex flex-col gap-3 rounded-3xl px-6 py-6 text-left disabled:opacity-50 transition-shadow"
                 style={{
-                  background: `linear-gradient(135deg,${gameUI.color}22,${gameUI.color}0a)`,
-                  border: `1.5px solid ${gameUI.color}55`,
+                  background: `linear-gradient(135deg,${gameUI.color}18,${gameUI.color}08)`,
+                  border: `2px solid ${gameUI.color}44`,
+                  backdropFilter: 'blur(10px)',
                 }}>
-                <div className="font-black text-white" style={{ fontSize: '1.05rem' }}>{theme.name}</div>
+                <div className="text-display text-lg font-black text-white leading-tight">{theme.name}</div>
                 {theme.description && (
-                  <div className="text-xs font-medium leading-snug" style={{ color: 'rgba(255,255,255,0.45)' }}>
+                  <div className="text-sm font-medium leading-relaxed" style={{ color: 'rgba(255,255,255,0.5)' }}>
                     {theme.description}
                   </div>
                 )}

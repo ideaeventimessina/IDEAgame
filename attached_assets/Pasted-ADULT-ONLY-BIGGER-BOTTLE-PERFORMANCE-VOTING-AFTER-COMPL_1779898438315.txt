@@ -1,0 +1,187 @@
+ADULT ONLY — BIGGER BOTTLE + PERFORMANCE VOTING AFTER COMPLETED.
+
+Do not touch other games.
+Do not change Adult Only consent/escalation logic.
+Patch only Adult Only TV/phone flow.
+
+==================================================
+1) BIGGER BOTTLE
+==================================================
+
+Problem:
+Bottle animation works but bottle is too small.
+
+Required:
+TV bottle must be much larger and visually central.
+
+Change:
+- increase bottle size at least 2x / 2.5x
+- center it clearly
+- player names stay around it
+- selected player glow still visible
+- animation must remain smooth
+
+Responsive:
+- TV: very large bottle
+- tablet: large
+- phone spectator: no bottle needed, just status
+
+If using emoji 🍾:
+font-size should be huge on TV, e.g. clamp(120px, 14vw, 240px).
+
+==================================================
+2) COMPLETATA MUST OPEN VOTING
+==================================================
+
+Current:
+When host clicks “Completata”, round closes directly / gives result.
+
+Required:
+When TV/host clicks “Completata”:
+
+DO NOT immediately assign final result.
+
+Instead:
+- enter phase: "voting"
+- all eligible players on phones see voting UI
+- selected player(s) cannot vote for themselves
+- spectators and non-performing players vote
+
+Voting categories:
+1. 🔥 Intensità
+2. 😈 Coraggio
+3. 😂 Spettacolo
+4. 👑 Performance
+
+Each category:
+1–5 stars.
+
+Voting timer:
+15 seconds.
+
+At timer end:
+- close voting server-side
+- calculate average
+- assign points
+- show result on TV
+
+Score:
+averageStarsTotal normalized to 0–100
+or:
+average category stars * 20
+
+Example:
+media 4.2 stelle → 84 punti.
+
+If double-score superpower active:
+score * 2.
+
+==================================================
+3) PHONE VOTING UI
+==================================================
+
+During adult phase "voting":
+
+Phones show:
+“Valuta la performance”
+
+Show selected player(s):
+Andrea + Vale
+
+Categories with stars:
+🔥 Intensità
+😈 Coraggio
+😂 Spettacolo
+👑 Performance
+
+Button:
+INVIA VOTO
+
+After submit:
+“Voto inviato”
+
+If player is performer:
+show:
+“Non puoi votare la tua performance”
+
+==================================================
+4) SERVER VOTING GUARD
+==================================================
+
+Server owns voting state.
+
+Add:
+adultVoteState:
+{
+  challengeId,
+  votingStartedAt,
+  votingEndsAt,
+  votes: {
+    playerId: {
+      intensity,
+      courage,
+      show,
+      performance
+    }
+  }
+}
+
+Rules:
+- one vote per player
+- performers cannot vote
+- late votes after votingEndsAt rejected
+- duplicate vote rejected or updated only before timer ends
+- if no votes, fallback score = 0 or base score
+
+==================================================
+5) TV VOTING SCREEN
+==================================================
+
+TV after “Completata”:
+
+Show:
+“VOTAZIONE PERFORMANCE”
+timer 15s
+selected player(s)
+votes received count
+
+At end:
+Show:
+score
+points assigned
+ranking update
+
+Then:
+button “Prossima bottiglia”
+
+==================================================
+6) LOGS
+==================================================
+
+Add logs:
+
+[ADULT_VOTE]
+phase_started
+vote_received
+vote_rejected
+vote_closed
+score_calculated
+
+==================================================
+OUTPUT
+==================================================
+
+A. files modified
+B. bottle size updated
+C. completed -> voting flow
+D. phone voting UI
+E. server vote scoring
+F. TV result screen
+G. typecheck result
+H. manual test:
+   - spin bottle
+   - complete challenge
+   - phones vote
+   - timer closes
+   - score appears
+   - next bottle works

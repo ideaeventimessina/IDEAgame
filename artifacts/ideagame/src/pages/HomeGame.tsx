@@ -1587,7 +1587,7 @@ export default function HomeGame() {
               </div>
 
               {/* Timer — hidden for modes with their own internal timer */}
-              {!(['home-percorso','home-coppie','home-quizzone','home-saramusica','home-adult','home-ballo'].includes(
+              {!(['home-percorso','home-coppie','home-quizzone','home-saramusica','home-adult','home-ballo','home-flow'].includes(
                   String((session.roundPayload as Record<string,unknown>)?.mode ?? '')) ||
                 (session.gameSlug === 'karaoke-battle' &&
                   ((session.gameConfig as Record<string,unknown>)?.karaokeHomeState as {version?:number}|undefined)?.version === 3)
