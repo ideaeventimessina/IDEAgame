@@ -520,7 +520,7 @@ function isSafeToShowTvMessages(session: HomeSession | null, phase: string): boo
     const gfp = String(rp['gameFlowPhase'] ?? '');
     return gfp === 'booking' || gfp === 'theme_select';
   }
-  if (mode === 'home-adult') { const p = String(rp['phase'] ?? ''); return p === 'intro' || p === 'spinning'; }
+  if (mode === 'home-adult') return false;
   if (mode === 'home-saramusica') return String(rp['phase'] ?? '') !== 'playing';
   if (mode === 'home-freestyle') {
     const fp = String(rp['phase'] ?? '');
@@ -3750,178 +3750,177 @@ function SaraMusicaBoard({ payload, session, players }: {
 
 // ── AdultOnlyBoard ────────────────────────────────────────────────────────────
 
-// ── Adult Only data ───────────────────────────────────────────────────────────
-
-const AO_LEVELS = [
-  { id: 'flirt',      label: 'Flirt',      emoji: '😊', color: '#FB7185', desc: 'Leggero e divertente' },
-  { id: 'tension',   label: 'Tensione',   emoji: '😏', color: '#F97316', desc: 'Un po\' più audace' },
-  { id: 'hot',       label: 'Hot',        emoji: '🔥', color: '#EF4444', desc: 'Per i coraggiosi' },
-  { id: 'extreme',   label: 'Extreme',    emoji: '💣', color: '#A855F7', desc: 'Nessun limite' },
-  { id: 'after_dark',label: 'After Dark', emoji: '🌙', color: '#818CF8', desc: 'Solo adulti' },
+const AO_BOARD_LEVELS = [
+  { level: 1, label: 'Sociale',    emoji: '🥂', color: '#34D399', desc: 'Rompighiaccio per tutti' },
+  { level: 2, label: 'Flirt',      emoji: '💋', color: '#FB7185', desc: 'Un po\' più audace' },
+  { level: 3, label: 'Hot',        emoji: '🔥', color: '#EF4444', desc: 'Per i coraggiosi' },
+  { level: 4, label: 'Pack Admin', emoji: '🔒', color: '#A855F7', desc: 'Contenuti personalizzati' },
+  { level: 5, label: 'Esclusivo',  emoji: '🌙', color: '#818CF8', desc: 'Solo adulti intrepidi' },
 ] as const;
 
-type AOLevel = typeof AO_LEVELS[number]['id'];
-
-interface AOMission { id: string; level: string; title: string; body: string; points: number; timeLimit: number; tag: string; }
+const AO_BOARD_POWERS: Record<string, { label: string; emoji: string }> = {
+  reroll:        { label: 'Rigioca',     emoji: '🎲' },
+  extra_time:    { label: '+30 sec',     emoji: '⏱️' },
+  swap_player:   { label: 'Scambia',     emoji: '🔄' },
+  validate:      { label: 'Auto-Valida', emoji: '✅' },
+  double_points: { label: 'Doppio',      emoji: '2️⃣' },
+  public_vote:   { label: 'Voto totale', emoji: '👥' },
+};
 
 function AdultOnlyBoard({ payload, session, players }: {
   payload: Record<string,unknown>;
   session: HomeSession;
   players: HomePlayer[];
 }) {
-  const phase               = String(payload.phase ?? 'intro');
-  const currentRound        = Number(payload.currentRound ?? 0);
-  const totalRounds         = Number(payload.totalRounds ?? 10);
-  const levelId             = String(payload.level ?? 'flirt') as AOLevel;
-  const levelLabel          = String(payload.levelLabel ?? levelId);
-  const selectedNickname    = payload.selectedPlayerNickname as string | null;
-  const completedBy         = payload.completedBy as string | null;
-  const pointsAwarded       = Number(payload.pointsAwarded ?? 0);
-  const rankingData         = payload.rankingData as { playerId: string; nickname: string; score: number; delta: number }[] | null;
-  const mission             = payload.currentMission as AOMission | null;
-  const missionEndsAt       = payload.missionEndsAt as string | undefined;
-  const missionsLoaded      = ((payload.missions as unknown[]) ?? []).length > 0;
+  const phase             = String(payload.phase ?? 'consent');
+  const level             = Number(payload.level ?? 1);
+  const levelLabel        = String(payload.levelLabel ?? `Livello ${level}`);
+  const roundNumber       = Number(payload.roundNumber ?? 0);
+  const consentMap        = (payload.consentMap ?? {}) as Record<string, string>;
+  const activePlayers     = (payload.activePlayers ?? []) as string[];
+  const spectatorPlayers  = (payload.spectatorPlayers ?? []) as string[];
+  const selectedNickname  = payload.selectedPlayerNickname as string | null;
+  const challenge         = payload.currentChallenge as { text: string; category: string; durationSeconds: number; allowPublicVote: boolean } | null;
+  const challengeEndsAt   = payload.challengeEndsAt as string | null;
+  const votes             = (payload.votes ?? {}) as Record<string, string>;
+  const lastValidated     = payload.lastValidated as boolean | null;
+  const lastPoints        = Number(payload.lastPoints ?? 0);
+  const doublePoints      = Boolean(payload.doublePoints);
+  const activePower       = payload.activePower as { nickname: string; power: string } | null;
+  const spectatorPowers   = (payload.spectatorPowers ?? {}) as Record<string, string | null>;
+  const escalationTarget  = payload.escalationTarget as number | null;
+  const escalationVotes   = (payload.escalationVotes ?? {}) as Record<string, boolean>;
+  const rankingData       = (payload.rankingData ?? []) as { playerId: string; nickname: string; score: number; delta: number }[];
+  const emergencyStop     = Boolean(payload.emergencyStop);
 
-  const levelObj   = AO_LEVELS.find(l => l.id === levelId) ?? AO_LEVELS[0]!;
-  const AC         = levelObj.color;
-  const AC_GLOW    = `${AC}44`;
+  const levelObj  = AO_BOARD_LEVELS.find(l => l.level === level) ?? AO_BOARD_LEVELS[0]!;
+  const AC        = levelObj.color;
+  const AC_GLOW   = `${AC}44`;
 
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   useEffect(() => {
-    if (!missionEndsAt || phase !== 'mission') { setTimeLeft(null); return; }
-    const tick = () => setTimeLeft(Math.max(0, Math.ceil((new Date(missionEndsAt).getTime() - Date.now()) / 1000)));
+    if (!challengeEndsAt || phase !== 'challenge') { setTimeLeft(null); return; }
+    const tick = () => setTimeLeft(Math.max(0, Math.ceil((new Date(challengeEndsAt).getTime() - Date.now()) / 1000)));
     tick();
     const t = setInterval(tick, 250);
     return () => clearInterval(t);
-  }, [missionEndsAt, phase]);
+  }, [challengeEndsAt, phase]);
 
   const [busy, setBusy] = useState(false);
   const aoPost = async (sub: string, body?: Record<string,unknown>) => {
     setBusy(true);
-    try { await fetch(`/api/home/sessions/${session.id}/adult/${sub}`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body??{}) }); }
+    try { await fetch(`/api/home/sessions/${session.id}/adult/${sub}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) }); }
     finally { setBusy(false); }
   };
 
-  // ── intro ─────────────────────────────────────────────────────────────────
-  if (phase === 'intro') return (
-    <div className="flex flex-col items-center gap-8 text-center w-full max-w-4xl">
-      <div className="flex flex-col items-center gap-2">
-        <div className="text-7xl">🍾</div>
-        <div className="text-display text-4xl font-black text-white">Jonny After Dark</div>
-        <div className="text-white/50 text-sm">{players.length} giocatori pronti — Scegli il livello</div>
-      </div>
-      <div className="grid grid-cols-5 gap-3 w-full">
-        {AO_LEVELS.map(lv => (
-          <button key={lv.id} disabled={busy}
-            onClick={() => {
-              const count = window.prompt('Quante manche? (5-20)', '10');
-              const n = Math.min(20, Math.max(5, parseInt(count ?? '10') || 10));
-              void aoPost('start', { level: lv.id, totalRounds: n });
-            }}
-            className="flex flex-col items-center gap-3 rounded-2xl p-5 transition-all hover:scale-105 disabled:opacity-50"
-            style={{ background: `${lv.color}18`, border: `2px solid ${lv.color}44` }}>
-            <div className="text-4xl">{lv.emoji}</div>
-            <div className="text-sm font-black text-white">{lv.label}</div>
-            <div className="text-xs text-white/40 leading-tight">{lv.desc}</div>
-          </button>
-        ))}
-      </div>
-      <div className="text-white/20 text-xs">Clicca su un livello per avviare la serata</div>
+  const LevelBadge = () => (
+    <div className="rounded-full px-4 py-2 text-sm font-black"
+      style={{ background: `${AC}22`, border: `1px solid ${AC}55`, color: AC }}>
+      {levelObj.emoji} {levelLabel}
     </div>
   );
 
-  // ── spinning ──────────────────────────────────────────────────────────────
-  if (phase === 'spinning') {
+  const MiniRanking = ({ max = 5 }: { max?: number }) => (
+    <div className="flex flex-col gap-1.5 w-full">
+      {rankingData.slice(0, max).map((p, i) => (
+        <div key={p.playerId} className="flex items-center gap-3 rounded-xl px-4 py-2"
+          style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
+          <div className="text-white/30 text-sm w-5 text-center">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</div>
+          <div className="flex-1 text-white font-bold text-sm">{p.nickname}</div>
+          {p.delta > 0 && <div className="text-xs font-bold" style={{ color: AC }}>+{p.delta}</div>}
+          <div className="font-black text-sm" style={{ color: AC }}>{p.score}pt</div>
+        </div>
+      ))}
+    </div>
+  );
+
+  // ── consent ───────────────────────────────────────────────────────────────
+  if (phase === 'consent') {
+    const consentedCount = Object.values(consentMap).filter(v => v === 'participate').length;
     return (
-      <div className="flex flex-col items-center gap-6 text-center w-full max-w-2xl">
-        <div className="flex items-center gap-3 justify-center">
-          <div className="rounded-full px-4 py-2 text-sm font-black"
-            style={{ background: `${AC}22`, border: `1px solid ${AC}55`, color: AC }}>
-            {levelObj.emoji} {levelLabel}
-          </div>
-          <div className="text-white/40 text-sm font-bold">{currentRound + 1} / {totalRounds}</div>
-          {!missionsLoaded && (
-            <div className="rounded-full px-3 py-1 text-xs font-bold animate-pulse"
-              style={{ background: 'rgba(251,191,36,0.18)', color: '#FBBF24', border: '1px solid rgba(251,191,36,0.4)' }}>
-              ⏳ Caricamento missioni…
-            </div>
-          )}
+      <div className="flex flex-col items-center gap-6 text-center w-full max-w-4xl">
+        <div className="flex flex-col items-center gap-2">
+          <div className="text-7xl" style={{ filter: `drop-shadow(0 0 40px ${AC_GLOW})` }}>🍾</div>
+          <div className="text-display text-4xl font-black text-white">Jonny After Dark</div>
+          <div className="text-white/40 text-sm">{players.length} giocatori · {consentedCount} pronti a giocare</div>
         </div>
 
-        {/* Bottle animation */}
-        <motion.div animate={{ rotate: [0, 360, 720, 1080, 1260, 1380, 1440, 1465, 1470] }}
-          transition={{ duration: 3.5, repeat: Infinity, ease: 'easeOut' }}
-          className="text-9xl select-none cursor-pointer"
-          style={{ filter: `drop-shadow(0 0 40px ${AC_GLOW})` }}>
-          🍾
-        </motion.div>
-
-        {/* Player names ring */}
-        <div className="flex flex-wrap justify-center gap-3">
-          {players.map((pl, i) => (
-            <motion.div key={pl.id}
-              animate={{ opacity: [0.4, 1, 0.4] }}
-              transition={{ repeat: Infinity, duration: 1.5, delay: i * (1.5 / Math.max(players.length, 1)) }}
-              className="rounded-full px-4 py-2 text-sm font-black"
-              style={{ background: `${pl.avatarColor}22`, border: `2px solid ${pl.avatarColor}55`, color: pl.avatarColor }}>
-              {pl.nickname}
-            </motion.div>
+        {/* Level selector */}
+        <div className="grid grid-cols-5 gap-3 w-full">
+          {AO_BOARD_LEVELS.map(lv => (
+            <button key={lv.level} disabled={busy}
+              onClick={() => void aoPost('set-level', { level: lv.level })}
+              className="flex flex-col items-center gap-2 rounded-2xl p-4 transition-all hover:scale-105 disabled:opacity-50"
+              style={{ background: lv.level === level ? `${lv.color}30` : `${lv.color}10`, border: `2px solid ${lv.level === level ? lv.color : lv.color + '30'}` }}>
+              <div className="text-3xl">{lv.emoji}</div>
+              <div className="text-xs font-black text-white">{lv.label}</div>
+              <div className="text-xs text-white/30 leading-tight">{lv.desc}</div>
+            </button>
           ))}
         </div>
 
-        <button onClick={() => void aoPost('spin')} disabled={busy || !missionsLoaded}
-          className="rounded-2xl px-12 py-5 text-xl font-black text-white transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
+        {/* Player consent grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 w-full">
+          {players.map(pl => {
+            const c = consentMap[pl.id];
+            const cColor = c === 'participate' ? '#4ADE80' : c === 'watch' ? '#94A3B8' : c === 'leave' ? '#EF4444' : 'rgba(255,255,255,0.2)';
+            const cLabel = c === 'participate' ? '🎮 Partecipa' : c === 'watch' ? '👀 Guarda' : c === 'leave' ? '🚪 Via' : '⏳ In attesa';
+            return (
+              <div key={pl.id} className="rounded-xl px-3 py-2 flex items-center gap-2"
+                style={{ background: 'rgba(255,255,255,0.05)', border: `1px solid ${cColor}44` }}>
+                <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: cColor }}/>
+                <div className="font-bold text-sm text-white truncate">{pl.nickname}</div>
+                <div className="text-xs ml-auto flex-shrink-0" style={{ color: cColor }}>{cLabel}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        <button onClick={() => void aoPost('spin')} disabled={busy || consentedCount === 0}
+          className="rounded-2xl px-16 py-5 text-2xl font-black text-white transition-all hover:scale-105 active:scale-95 disabled:opacity-40"
           style={{ background: `linear-gradient(135deg,${AC},${AC}88)`, boxShadow: `0 0 60px ${AC_GLOW}` }}>
-          {busy ? '…' : '🍾 Seleziona!'}
+          {busy ? '…' : consentedCount === 0 ? 'Aspetta i giocatori…' : '🍾 Gira la Bottiglia!'}
         </button>
-        {!missionsLoaded && <div className="text-white/30 text-xs">Jonny sta preparando le missioni, aspetta un momento…</div>}
+        <div className="text-white/20 text-xs">I giocatori scelgono dal loro telefono — poi clicca per girare</div>
       </div>
     );
   }
 
-  // ── mission ───────────────────────────────────────────────────────────────
-  if (phase === 'mission' && mission) {
-    const tLimit  = mission.timeLimit > 0 ? mission.timeLimit : 60;
-    const timerPct = timeLeft !== null ? timeLeft / tLimit : 1;
+  // ── challenge ─────────────────────────────────────────────────────────────
+  if (phase === 'challenge') {
+    const dur = challenge?.durationSeconds ?? 60;
+    const timerPct = timeLeft !== null ? timeLeft / dur : 1;
     const timerColor = timerPct > 0.5 ? '#4ade80' : timerPct > 0.25 ? '#facc15' : '#ef4444';
-    const tagEmoji = mission.tag === 'duo' ? '👫' : mission.tag === 'group' ? '👥' : '🎯';
-
     return (
       <div className="flex flex-col gap-5 w-full max-w-3xl">
-        {/* Header */}
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="rounded-full px-4 py-2 text-sm font-black"
-              style={{ background: `${AC}22`, border: `1px solid ${AC}55`, color: AC }}>
-              {levelObj.emoji} {levelLabel}
-            </div>
-            <div className="rounded-full px-3 py-1 text-xs font-bold"
-              style={{ background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.12)' }}>
-              {tagEmoji} {mission.tag === 'duo' ? 'DUO' : mission.tag === 'group' ? 'TUTTI' : 'SOLO'}
-            </div>
-            <div className="rounded-full px-3 py-1 text-xs font-bold"
-              style={{ background: `${AC}18`, color: AC, border: `1px solid ${AC}44` }}>
-              +{mission.points}pt
-            </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <LevelBadge />
+            {doublePoints && (
+              <div className="rounded-full px-3 py-1 text-xs font-black" style={{ background: 'rgba(251,191,36,0.2)', color: '#FBBF24', border: '1px solid rgba(251,191,36,0.4)' }}>
+                2️⃣ Doppio punti!
+              </div>
+            )}
+            {activePower && (
+              <div className="rounded-full px-3 py-1 text-xs font-black animate-pulse" style={{ background: 'rgba(168,85,247,0.2)', color: '#A855F7', border: '1px solid rgba(168,85,247,0.4)' }}>
+                ⚡ {activePower.nickname}: {AO_BOARD_POWERS[activePower.power]?.label ?? activePower.power}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-3">
-            <div className="text-sm text-white/40">{currentRound + 1} / {totalRounds}</div>
+            <div className="text-sm text-white/40">Round {roundNumber}</div>
             {timeLeft !== null && (
-              <div className="text-3xl font-black tabular-nums"
-                style={{ color: timerColor, textShadow: `0 0 20px ${timerColor}88` }}>
+              <div className="text-3xl font-black tabular-nums" style={{ color: timerColor, textShadow: `0 0 20px ${timerColor}88` }}>
                 {timeLeft === 0 ? '⏰' : `${timeLeft}s`}
               </div>
             )}
           </div>
         </div>
 
-        {/* Timer bar */}
         <div className="h-2 w-full rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
-          <div className="h-full rounded-full transition-all duration-[250ms] ease-linear"
-            style={{ background: timerColor, width: `${timerPct * 100}%` }}/>
+          <div className="h-full rounded-full transition-all duration-[250ms] ease-linear" style={{ background: timerColor, width: `${timerPct * 100}%` }}/>
         </div>
 
-        {/* Selected player */}
         <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring' }}
           className="rounded-2xl px-6 py-4 flex items-center gap-4"
           style={{ background: `${AC}18`, border: `2px solid ${AC}55`, boxShadow: `0 0 40px ${AC}33` }}>
@@ -3930,18 +3929,40 @@ function AdultOnlyBoard({ payload, session, players }: {
             <div className="text-xs font-black uppercase tracking-widest text-white/40 mb-1">LA BOTTIGLIA PUNTA SU</div>
             <div className="text-display text-3xl font-black" style={{ color: AC }}>{selectedNickname ?? '?'}</div>
           </div>
+          <div className="ml-auto flex flex-col gap-1 text-right">
+            {activePlayers.length > 0 && <div className="text-xs text-white/30">{activePlayers.length} attivi</div>}
+            {spectatorPlayers.length > 0 && <div className="text-xs text-white/20">{spectatorPlayers.length} spettatori</div>}
+          </div>
         </motion.div>
 
-        {/* Mission card */}
-        <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.15 }}
-          className="rounded-3xl p-7"
-          style={{ background: `linear-gradient(135deg,${AC}1A,rgba(0,0,0,0.4))`, border: `1px solid ${AC}44` }}>
-          <div className="text-xs font-black uppercase tracking-widest mb-3 text-white/40">🎯 MISSIONE</div>
-          <div className="text-display text-2xl font-black text-white leading-snug mb-2">{mission.title}</div>
-          <div className="text-base text-white/70 leading-relaxed">{mission.body}</div>
-        </motion.div>
+        {challenge && (
+          <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.15 }}
+            className="rounded-3xl p-7"
+            style={{ background: `linear-gradient(135deg,${AC}1A,rgba(0,0,0,0.4))`, border: `1px solid ${AC}44` }}>
+            <div className="text-xs font-black uppercase tracking-widest mb-3 text-white/40">🎯 {challenge.category || 'SFIDA'}</div>
+            <div className="text-display text-2xl font-black text-white leading-snug">{challenge.text}</div>
+            {challenge.allowPublicVote && (
+              <div className="mt-3 text-xs text-white/30">📊 Voto pubblico abilitato</div>
+            )}
+          </motion.div>
+        )}
 
-        {/* Host controls */}
+        {/* Spectator powers overview */}
+        {Object.entries(spectatorPowers).filter(([, p]) => p !== null).length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(spectatorPowers).filter(([, p]) => p !== null).map(([pid, pw]) => {
+              const pl = players.find(p => p.id === pid);
+              const pwInfo = pw ? AO_BOARD_POWERS[pw] : null;
+              return pl && pwInfo ? (
+                <div key={pid} className="rounded-full px-3 py-1 text-xs font-bold"
+                  style={{ background: 'rgba(251,191,36,0.15)', color: '#FBBF24', border: '1px solid rgba(251,191,36,0.3)' }}>
+                  {pwInfo.emoji} {pl.nickname}
+                </div>
+              ) : null;
+            })}
+          </div>
+        )}
+
         <div className="flex gap-4 justify-center">
           <button onClick={() => void aoPost('skip')} disabled={busy}
             className="rounded-2xl px-8 py-4 text-base font-black text-white/60 disabled:opacity-50"
@@ -3951,102 +3972,173 @@ function AdultOnlyBoard({ payload, session, players }: {
           <button onClick={() => void aoPost('complete')} disabled={busy}
             className="flex-1 rounded-2xl px-8 py-4 text-xl font-black text-white disabled:opacity-50"
             style={{ background: `linear-gradient(135deg,${AC},${AC}88)`, boxShadow: `0 0 50px ${AC_GLOW}` }}>
-            {busy ? '…' : '✅ Missione Completata!'}
+            {busy ? '…' : '✅ Completata!'}
           </button>
         </div>
       </div>
     );
   }
 
-  // ── result ────────────────────────────────────────────────────────────────
-  if (phase === 'result') return (
-    <div className="flex flex-col gap-5 w-full max-w-2xl">
-      <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring' }}
-        className="rounded-3xl p-7 text-center"
-        style={{
-          background: completedBy ? `linear-gradient(135deg,${AC}25,rgba(0,0,0,0.4))` : 'rgba(255,255,255,0.05)',
-          border: `2px solid ${completedBy ? AC : 'rgba(255,255,255,0.12)'}`,
-          boxShadow: completedBy ? `0 0 60px ${AC}33` : 'none',
-        }}>
-        {completedBy ? (
-          <>
-            <div className="text-5xl mb-3">🎉</div>
-            <div className="text-xs font-black uppercase tracking-widest mb-1 text-white/40">MISSIONE COMPLETATA</div>
-            <div className="text-display text-3xl font-black text-white">{completedBy}</div>
-            <div className="text-xl font-black mt-2" style={{ color: AC }}>+{pointsAwarded} punti!</div>
-          </>
-        ) : (
-          <>
-            <div className="text-5xl mb-3">😅</div>
-            <div className="text-xs font-black uppercase tracking-widest mb-1 text-white/40">MISSIONE SALTATA</div>
-            <div className="text-display text-2xl font-black text-white/60">Nessun punto assegnato</div>
-          </>
-        )}
-      </motion.div>
-
-      {/* Mini ranking */}
-      {rankingData && rankingData.length > 0 && (
-        <div className="flex flex-col gap-2">
-          {rankingData.slice(0, 5).map((p, i) => (
-            <div key={p.playerId} className="flex items-center gap-3 rounded-xl px-4 py-2"
-              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
-              <div className="text-white/30 text-sm w-5 text-center">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</div>
-              <div className="flex-1 text-white font-bold text-sm">{p.nickname}</div>
-              {p.delta > 0 && <div className="text-xs font-bold" style={{ color: AC }}>+{p.delta}</div>}
-              <div className="font-black text-sm" style={{ color: AC }}>{p.score}pt</div>
-            </div>
-          ))}
+  // ── voting ─────────────────────────────────────────────────────────────────
+  if (phase === 'voting') {
+    const okCount   = Object.values(votes).filter(v => v === 'ok').length;
+    const failCount = Object.values(votes).filter(v => v === 'fail').length;
+    const total     = Object.values(votes).length;
+    const voters    = [...activePlayers, ...spectatorPlayers].filter(id => id !== payload.selectedPlayerId);
+    return (
+      <div className="flex flex-col gap-5 w-full max-w-2xl">
+        <div className="flex items-center justify-between">
+          <LevelBadge />
+          <div className="text-white/40 text-sm">{total} / {voters.length} hanno votato</div>
         </div>
-      )}
-
-      <div className="flex gap-3 justify-end">
-        <button onClick={() => void aoPost('finale')} disabled={busy}
-          className="rounded-xl px-5 py-3 text-sm font-black text-white/40 disabled:opacity-50"
-          style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
-          Fine serata
-        </button>
-        <button onClick={() => void aoPost('next')} disabled={busy}
-          className="rounded-2xl px-10 py-4 text-base font-black text-white disabled:opacity-50"
+        <div className="rounded-3xl p-7 text-center" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)' }}>
+          <div className="text-display text-3xl font-black text-white mb-2">{selectedNickname ?? '?'}</div>
+          <div className="text-white/50 text-sm mb-4">Ha completato la sfida?</div>
+          <div className="flex justify-center gap-12">
+            <div className="flex flex-col items-center gap-1">
+              <div className="text-4xl font-black text-green-400">{okCount}</div>
+              <div className="text-xs text-white/30">✅ SÌ</div>
+            </div>
+            <div className="flex flex-col items-center gap-1">
+              <div className="text-4xl font-black text-red-400">{failCount}</div>
+              <div className="text-xs text-white/30">❌ NO</div>
+            </div>
+          </div>
+        </div>
+        <div className="h-2 w-full rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+          <div className="h-full rounded-full transition-all duration-500" style={{ background: '#4ADE80', width: voters.length > 0 ? `${(total / voters.length) * 100}%` : '0%' }}/>
+        </div>
+        <button onClick={() => void aoPost('close-vote')} disabled={busy}
+          className="rounded-2xl px-10 py-4 text-lg font-black text-white disabled:opacity-50"
           style={{ background: `linear-gradient(135deg,${AC},${AC}88)`, boxShadow: `0 0 40px ${AC_GLOW}` }}>
-          {busy ? '…' : currentRound + 1 >= totalRounds ? '🏆 Finale' : '🍾 Prossima!'}
+          {busy ? '…' : '🔒 Chiudi Votazione'}
         </button>
       </div>
-    </div>
-  );
+    );
+  }
 
-  // ── finale ────────────────────────────────────────────────────────────────
-  if (phase === 'finale' && rankingData) {
+  // ── escalation ────────────────────────────────────────────────────────────
+  if (phase === 'escalation') {
+    const tgtObj = AO_BOARD_LEVELS.find(l => l.level === escalationTarget) ?? { label: `Livello ${escalationTarget}`, emoji: '🔼', color: '#A855F7' };
+    const approvedCount = activePlayers.filter(pid => escalationVotes[pid] === true).length;
+    const declinedCount = activePlayers.filter(pid => escalationVotes[pid] === false).length;
+    const totalVoted = approvedCount + declinedCount;
+    return (
+      <div className="flex flex-col items-center gap-6 text-center w-full max-w-2xl">
+        <div className="text-6xl">🔼</div>
+        <div className="text-display text-3xl font-black text-white">Escalation!</div>
+        <div className="rounded-2xl px-6 py-3 font-black text-lg" style={{ background: `${tgtObj.color}25`, border: `2px solid ${tgtObj.color}55`, color: tgtObj.color }}>
+          {tgtObj.emoji} {tgtObj.label}
+        </div>
+        <div className="flex justify-center gap-12 w-full">
+          <div className="flex flex-col items-center gap-1">
+            <div className="text-4xl font-black text-green-400">{approvedCount}</div>
+            <div className="text-xs text-white/30">👍 SÌ</div>
+          </div>
+          <div className="flex flex-col items-center gap-1">
+            <div className="text-4xl font-black text-red-400">{declinedCount}</div>
+            <div className="text-xs text-white/30">👎 NO</div>
+          </div>
+        </div>
+        <div className="text-white/30 text-sm">{totalVoted} / {activePlayers.length} hanno votato</div>
+      </div>
+    );
+  }
+
+  // ── result ────────────────────────────────────────────────────────────────
+  if (phase === 'result') {
+    const [showEscalationMenu, setShowEscalationMenu] = useState(false);
+    return (
+      <div className="flex flex-col gap-5 w-full max-w-2xl">
+        <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring' }}
+          className="rounded-3xl p-7 text-center"
+          style={{ background: lastValidated ? `linear-gradient(135deg,${AC}25,rgba(0,0,0,0.4))` : 'rgba(255,255,255,0.05)', border: `2px solid ${lastValidated ? AC : 'rgba(255,255,255,0.12)'}`, boxShadow: lastValidated ? `0 0 60px ${AC}33` : 'none' }}>
+          {lastValidated ? (
+            <>
+              <div className="text-5xl mb-3">🎉</div>
+              <div className="text-xs font-black uppercase tracking-widest mb-1 text-white/40">SFIDA COMPLETATA</div>
+              <div className="text-display text-2xl font-black text-white">{selectedNickname ?? '?'}</div>
+              {lastPoints > 0 && <div className="text-xl font-black mt-2" style={{ color: AC }}>+{lastPoints} punti{doublePoints ? ' (doppio!)' : ''}!</div>}
+            </>
+          ) : (
+            <>
+              <div className="text-5xl mb-3">😅</div>
+              <div className="text-xs font-black uppercase tracking-widest mb-1 text-white/40">SALTATA</div>
+              <div className="text-display text-xl font-black text-white/60">Nessun punto assegnato</div>
+            </>
+          )}
+        </motion.div>
+
+        {rankingData.length > 0 && <MiniRanking />}
+
+        <div className="flex gap-3 flex-wrap justify-end">
+          <button onClick={() => void aoPost('emergency')} disabled={busy}
+            className="rounded-xl px-4 py-3 text-xs font-black text-red-400/60 disabled:opacity-50"
+            style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)' }}>
+            🛑 Stop
+          </button>
+          {level < 5 && !showEscalationMenu && (
+            <button onClick={() => setShowEscalationMenu(true)} disabled={busy}
+              className="rounded-xl px-5 py-3 text-sm font-black disabled:opacity-50"
+              style={{ background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.4)', color: '#A855F7' }}>
+              🔼 Scala livello
+            </button>
+          )}
+          {showEscalationMenu && (
+            <div className="flex gap-2 flex-wrap">
+              {AO_BOARD_LEVELS.filter(l => l.level > level).map(lv => (
+                <button key={lv.level} disabled={busy}
+                  onClick={() => { void aoPost('propose-level', { targetLevel: lv.level }); setShowEscalationMenu(false); }}
+                  className="rounded-xl px-4 py-2 text-xs font-black disabled:opacity-50"
+                  style={{ background: `${lv.color}20`, border: `1px solid ${lv.color}50`, color: lv.color }}>
+                  {lv.emoji} {lv.label}
+                </button>
+              ))}
+              <button onClick={() => setShowEscalationMenu(false)} className="rounded-xl px-3 py-2 text-xs text-white/30"
+                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>✕</button>
+            </div>
+          )}
+          <button onClick={() => void aoPost('end')} disabled={busy}
+            className="rounded-xl px-5 py-3 text-sm font-black text-white/40 disabled:opacity-50"
+            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
+            Fine serata
+          </button>
+          <button onClick={() => void aoPost('spin')} disabled={busy}
+            className="rounded-2xl px-10 py-4 text-base font-black text-white disabled:opacity-50"
+            style={{ background: `linear-gradient(135deg,${AC},${AC}88)`, boxShadow: `0 0 40px ${AC_GLOW}` }}>
+            {busy ? '…' : '🍾 Prossima!'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── ended ─────────────────────────────────────────────────────────────────
+  if (phase === 'ended') {
     const top3 = [rankingData[1], rankingData[0], rankingData[2]];
     return (
       <div className="flex flex-col items-center gap-6 text-center w-full max-w-2xl">
         <motion.div initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', delay: 0.2 }}>
-          <div className="text-8xl">🍾🏆🍾</div>
+          <div className="text-8xl">{emergencyStop ? '🛑' : '🍾🏆🍾'}</div>
         </motion.div>
-        <div className="text-display text-4xl font-black text-white">Fine After Dark!</div>
-        <div className="text-white/40">{levelLabel} · {totalRounds} missioni</div>
-        <div className="flex gap-5 items-end justify-center">
-          {top3.map((p, i) => p && (
-            <motion.div key={p.playerId} initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2 + i * 0.1 }}
-              className="flex flex-col items-center gap-2">
-              <div className="text-2xl">{i === 1 ? '🥇' : i === 0 ? '🥈' : '🥉'}</div>
-              <div className="rounded-2xl px-5 py-3 text-center"
-                style={{ background: i === 1 ? `${AC}25` : 'rgba(255,255,255,0.06)', border: `2px solid ${i === 1 ? AC : 'rgba(255,255,255,0.15)'}`, minWidth: '90px' }}>
-                <div className="font-black text-white text-sm">{p.nickname}</div>
-                <div className="font-black mt-1" style={{ color: i === 1 ? AC : 'rgba(255,255,255,0.5)' }}>{p.score}pt</div>
-              </div>
-            </motion.div>
-          ))}
-        </div>
-        <div className="flex flex-col gap-2 w-full">
-          {rankingData.slice(0, 8).map((p, i) => (
-            <div key={p.playerId} className="flex items-center gap-3 rounded-xl px-4 py-2"
-              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-              <div className="text-white/30 text-sm w-5 text-center">{i + 1}</div>
-              <div className="flex-1 text-white font-bold text-sm">{p.nickname}</div>
-              <div className="font-black text-sm" style={{ color: AC }}>{p.score}pt</div>
-            </div>
-          ))}
-        </div>
+        <div className="text-display text-4xl font-black text-white">{emergencyStop ? 'Gioco interrotto' : 'Fine After Dark!'}</div>
+        <div className="text-white/40">{levelLabel} · Round {roundNumber}</div>
+        {rankingData.length >= 2 && (
+          <div className="flex gap-5 items-end justify-center">
+            {top3.map((p, i) => p && (
+              <motion.div key={p.playerId} initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2 + i * 0.1 }}
+                className="flex flex-col items-center gap-2">
+                <div className="text-2xl">{i === 1 ? '🥇' : i === 0 ? '🥈' : '🥉'}</div>
+                <div className="rounded-2xl px-5 py-3 text-center"
+                  style={{ background: i === 1 ? `${AC}25` : 'rgba(255,255,255,0.06)', border: `2px solid ${i === 1 ? AC : 'rgba(255,255,255,0.15)'}`, minWidth: '90px' }}>
+                  <div className="font-black text-white text-sm">{p.nickname}</div>
+                  <div className="font-black mt-1" style={{ color: i === 1 ? AC : 'rgba(255,255,255,0.5)' }}>{p.score}pt</div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
+        <MiniRanking max={8} />
       </div>
     );
   }

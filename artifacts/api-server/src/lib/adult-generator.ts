@@ -1,151 +1,133 @@
-import OpenAI from "openai";
-import { logger } from "./logger.js";
-
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type AdultLevel = "flirt" | "tension" | "hot" | "extreme" | "after_dark";
+export type BottleLevel = 1 | 2 | 3 | 4 | 5;
 
-export interface AdultMission {
+export interface BottleChallenge {
   id: string;
-  level: AdultLevel;
-  title: string;
-  body: string;
-  points: number;
-  timeLimit: number;
-  tag: "solo" | "duo" | "group";
+  level: BottleLevel;
+  category: string;
+  text: string;
+  requiredPlayers: number;
+  durationSeconds: number;
+  requiresConsent: boolean;
+  allowPublicVote: boolean;
+  tags: string[];
 }
 
+export const BOTTLE_LEVELS: { level: BottleLevel; label: string; emoji: string; color: string; desc: string }[] = [
+  { level: 1, label: "Sociale",    emoji: "🥂",  color: "#34D399", desc: "Giochi di gruppo divertenti" },
+  { level: 2, label: "Flirt",      emoji: "💋",  color: "#FB7185", desc: "Verità e osi spinti" },
+  { level: 3, label: "Hot",        emoji: "🔥",  color: "#EF4444", desc: "Contatto fisico e prove audaci" },
+  { level: 4, label: "Pack Admin", emoji: "🔒",  color: "#A855F7", desc: "Contenuto pacchetto privato" },
+  { level: 5, label: "Esclusivo",  emoji: "🌙",  color: "#818CF8", desc: "Pack riservato organizzatore" },
+];
+
+export type SuperpowerType = "reroll" | "extra_time" | "swap_player" | "validate" | "double_points" | "public_vote";
+
+export const SUPERPOWERS: { id: SuperpowerType; label: string; emoji: string; desc: string }[] = [
+  { id: "reroll",        label: "Rigioca",      emoji: "🎲", desc: "Cambia la sfida corrente" },
+  { id: "extra_time",   label: "+30 sec",      emoji: "⏱️", desc: "Aggiunge 30 secondi" },
+  { id: "swap_player",  label: "Scambia",      emoji: "🔄", desc: "Cambia il giocatore selezionato" },
+  { id: "validate",     label: "Auto-Valida",  emoji: "✅", desc: "Sfida automaticamente superata" },
+  { id: "double_points",label: "Doppio",       emoji: "2️⃣", desc: "Punti raddoppiati per questo round" },
+  { id: "public_vote",  label: "Voto totale",  emoji: "👥", desc: "Forza voto pubblico di tutti" },
+];
+
+// ── Challenge bank (levels 1-3) ────────────────────────────────────────────────
+
+function c(id: string, level: BottleLevel, category: string, text: string, durationSeconds: number, requiredPlayers = 1, allowPublicVote = false, requiresConsent = false): BottleChallenge {
+  return { id, level, category, text, requiredPlayers, durationSeconds, requiresConsent, allowPublicVote, tags: [] };
+}
+
+export const BOTTLE_BANK: BottleChallenge[] = [
+
+  // ── Livello 1 — Sociale ────────────────────────────────────────────────────
+  c("l1_01", 1, "imitazione",    "Imita un personaggio famoso finché gli altri non lo indovinano. Max 90 secondi.", 90),
+  c("l1_02", 1, "telefono",      "Chiama il contatto numero 5 in rubrica e digli 'Ho vinto un viaggio — vuoi venire?'. Aspetta la risposta!", 60),
+  c("l1_03", 1, "musicale",      "Fischietta una canzone finché il gruppo non la indovina. Il gruppo ha 3 tentativi.", 45),
+  c("l1_04", 1, "confessione",   "Confessa la bugia più credibile che hai detto stasera — o inventane una. Il gruppo vota se è vera.", 45, 1, true),
+  c("l1_05", 1, "storytelling",  "Racconta la trama di un film come se fosse la storia della tua vita. Hai 45 secondi.", 45),
+  c("l1_06", 1, "imitazione",    "Imita per 60 secondi il modo di parlare di qualcuno in questa stanza. Nessuno deve scoppiare a ridere.", 60, 1, true),
+  c("l1_07", 1, "sfida vocale",  "Canta la sigla di un cartone degli anni 90 senza fermarti per 30 secondi.", 30),
+  c("l1_08", 1, "infomercial",   "Inventa un prodotto assurdo e vendilo al gruppo con un discorso di 30 secondi.", 30, 1, true),
+  c("l1_09", 1, "indovinello",   "Parla per 60 secondi senza dire 'io', 'tu' o 'si'. Il gruppo ti blocca se sbagli.", 60, 1, true),
+  c("l1_10", 1, "teatrale",      "Fai una posa drammatica da eroe del cinema e mantienila per 30 secondi mentre il gruppo fa 3 domande.", 30),
+  c("l1_11", 1, "gruppo",        "Il gruppo sceglie un argomento: tu devi difendere la posizione opposta a quella che pensi, per 60 secondi.", 60, 1, true),
+  c("l1_12", 1, "segreto",       "Di' una cosa vera su di te che nessuno qui sa ancora.", 45),
+  c("l1_13", 1, "reazione",      "Reagisci con esagerazione alla parola 'ananas' ogni volta che viene detta — per tutto il prossimo round.", 60),
+  c("l1_14", 1, "emoji",         "Racconta la tua giornata di oggi usando solo suoni e gesti — zero parole. Il gruppo deve capire.", 45),
+  c("l1_15", 1, "domande",       "Rispondi per 60 secondi alle domande del gruppo rispondendo solo con 'Forse', 'Decisamente' o 'Mai'.", 60, 1, true),
+
+  // ── Livello 2 — Flirt ─────────────────────────────────────────────────────
+  c("l2_01", 2, "sguardo",       "Guarda negli occhi la persona che il gruppo sceglie per 30 secondi senza ridere o distogliere lo sguardo.", 35, 2, true),
+  c("l2_02", 2, "complimento",   "Fai un complimento vero e specifico a ogni persona del gruppo — niente banalità.", 60, 1, true),
+  c("l2_03", 2, "segreto",       "Sussurra un segreto all'orecchio della persona alla tua sinistra. Poi lei lo ripete ad alta voce come vuole.", 30, 2, true),
+  c("l2_04", 2, "tipo ideale",   "Descrivi la persona più attraente in questa stanza senza dire il nome — tutti indovinano.", 30, 1, true),
+  c("l2_05", 2, "messaggio",     "Scrivi un messaggio di flirt convincente (niente di volgare) per qualcuno nel gruppo. Mostralo prima di inviare.", 60),
+  c("l2_06", 2, "verità",        "Rispondi onestamente: hai mai fantasticato romanticamente su qualcuno in questa stanza? Solo sì o no.", 20),
+  c("l2_07", 2, "primo appuntamento", "Descrivi come sarebbe il tuo primo appuntamento ideale. Il gruppo vota chi ti inviterebbe davvero.", 45, 1, true),
+  c("l2_08", 2, "coppia",        "Il gruppo sceglie due persone: devono dirsi tre cose vere che li attraggono l'uno dell'altro.", 60, 2, true),
+  c("l2_09", 2, "danza",         "Balla con la persona che il gruppo sceglie per 30 secondi.", 35, 2, false, true),
+  c("l2_10", 2, "confessione",   "Racconta la tua storia di flirt più imbarazzante — tutti i dettagli che puoi condividere.", 60, 1, true),
+  c("l2_11", 2, "massaggio",     "Fai un massaggio alle spalle alla persona alla tua destra per 30 secondi.", 35, 2, false, true),
+  c("l2_12", 2, "seduzione",     "Di' la cosa più audace che hai fatto per attirare l'attenzione di qualcuno.", 45),
+  c("l2_13", 2, "profilo",       "Crea il tuo profilo perfetto di dating app in 45 secondi e leggilo ad alta voce.", 45, 1, true),
+  c("l2_14", 2, "rivelazione",   "Chi in questa stanza ti è sembrato più interessante appena lo hai incontrato? Rispondi ad alta voce.", 20),
+  c("l2_15", 2, "ballo",         "Il gruppo sceglie due persone: devono improvvisare una scenetta romantica in stile soap opera per 90 secondi.", 90, 2, true, true),
+
+  // ── Livello 3 — Hot ───────────────────────────────────────────────────────
+  c("l3_01", 3, "bacio",         "Descrivi nei minimi dettagli il tuo bacio più memorabile — dove eri, chi era, com'è andata.", 60),
+  c("l3_02", 3, "messaggio",     "Leggi ad alta voce il messaggio più piccante che hai inviato o ricevuto — puoi cambiare i nomi.", 45),
+  c("l3_03", 3, "classifica",    "Scrivi su un foglio con chi passeresti una serata romantica tra le persone presenti. Poi giri il foglio.", 30),
+  c("l3_04", 3, "sfida",         "Di' la cosa più audace che sei disposto a fare qui stasera. Il gruppo vota se ci credi.", 30, 1, true),
+  c("l3_05", 3, "massaggio",     "Fai un massaggio ai piedi di qualcuno del gruppo per 60 secondi.", 65, 2, true, true),
+  c("l3_06", 3, "storia",        "Racconta la serata più folle e romantica della tua vita — tutti i dettagli che puoi condividere.", 90, 1, true),
+  c("l3_07", 3, "danza",         "Fai una danza sensuale per 30 secondi davanti al gruppo. Il gruppo vota il livello di intensità.", 35, 1, true),
+  c("l3_08", 3, "coppia",        "Il gruppo sceglie due persone: devono mimeare una scena romantica dal film che il gruppo nomina.", 120, 2, true, true),
+  c("l3_09", 3, "confidenza",    "Confessa la cosa più audace che hai fatto o ti hanno fatto in una relazione romantica.", 60),
+  c("l3_10", 3, "ex",            "Sei il tuo ex per 3 minuti: parla, gesticola e rispondi alle domande come se fossi lui/lei.", 180, 1, true),
+  c("l3_11", 3, "seduzione",     "Hai 60 secondi per convincere la persona che il gruppo sceglie ad uscire con te. Usa solo parole.", 60, 2, true),
+  c("l3_12", 3, "verità",        "Il gruppo fa 3 domande a cui non puoi rispondere 'non lo so'. Le risposte devono essere oneste.", 90, 1, true),
+  c("l3_13", 3, "fantasia",      "Descrivi la tua fantastica serata da sogno: dove, con chi (puoi essere vago), cosa fate.", 60),
+  c("l3_14", 3, "giudizio",      "Il gruppo giudica quanto sei 'dateable' su scala 1-10 con motivazione. Tu ascolti in silenzio.", 60, 1, true),
+  c("l3_15", 3, "improvvisazione","Il gruppo sceglie due persone: costruiscono insieme la storia di 'come si sono incontrate'. Deve essere romantica e credibile. 2 minuti.", 120, 2, true),
+];
+
+// ── Superpower helpers ────────────────────────────────────────────────────────
+
+const ALL_POWERS: SuperpowerType[] = ["reroll", "extra_time", "swap_player", "validate", "double_points", "public_vote"];
+
+export function randomPower(): SuperpowerType {
+  return ALL_POWERS[Math.floor(Math.random() * ALL_POWERS.length)]!;
+}
+
+export function assignSpectatorPowers(spectatorIds: string[], existing: Record<string, string | null>): Record<string, string | null> {
+  const result: Record<string, string | null> = {};
+  for (const id of spectatorIds) {
+    // Assign new power if they don't already have one (or if it was cleared after use)
+    result[id] = existing[id] != null ? existing[id] : randomPower();
+  }
+  return result;
+}
+
+// ── Challenge selector ────────────────────────────────────────────────────────
+
+export function pickFromBank(level: BottleLevel, usedIds: string[]): BottleChallenge | null {
+  const pool = BOTTLE_BANK.filter(c => c.level === level);
+  const fresh = pool.filter(c => !usedIds.includes(c.id));
+  const source = fresh.length > 0 ? fresh : pool; // reset if exhausted
+  return source.length > 0 ? source[Math.floor(Math.random() * source.length)]! : null;
+}
+
+// ── Old AdultMission compat (kept for backward compat, not used by new engine) ─
+
+export type AdultLevel = "flirt" | "tension" | "hot" | "extreme" | "after_dark";
+export interface AdultMission { id: string; level: AdultLevel; title: string; body: string; points: number; timeLimit: number; tag: "solo" | "duo" | "group"; }
 export const ADULT_LEVELS: { id: AdultLevel; label: string; emoji: string; color: string; desc: string }[] = [
   { id: "flirt",      label: "Flirt",       emoji: "😊", color: "#FB7185", desc: "Leggero e divertente" },
   { id: "tension",    label: "Tensione",    emoji: "😏", color: "#F97316", desc: "Un po' più audace" },
   { id: "hot",        label: "Hot",         emoji: "🔥", color: "#EF4444", desc: "Per i coraggiosi" },
   { id: "extreme",    label: "Extreme",     emoji: "💣", color: "#A855F7", desc: "Nessun limite" },
-  { id: "after_dark", label: "After Dark",  emoji: "🌙", color: "#1E1E2E", desc: "Solo adulti" },
+  { id: "after_dark", label: "After Dark",  emoji: "🌙", color: "#818CF8", desc: "Solo adulti" },
 ];
-
-// ── Compact builder ───────────────────────────────────────────────────────────
-
-function m(id: string, level: AdultLevel, title: string, body: string, tag: "solo" | "duo" | "group" = "solo", pts = 100, tl = 60): AdultMission {
-  return { id, level, title, body, points: pts, timeLimit: tl, tag };
-}
-
-// ── Fallback Bank ─────────────────────────────────────────────────────────────
-
-export const ADULT_BANK: AdultMission[] = [
-
-  // ── FLIRT ─────────────────────────────────────────────────────────────────
-  m("f1",  "flirt", "Il Complimento",       "Fai un complimento sincero e genuino alla persona alla tua sinistra. Deve essere specifico e non banale!", "duo", 80, 45),
-  m("f2",  "flirt", "Il Tipo Ideale",       "Descrivi il tuo tipo ideale in 3 aggettivi. Gli altri devono indovinare se sei serio o ironico!", "solo", 80, 45),
-  m("f3",  "flirt", "Ballo a Due",          "Balla per 30 secondi con la persona alla tua destra. Il pubblico giudica con applausi!", "duo", 100, 40),
-  m("f4",  "flirt", "Il Segreto Innocente", "Confessa qualcosa che non sa quasi nessuno qui. Deve essere divertente, non imbarazzante!", "solo", 80, 50),
-  m("f5",  "flirt", "Il Soprannome",        "Dai un soprannome spiritoso a ogni persona del gruppo. Devi giustificare la scelta!", "group", 100, 60),
-  m("f6",  "flirt", "La Prima Impressione", "Di' qual è stata la tua prima impressione di ognuno in questa stanza — onestà assoluta!", "group", 100, 60),
-  m("f7",  "flirt", "Il Miglior Sorriso",   "Fai ridere qualcuno nel gruppo entro 30 secondi, senza toccarli e senza dirne una volgarità!", "solo", 80, 35),
-  m("f8",  "flirt", "Il Messaggio Dolce",   "Manda un messaggio carino (non romantico) a qualcuno che non senti da almeno un mese. Mostralo prima di inviare!", "solo", 100, 60),
-  m("f9",  "flirt", "Lo Showman",           "Recita una battuta che hai inventato al momento. Gli altri votano se fa ridere o no!", "solo", 80, 45),
-  m("f10", "flirt", "Il Tutorial",          "Insegna a tutti un gesto di saluto inventato da te. Tutti devono impararlo!", "group", 100, 50),
-
-  // ── TENSION ───────────────────────────────────────────────────────────────
-  m("t1",  "tension", "Il Segreto all'Orecchio", "Sussurra un segreto vero all'orecchio della persona di fronte. Gli altri cercano di indovinare cosa hai detto!", "duo", 120, 45),
-  m("t2",  "tension", "L'Imitazione",              "Imita per 1 minuto una persona in questa stanza. Tutti devono capire chi è senza che tu lo dica!", "solo", 120, 60),
-  m("t3",  "tension", "Il Patto",                  "Fai una promessa imbarazzante a voce alta — e tutti ti tengono a parola per tutta la serata!", "solo", 100, 45),
-  m("t4",  "tension", "La Verità Scomoda",         "Rispondi onestamente: chi in questa stanza si abbinerebbe meglio con te? Spiega perché!", "solo", 130, 50),
-  m("t5",  "tension", "Il Giudice",                "Classifica gli altri per stile su una scala da 1 a 5. Devi dire i voti ad alta voce!", "group", 130, 55),
-  m("t6",  "tension", "La Foto Imbarazzante",      "Mostra agli altri la tua foto più imbarazzante nella galleria (entro la quinta che trovi scrollando)!", "solo", 120, 50),
-  m("t7",  "tension", "Il Confessionale",          "Confessa la cosa più stupida che hai mai fatto per ottenere l'attenzione di qualcuno!", "solo", 130, 55),
-  m("t8",  "tension", "Il Massaggio",              "Fai un massaggio alle spalle alla persona davanti a te per 30 secondi!", "duo", 120, 35),
-  m("t9",  "tension", "La Telefonata",             "Chiama qualcuno a caso dalla tua rubrica e salutalo con un accento diverso dal tuo. Vince chi regge di più!", "solo", 150, 60),
-  m("t10", "tension", "Il Doppiogiochista",        "Fai un complimento a due persone diverse — ma in modo che ognuna pensi sia solo per lei!", "duo", 130, 55),
-
-  // ── HOT ───────────────────────────────────────────────────────────────────
-  m("h1",  "hot", "Il Primo Bacio",              "Descrivi nei minimi dettagli il tuo primo bacio — dove eri, chi era, come è andata!", "solo", 150, 60),
-  m("h2",  "hot", "I Messaggi Scottanti",        "Leggi ad alta voce il messaggio più imbarazzante che hai inviato negli ultimi 30 giorni!", "solo", 160, 55),
-  m("h3",  "hot", "La Verità sul Telefono",      "Mostra al gruppo le ultime 5 persone con cui hai avuto una conversazione romantica o flirty. Solo i nomi!", "solo", 150, 45),
-  m("h4",  "hot", "Il Quiz Scomodo",             "Il gruppo fa 3 domande imbarazzanti. Puoi rifiutarne solo 1 — le altre devi rispondere onestamente!", "group", 160, 90),
-  m("h5",  "hot", "La Confessione Romantica",    "Racconta la storia del tuo flirt più recente — tutti i dettagli che puoi condividere!", "solo", 160, 70),
-  m("h6",  "hot", "La Classifica Segreta",       "Scrivi su un foglio la persona in questa stanza con cui passeresti una serata romantica. Poi giri il foglio!", "solo", 160, 45),
-  m("h7",  "hot", "Il Personaggio",              "Sei un personaggio di un film romantico per 2 minuti. Tutti interagiscono con te come se fossero nel film!", "group", 150, 120),
-  m("h8",  "hot", "Il Profilo Dating",           "Crea in 1 minuto il tuo profilo di una app di dating e leggilo ad alta voce!", "solo", 150, 65),
-  m("h9",  "hot", "La Scenata",                  "Recita una scenata di gelosia rivolta a qualcuno nel gruppo — più drammatico è, meglio è!", "duo", 160, 55),
-  m("h10", "hot", "Il Confessore",               "Rivela una fantasia (innocente) che non hai mai realizzato. Gli altri votano se ti aiuteranno a realizzarla!", "solo", 160, 55),
-
-  // ── EXTREME ───────────────────────────────────────────────────────────────
-  m("e1",  "extreme", "Nudo Emotivo",             "Condividi la tua più grande paura in amore o nelle relazioni. Nessun giudizio — si vince con l'onestà!", "solo", 200, 90),
-  m("e2",  "extreme", "Il Doppio Blind Date",     "Due persone vengono scelte a caso. Devono fingere un appuntamento per 2 minuti davanti a tutti!", "duo", 200, 120),
-  m("e3",  "extreme", "Il Segreto che non sai",   "Chiedi al gruppo di dirti una cosa che non sapevi di te stesso. Devi accettarla senza protestare!", "group", 200, 90),
-  m("e4",  "extreme", "Il Confessionale Estremo", "Rivela il momento più imbarazzante della tua vita romantica. Gli altri non possono ridere (ci proveranno)!", "solo", 220, 90),
-  m("e5",  "extreme", "Il Verdetto",              "Il gruppo giudica: quanto sei 'dateable' su una scala 1-10 con motivazione? Devi ascoltare in silenzio!", "group", 200, 80),
-  m("e6",  "extreme", "L'Ammissione",             "Ammetti ad alta voce la cosa di cui vai più in colpa nelle relazioni. Tutti votano se è normale o no!", "solo", 200, 70),
-  m("e7",  "extreme", "Il Gioco dei Ruoli",       "Sei il tuo ex per 3 minuti — parla, gesticola, rispondi alle domande come se fossi lui/lei!", "group", 220, 180),
-  m("e8",  "extreme", "La Lista Nera",            "Elenca 3 cose che farebbero finire immediatamente un appuntamento. Il gruppo le commenta!", "solo", 200, 70),
-  m("e9",  "extreme", "Il Karaoke delle Emozioni","Canta un verso di una canzone romantica cambiando il testo per raccontare una tua esperienza vera!", "solo", 210, 60),
-  m("e10", "extreme", "Il Giurato",               "Sei il giudice: il gruppo presenta le loro scuse più creative per aver deluso un partner. Scegli il vincitore!", "group", 200, 120),
-
-  // ── AFTER DARK ────────────────────────────────────────────────────────────
-  m("a1",  "after_dark", "After Dark: Confessione", "Rivela la cosa più audace che hai fatto in una serata e di cui non hai mai parlato con nessuno qui!", "solo", 250, 90),
-  m("a2",  "after_dark", "After Dark: Il Patto",    "Fai una scommessa audace con qualcuno del gruppo — le regole le decidono loro!", "duo", 250, 90),
-  m("a3",  "after_dark", "After Dark: Il Limite",   "Di' al gruppo dov'è il tuo limite — cosa non faresti mai? Il gruppo può sfidare solo verbalmente!", "solo", 250, 80),
-  m("a4",  "after_dark", "After Dark: La Verità",   "Tre persone fanno domande a cui non puoi rispondere 'non lo so'. Hai 2 minuti!", "group", 260, 120),
-  m("a5",  "after_dark", "After Dark: Il Codice",   "Inventa un codice segreto con un'altra persona — una parola che significa 'salvami da questa situazione'!", "duo", 240, 70),
-  m("a6",  "after_dark", "After Dark: Il Verdetto", "Il gruppo vota: sei più 'innocente' o 'diabolico'? Poi confessa se hanno ragione!", "group", 250, 80),
-  m("a7",  "after_dark", "After Dark: La Notte",    "Racconta cosa farebbe la versione più coraggiosa di te in una serata senza conseguenze!", "solo", 260, 90),
-  m("a8",  "after_dark", "After Dark: Il Confine",  "Stabilisci una regola per il resto della serata. Il gruppo deve seguirla (entro i limiti del buon senso)!", "group", 250, 80),
-];
-
-// ── Fallback generator ────────────────────────────────────────────────────────
-
-export function getAdultMissions(level: AdultLevel, count: number): AdultMission[] {
-  const shuffled = [...ADULT_BANK.filter(m => m.level === level)].sort(() => Math.random() - 0.5);
-  const result: AdultMission[] = [];
-  while (result.length < count) {
-    for (const m of shuffled) {
-      if (result.length >= count) break;
-      result.push({ ...m, id: `${m.id}_${result.length}` });
-    }
-  }
-  return result;
-}
-
-// ── AI mission generator ──────────────────────────────────────────────────────
-
-export async function generateAdultMissionsAI(level: AdultLevel, count: number): Promise<AdultMission[]> {
-  const baseURL = process.env["AI_INTEGRATIONS_OPENAI_BASE_URL"];
-  const apiKey  = process.env["AI_INTEGRATIONS_OPENAI_API_KEY"];
-  if (!baseURL || !apiKey) throw new Error("AI non configurato");
-
-  const lvl = ADULT_LEVELS.find(l => l.id === level);
-  const openai = new OpenAI({ baseURL, apiKey });
-
-  const prompt = `Genera ${count} missioni per un gioco di bottiglia per adulti di livello "${lvl?.label}" (${lvl?.desc}).
-Rispondi SOLO con JSON array valido:
-[{"id":"ai_0","level":"${level}","title":"...","body":"Descrizione missione in italiano (1-2 frasi)","points":100,"timeLimit":60,"tag":"solo|duo|group"}]
-- Livello ${level}: ${lvl?.desc}
-- tag: solo=1 persona, duo=2 persone, group=tutti
-- Missioni creative, divertenti, adatte a feste adulti italiane
-- NO contenuti illegali o non consensuali
-- Tutto in italiano`;
-
-  const completion = await openai.chat.completions.create({
-    model: "gpt-5-mini",
-    messages: [{ role: "user", content: prompt }],
-    temperature: 0.9,
-    max_tokens: 2000,
-  });
-
-  const raw = (completion.choices[0]?.message?.content ?? "").replace(/^```json?\n?/, "").replace(/\n?```$/, "").trim();
-  const parsed = JSON.parse(raw) as AdultMission[];
-  return parsed.map((m, i) => ({ ...m, id: `ai_${i}` }));
-}
-
-export async function generateAdultMissions(level: AdultLevel, count: number): Promise<AdultMission[]> {
-  logger.info({ level, count }, "[JONNY_ADULT_AI] start");
-  try {
-    const missions = await generateAdultMissionsAI(level, count);
-    if (!Array.isArray(missions) || missions.length === 0) throw new Error("empty");
-    logger.info({ level, count, generated: missions.length }, "[JONNY_ADULT_AI] success");
-    return missions;
-  } catch (err) {
-    logger.warn({ err, level }, "[JONNY_ADULT_AI] fallback");
-    return getAdultMissions(level, count);
-  }
-}
+export async function generateAdultMissions(_level: AdultLevel, _count: number): Promise<AdultMission[]> { return []; }

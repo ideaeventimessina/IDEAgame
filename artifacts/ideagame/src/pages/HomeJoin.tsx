@@ -3157,198 +3157,304 @@ function SaraMusicaController({ payload, player, session }: {
 
 // ── AdultController ────────────────────────────────────────────────────────────
 
-const AO_LEVELS_PHONE = [
-  { id: 'flirt',       label: 'Flirt',       emoji: '😊', color: '#FB7185' },
-  { id: 'tension',    label: 'Tensione',    emoji: '😏', color: '#F97316' },
-  { id: 'hot',        label: 'Hot',         emoji: '🔥', color: '#EF4444' },
-  { id: 'extreme',    label: 'Extreme',     emoji: '💣', color: '#A855F7' },
-  { id: 'after_dark', label: 'After Dark',  emoji: '🌙', color: '#818CF8' },
+const AO_PHONE_LEVELS = [
+  { level: 1, label: 'Sociale',    emoji: '🥂',  color: '#34D399' },
+  { level: 2, label: 'Flirt',      emoji: '💋',  color: '#FB7185' },
+  { level: 3, label: 'Hot',        emoji: '🔥',  color: '#EF4444' },
+  { level: 4, label: 'Pack Admin', emoji: '🔒',  color: '#A855F7' },
+  { level: 5, label: 'Esclusivo',  emoji: '🌙',  color: '#818CF8' },
 ] as const;
+
+const AO_PHONE_POWERS: Record<string, { label: string; emoji: string }> = {
+  reroll:        { label: 'Rigioca',     emoji: '🎲' },
+  extra_time:    { label: '+30 sec',     emoji: '⏱️' },
+  swap_player:   { label: 'Scambia',     emoji: '🔄' },
+  validate:      { label: 'Auto-Valida', emoji: '✅' },
+  double_points: { label: 'Doppio',      emoji: '2️⃣' },
+  public_vote:   { label: 'Voto totale', emoji: '👥' },
+};
 
 function AdultController({ payload, player, session }: {
   payload: Record<string,unknown>;
   player: HomePlayer;
   session: HomeSession;
 }) {
-  const phase             = String(payload.phase ?? 'intro');
-  const levelId           = String(payload.level ?? 'flirt');
-  const levelLabel        = String(payload.levelLabel ?? levelId);
-  const selectedIds       = (payload.selectedPlayerIds ?? []) as string[];
+  const phase             = String(payload.phase ?? 'consent');
+  const level             = Number(payload.level ?? 1);
+  const levelLabel        = String(payload.levelLabel ?? `Livello ${level}`);
+  const consentMap        = (payload.consentMap ?? {}) as Record<string, string>;
+  const activePlayers     = (payload.activePlayers ?? []) as string[];
+  const spectatorPlayers  = (payload.spectatorPlayers ?? []) as string[];
+  const selectedId        = payload.selectedPlayerId as string | null;
   const selectedNickname  = payload.selectedPlayerNickname as string | null;
-  const mission           = payload.currentMission as { title: string; body: string; points: number; timeLimit: number; tag: string } | null;
-  const missionEndsAt     = payload.missionEndsAt as string | undefined;
-  const completedBy       = payload.completedBy as string | null;
-  const currentRound      = Number(payload.currentRound ?? 0);
-  const totalRounds       = Number(payload.totalRounds ?? 10);
-  const rankingData       = payload.rankingData as { playerId: string; nickname: string; score: number; delta: number }[] | null;
+  const challenge         = payload.currentChallenge as { text: string; category: string; durationSeconds: number; allowPublicVote: boolean } | null;
+  const challengeEndsAt   = payload.challengeEndsAt as string | null;
+  const votes             = (payload.votes ?? {}) as Record<string, string>;
+  const lastValidated     = payload.lastValidated as boolean | null;
+  const lastPoints        = Number(payload.lastPoints ?? 0);
+  const escalationTarget  = payload.escalationTarget as number | null;
+  const escalationVotes   = (payload.escalationVotes ?? {}) as Record<string, boolean>;
+  const spectatorPowers   = (payload.spectatorPowers ?? {}) as Record<string, string | null>;
+  const rankingData       = (payload.rankingData ?? []) as { playerId: string; nickname: string; score: number; delta: number }[];
+  const emergencyStop     = Boolean(payload.emergencyStop);
 
-  const levelObj = AO_LEVELS_PHONE.find(l => l.id === levelId) ?? AO_LEVELS_PHONE[0]!;
+  const levelObj = AO_PHONE_LEVELS.find(l => l.level === level) ?? AO_PHONE_LEVELS[0]!;
   const AC = levelObj.color;
 
-  const isSelected = selectedIds.includes(player.id);
+  const isActive    = activePlayers.includes(player.id);
+  const isSpectator = spectatorPlayers.includes(player.id);
+  const isSelected  = player.id === selectedId;
+  const myPower     = spectatorPowers[player.id] ?? null;
+  const myConsent   = consentMap[player.id];
 
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   useEffect(() => {
-    if (!missionEndsAt || phase !== 'mission') { setTimeLeft(null); return; }
-    const tick = () => setTimeLeft(Math.max(0, Math.ceil((new Date(missionEndsAt).getTime() - Date.now()) / 1000)));
+    if (!challengeEndsAt || phase !== 'challenge') { setTimeLeft(null); return; }
+    const tick = () => setTimeLeft(Math.max(0, Math.ceil((new Date(challengeEndsAt).getTime() - Date.now()) / 1000)));
     tick();
     const t = setInterval(tick, 250);
     return () => clearInterval(t);
-  }, [missionEndsAt, phase]);
+  }, [challengeEndsAt, phase]);
 
-  // ── intro ─────────────────────────────────────────────────────────────────
-  if (phase === 'intro') return (
-    <div className="flex flex-col items-center gap-6 py-8 text-center">
-      <div className="text-6xl">🍾</div>
-      <div className="text-2xl font-black text-white">Jonny After Dark</div>
-      <div className="rounded-2xl px-5 py-4 w-full"
-        style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)' }}>
-        <div className="text-sm text-white/50">⏳ L'host sta scegliendo il livello…</div>
-      </div>
-    </div>
-  );
+  const [busy, setBusy] = useState(false);
+  const aoPost = async (sub: string, body?: Record<string, unknown>) => {
+    setBusy(true);
+    try { await fetch(`/api/home/sessions/${session.id}/adult/${sub}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) }); }
+    finally { setBusy(false); }
+  };
 
-  // ── spinning ──────────────────────────────────────────────────────────────
-  if (phase === 'spinning') return (
-    <div className="flex flex-col items-center gap-6 py-8 text-center">
-      <div className="flex items-center gap-2">
-        <div className="rounded-full px-4 py-2 text-sm font-black"
-          style={{ background: `${AC}22`, border: `1px solid ${AC}55`, color: AC }}>
+  // ── consent ───────────────────────────────────────────────────────────────
+  if (phase === 'consent') {
+    const OPTS = [
+      { key: 'participate', label: 'Partecipo!', emoji: '🎮', color: AC },
+      { key: 'watch',       label: 'Guardo',     emoji: '👀', color: '#94A3B8' },
+      { key: 'leave',       label: 'Me ne vado', emoji: '🚪', color: '#EF4444' },
+    ] as const;
+    return (
+      <div className="flex flex-col items-center gap-5 py-6 text-center">
+        <div className="text-5xl">🍾</div>
+        <div className="text-xl font-black text-white">Jonny After Dark</div>
+        <div className="rounded-2xl px-4 py-2 text-sm font-black"
+          style={{ background: `${AC}22`, border: `1px solid ${AC}44`, color: AC }}>
           {levelObj.emoji} {levelLabel}
         </div>
-        <div className="text-white/40 text-sm">{currentRound + 1}/{totalRounds}</div>
-      </div>
-      <motion.div animate={{ rotate: [0, 360, 720, 1080, 1260, 1380, 1440, 1465, 1470] }}
-        transition={{ duration: 3.5, repeat: Infinity, ease: 'easeOut' }}
-        className="text-7xl select-none">
-        🍾
-      </motion.div>
-      <div className="text-xl font-black text-white">La bottiglia gira!</div>
-      <div className="text-white/40 text-sm">Chi sarà il prossimo?</div>
-    </div>
-  );
-
-  // ── mission ───────────────────────────────────────────────────────────────
-  if (phase === 'mission') {
-    const tLimit   = mission?.timeLimit ?? 60;
-    const timerPct = timeLeft !== null ? timeLeft / tLimit : 1;
-    const timerColor = timerPct > 0.5 ? '#4ade80' : timerPct > 0.25 ? '#facc15' : '#ef4444';
-
-    if (isSelected) {
-      return (
-        <div className="flex flex-col items-center gap-5 py-4 text-center">
-          {/* Timer */}
-          {timeLeft !== null && (
-            <>
-              <div className="h-1.5 w-full rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.1)' }}>
-                <div className="h-full rounded-full transition-all duration-[250ms]"
-                  style={{ background: timerColor, width: `${timerPct * 100}%` }}/>
-              </div>
-              <div className="text-4xl font-black tabular-nums" style={{ color: timerColor }}>{timeLeft}s</div>
-            </>
-          )}
-          {/* You're selected! */}
-          <motion.div initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring' }}
-            className="rounded-full px-5 py-2 text-sm font-black"
-            style={{ background: `${AC}25`, border: `2px solid ${AC}66`, color: AC }}>
-            🍾 LA BOTTIGLIA PUNTA SU DI TE!
-          </motion.div>
-          {/* Mission */}
-          {mission && (
-            <div className="rounded-2xl p-5 w-full"
-              style={{ background: `${AC}15`, border: `2px solid ${AC}44` }}>
-              <div className="text-xs font-black uppercase tracking-widest mb-2 text-white/40">MISSIONE</div>
-              <div className="text-lg font-black text-white mb-2">{mission.title}</div>
-              <div className="text-sm text-white/70 leading-relaxed">{mission.body}</div>
-              <div className="mt-3 text-sm font-black" style={{ color: AC }}>+{mission.points} punti se la completi!</div>
+        {myConsent ? (
+          <div className="flex flex-col items-center gap-3 w-full">
+            <div className="rounded-2xl p-4 w-full"
+              style={{ background: `${AC}15`, border: `1px solid ${AC}40` }}>
+              <div className="text-sm text-white/50 mb-1">La tua scelta:</div>
+              <div className="font-black text-white">{OPTS.find(o => o.key === myConsent)?.emoji} {OPTS.find(o => o.key === myConsent)?.label}</div>
             </div>
-          )}
-          <div className="text-white/30 text-xs">L'host deciderà se hai completato la missione</div>
+            <div className="text-xs text-white/30">Aspetta che l'host avvii la bottiglia…</div>
+            <div className="flex gap-2 w-full">
+              {OPTS.filter(o => o.key !== myConsent).map(o => (
+                <button key={o.key} disabled={busy} onClick={() => void aoPost('consent', { playerId: player.id, response: o.key })}
+                  className="flex-1 rounded-xl py-2 text-xs font-black disabled:opacity-40"
+                  style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                  {o.emoji} {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3 w-full">
+            <div className="text-sm text-white/50">Come vuoi partecipare?</div>
+            {OPTS.map(o => (
+              <button key={o.key} disabled={busy} onClick={() => void aoPost('consent', { playerId: player.id, response: o.key })}
+                className="w-full rounded-2xl py-4 text-lg font-black disabled:opacity-50 transition-all active:scale-95"
+                style={{ background: `${o.color}22`, border: `2px solid ${o.color}55`, color: o.color }}>
+                {o.emoji} {o.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── challenge ─────────────────────────────────────────────────────────────
+  if (phase === 'challenge') {
+    const dur = challenge?.durationSeconds ?? 60;
+    const timerPct = timeLeft !== null ? timeLeft / dur : 1;
+    const timerColor = timerPct > 0.5 ? '#4ade80' : timerPct > 0.25 ? '#facc15' : '#ef4444';
+    if (isSelected) return (
+      <div className="flex flex-col items-center gap-4 py-4 text-center">
+        {timeLeft !== null && (
+          <>
+            <div className="h-1.5 w-full rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.1)' }}>
+              <div className="h-full rounded-full transition-all duration-[250ms]" style={{ background: timerColor, width: `${timerPct * 100}%` }}/>
+            </div>
+            <div className="text-5xl font-black tabular-nums" style={{ color: timerColor }}>{timeLeft}s</div>
+          </>
+        )}
+        <motion.div initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring' }}
+          className="rounded-full px-5 py-2 text-sm font-black" style={{ background: `${AC}25`, border: `2px solid ${AC}66`, color: AC }}>
+          🍾 LA BOTTIGLIA PUNTA SU DI TE!
+        </motion.div>
+        {challenge && (
+          <div className="rounded-2xl p-5 w-full text-left" style={{ background: `${AC}15`, border: `2px solid ${AC}44` }}>
+            <div className="text-xs font-black uppercase tracking-widest mb-2 text-white/40">{challenge.category}</div>
+            <div className="text-base font-black text-white leading-snug">{challenge.text}</div>
+          </div>
+        )}
+        <div className="text-white/30 text-xs">Guarda la TV — l'host deciderà il risultato</div>
+      </div>
+    );
+    if (isSpectator && myPower) {
+      const pw = AO_PHONE_POWERS[myPower];
+      return (
+        <div className="flex flex-col items-center gap-5 py-6 text-center">
+          <div className="text-sm text-white/40">Sei spettatore</div>
+          <div className="text-display text-2xl font-black" style={{ color: AC }}>{selectedNickname ?? '?'}</div>
+          <div className="text-white/50 text-sm">sta completando la sfida</div>
+          <div className="rounded-2xl p-4 w-full" style={{ background: 'rgba(255,220,0,0.1)', border: '1px solid rgba(255,220,0,0.3)' }}>
+            <div className="text-xs text-yellow-400/60 mb-1">HAI UN SUPERPOTERE!</div>
+            <div className="text-2xl mb-1">{pw?.emoji ?? '⚡'}</div>
+            <div className="font-black text-yellow-300">{pw?.label ?? myPower}</div>
+          </div>
+          <button disabled={busy} onClick={() => void aoPost('use-power', { playerId: player.id, power: myPower })}
+            className="w-full rounded-2xl py-4 text-lg font-black disabled:opacity-50"
+            style={{ background: 'linear-gradient(135deg,#FBBF24,#F59E0B)', color: '#000' }}>
+            {busy ? '…' : `⚡ Usa ${pw?.label ?? myPower}!`}
+          </button>
         </div>
       );
     }
-
     return (
-      <div className="flex flex-col items-center gap-5 py-8 text-center">
+      <div className="flex flex-col items-center gap-4 py-8 text-center">
         {timeLeft !== null && (
           <div className="h-1.5 w-full rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.1)' }}>
-            <div className="h-full rounded-full transition-all duration-[250ms]"
-              style={{ background: timerColor, width: `${timerPct * 100}%` }}/>
+            <div className="h-full rounded-full transition-all duration-[250ms]" style={{ background: timerColor, width: `${timerPct * 100}%` }}/>
           </div>
         )}
         <div className="text-4xl">👀</div>
         <div className="text-white/60 font-bold">Tocca a…</div>
         <div className="text-display text-3xl font-black" style={{ color: AC }}>{selectedNickname ?? '?'}</div>
-        {mission && (
-          <div className="rounded-2xl p-4 w-full"
-            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
-            <div className="text-sm text-white/40">Missione: <span className="text-white font-black">{mission.title}</span></div>
+        <div className="text-white/25 text-xs mt-2">Guarda la TV per i dettagli</div>
+      </div>
+    );
+  }
+
+  // ── voting ────────────────────────────────────────────────────────────────
+  if (phase === 'voting') {
+    const myVote = votes[player.id];
+    return (
+      <div className="flex flex-col items-center gap-5 py-6 text-center">
+        <div className="text-2xl font-black text-white">Ha completato la sfida?</div>
+        <div className="text-white/50 text-sm">{selectedNickname ?? '?'}</div>
+        {myVote ? (
+          <div className="rounded-2xl p-5 w-full" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)' }}>
+            <div className="text-3xl mb-1">{myVote === 'ok' ? '✅' : '❌'}</div>
+            <div className="font-black text-white">{myVote === 'ok' ? 'Hai votato SÌ' : 'Hai votato NO'}</div>
+            <div className="text-white/30 text-xs mt-1">Aspetta gli altri…</div>
+          </div>
+        ) : (
+          <div className="flex gap-4 w-full">
+            <button disabled={busy} onClick={() => void aoPost('vote', { playerId: player.id, vote: 'fail' })}
+              className="flex-1 rounded-2xl py-5 text-2xl font-black disabled:opacity-50"
+              style={{ background: 'rgba(239,68,68,0.2)', border: '2px solid rgba(239,68,68,0.5)', color: '#EF4444' }}>
+              ❌ No
+            </button>
+            <button disabled={busy} onClick={() => void aoPost('vote', { playerId: player.id, vote: 'ok' })}
+              className="flex-1 rounded-2xl py-5 text-2xl font-black disabled:opacity-50"
+              style={{ background: 'rgba(74,222,128,0.2)', border: '2px solid rgba(74,222,128,0.5)', color: '#4ADE80' }}>
+              ✅ Sì
+            </button>
           </div>
         )}
-        <div className="text-white/25 text-xs">Guarda la TV per i dettagli</div>
+      </div>
+    );
+  }
+
+  // ── escalation ────────────────────────────────────────────────────────────
+  if (phase === 'escalation') {
+    const myVoteEsc = escalationVotes[player.id];
+    const tgt = AO_PHONE_LEVELS.find(l => l.level === escalationTarget) ?? { label: `Livello ${escalationTarget}`, emoji: '🔼', color: '#A855F7' };
+    return (
+      <div className="flex flex-col items-center gap-5 py-6 text-center">
+        <div className="text-4xl">🔼</div>
+        <div className="text-xl font-black text-white">Escalation proposta!</div>
+        <div className="rounded-2xl px-5 py-3 font-black" style={{ background: `${tgt.color}22`, border: `1px solid ${tgt.color}55`, color: tgt.color }}>
+          {tgt.emoji} {tgt.label}
+        </div>
+        <div className="text-white/50 text-sm">Vuoi giocare a questo livello?</div>
+        {!isActive ? (
+          <div className="text-white/30 text-xs">Solo i giocatori attivi votano</div>
+        ) : myVoteEsc !== undefined ? (
+          <div className="rounded-2xl p-4 w-full" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)' }}>
+            <div className="font-black text-white">{myVoteEsc ? '👍 Hai approvato' : '👎 Hai rifiutato'}</div>
+            <div className="text-white/30 text-xs mt-1">Aspetta gli altri…</div>
+          </div>
+        ) : (
+          <div className="flex gap-4 w-full">
+            <button disabled={busy} onClick={() => void aoPost('level-vote', { playerId: player.id, approve: false })}
+              className="flex-1 rounded-2xl py-5 text-2xl font-black disabled:opacity-50"
+              style={{ background: 'rgba(239,68,68,0.2)', border: '2px solid rgba(239,68,68,0.5)', color: '#EF4444' }}>
+              👎 No
+            </button>
+            <button disabled={busy} onClick={() => void aoPost('level-vote', { playerId: player.id, approve: true })}
+              className="flex-1 rounded-2xl py-5 text-2xl font-black disabled:opacity-50"
+              style={{ background: 'rgba(74,222,128,0.2)', border: '2px solid rgba(74,222,128,0.5)', color: '#4ADE80' }}>
+              👍 Sì
+            </button>
+          </div>
+        )}
       </div>
     );
   }
 
   // ── result ────────────────────────────────────────────────────────────────
   if (phase === 'result') {
-    const myRank = rankingData?.find(r => r.playerId === player.id);
+    const myRank = rankingData.find(r => r.playerId === player.id);
     const myDelta = myRank?.delta ?? 0;
     return (
-      <div className="flex flex-col items-center gap-5 py-8 text-center">
+      <div className="flex flex-col items-center gap-5 py-6 text-center">
         {myDelta > 0 ? (
           <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring' }}
-            className="rounded-2xl p-6 w-full"
-            style={{ background: `${AC}18`, border: `2px solid ${AC}55`, color: AC }}>
+            className="rounded-2xl p-6 w-full" style={{ background: `${AC}18`, border: `2px solid ${AC}55`, color: AC }}>
             <div className="text-4xl mb-2">🎉</div>
-            <div className="text-2xl font-black">Missione riuscita!</div>
-            <div className="text-xl font-black mt-1">+{myDelta} punti!</div>
+            <div className="text-xl font-black">Completata!</div>
+            <div className="text-2xl font-black mt-1">+{myDelta}pt</div>
           </motion.div>
         ) : (
-          <div className="rounded-2xl p-6 w-full text-center"
-            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.5)' }}>
-            <div className="text-4xl mb-2">{completedBy ? '👏' : '😅'}</div>
-            <div className="text-xl font-black">{completedBy ? `${completedBy} l'ha fatta!` : 'Missione saltata'}</div>
+          <div className="rounded-2xl p-6 w-full" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.5)' }}>
+            <div className="text-4xl mb-2">{lastValidated ? '🎉' : '😅'}</div>
+            <div className="text-xl font-black">{lastValidated ? 'Completata!' : 'Saltata'}</div>
           </div>
         )}
         {myRank && (
-          <div className="text-sm text-white/40">
-            Il tuo punteggio: <span className="font-black text-white">{myRank.score}pt</span>
-          </div>
+          <div className="text-sm text-white/40">Punteggio: <span className="font-black text-white">{myRank.score}pt</span></div>
         )}
         <div className="text-white/25 text-xs">⏳ Aspetta la prossima bottiglia…</div>
       </div>
     );
   }
 
-  // ── finale ────────────────────────────────────────────────────────────────
-  if (phase === 'finale') {
-    const myRank = rankingData?.findIndex(r => r.playerId === player.id) ?? -1;
-    const myScore = rankingData?.find(r => r.playerId === player.id);
+  // ── ended ─────────────────────────────────────────────────────────────────
+  if (phase === 'ended') {
+    const myRankIdx = rankingData.findIndex(r => r.playerId === player.id);
+    const myScore = rankingData.find(r => r.playerId === player.id);
     return (
-      <div className="flex flex-col items-center gap-6 py-8 text-center">
-        <div className="text-5xl">🏆</div>
-        <div className="text-2xl font-black text-white">Fine della Serata!</div>
+      <div className="flex flex-col items-center gap-5 py-6 text-center">
+        <div className="text-5xl">{emergencyStop ? '🛑' : '🏆'}</div>
+        <div className="text-2xl font-black text-white">{emergencyStop ? 'Gioco interrotto' : 'Fine After Dark!'}</div>
         {myScore && (
-          <div className="rounded-2xl px-8 py-5 w-full"
-            style={{ background: `${AC}18`, border: `2px solid ${AC}44` }}>
+          <div className="rounded-2xl px-8 py-5 w-full" style={{ background: `${AC}18`, border: `2px solid ${AC}44` }}>
             <div className="text-xs uppercase tracking-widest text-white/40 mb-1">IL TUO RISULTATO</div>
             <div className="text-display text-4xl font-black" style={{ color: AC }}>{myScore.score}pt</div>
-            {myRank >= 0 && <div className="text-white/50 text-sm mt-1">#{myRank + 1} in classifica</div>}
+            {myRankIdx >= 0 && <div className="text-white/50 text-sm mt-1">#{myRankIdx + 1} in classifica</div>}
           </div>
         )}
-        {rankingData && (
-          <div className="flex flex-col gap-2 w-full">
-            {rankingData.slice(0, 5).map((p, i) => (
-              <div key={p.playerId} className="flex items-center gap-3 rounded-xl px-4 py-2"
-                style={{ background: p.playerId === player.id ? `${AC}18` : 'rgba(255,255,255,0.04)', border: `1px solid ${p.playerId === player.id ? AC + '44' : 'rgba(255,255,255,0.07)'}` }}>
-                <div className="text-white/30 text-sm w-5">{i + 1}</div>
-                <div className="flex-1 font-bold text-sm" style={{ color: p.playerId === player.id ? AC : 'rgba(255,255,255,0.7)' }}>{p.nickname}</div>
-                <div className="font-black text-sm" style={{ color: AC }}>{p.score}pt</div>
-              </div>
-            ))}
-          </div>
-        )}
+        <div className="flex flex-col gap-2 w-full">
+          {rankingData.slice(0, 5).map((p, i) => (
+            <div key={p.playerId} className="flex items-center gap-3 rounded-xl px-4 py-2"
+              style={{ background: p.playerId === player.id ? `${AC}18` : 'rgba(255,255,255,0.04)', border: `1px solid ${p.playerId === player.id ? AC + '44' : 'rgba(255,255,255,0.07)'}` }}>
+              <div className="text-white/30 text-sm w-5">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</div>
+              <div className="flex-1 font-bold text-sm" style={{ color: p.playerId === player.id ? AC : 'rgba(255,255,255,0.7)' }}>{p.nickname}</div>
+              <div className="font-black text-sm" style={{ color: AC }}>{p.score}pt</div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }

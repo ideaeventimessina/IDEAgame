@@ -91,6 +91,36 @@ export const adultOnlySessionsTable = pgTable("adult_only_sessions", {
     .$onUpdate(() => new Date()),
 });
 
+/* ─── Bottle Party Packs (levels 4-5 admin-managed content) ─────────── */
+export const adultBottlePacksTable = pgTable("adult_bottle_packs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").references(() => tenantsTable.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description").default(""),
+  level: integer("level").notNull().default(4),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const adultBottleChallengesTable = pgTable("adult_bottle_challenges", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  packId: uuid("pack_id").references(() => adultBottlePacksTable.id, { onDelete: "cascade" }),
+  level: integer("level").notNull(),
+  category: text("category").default(""),
+  text: text("text").notNull(),
+  requiredPlayers: integer("required_players").notNull().default(1),
+  durationSeconds: integer("duration_seconds").notNull().default(60),
+  requiresConsent: boolean("requires_consent").notNull().default(true),
+  allowPublicVote: boolean("allow_public_vote").notNull().default(true),
+  tags: text("tags").array().default([]),
+  usedCount: integer("used_count").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type AdultBottlePack = typeof adultBottlePacksTable.$inferSelect;
+export type AdultBottleChallenge = typeof adultBottleChallengesTable.$inferSelect;
+
 /* ─── Zod insert schemas ─────────────────────────────────────────────── */
 export const insertAdultOnlyDeckSchema = createInsertSchema(adultOnlyDecksTable).omit({
   id: true,

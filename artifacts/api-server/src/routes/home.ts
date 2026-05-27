@@ -23,8 +23,8 @@ import OpenAI from "openai";
 import { createBlankKaraokeState } from "../lib/karaoke-home-engine.js";
 import { generateQuiz, QUIZ_THEMES } from "../lib/quiz-generator.js";
 import { generateSaraMusicaRounds, SM_THEMES, type MusicRound } from "../lib/saramusica-generator.js";
-import { generateAdultMissions, ADULT_LEVELS, type AdultMission, type AdultLevel } from "../lib/adult-generator.js";
-import { eq, and, or, lt, asc, desc, isNull } from "drizzle-orm";
+import { BOTTLE_LEVELS, pickFromBank, assignSpectatorPowers, type BottleChallenge, type BottleLevel } from "../lib/adult-generator.js";
+import { eq, and, or, lt, asc, desc, isNull, notInArray } from "drizzle-orm";
 import {
   db,
   homeSessionsTable,
@@ -44,6 +44,7 @@ import {
   // Adult Only
   adultOnlyDecksTable,
   adultOnlyCardsTable,
+  adultBottleChallengesTable,
   // Ballo
   danceChallengesTable,
   // WordBack
@@ -1769,7 +1770,7 @@ router.post("/home/sessions/:id/saramusica/next", async (req, res): Promise<void
   res.json({ ok: true });
 });
 
-// ── Adult Only (After Dark) routes ────────────────────────────────────────────
+// ── Adult Only — Bottiglia Party Engine ───────────────────────────────────────
 
 async function adultUpdate(id: string, patch: Record<string, unknown>): Promise<void> {
   const sess = await getSession(id);
@@ -1782,37 +1783,57 @@ async function adultUpdate(id: string, patch: Record<string, unknown>): Promise<
   emitToRoom(homeRoom(id), "home:state", { session: updated[0], players });
 }
 
-// POST /home/sessions/:id/adult/start — select level + count, enter spinning
-router.post("/home/sessions/:id/adult/start", async (req, res): Promise<void> => {
+type AoPlayer = Awaited<ReturnType<typeof getPlayers>>[number];
+function aoRanking(players: AoPlayer[], deltas: Record<string, number> = {}): { playerId: string; nickname: string; score: number; delta: number }[] {
+  return [...players].sort((a, b) => b.score - a.score).map(p => ({ playerId: p.id, nickname: p.nickname, score: p.score, delta: deltas[p.id] ?? 0 }));
+}
+
+async function pickBottleChallenge(level: number, usedIds: string[]): Promise<BottleChallenge | null> {
+  if (level <= 3) return pickFromBank(level as BottleLevel, usedIds);
+  const where = usedIds.length > 0
+    ? and(eq(adultBottleChallengesTable.level, level), eq(adultBottleChallengesTable.isActive, true), notInArray(adultBottleChallengesTable.id, usedIds))
+    : and(eq(adultBottleChallengesTable.level, level), eq(adultBottleChallengesTable.isActive, true));
+  const rows = await db.select().from(adultBottleChallengesTable).where(where).limit(20);
+  const pool = rows.length > 0 ? rows : await db.select().from(adultBottleChallengesTable).where(and(eq(adultBottleChallengesTable.level, level), eq(adultBottleChallengesTable.isActive, true))).limit(20);
+  if (pool.length === 0) return null;
+  const row = pool[Math.floor(Math.random() * pool.length)]!;
+  return { id: row.id, level: row.level as BottleLevel, category: row.category ?? "", text: row.text, requiredPlayers: row.requiredPlayers, durationSeconds: row.durationSeconds, requiresConsent: row.requiresConsent, allowPublicVote: row.allowPublicVote, tags: row.tags ?? [] };
+}
+
+// POST /adult/set-level — change game level during consent phase
+router.post("/home/sessions/:id/adult/set-level", async (req, res): Promise<void> => {
   const id = String(req.params["id"]);
   if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
   const session = await getSession(id);
   if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
   const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
-  if (rp["mode"] !== "home-adult" || rp["phase"] !== "intro") { res.status(409).json({ error: "Fase non corretta" }); return; }
-  const { level, totalRounds } = req.body as { level: AdultLevel; totalRounds?: number };
-  const validLevels: AdultLevel[] = ["flirt", "tension", "hot", "extreme", "after_dark"];
-  if (!validLevels.includes(level)) { res.status(400).json({ error: "Livello non valido" }); return; }
-  const count = Math.min(20, Math.max(5, Number(totalRounds ?? 10)));
-  const levelObj = ADULT_LEVELS.find(l => l.id === level);
-  await adultUpdate(id, { phase: "spinning", level, levelLabel: levelObj?.label ?? level, totalRounds: count, missions: [], currentRound: 0 });
+  if (rp["mode"] !== "home-adult") { res.status(409).json({ error: "Non in modalità adult" }); return; }
+  const { level } = req.body as { level: number };
+  if (![1,2,3,4,5].includes(level)) { res.status(400).json({ error: "Livello non valido" }); return; }
+  const levelObj = BOTTLE_LEVELS.find(l => l.level === level);
+  await adultUpdate(id, { level, levelLabel: levelObj?.label ?? `Livello ${level}`, levelColor: levelObj?.color ?? "#34D399" });
   res.json({ ok: true });
-  // Generate missions in background
-  setTimeout(async () => {
-    try {
-      const missions = await generateAdultMissions(level, count + 5); // extra buffer
-      const sess2 = await getSession(id);
-      if (!sess2) return;
-      const rp2 = (sess2.roundPayload ?? {}) as Record<string, unknown>;
-      await adultUpdate(id, { ...rp2, missions });
-      logger.info({ sessionId: id, level, count, generated: missions.length }, "[AdultOnly] missions ready");
-    } catch (err) {
-      logger.error({ err, sessionId: id }, "[AdultOnly] mission generation failed");
-    }
-  }, 0);
 });
 
-// POST /home/sessions/:id/adult/spin — pick random player + current mission → mission phase
+// POST /adult/consent — player records participation preference
+router.post("/home/sessions/:id/adult/consent", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-adult" || String(rp["phase"]) !== "consent") { res.status(409).json({ error: "Consenso non aperto" }); return; }
+  const { playerId, response } = req.body as { playerId: string; response: "participate" | "watch" | "leave" };
+  if (!["participate", "watch", "leave"].includes(response)) { res.status(400).json({ error: "Risposta non valida" }); return; }
+  const players = await getPlayers(id);
+  const consentMap = { ...((rp["consentMap"] ?? {}) as Record<string, string>), [playerId]: response };
+  const activePlayers = players.filter(p => consentMap[p.id] === "participate").map(p => p.id);
+  const spectatorPlayers = players.filter(p => !consentMap[p.id] || consentMap[p.id] === "watch").map(p => p.id);
+  await adultUpdate(id, { consentMap, activePlayers, spectatorPlayers });
+  res.json({ ok: true });
+});
+
+// POST /adult/spin — host spins bottle: selects random player + challenge
 router.post("/home/sessions/:id/adult/spin", async (req, res): Promise<void> => {
   const id = String(req.params["id"]);
   if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
@@ -1820,131 +1841,226 @@ router.post("/home/sessions/:id/adult/spin", async (req, res): Promise<void> => 
   if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
   const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
   if (rp["mode"] !== "home-adult") { res.status(409).json({ error: "Non in modalità adult" }); return; }
-  if (rp["phase"] !== "spinning") { res.status(409).json({ error: "Fase non corretta" }); return; }
+  if (!["consent", "result", "escalation"].includes(String(rp["phase"] ?? ""))) { res.status(409).json({ error: "Fase non corretta" }); return; }
   const players = await getPlayers(id);
-  if (players.length === 0) { res.status(400).json({ error: "Nessun giocatore" }); return; }
-  const missions = (rp["missions"] ?? []) as AdultMission[];
-  const currentRound = Number(rp["currentRound"] ?? 0);
-  const totalRounds = Number(rp["totalRounds"] ?? 10);
-  // Select random player
-  const selectedPlayer = players[Math.floor(Math.random() * players.length)]!;
-  // Pick mission (cycle through missions array)
-  const missionIdx = currentRound % Math.max(1, missions.length);
-  const mission = missions[missionIdx] ?? { id: "fallback", level: "flirt", title: "Sfida libera", body: "Inventate insieme una sfida divertente!", points: 100, timeLimit: 60, tag: "solo" };
-  const missionEndsAt = Date.now() + (mission.timeLimit ?? 60) * 1000;
+  const consentMap = (rp["consentMap"] ?? {}) as Record<string, string>;
+  const activePlayers: string[] = String(rp["phase"]) === "consent"
+    ? players.filter(p => consentMap[p.id] !== "leave").map(p => p.id)
+    : (rp["activePlayers"] ?? []) as string[];
+  const spectatorPlayers = players.filter(p => !activePlayers.includes(p.id)).map(p => p.id);
+  if (activePlayers.length === 0) { res.status(400).json({ error: "Nessun giocatore attivo" }); return; }
+  const level = Number(rp["level"] ?? 1);
+  const usedIds = (rp["usedChallengeIds"] ?? []) as string[];
+  const roundNumber = Number(rp["roundNumber"] ?? 0) + 1;
+  const selectedId = activePlayers[Math.floor(Math.random() * activePlayers.length)]!;
+  const challenge = await pickBottleChallenge(level, usedIds);
+  if (!challenge) { res.status(400).json({ error: "Nessuna sfida disponibile. Aggiungi contenuti nel pannello admin." }); return; }
+  const challengeEndsAt = new Date(Date.now() + (challenge.durationSeconds ?? 60) * 1000).toISOString();
+  const spectatorPowers = assignSpectatorPowers(spectatorPlayers, (rp["spectatorPowers"] ?? {}) as Record<string, string | null>);
   await adultUpdate(id, {
-    phase: "mission",
-    selectedPlayerIds: [selectedPlayer.id],
-    selectedPlayerNickname: selectedPlayer.nickname,
-    currentMission: mission,
-    missionStartedAt: new Date().toISOString(),
-    missionEndsAt: new Date(missionEndsAt).toISOString(),
-    completedBy: null,
+    phase: "challenge", roundNumber, activePlayers, spectatorPlayers,
+    selectedPlayerId: selectedId, selectedPlayerNickname: players.find(p => p.id === selectedId)?.nickname ?? "?",
+    currentChallenge: challenge, challengeEndsAt,
+    votes: {}, votingEndsAt: null, lastValidated: null, lastPoints: 0,
+    doublePoints: false, forcePublicVote: false, forcedValidate: false,
+    activePower: null, spectatorPowers, usedChallengeIds: [...usedIds, challenge.id],
   });
-  await db.update(homeSessionsTable).set({ currentRound }).where(eq(homeSessionsTable.id, id));
-  logger.info({ sessionId: id, player: selectedPlayer.nickname, mission: mission.title }, "[AdultOnly] spin → mission");
+  await db.update(homeSessionsTable).set({ currentRound: roundNumber }).where(eq(homeSessionsTable.id, id));
+  req.log.info({ sessionId: id, round: roundNumber, player: players.find(p => p.id === selectedId)?.nickname }, "[AdultBottle] spin → challenge");
   res.json({ ok: true });
 });
 
-// POST /home/sessions/:id/adult/complete — mission done by selected player → result
+// POST /adult/use-power — spectator uses superpower
+router.post("/home/sessions/:id/adult/use-power", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-adult" || String(rp["phase"]) !== "challenge") { res.status(409).json({ error: "Non in fase sfida" }); return; }
+  const { playerId, power } = req.body as { playerId: string; power: string };
+  const spectatorPowers = { ...((rp["spectatorPowers"] ?? {}) as Record<string, string | null>) };
+  if (spectatorPowers[playerId] !== power) { res.status(409).json({ error: "Potere non disponibile" }); return; }
+  const players = await getPlayers(id);
+  const patch: Record<string, unknown> = {
+    spectatorPowers: { ...spectatorPowers, [playerId]: null },
+    activePower: { playerId, nickname: players.find(p => p.id === playerId)?.nickname ?? "?", power },
+  };
+  if (power === "reroll") {
+    const nc = await pickBottleChallenge(Number(rp["level"] ?? 1), (rp["usedChallengeIds"] ?? []) as string[]);
+    if (nc) { patch["currentChallenge"] = nc; patch["usedChallengeIds"] = [...(rp["usedChallengeIds"] ?? []) as string[], nc.id]; patch["challengeEndsAt"] = new Date(Date.now() + (nc.durationSeconds ?? 60) * 1000).toISOString(); }
+  } else if (power === "extra_time") {
+    patch["challengeEndsAt"] = new Date(new Date(String(rp["challengeEndsAt"] ?? new Date())).getTime() + 30_000).toISOString();
+  } else if (power === "swap_player") {
+    const active = (rp["activePlayers"] ?? []) as string[];
+    const others = active.filter(p => p !== String(rp["selectedPlayerId"]));
+    if (others.length > 0) { const nid = others[Math.floor(Math.random() * others.length)]!; patch["selectedPlayerId"] = nid; patch["selectedPlayerNickname"] = players.find(p => p.id === nid)?.nickname ?? "?"; }
+  } else if (power === "validate") { patch["forcedValidate"] = true;
+  } else if (power === "double_points") { patch["doublePoints"] = true;
+  } else if (power === "public_vote") { patch["forcePublicVote"] = true; }
+  await adultUpdate(id, patch);
+  res.json({ ok: true });
+});
+
+// POST /adult/complete — challenge done → voting (if allowPublicVote) or instant result
 router.post("/home/sessions/:id/adult/complete", async (req, res): Promise<void> => {
   const id = String(req.params["id"]);
   if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
   const session = await getSession(id);
   if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
   const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
-  if (rp["mode"] !== "home-adult" || rp["phase"] !== "mission") { res.status(409).json({ error: "Fase non corretta" }); return; }
-  const selectedIds = (rp["selectedPlayerIds"] ?? []) as string[];
-  const mission = rp["currentMission"] as AdultMission | null;
-  const pts = mission?.points ?? 100;
+  if (rp["mode"] !== "home-adult" || String(rp["phase"]) !== "challenge") { res.status(409).json({ error: "Non in fase sfida" }); return; }
+  const challenge = rp["currentChallenge"] as BottleChallenge | null;
+  const selectedId = String(rp["selectedPlayerId"] ?? "");
+  const basePoints = (challenge?.durationSeconds ?? 60) >= 90 ? 200 : 150;
+  const pts = Boolean(rp["doublePoints"]) ? basePoints * 2 : basePoints;
   const players = await getPlayers(id);
-  const completedPlayers = players.filter(p => selectedIds.includes(p.id));
-  const scoreUpdates = completedPlayers.map(p =>
-    db.update(homePlayersTable).set({ score: p.score + pts }).where(eq(homePlayersTable.id, p.id))
-  );
-  await Promise.all(scoreUpdates);
-  const updatedPlayers = await getPlayers(id);
-  const rankingData = [...updatedPlayers].sort((a, b) => b.score - a.score).map(p => ({
-    playerId: p.id, nickname: p.nickname, score: p.score, delta: completedPlayers.some(c => c.id === p.id) ? pts : 0,
-  }));
-  await adultUpdate(id, { phase: "result", completedBy: completedPlayers.map(p => p.nickname).join(", ") || "—", pointsAwarded: pts, rankingData });
-  logger.info({ sessionId: id, pts, completedBy: selectedIds }, "[AdultOnly] complete → result");
+  if (Boolean(rp["forcedValidate"])) {
+    const sel = players.find(p => p.id === selectedId);
+    if (sel) await db.update(homePlayersTable).set({ score: sel.score + pts }).where(eq(homePlayersTable.id, selectedId));
+    const updated = await getPlayers(id);
+    await adultUpdate(id, { phase: "result", lastValidated: true, lastPoints: pts, rankingData: aoRanking(updated, { [selectedId]: pts }), activePower: null });
+  } else if ((challenge?.allowPublicVote ?? false) || Boolean(rp["forcePublicVote"])) {
+    await adultUpdate(id, { phase: "voting", votes: {}, votingEndsAt: new Date(Date.now() + 30_000).toISOString(), activePower: null });
+  } else {
+    const sel = players.find(p => p.id === selectedId);
+    if (sel) await db.update(homePlayersTable).set({ score: sel.score + pts }).where(eq(homePlayersTable.id, selectedId));
+    const updated = await getPlayers(id);
+    await adultUpdate(id, { phase: "result", lastValidated: true, lastPoints: pts, rankingData: aoRanking(updated, { [selectedId]: pts }), activePower: null });
+  }
   res.json({ ok: true });
 });
 
-// POST /home/sessions/:id/adult/skip — skip mission, no points → result
+// POST /adult/skip — skip challenge, no points → result
 router.post("/home/sessions/:id/adult/skip", async (req, res): Promise<void> => {
   const id = String(req.params["id"]);
   if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
   const session = await getSession(id);
   if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
   const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
-  if (rp["mode"] !== "home-adult" || rp["phase"] !== "mission") { res.status(409).json({ error: "Fase non corretta" }); return; }
-  const players = await getPlayers(id);
-  const rankingData = [...players].sort((a, b) => b.score - a.score).map(p => ({
-    playerId: p.id, nickname: p.nickname, score: p.score, delta: 0,
-  }));
-  await adultUpdate(id, { phase: "result", completedBy: null, pointsAwarded: 0, rankingData });
+  if (rp["mode"] !== "home-adult" || String(rp["phase"]) !== "challenge") { res.status(409).json({ error: "Non in fase sfida" }); return; }
+  await adultUpdate(id, { phase: "result", lastValidated: false, lastPoints: 0, rankingData: aoRanking(await getPlayers(id)), activePower: null });
   res.json({ ok: true });
 });
 
-// POST /home/sessions/:id/adult/next — result → spinning (next round) OR finale
-router.post("/home/sessions/:id/adult/next", async (req, res): Promise<void> => {
+// POST /adult/vote — player votes ok/fail during voting phase
+router.post("/home/sessions/:id/adult/vote", async (req, res): Promise<void> => {
   const id = String(req.params["id"]);
   if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
   const session = await getSession(id);
   if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
   const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
-  if (rp["mode"] !== "home-adult" || rp["phase"] !== "result") { res.status(409).json({ error: "Fase non corretta" }); return; }
-  const currentRound = Number(rp["currentRound"] ?? 0) + 1;
-  const totalRounds = Number(rp["totalRounds"] ?? 10);
+  if (rp["mode"] !== "home-adult" || String(rp["phase"]) !== "voting") { res.status(409).json({ error: "Votazione non aperta" }); return; }
+  const { playerId, vote } = req.body as { playerId: string; vote: "ok" | "fail" };
+  if (!["ok", "fail"].includes(vote)) { res.status(400).json({ error: "Voto non valido" }); return; }
+  const votes = { ...((rp["votes"] ?? {}) as Record<string, string>), [playerId]: vote };
   const players = await getPlayers(id);
-  const rankingData = [...players].sort((a, b) => b.score - a.score).map(p => ({
-    playerId: p.id, nickname: p.nickname, score: p.score, delta: 0,
-  }));
-  if (currentRound >= totalRounds) {
-    await adultUpdate(id, { phase: "finale", currentRound, rankingData });
-    await db.update(homeSessionsTable).set({ currentRound }).where(eq(homeSessionsTable.id, id));
-    res.json({ ok: true });
-    return;
+  const selectedId = String(rp["selectedPlayerId"] ?? "");
+  const voterIds = [...new Set([...(rp["activePlayers"] ?? []) as string[], ...(rp["spectatorPlayers"] ?? []) as string[]])].filter(v => v !== selectedId);
+  if (voterIds.every(vid => votes[vid])) {
+    const ok = Object.values(votes).filter(v => v === "ok").length;
+    const validated = ok >= Object.values(votes).filter(v => v === "fail").length;
+    const challenge = rp["currentChallenge"] as BottleChallenge | null;
+    const base = (challenge?.durationSeconds ?? 60) >= 90 ? 200 : 150;
+    const pts = validated ? (Boolean(rp["doublePoints"]) ? base * 2 : base) : 0;
+    if (validated) { const sel = players.find(p => p.id === selectedId); if (sel) await db.update(homePlayersTable).set({ score: sel.score + pts }).where(eq(homePlayersTable.id, selectedId)); }
+    const updated = await getPlayers(id);
+    await adultUpdate(id, { votes, phase: "result", lastValidated: validated, lastPoints: pts, rankingData: aoRanking(updated, validated ? { [selectedId]: pts } : {}) });
+  } else {
+    await adultUpdate(id, { votes });
   }
-  await adultUpdate(id, { phase: "spinning", currentRound, selectedPlayerIds: [], selectedPlayerNickname: null, currentMission: null, completedBy: null });
-  await db.update(homeSessionsTable).set({ currentRound }).where(eq(homeSessionsTable.id, id));
   res.json({ ok: true });
 });
 
-// POST /home/sessions/:id/adult/escalate — increase level
-router.post("/home/sessions/:id/adult/escalate", async (req, res): Promise<void> => {
+// POST /adult/close-vote — host closes voting early
+router.post("/home/sessions/:id/adult/close-vote", async (req, res): Promise<void> => {
   const id = String(req.params["id"]);
   if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
   const session = await getSession(id);
   if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
   const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
-  if (rp["mode"] !== "home-adult") { res.status(409).json({ error: "Non in modalità adult" }); return; }
-  const validLevels: AdultLevel[] = ["flirt", "tension", "hot", "extreme", "after_dark"];
-  const currentLevel = String(rp["level"] ?? "flirt");
-  const idx = validLevels.indexOf(currentLevel as AdultLevel);
-  const nextLevel = validLevels[Math.min(idx + 1, validLevels.length - 1)] ?? "after_dark";
-  const levelObj = ADULT_LEVELS.find(l => l.id === nextLevel);
-  // Generate new missions for escalated level
-  const newMissions = await generateAdultMissions(nextLevel, Number(rp["totalRounds"] ?? 10) + 5).catch(() => []);
-  await adultUpdate(id, { level: nextLevel, levelLabel: levelObj?.label ?? nextLevel, missions: newMissions, phase: "spinning", selectedPlayerIds: [], currentMission: null });
-  res.json({ ok: true, newLevel: nextLevel });
+  if (rp["mode"] !== "home-adult" || String(rp["phase"]) !== "voting") { res.status(409).json({ error: "Votazione non aperta" }); return; }
+  const votes = (rp["votes"] ?? {}) as Record<string, string>;
+  const ok = Object.values(votes).filter(v => v === "ok").length;
+  const validated = ok >= Object.values(votes).filter(v => v === "fail").length;
+  const challenge = rp["currentChallenge"] as BottleChallenge | null;
+  const base = (challenge?.durationSeconds ?? 60) >= 90 ? 200 : 150;
+  const pts = validated ? (Boolean(rp["doublePoints"]) ? base * 2 : base) : 0;
+  const selectedId = String(rp["selectedPlayerId"] ?? "");
+  const players = await getPlayers(id);
+  if (validated) { const sel = players.find(p => p.id === selectedId); if (sel) await db.update(homePlayersTable).set({ score: sel.score + pts }).where(eq(homePlayersTable.id, selectedId)); }
+  const updated = await getPlayers(id);
+  await adultUpdate(id, { phase: "result", lastValidated: validated, lastPoints: pts, rankingData: aoRanking(updated, validated ? { [selectedId]: pts } : {}) });
+  res.json({ ok: true });
 });
 
-// POST /home/sessions/:id/adult/finale — force end
-router.post("/home/sessions/:id/adult/finale", async (req, res): Promise<void> => {
+// POST /adult/propose-level — propose level escalation
+router.post("/home/sessions/:id/adult/propose-level", async (req, res): Promise<void> => {
   const id = String(req.params["id"]);
   if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
   const session = await getSession(id);
   if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
   const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
   if (rp["mode"] !== "home-adult") { res.status(409).json({ error: "Non in modalità adult" }); return; }
-  const players = await getPlayers(id);
-  const rankingData = [...players].sort((a, b) => b.score - a.score).map(p => ({
-    playerId: p.id, nickname: p.nickname, score: p.score, delta: 0,
-  }));
-  await adultUpdate(id, { phase: "finale", rankingData });
+  const { targetLevel } = req.body as { targetLevel: number };
+  if (![1,2,3,4,5].includes(targetLevel)) { res.status(400).json({ error: "Livello non valido" }); return; }
+  await adultUpdate(id, { phase: "escalation", escalationTarget: targetLevel, escalationVotes: {} });
+  res.json({ ok: true });
+});
+
+// POST /adult/level-vote — player votes on escalation
+router.post("/home/sessions/:id/adult/level-vote", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-adult" || String(rp["phase"]) !== "escalation") { res.status(409).json({ error: "Escalation non aperta" }); return; }
+  const { playerId, approve } = req.body as { playerId: string; approve: boolean };
+  const escalationVotes = { ...((rp["escalationVotes"] ?? {}) as Record<string, boolean>), [playerId]: approve };
+  const activePlayers = (rp["activePlayers"] ?? []) as string[];
+  if (activePlayers.every(pid => escalationVotes[pid] !== undefined)) {
+    const approved = activePlayers.filter(pid => escalationVotes[pid] === true);
+    const declined = activePlayers.filter(pid => escalationVotes[pid] === false);
+    const targetLevel = Number(rp["escalationTarget"] ?? Number(rp["level"] ?? 1));
+    const levelObj = BOTTLE_LEVELS.find(l => l.level === targetLevel);
+    if (approved.length === 0) {
+      await adultUpdate(id, { escalationVotes, phase: "result", escalationTarget: null });
+    } else {
+      await adultUpdate(id, {
+        escalationVotes, phase: "result", escalationTarget: null,
+        level: targetLevel, levelLabel: levelObj?.label ?? `Livello ${targetLevel}`, levelColor: levelObj?.color ?? "#F87171",
+        activePlayers: approved, spectatorPlayers: [...((rp["spectatorPlayers"] ?? []) as string[]), ...declined],
+        usedChallengeIds: [],
+      });
+    }
+  } else {
+    await adultUpdate(id, { escalationVotes });
+  }
+  res.json({ ok: true });
+});
+
+// POST /adult/emergency — emergency stop
+router.post("/home/sessions/:id/adult/emergency", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-adult") { res.status(409).json({ error: "Non in modalità adult" }); return; }
+  await adultUpdate(id, { phase: "ended", emergencyStop: true, rankingData: aoRanking(await getPlayers(id)) });
+  res.json({ ok: true });
+});
+
+// POST /adult/end — end game
+router.post("/home/sessions/:id/adult/end", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-adult") { res.status(409).json({ error: "Non in modalità adult" }); return; }
+  await adultUpdate(id, { phase: "ended", emergencyStop: false, rankingData: aoRanking(await getPlayers(id)) });
   res.json({ ok: true });
 });
 
@@ -2124,23 +2240,37 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
     return;
   }
 
-  // ── BYPASS: adult-only → new Jonny After Dark bottle-spin flow ──────────────
+  // ── BYPASS: adult-only → Bottiglia Party Engine v2 ──────────────────────────
   if (gameSlug === "adult-only") {
-    req.log.info({ sessionId: id }, "[FLOW_BYPASS] adult-only → new After Dark flow, skipping old DB loader");
+    req.log.info({ sessionId: id }, "[FLOW_BYPASS] adult-only → Bottiglia Party Engine v2 (consent → challenge loop)");
     const adultPayload: RoundPayload = {
       mode: "home-adult",
-      phase: "intro",
-      level: null,
-      missions: [],
-      currentRound: 0,
-      totalRounds: 10,
-      currentMission: null,
-      selectedPlayerIds: [],
+      phase: "consent",
+      level: 1,
+      levelLabel: "Sociale",
+      levelColor: "#34D399",
+      roundNumber: 0,
+      consentMap: {},
+      activePlayers: [],
+      spectatorPlayers: [],
+      selectedPlayerId: null,
       selectedPlayerNickname: null,
-      missionStartedAt: null,
-      missionEndsAt: null,
-      completedBy: null,
-      rankingData: null,
+      currentChallenge: null,
+      challengeEndsAt: null,
+      votes: {},
+      votingEndsAt: null,
+      lastValidated: null,
+      lastPoints: 0,
+      doublePoints: false,
+      forcePublicVote: false,
+      forcedValidate: false,
+      activePower: null,
+      spectatorPowers: {},
+      usedChallengeIds: [],
+      escalationTarget: null,
+      escalationVotes: {},
+      rankingData: [],
+      emergencyStop: false,
     };
     const adultCfg = { ...cfg, phase: "playing", gamesPlayed };
     const [adultUpdated] = await db.update(homeSessionsTable).set({
