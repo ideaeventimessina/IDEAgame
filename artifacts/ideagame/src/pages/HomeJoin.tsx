@@ -892,7 +892,7 @@ export default function HomeJoin() {
       {player && (
         <button onClick={openInbox}
           className="fixed z-[9990] flex h-11 w-11 items-center justify-center rounded-full"
-          style={{top:46,right:12,background:'linear-gradient(135deg,#7c3aed,#4f1d96)',boxShadow:'0 0 20px rgba(124,58,237,0.5)',border:'1px solid rgba(168,85,247,0.6)'}}>
+          style={{top:76,right:12,background:'linear-gradient(135deg,#7c3aed,#4f1d96)',boxShadow:'0 0 20px rgba(124,58,237,0.5)',border:'1px solid rgba(168,85,247,0.6)'}}>
           <Mail className="h-5 w-5 text-white"/>
           {chatUnread > 0 && (
             <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-black text-white">
