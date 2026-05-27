@@ -2172,25 +2172,73 @@ function QuizzoneBoard({ payload, session, players }: {
   const ANS_COLORS = ['#3B82F6','#EC4899','#EAB308','#10B981'];
 
   // ── setup_theme ────────────────────────────────────────────────────────────
-  if (phase === 'setup_theme') return (
-    <div className="flex flex-col items-center gap-8 w-full max-w-4xl">
-      <div className="text-center">
-        <div className="text-display text-4xl font-black text-white mb-2">Che tema vuoi per il</div>
-        <div className="text-display text-5xl font-black" style={{ color: QZ, textShadow: `0 0 40px ${QZ_GLOW}` }}>⭐ QUIZZONE?</div>
+  if (phase === 'setup_theme') {
+    const suggestions = (payload.quizSuggestions as { playerId: string; nickname: string; text: string }[] | undefined) ?? [];
+    // Count occurrences per suggestion text (case-insensitive)
+    const suggCounts: Record<string, { text: string; count: number; nicks: string[] }> = {};
+    for (const s of suggestions) {
+      const k = s.text.trim().toLowerCase();
+      if (!suggCounts[k]) suggCounts[k] = { text: s.text, count: 0, nicks: [] };
+      suggCounts[k]!.count++;
+      if (!suggCounts[k]!.nicks.includes(s.nickname)) suggCounts[k]!.nicks.push(s.nickname);
+    }
+    const topSuggs = Object.values(suggCounts).sort((a, b) => b.count - a.count).slice(0, 5);
+    const bestThemeId = topSuggs[0]?.text
+      ? (QZ_THEMES_CLIENT.find(t => t.label.toLowerCase() === topSuggs[0]!.text.toLowerCase())?.id ?? 'custom')
+      : 'random';
+    return (
+      <div className="flex flex-col items-center gap-6 w-full max-w-4xl">
+        <div className="text-center">
+          <div className="text-display text-4xl font-black text-white mb-2">Che tema vuoi per il</div>
+          <div className="text-display text-5xl font-black" style={{ color: QZ, textShadow: `0 0 40px ${QZ_GLOW}` }}>⭐ QUIZZONE?</div>
+          <div className="text-sm text-white/40 mt-2">I giocatori propongono il tema dal telefono</div>
+        </div>
+
+        {/* Player suggestions */}
+        {topSuggs.length > 0 && (
+          <div className="w-full rounded-2xl p-5" style={{ background: `${QZ}12`, border: `1px solid ${QZ}33` }}>
+            <div className="text-xs font-black uppercase tracking-widest mb-3" style={{ color: QZ }}>
+              💬 Proposte dei giocatori ({suggestions.length})
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {topSuggs.map(s => (
+                <button key={s.text} onClick={() => void post('/quiz/select-theme', { themeId: QZ_THEMES_CLIENT.find(t => t.label.toLowerCase() === s.text.toLowerCase())?.id ?? s.text })}
+                  disabled={busy}
+                  className="flex items-center gap-2 rounded-xl px-4 py-2 font-black text-sm transition-all hover:scale-105 disabled:opacity-50"
+                  style={{ background: `${QZ}25`, border: `2px solid ${QZ}66`, color: QZ }}>
+                  {s.text}
+                  {s.count > 1 && <span className="rounded-full px-2 py-0.5 text-xs" style={{ background: `${QZ}33` }}>×{s.count}</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Theme grid */}
+        <div className="grid grid-cols-3 gap-4 w-full">
+          {QZ_THEMES_CLIENT.map(t => (
+            <button key={t.id} onClick={() => void post('/quiz/select-theme', { themeId: t.id })}
+              disabled={busy}
+              className="flex flex-col items-center gap-3 rounded-2xl p-6 transition-all hover:scale-105 disabled:opacity-50"
+              style={{ background:'rgba(245,182,66,0.08)', border:`2px solid rgba(245,182,66,0.25)`, backdropFilter:'blur(10px)' }}>
+              <span style={{ fontSize:'3rem' }}>{t.emoji}</span>
+              <span className="text-base font-black text-white text-center leading-snug">{t.label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* GENERA QUIZZONE CTA */}
+        <button onClick={() => void post('/quiz/select-theme', { themeId: bestThemeId })}
+          disabled={busy}
+          className="w-full rounded-2xl py-5 text-xl font-black text-black transition-all hover:scale-[1.02] disabled:opacity-40"
+          style={{ background: `linear-gradient(135deg,${QZ},#F97316)`, boxShadow: `0 0 50px ${QZ_GLOW}` }}>
+          {busy ? '⏳ Caricamento…' : suggestions.length > 0
+            ? `⚡ GENERA QUIZZONE — "${topSuggs[0]?.text ?? '?'}"`
+            : '⚡ GENERA QUIZZONE — Tema Casuale'}
+        </button>
       </div>
-      <div className="grid grid-cols-3 gap-4 w-full">
-        {QZ_THEMES_CLIENT.map(t => (
-          <button key={t.id} onClick={() => void post('/quiz/select-theme', { themeId: t.id })}
-            disabled={busy}
-            className="flex flex-col items-center gap-3 rounded-2xl p-6 transition-all hover:scale-105"
-            style={{ background:'rgba(245,182,66,0.08)', border:`2px solid rgba(245,182,66,0.25)`, backdropFilter:'blur(10px)' }}>
-            <span style={{ fontSize:'3rem' }}>{t.emoji}</span>
-            <span className="text-base font-black text-white text-center leading-snug">{t.label}</span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
+    );
+  }
 
   // ── setup_count ────────────────────────────────────────────────────────────
   if (phase === 'setup_count') return (
@@ -3807,9 +3855,15 @@ function AdultOnlyBoard({ payload, session, players }: {
   }, [challengeEndsAt, phase]);
 
   const [busy, setBusy] = useState(false);
+  // ── MUST be declared here (top level), NOT inside any conditional branch ──────
+  const [showEscalationMenu, setShowEscalationMenu] = useState(false);
+
   const aoPost = async (sub: string, body?: Record<string,unknown>) => {
     setBusy(true);
-    try { await fetch(`/api/home/sessions/${session.id}/adult/${sub}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) }); }
+    try {
+      console.log('[ADULT_ONLY_PHASE] aoPost', sub, { phase, roundNumber, challengeId: String((challenge as Record<string,unknown> | null)?.text ?? '').slice(0, 30) });
+      await fetch(`/api/home/sessions/${session.id}/adult/${sub}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) });
+    }
     finally { setBusy(false); }
   };
 
@@ -4047,7 +4101,6 @@ function AdultOnlyBoard({ payload, session, players }: {
 
   // ── result ────────────────────────────────────────────────────────────────
   if (phase === 'result') {
-    const [showEscalationMenu, setShowEscalationMenu] = useState(false);
     return (
       <div className="flex flex-col gap-5 w-full max-w-2xl">
         <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring' }}
@@ -4759,6 +4812,22 @@ function CoppieBoard({ payload, onNext, sessionId }: { payload: Record<string,un
       </div>
     );
   }
+
+  // Loading guard: theme selected but cards not yet built (transient server state)
+  if (cards.length === 0) return (
+    <div className="flex flex-col items-center gap-7 text-center">
+      <motion.div animate={{ scale: [1,1.08,1], opacity: [0.7,1,0.7] }} transition={{ repeat: Infinity, duration: 1.8 }}
+        className="text-8xl">💞</motion.div>
+      <div className="text-display text-3xl font-black text-white">Jonny sta creando</div>
+      <div className="text-display text-4xl font-black" style={{ color: '#F472B6' }}>gli abbinamenti…</div>
+      <div className="flex gap-2 mt-2">
+        {[0,1,2,3,4].map(i => (
+          <motion.div key={i} className="h-3 w-3 rounded-full" style={{ background: '#F472B6' }}
+            animate={{ y: [0,-10,0] }} transition={{ repeat: Infinity, duration: 0.8, delay: i*0.15 }} />
+        ))}
+      </div>
+    </div>
+  );
 
   // Card width: 5 columns fixed
   const cardW = `clamp(120px, ${Math.floor(84 / cols)}vw, 230px)`;

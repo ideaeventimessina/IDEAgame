@@ -1564,6 +1564,79 @@ function PhoneController({
   return <div className="text-center text-white/40 py-8">In attesa del gioco…</div>;
 }
 
+// ── QuizzoneThemeSuggestor ─────────────────────────────────────────────────────
+// Phone component shown during setup_theme phase — player can suggest a theme
+
+function QuizzoneThemeSuggestor({ session, player }: {
+  session: HomeSession;
+  player: HomePlayer;
+}) {
+  const QZ = '#F5B642';
+  const [text, setText] = useState('');
+  const [submitted, setSubmitted] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const suggest = async () => {
+    const trimmed = text.trim();
+    if (!trimmed || busy) return;
+    setBusy(true);
+    try {
+      await fetch(`/api/home/sessions/${session.id}/quiz/suggest-theme`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId: player.id, nickname: player.nickname, text: trimmed }),
+      });
+      setSubmitted(trimmed);
+      setText('');
+    } catch { /* best effort */ }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="flex flex-col gap-5 py-4 text-center">
+      <motion.div animate={{ scale: [1,1.08,1] }} transition={{ repeat: Infinity, duration: 2 }}
+        className="text-5xl">⭐</motion.div>
+      <div>
+        <div className="text-display text-xl font-black text-white">Che tema per il Quizzone?</div>
+        <div className="text-sm mt-1" style={{ color: QZ }}>Proponi il tuo tema preferito!</div>
+      </div>
+
+      {submitted ? (
+        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+          className="rounded-2xl px-5 py-4"
+          style={{ background: `${QZ}18`, border: `2px solid ${QZ}55` }}>
+          <div className="text-2xl mb-1">✅</div>
+          <div className="font-black text-white">Proposto: "{submitted}"</div>
+          <button onClick={() => setSubmitted('')} className="text-xs mt-2 underline" style={{ color: QZ }}>
+            Cambia proposta
+          </button>
+        </motion.div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          <input
+            value={text}
+            onChange={e => setText(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && void suggest()}
+            placeholder="es. Anni 80, Film Disney, Rock…"
+            maxLength={50}
+            className="w-full rounded-2xl px-4 py-3 text-base font-bold text-white placeholder-white/30 outline-none"
+            style={{ background: 'rgba(255,255,255,0.08)', border: `2px solid ${QZ}44` }}
+          />
+          <button
+            onClick={() => void suggest()}
+            disabled={!text.trim() || busy}
+            className="w-full rounded-2xl py-4 text-base font-black text-black transition-all active:scale-95 disabled:opacity-40"
+            style={{ background: `linear-gradient(135deg,${QZ},#F97316)` }}>
+            {busy ? '⏳ Invio…' : '💡 Proponi tema'}
+          </button>
+        </div>
+      )}
+
+      <div className="text-xs text-white/30">L'host sceglierà il tema sulla TV</div>
+    </div>
+  );
+}
+
 // ── QuizController ─────────────────────────────────────────────────────────────
 
 function QuizController({ payload, revealed, answered, onAnswer }: {
@@ -1665,8 +1738,11 @@ function QuizzoneController({ payload, session, player }: {
   const ANS_COLORS = ['#3B82F6','#EC4899','#EAB308','#10B981'];
   const TF_COLORS = ['#22c55e', '#ef4444'];
 
+  // ── setup_theme: player can suggest a theme ────────────────────────────────
+  if (phase === 'setup_theme') return <QuizzoneThemeSuggestor session={session} player={player}/>;
+
   // Waiting phases
-  if (['setup_theme','setup_count','generating'].includes(phase)) return (
+  if (['setup_count','generating'].includes(phase)) return (
     <div className="flex flex-col items-center gap-4 py-8 text-center">
       <motion.div animate={{ scale:[1,1.05,1], opacity:[0.6,1,0.6] }} transition={{ repeat:Infinity, duration:2 }}
         className="text-6xl">⭐</motion.div>

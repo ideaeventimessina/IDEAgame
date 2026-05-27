@@ -1304,6 +1304,28 @@ function scheduleQzAutoReveal(sessionId: string, questionIndex: number, endsAtMs
   quizzoneRevealTimers.set(sessionId, timer);
 }
 
+// POST /home/sessions/:id/quiz/suggest-theme — player proposes a theme
+router.post("/home/sessions/:id/quiz/suggest-theme", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-quizzone") { res.status(409).json({ error: "Non in modalità quizzone" }); return; }
+  if (rp["phase"] !== "setup_theme") { res.status(409).json({ error: "Fase non corretta" }); return; }
+  const { playerId, nickname, text } = req.body as { playerId: string; nickname: string; text: string };
+  if (!playerId || !text?.trim()) { res.status(400).json({ error: "playerId e text obbligatori" }); return; }
+  const cleanText = text.trim().slice(0, 50);
+  const existing = (rp["quizSuggestions"] as { playerId: string; nickname: string; text: string }[] | undefined) ?? [];
+  // One suggestion per player — replace if already submitted
+  const filtered = existing.filter(s => s.playerId !== playerId);
+  if (filtered.length >= 20) { res.status(409).json({ error: "Massimo 20 suggerimenti raggiunto" }); return; }
+  const updated = [...filtered, { playerId, nickname: nickname ?? 'Giocatore', text: cleanText }];
+  await qzUpdate(id, { quizSuggestions: updated });
+  req.log.info({ sessionId: id, playerId, text: cleanText }, "[QuizzoneHome] theme suggested");
+  res.json({ ok: true });
+});
+
 // POST /home/sessions/:id/quiz/select-theme
 router.post("/home/sessions/:id/quiz/select-theme", async (req, res): Promise<void> => {
   const id = String(req.params["id"]);
@@ -1313,10 +1335,22 @@ router.post("/home/sessions/:id/quiz/select-theme", async (req, res): Promise<vo
   const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
   if (rp["mode"] !== "home-quizzone") { res.status(409).json({ error: "Non in modalità quizzone" }); return; }
   if (rp["phase"] !== "setup_theme") { res.status(409).json({ error: "Fase non corretta" }); return; }
-  const { themeId } = req.body as { themeId: string };
+  let { themeId } = req.body as { themeId: string };
   if (!themeId) { res.status(400).json({ error: "themeId obbligatorio" }); return; }
+  // "random" themeId: use top suggested theme or pick a random known theme
+  if (themeId === "random") {
+    const suggestions = (rp["quizSuggestions"] as { text: string }[] | undefined) ?? [];
+    if (suggestions.length > 0) {
+      const counts: Record<string, number> = {};
+      for (const s of suggestions) { const k = s.text.trim().toLowerCase(); counts[k] = (counts[k] ?? 0) + 1; }
+      const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
+      themeId = QUIZ_THEMES.find(t => t.label.toLowerCase() === top)?.id ?? top;
+    } else {
+      themeId = QUIZ_THEMES[Math.floor(Math.random() * QUIZ_THEMES.length)]?.id ?? "cultura_generale";
+    }
+  }
   const themeObj = QUIZ_THEMES.find(t => t.id === themeId);
-  await qzUpdate(id, { theme: themeId, themeName: themeObj?.label ?? themeId, phase: "setup_count" });
+  await qzUpdate(id, { theme: themeId, themeName: themeObj?.label ?? themeId, phase: "setup_count", quizSuggestions: [] });
   res.json({ ok: true });
 });
 

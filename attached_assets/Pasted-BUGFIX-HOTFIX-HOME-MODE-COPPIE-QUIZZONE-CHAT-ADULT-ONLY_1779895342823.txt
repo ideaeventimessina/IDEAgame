@@ -1,0 +1,178 @@
+BUGFIX HOTFIX — HOME MODE — COPPIE / QUIZZONE / CHAT / ADULT ONLY
+
+Audit and fix these 4 production bugs.
+
+--------------------------------------------------
+1. COPPIE — CRASH AFTER "GENERA"
+--------------------------------------------------
+
+Current runtime error on TV:
+
+"Rendered fewer hooks than expected. This may be caused by an accidental early return statement."
+
+Root cause:
+CouplesBoard or HomeGame couples flow is returning conditionally before all hooks are executed.
+
+Required fix:
+
+- inspect HomeGame.tsx
+- inspect CouplesBoard.tsx
+- inspect every component used by mode="home-couples"
+
+Rules:
+
+NEVER place:
+
+if (...) return ...
+
+before all hooks are declared.
+
+All hooks must execute on every render in identical order.
+
+Allowed pattern:
+
+const stateA = useState(...)
+const stateB = useMemo(...)
+const stateC = useEffect(...)
+
+if (!data) {
+  return <Loading />
+}
+
+NOT the reverse.
+
+Fix the crash.
+
+Then:
+
+when clicking "Genera":
+
+- generate pairs first
+- save generated payload in session state
+- only then transition to game board
+
+Do NOT navigate to gameplay until payload exists.
+
+If payload missing:
+show loading state:
+"Jonny sta creando gli abbinamenti..."
+
+Then enter game.
+
+--------------------------------------------------
+2. QUIZZONE — MISSING GENERA BUTTON
+--------------------------------------------------
+
+Home quiz currently has no "Genera" CTA.
+
+Add button:
+
+⚡ GENERA QUIZZONE
+
+Flow:
+
+- players type theme
+- collect first 10 themes max
+- 20 second countdown on TV
+- Jonny generates quiz pack
+- save into state
+- then open quiz
+
+Button must always be visible on TV after theme collection.
+
+If no themes:
+fallback:
+"Genera quiz casuale"
+
+--------------------------------------------------
+3. CHAT — PRIVATE SIGNED REPLY NOT DELIVERED
+--------------------------------------------------
+
+Current bug:
+
+reply to signed private message:
+send clears input
+but message never arrives
+
+Audit:
+
+socket emit
+server route
+DB insert
+client receive event
+
+Check:
+replyPrivateMessage
+sendPrivateReply
+chat:private_reply
+
+Fix:
+
+on send:
+- persist message
+- emit socket
+- deliver to receiver
+- append to receiver inbox
+- append to sender sent thread
+
+only after successful emit:
+clear input
+
+Current issue likely:
+input cleared before delivery ack
+
+Required:
+clear only after success=true
+
+--------------------------------------------------
+4. ADULT ONLY — LEVEL 3 RANDOM FREEZE
+--------------------------------------------------
+
+Bug:
+Adult Only level 3 sometimes freezes during active challenge.
+
+Audit:
+
+phase transitions:
+consent
+spin
+challenge
+voting
+result
+next
+
+Likely one phase never updates or timer callback never fires.
+
+Fix:
+
+- every phase must have timeout cleanup
+- clearInterval on unmount
+- clearTimeout on next phase
+- avoid duplicated timers
+- avoid stale closures
+
+Add runtime logs:
+
+[ADULT_ONLY_PHASE]
+currentPhase
+nextPhase
+challengeId
+timerRemaining
+
+If timer expires:
+force automatic transition to next valid phase
+
+No dead state allowed.
+
+--------------------------------------------------
+OUTPUT FORMAT
+--------------------------------------------------
+
+Return exactly:
+
+A. root cause per bug
+B. files modified
+C. code sections fixed
+D. runtime logs added
+E. typecheck result
+F. manual test result

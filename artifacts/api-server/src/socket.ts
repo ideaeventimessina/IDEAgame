@@ -482,15 +482,47 @@ export function initHomeSocketHandlers(io: SocketServer): void {
       msg.reactions = msg.reactions.filter((r) => r.playerId !== playerId);
       msg.reactions.push({ playerId, emoji, createdAt: Date.now() });
 
-      logger.info({ sessionId, messageId, playerId, emoji }, "[SecretMessages] reaction");
+      logger.info({ sessionId, messageId, playerId, emoji, hasReply: !!textReply }, "[SecretMessages] reaction");
 
-      // Notify sender and receiver
+      // Notify sender and receiver of the reaction
       const senderSocketId   = homePlayerToSocket.get(msg.senderPlayerId);
       const receiverSocketId = msg.receiverPlayerId ? homePlayerToSocket.get(msg.receiverPlayerId) : null;
-      const updatedMsg = { ...msg, textReply: textReply ?? undefined };
-      if (senderSocketId)   _io?.to(senderSocketId).emit("home:chat_inbox_update", { updatedMessage: updatedMsg });
+      if (senderSocketId)   _io?.to(senderSocketId).emit("home:chat_inbox_update", { updatedMessage: msg });
       if (receiverSocketId && receiverSocketId !== senderSocketId)
-        _io?.to(receiverSocketId).emit("home:chat_inbox_update", { updatedMessage: updatedMsg });
+        _io?.to(receiverSocketId).emit("home:chat_inbox_update", { updatedMessage: msg });
+
+      // If the reactor included a text reply → create a NEW message back to the original sender
+      if (textReply) {
+        // The reactor was the original receiver — use their nickname accordingly
+        const replyMsg: ChatMessage = {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          sessionId,
+          senderPlayerId: playerId,
+          senderNickname: msg.receiverNickname ?? "Giocatore",
+          receiverPlayerId: msg.senderPlayerId,
+          receiverNickname: msg.senderNickname,
+          text: textReply,
+          isAnonymous: false,
+          destination: "private",
+          reactions: [],
+          createdAt: Date.now(),
+          readAt: null,
+        };
+        if (!msgs) return;
+        msgs.push(replyMsg);
+        logger.info({ sessionId, from: playerId, to: msg.senderPlayerId, text: textReply }, "[SecretMessages] text-reply delivered");
+        // Deliver to original sender's inbox
+        if (senderSocketId) {
+          _io?.to(senderSocketId).emit("home:chat_receive", { message: replyMsg });
+          const senderInbox = msgs.filter((m) => m.receiverPlayerId === msg.senderPlayerId);
+          _io?.to(senderSocketId).emit("home:chat_inbox_update", { inbox: senderInbox });
+        }
+        // Confirm to reactor (so their sent list updates)
+        const reactorSocketId = homePlayerToSocket.get(playerId);
+        if (reactorSocketId) {
+          _io?.to(reactorSocketId).emit("home:chat_receive", { message: replyMsg });
+        }
+      }
     });
 
     socket.on("home:chat_mark_read", (data: unknown) => {
