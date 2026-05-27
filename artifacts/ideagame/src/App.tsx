@@ -16,9 +16,10 @@ import { PresenterModeProvider } from "@/contexts/PresenterModeContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { IS_PS4 } from "@/hooks/useLowPower";
 
-// Apply PS4 browser class immediately (before any render) so CSS vars take effect
+// Apply PS4 classes immediately (before any render) so CSS vars take effect
 if (IS_PS4 && typeof document !== 'undefined') {
   document.documentElement.classList.add('ps4-browser');
+  document.body.classList.add('ps4-mode');
 }
 
 // ── Static imports: tiny shell pages needed immediately ───────────────────────
@@ -208,7 +209,12 @@ function App() {
                 <BackToCockpit />
                 <AudioUnlockFab />
               </WouterRouter>
-              <div className="fixed bottom-2 right-2 z-[9999] select-none pointer-events-none">
+              <div className="fixed bottom-2 right-2 z-[9999] select-none pointer-events-none flex flex-col items-end gap-1">
+                {IS_PS4 && import.meta.env.DEV && (
+                  <div style={{ background:'rgba(245,182,66,0.18)', border:'1px solid rgba(245,182,66,0.6)', borderRadius:6, padding:'2px 8px', fontFamily:'monospace', fontSize:10, color:'#F5B642', lineHeight:1.5, fontWeight:700 }}>
+                    ⬛ PS4 MODE ACTIVE
+                  </div>
+                )}
                 <div style={{ background:'rgba(0,0,0,0.75)', border:'1px solid rgba(255,255,255,0.15)', borderRadius:6, padding:'2px 8px', fontFamily:'monospace', fontSize:10, color:'rgba(255,255,255,0.5)', lineHeight:1.5 }}>
                   <div>{__COMMIT_HASH__}</div>
                   <div>{__BUILD_DATE__}</div>

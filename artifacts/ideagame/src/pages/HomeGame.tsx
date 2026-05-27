@@ -28,7 +28,7 @@ import {
 import { GameFlowEngine } from '@/components/GameFlowEngine';
 import { AudioManager } from '@/audio/AudioManager';
 import { useAudioSettings } from '@/contexts/AudioContext';
-import { IS_LOW_POWER } from '@/hooks/useLowPower';
+import { IS_LOW_POWER, IS_PS4 } from '@/hooks/useLowPower';
 
 // Gate verbose logs in production
 const _log: typeof console.log = import.meta.env.DEV ? console.log.bind(console) : () => {};
@@ -2828,8 +2828,9 @@ function BalloBoard({ session, payload, players, balloEnergies, balloCurrent, ba
                   boxShadow: glowCol,
                 }}>
 
-                {/* Burst particles */}
-                <div style={{position:'absolute',top:4,left:0,right:0,pointerEvents:'none',display:'flex',flexDirection:'column',alignItems:'center'}}>
+                {/* Burst particles — hidden on PS4 */}
+                {!IS_PS4 && (
+                <div className="particle-layer" style={{position:'absolute',top:4,left:0,right:0,pointerEvents:'none',display:'flex',flexDirection:'column',alignItems:'center'}}>
                   <AnimatePresence>
                     {(bursts[p.id] ?? []).map(b => (
                       <motion.div key={b.key}
@@ -2841,6 +2842,7 @@ function BalloBoard({ session, payload, players, balloEnergies, balloCurrent, ba
                     ))}
                   </AnimatePresence>
                 </div>
+                )}
 
                 {/* Rank + Avatar */}
                 <div className="flex items-center gap-2">
@@ -5690,8 +5692,8 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
                 title="karaoke-live-a"
               />
             )}
-            {/* Slot B */}
-            {slotBUrl && (
+            {/* Slot B — on PS4, skip backstage iframe; only render when it's the live slot */}
+            {slotBUrl && (!IS_PS4 || liveSlot === 'B') && (
               <iframe
                 key={`slot-b-${slotBVideoId}`}
                 ref={slotBRef}
@@ -5736,8 +5738,9 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
                 </div>
               </div>
             )}
-            {/* Floating emoji reactions */}
-            <div className="absolute inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 1 }}>
+            {/* Floating emoji reactions — hidden on PS4 */}
+            {!IS_PS4 && (
+            <div className="particle-layer absolute inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 1 }}>
               <AnimatePresence>
                 {floatingEmojis.map(e => (
                   <motion.div key={e.id}
@@ -5752,6 +5755,7 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
                 ))}
               </AnimatePresence>
             </div>
+            )}
           </div>
         </div>
 

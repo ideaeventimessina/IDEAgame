@@ -11,6 +11,7 @@ import { useListGames, useGetCurrentEvent, getGetCurrentEventQueryKey, useListPl
 import { useAuth } from '@/auth/roles';
 import { useEventSocket } from '@/hooks/useEventSocket';
 import { useLocalMode } from '@/hooks/useLocalMode';
+import { IS_PS4 } from '@/hooks/useLowPower';
 import { useAudioOrchestrator } from '@/contexts/AudioOrchestrator';
 import { AudioManager } from '@/audio/AudioManager';
 import { PlayerLanding } from '@/pages/PlayerLanding';
@@ -18,8 +19,9 @@ import { PlayerLanding } from '@/pages/PlayerLanding';
 const CONFETTI_PALETTE = ['#F5B642','#FF69B4','#60A5FA','#A78BFA','#34D399','#F87171','#F472B6'];
 
 function HubConfetti() {
+  if (IS_PS4) return null;
   return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden z-0">
+    <div className="hub-confetti pointer-events-none absolute inset-0 overflow-hidden z-0">
       {Array.from({ length: 22 }).map((_, i) => {
         const color = CONFETTI_PALETTE[i % CONFETTI_PALETTE.length];
         const left  = `${(i * 9.1 + 5) % 100}%`;
@@ -37,8 +39,9 @@ function HubConfetti() {
 }
 
 function HubStars() {
+  if (IS_PS4) return null;
   return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden z-0">
+    <div className="hub-stars pointer-events-none absolute inset-0 overflow-hidden z-0">
       {Array.from({ length: 60 }).map((_, i) => {
         const x = (i * 41 + 13) % 100;
         const y = (i * 61 + 7) % 100;
