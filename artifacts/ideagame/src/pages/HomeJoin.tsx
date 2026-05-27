@@ -1551,7 +1551,7 @@ function PhoneController({
   if (mode === 'home-coppie')     return <CoppieController payload={p} onFlip={onFlip} player={player} previewUntil={coppiePreviewUntil ?? null} sessionId={session.id}/>;
   if (mode === 'home-percorso')   return <PercorsoHomeController sessionId={session.id} player={player} payload={p} timeLeft={timeLeft}/>;
   if (mode === 'home-saramusica') return <SaraMusicaController payload={p} player={player} session={session}/>;
-  if (mode === 'home-adult')      return <AdultController payload={p} timeLeft={timeLeft} onScore={onScore}/>;
+  if (mode === 'home-adult')      return <AdultController payload={p} player={player} session={session}/>;
   if (mode === 'home-ballo')      return <BalloController payload={p} timeLeft={timeLeft} sessionId={session.id} emit={emit} playerId={player.id} round={session.currentRound} adminSensitivity={adminSensitivity ?? 1.0}/>;
   if (mode === 'home-wordback' || mode === 'home-wordback-booking')   return <WordBackController payload={p} timeLeft={timeLeft} player={player} sessionId={session.id} emit={emit} wordbackSolved={wordbackSolved ?? false} wordbackTimedOut={wordbackTimedOut ?? false}/>;
   if (mode === 'home-karaoke')    return <KaraokeController payload={p} sessionId={session.id}/>;
@@ -2970,148 +2970,393 @@ function SaraMusicaController({ payload, player, session }: {
   player: HomePlayer;
   session: HomeSession;
 }) {
-  const [answered, setAnswered] = useState<number | null>(null);
-  const [result, setResult] = useState<'correct' | 'wrong' | 'late' | null>(null);
-  const choices = (payload.choices as string[]) ?? [];
-  const pts = Number(payload.points ?? 100);
+  const SM = '#60A5FA';
+  const phase = String(payload.phase ?? '');
+  const rounds = (payload.rounds ?? []) as Record<string,unknown>[];
+  const currentIndex = Number(payload.currentIndex ?? 0);
+  const currentQ = rounds[currentIndex] as Record<string,unknown> | undefined;
 
-  const submitAnswer = async (idx: number) => {
+  const [answered, setAnswered] = useState<number | null>(null);
+  const [sentResult, setSentResult] = useState<'sent' | 'late' | null>(null);
+
+  // Reset when question changes
+  useEffect(() => { setAnswered(null); setSentResult(null); }, [currentIndex, phase === 'question']);
+
+  const submitAnswer = async (answerIndex: number) => {
     if (answered !== null) return;
-    setAnswered(idx);
+    setAnswered(answerIndex);
     try {
-      const r = await fetch(`/api/home/sessions/${session.id}/saramusica-answer`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playerId: player.id, choiceIndex: idx, round: Number(payload.roundIndex ?? 0) }),
+      const r = await fetch(`/api/home/sessions/${session.id}/saramusica/answer`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId: player.id, answerIndex }),
       });
-      const data = await r.json() as { ok: boolean; correct?: boolean; alreadyWon?: boolean };
-      console.log('[SaraTrace:phone] answer response', data);
-      if (data.alreadyWon) setResult('late');
-      else setResult(data.correct ? 'correct' : 'wrong');
-    } catch {
-      setResult('wrong');
-    }
+      const data = await r.json() as { ok: boolean; code?: string };
+      setSentResult(data.code === 'time_expired' ? 'late' : 'sent');
+    } catch { setSentResult('sent'); }
   };
 
-  return (
-    <div className="flex flex-col items-center gap-4 py-4 text-center">
-      <div className="text-5xl">🎵</div>
-      <div className="text-lg font-black text-white">Indovina la canzone!</div>
-      <div className="rounded-2xl p-3 w-full"
-        style={{background:'rgba(96,165,250,0.12)',border:'1px solid rgba(96,165,250,0.35)'}}>
-        <div className="text-xs font-black uppercase tracking-widest mb-1" style={{color:'rgba(96,165,250,0.8)'}}>SUGGERIMENTO</div>
-        <div className="text-sm text-white/75 italic leading-relaxed">"{String(payload.snippetHint??'...')}"</div>
+  // ── Waiting phases ──────────────────────────────────────────────────────────
+  const WAIT_PHASES: Record<string, { emoji: string; msg: string; sub?: string }> = {
+    setup_theme: { emoji: '🎵', msg: 'L\'host sceglie il tema…' },
+    setup_count: { emoji: '🎵', msg: 'L\'host sceglie le manche…' },
+    generating:  { emoji: '⭐', msg: 'Jonny prepara il quiz!', sub: 'Ci vorrà qualche secondo…' },
+    countdown:   { emoji: '🎵', msg: 'Si comincia!', sub: 'Pronto?' },
+    ranking:     { emoji: '📊', msg: 'Classifica in corso…' },
+    finale:      { emoji: '🏆', msg: 'Fine dello spettacolo!' },
+  };
+
+  if (phase in WAIT_PHASES || !['question','reveal'].includes(phase)) {
+    const w = WAIT_PHASES[phase] ?? { emoji: '🎵', msg: 'Attendi…' };
+    return (
+      <div className="flex flex-col items-center gap-5 py-8 text-center">
+        <motion.div animate={{ scale: [1, 1.1, 1] }} transition={{ repeat: Infinity, duration: 1.6 }}
+          className="text-6xl">{w.emoji}</motion.div>
+        <div className="text-xl font-black text-white">{w.msg}</div>
+        {w.sub && <div className="text-white/40 text-sm">{w.sub}</div>}
+        {phase === 'finale' && (
+          <div className="text-white/50 text-sm mt-2">🏆 Grazie per aver giocato!</div>
+        )}
       </div>
+    );
+  }
 
-      {result === null && (
-        <div className="grid grid-cols-2 gap-3 w-full">
-          {choices.map((choice, idx) => (
-            <button key={idx} onClick={() => void submitAnswer(idx)}
-              disabled={answered !== null}
-              className="rounded-2xl px-3 py-4 text-sm font-black text-white disabled:opacity-50"
-              style={{background:'linear-gradient(135deg,rgba(96,165,250,0.25),rgba(37,99,235,0.15))',border:'2px solid rgba(96,165,250,0.45)',boxShadow:'0 0 20px rgba(96,165,250,0.2)'}}>
-              {choice}
-            </button>
-          ))}
+  // ── Question phase ──────────────────────────────────────────────────────────
+  if (phase === 'question' && currentQ) {
+    const qType = String(currentQ.type ?? 'guess_song');
+    const answers = (currentQ.answers as string[]) ?? [];
+    const isSongVsSong = qType === 'song_vs_song';
+    const isSpeed = qType === 'speed_music';
+    const isFinal = qType === 'final_tormentone';
+    const ANS_COLORS = ['#60A5FA', '#A78BFA', '#34D399', '#FBBF24'];
+
+    const TYPE_LABELS: Record<string, string> = {
+      guess_song: '🎵 Che canzone è?',
+      guess_artist: '🎤 Chi canta?',
+      complete_lyrics: '📝 Completa il testo',
+      speed_music: '⚡ RISPOSTA RAPIDA!',
+      song_vs_song: '⚔️ Quale scegli?',
+      progressive_clue_music: '🔍 Indovina dagli indizi',
+      final_tormentone: '🏆 TORMENTONE FINALE!',
+    };
+
+    // After answering: lock screen
+    if (answered !== null) {
+      return (
+        <div className="flex flex-col items-center gap-5 py-6 text-center">
+          {sentResult === 'late' ? (
+            <div className="rounded-2xl p-6 text-center w-full"
+              style={{ background: 'rgba(245,182,66,0.18)', border: '2px solid rgba(245,182,66,0.4)', color: '#F5B642' }}>
+              <div className="text-4xl mb-2">⏱</div>
+              <div className="text-2xl font-black">Tempo scaduto!</div>
+              <div className="text-sm opacity-70 mt-1">Meglio la prossima!</div>
+            </div>
+          ) : (
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+              className="rounded-2xl p-6 text-center w-full"
+              style={{ background: 'rgba(96,165,250,0.15)', border: '2px solid rgba(96,165,250,0.4)', color: SM }}>
+              <div className="text-4xl mb-2">📬</div>
+              <div className="text-2xl font-black">Risposta inviata!</div>
+              <div className="text-sm opacity-70 mt-1">Attendi la rivelazione sulla TV</div>
+            </motion.div>
+          )}
         </div>
-      )}
+      );
+    }
 
-      {result === 'correct' && (
-        <motion.div initial={{scale:0}} animate={{scale:1}} transition={{type:'spring'}}
-          className="rounded-2xl p-5 text-center w-full"
-          style={{background:'rgba(34,197,94,0.18)',border:'2px solid rgba(34,197,94,0.5)',color:'#4ade80'}}>
-          <div className="text-3xl mb-1">✅</div>
-          <div className="text-xl font-black">Esatto! +{pts}pt</div>
-          <div className="text-sm opacity-70 mt-1">Risposta corretta!</div>
-        </motion.div>
-      )}
-
-      {result === 'wrong' && (
-        <div className="rounded-2xl p-5 text-center w-full"
-          style={{background:'rgba(239,68,68,0.18)',border:'2px solid rgba(239,68,68,0.4)',color:'#f87171'}}>
-          <div className="text-3xl mb-1">❌</div>
-          <div className="text-xl font-black">Risposta sbagliata!</div>
+    return (
+      <div className="flex flex-col items-center gap-4 py-3 text-center">
+        <div className="text-sm font-black"
+          style={{ color: isSpeed ? '#FBBF24' : isFinal ? '#F97316' : SM }}>
+          {TYPE_LABELS[qType] ?? '🎵 Rispondi!'}
         </div>
-      )}
+        {isFinal && <div className="text-xs text-orange-400 font-bold animate-pulse">DOPPIO PUNTEGGIO 200pt!</div>}
+        {isSpeed && <div className="text-xs text-yellow-400 font-bold">⚡ Più veloce = più punti bonus!</div>}
 
-      {result === 'late' && (
-        <div className="rounded-2xl p-5 text-center w-full"
-          style={{background:'rgba(245,182,66,0.18)',border:'2px solid rgba(245,182,66,0.4)',color:'#F5B642'}}>
-          <div className="text-3xl mb-1">⏱</div>
-          <div className="text-xl font-black">Qualcuno ha già risposto!</div>
-        </div>
-      )}
+        {isSongVsSong ? (
+          <div className="flex flex-col gap-3 w-full">
+            {answers.map((ans, i) => (
+              <button key={i} onClick={() => void submitAnswer(i)}
+                className="rounded-3xl px-4 py-6 text-sm font-black text-white transition-all active:scale-95"
+                style={{ background: i === 0 ? 'linear-gradient(135deg,rgba(96,165,250,0.3),rgba(37,99,235,0.2))' : 'linear-gradient(135deg,rgba(167,139,250,0.3),rgba(109,40,217,0.2))', border: `2px solid ${i === 0 ? 'rgba(96,165,250,0.6)' : 'rgba(167,139,250,0.6)'}` }}>
+                <div className="text-lg font-black mb-1">{i === 0 ? 'A' : 'B'}</div>
+                <div className="text-xs opacity-80">{ans}</div>
+              </button>
+            ))}
+          </div>
+        ) : isSpeed ? (
+          <div className="grid grid-cols-2 gap-3 w-full">
+            {answers.map((ans, i) => (
+              <button key={i} onClick={() => void submitAnswer(i)}
+                className="rounded-2xl px-3 py-7 text-sm font-black text-white transition-all active:scale-95"
+                style={{ background: `linear-gradient(135deg,${ANS_COLORS[i] ?? SM}44,${ANS_COLORS[i] ?? SM}22)`, border: `3px solid ${ANS_COLORS[i] ?? SM}`, boxShadow: `0 0 30px ${ANS_COLORS[i] ?? SM}44` }}>
+                <div className="text-2xl font-black mb-1">{['A','B','C','D'][i]}</div>
+                <div className="text-xs">{ans}</div>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 w-full">
+            {answers.map((ans, i) => (
+              <button key={i} onClick={() => void submitAnswer(i)}
+                className="rounded-2xl px-3 py-5 text-sm font-black text-white transition-all hover:scale-[1.02] active:scale-95"
+                style={{ background: `${ANS_COLORS[i] ?? SM}22`, border: `2px solid ${ANS_COLORS[i] ?? SM}55` }}>
+                <div className="text-base font-black mb-1" style={{ color: ANS_COLORS[i] ?? SM }}>{['A','B','C','D'][i]}</div>
+                <div className="text-xs leading-tight">{ans}</div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Reveal phase ────────────────────────────────────────────────────────────
+  if (phase === 'reveal') {
+    const revealData = payload.revealData as { correctAnswerIndex: number; playerResults: { playerId: string; correct: boolean; points: number }[] } | null;
+    const myResult = revealData?.playerResults.find(r => r.playerId === player.id);
+    const correctIdx = revealData?.correctAnswerIndex ?? 0;
+    const correctAns = String((currentQ?.answers as string[] | undefined)?.[correctIdx] ?? '');
+
+    return (
+      <div className="flex flex-col items-center gap-5 py-6 text-center">
+        {myResult?.correct ? (
+          <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring' }}
+            className="rounded-2xl p-6 text-center w-full"
+            style={{ background: 'rgba(34,197,94,0.18)', border: '2px solid rgba(34,197,94,0.5)', color: '#4ade80' }}>
+            <div className="text-4xl mb-2">✅</div>
+            <div className="text-2xl font-black">Corretto!</div>
+            <div className="text-2xl font-black mt-1">+{myResult.points}pt</div>
+          </motion.div>
+        ) : myResult !== undefined ? (
+          <div className="rounded-2xl p-6 text-center w-full"
+            style={{ background: 'rgba(239,68,68,0.18)', border: '2px solid rgba(239,68,68,0.4)', color: '#f87171' }}>
+            <div className="text-4xl mb-2">❌</div>
+            <div className="text-2xl font-black">Sbagliato!</div>
+            {correctAns && <div className="text-sm opacity-70 mt-2">Era: <span className="font-black text-white">{correctAns}</span></div>}
+          </div>
+        ) : (
+          <div className="rounded-2xl p-6 text-center w-full"
+            style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.5)' }}>
+            <div className="text-4xl mb-2">⏱</div>
+            <div className="text-2xl font-black">Non hai risposto</div>
+            {correctAns && <div className="text-sm opacity-70 mt-2">Risposta: <span className="font-black text-white">{correctAns}</span></div>}
+          </div>
+        )}
+        <div className="text-white/30 text-xs">Prossima domanda in arrivo…</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-4 py-6 text-center">
+      <div className="text-5xl">🎵</div>
+      <div className="text-white/50">Sara'Musica</div>
     </div>
   );
 }
 
 // ── AdultController ────────────────────────────────────────────────────────────
 
-function AdultController({ payload, timeLeft, onScore }: {
-  payload: Record<string,unknown>;
-  timeLeft: number | null;
-  onScore?: (pts: number) => Promise<void>;
-}) {
-  const [choice, setChoice] = useState<'true'|'false'|null>(null);
-  const pts = Number(payload.points ?? 150);
-  const isYesNo = String(payload.body ?? '').length > 0;
-  const hasChoice = choice !== null;
+const AO_LEVELS_PHONE = [
+  { id: 'flirt',       label: 'Flirt',       emoji: '😊', color: '#FB7185' },
+  { id: 'tension',    label: 'Tensione',    emoji: '😏', color: '#F97316' },
+  { id: 'hot',        label: 'Hot',         emoji: '🔥', color: '#EF4444' },
+  { id: 'extreme',    label: 'Extreme',     emoji: '💣', color: '#A855F7' },
+  { id: 'after_dark', label: 'After Dark',  emoji: '🌙', color: '#818CF8' },
+] as const;
 
-  const pick = async (v: 'true'|'false') => {
-    if (hasChoice) return;
-    setChoice(v);
-    if (v === 'true' && onScore) await onScore(pts);
-  };
+function AdultController({ payload, player, session }: {
+  payload: Record<string,unknown>;
+  player: HomePlayer;
+  session: HomeSession;
+}) {
+  const phase             = String(payload.phase ?? 'intro');
+  const levelId           = String(payload.level ?? 'flirt');
+  const levelLabel        = String(payload.levelLabel ?? levelId);
+  const selectedIds       = (payload.selectedPlayerIds ?? []) as string[];
+  const selectedNickname  = payload.selectedPlayerNickname as string | null;
+  const mission           = payload.currentMission as { title: string; body: string; points: number; timeLimit: number; tag: string } | null;
+  const missionEndsAt     = payload.missionEndsAt as string | undefined;
+  const completedBy       = payload.completedBy as string | null;
+  const currentRound      = Number(payload.currentRound ?? 0);
+  const totalRounds       = Number(payload.totalRounds ?? 10);
+  const rankingData       = payload.rankingData as { playerId: string; nickname: string; score: number; delta: number }[] | null;
+
+  const levelObj = AO_LEVELS_PHONE.find(l => l.id === levelId) ?? AO_LEVELS_PHONE[0]!;
+  const AC = levelObj.color;
+
+  const isSelected = selectedIds.includes(player.id);
+
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+  useEffect(() => {
+    if (!missionEndsAt || phase !== 'mission') { setTimeLeft(null); return; }
+    const tick = () => setTimeLeft(Math.max(0, Math.ceil((new Date(missionEndsAt).getTime() - Date.now()) / 1000)));
+    tick();
+    const t = setInterval(tick, 250);
+    return () => clearInterval(t);
+  }, [missionEndsAt, phase]);
+
+  // ── intro ─────────────────────────────────────────────────────────────────
+  if (phase === 'intro') return (
+    <div className="flex flex-col items-center gap-6 py-8 text-center">
+      <div className="text-6xl">🍾</div>
+      <div className="text-2xl font-black text-white">Jonny After Dark</div>
+      <div className="rounded-2xl px-5 py-4 w-full"
+        style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)' }}>
+        <div className="text-sm text-white/50">⏳ L'host sta scegliendo il livello…</div>
+      </div>
+    </div>
+  );
+
+  // ── spinning ──────────────────────────────────────────────────────────────
+  if (phase === 'spinning') return (
+    <div className="flex flex-col items-center gap-6 py-8 text-center">
+      <div className="flex items-center gap-2">
+        <div className="rounded-full px-4 py-2 text-sm font-black"
+          style={{ background: `${AC}22`, border: `1px solid ${AC}55`, color: AC }}>
+          {levelObj.emoji} {levelLabel}
+        </div>
+        <div className="text-white/40 text-sm">{currentRound + 1}/{totalRounds}</div>
+      </div>
+      <motion.div animate={{ rotate: [0, 360, 720, 1080, 1260, 1380, 1440, 1465, 1470] }}
+        transition={{ duration: 3.5, repeat: Infinity, ease: 'easeOut' }}
+        className="text-7xl select-none">
+        🍾
+      </motion.div>
+      <div className="text-xl font-black text-white">La bottiglia gira!</div>
+      <div className="text-white/40 text-sm">Chi sarà il prossimo?</div>
+    </div>
+  );
+
+  // ── mission ───────────────────────────────────────────────────────────────
+  if (phase === 'mission') {
+    const tLimit   = mission?.timeLimit ?? 60;
+    const timerPct = timeLeft !== null ? timeLeft / tLimit : 1;
+    const timerColor = timerPct > 0.5 ? '#4ade80' : timerPct > 0.25 ? '#facc15' : '#ef4444';
+
+    if (isSelected) {
+      return (
+        <div className="flex flex-col items-center gap-5 py-4 text-center">
+          {/* Timer */}
+          {timeLeft !== null && (
+            <>
+              <div className="h-1.5 w-full rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.1)' }}>
+                <div className="h-full rounded-full transition-all duration-[250ms]"
+                  style={{ background: timerColor, width: `${timerPct * 100}%` }}/>
+              </div>
+              <div className="text-4xl font-black tabular-nums" style={{ color: timerColor }}>{timeLeft}s</div>
+            </>
+          )}
+          {/* You're selected! */}
+          <motion.div initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring' }}
+            className="rounded-full px-5 py-2 text-sm font-black"
+            style={{ background: `${AC}25`, border: `2px solid ${AC}66`, color: AC }}>
+            🍾 LA BOTTIGLIA PUNTA SU DI TE!
+          </motion.div>
+          {/* Mission */}
+          {mission && (
+            <div className="rounded-2xl p-5 w-full"
+              style={{ background: `${AC}15`, border: `2px solid ${AC}44` }}>
+              <div className="text-xs font-black uppercase tracking-widest mb-2 text-white/40">MISSIONE</div>
+              <div className="text-lg font-black text-white mb-2">{mission.title}</div>
+              <div className="text-sm text-white/70 leading-relaxed">{mission.body}</div>
+              <div className="mt-3 text-sm font-black" style={{ color: AC }}>+{mission.points} punti se la completi!</div>
+            </div>
+          )}
+          <div className="text-white/30 text-xs">L'host deciderà se hai completato la missione</div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex flex-col items-center gap-5 py-8 text-center">
+        {timeLeft !== null && (
+          <div className="h-1.5 w-full rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.1)' }}>
+            <div className="h-full rounded-full transition-all duration-[250ms]"
+              style={{ background: timerColor, width: `${timerPct * 100}%` }}/>
+          </div>
+        )}
+        <div className="text-4xl">👀</div>
+        <div className="text-white/60 font-bold">Tocca a…</div>
+        <div className="text-display text-3xl font-black" style={{ color: AC }}>{selectedNickname ?? '?'}</div>
+        {mission && (
+          <div className="rounded-2xl p-4 w-full"
+            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
+            <div className="text-sm text-white/40">Missione: <span className="text-white font-black">{mission.title}</span></div>
+          </div>
+        )}
+        <div className="text-white/25 text-xs">Guarda la TV per i dettagli</div>
+      </div>
+    );
+  }
+
+  // ── result ────────────────────────────────────────────────────────────────
+  if (phase === 'result') {
+    const myRank = rankingData?.find(r => r.playerId === player.id);
+    const myDelta = myRank?.delta ?? 0;
+    return (
+      <div className="flex flex-col items-center gap-5 py-8 text-center">
+        {myDelta > 0 ? (
+          <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring' }}
+            className="rounded-2xl p-6 w-full"
+            style={{ background: `${AC}18`, border: `2px solid ${AC}55`, color: AC }}>
+            <div className="text-4xl mb-2">🎉</div>
+            <div className="text-2xl font-black">Missione riuscita!</div>
+            <div className="text-xl font-black mt-1">+{myDelta} punti!</div>
+          </motion.div>
+        ) : (
+          <div className="rounded-2xl p-6 w-full text-center"
+            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.5)' }}>
+            <div className="text-4xl mb-2">{completedBy ? '👏' : '😅'}</div>
+            <div className="text-xl font-black">{completedBy ? `${completedBy} l'ha fatta!` : 'Missione saltata'}</div>
+          </div>
+        )}
+        {myRank && (
+          <div className="text-sm text-white/40">
+            Il tuo punteggio: <span className="font-black text-white">{myRank.score}pt</span>
+          </div>
+        )}
+        <div className="text-white/25 text-xs">⏳ Aspetta la prossima bottiglia…</div>
+      </div>
+    );
+  }
+
+  // ── finale ────────────────────────────────────────────────────────────────
+  if (phase === 'finale') {
+    const myRank = rankingData?.findIndex(r => r.playerId === player.id) ?? -1;
+    const myScore = rankingData?.find(r => r.playerId === player.id);
+    return (
+      <div className="flex flex-col items-center gap-6 py-8 text-center">
+        <div className="text-5xl">🏆</div>
+        <div className="text-2xl font-black text-white">Fine della Serata!</div>
+        {myScore && (
+          <div className="rounded-2xl px-8 py-5 w-full"
+            style={{ background: `${AC}18`, border: `2px solid ${AC}44` }}>
+            <div className="text-xs uppercase tracking-widest text-white/40 mb-1">IL TUO RISULTATO</div>
+            <div className="text-display text-4xl font-black" style={{ color: AC }}>{myScore.score}pt</div>
+            {myRank >= 0 && <div className="text-white/50 text-sm mt-1">#{myRank + 1} in classifica</div>}
+          </div>
+        )}
+        {rankingData && (
+          <div className="flex flex-col gap-2 w-full">
+            {rankingData.slice(0, 5).map((p, i) => (
+              <div key={p.playerId} className="flex items-center gap-3 rounded-xl px-4 py-2"
+                style={{ background: p.playerId === player.id ? `${AC}18` : 'rgba(255,255,255,0.04)', border: `1px solid ${p.playerId === player.id ? AC + '44' : 'rgba(255,255,255,0.07)'}` }}>
+                <div className="text-white/30 text-sm w-5">{i + 1}</div>
+                <div className="flex-1 font-bold text-sm" style={{ color: p.playerId === player.id ? AC : 'rgba(255,255,255,0.7)' }}>{p.nickname}</div>
+                <div className="font-black text-sm" style={{ color: AC }}>{p.score}pt</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col items-center gap-5 py-4 text-center" style={{userSelect:'none',WebkitUserSelect:'none'}}>
-      <div className="text-6xl">🔞</div>
-      <div className="text-xl font-black text-white">{String(payload.title ?? 'Sfida Adult Only')}</div>
-      {isYesNo && (
-        <div className="rounded-2xl p-4 w-full"
-          style={{background:'rgba(248,113,113,0.12)',border:'1px solid rgba(248,113,113,0.35)'}}>
-          <div className="text-sm text-white/75 leading-relaxed">{String(payload.body ?? '')}</div>
-        </div>
-      )}
-      {timeLeft !== null && (
-        <div className="flex items-center gap-2 rounded-xl px-5 py-2"
-          style={{background:'rgba(248,113,113,0.18)',border:'1px solid rgba(248,113,113,0.45)',color:'#F87171'}}>
-          <Timer className="h-4 w-4"/>
-          <span className="text-2xl font-black tabular-nums">{timeLeft}s</span>
-        </div>
-      )}
-
-      {/* Answer buttons */}
-      {!hasChoice ? (
-        <div className="flex w-full gap-4">
-          <button onClick={() => void pick('true')}
-            className="flex flex-1 flex-col items-center justify-center gap-2 rounded-3xl py-7 text-lg font-black text-white"
-            style={{background:'linear-gradient(135deg,rgba(34,197,94,0.28),rgba(34,197,94,0.10))',border:'2px solid rgba(34,197,94,0.6)',boxShadow:'0 0 30px rgba(34,197,94,0.25)'}}>
-            <span className="text-4xl">✅</span>
-            L'ho fatto!
-          </button>
-          <button onClick={() => void pick('false')}
-            className="flex flex-1 flex-col items-center justify-center gap-2 rounded-3xl py-7 text-lg font-black text-white"
-            style={{background:'linear-gradient(135deg,rgba(248,113,113,0.28),rgba(248,113,113,0.10))',border:'2px solid rgba(248,113,113,0.6)',boxShadow:'0 0 30px rgba(248,113,113,0.25)'}}>
-            <span className="text-4xl">❌</span>
-            Non ci sto!
-          </button>
-        </div>
-      ) : (
-        <motion.div initial={{scale:0.8,opacity:0}} animate={{scale:1,opacity:1}}
-          className="flex flex-col items-center gap-2 rounded-3xl px-8 py-6"
-          style={choice === 'true'
-            ? {background:'rgba(34,197,94,0.15)',border:'2px solid rgba(34,197,94,0.6)'}
-            : {background:'rgba(248,113,113,0.15)',border:'2px solid rgba(248,113,113,0.6)'}}>
-          <div className="text-4xl">{choice === 'true' ? '🔥' : '😅'}</div>
-          <div className="text-lg font-black text-white">
-            {choice === 'true' ? 'Sfida accettata!' : 'Passato!'}
-          </div>
-          {choice === 'true' && (
-            <div className="text-sm" style={{color:'rgba(34,197,94,0.9)'}}>+{pts} punti assegnati!</div>
-          )}
-        </motion.div>
-      )}
+    <div className="flex flex-col items-center gap-4 py-8 text-center">
+      <div className="text-4xl">🍾</div>
+      <div className="text-white/40">Jonny After Dark</div>
     </div>
   );
 }

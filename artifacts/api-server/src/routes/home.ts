@@ -22,6 +22,8 @@ import multer from "multer";
 import OpenAI from "openai";
 import { createBlankKaraokeState } from "../lib/karaoke-home-engine.js";
 import { generateQuiz, QUIZ_THEMES } from "../lib/quiz-generator.js";
+import { generateSaraMusicaRounds, SM_THEMES, type MusicRound } from "../lib/saramusica-generator.js";
+import { generateAdultMissions, ADULT_LEVELS, type AdultMission, type AdultLevel } from "../lib/adult-generator.js";
 import { eq, and, or, lt, asc, desc, isNull } from "drizzle-orm";
 import {
   db,
@@ -393,6 +395,7 @@ function buildSaraChoices(correctTitle: string, allTitles: string[]): { choices:
 
 /** 4. SaraMusica — carica tracce dal DB. Each round includes 6 shuffled answer choices. */
 async function loadSaraMusicaRounds(): Promise<RoundPayload[]> {
+  logger.error("[FLOW_BUG] SaraMusica should not enter old static-only mode — use new bypass");
   const [set] = await db.select().from(saraMusicaSetsTable)
     .where(eq(saraMusicaSetsTable.isActive, true))
     .orderBy(desc(saraMusicaSetsTable.createdAt)).limit(1);
@@ -1500,6 +1503,451 @@ router.post("/home/sessions/:id/quiz/next", async (req, res): Promise<void> => {
   res.json({ ok: true });
 });
 
+// ── Sara'Musica Home Live Show routes ─────────────────────────────────────────
+
+const smAnswerMap = new Map<string, Map<number, Map<string, { answerIndex: number; answeredAt: number }>>>();
+const smRevealTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+async function smUpdate(id: string, patch: Record<string, unknown>): Promise<void> {
+  const sess = await getSession(id);
+  if (!sess) return;
+  const rp = (sess.roundPayload ?? {}) as Record<string, unknown>;
+  const updated = await db.update(homeSessionsTable)
+    .set({ roundPayload: { ...rp, ...patch } })
+    .where(eq(homeSessionsTable.id, id)).returning();
+  const players = await getPlayers(id);
+  emitToRoom(homeRoom(id), "home:state", { session: updated[0], players });
+}
+
+async function performSmReveal(id: string, expectedIndex: number): Promise<void> {
+  const session = await getSession(id);
+  if (!session) return;
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-saramusica" || rp["phase"] !== "question") return;
+  if (Number(rp["currentIndex"] ?? 0) !== expectedIndex) return;
+  const rounds = (rp["rounds"] ?? []) as MusicRound[];
+  const q = rounds[expectedIndex];
+  if (!q) return;
+  const correctAnswerIndex = Number(q.correctAnswerIndex ?? 0);
+  const qType = q.type;
+  const timeLimit = Number(q.timeLimit ?? 20);
+  const currentClueIndex = Number(rp["currentClueIndex"] ?? 0);
+  const questionStartedAt = rp["questionStartedAt"] ? new Date(String(rp["questionStartedAt"])).getTime() : Date.now();
+  const players = await getPlayers(id);
+  const qMap = smAnswerMap.get(id)?.get(expectedIndex);
+  const playerResults: { playerId: string; nickname: string; answerIndex: number | null; correct: boolean; points: number }[] = [];
+  const scoreUpdates: Promise<unknown>[] = [];
+  for (const player of players) {
+    const ans = qMap?.get(player.id);
+    const correct = ans !== undefined && ans.answerIndex === correctAnswerIndex;
+    let points = 0;
+    if (correct) {
+      switch (qType) {
+        case "speed_music": {
+          const elapsed = (ans?.answeredAt ?? Date.now()) - questionStartedAt;
+          const speedBonus = Math.round(50 * Math.max(0, 1 - elapsed / (timeLimit * 1000)));
+          points = 100 + speedBonus;
+          break;
+        }
+        case "progressive_clue_music": points = Math.max(50, 150 - currentClueIndex * 50); break;
+        case "final_tormentone": points = 200; break;
+        case "complete_lyrics": points = 120; break;
+        default: points = Number(q.points ?? 100);
+      }
+      scoreUpdates.push(
+        db.update(homePlayersTable).set({ score: player.score + points }).where(eq(homePlayersTable.id, player.id))
+      );
+    }
+    playerResults.push({ playerId: player.id, nickname: player.nickname, answerIndex: ans?.answerIndex ?? null, correct, points });
+  }
+  await Promise.all(scoreUpdates);
+  smAnswerMap.get(id)?.delete(expectedIndex);
+  const revealData = { correctAnswerIndex, playerResults };
+  await smUpdate(id, { phase: "reveal", revealData, allAnsweredForCurrent: false });
+  emitToRoom(homeRoom(id), "home:saramusica_reveal", { sessionId: id, questionIndex: expectedIndex, revealData });
+  logger.info({ sessionId: id, questionIndex: expectedIndex }, "[SaraMusicaHome] reveal completed");
+}
+
+function scheduleSmAutoReveal(sessionId: string, questionIndex: number, endsAtMs: number): void {
+  const existing = smRevealTimers.get(sessionId);
+  if (existing) clearTimeout(existing);
+  const delay = Math.max(100, endsAtMs - Date.now()) + 700;
+  const timer = setTimeout(() => {
+    smRevealTimers.delete(sessionId);
+    performSmReveal(sessionId, questionIndex).catch(() => {});
+  }, delay);
+  smRevealTimers.set(sessionId, timer);
+}
+
+// POST /home/sessions/:id/saramusica/select-theme
+router.post("/home/sessions/:id/saramusica/select-theme", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-saramusica") { res.status(409).json({ error: "Non in modalità saramusica" }); return; }
+  if (rp["phase"] !== "setup_theme") { res.status(409).json({ error: "Fase non corretta" }); return; }
+  const { themeId } = req.body as { themeId: string };
+  if (!themeId) { res.status(400).json({ error: "themeId obbligatorio" }); return; }
+  const themeObj = SM_THEMES.find(t => t.id === themeId);
+  await smUpdate(id, { theme: themeId, themeName: themeObj?.label ?? themeId, phase: "setup_count" });
+  res.json({ ok: true });
+});
+
+// POST /home/sessions/:id/saramusica/select-count
+router.post("/home/sessions/:id/saramusica/select-count", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-saramusica") { res.status(409).json({ error: "Non in modalità saramusica" }); return; }
+  if (rp["phase"] !== "setup_count") { res.status(409).json({ error: "Fase non corretta" }); return; }
+  const count = Number((req.body as Record<string,unknown>)?.count ?? 10);
+  const validCounts = [5, 10, 15, 20];
+  const roundCount = validCounts.includes(count) ? count : 10;
+  const themeId = String(rp["theme"] ?? "anni90");
+  await smUpdate(id, { phase: "generating", roundCount });
+  res.json({ ok: true });
+  setTimeout(async () => {
+    try {
+      const rounds = await generateSaraMusicaRounds(themeId, roundCount);
+      const sess2 = await getSession(id);
+      if (!sess2) return;
+      const rp2 = (sess2.roundPayload ?? {}) as Record<string, unknown>;
+      await smUpdate(id, { ...rp2, rounds, phase: "countdown", countdownValue: 3 });
+      setTimeout(async () => {
+        await smUpdate(id, { countdownValue: 2 });
+        setTimeout(async () => {
+          await smUpdate(id, { countdownValue: 1 });
+          setTimeout(async () => {
+            const firstQ = rounds[0] as MusicRound | undefined;
+            const firstEndsAt = Date.now() + (firstQ?.timeLimit ?? 20) * 1000;
+            await smUpdate(id, {
+              phase: "question",
+              currentIndex: 0,
+              countdownValue: null,
+              questionStartedAt: new Date().toISOString(),
+              questionEndsAt: new Date(firstEndsAt).toISOString(),
+              currentClueIndex: 0,
+              allAnsweredForCurrent: false,
+              answeredCount: 0,
+              revealData: null,
+              rankingData: null,
+              totalRounds: roundCount,
+            });
+            scheduleSmAutoReveal(id, 0, firstEndsAt);
+            await db.update(homeSessionsTable)
+              .set({ totalRounds: roundCount, currentRound: 0 })
+              .where(eq(homeSessionsTable.id, id));
+            logger.info({ sessionId: id, themeId, roundCount }, "[SaraMusicaHome] first question ready");
+          }, 1200);
+        }, 1000);
+      }, 1000);
+    } catch (err) {
+      logger.error({ err, sessionId: id }, "[SaraMusicaHome] generate failed");
+    }
+  }, 3000);
+});
+
+// POST /home/sessions/:id/saramusica/answer
+router.post("/home/sessions/:id/saramusica/answer", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const { playerId, answerIndex } = req.body as { playerId: string; answerIndex: number };
+  if (!playerId || typeof answerIndex !== "number") { res.status(400).json({ error: "Parametri mancanti" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-saramusica") { res.status(409).json({ error: "Non in modalità saramusica" }); return; }
+  if (rp["phase"] !== "question") { res.status(409).json({ error: "Non in fase domanda" }); return; }
+  const qEndsAt = rp["questionEndsAt"] as string | undefined;
+  if (qEndsAt && Date.now() > new Date(qEndsAt).getTime()) {
+    res.status(409).json({ error: "Tempo scaduto", code: "time_expired" }); return;
+  }
+  const currentIndex = Number(rp["currentIndex"] ?? 0);
+  if (!smAnswerMap.has(id)) smAnswerMap.set(id, new Map());
+  const sessionMap = smAnswerMap.get(id)!;
+  if (!sessionMap.has(currentIndex)) sessionMap.set(currentIndex, new Map());
+  const qMap = sessionMap.get(currentIndex)!;
+  if (qMap.has(playerId)) { res.json({ ok: true, duplicate: true }); return; }
+  qMap.set(playerId, { answerIndex, answeredAt: Date.now() });
+  const players = await getPlayers(id);
+  const connected = players.filter(p => p.isConnected);
+  const effectiveCount = connected.length > 0 ? connected.length : players.length;
+  const answeredCount = qMap.size;
+  const allAnswered = effectiveCount > 0 && answeredCount >= effectiveCount;
+  await smUpdate(id, { answeredCount, allAnsweredForCurrent: allAnswered });
+  if (allAnswered) {
+    const existing = smRevealTimers.get(id);
+    if (existing) { clearTimeout(existing); smRevealTimers.delete(id); }
+  }
+  res.json({ ok: true });
+});
+
+// POST /home/sessions/:id/saramusica/next-clue
+router.post("/home/sessions/:id/saramusica/next-clue", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-saramusica" || rp["phase"] !== "question") { res.status(409).json({ error: "Fase non corretta" }); return; }
+  const current = Number(rp["currentClueIndex"] ?? 0);
+  await smUpdate(id, { currentClueIndex: Math.min(current + 1, 2) });
+  res.json({ ok: true });
+});
+
+// POST /home/sessions/:id/saramusica/reveal
+router.post("/home/sessions/:id/saramusica/reveal", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-saramusica" || rp["phase"] !== "question") { res.status(409).json({ error: "Fase non corretta" }); return; }
+  const currentIndex = Number(rp["currentIndex"] ?? 0);
+  const existing = smRevealTimers.get(id);
+  if (existing) { clearTimeout(existing); smRevealTimers.delete(id); }
+  await performSmReveal(id, currentIndex);
+  res.json({ ok: true });
+});
+
+// POST /home/sessions/:id/saramusica/next
+router.post("/home/sessions/:id/saramusica/next", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-saramusica") { res.status(409).json({ error: "Non in modalità saramusica" }); return; }
+  if (rp["phase"] !== "reveal" && rp["phase"] !== "ranking") { res.status(409).json({ error: "Fase non corretta" }); return; }
+  const currentIndex = Number(rp["currentIndex"] ?? 0);
+  const rounds = (rp["rounds"] ?? []) as MusicRound[];
+  const roundCount = Number(rp["roundCount"] ?? rounds.length);
+  const nextIndex = currentIndex + 1;
+  const players = await getPlayers(id);
+  const sortedPlayers = [...players].sort((a, b) => b.score - a.score);
+  const prevRankingData = (rp["rankingData"] as { playerId: string; score: number }[] | null) ?? null;
+  const rankingData = sortedPlayers.map(p => ({
+    playerId: p.id,
+    nickname: p.nickname,
+    avatarColor: (p as Record<string, unknown>).avatarColor as string ?? "#60A5FA",
+    score: p.score,
+    delta: p.score - (prevRankingData?.find(r => r.playerId === p.id)?.score ?? p.score),
+  }));
+  if (nextIndex >= roundCount) {
+    await smUpdate(id, { phase: "finale", rankingData, revealData: null });
+    await db.update(homeSessionsTable).set({ currentRound: nextIndex }).where(eq(homeSessionsTable.id, id));
+    res.json({ ok: true });
+    return;
+  }
+  const showRanking = rp["phase"] === "reveal" && nextIndex > 0 && nextIndex % 3 === 0;
+  if (showRanking) {
+    await smUpdate(id, { phase: "ranking", rankingData, revealData: null });
+    await db.update(homeSessionsTable).set({ currentRound: nextIndex }).where(eq(homeSessionsTable.id, id));
+    res.json({ ok: true });
+    return;
+  }
+  const nextQ = (rounds[nextIndex] as MusicRound | undefined);
+  const nextEndsAt = Date.now() + (nextQ?.timeLimit ?? 20) * 1000;
+  await smUpdate(id, {
+    phase: "question",
+    currentIndex: nextIndex,
+    questionStartedAt: new Date().toISOString(),
+    questionEndsAt: new Date(nextEndsAt).toISOString(),
+    currentClueIndex: 0,
+    allAnsweredForCurrent: false,
+    answeredCount: 0,
+    revealData: null,
+    rankingData: rp["phase"] === "ranking" ? rankingData : rp["rankingData"],
+  });
+  scheduleSmAutoReveal(id, nextIndex, nextEndsAt);
+  await db.update(homeSessionsTable).set({ currentRound: nextIndex }).where(eq(homeSessionsTable.id, id));
+  logger.info({ sessionId: id, nextIndex }, "[SaraMusicaHome] advanced to next question");
+  res.json({ ok: true });
+});
+
+// ── Adult Only (After Dark) routes ────────────────────────────────────────────
+
+async function adultUpdate(id: string, patch: Record<string, unknown>): Promise<void> {
+  const sess = await getSession(id);
+  if (!sess) return;
+  const rp = (sess.roundPayload ?? {}) as Record<string, unknown>;
+  const updated = await db.update(homeSessionsTable)
+    .set({ roundPayload: { ...rp, ...patch } })
+    .where(eq(homeSessionsTable.id, id)).returning();
+  const players = await getPlayers(id);
+  emitToRoom(homeRoom(id), "home:state", { session: updated[0], players });
+}
+
+// POST /home/sessions/:id/adult/start — select level + count, enter spinning
+router.post("/home/sessions/:id/adult/start", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-adult" || rp["phase"] !== "intro") { res.status(409).json({ error: "Fase non corretta" }); return; }
+  const { level, totalRounds } = req.body as { level: AdultLevel; totalRounds?: number };
+  const validLevels: AdultLevel[] = ["flirt", "tension", "hot", "extreme", "after_dark"];
+  if (!validLevels.includes(level)) { res.status(400).json({ error: "Livello non valido" }); return; }
+  const count = Math.min(20, Math.max(5, Number(totalRounds ?? 10)));
+  const levelObj = ADULT_LEVELS.find(l => l.id === level);
+  await adultUpdate(id, { phase: "spinning", level, levelLabel: levelObj?.label ?? level, totalRounds: count, missions: [], currentRound: 0 });
+  res.json({ ok: true });
+  // Generate missions in background
+  setTimeout(async () => {
+    try {
+      const missions = await generateAdultMissions(level, count + 5); // extra buffer
+      const sess2 = await getSession(id);
+      if (!sess2) return;
+      const rp2 = (sess2.roundPayload ?? {}) as Record<string, unknown>;
+      await adultUpdate(id, { ...rp2, missions });
+      logger.info({ sessionId: id, level, count, generated: missions.length }, "[AdultOnly] missions ready");
+    } catch (err) {
+      logger.error({ err, sessionId: id }, "[AdultOnly] mission generation failed");
+    }
+  }, 0);
+});
+
+// POST /home/sessions/:id/adult/spin — pick random player + current mission → mission phase
+router.post("/home/sessions/:id/adult/spin", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-adult") { res.status(409).json({ error: "Non in modalità adult" }); return; }
+  if (rp["phase"] !== "spinning") { res.status(409).json({ error: "Fase non corretta" }); return; }
+  const players = await getPlayers(id);
+  if (players.length === 0) { res.status(400).json({ error: "Nessun giocatore" }); return; }
+  const missions = (rp["missions"] ?? []) as AdultMission[];
+  const currentRound = Number(rp["currentRound"] ?? 0);
+  const totalRounds = Number(rp["totalRounds"] ?? 10);
+  // Select random player
+  const selectedPlayer = players[Math.floor(Math.random() * players.length)]!;
+  // Pick mission (cycle through missions array)
+  const missionIdx = currentRound % Math.max(1, missions.length);
+  const mission = missions[missionIdx] ?? { id: "fallback", level: "flirt", title: "Sfida libera", body: "Inventate insieme una sfida divertente!", points: 100, timeLimit: 60, tag: "solo" };
+  const missionEndsAt = Date.now() + (mission.timeLimit ?? 60) * 1000;
+  await adultUpdate(id, {
+    phase: "mission",
+    selectedPlayerIds: [selectedPlayer.id],
+    selectedPlayerNickname: selectedPlayer.nickname,
+    currentMission: mission,
+    missionStartedAt: new Date().toISOString(),
+    missionEndsAt: new Date(missionEndsAt).toISOString(),
+    completedBy: null,
+  });
+  await db.update(homeSessionsTable).set({ currentRound }).where(eq(homeSessionsTable.id, id));
+  logger.info({ sessionId: id, player: selectedPlayer.nickname, mission: mission.title }, "[AdultOnly] spin → mission");
+  res.json({ ok: true });
+});
+
+// POST /home/sessions/:id/adult/complete — mission done by selected player → result
+router.post("/home/sessions/:id/adult/complete", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-adult" || rp["phase"] !== "mission") { res.status(409).json({ error: "Fase non corretta" }); return; }
+  const selectedIds = (rp["selectedPlayerIds"] ?? []) as string[];
+  const mission = rp["currentMission"] as AdultMission | null;
+  const pts = mission?.points ?? 100;
+  const players = await getPlayers(id);
+  const completedPlayers = players.filter(p => selectedIds.includes(p.id));
+  const scoreUpdates = completedPlayers.map(p =>
+    db.update(homePlayersTable).set({ score: p.score + pts }).where(eq(homePlayersTable.id, p.id))
+  );
+  await Promise.all(scoreUpdates);
+  const updatedPlayers = await getPlayers(id);
+  const rankingData = [...updatedPlayers].sort((a, b) => b.score - a.score).map(p => ({
+    playerId: p.id, nickname: p.nickname, score: p.score, delta: completedPlayers.some(c => c.id === p.id) ? pts : 0,
+  }));
+  await adultUpdate(id, { phase: "result", completedBy: completedPlayers.map(p => p.nickname).join(", ") || "—", pointsAwarded: pts, rankingData });
+  logger.info({ sessionId: id, pts, completedBy: selectedIds }, "[AdultOnly] complete → result");
+  res.json({ ok: true });
+});
+
+// POST /home/sessions/:id/adult/skip — skip mission, no points → result
+router.post("/home/sessions/:id/adult/skip", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-adult" || rp["phase"] !== "mission") { res.status(409).json({ error: "Fase non corretta" }); return; }
+  const players = await getPlayers(id);
+  const rankingData = [...players].sort((a, b) => b.score - a.score).map(p => ({
+    playerId: p.id, nickname: p.nickname, score: p.score, delta: 0,
+  }));
+  await adultUpdate(id, { phase: "result", completedBy: null, pointsAwarded: 0, rankingData });
+  res.json({ ok: true });
+});
+
+// POST /home/sessions/:id/adult/next — result → spinning (next round) OR finale
+router.post("/home/sessions/:id/adult/next", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-adult" || rp["phase"] !== "result") { res.status(409).json({ error: "Fase non corretta" }); return; }
+  const currentRound = Number(rp["currentRound"] ?? 0) + 1;
+  const totalRounds = Number(rp["totalRounds"] ?? 10);
+  const players = await getPlayers(id);
+  const rankingData = [...players].sort((a, b) => b.score - a.score).map(p => ({
+    playerId: p.id, nickname: p.nickname, score: p.score, delta: 0,
+  }));
+  if (currentRound >= totalRounds) {
+    await adultUpdate(id, { phase: "finale", currentRound, rankingData });
+    await db.update(homeSessionsTable).set({ currentRound }).where(eq(homeSessionsTable.id, id));
+    res.json({ ok: true });
+    return;
+  }
+  await adultUpdate(id, { phase: "spinning", currentRound, selectedPlayerIds: [], selectedPlayerNickname: null, currentMission: null, completedBy: null });
+  await db.update(homeSessionsTable).set({ currentRound }).where(eq(homeSessionsTable.id, id));
+  res.json({ ok: true });
+});
+
+// POST /home/sessions/:id/adult/escalate — increase level
+router.post("/home/sessions/:id/adult/escalate", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-adult") { res.status(409).json({ error: "Non in modalità adult" }); return; }
+  const validLevels: AdultLevel[] = ["flirt", "tension", "hot", "extreme", "after_dark"];
+  const currentLevel = String(rp["level"] ?? "flirt");
+  const idx = validLevels.indexOf(currentLevel as AdultLevel);
+  const nextLevel = validLevels[Math.min(idx + 1, validLevels.length - 1)] ?? "after_dark";
+  const levelObj = ADULT_LEVELS.find(l => l.id === nextLevel);
+  // Generate new missions for escalated level
+  const newMissions = await generateAdultMissions(nextLevel, Number(rp["totalRounds"] ?? 10) + 5).catch(() => []);
+  await adultUpdate(id, { level: nextLevel, levelLabel: levelObj?.label ?? nextLevel, missions: newMissions, phase: "spinning", selectedPlayerIds: [], currentMission: null });
+  res.json({ ok: true, newLevel: nextLevel });
+});
+
+// POST /home/sessions/:id/adult/finale — force end
+router.post("/home/sessions/:id/adult/finale", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-adult") { res.status(409).json({ error: "Non in modalità adult" }); return; }
+  const players = await getPlayers(id);
+  const rankingData = [...players].sort((a, b) => b.score - a.score).map(p => ({
+    playerId: p.id, nickname: p.nickname, score: p.score, delta: 0,
+  }));
+  await adultUpdate(id, { phase: "finale", rankingData });
+  res.json({ ok: true });
+});
+
 // ── POST /home/sessions/:id/ready — pass to game-board ─────────────────────────
 router.post("/home/sessions/:id/ready", async (req, res): Promise<void> => {
   const id = String(req.params["id"]);
@@ -1637,6 +2085,78 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
     emitToRoom(homeRoom(id), "home:game_started", { session: coppieUpdated, players: coppPlayers, payload: coppiePayload });
     emitToRoom(homeRoom(id), "home:state", { session: coppieUpdated, players: coppPlayers });
     res.json({ session: coppieUpdated, players: coppPlayers });
+    return;
+  }
+
+  // ── BYPASS: saramusica → Sara'Musica new Jonny AI show flow ─────────────────
+  if (gameSlug === "saramusica") {
+    req.log.info({ sessionId: id }, "[FLOW_BYPASS] saramusica → Sara'Musica new show flow, skipping old DB loader");
+    const smPayload: RoundPayload = {
+      mode: "home-saramusica",
+      phase: "setup_theme",
+      theme: null,
+      themeName: null,
+      roundCount: 10,
+      rounds: [],
+      currentIndex: -1,
+      countdownValue: null,
+      currentClueIndex: 0,
+      allAnsweredForCurrent: false,
+      answeredCount: 0,
+      revealData: null,
+      rankingData: null,
+    };
+    const smCfg = { ...cfg, phase: "playing", gamesPlayed };
+    const [smUpdated] = await db.update(homeSessionsTable).set({
+      gameSlug,
+      gameConfig: smCfg,
+      status: "playing",
+      currentRound: 0,
+      totalRounds: 0,
+      roundPayload: smPayload,
+      expiresAt: new Date(Date.now() + 6 * 60 * 60 * 1000),
+    }).where(eq(homeSessionsTable.id, id)).returning();
+    if (!smUpdated) { res.status(500).json({ error: "Errore avvio saramusica" }); return; }
+    const smPlayers = await getPlayers(id);
+    emitToRoom(homeRoom(id), "home:game_started", { session: smUpdated, players: smPlayers, payload: smPayload });
+    emitToRoom(homeRoom(id), "home:state", { session: smUpdated, players: smPlayers });
+    res.json({ session: smUpdated, players: smPlayers });
+    return;
+  }
+
+  // ── BYPASS: adult-only → new Jonny After Dark bottle-spin flow ──────────────
+  if (gameSlug === "adult-only") {
+    req.log.info({ sessionId: id }, "[FLOW_BYPASS] adult-only → new After Dark flow, skipping old DB loader");
+    const adultPayload: RoundPayload = {
+      mode: "home-adult",
+      phase: "intro",
+      level: null,
+      missions: [],
+      currentRound: 0,
+      totalRounds: 10,
+      currentMission: null,
+      selectedPlayerIds: [],
+      selectedPlayerNickname: null,
+      missionStartedAt: null,
+      missionEndsAt: null,
+      completedBy: null,
+      rankingData: null,
+    };
+    const adultCfg = { ...cfg, phase: "playing", gamesPlayed };
+    const [adultUpdated] = await db.update(homeSessionsTable).set({
+      gameSlug,
+      gameConfig: adultCfg,
+      status: "playing",
+      currentRound: 0,
+      totalRounds: 0,
+      roundPayload: adultPayload,
+      expiresAt: new Date(Date.now() + 6 * 60 * 60 * 1000),
+    }).where(eq(homeSessionsTable.id, id)).returning();
+    if (!adultUpdated) { res.status(500).json({ error: "Errore avvio adult-only" }); return; }
+    const adultPlayers = await getPlayers(id);
+    emitToRoom(homeRoom(id), "home:game_started", { session: adultUpdated, players: adultPlayers, payload: adultPayload });
+    emitToRoom(homeRoom(id), "home:state", { session: adultUpdated, players: adultPlayers });
+    res.json({ session: adultUpdated, players: adultPlayers });
     return;
   }
 

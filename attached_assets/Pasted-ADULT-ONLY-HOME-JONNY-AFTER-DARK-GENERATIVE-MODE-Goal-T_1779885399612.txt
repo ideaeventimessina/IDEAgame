@@ -1,0 +1,117 @@
+ADULT ONLY HOME — JONNY AFTER DARK GENERATIVE MODE
+
+Goal:
+Transform Adult Only into a generative bottle-party game for adults.
+
+TV = stage
+phones = consent / choices / powers / voting
+
+==================================================
+FLOW
+==================================================
+
+1. Intro screen
+2. consent screen for all players
+3. choose intensity level
+4. spinning bottle animation
+5. select players
+6. Jonny generates mission
+7. mission timer
+8. public voting
+9. next round
+10. optional level escalation
+
+==================================================
+LEVELS
+==================================================
+
+5 levels:
+1 flirt
+2 tension
+3 hot
+4 extreme
+5 after_dark
+
+Levels 2–5 require approval from active players.
+
+Players declining:
+exit active pool
+remain spectators
+
+==================================================
+BOTTLE ENGINE
+==================================================
+
+TV:
+3D bottle spins
+stops on one or two players
+
+Show:
+playerA
+playerB
+mission
+
+==================================================
+MISSION GENERATOR
+==================================================
+
+Jonny generates missions based on:
+- level
+- active players
+- group size
+- previous missions already used
+
+Never repeat same mission in same session.
+
+Store:
+usedMissionIds
+
+==================================================
+PUBLIC POWERS
+==================================================
+
+Random powers:
++10 seconds
+swap player
+skip challenge
+instant pass
+double score
+
+Players vote via phone.
+
+==================================================
+PHONE UI
+==================================================
+
+Consent
+approve next level
+vote
+superpower
+reaction
+
+==================================================
+TV UI
+==================================================
+
+dark premium
+gold / red / neon accents
+large bottle center stage
+big player names
+mission reveal
+timer
+result
+ranking
+
+==================================================
+OUTPUT
+==================================================
+
+A. Adult Only architecture
+B. files modified
+C. bottle engine
+D. consent system
+E. 5 level escalation
+F. Jonny mission generation
+G. voting + powers
+H. typecheck result
+I. manual test checklist

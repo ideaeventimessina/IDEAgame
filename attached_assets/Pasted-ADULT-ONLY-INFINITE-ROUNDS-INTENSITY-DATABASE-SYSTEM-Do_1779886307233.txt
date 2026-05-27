@@ -1,0 +1,102 @@
+ADULT ONLY — INFINITE ROUNDS + INTENSITY DATABASE SYSTEM.
+
+Do not create a fixed 5-round game.
+Adult Only must run indefinitely until players stop.
+
+Structure:
+- 5 intensity levels
+- unlimited rounds
+- large challenge database per level/category
+- no repeat until pool is exhausted
+- players can stop anytime
+- level escalation requires consent from all active players
+
+LEVELS:
+1. Social / Bottle Game
+2. Flirt / Truth or Dare
+3. Hot / Physical proximity
+4. Explicit private-club content pack
+5. Extreme private-club content pack
+
+Important:
+Levels 4 and 5 must NOT be hardcoded by the app.
+They must be loaded from an admin-managed content database / JSON pack.
+The app must support explicit adult-only challenge text supplied by the event organizer, but must include consent gates and safety rules.
+
+Database shape:
+
+Challenge {
+  id,
+  level,
+  category,
+  text,
+  requiredPlayers,
+  durationSeconds,
+  requiresConsent,
+  allowPublicVote,
+  allowSuperPowers,
+  tags,
+  usedCount
+}
+
+Game flow:
+1. TV shows consent warning.
+2. Players choose:
+   - participate
+   - watch only
+   - leave
+3. Bottle spins among active players.
+4. System selects challenge from current level database.
+5. Players accept/decline if required.
+6. Challenge starts.
+7. Public votes/validates.
+8. Next round starts automatically.
+9. Game continues indefinitely until host/players stop.
+
+Escalation:
+- moving from level 1→2→3→4→5 requires confirmation from all active participants.
+- anyone who declines exits active pool but remains spectator.
+- level can also go down.
+
+Superpowers:
+Random timed powers for spectators:
+- +10 seconds
+- swap one player
+- reroll challenge
+- validate challenge
+- double score
+- force public vote
+
+TV:
+- premium dark/red design
+- spinning bottle with player names
+- active level indicator
+- current challenge card
+- timer
+- consent status
+- result/vote screen
+
+Phones:
+- consent buttons
+- accept/decline challenge
+- vote/validate
+- use superpower
+- spectator mode
+
+Safety:
+- adult-only gate
+- consent required
+- decline always available
+- no minors
+- no non-consensual prompts
+- no permanent media recording
+- emergency stop button
+
+Output:
+A. files modified
+B. database/content-pack structure
+C. infinite round engine
+D. level escalation consent
+E. bottle animation logic
+F. spectator superpowers
+G. typecheck result

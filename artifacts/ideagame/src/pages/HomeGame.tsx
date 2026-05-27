@@ -520,7 +520,7 @@ function isSafeToShowTvMessages(session: HomeSession | null, phase: string): boo
     const gfp = String(rp['gameFlowPhase'] ?? '');
     return gfp === 'booking' || gfp === 'theme_select';
   }
-  if (mode === 'home-adult') return String(rp['phase'] ?? '') !== 'performing';
+  if (mode === 'home-adult') { const p = String(rp['phase'] ?? ''); return p === 'intro' || p === 'spinning'; }
   if (mode === 'home-saramusica') return String(rp['phase'] ?? '') !== 'playing';
   if (mode === 'home-freestyle') {
     const fp = String(rp['phase'] ?? '');
@@ -2007,8 +2007,8 @@ function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, bal
   if (mode === 'home-ballo')      return <BalloBoard session={session} payload={p} players={players} balloEnergies={balloEnergies ?? {}} balloCurrent={balloCurrent ?? {}} balloResult={balloResult ?? null} balloVotes={balloVotes ?? {}} onReset={onBalloReset} onStageNext={onStageNext} onEndBallo={onEndBallo} sensitivity={balloSensitivity ?? 1} onSensitivity={onSensitivity}/>;
   if (mode === 'home-percorso')   return <PercorsoBoard sessionId={session.id} payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
   if (mode === 'home-coppie')     return <CoppieBoard payload={p} onNext={onNext} sessionId={session.id}/>;
-  if (mode === 'home-saramusica') return <SaraMusicaBoard payload={p} revealed={revealed} onReveal={onReveal} winner={saraMusicaWinner ?? null}/>;
-  if (mode === 'home-adult')      return <AdultOnlyBoard payload={p} revealed={revealed} onReveal={onReveal} players={players} onScore={onScore}/>;
+  if (mode === 'home-saramusica') return <SaraMusicaBoard payload={p} session={session} players={players}/>;
+  if (mode === 'home-adult')      return <AdultOnlyBoard payload={p} session={session} players={players}/>;
   if (mode === 'home-wordback' || mode === 'home-wordback-booking')   return <WordBackBoard payload={p} players={players} onScore={onScore} onReveal={onReveal} tabooAlarm={tabooAlarm ?? null} sessionId={session.id} timeoutOverlay={wordbackTimeoutOverlay} wrongOverlay={wordbackWrongOverlay}/>;
   // FIX: version=3 check MUST come before mode-based routing (mode is still 'home-karaoke' even for new system)
   const ks = _ks_probe;
@@ -3352,118 +3352,710 @@ function AudioPlayer({ src, label = 'Riproduci', color = '#60A5FA' }: { src: str
 
 // ── SaraMusicaBoard ───────────────────────────────────────────────────────────
 
-function SaraMusicaBoard({ payload, revealed, onReveal, winner }: {
+const SM_THEME_LIST = [
+  { id: 'anni80',     label: 'Anni 80',    emoji: '🕺' },
+  { id: 'anni90',     label: 'Anni 90',    emoji: '💿' },
+  { id: 'anni2000',   label: 'Anni 2000',  emoji: '📀' },
+  { id: 'sanremo',    label: 'Sanremo',    emoji: '🌹' },
+  { id: 'sigle_tv',   label: 'Sigle TV',   emoji: '📺' },
+  { id: 'disney',     label: 'Disney',     emoji: '🏰' },
+  { id: 'rock',       label: 'Rock',       emoji: '🎸' },
+  { id: 'dance',      label: 'Dance',      emoji: '🎶' },
+  { id: 'trap_urban', label: 'Trap/Urban', emoji: '🎤' },
+  { id: 'custom',     label: 'Misto',      emoji: '✨' },
+];
+
+type SMRound = {
+  type: string; question: string; answers: string[]; correctAnswerIndex: number;
+  year?: number; clues?: string[]; points: number; timeLimit: number; explanation?: string;
+};
+
+const SM_TYPE_BADGES: Record<string, { emoji: string; label: string; color: string }> = {
+  guess_song:             { emoji: '🎵', label: 'INDOVINA LA CANZONE',  color: '#60A5FA' },
+  guess_artist:           { emoji: '🎤', label: "INDOVINA L'ARTISTA",   color: '#A78BFA' },
+  complete_lyrics:        { emoji: '📝', label: 'COMPLETA IL TESTO',    color: '#34D399' },
+  speed_music:            { emoji: '⚡', label: 'RISPOSTA VELOCE',      color: '#FBBF24' },
+  song_vs_song:           { emoji: '⚔️', label: 'SFIDA MUSICALE',       color: '#F87171' },
+  progressive_clue_music: { emoji: '🔍', label: 'INDIZI MUSICALI',      color: '#F59E0B' },
+  final_tormentone:       { emoji: '🏆', label: 'TORMENTONE FINALE',    color: '#F97316' },
+};
+const SM_ANS_COLORS = ['#60A5FA', '#A78BFA', '#34D399', '#FBBF24'];
+
+function SaraMusicaBoard({ payload, session, players }: {
   payload: Record<string,unknown>;
-  revealed: boolean;
-  onReveal: () => void;
-  winner?: { nickname: string; points: number; round: number } | null;
+  session: HomeSession;
+  players: HomePlayer[];
 }) {
-  const audioUrl = payload.audioUrl ? String(payload.audioUrl) : null;
-  return (
-    <motion.div key={String(payload.roundIndex)} initial={{scale:0.9,opacity:0}} animate={{scale:1,opacity:1}}
-      className="flex w-full max-w-2xl flex-col items-center gap-7 text-center">
-      <div className="flex h-28 w-28 items-center justify-center rounded-3xl text-7xl"
-        style={{background:'linear-gradient(135deg,rgba(96,165,250,0.35),rgba(96,165,250,0.15))',border:'2px solid rgba(96,165,250,0.55)',boxShadow:'0 0 60px rgba(96,165,250,0.4)'}}>
-        🎵
+  const SM = '#60A5FA';
+  const SM_GLOW = 'rgba(96,165,250,0.4)';
+
+  const phase         = String(payload.phase ?? '');
+  const themeName     = String(payload.themeName ?? '');
+  const roundCount    = Number(payload.roundCount ?? 10);
+  const currentIndex  = Number(payload.currentIndex ?? 0);
+  const countdownVal  = payload.countdownValue as number | null;
+  const rounds        = (payload.rounds ?? []) as SMRound[];
+  const currentQ      = rounds[currentIndex] as SMRound | undefined;
+  const revealData    = payload.revealData as { correctAnswerIndex: number; playerResults: { playerId: string; nickname: string; answerIndex: number | null; correct: boolean; points: number }[] } | null;
+  const rankingData   = payload.rankingData as { playerId: string; nickname: string; score: number; delta: number }[] | null;
+  const answeredCount = Number(payload.answeredCount ?? 0);
+  const allAnswered   = Boolean(payload.allAnsweredForCurrent);
+  const questionEndsAt = payload.questionEndsAt as string | undefined;
+  const clueIndex     = Number(payload.currentClueIndex ?? 0);
+
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+  useEffect(() => {
+    if (!questionEndsAt || phase !== 'question') { setTimeLeft(null); return; }
+    const tick = () => setTimeLeft(Math.max(0, Math.ceil((new Date(questionEndsAt).getTime() - Date.now()) / 1000)));
+    tick();
+    const t = setInterval(tick, 250);
+    return () => clearInterval(t);
+  }, [questionEndsAt, phase]);
+
+  const [busy, setBusy] = useState(false);
+  const smPost = async (sub: string, body?: Record<string,unknown>) => {
+    setBusy(true);
+    try { await fetch(`/api/home/sessions/${session.id}/saramusica/${sub}`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body ?? {}) }); }
+    finally { setBusy(false); }
+  };
+
+  // ── setup_theme ──────────────────────────────────────────────────────────────
+  if (phase === 'setup_theme') return (
+    <div className="flex flex-col items-center gap-8 text-center w-full max-w-4xl">
+      <div className="flex flex-col items-center gap-2">
+        <div className="text-5xl">🎵</div>
+        <div className="text-display text-4xl font-black text-white">Scegli il Tema Musicale</div>
+        <div className="text-white/50 text-sm">L'host sceglie, i giocatori si preparano</div>
       </div>
-      {!revealed ? (
-        <>
-          <div className="text-display text-4xl font-black text-white">Indovina la Canzone!</div>
-          <AudioPlayer src={audioUrl} label="Riproduci canzone" color="#60A5FA"/>
-          <div className="max-w-lg rounded-3xl p-6"
-            style={{background:'rgba(96,165,250,0.12)',border:'1px solid rgba(96,165,250,0.4)'}}>
-            <div className="text-xs font-black uppercase tracking-widest mb-2" style={{color:'rgba(96,165,250,0.8)'}}>SUGGERIMENTO</div>
-            <div className="text-lg text-white/80 italic leading-relaxed">"{String(payload.snippetHint??'...')}"</div>
-          </div>
-          <button onClick={onReveal} className="flex items-center gap-3 rounded-2xl px-10 py-5 text-xl font-black text-white"
-            style={{background:'linear-gradient(135deg,#60A5FA,#2563eb)',boxShadow:'0 0 50px rgba(96,165,250,0.55)'}}>
-            🎵 Rivela canzone
+      <div className="grid grid-cols-5 gap-3 w-full">
+        {SM_THEME_LIST.map(t => (
+          <button key={t.id} onClick={() => void smPost('select-theme', { themeId: t.id })} disabled={busy}
+            className="flex flex-col items-center gap-2 rounded-2xl p-5 transition-all hover:scale-105 disabled:opacity-50"
+            style={{ background: `linear-gradient(135deg,${SM}18,rgba(0,0,0,0.4))`, border: `2px solid ${SM}44` }}>
+            <div className="text-3xl">{t.emoji}</div>
+            <div className="text-sm font-black text-white leading-tight">{t.label}</div>
           </button>
-        </>
-      ) : (
-        <>
-          {winner && (
-            <motion.div initial={{scale:0,opacity:0}} animate={{scale:1,opacity:1}} transition={{type:'spring',delay:0.1}}
-              className="rounded-3xl px-8 py-4 text-center"
-              style={{background:'linear-gradient(135deg,rgba(96,165,250,0.25),rgba(37,99,235,0.15))',border:'2px solid rgba(96,165,250,0.6)',boxShadow:'0 0 60px rgba(96,165,250,0.4)'}}>
-              <div className="text-xs font-black uppercase tracking-widest mb-1" style={{color:'rgba(96,165,250,0.8)'}}>🏆 HA INDOVINATO</div>
-              <div className="text-3xl font-black text-white">{winner.nickname}</div>
-              <div className="text-xl font-bold mt-1" style={{color:'#60A5FA'}}>+{winner.points} punti!</div>
-            </motion.div>
-          )}
-          <div className="text-display text-5xl font-black text-white">{String(payload.title??'?')}</div>
-          <div className="text-2xl font-bold" style={{color:'#60A5FA'}}>— {String(payload.artist??'')}</div>
-          <AudioPlayer src={audioUrl} label="Riproduci ancora" color="#60A5FA"/>
-          {!winner && (
-            <div className="rounded-2xl px-5 py-2" style={{background:'rgba(96,165,250,0.18)',border:'1px solid rgba(96,165,250,0.45)',color:'#60A5FA'}}>
-              <span className="text-xl font-black">{Number(payload.points??100)} punti a chi l'ha indovinata!</span>
+        ))}
+      </div>
+      <div className="text-white/30 text-xs">{players.length} giocatori connessi</div>
+    </div>
+  );
+
+  // ── setup_count ──────────────────────────────────────────────────────────────
+  if (phase === 'setup_count') return (
+    <div className="flex flex-col items-center gap-8 text-center">
+      <div className="flex flex-col items-center gap-2">
+        <div className="text-5xl">🎵</div>
+        <div className="text-white/60">Tema: <span className="font-black" style={{color:SM}}>{themeName}</span></div>
+        <div className="text-display text-4xl font-black text-white">Quante manche?</div>
+      </div>
+      <div className="flex gap-5">
+        {[5, 10, 15, 20].map(n => (
+          <button key={n} onClick={() => void smPost('select-count', { count: n })} disabled={busy}
+            className="flex flex-col items-center gap-2 rounded-3xl px-10 py-7 text-5xl font-black text-white transition-all hover:scale-110 disabled:opacity-50"
+            style={{ background: `linear-gradient(135deg,${SM}30,rgba(0,0,0,0.5))`, border: `2px solid ${SM}66`, boxShadow: `0 0 40px ${SM_GLOW}` }}>
+            {n}
+            <span className="text-sm opacity-60 font-bold">manche</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  // ── generating ───────────────────────────────────────────────────────────────
+  if (phase === 'generating') return (
+    <div className="flex flex-col items-center gap-7 text-center">
+      <motion.div animate={{ scale: [1,1.08,1], opacity: [0.7,1,0.7] }} transition={{ repeat: Infinity, duration: 1.8 }}
+        className="text-8xl">🎵</motion.div>
+      <div className="text-display text-3xl font-black text-white">Jonny sta preparando</div>
+      <div className="text-display text-4xl font-black" style={{color:SM}}>la sfida musicale…</div>
+      <div className="flex gap-2">
+        {[0,1,2,3,4].map(i => (
+          <motion.div key={i} className="h-3 w-3 rounded-full" style={{background:SM}}
+            animate={{ y: [0,-12,0] }} transition={{ repeat: Infinity, duration: 0.8, delay: i * 0.15 }}/>
+        ))}
+      </div>
+      <div className="text-white/40 text-sm">Tema: {themeName} · {roundCount} manche</div>
+    </div>
+  );
+
+  // ── countdown ────────────────────────────────────────────────────────────────
+  if (phase === 'countdown') return (
+    <div className="flex flex-col items-center gap-6 text-center">
+      <div className="text-xl font-bold text-white/50">{roundCount} domande · {themeName}</div>
+      <motion.div key={countdownVal} initial={{ scale: 0.3, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+        transition={{ type: 'spring', stiffness: 280, damping: 18 }}
+        className="text-display font-black" style={{ fontSize: '18rem', lineHeight: 1, color: SM, textShadow: `0 0 120px ${SM_GLOW}` }}>
+        {countdownVal ?? ''}
+      </motion.div>
+      <div className="text-2xl font-bold text-white/60">🎵 Preparatevi!</div>
+    </div>
+  );
+
+  // ── question ─────────────────────────────────────────────────────────────────
+  if (phase === 'question' && currentQ) {
+    const badge      = SM_TYPE_BADGES[currentQ.type] ?? { emoji: '🎵', label: 'DOMANDA', color: SM };
+    const tLimit     = currentQ.timeLimit > 0 ? currentQ.timeLimit : 20;
+    const timerPct   = timeLeft !== null ? timeLeft / tLimit : 1;
+    const timerColor = timerPct > 0.5 ? '#4ade80' : timerPct > 0.25 ? '#facc15' : '#ef4444';
+    const isSvS      = currentQ.type === 'song_vs_song';
+    const isProgr    = currentQ.type === 'progressive_clue_music';
+    const isSpeed    = currentQ.type === 'speed_music';
+    const isFinal    = currentQ.type === 'final_tormentone';
+    const visClues   = (currentQ.clues ?? []).slice(0, clueIndex + 1);
+    const cluePoints = [150, 100, 50];
+
+    return (
+      <div className="flex flex-col gap-4 w-full max-w-4xl">
+        {/* Header row */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-black"
+              style={{ background: `${badge.color}22`, border: `1px solid ${badge.color}55`, color: badge.color }}>
+              {badge.emoji} {badge.label}
             </div>
+            <div className="rounded-full px-3 py-1 text-sm font-bold text-white/50" style={{background:'rgba(255,255,255,0.08)'}}>
+              {currentIndex + 1} / {roundCount}
+            </div>
+            {currentQ.year && (
+              <div className="rounded-full px-3 py-1 text-xs font-bold" style={{background:`${SM}18`, color:SM, border:`1px solid ${SM}44`}}>
+                {currentQ.year}
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            {allAnswered && <div className="rounded-full px-4 py-2 text-sm font-black text-white" style={{background:'rgba(34,197,94,0.2)',border:'1px solid rgba(34,197,94,0.5)'}}>✅ Tutti risposto!</div>}
+            {!allAnswered && answeredCount > 0 && <div className="text-sm font-bold text-white/40">{answeredCount}/{players.length}</div>}
+            {timeLeft !== null && (
+              <div className={`text-3xl font-black ${isSpeed ? 'animate-pulse' : ''}`}
+                style={{ color: timerColor, textShadow: `0 0 20px ${timerColor}88` }}>
+                {timeLeft === 0 ? '⏰' : `${timeLeft}s`}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Timer bar */}
+        <div className="h-2 w-full rounded-full overflow-hidden" style={{background:'rgba(255,255,255,0.08)'}}>
+          <div className="h-full rounded-full transition-all duration-[250ms] ease-linear"
+            style={{ background: isSpeed ? `linear-gradient(90deg,${timerColor},#FBBF24)` : timerColor, width: `${timerPct * 100}%` }}/>
+        </div>
+
+        {/* Question card */}
+        <div className="rounded-3xl p-6"
+          style={{ background: `linear-gradient(135deg,${badge.color}18,rgba(0,0,0,0.3))`, border: `1px solid ${badge.color}44` }}>
+          {isProgr ? (
+            <div className="flex flex-col gap-3">
+              {visClues.map((clue, ci) => (
+                <div key={ci} className="text-base font-bold"
+                  style={{ color: ci < clueIndex ? 'rgba(255,255,255,0.4)' : 'white' }}>
+                  {['🔍','🔎','💡'][ci]} Indizio {ci + 1} <span className="text-xs font-bold opacity-60">({cluePoints[ci]}pt)</span>: {clue}
+                </div>
+              ))}
+              <div className="text-display text-xl font-black text-white/60 mt-2">{currentQ.question}</div>
+            </div>
+          ) : isFinal ? (
+            <div className="flex flex-col items-center gap-3">
+              <div className="text-5xl animate-pulse">🏆</div>
+              <div className="text-display text-2xl font-black" style={{color:'#F97316',textShadow:'0 0 40px rgba(249,115,22,0.6)'}}>
+                TORMENTONE FINALE!
+              </div>
+              <div className="text-display text-xl font-black text-white">{currentQ.question}</div>
+              <div className="text-base font-black" style={{color:'#F97316'}}>200 PUNTI — DOPPIO!</div>
+            </div>
+          ) : (
+            <div className="text-display text-2xl font-black text-white leading-snug">{currentQ.question}</div>
           )}
-        </>
-      )}
-    </motion.div>
+        </div>
+
+        {/* Answers grid */}
+        <div className={isSvS ? 'flex gap-4' : 'grid grid-cols-2 gap-3'}>
+          {currentQ.answers.map((ans, i) => (
+            <div key={i} className="flex items-center gap-3 rounded-2xl px-4 py-4"
+              style={{ background: `${SM_ANS_COLORS[i] ?? SM}18`, border: `2px solid ${SM_ANS_COLORS[i] ?? SM}44`, flex: isSvS ? '1' : undefined }}>
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl font-black text-sm"
+                style={{ background: SM_ANS_COLORS[i] ?? SM, color: '#000' }}>
+                {isSvS ? (i === 0 ? 'A' : 'B') : ['A','B','C','D'][i]}
+              </div>
+              <div className="font-black text-sm text-white flex-1 text-left leading-tight">{ans}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Host controls */}
+        <div className="flex items-center justify-between mt-1">
+          {isProgr && clueIndex < 2 && (
+            <button onClick={() => void smPost('next-clue')} disabled={busy}
+              className="rounded-xl px-5 py-3 text-sm font-black"
+              style={{ background: 'rgba(52,211,153,0.15)', border: '1px solid rgba(52,211,153,0.4)', color: '#34D399' }}>
+              🔎 Prossimo indizio
+            </button>
+          )}
+          <div className="flex-1"/>
+          <button onClick={() => void smPost('reveal')} disabled={busy}
+            className="rounded-2xl px-8 py-4 text-base font-black text-black transition-all hover:scale-105 disabled:opacity-50"
+            style={{ background: `linear-gradient(135deg,${SM},#2563eb)`, boxShadow: `0 0 30px ${SM_GLOW}` }}>
+            {busy ? '…' : '🎵 Rivela risposta'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── reveal ───────────────────────────────────────────────────────────────────
+  if (phase === 'reveal' && currentQ && revealData) {
+    const badge      = SM_TYPE_BADGES[currentQ.type] ?? { emoji: '🎵', label: 'RISPOSTA', color: SM };
+    const correctIdx = revealData.correctAnswerIndex;
+    const winners    = revealData.playerResults.filter(r => r.correct);
+    return (
+      <div className="flex flex-col gap-4 w-full max-w-4xl">
+        <div className="flex items-center justify-between">
+          <div className="rounded-full px-4 py-2 text-sm font-black"
+            style={{ background: `${badge.color}22`, border: `1px solid ${badge.color}55`, color: badge.color }}>
+            {badge.emoji} {badge.label}
+          </div>
+          <div className="text-sm text-white/40">{currentIndex + 1} / {roundCount}</div>
+        </div>
+
+        <motion.div initial={{scale:0.85,opacity:0}} animate={{scale:1,opacity:1}} transition={{type:'spring'}}
+          className="rounded-3xl p-6 text-center"
+          style={{ background: 'linear-gradient(135deg,rgba(34,197,94,0.25),rgba(0,0,0,0.4))', border: '2px solid rgba(34,197,94,0.6)', boxShadow: '0 0 60px rgba(34,197,94,0.3)' }}>
+          <div className="text-xs font-black uppercase tracking-widest mb-2 text-green-400">✅ RISPOSTA CORRETTA</div>
+          <div className="text-display text-3xl font-black text-white">{currentQ.answers[correctIdx]}</div>
+          {currentQ.explanation && <div className="text-white/50 text-sm mt-2 italic">{currentQ.explanation}</div>}
+        </motion.div>
+
+        <div className={currentQ.type === 'song_vs_song' ? 'flex gap-4' : 'grid grid-cols-2 gap-3'}>
+          {currentQ.answers.map((ans, i) => {
+            const isCorrect = i === correctIdx;
+            const whos = revealData.playerResults.filter(p => p.answerIndex === i);
+            return (
+              <div key={i} className="rounded-2xl px-4 py-3 flex items-center gap-3"
+                style={{ background: isCorrect ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.1)', border: `2px solid ${isCorrect ? 'rgba(34,197,94,0.6)' : 'rgba(239,68,68,0.3)'}`, flex: currentQ.type === 'song_vs_song' ? '1' : undefined }}>
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl font-black text-sm"
+                  style={{ background: isCorrect ? '#22c55e' : 'rgba(239,68,68,0.4)', color: '#fff' }}>
+                  {isCorrect ? '✓' : ['A','B','C','D'][i]}
+                </div>
+                <div className="flex-1">
+                  <div className={`font-black text-sm ${isCorrect ? 'text-white' : 'text-white/50'}`}>{ans}</div>
+                  {whos.length > 0 && <div className="text-xs text-white/40 mt-0.5">{whos.map(p => p.nickname).join(', ')}</div>}
+                </div>
+                {isCorrect && whos.length > 0 && <div className="text-green-400 font-black text-sm">+{whos[0]?.points}pt</div>}
+              </div>
+            );
+          })}
+        </div>
+
+        {winners.length > 0 ? (
+          <div className="flex gap-3 flex-wrap justify-center">
+            {winners.map((w, i) => (
+              <motion.div key={w.playerId} initial={{scale:0}} animate={{scale:1}} transition={{type:'spring',delay:i*0.07}}
+                className="rounded-2xl px-5 py-3 text-center"
+                style={{ background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.5)' }}>
+                <div className="text-white font-black">{w.nickname}</div>
+                <div className="text-green-400 font-black">+{w.points}pt</div>
+              </motion.div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center text-white/40 font-bold text-sm">Nessuno ha indovinato questa volta…</div>
+        )}
+
+        <div className="flex justify-end">
+          <button onClick={() => void smPost('next')} disabled={busy}
+            className="rounded-2xl px-8 py-4 text-base font-black text-black disabled:opacity-50"
+            style={{ background: `linear-gradient(135deg,${SM},#2563eb)`, boxShadow: `0 0 30px ${SM_GLOW}` }}>
+            {busy ? '…' : currentIndex + 1 >= roundCount ? '🏆 Finale' : '▶ Prossima domanda'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── ranking ──────────────────────────────────────────────────────────────────
+  if (phase === 'ranking' && rankingData) return (
+    <div className="flex flex-col gap-5 w-full max-w-2xl">
+      <div className="text-center">
+        <div className="text-4xl">📊</div>
+        <div className="text-display text-3xl font-black text-white mt-2">Classifica</div>
+        <div className="text-white/50 text-sm">{themeName} · {currentIndex + 1} / {roundCount}</div>
+      </div>
+      <div className="flex flex-col gap-2">
+        {rankingData.map((p, i) => (
+          <motion.div key={p.playerId} initial={{x:-20,opacity:0}} animate={{x:0,opacity:1}} transition={{delay:i*0.07}}
+            className="flex items-center gap-4 rounded-2xl px-5 py-4"
+            style={{ background: i===0?'linear-gradient(135deg,rgba(234,179,8,0.2),rgba(0,0,0,0.4))':'rgba(255,255,255,0.06)', border: i===0?'2px solid rgba(234,179,8,0.5)':'1px solid rgba(255,255,255,0.1)' }}>
+            <div className="text-2xl font-black w-8 text-center">{i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}`}</div>
+            <div className="flex-1 font-black text-white">{p.nickname}</div>
+            {p.delta > 0 && <div className="text-green-400 text-sm font-bold">+{p.delta}</div>}
+            <div className="text-xl font-black" style={{color:i===0?'#EAB308':SM}}>{p.score}pt</div>
+          </motion.div>
+        ))}
+      </div>
+      <div className="flex justify-end">
+        <button onClick={() => void smPost('next')} disabled={busy}
+          className="rounded-2xl px-8 py-4 text-base font-black text-black disabled:opacity-50"
+          style={{ background: `linear-gradient(135deg,${SM},#2563eb)`, boxShadow: `0 0 30px ${SM_GLOW}` }}>
+          {busy ? '…' : '▶ Continua'}
+        </button>
+      </div>
+    </div>
+  );
+
+  // ── finale ───────────────────────────────────────────────────────────────────
+  if (phase === 'finale' && rankingData) {
+    const top3 = [rankingData[1], rankingData[0], rankingData[2]];
+    return (
+      <div className="flex flex-col items-center gap-6 text-center w-full max-w-2xl">
+        <motion.div initial={{scale:0,opacity:0}} animate={{scale:1,opacity:1}} transition={{type:'spring',delay:0.2}}>
+          <div className="text-8xl">🎵🏆🎵</div>
+        </motion.div>
+        <div className="text-display text-4xl font-black text-white">Fine dello Spettacolo!</div>
+        <div className="text-white/50">{themeName} · {roundCount} manche</div>
+        <div className="flex gap-5 items-end justify-center">
+          {top3.map((p, i) => p && (
+            <motion.div key={p.playerId} initial={{y:40,opacity:0}} animate={{y:0,opacity:1}} transition={{delay:0.2+i*0.1}}
+              className="flex flex-col items-center gap-2">
+              <div className="text-2xl">{i===1?'🥇':i===0?'🥈':'🥉'}</div>
+              <div className="rounded-2xl px-5 py-3 text-center"
+                style={{ background: i===1?'rgba(234,179,8,0.2)':'rgba(255,255,255,0.08)', border: `2px solid ${i===1?'rgba(234,179,8,0.6)':'rgba(255,255,255,0.2)'}`, minWidth:'100px' }}>
+                <div className="font-black text-white text-sm">{p.nickname}</div>
+                <div className="font-black mt-1" style={{color:i===1?'#EAB308':SM}}>{p.score}pt</div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+        <div className="flex flex-col gap-2 w-full">
+          {rankingData.slice(0, 8).map((p, i) => (
+            <div key={p.playerId} className="flex items-center gap-3 rounded-xl px-4 py-2"
+              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <div className="text-white/40 text-sm w-5 text-center">{i+1}</div>
+              <div className="flex-1 text-white font-bold text-sm">{p.nickname}</div>
+              <div className="font-black text-sm" style={{color:SM}}>{p.score}pt</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Fallback
+  return (
+    <div className="flex flex-col items-center gap-4 text-center">
+      <div className="text-5xl">🎵</div>
+      <div className="text-white/50">Sara'Musica in caricamento…</div>
+    </div>
   );
 }
 
 // ── AdultOnlyBoard ────────────────────────────────────────────────────────────
 
-function AdultOnlyBoard({ payload, revealed, onReveal, players, onScore }: {
+// ── Adult Only data ───────────────────────────────────────────────────────────
+
+const AO_LEVELS = [
+  { id: 'flirt',      label: 'Flirt',      emoji: '😊', color: '#FB7185', desc: 'Leggero e divertente' },
+  { id: 'tension',   label: 'Tensione',   emoji: '😏', color: '#F97316', desc: 'Un po\' più audace' },
+  { id: 'hot',       label: 'Hot',        emoji: '🔥', color: '#EF4444', desc: 'Per i coraggiosi' },
+  { id: 'extreme',   label: 'Extreme',    emoji: '💣', color: '#A855F7', desc: 'Nessun limite' },
+  { id: 'after_dark',label: 'After Dark', emoji: '🌙', color: '#818CF8', desc: 'Solo adulti' },
+] as const;
+
+type AOLevel = typeof AO_LEVELS[number]['id'];
+
+interface AOMission { id: string; level: string; title: string; body: string; points: number; timeLimit: number; tag: string; }
+
+function AdultOnlyBoard({ payload, session, players }: {
   payload: Record<string,unknown>;
-  revealed: boolean;
-  onReveal: () => void;
+  session: HomeSession;
   players: HomePlayer[];
-  onScore: (pid: string, pts: number) => Promise<void>;
 }) {
-  const [awarded, setAwarded] = useState<string|null>(null);
-  const pts = Number(payload.points ?? 150);
-  return (
-    <motion.div key={String(payload.roundIndex)} initial={{scale:0.9,opacity:0}} animate={{scale:1,opacity:1}}
-      className="flex w-full max-w-2xl flex-col items-center gap-7 text-center">
-      <div className="flex h-24 w-24 items-center justify-center rounded-3xl text-6xl"
-        style={{background:'linear-gradient(135deg,rgba(248,113,113,0.35),rgba(248,113,113,0.15))',border:'2px solid rgba(248,113,113,0.55)',boxShadow:'0 0 60px rgba(248,113,113,0.4)'}}>
-        🔞
+  const phase               = String(payload.phase ?? 'intro');
+  const currentRound        = Number(payload.currentRound ?? 0);
+  const totalRounds         = Number(payload.totalRounds ?? 10);
+  const levelId             = String(payload.level ?? 'flirt') as AOLevel;
+  const levelLabel          = String(payload.levelLabel ?? levelId);
+  const selectedNickname    = payload.selectedPlayerNickname as string | null;
+  const completedBy         = payload.completedBy as string | null;
+  const pointsAwarded       = Number(payload.pointsAwarded ?? 0);
+  const rankingData         = payload.rankingData as { playerId: string; nickname: string; score: number; delta: number }[] | null;
+  const mission             = payload.currentMission as AOMission | null;
+  const missionEndsAt       = payload.missionEndsAt as string | undefined;
+  const missionsLoaded      = ((payload.missions as unknown[]) ?? []).length > 0;
+
+  const levelObj   = AO_LEVELS.find(l => l.id === levelId) ?? AO_LEVELS[0]!;
+  const AC         = levelObj.color;
+  const AC_GLOW    = `${AC}44`;
+
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+  useEffect(() => {
+    if (!missionEndsAt || phase !== 'mission') { setTimeLeft(null); return; }
+    const tick = () => setTimeLeft(Math.max(0, Math.ceil((new Date(missionEndsAt).getTime() - Date.now()) / 1000)));
+    tick();
+    const t = setInterval(tick, 250);
+    return () => clearInterval(t);
+  }, [missionEndsAt, phase]);
+
+  const [busy, setBusy] = useState(false);
+  const aoPost = async (sub: string, body?: Record<string,unknown>) => {
+    setBusy(true);
+    try { await fetch(`/api/home/sessions/${session.id}/adult/${sub}`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body??{}) }); }
+    finally { setBusy(false); }
+  };
+
+  // ── intro ─────────────────────────────────────────────────────────────────
+  if (phase === 'intro') return (
+    <div className="flex flex-col items-center gap-8 text-center w-full max-w-4xl">
+      <div className="flex flex-col items-center gap-2">
+        <div className="text-7xl">🍾</div>
+        <div className="text-display text-4xl font-black text-white">Jonny After Dark</div>
+        <div className="text-white/50 text-sm">{players.length} giocatori pronti — Scegli il livello</div>
       </div>
-      <div className="text-display text-4xl font-black text-white">{String(payload.title??'Sfida Adult Only')}</div>
-      <div className="max-w-xl rounded-3xl p-6"
-        style={{background:'rgba(248,113,113,0.12)',border:'1px solid rgba(248,113,113,0.4)'}}>
-        <div className="text-lg text-white/80 leading-relaxed">{String(payload.body??'')}</div>
+      <div className="grid grid-cols-5 gap-3 w-full">
+        {AO_LEVELS.map(lv => (
+          <button key={lv.id} disabled={busy}
+            onClick={() => {
+              const count = window.prompt('Quante manche? (5-20)', '10');
+              const n = Math.min(20, Math.max(5, parseInt(count ?? '10') || 10));
+              void aoPost('start', { level: lv.id, totalRounds: n });
+            }}
+            className="flex flex-col items-center gap-3 rounded-2xl p-5 transition-all hover:scale-105 disabled:opacity-50"
+            style={{ background: `${lv.color}18`, border: `2px solid ${lv.color}44` }}>
+            <div className="text-4xl">{lv.emoji}</div>
+            <div className="text-sm font-black text-white">{lv.label}</div>
+            <div className="text-xs text-white/40 leading-tight">{lv.desc}</div>
+          </button>
+        ))}
       </div>
-      <div className="flex items-center gap-4">
-        <div className="rounded-2xl px-4 py-2" style={{background:'rgba(248,113,113,0.18)',color:'#F87171',border:'1px solid rgba(248,113,113,0.45)'}}>
-          <span className="font-black">{pts} pt</span>
-        </div>
-        <div className="rounded-2xl px-4 py-2" style={{background:'rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.6)',border:'1px solid rgba(255,255,255,0.14)'}}>
-          <Timer className="inline h-4 w-4 mr-1"/><span className="font-black">{Number(payload.timeLimit??90)}s</span>
-        </div>
-      </div>
-      {!revealed ? (
-        <button onClick={onReveal} className="flex items-center gap-3 rounded-2xl px-10 py-5 text-xl font-black text-white"
-          style={{background:'linear-gradient(135deg,#F87171,#dc2626)',boxShadow:'0 0 50px rgba(248,113,113,0.55)'}}>
-          <Check className="h-6 w-6"/> Sfida completata!
-        </button>
-      ) : (
-        <>
-          <div className="text-base text-white/50">Chi l'ha completata? Assegna i punti ({pts}pt):</div>
-          <div className="flex flex-wrap justify-center gap-3">
-            {players.map(p => (
-              <button key={p.id} disabled={!!awarded}
-                onClick={async () => { setAwarded(p.id); await onScore(p.id, p.score + pts); }}
-                className="rounded-2xl px-5 py-3 text-sm font-black transition-all disabled:opacity-50"
-                style={awarded===p.id
-                  ? {background:'linear-gradient(135deg,#F87171,#dc2626)',color:'#fff',boxShadow:'0 0 30px rgba(248,113,113,0.6)'}
-                  : {background:`linear-gradient(135deg,${p.avatarColor},${p.avatarColor}cc)`,color:'#000'}}>
-                {p.nickname} {awarded===p.id && '✓'}
-              </button>
-            ))}
-            <button disabled={!!awarded} onClick={() => {}}
-              className="rounded-2xl px-5 py-3 text-sm font-black transition-all"
-              style={{background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.14)',color:'rgba(255,255,255,0.5)'}}>
-              Nessuno
-            </button>
+      <div className="text-white/20 text-xs">Clicca su un livello per avviare la serata</div>
+    </div>
+  );
+
+  // ── spinning ──────────────────────────────────────────────────────────────
+  if (phase === 'spinning') {
+    return (
+      <div className="flex flex-col items-center gap-6 text-center w-full max-w-2xl">
+        <div className="flex items-center gap-3 justify-center">
+          <div className="rounded-full px-4 py-2 text-sm font-black"
+            style={{ background: `${AC}22`, border: `1px solid ${AC}55`, color: AC }}>
+            {levelObj.emoji} {levelLabel}
           </div>
-        </>
+          <div className="text-white/40 text-sm font-bold">{currentRound + 1} / {totalRounds}</div>
+          {!missionsLoaded && (
+            <div className="rounded-full px-3 py-1 text-xs font-bold animate-pulse"
+              style={{ background: 'rgba(251,191,36,0.18)', color: '#FBBF24', border: '1px solid rgba(251,191,36,0.4)' }}>
+              ⏳ Caricamento missioni…
+            </div>
+          )}
+        </div>
+
+        {/* Bottle animation */}
+        <motion.div animate={{ rotate: [0, 360, 720, 1080, 1260, 1380, 1440, 1465, 1470] }}
+          transition={{ duration: 3.5, repeat: Infinity, ease: 'easeOut' }}
+          className="text-9xl select-none cursor-pointer"
+          style={{ filter: `drop-shadow(0 0 40px ${AC_GLOW})` }}>
+          🍾
+        </motion.div>
+
+        {/* Player names ring */}
+        <div className="flex flex-wrap justify-center gap-3">
+          {players.map((pl, i) => (
+            <motion.div key={pl.id}
+              animate={{ opacity: [0.4, 1, 0.4] }}
+              transition={{ repeat: Infinity, duration: 1.5, delay: i * (1.5 / Math.max(players.length, 1)) }}
+              className="rounded-full px-4 py-2 text-sm font-black"
+              style={{ background: `${pl.avatarColor}22`, border: `2px solid ${pl.avatarColor}55`, color: pl.avatarColor }}>
+              {pl.nickname}
+            </motion.div>
+          ))}
+        </div>
+
+        <button onClick={() => void aoPost('spin')} disabled={busy || !missionsLoaded}
+          className="rounded-2xl px-12 py-5 text-xl font-black text-white transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
+          style={{ background: `linear-gradient(135deg,${AC},${AC}88)`, boxShadow: `0 0 60px ${AC_GLOW}` }}>
+          {busy ? '…' : '🍾 Seleziona!'}
+        </button>
+        {!missionsLoaded && <div className="text-white/30 text-xs">Jonny sta preparando le missioni, aspetta un momento…</div>}
+      </div>
+    );
+  }
+
+  // ── mission ───────────────────────────────────────────────────────────────
+  if (phase === 'mission' && mission) {
+    const tLimit  = mission.timeLimit > 0 ? mission.timeLimit : 60;
+    const timerPct = timeLeft !== null ? timeLeft / tLimit : 1;
+    const timerColor = timerPct > 0.5 ? '#4ade80' : timerPct > 0.25 ? '#facc15' : '#ef4444';
+    const tagEmoji = mission.tag === 'duo' ? '👫' : mission.tag === 'group' ? '👥' : '🎯';
+
+    return (
+      <div className="flex flex-col gap-5 w-full max-w-3xl">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="rounded-full px-4 py-2 text-sm font-black"
+              style={{ background: `${AC}22`, border: `1px solid ${AC}55`, color: AC }}>
+              {levelObj.emoji} {levelLabel}
+            </div>
+            <div className="rounded-full px-3 py-1 text-xs font-bold"
+              style={{ background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.12)' }}>
+              {tagEmoji} {mission.tag === 'duo' ? 'DUO' : mission.tag === 'group' ? 'TUTTI' : 'SOLO'}
+            </div>
+            <div className="rounded-full px-3 py-1 text-xs font-bold"
+              style={{ background: `${AC}18`, color: AC, border: `1px solid ${AC}44` }}>
+              +{mission.points}pt
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="text-sm text-white/40">{currentRound + 1} / {totalRounds}</div>
+            {timeLeft !== null && (
+              <div className="text-3xl font-black tabular-nums"
+                style={{ color: timerColor, textShadow: `0 0 20px ${timerColor}88` }}>
+                {timeLeft === 0 ? '⏰' : `${timeLeft}s`}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Timer bar */}
+        <div className="h-2 w-full rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+          <div className="h-full rounded-full transition-all duration-[250ms] ease-linear"
+            style={{ background: timerColor, width: `${timerPct * 100}%` }}/>
+        </div>
+
+        {/* Selected player */}
+        <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring' }}
+          className="rounded-2xl px-6 py-4 flex items-center gap-4"
+          style={{ background: `${AC}18`, border: `2px solid ${AC}55`, boxShadow: `0 0 40px ${AC}33` }}>
+          <div className="text-4xl">🍾</div>
+          <div>
+            <div className="text-xs font-black uppercase tracking-widest text-white/40 mb-1">LA BOTTIGLIA PUNTA SU</div>
+            <div className="text-display text-3xl font-black" style={{ color: AC }}>{selectedNickname ?? '?'}</div>
+          </div>
+        </motion.div>
+
+        {/* Mission card */}
+        <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.15 }}
+          className="rounded-3xl p-7"
+          style={{ background: `linear-gradient(135deg,${AC}1A,rgba(0,0,0,0.4))`, border: `1px solid ${AC}44` }}>
+          <div className="text-xs font-black uppercase tracking-widest mb-3 text-white/40">🎯 MISSIONE</div>
+          <div className="text-display text-2xl font-black text-white leading-snug mb-2">{mission.title}</div>
+          <div className="text-base text-white/70 leading-relaxed">{mission.body}</div>
+        </motion.div>
+
+        {/* Host controls */}
+        <div className="flex gap-4 justify-center">
+          <button onClick={() => void aoPost('skip')} disabled={busy}
+            className="rounded-2xl px-8 py-4 text-base font-black text-white/60 disabled:opacity-50"
+            style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)' }}>
+            {busy ? '…' : '⏭ Salta'}
+          </button>
+          <button onClick={() => void aoPost('complete')} disabled={busy}
+            className="flex-1 rounded-2xl px-8 py-4 text-xl font-black text-white disabled:opacity-50"
+            style={{ background: `linear-gradient(135deg,${AC},${AC}88)`, boxShadow: `0 0 50px ${AC_GLOW}` }}>
+            {busy ? '…' : '✅ Missione Completata!'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── result ────────────────────────────────────────────────────────────────
+  if (phase === 'result') return (
+    <div className="flex flex-col gap-5 w-full max-w-2xl">
+      <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring' }}
+        className="rounded-3xl p-7 text-center"
+        style={{
+          background: completedBy ? `linear-gradient(135deg,${AC}25,rgba(0,0,0,0.4))` : 'rgba(255,255,255,0.05)',
+          border: `2px solid ${completedBy ? AC : 'rgba(255,255,255,0.12)'}`,
+          boxShadow: completedBy ? `0 0 60px ${AC}33` : 'none',
+        }}>
+        {completedBy ? (
+          <>
+            <div className="text-5xl mb-3">🎉</div>
+            <div className="text-xs font-black uppercase tracking-widest mb-1 text-white/40">MISSIONE COMPLETATA</div>
+            <div className="text-display text-3xl font-black text-white">{completedBy}</div>
+            <div className="text-xl font-black mt-2" style={{ color: AC }}>+{pointsAwarded} punti!</div>
+          </>
+        ) : (
+          <>
+            <div className="text-5xl mb-3">😅</div>
+            <div className="text-xs font-black uppercase tracking-widest mb-1 text-white/40">MISSIONE SALTATA</div>
+            <div className="text-display text-2xl font-black text-white/60">Nessun punto assegnato</div>
+          </>
+        )}
+      </motion.div>
+
+      {/* Mini ranking */}
+      {rankingData && rankingData.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {rankingData.slice(0, 5).map((p, i) => (
+            <div key={p.playerId} className="flex items-center gap-3 rounded-xl px-4 py-2"
+              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <div className="text-white/30 text-sm w-5 text-center">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</div>
+              <div className="flex-1 text-white font-bold text-sm">{p.nickname}</div>
+              {p.delta > 0 && <div className="text-xs font-bold" style={{ color: AC }}>+{p.delta}</div>}
+              <div className="font-black text-sm" style={{ color: AC }}>{p.score}pt</div>
+            </div>
+          ))}
+        </div>
       )}
-    </motion.div>
+
+      <div className="flex gap-3 justify-end">
+        <button onClick={() => void aoPost('finale')} disabled={busy}
+          className="rounded-xl px-5 py-3 text-sm font-black text-white/40 disabled:opacity-50"
+          style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
+          Fine serata
+        </button>
+        <button onClick={() => void aoPost('next')} disabled={busy}
+          className="rounded-2xl px-10 py-4 text-base font-black text-white disabled:opacity-50"
+          style={{ background: `linear-gradient(135deg,${AC},${AC}88)`, boxShadow: `0 0 40px ${AC_GLOW}` }}>
+          {busy ? '…' : currentRound + 1 >= totalRounds ? '🏆 Finale' : '🍾 Prossima!'}
+        </button>
+      </div>
+    </div>
+  );
+
+  // ── finale ────────────────────────────────────────────────────────────────
+  if (phase === 'finale' && rankingData) {
+    const top3 = [rankingData[1], rankingData[0], rankingData[2]];
+    return (
+      <div className="flex flex-col items-center gap-6 text-center w-full max-w-2xl">
+        <motion.div initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', delay: 0.2 }}>
+          <div className="text-8xl">🍾🏆🍾</div>
+        </motion.div>
+        <div className="text-display text-4xl font-black text-white">Fine After Dark!</div>
+        <div className="text-white/40">{levelLabel} · {totalRounds} missioni</div>
+        <div className="flex gap-5 items-end justify-center">
+          {top3.map((p, i) => p && (
+            <motion.div key={p.playerId} initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2 + i * 0.1 }}
+              className="flex flex-col items-center gap-2">
+              <div className="text-2xl">{i === 1 ? '🥇' : i === 0 ? '🥈' : '🥉'}</div>
+              <div className="rounded-2xl px-5 py-3 text-center"
+                style={{ background: i === 1 ? `${AC}25` : 'rgba(255,255,255,0.06)', border: `2px solid ${i === 1 ? AC : 'rgba(255,255,255,0.15)'}`, minWidth: '90px' }}>
+                <div className="font-black text-white text-sm">{p.nickname}</div>
+                <div className="font-black mt-1" style={{ color: i === 1 ? AC : 'rgba(255,255,255,0.5)' }}>{p.score}pt</div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+        <div className="flex flex-col gap-2 w-full">
+          {rankingData.slice(0, 8).map((p, i) => (
+            <div key={p.playerId} className="flex items-center gap-3 rounded-xl px-4 py-2"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+              <div className="text-white/30 text-sm w-5 text-center">{i + 1}</div>
+              <div className="flex-1 text-white font-bold text-sm">{p.nickname}</div>
+              <div className="font-black text-sm" style={{ color: AC }}>{p.score}pt</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-4 text-center">
+      <div className="text-5xl">🍾</div>
+      <div className="text-white/50">Jonny After Dark…</div>
+    </div>
   );
 }
 
