@@ -25,11 +25,6 @@ const GAME_OPTIONS = [
   { slug: 'karaoke-battle',     label: 'Karaoke Battle',      emoji: '🎤' },
 ];
 
-const DURATION_OPTIONS = [
-  { value: 'quick',  label: 'Veloce',  sub: '~20 min' },
-  { value: 'normal', label: 'Normale', sub: '~45 min' },
-  { value: 'long',   label: 'Lunga',   sub: '~90 min' },
-];
 
 function SceneBg() {
   return (
@@ -61,7 +56,6 @@ export default function HomeSetupPage() {
   const [selectedGames, setSelectedGames] = useState<string[]>(
     GAME_OPTIONS.map(g => g.slug)
   );
-  const [duration, setDuration]         = useState('normal');
   const [loading, setLoading]           = useState(false);
   const [error, setError]               = useState('');
 
@@ -83,7 +77,6 @@ export default function HomeSetupPage() {
         body: JSON.stringify({
           hostName: hostName.trim(),
           selectedGames,
-          matchDuration: duration,
         }),
       });
       if (!res.ok) throw new Error('Errore nella creazione della stanza.');
@@ -192,26 +185,6 @@ export default function HomeSetupPage() {
             />
           </div>
 
-          {/* duration */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.45)' }}>
-              Durata Partita
-            </label>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {DURATION_OPTIONS.map(d => (
-                <button key={d.value} onClick={() => setDuration(d.value)} style={{
-                  flex: 1, padding: '0.55rem 0',
-                  background: duration === d.value ? 'rgba(168,85,247,0.2)' : 'rgba(255,255,255,0.04)',
-                  border: `1.5px solid ${duration === d.value ? 'rgba(168,85,247,0.7)' : 'rgba(255,255,255,0.12)'}`,
-                  borderRadius: 10, cursor: 'pointer', transition: 'all 0.18s',
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
-                }}>
-                  <span style={{ fontFamily: "'Outfit',sans-serif", fontWeight: 800, fontSize: '0.8rem', color: duration === d.value ? '#A855F7' : 'rgba(255,255,255,0.6)' }}>{d.label}</span>
-                  <span style={{ fontSize: '0.58rem', color: 'rgba(255,255,255,0.3)', fontWeight: 600 }}>{d.sub}</span>
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
 
         {/* game selector */}
