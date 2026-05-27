@@ -1,0 +1,273 @@
+HOME MODE — COPPIE + QUIZZONE JONNY AI GENERATIVE FLOW.
+
+Do not touch Karaoke.
+Do not touch WordBack.
+Do not touch Ballo.
+Do not touch Secret Messages.
+Do not touch Percorso.
+
+Fix only:
+- Gioco delle Coppie
+- Quizzone
+
+==================================================
+PART 1 — COPPIE MUST NOT USE OLD THEME_SELECT
+==================================================
+
+Problem:
+Coppie still shows the old ugly theme selection page with preloaded themes.
+This must be removed from Home Mode.
+
+Required:
+When gameSlug === "gioco-coppie" / "coppie":
+DO NOT enter old theme_select.
+DO NOT show DB loaded theme cards.
+DO NOT use old GameFlowEngine theme cards.
+
+Instead:
+start new Coppie IA flow.
+
+New TV first screen:
+"Che tema vuoi per le coppie?"
+
+Players from phones propose themes.
+TV shows up to first 10 proposed themes.
+
+20 second timer.
+
+If no themes:
+Jonny chooses fallback:
+- Animali
+- Cibo
+- Film
+- Sport
+- Viaggi
+- Musica
+- Oggetti strani
+- Meme
+- Personaggi
+- Natura
+
+After 20s:
+Jonny selects one theme from proposals/fallback.
+
+Then:
+"Jonny sta creando 10 coppie..."
+
+==================================================
+PART 2 — COPPIE IA PAIR GENERATION
+==================================================
+
+Goal:
+Generate 10 identical image pairs based on selected theme.
+
+Home Mode rule:
+Pairs must be identical images, not conceptual pairs.
+
+Example:
+selected theme: "Animali buffi"
+generate:
+- panda
+- fenicottero
+- gatto astronauta
+...
+Each appears twice.
+
+Data shape:
+
+{
+  pairId,
+  label,
+  imagePrompt,
+  imageUrl,
+  cards: [
+    { id, pairId, imageUrl, label },
+    { id, pairId, imageUrl, label }
+  ]
+}
+
+If image AI is not available:
+use Jonny text generator for labels/prompts
+then fallback to colorful placeholder cards with label + emoji,
+but the flow must still show "Jonny sta creando".
+
+No old fixed image set.
+
+==================================================
+PART 3 — COPPIE NEW TV STYLE
+==================================================
+
+Replace ugly old theme page.
+
+TV must show:
+- premium dark layout
+- huge title
+- max 10 theme proposal pills/cards
+- 20s countdown
+- QR always visible
+- no long paragraphs
+- no old purple text blocks
+
+Cards board:
+- 20 cards = 10 pairs
+- responsive 5x4 grid
+- no missing squares
+- images large
+- no bottom row hidden
+- readable from distance
+
+==================================================
+PART 4 — COPPIE PHONE FLOW
+==================================================
+
+Phones:
+During theme proposal phase:
+- input: "Scrivi un tema"
+- button: "Invia tema"
+- after submit: "Tema inviato"
+- show live list of proposed themes
+
+During game:
+- phone acts as controller
+- can request "👁 altri 10 secondi" once per manche
+- does not show tiny board images unless needed
+
+==================================================
+PART 5 — QUIZZONE MUST USE JONNY IA FLOW
+==================================================
+
+Problem:
+Quizzone currently uses fixed DB/static questions.
+This causes repeated questions.
+
+Required:
+When host selects Quizzone Home:
+
+TV flow:
+1. choose theme
+2. choose number of questions
+3. "Jonny sta creando il Quizzone perfetto..."
+4. generate question set
+5. start quiz
+
+Theme options can stay:
+- Cultura generale
+- Cinema
+- Musica
+- Sport
+- Anni 90
+- Sicilia
+- Bambini
+- Custom
+
+But questions must be generated dynamically.
+
+If AI/OpenAI key exists:
+use AI generation.
+
+If AI fails:
+fallback to deterministic local bank,
+but show warning log:
+[QUIZ_AI_FALLBACK]
+
+==================================================
+PART 6 — QUIZZONE GENERATED QUESTION TYPES
+==================================================
+
+Jonny should generate mixed question types:
+
+1. multiple_choice
+2. true_false
+3. image_vs_image if image assets available
+4. speed_round
+5. progressive_clue
+6. order_choice
+7. final_bomb
+
+Each generated question must include:
+{
+  id,
+  type,
+  theme,
+  question,
+  answers,
+  correctAnswer,
+  points,
+  timeLimit,
+  explanation
+}
+
+Avoid repeats:
+- keep usedGeneratedQuestionHashes per session
+- do not repeat same question text in same session
+
+==================================================
+PART 7 — AI GENERATION API
+==================================================
+
+Create server endpoint /home/sessions/:id/quiz/generate
+
+Input:
+{
+  theme,
+  questionCount
+}
+
+Server:
+- calls AI provider if configured
+- validates JSON
+- sanitizes questions
+- ensures correctAnswer exists
+- ensures answer options are valid
+- stores generated quiz in gameConfig
+- emits home:state/home:round
+
+If AI not configured:
+return generated local fallback.
+
+Logs:
+[JONNY_QUIZ_AI] start
+[JONNY_QUIZ_AI] success
+[JONNY_QUIZ_AI] fallback
+[JONNY_COPPIE_AI] start
+[JONNY_COPPIE_AI] success/fallback
+
+==================================================
+PART 8 — REMOVE OLD ROUTE BRANCHES FOR THESE TWO HOME GAMES
+==================================================
+
+In Home Mode only:
+
+Coppie:
+- bypass old theme_select
+- bypass loadGameRoundsForTheme
+
+Quizzone:
+- bypass old static DB theme round generation if AI flow is selected
+- or keep setup theme screen but not old question pool as final source
+
+Add hard logs:
+[FLOW_BUG] Coppie should not enter old theme_select
+[FLOW_BUG] Quizzone should not start old static-only mode
+
+==================================================
+OUTPUT REQUIRED
+==================================================
+
+A. exact old branch causing Coppie old theme page
+B. files modified
+C. Coppie bypasses old theme_select
+D. new Coppie IA theme proposal flow
+E. Coppie 10 generated identical pairs
+F. Quizzone IA generation flow
+G. fallback behavior if AI not configured
+H. typecheck result
+I. manual test:
+   - new session
+   - select Coppie
+   - no old theme cards
+   - players propose themes
+   - Jonny generates 10 pairs
+   - select Quizzone
+   - theme/count setup
+   - Jonny generates questions

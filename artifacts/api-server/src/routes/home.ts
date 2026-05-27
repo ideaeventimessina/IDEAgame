@@ -154,6 +154,8 @@ interface CoppiePayload {
   selectedTheme?: string | null;
   visibilityUsed?: Record<string, boolean>;
   visibilityActiveUntil?: number | null;
+  /** Card sets from DB, populated at game start for theme selection UI */
+  availableSets?: { id: string; name: string; pairCount: number }[];
   [key: string]: unknown;
 }
 
@@ -232,10 +234,14 @@ const THEMED_WORD_BANKS: Record<string, string[]> = {
 
 /** 2. Gioco delle Coppie — starts in theme-suggestion phase; cards built after theme chosen */
 async function loadCoppieRound(roundIndex: number): Promise<CoppiePayload> {
-  return buildEmptyCoppiePayload(roundIndex);
+  // Fetch card sets from DB to show as pre-built theme options on TV
+  const sets = await db.select({ id: cardSetsTable.id, name: cardSetsTable.name })
+    .from(cardSetsTable).orderBy(desc(cardSetsTable.createdAt)).limit(9);
+  const availableSets = sets.map(s => ({ id: s.id, name: s.name, pairCount: 0 }));
+  return buildEmptyCoppiePayload(roundIndex, availableSets);
 }
 
-function buildEmptyCoppiePayload(roundIndex: number): CoppiePayload {
+function buildEmptyCoppiePayload(roundIndex: number, availableSets: { id: string; name: string; pairCount: number }[] = []): CoppiePayload {
   return {
     mode: "home-coppie",
     themePhase: "suggestion",
@@ -253,6 +259,7 @@ function buildEmptyCoppiePayload(roundIndex: number): CoppiePayload {
     selectedTheme: null,
     visibilityUsed: {},
     visibilityActiveUntil: null,
+    availableSets,
   };
 }
 
@@ -1608,6 +1615,28 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
     emitToRoom(homeRoom(id), "home:game_started", { session: percorsoUpdated, players: pPlayers, payload: percorsoPayload });
     emitToRoom(homeRoom(id), "home:state", { session: percorsoUpdated, players: pPlayers });
     res.json({ session: percorsoUpdated, players: pPlayers });
+    return;
+  }
+
+  // ── BYPASS: gioco-coppie → direct home-coppie suggestion phase ───────────────
+  if (gameSlug === "gioco-coppie") {
+    req.log.info({ sessionId: id }, "[FLOW_BYPASS] gioco-coppie → home-coppie suggestion phase, skipping old theme_select");
+    const coppiePayload = await loadCoppieRound(0) as RoundPayload;
+    const coppieCfg = { ...cfg, phase: "playing", gamesPlayed };
+    const [coppieUpdated] = await db.update(homeSessionsTable).set({
+      gameSlug,
+      gameConfig: coppieCfg,
+      status: "playing",
+      currentRound: 0,
+      totalRounds: 1,
+      roundPayload: coppiePayload,
+      expiresAt: new Date(Date.now() + 6 * 60 * 60 * 1000),
+    }).where(eq(homeSessionsTable.id, id)).returning();
+    if (!coppieUpdated) { res.status(500).json({ error: "Errore avvio coppie" }); return; }
+    const coppPlayers = await getPlayers(id);
+    emitToRoom(homeRoom(id), "home:game_started", { session: coppieUpdated, players: coppPlayers, payload: coppiePayload });
+    emitToRoom(homeRoom(id), "home:state", { session: coppieUpdated, players: coppPlayers });
+    res.json({ session: coppieUpdated, players: coppPlayers });
     return;
   }
 
@@ -3084,7 +3113,20 @@ router.post("/home/sessions/:id/coppie/select-theme", async (req, res): Promise<
   if (payload.mode !== "home-coppie" || payload.themePhase !== "suggestion") {
     res.status(409).json({ error: "Non in fase proposta tema" }); return;
   }
-  const { themeText } = req.body as { themeText?: string };
+  const { themeText, setId } = req.body as { themeText?: string; setId?: string };
+
+  // ── Path A: DB card set selected (by ID) ──────────────────────────────────
+  if (setId && typeof setId === "string") {
+    logger.info({ sessionId: id, setId }, "[JONNY_COPPIE_AI] DB set selected");
+    const newPayload = await loadCoppieByTheme(setId) as RoundPayload;
+    await db.update(homeSessionsTable).set({ roundPayload: newPayload }).where(eq(homeSessionsTable.id, id));
+    const players = await getPlayers(id);
+    emitToRoom(homeRoom(id), "home:state", { session: { ...session, roundPayload: newPayload }, players });
+    res.json({ ok: true, theme: (newPayload as Record<string,unknown>)["category"] ?? setId });
+    return;
+  }
+
+  // ── Path B: word-bank or player-proposed theme ────────────────────────────
   const proposals = payload.proposedThemes ?? [];
   let selected = themeText?.trim() ?? proposals[proposals.length - 1]?.text;
   if (!selected) {
@@ -3095,11 +3137,11 @@ router.post("/home/sessions/:id/coppie/select-theme", async (req, res): Promise<
     selected!.toLowerCase().includes(k.toLowerCase()) || k.toLowerCase().includes(selected!.toLowerCase())
   );
   const words = bankKey ? THEMED_WORD_BANKS[bankKey] : FALLBACK_COPPIE_ITEMS;
+  logger.info({ sessionId: id, theme: selected, bankKey }, "[JONNY_COPPIE_AI] word-bank theme selected");
   const newPayload = buildCoppieFromWords(words!, payload.roundIndex, selected);
   await db.update(homeSessionsTable).set({ roundPayload: newPayload }).where(eq(homeSessionsTable.id, id));
   const players = await getPlayers(id);
   emitToRoom(homeRoom(id), "home:state", { session: { ...session, roundPayload: newPayload }, players });
-  logger.info({ sessionId: id, theme: selected, bankKey }, "[Coppie] theme selected, cards built");
   res.json({ ok: true, theme: selected });
 });
 

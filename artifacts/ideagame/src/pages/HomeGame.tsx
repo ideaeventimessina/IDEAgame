@@ -3951,64 +3951,126 @@ function CoppieBoard({ payload, onNext, sessionId }: { payload: Record<string,un
     }
   };
 
-  const selectTheme = async (text?: string) => {
+  const selectTheme = async (opts?: { text?: string; setId?: string }) => {
     if (!sessionId || themeBusy) return;
     setThemeBusy(true);
     try {
+      const body = opts?.setId ? { setId: opts.setId } : { themeText: opts?.text };
       await fetch(`/api/home/sessions/${sessionId}/coppie/select-theme`, {
         method: 'POST', credentials: 'include', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ themeText: text }),
+        body: JSON.stringify(body),
       });
     } finally { setThemeBusy(false); }
   };
 
   useEffect(() => () => { if (previewTimer.current) clearInterval(previewTimer.current); }, []);
 
-  // ── Theme suggestion phase ──────────────────────────────────────────────────
+  // ── Theme suggestion phase — Quizzone-style grid ───────────────────────────
   if (themePhase === 'suggestion') {
+    const CP = '#F472B6';
+    const CP_GLOW = 'rgba(244,114,182,0.55)';
+    const availableSets = (payload.availableSets as { id: string; name: string; pairCount: number }[] | undefined) ?? [];
+    const WORD_THEMES = [
+      { id:'animali',    label:'Animali',    emoji:'🦁' },
+      { id:'cibo',       label:'Cibo',       emoji:'🍕' },
+      { id:'sport',      label:'Sport',      emoji:'⚽' },
+      { id:'cinema',     label:'Cinema',     emoji:'🎬' },
+      { id:'musica',     label:'Musica',     emoji:'🎵' },
+      { id:'città',      label:'Città',      emoji:'🏙️' },
+      { id:'natura',     label:'Natura',     emoji:'🌿' },
+      { id:'colori',     label:'Colori',     emoji:'🎨' },
+      { id:'animazioni', label:'Animazioni', emoji:'✨' },
+    ];
+
+    // Build the unified grid: DB sets first (as primary cards), then word themes to fill
+    // Show up to 9 items total in the grid
+    const setCards = availableSets.map(s => ({
+      id: `set:${s.id}`, label: s.name, emoji: '🃏',
+      onClick: () => selectTheme({ setId: s.id }),
+      isPrimary: true,
+    }));
+    const wordCards = WORD_THEMES.map(t => ({
+      id: `word:${t.id}`, label: t.label, emoji: t.emoji,
+      onClick: () => selectTheme({ text: t.id }),
+      isPrimary: false,
+    }));
+    // Merge: DB sets shown first, word themes fill the rest of the grid
+    const gridCards = [...setCards, ...wordCards].slice(0, 9);
+
     return (
-      <div className="flex w-full max-w-3xl flex-col items-center gap-6 text-center">
-        <div>
-          <div className="text-display text-4xl font-black mb-1" style={{color:'#F472B6',textShadow:'0 0 40px rgba(244,114,182,0.6)'}}>
-            💞 Scegli il Tema
+      <div className="flex flex-col items-center gap-6 w-full max-w-4xl">
+        {/* Header + countdown */}
+        <div className="flex items-start justify-between w-full">
+          <div>
+            <div className="text-display text-3xl font-black text-white mb-1">Che tema vuoi per le</div>
+            <div className="text-display text-5xl font-black" style={{ color: CP, textShadow: `0 0 40px ${CP_GLOW}` }}>
+              💞 COPPIE?
+            </div>
           </div>
-          <div className="text-base text-white/50">I giocatori stanno proponendo il tema delle coppie</div>
+          {themeTimerLeft !== null && (
+            <div className="flex flex-col items-center gap-1 min-w-[80px]">
+              <div className="text-5xl font-black tabular-nums leading-none"
+                style={{ color: themeTimerLeft <= 5 ? '#ef4444' : CP }}>
+                {themeTimerLeft}
+              </div>
+              <div className="text-[10px] font-bold tracking-widest" style={{ color: CP + '99' }}>SECONDI</div>
+              <div className="h-1.5 w-16 rounded-full overflow-hidden mt-1" style={{ background: 'rgba(255,255,255,0.08)' }}>
+                <div className="h-full rounded-full transition-all duration-500"
+                  style={{ background: CP, width: `${Math.min(100, ((themeTimerLeft ?? 25) / 25) * 100)}%` }} />
+              </div>
+            </div>
+          )}
         </div>
-        {themeTimerLeft !== null && (
-          <div className="flex flex-col items-center gap-2">
-            <div className="text-6xl font-black tabular-nums" style={{color: themeTimerLeft <= 5 ? '#ef4444' : '#F472B6'}}>
-              {themeTimerLeft}s
+
+        {/* Main theme grid — DB sets (primary) + word themes */}
+        <div className="grid grid-cols-3 gap-4 w-full">
+          {gridCards.map(card => (
+            <button key={card.id} onClick={() => { void card.onClick(); }} disabled={themeBusy}
+              className="flex flex-col items-center gap-3 rounded-2xl p-5 transition-all hover:scale-105 disabled:opacity-50"
+              style={{
+                background: card.isPrimary ? `rgba(244,114,182,0.14)` : `rgba(244,114,182,0.06)`,
+                border: `2px solid ${card.isPrimary ? 'rgba(244,114,182,0.5)' : 'rgba(244,114,182,0.2)'}`,
+                backdropFilter: 'blur(10px)',
+                boxShadow: card.isPrimary ? `0 0 20px rgba(244,114,182,0.15)` : 'none',
+              }}>
+              <span style={{ fontSize: '2.5rem' }}>{card.emoji}</span>
+              <span className="text-sm font-black text-white text-center leading-snug">{card.label}</span>
+              {card.isPrimary && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                  style={{ background: 'rgba(244,114,182,0.25)', color: CP }}>DECK PRONTO</span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* Player-proposed themes */}
+        {proposedThemes.length > 0 && (
+          <div className="flex flex-col gap-2 w-full">
+            <div className="text-[11px] font-bold tracking-widest" style={{ color: 'rgba(255,255,255,0.35)' }}>
+              PROPOSTE DEI GIOCATORI
             </div>
-            <div className="text-xs text-white/30 font-bold">SELEZIONE AUTOMATICA TRA</div>
-            <div className="h-2 w-64 rounded-full overflow-hidden" style={{background:'rgba(255,255,255,0.08)'}}>
-              <div className="h-full rounded-full transition-all duration-500"
-                style={{background:'#F472B6',width:`${Math.min(100,((themeTimerLeft ?? 25)/25)*100)}%`}}/>
-            </div>
-          </div>
-        )}
-        {proposedThemes.length > 0 ? (
-          <div className="flex flex-col gap-3 w-full">
-            <div className="text-xs font-bold text-white/35 tracking-widest">TEMI PROPOSTI</div>
-            <div className="flex flex-wrap justify-center gap-3">
+            <div className="flex flex-wrap gap-2">
               {proposedThemes.map(t => (
-                <button key={t.id} onClick={() => selectTheme(t.text)} disabled={themeBusy}
-                  className="rounded-2xl px-5 py-2.5 text-base font-black transition-all hover:scale-105 disabled:opacity-60"
-                  style={{background:'rgba(244,114,182,0.18)',border:'2px solid rgba(244,114,182,0.55)',color:'#F472B6'}}>
+                <button key={t.id} onClick={() => void selectTheme({ text: t.text })} disabled={themeBusy}
+                  className="rounded-xl px-4 py-2 text-sm font-black transition-all hover:scale-105 disabled:opacity-50"
+                  style={{ background: 'rgba(244,114,182,0.18)', border: '2px solid rgba(244,114,182,0.5)', color: CP }}>
                   {t.text}
                 </button>
               ))}
             </div>
           </div>
-        ) : (
-          <div className="rounded-2xl px-8 py-6 text-white/40 text-sm"
-            style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)'}}>
-            In attesa delle proposte dai telefoni…
-          </div>
         )}
-        <button onClick={() => selectTheme()} disabled={themeBusy}
-          className="rounded-2xl px-6 py-3 text-sm font-black disabled:opacity-40"
-          style={{background:'rgba(244,114,182,0.12)',border:'1px solid rgba(244,114,182,0.4)',color:'#F472B6'}}>
-          {themeBusy ? '⏳ Caricamento…' : '🎲 Tema Casuale →'}
+
+        {/* GENERA button */}
+        <button onClick={() => void selectTheme()} disabled={themeBusy}
+          className="w-full rounded-2xl py-4 text-lg font-black transition-all hover:scale-[1.02] disabled:opacity-40"
+          style={{
+            background: `linear-gradient(135deg, rgba(244,114,182,0.25), rgba(244,114,182,0.1))`,
+            border: `2px solid rgba(244,114,182,0.55)`,
+            color: CP,
+            boxShadow: `0 0 30px rgba(244,114,182,0.2)`,
+          }}>
+          {themeBusy ? '⏳ Caricamento…' : '🎲 GENERA — Tema Casuale'}
         </button>
       </div>
     );
