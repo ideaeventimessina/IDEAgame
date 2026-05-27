@@ -1561,6 +1561,7 @@ export default function HomeGame() {
           <motion.div key="playing" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
             className="relative z-10 flex flex-1 flex-col">
 
+            <HomeSessionQROverlay joinCode={session.joinCode} />
             {/* Top bar */}
             <div className="flex items-center justify-between px-6 py-3"
               style={{background:'rgba(0,0,0,0.5)',backdropFilter:'blur(14px)',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
@@ -1576,9 +1577,9 @@ export default function HomeGame() {
                 </div>
               </div>
 
-              {/* Timer — hidden for full-session modes (Percorso a Risate, Karaoke Live) */}
-              {!(
-                String((session.roundPayload as Record<string,unknown>)?.mode ?? '') === 'home-percorso' ||
+              {/* Timer — hidden for full-session modes (Percorso, Coppie, Quizzone, Karaoke Live) */}
+              {!(['home-percorso','home-coppie','home-quizzone'].includes(
+                  String((session.roundPayload as Record<string,unknown>)?.mode ?? '')) ||
                 (session.gameSlug === 'karaoke-battle' &&
                   ((session.gameConfig as Record<string,unknown>)?.karaokeHomeState as {version?:number}|undefined)?.version === 3)
               ) && (
@@ -1597,8 +1598,8 @@ export default function HomeGame() {
               )}
 
               <div className="flex gap-2">
-                {!(
-                  String((session.roundPayload as Record<string,unknown>)?.mode ?? '') === 'home-percorso' ||
+                {!(['home-percorso','home-coppie','home-quizzone'].includes(
+                    String((session.roundPayload as Record<string,unknown>)?.mode ?? '')) ||
                   (session.gameSlug === 'karaoke-battle' &&
                     ((session.gameConfig as Record<string,unknown>)?.karaokeHomeState as {version?:number}|undefined)?.version === 3)
                 ) && (
@@ -2133,16 +2134,17 @@ function QuizzoneBoard({ payload, session, players }: {
   const currentClueIndex = Number(payload.currentClueIndex ?? 0);
   const themeName = String(payload.themeName ?? '');
 
-  // Client-side countdown timer (visual only — server is authoritative)
+  // Client-side countdown timer — uses questionEndsAt when available (unified source of truth)
   useEffect(() => {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
-    if (phase !== 'question' || !currentQ || !payload.questionStartedAt) { setTimeLeft(null); return; }
-    const startedAt = new Date(String(payload.questionStartedAt)).getTime();
-    const limitMs = currentQ.timeLimit * 1000;
-    const tick = () => {
-      const left = Math.max(0, Math.ceil((limitMs - (Date.now() - startedAt)) / 1000));
-      setTimeLeft(left);
-    };
+    if (phase !== 'question' || !currentQ) { setTimeLeft(null); return; }
+    const endsAt = payload.questionEndsAt
+      ? new Date(String(payload.questionEndsAt)).getTime()
+      : payload.questionStartedAt
+        ? new Date(String(payload.questionStartedAt)).getTime() + (currentQ.timeLimit * 1000)
+        : null;
+    if (!endsAt) { setTimeLeft(null); return; }
+    const tick = () => { setTimeLeft(Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))); };
     tick();
     timerRef.current = setInterval(tick, 250);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
@@ -2257,7 +2259,7 @@ function QuizzoneBoard({ payload, session, players }: {
             {!allAnswered && <div className="text-sm font-bold text-white/40">{answeredCount} risposto</div>}
             {timeLeft !== null && (
               <div className="text-3xl font-black" style={{ color: timerColor, textShadow:`0 0 20px ${timerColor}88` }}>
-                {timeLeft}s
+                {timeLeft === 0 ? '⏰ SCADUTO' : `${timeLeft}s`}
               </div>
             )}
           </div>
@@ -3879,42 +3881,139 @@ interface CoppieCard { id: string; text: string; imageUrl?: string; pairId: numb
 const BASE_URL_COPPIE = (import.meta.env.BASE_URL as string | undefined) ?? '/';
 
 function CoppieBoard({ payload, onNext, sessionId }: { payload: Record<string,unknown>; onNext?: () => void; sessionId?: string }) {
+  const themePhase = String(payload.themePhase ?? 'playing');
   const cards = (payload.cards as CoppieCard[]) ?? [];
   const matched = Number(payload.matchedPairs ?? 0);
   const total = Number(payload.totalPairs ?? 0);
-  const cols = Math.min(Math.ceil(Math.sqrt(cards.length)), 6);
+  const proposedThemes = (payload.proposedThemes ?? []) as { id: string; text: string; proposedBy: string }[];
+  const themeTimerEndsAt = payload.themeTimerEndsAt as string | null;
+  const visibilityActiveUntil = Number(payload.visibilityActiveUntil ?? 0);
+  const cols = 5;
+
   const [preview, setPreview] = useState(false);
   const [previewSecs, setPreviewSecs] = useState(0);
+  const [themeTimerLeft, setThemeTimerLeft] = useState<number | null>(null);
+  const [themeBusy, setThemeBusy] = useState(false);
   const previewTimer = useRef<ReturnType<typeof setInterval>|null>(null);
+
+  // Theme countdown
+  useEffect(() => {
+    if (themePhase !== 'suggestion' || !themeTimerEndsAt) { setThemeTimerLeft(null); return; }
+    const endsAt = new Date(themeTimerEndsAt).getTime();
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+      setThemeTimerLeft(left);
+      if (left <= 0 && sessionId) {
+        // Auto-select when timer expires: pick last proposed or random
+        void fetch(`/api/home/sessions/${sessionId}/coppie/select-theme`, {
+          method: 'POST', credentials: 'include', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({}),
+        });
+      }
+    };
+    tick();
+    const id = setInterval(tick, 500);
+    return () => clearInterval(id);
+  }, [themePhase, themeTimerEndsAt, sessionId]);
+
+  // Visibility countdown from server timestamp
+  useEffect(() => {
+    if (!visibilityActiveUntil || visibilityActiveUntil <= Date.now()) {
+      if (preview) setPreview(false);
+      return;
+    }
+    setPreview(true);
+    const remaining = visibilityActiveUntil - Date.now();
+    setPreviewSecs(Math.ceil(remaining / 1000));
+    const id = setInterval(() => {
+      const left = Math.max(0, Math.ceil((visibilityActiveUntil - Date.now()) / 1000));
+      setPreviewSecs(left);
+      if (left <= 0) { clearInterval(id); setPreview(false); }
+    }, 500);
+    return () => clearInterval(id);
+  }, [visibilityActiveUntil]);
 
   const startPreview = () => {
     if (previewTimer.current) clearInterval(previewTimer.current);
-    setPreview(true);
-    setPreviewSecs(10);
-    let t = 10;
-    previewTimer.current = setInterval(() => {
-      t -= 1;
-      setPreviewSecs(t);
-      if (t <= 0) { clearInterval(previewTimer.current!); setPreview(false); }
-    }, 1000);
-    // Broadcast visibility to phones via server
     if (sessionId) {
-      void fetch(`${BASE_URL_COPPIE}api/home/sessions/${sessionId}/coppie-preview`.replace(/([^:])\/\//g,'$1/'), {
+      void fetch(`/api/home/sessions/${sessionId}/coppie-preview`, {
         method: 'POST', credentials: 'include',
       });
     }
   };
+
+  const selectTheme = async (text?: string) => {
+    if (!sessionId || themeBusy) return;
+    setThemeBusy(true);
+    try {
+      await fetch(`/api/home/sessions/${sessionId}/coppie/select-theme`, {
+        method: 'POST', credentials: 'include', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ themeText: text }),
+      });
+    } finally { setThemeBusy(false); }
+  };
+
   useEffect(() => () => { if (previewTimer.current) clearInterval(previewTimer.current); }, []);
 
-  // Card width: slightly larger for TV readability; aspect ratio 3:2 gives more height for text
-  const cardW = `clamp(140px, ${Math.floor(84 / cols)}vw, 260px)`;
-  const cardH = `clamp(93px, ${Math.floor(56 / cols)}vw, 174px)`;  // 2:3 height → 3:2 landscape
+  // ── Theme suggestion phase ──────────────────────────────────────────────────
+  if (themePhase === 'suggestion') {
+    return (
+      <div className="flex w-full max-w-3xl flex-col items-center gap-6 text-center">
+        <div>
+          <div className="text-display text-4xl font-black mb-1" style={{color:'#F472B6',textShadow:'0 0 40px rgba(244,114,182,0.6)'}}>
+            💞 Scegli il Tema
+          </div>
+          <div className="text-base text-white/50">I giocatori stanno proponendo il tema delle coppie</div>
+        </div>
+        {themeTimerLeft !== null && (
+          <div className="flex flex-col items-center gap-2">
+            <div className="text-6xl font-black tabular-nums" style={{color: themeTimerLeft <= 5 ? '#ef4444' : '#F472B6'}}>
+              {themeTimerLeft}s
+            </div>
+            <div className="text-xs text-white/30 font-bold">SELEZIONE AUTOMATICA TRA</div>
+            <div className="h-2 w-64 rounded-full overflow-hidden" style={{background:'rgba(255,255,255,0.08)'}}>
+              <div className="h-full rounded-full transition-all duration-500"
+                style={{background:'#F472B6',width:`${Math.min(100,((themeTimerLeft ?? 25)/25)*100)}%`}}/>
+            </div>
+          </div>
+        )}
+        {proposedThemes.length > 0 ? (
+          <div className="flex flex-col gap-3 w-full">
+            <div className="text-xs font-bold text-white/35 tracking-widest">TEMI PROPOSTI</div>
+            <div className="flex flex-wrap justify-center gap-3">
+              {proposedThemes.map(t => (
+                <button key={t.id} onClick={() => selectTheme(t.text)} disabled={themeBusy}
+                  className="rounded-2xl px-5 py-2.5 text-base font-black transition-all hover:scale-105 disabled:opacity-60"
+                  style={{background:'rgba(244,114,182,0.18)',border:'2px solid rgba(244,114,182,0.55)',color:'#F472B6'}}>
+                  {t.text}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-2xl px-8 py-6 text-white/40 text-sm"
+            style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)'}}>
+            In attesa delle proposte dai telefoni…
+          </div>
+        )}
+        <button onClick={() => selectTheme()} disabled={themeBusy}
+          className="rounded-2xl px-6 py-3 text-sm font-black disabled:opacity-40"
+          style={{background:'rgba(244,114,182,0.12)',border:'1px solid rgba(244,114,182,0.4)',color:'#F472B6'}}>
+          {themeBusy ? '⏳ Caricamento…' : '🎲 Tema Casuale →'}
+        </button>
+      </div>
+    );
+  }
+
+  // Card width: 5 columns fixed
+  const cardW = `clamp(120px, ${Math.floor(84 / cols)}vw, 230px)`;
+  const cardH = `clamp(80px, ${Math.floor(56 / cols)}vw, 154px)`;
 
   return (
     <div className="flex w-full max-w-6xl flex-col items-center gap-4">
       <div className="flex items-center gap-4 flex-wrap justify-center">
         <div className="text-display text-3xl font-black" style={{color:'#F472B6'}}>
-          {String(payload.category ?? 'Coppie')}
+          {String(payload.selectedTheme ?? payload.category ?? 'Coppie')}
         </div>
         <div className="rounded-full px-5 py-1.5 text-base font-black"
           style={{background:'rgba(244,114,182,0.18)',color:'#F472B6',border:'1px solid rgba(244,114,182,0.45)'}}>
@@ -4717,6 +4816,30 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
   }
 
   return null;
+}
+
+function HomeSessionQROverlay({ joinCode }: { joinCode: string }) {
+  const joinUrl = `${window.location.origin}/home/join?s=${joinCode}`;
+  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&bgcolor=0a0a0f&color=A78BFA&data=${encodeURIComponent(joinUrl)}`;
+  return (
+    <div style={{
+      position: 'fixed', top: 14, right: 14, zIndex: 99999,
+      background: 'rgba(10,10,20,0.95)', border: '2px solid rgba(167,139,250,0.55)',
+      borderRadius: 16, padding: '12px 14px',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+      backdropFilter: 'blur(14px)', pointerEvents: 'none',
+      boxShadow: '0 4px 32px rgba(0,0,0,0.7), 0 0 0 1px rgba(167,139,250,0.15)',
+    }}>
+      <img src={qrSrc} alt="" style={{ width: 96, height: 96, borderRadius: 10, display: 'block' }} />
+      <div style={{ color: 'rgba(167,139,250,0.95)', fontSize: 10, fontWeight: 900,
+        textAlign: 'center', letterSpacing: '0.06em', textTransform: 'uppercase', lineHeight: 1.5 }}>
+        Scansiona<br/>per unirti
+      </div>
+      <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9, textAlign: 'center', fontWeight: 700 }}>
+        {joinCode}
+      </div>
+    </div>
+  );
 }
 
 function KaraokeQROverlay({ joinUrl }: { joinUrl: string }) {

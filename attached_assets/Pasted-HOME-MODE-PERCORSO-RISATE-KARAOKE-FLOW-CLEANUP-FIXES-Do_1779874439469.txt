@@ -1,0 +1,215 @@
+HOME MODE — PERCORSO RISATE + KARAOKE FLOW CLEANUP FIXES.
+
+Do not add new games.
+Do not touch WordBack.
+Do not touch Ballo sensors.
+Do not touch Karaoke search logic.
+Fix only flow/state/UX issues listed below.
+
+==================================================
+1) REMOVE USELESS GLOBAL TIMER + AVANTI BUTTON
+==================================================
+
+Problem:
+TV top timer shows 0 and is useless in Karaoke and Percorso.
+The “Avanti” button sends back to lobby / wrong flow.
+
+Required:
+For these full-session modes:
+- Karaoke Live
+- Percorso a Risate mission engine
+
+Hide:
+- top global timer
+- “Avanti” button
+
+Reason:
+These modes are controlled by their own buttons:
+- next singer
+- open voting
+- next mission
+- final ranking
+
+==================================================
+2) PERCORSO BOOKING AUTO-RANDOM
+==================================================
+
+Problem:
+If no players book, game waits forever.
+
+Required:
+During booking phase:
+- countdown 10 seconds
+- if 2 players booked → continue
+- if fewer than 2 booked after 10s:
+  - select missing players randomly from connected players
+  - avoid duplicates
+  - then continue automatically
+
+If only 1 connected player:
+show “Servono almeno 2 giocatori”.
+
+==================================================
+3) PUBLIC CHOICE AUTO-RANDOM AFTER 10S
+==================================================
+
+Problem:
+Public choice phases wait too long or selected players can choose.
+
+Required:
+For all public choice missions:
+- only NON-booked public players can choose
+- booked contestants cannot choose/validate the setup choice
+- choice timer 10 seconds
+- if no public choice after 10 seconds → Jonny chooses random
+
+Apply to:
+- Yoga pose
+- Venditore ambulante products
+- Poliglotta language
+- Trova oggetto target
+- Sfilata sexy song/mood
+- Coreografia song/mood
+- Scioglilingua phrase
+
+==================================================
+4) ASSIGN DIFFERENT CHOICES TO PLAYERS WHERE NEEDED
+==================================================
+
+Venditore ambulante:
+- public assigns product to each player
+- products must be different
+- if timeout → Johnny assigns two different random products
+
+Sfilata sexy:
+- public chooses song/mood per player
+- if timeout → Johnny assigns random
+
+Poliglotta:
+- public chooses language/phrase
+- if timeout → Johnny random
+
+Trova oggetto:
+- public chooses target
+- if timeout → Johnny random
+
+Yoga:
+- public chooses pose
+- if timeout → Johnny random
+- booked contestants cannot choose pose
+
+==================================================
+5) YOGA MUST SHOW REAL POSE IMAGES
+==================================================
+
+Problem:
+Currently shows emoji placeholder.
+
+Required:
+Use imageUrl if present.
+TV:
+- show pose image huge
+- name under image
+
+Phone:
+- public choice cards show image
+- active players see selected pose image
+
+If missing imageUrl:
+fallback placeholder is ok, but log:
+[YogaPose] missing imageUrl
+
+Data model:
+pose = {
+  id,
+  name,
+  imageUrl
+}
+
+==================================================
+6) NEXT MISSION PRESENTATION BUG
+==================================================
+
+Problem:
+At end of match, TV presents the mission already completed instead of next mission.
+
+Required:
+After result:
+- “Prossima missione”
+- show next mission title and rule
+- not previous mission
+
+If current mission is 10/10:
+show final ranking.
+
+==================================================
+7) PHONE RESYNC BUTTON FIX
+==================================================
+
+Problem:
+Refresh/resync button does not work.
+Manual browser refresh works correctly and restores role/page.
+
+Required:
+Phone resync button must perform same logic as manual refresh without reloading browser:
+- refetch current session
+- refetch players
+- re-register socket/player
+- update roundPayload
+- clear transient local states
+- align current screen with server phase
+- align timer with TV/server timestamp
+
+Logs:
+[PhoneResync]
+start
+session fetched
+players fetched
+socket rejoined
+state aligned
+timer aligned
+
+==================================================
+8) PHONE TIMER MUST ALIGN WITH TV
+==================================================
+
+Problem:
+Manual refresh restores role/page but phone timer restarts from local value.
+
+Required:
+Timers on phone must be based on server timestamps:
+- phaseStartedAt
+- phaseEndsAt
+- roundStartedAt
+- missionStartedAt
+
+Phone computes:
+remaining = phaseEndsAt - Date.now()
+
+Do not start independent local timer from full duration after resync.
+
+Apply to:
+- Percorso mission timers
+- public choice timers
+- booking timers
+- Karaoke voting timers if applicable
+
+==================================================
+OUTPUT REQUIRED
+==================================================
+
+Before patch:
+A. files audited
+B. current flow bugs found
+
+After patch:
+C. files modified
+D. top timer/Avanti hidden for Karaoke/Percorso
+E. booking auto-random
+F. public choice auto-random
+G. Yoga real image support
+H. next mission presentation fixed
+I. resync button fixed
+J. timer alignment fixed
+K. typecheck result
+L. manual test checklist

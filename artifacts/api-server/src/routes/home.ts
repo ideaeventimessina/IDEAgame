@@ -76,6 +76,8 @@ const quizAnswerMap = new Map<string, Map<number, Map<string, number>>>();
 const saraMusicaWinnerMap = new Map<string, Map<number, string>>();
 // Quizzone: sessionId → questionIndex → playerId → { answerIndex, answeredAt }
 const quizzoneAnswerMap = new Map<string, Map<number, Map<string, { answerIndex: number; answeredAt: number }>>>();
+// Auto-reveal timers — cleared when all players answer early
+const quizzoneRevealTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 /** Fisher-Yates shuffle that tracks where the correct answer moved. */
 function shuffleWithCorrectIndex(
@@ -146,6 +148,12 @@ interface CoppiePayload {
   points: number;
   lastFlippedBy: string | null;
   timeLimit: number;
+  themePhase?: 'suggestion' | 'playing';
+  proposedThemes?: { id: string; text: string; proposedBy: string }[];
+  themeTimerEndsAt?: string | null;
+  selectedTheme?: string | null;
+  visibilityUsed?: Record<string, boolean>;
+  visibilityActiveUntil?: number | null;
   [key: string]: unknown;
 }
 
@@ -201,78 +209,109 @@ function fallbackPercorso(): RoundPayload[] {
   }));
 }
 
-// 12-pair fallback deck — always playable without any DB cards
-const FALLBACK_COPPIE_PAIRS: { a: string; b: string }[] = [
-  { a: "Roma",      b: "Colosseo"   }, { a: "Milano",   b: "Duomo"       },
-  { a: "Venezia",   b: "Gondola"    }, { a: "Napoli",   b: "Pizza"        },
-  { a: "Firenze",   b: "Uffizi"     }, { a: "Torino",   b: "Juventus"     },
-  { a: "Pisa",      b: "Torre"      }, { a: "Sicilia",  b: "Etna"         },
-  { a: "Sole",      b: "Luna"       }, { a: "Gatto",    b: "Miao"         },
-  { a: "Mare",      b: "Spiaggia"   }, { a: "Pasta",    b: "Sugo"         },
+// 15-item fallback — identical pairs (each word matched with itself)
+const FALLBACK_COPPIE_ITEMS: string[] = [
+  'Roma','Venezia','Napoli','Firenze','Milano',
+  'Sole','Luna','Mare','Pizza','Gelato',
+  'Gatto','Vino','Pasta','Musica','Cinema',
 ];
 
-/** 2. Gioco delle Coppie — carica carte dal DB */
+// Themed word banks — used when players choose a theme
+const THEMED_WORD_BANKS: Record<string, string[]> = {
+  animali:    ['Leone','Tigre','Elefante','Delfino','Aquila','Volpe','Lupo','Orso','Panda','Gatto','Coccodrillo','Zebra'],
+  cibo:       ['Pizza','Pasta','Gelato','Tiramisù','Cappuccino','Bruschetta','Arancino','Cannolo','Risotto','Lasagne','Carbonara','Ossobuco'],
+  sport:      ['Calcio','Tennis','Nuoto','Ciclismo','Basket','Sci','Atletica','Boxe','Judo','Vela','Golf','Rugby'],
+  cinema:     ['Gladiatore','Titanic','Avatar','Matrix','Inception','Joker','Interstellar','Parasite','Dune','Oppenheimer','Grease','Shrek'],
+  musica:     ['Beatles','Bowie','Elvis','Madonna','Jova','Vasco','Lucio','Pino','Mina','Laura','Zucchero','Ramazzotti'],
+  colori:     ['Rosso','Blu','Verde','Giallo','Viola','Arancio','Rosa','Marrone','Nero','Bianco','Grigio','Turchese'],
+  città:      ['Roma','Milano','Venezia','Napoli','Firenze','Torino','Bologna','Palermo','Genova','Verona','Bari','Cagliari'],
+  natura:     ['Sole','Luna','Mare','Montagna','Fiore','Albero','Lago','Cascata','Deserto','Foresta','Vulcano','Ghiacciaio'],
+  lavori:     ['Chef','Medico','Pilota','Astronauta','Pompiere','Professore','Scultore','Contadino','Marinaio','Ballerino','Attore','Cuoco'],
+  animazioni: ['Simba','Bambi','Nemo','Shrek','Olaf','Stitch','Totoro','Wall-E','Gru','Moana','Elsa','Buzz'],
+};
+
+/** 2. Gioco delle Coppie — starts in theme-suggestion phase; cards built after theme chosen */
 async function loadCoppieRound(roundIndex: number): Promise<CoppiePayload> {
-  const sets = await db.select().from(cardSetsTable).orderBy(desc(cardSetsTable.createdAt));
-  // Pick set by cycling through available sets
-  const set = sets[roundIndex % Math.max(sets.length, 1)] ?? sets[0];
-  if (!set) return buildCoppiePayload(FALLBACK_COPPIE_PAIRS, roundIndex, "Coppie");
-
-  const cards = await db.select().from(cardsTable)
-    .where(eq(cardsTable.cardSetId, set.id))
-    .orderBy(asc(cardsTable.createdAt));
-
-  // Group by pairId — each pair has 2 cards with same pairId (text field)
-  const pairMap = new Map<string, typeof cards>();
-  for (const c of cards) {
-    const pid = c.pairId ?? c.id; // fallback: each card is its own pair
-    if (!pairMap.has(pid)) pairMap.set(pid, []);
-    pairMap.get(pid)!.push(c);
-  }
-
-  // Extract text from prompts JSONB (try 'it' locale, then first key)
-  function cardText(c: (typeof cards)[0]): string {
-    const p = c.prompts as Record<string, string> | null;
-    if (!p) return "?";
-    return p["it"] ?? p["en"] ?? Object.values(p)[0] ?? "?";
-  }
-
-  const pairs: { a: string; b: string; imageA?: string; imageB?: string }[] = [];
-  for (const [, group] of pairMap) {
-    if (group.length >= 2) {
-      pairs.push({ a: cardText(group[0]!), b: cardText(group[1]!), imageA: group[0]!.imageUrl ?? undefined, imageB: group[1]!.imageUrl ?? undefined });
-    } else if (group.length === 1) {
-      pairs.push({ a: cardText(group[0]!), b: "?", imageA: group[0]!.imageUrl ?? undefined });
-    }
-  }
-
-  if (pairs.length === 0) {
-    return buildCoppiePayload(FALLBACK_COPPIE_PAIRS, roundIndex, set.name);
-  }
-
-  return buildCoppiePayload(pairs, roundIndex, set.name);
+  return buildEmptyCoppiePayload(roundIndex);
 }
 
+function buildEmptyCoppiePayload(roundIndex: number): CoppiePayload {
+  return {
+    mode: "home-coppie",
+    themePhase: "suggestion",
+    roundIndex,
+    category: "",
+    cards: [],
+    currentFlipped: [],
+    matchedPairs: 0,
+    totalPairs: 0,
+    points: 150,
+    lastFlippedBy: null,
+    timeLimit: 180,
+    proposedThemes: [],
+    themeTimerEndsAt: new Date(Date.now() + 25_000).toISOString(),
+    selectedTheme: null,
+    visibilityUsed: {},
+    visibilityActiveUntil: null,
+  };
+}
+
+/** Build cards from a word list — identical pairs (same word on both cards) */
+function buildCoppieFromWords(words: string[], roundIndex: number, category: string): CoppiePayload {
+  const selected = shuffleArr(words).slice(0, 10);
+  const coppieCards: CoppieCard[] = shuffleArr([
+    ...selected.map((w, i) => ({ id: `a${i}`, text: w, imageUrl: undefined as string | undefined, pairId: i, flipped: false, matched: false })),
+    ...selected.map((w, i) => ({ id: `b${i}`, text: w, imageUrl: undefined as string | undefined, pairId: i, flipped: false, matched: false })),
+  ]);
+  return {
+    mode: "home-coppie",
+    themePhase: "playing",
+    roundIndex,
+    category,
+    selectedTheme: category,
+    cards: coppieCards,
+    currentFlipped: [],
+    matchedPairs: 0,
+    totalPairs: selected.length,
+    points: 150,
+    lastFlippedBy: null,
+    timeLimit: 180,
+    proposedThemes: [],
+    themeTimerEndsAt: null,
+    visibilityUsed: {},
+    visibilityActiveUntil: null,
+  };
+}
+
+/** Build identical pairs from DB card set — uses same image for both cards of a pair */
 function buildCoppiePayload(
   pairs: { a: string; b: string; imageA?: string; imageB?: string }[],
   roundIndex: number,
   category: string,
 ): CoppiePayload {
+  // Use at most 10 pairs; identical cards (same text+image on both sides)
+  const selected = shuffleArr(pairs).slice(0, 10);
   const coppieCards: CoppieCard[] = shuffleArr([
-    ...pairs.map((p, i) => ({ id: `a${i}`, text: p.a, imageUrl: p.imageA, pairId: i, flipped: false, matched: false })),
-    ...pairs.map((p, i) => ({ id: `b${i}`, text: p.b, imageUrl: p.imageB, pairId: i, flipped: false, matched: false })),
+    ...selected.map((p, i) => ({ id: `a${i}`, text: p.a, imageUrl: p.imageA ?? p.imageB, pairId: i, flipped: false, matched: false })),
+    ...selected.map((p, i) => ({ id: `b${i}`, text: p.a, imageUrl: p.imageA ?? p.imageB, pairId: i, flipped: false, matched: false })),
   ]);
   return {
     mode: "home-coppie",
+    themePhase: "playing",
     roundIndex,
     category,
+    selectedTheme: category,
     cards: coppieCards,
     currentFlipped: [],
     matchedPairs: 0,
-    totalPairs: pairs.length,
+    totalPairs: selected.length,
     points: 150,
     lastFlippedBy: null,
     timeLimit: 180,
+    proposedThemes: [],
+    themeTimerEndsAt: null,
+    visibilityUsed: {},
+    visibilityActiveUntil: null,
   };
 }
 
@@ -566,7 +605,7 @@ async function loadThemesForGame(gameSlug: string): Promise<GameFlowConfig> {
 
 async function loadCoppieByTheme(setId: string): Promise<CoppiePayload> {
   const [set] = await db.select().from(cardSetsTable).where(eq(cardSetsTable.id, setId));
-  if (!set) return buildCoppiePayload(FALLBACK_COPPIE_PAIRS, 0, "Coppie");
+  if (!set) return buildCoppiePayload(FALLBACK_COPPIE_ITEMS.map(w => ({ a: w, b: w })), 0, "Coppie");
   const cards = await db.select().from(cardsTable)
     .where(eq(cardsTable.cardSetId, setId))
     .orderBy(asc(cardsTable.createdAt));
@@ -589,7 +628,7 @@ async function loadCoppieByTheme(setId: string): Promise<CoppiePayload> {
       pairs.push({ a: cardText(group[0]!), b: "?", imageA: group[0]!.imageUrl ?? undefined });
     }
   }
-  if (pairs.length === 0) return buildCoppiePayload(FALLBACK_COPPIE_PAIRS, 0, set.name);
+  if (pairs.length === 0) return buildCoppiePayload(FALLBACK_COPPIE_ITEMS.map(w => ({ a: w, b: w })), 0, set.name);
   return buildCoppiePayload(pairs, 0, set.name);
 }
 
@@ -1191,6 +1230,69 @@ async function qzUpdate(id: string, patch: Record<string, unknown>): Promise<voi
   emitToRoom(homeRoom(id), "home:state", { session: updated[0], players });
 }
 
+/** Shared reveal logic — called by route handler and auto-reveal timer */
+async function performQzReveal(id: string, expectedIndex: number): Promise<void> {
+  const session = await getSession(id);
+  if (!session) return;
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-quizzone" || rp["phase"] !== "question") return;
+  if (Number(rp["currentIndex"] ?? 0) !== expectedIndex) return;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const questions = (rp["questions"] as any[]) ?? [];
+  const q = questions[expectedIndex];
+  if (!q) return;
+  const correctAnswerIndex = Number(q.correctAnswerIndex ?? 0);
+  const qType = String(q.type ?? "multiple_choice");
+  const timeLimit = Number(q.timeLimit ?? 15);
+  const currentClueIndex = Number(rp["currentClueIndex"] ?? 0);
+  const questionStartedAt = rp["questionStartedAt"] ? new Date(String(rp["questionStartedAt"])).getTime() : Date.now();
+  const players = await getPlayers(id);
+  const qMap = quizzoneAnswerMap.get(id)?.get(expectedIndex);
+  const playerResults: { playerId: string; nickname: string; answerIndex: number | null; correct: boolean; points: number }[] = [];
+  const scoreUpdates: Promise<unknown>[] = [];
+  for (const player of players) {
+    const ans = qMap?.get(player.id);
+    const correct = ans !== undefined && ans.answerIndex === correctAnswerIndex;
+    let points = 0;
+    if (correct) {
+      switch (qType) {
+        case "true_false": points = 80; break;
+        case "speed_round": {
+          const elapsed = (ans?.answeredAt ?? Date.now()) - questionStartedAt;
+          const speedBonus = Math.round(50 * Math.max(0, 1 - elapsed / (timeLimit * 1000)));
+          points = 100 + speedBonus;
+          break;
+        }
+        case "progressive_clue": points = Math.max(50, 150 - currentClueIndex * 50); break;
+        case "order_choice": points = 120; break;
+        case "final_bomb": points = 200; break;
+        default: points = Number(q.points ?? 100);
+      }
+      scoreUpdates.push(
+        db.update(homePlayersTable).set({ score: player.score + points }).where(eq(homePlayersTable.id, player.id))
+      );
+    }
+    playerResults.push({ playerId: player.id, nickname: player.nickname, answerIndex: ans?.answerIndex ?? null, correct, points });
+  }
+  await Promise.all(scoreUpdates);
+  quizzoneAnswerMap.get(id)?.delete(expectedIndex);
+  const revealData = { correctAnswerIndex, playerResults };
+  await qzUpdate(id, { phase: "reveal", revealData, allAnsweredForCurrent: false });
+  emitToRoom(homeRoom(id), "home:quizzone_reveal", { sessionId: id, questionIndex: expectedIndex, revealData });
+  logger.info({ sessionId: id, questionIndex: expectedIndex }, "[QuizzoneHome] reveal completed");
+}
+
+function scheduleQzAutoReveal(sessionId: string, questionIndex: number, endsAtMs: number): void {
+  const existing = quizzoneRevealTimers.get(sessionId);
+  if (existing) clearTimeout(existing);
+  const delay = Math.max(100, endsAtMs - Date.now()) + 700;
+  const timer = setTimeout(() => {
+    quizzoneRevealTimers.delete(sessionId);
+    performQzReveal(sessionId, questionIndex).catch(() => {});
+  }, delay);
+  quizzoneRevealTimers.set(sessionId, timer);
+}
+
 // POST /home/sessions/:id/quiz/select-theme
 router.post("/home/sessions/:id/quiz/select-theme", async (req, res): Promise<void> => {
   const id = String(req.params["id"]);
@@ -1238,11 +1340,13 @@ router.post("/home/sessions/:id/quiz/select-count", async (req, res): Promise<vo
           await qzUpdate(id, { countdownValue: 1 });
           setTimeout(async () => {
             const firstQ = questions[0];
+            const firstEndsAt = Date.now() + (firstQ?.timeLimit ?? 15) * 1000;
             await qzUpdate(id, {
               phase: "question",
               currentIndex: 0,
               countdownValue: null,
               questionStartedAt: new Date().toISOString(),
+              questionEndsAt: new Date(firstEndsAt).toISOString(),
               currentClueIndex: 0,
               allAnsweredForCurrent: false,
               answeredCount: 0,
@@ -1250,6 +1354,7 @@ router.post("/home/sessions/:id/quiz/select-count", async (req, res): Promise<vo
               rankingData: null,
               totalRounds: questionCount,
             });
+            scheduleQzAutoReveal(id, 0, firstEndsAt);
             await db.update(homeSessionsTable)
               .set({ totalRounds: questionCount, currentRound: 0 })
               .where(eq(homeSessionsTable.id, id));
@@ -1274,6 +1379,10 @@ router.post("/home/sessions/:id/quiz/answer", async (req, res): Promise<void> =>
   const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
   if (rp["mode"] !== "home-quizzone") { res.status(409).json({ error: "Non in modalità quizzone" }); return; }
   if (rp["phase"] !== "question") { res.status(409).json({ error: "Non in fase domanda" }); return; }
+  const qEndsAt = rp["questionEndsAt"] as string | undefined;
+  if (qEndsAt && Date.now() > new Date(qEndsAt).getTime()) {
+    res.status(409).json({ error: "Tempo scaduto", code: "time_expired" }); return;
+  }
   const currentIndex = Number(rp["currentIndex"] ?? 0);
   if (!quizzoneAnswerMap.has(id)) quizzoneAnswerMap.set(id, new Map());
   const sessionMap = quizzoneAnswerMap.get(id)!;
@@ -1289,6 +1398,8 @@ router.post("/home/sessions/:id/quiz/answer", async (req, res): Promise<void> =>
   const allAnswered = effectiveCount > 0 && answeredCount >= effectiveCount;
   await qzUpdate(id, { answeredCount, allAnsweredForCurrent: allAnswered });
   if (allAnswered) {
+    const existingTimer = quizzoneRevealTimers.get(id);
+    if (existingTimer) { clearTimeout(existingTimer); quizzoneRevealTimers.delete(id); }
     emitToRoom(homeRoom(id), "home:quiz_all_answered", { sessionId: id, round: currentIndex, correctIndex: 0 });
   }
   res.json({ ok: true });
@@ -1316,54 +1427,10 @@ router.post("/home/sessions/:id/quiz/reveal", async (req, res): Promise<void> =>
   const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
   if (rp["mode"] !== "home-quizzone" || rp["phase"] !== "question") { res.status(409).json({ error: "Fase non corretta" }); return; }
   const currentIndex = Number(rp["currentIndex"] ?? 0);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const questions = (rp["questions"] as any[]) ?? [];
-  const q = questions[currentIndex];
-  if (!q) { res.status(400).json({ error: "Domanda non trovata" }); return; }
-  const correctAnswerIndex = Number(q.correctAnswerIndex ?? 0);
-  const qType = String(q.type ?? "multiple_choice");
-  const basePoints = Number(q.points ?? 100);
-  const timeLimit = Number(q.timeLimit ?? 15);
-  const currentClueIndex = Number(rp["currentClueIndex"] ?? 0);
-  const questionStartedAt = rp["questionStartedAt"] ? new Date(String(rp["questionStartedAt"])).getTime() : Date.now();
-  // Compute per-player results
-  const players = await getPlayers(id);
-  const qMap = quizzoneAnswerMap.get(id)?.get(currentIndex);
-  const playerResults: { playerId: string; nickname: string; answerIndex: number | null; correct: boolean; points: number }[] = [];
-  const scoreUpdates: Promise<unknown>[] = [];
-  for (const player of players) {
-    const ans = qMap?.get(player.id);
-    const correct = ans !== undefined && ans.answerIndex === correctAnswerIndex;
-    let points = 0;
-    if (correct) {
-      switch (qType) {
-        case "true_false":       points = 80; break;
-        case "speed_round": {
-          const elapsed = (ans?.answeredAt ?? Date.now()) - questionStartedAt;
-          const speedBonus = Math.round(50 * Math.max(0, 1 - elapsed / (timeLimit * 1000)));
-          points = 100 + speedBonus;
-          break;
-        }
-        case "progressive_clue": points = Math.max(50, 150 - currentClueIndex * 50); break;
-        case "order_choice":     points = 120; break;
-        case "final_bomb":       points = 200; break;
-        default:                 points = basePoints;
-      }
-      const newScore = player.score + points;
-      scoreUpdates.push(
-        db.update(homePlayersTable)
-          .set({ score: newScore })
-          .where(eq(homePlayersTable.id, player.id))
-      );
-    }
-    playerResults.push({ playerId: player.id, nickname: player.nickname, answerIndex: ans?.answerIndex ?? null, correct, points });
-  }
-  await Promise.all(scoreUpdates);
-  // Clear answer map for this question
-  quizzoneAnswerMap.get(id)?.delete(currentIndex);
-  const revealData = { correctAnswerIndex, playerResults };
-  await qzUpdate(id, { phase: "reveal", revealData, allAnsweredForCurrent: false });
-  emitToRoom(homeRoom(id), "home:quizzone_reveal", { sessionId: id, questionIndex: currentIndex, revealData });
+  // Cancel auto-reveal timer (host revealing manually)
+  const existingTimer = quizzoneRevealTimers.get(id);
+  if (existingTimer) { clearTimeout(existingTimer); quizzoneRevealTimers.delete(id); }
+  await performQzReveal(id, currentIndex);
   res.json({ ok: true });
 });
 
@@ -1408,16 +1475,19 @@ router.post("/home/sessions/:id/quiz/next", async (req, res): Promise<void> => {
   }
   // Next question
   const nextQ = questions[nextIndex];
+  const nextEndsAt = Date.now() + (nextQ?.timeLimit ?? 15) * 1000;
   await qzUpdate(id, {
     phase: "question",
     currentIndex: nextIndex,
     questionStartedAt: new Date().toISOString(),
+    questionEndsAt: new Date(nextEndsAt).toISOString(),
     currentClueIndex: 0,
     allAnsweredForCurrent: false,
     answeredCount: 0,
     revealData: null,
     rankingData: rp["phase"] === "ranking" ? rankingData : rp["rankingData"],
   });
+  scheduleQzAutoReveal(id, nextIndex, nextEndsAt);
   await db.update(homeSessionsTable).set({ currentRound: nextIndex }).where(eq(homeSessionsTable.id, id));
   logger.info({ sessionId: id, nextIndex, qType: nextQ?.type }, "[QuizzoneHome] advanced to next question");
   res.json({ ok: true });
@@ -2876,6 +2946,7 @@ router.post("/home/sessions/:id/flip", async (req, res): Promise<void> => {
 
   const payload = session.roundPayload as CoppiePayload;
   if (payload.mode !== "home-coppie") { res.status(400).json({ error: "Non è una partita di coppie" }); return; }
+  if (payload.themePhase === "suggestion") { res.status(409).json({ error: "Il tema non è ancora stato scelto" }); return; }
 
   const currentFlipped = payload.currentFlipped ?? [];
   if (currentFlipped.length >= 2) { res.status(409).json({ error: "Aspetta" }); return; }
@@ -2971,6 +3042,99 @@ router.post("/home/sessions/:id/coppie-preview", async (req, res): Promise<void>
   if (session.status !== "playing") { res.status(409).json({ error: "Sessione non in corso" }); return; }
   const until = Date.now() + 10_000;
   emitToRoom(homeRoom(id), "home:coppie_visibility_preview", { sessionId: id, until });
+  res.json({ ok: true, until });
+});
+
+// ── POST /home/sessions/:id/coppie/propose-theme — phone proposes a word theme ──
+router.post("/home/sessions/:id/coppie/propose-theme", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const payload = session.roundPayload as CoppiePayload;
+  if (payload.mode !== "home-coppie" || payload.themePhase !== "suggestion") {
+    res.status(409).json({ error: "Non in fase proposta tema" }); return;
+  }
+  const { playerId, theme } = req.body as { playerId?: string; theme?: string };
+  if (!theme || typeof theme !== "string" || theme.trim().length === 0) {
+    res.status(400).json({ error: "Tema mancante" }); return;
+  }
+  const trimmed = theme.trim().slice(0, 40);
+  const proposedThemes = [...(payload.proposedThemes ?? [])];
+  if (proposedThemes.length >= 12) { res.json({ ok: true, themes: proposedThemes }); return; }
+  if (proposedThemes.some(t => t.text.toLowerCase() === trimmed.toLowerCase())) {
+    res.json({ ok: true, themes: proposedThemes }); return;
+  }
+  const newTheme = { id: `t${Date.now()}`, text: trimmed, proposedBy: playerId ?? "unknown" };
+  proposedThemes.push(newTheme);
+  const newPayload: CoppiePayload = { ...payload, proposedThemes };
+  await db.update(homeSessionsTable).set({ roundPayload: newPayload }).where(eq(homeSessionsTable.id, id));
+  const players = await getPlayers(id);
+  emitToRoom(homeRoom(id), "home:state", { session: { ...session, roundPayload: newPayload }, players });
+  res.json({ ok: true, themes: proposedThemes });
+});
+
+// ── POST /home/sessions/:id/coppie/select-theme — finalize theme, build cards ──
+router.post("/home/sessions/:id/coppie/select-theme", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const payload = session.roundPayload as CoppiePayload;
+  if (payload.mode !== "home-coppie" || payload.themePhase !== "suggestion") {
+    res.status(409).json({ error: "Non in fase proposta tema" }); return;
+  }
+  const { themeText } = req.body as { themeText?: string };
+  const proposals = payload.proposedThemes ?? [];
+  let selected = themeText?.trim() ?? proposals[proposals.length - 1]?.text;
+  if (!selected) {
+    const keys = Object.keys(THEMED_WORD_BANKS);
+    selected = keys[Math.floor(Math.random() * keys.length)] ?? "cibo";
+  }
+  const bankKey = Object.keys(THEMED_WORD_BANKS).find(k =>
+    selected!.toLowerCase().includes(k.toLowerCase()) || k.toLowerCase().includes(selected!.toLowerCase())
+  );
+  const words = bankKey ? THEMED_WORD_BANKS[bankKey] : FALLBACK_COPPIE_ITEMS;
+  const newPayload = buildCoppieFromWords(words!, payload.roundIndex, selected);
+  await db.update(homeSessionsTable).set({ roundPayload: newPayload }).where(eq(homeSessionsTable.id, id));
+  const players = await getPlayers(id);
+  emitToRoom(homeRoom(id), "home:state", { session: { ...session, roundPayload: newPayload }, players });
+  logger.info({ sessionId: id, theme: selected, bankKey }, "[Coppie] theme selected, cards built");
+  res.json({ ok: true, theme: selected });
+});
+
+// ── POST /home/sessions/:id/coppie/request-visibility — phone requests 10s peek ─
+router.post("/home/sessions/:id/coppie/request-visibility", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  if (session.status !== "playing") { res.status(409).json({ error: "Sessione non in corso" }); return; }
+  const payload = session.roundPayload as CoppiePayload;
+  if (payload.mode !== "home-coppie" || payload.themePhase !== "playing") {
+    res.status(409).json({ error: "Non in gioco" }); return;
+  }
+  const { playerId } = req.body as { playerId?: string };
+  if (!playerId) { res.status(400).json({ error: "playerId obbligatorio" }); return; }
+  const visibilityUsed = payload.visibilityUsed ?? {};
+  if (visibilityUsed[playerId]) {
+    res.status(409).json({ error: "Già usato", alreadyUsed: true }); return;
+  }
+  const now = Date.now();
+  const activeUntil = payload.visibilityActiveUntil ?? 0;
+  if (activeUntil > now) {
+    res.status(409).json({ error: "Visibilità già attiva" }); return;
+  }
+  const until = now + 10_000;
+  const newPayload: CoppiePayload = {
+    ...payload,
+    visibilityUsed: { ...visibilityUsed, [playerId]: true },
+    visibilityActiveUntil: until,
+  };
+  await db.update(homeSessionsTable).set({ roundPayload: newPayload }).where(eq(homeSessionsTable.id, id));
+  emitToRoom(homeRoom(id), "home:coppie_visibility_preview", { sessionId: id, until });
+  const players = await getPlayers(id);
+  emitToRoom(homeRoom(id), "home:state", { session: { ...session, roundPayload: newPayload }, players });
   res.json({ ok: true, until });
 });
 

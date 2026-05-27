@@ -100,6 +100,7 @@ export default function HomeJoin() {
   const [adminSensitivity, setAdminSensitivity] = useState(3.0);
   const [coppiePreviewUntil, setCoppiePreviewUntil] = useState<number | null>(null);
   const [resyncLoading, setResyncLoading] = useState(false);
+  const [reconnectedMsg, setReconnectedMsg] = useState(false);
   const [preflightMsg, setPreflightMsg] = useState<string | null>(null);
   const [preflightActive, setPreflightActive] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -295,6 +296,9 @@ export default function HomeJoin() {
       emit('join:home', sid);
       emit('home:player_register', { sessionId: sid, playerId: pid });
       console.log('[PhoneResync] socket rejoined');
+
+      setReconnectedMsg(true);
+      setTimeout(() => setReconnectedMsg(false), 3000);
     } catch (err) {
       console.log('[PhoneResync] error', err);
     } finally {
@@ -302,6 +306,19 @@ export default function HomeJoin() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.id, player?.id, resyncLoading, emit, setPlayer]);
+
+  // Auto-resync on socket reconnect (handles Chrome tab suspension / network blip)
+  useEffect(() => {
+    const socket = getSocket();
+    const onConnect = () => {
+      if (phaseRef.current === 'playing') {
+        console.log('[HomeJoin] socket reconnected while playing — auto-resyncing');
+        setTimeout(() => { void handleResync(); }, 800);
+      }
+    };
+    socket.on('connect', onConnect);
+    return () => { socket.off('connect', onConnect); };
+  }, [handleResync]);
 
   // Polling fallback in lobby
   useEffect(() => {
@@ -1160,6 +1177,12 @@ export default function HomeJoin() {
                   }}>
                   {resyncLoading ? '⏳' : '🔄'}
                 </button>
+                {reconnectedMsg && (
+                  <div className="rounded-full px-3 py-1 text-xs font-black"
+                    style={{background:'rgba(34,197,94,0.2)',border:'1px solid rgba(34,197,94,0.5)',color:'#4ade80'}}>
+                    ✅ Riconnesso
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1525,7 +1548,7 @@ function PhoneController({
   if (mode === 'home-flow')       return <GameFlowPhone session={session} player={player} emit={emit}/>;
   if (mode === 'home-quiz')       return <QuizController payload={p} revealed={revealed} answered={answered} onAnswer={onAnswer}/>;
   if (mode === 'home-quizzone')   return <QuizzoneController payload={p} session={session} player={player}/>;
-  if (mode === 'home-coppie')     return <CoppieController payload={p} onFlip={onFlip} player={player} previewUntil={coppiePreviewUntil ?? null}/>;
+  if (mode === 'home-coppie')     return <CoppieController payload={p} onFlip={onFlip} player={player} previewUntil={coppiePreviewUntil ?? null} sessionId={session.id}/>;
   if (mode === 'home-percorso')   return <PercorsoHomeController sessionId={session.id} player={player} payload={p} timeLeft={timeLeft}/>;
   if (mode === 'home-saramusica') return <SaraMusicaController payload={p} player={player} session={session}/>;
   if (mode === 'home-adult')      return <AdultController payload={p} timeLeft={timeLeft} onScore={onScore}/>;
@@ -1824,21 +1847,31 @@ function QuizzoneController({ payload, session, player }: {
 
 interface CoppieCard { id: string; text: string; imageUrl?: string; pairId: number; flipped: boolean; matched: boolean; }
 
-function CoppieController({ payload, onFlip, player, previewUntil }: {
+function CoppieController({ payload, onFlip, player, previewUntil, sessionId }: {
   payload: Record<string,unknown>;
   onFlip: (cardId: string) => void;
   player: HomePlayer;
   previewUntil: number | null;
+  sessionId: string;
 }) {
+  const themePhase = String(payload.themePhase ?? 'playing');
   const cards = (payload.cards as CoppieCard[]) ?? [];
   const matched = Number(payload.matchedPairs ?? 0);
   const total = Number(payload.totalPairs ?? 0);
   const lastFlippedBy = payload.lastFlippedBy as string | null;
   const isMyTurn = !lastFlippedBy || lastFlippedBy === player.id || (payload.currentFlipped as string[])?.length === 0;
-  const cols = Math.min(Math.ceil(Math.sqrt(cards.length)), 4);
+  const cols = Math.min(Math.ceil(Math.sqrt(cards.length)), 4) || 4;
+  const proposedThemes = (payload.proposedThemes ?? []) as { id: string; text: string; proposedBy: string }[];
+  const themeTimerEndsAt = payload.themeTimerEndsAt as string | null;
+  const visibilityUsed = (payload.visibilityUsed ?? {}) as Record<string, boolean>;
+  const hasUsedVisibility = visibilityUsed[player.id] ?? false;
 
-  // Countdown ticker during preview window
   const [now, setNow] = useState(() => Date.now());
+  const [themeInput, setThemeInput] = useState('');
+  const [proposeBusy, setProposeBusy] = useState(false);
+  const [visibilityBusy, setVisibilityBusy] = useState(false);
+  const [themeTimerLeft, setThemeTimerLeft] = useState<number | null>(null);
+
   const previewActive = previewUntil !== null && now < previewUntil;
   const previewSecsLeft = previewUntil !== null ? Math.max(0, Math.ceil((previewUntil - now) / 1000)) : 0;
 
@@ -1848,6 +1881,83 @@ function CoppieController({ payload, onFlip, player, previewUntil }: {
     return () => clearInterval(id);
   }, [previewActive]);
 
+  useEffect(() => {
+    if (themePhase !== 'suggestion' || !themeTimerEndsAt) { setThemeTimerLeft(null); return; }
+    const endsAt = new Date(themeTimerEndsAt).getTime();
+    const tick = () => setThemeTimerLeft(Math.max(0, Math.ceil((endsAt - Date.now()) / 1000)));
+    tick();
+    const id = setInterval(tick, 500);
+    return () => clearInterval(id);
+  }, [themePhase, themeTimerEndsAt]);
+
+  const proposeTheme = async () => {
+    if (!themeInput.trim() || proposeBusy) return;
+    setProposeBusy(true);
+    try {
+      await fetch(`/api/home/sessions/${sessionId}/coppie/propose-theme`, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ playerId: player.id, theme: themeInput.trim() }),
+      });
+      setThemeInput('');
+    } finally { setProposeBusy(false); }
+  };
+
+  const requestVisibility = async () => {
+    if (hasUsedVisibility || visibilityBusy) return;
+    setVisibilityBusy(true);
+    try {
+      await fetch(`/api/home/sessions/${sessionId}/coppie/request-visibility`, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ playerId: player.id }),
+      });
+    } finally { setVisibilityBusy(false); }
+  };
+
+  // ── Theme suggestion phase ────────────────────────────────────────────────
+  if (themePhase === 'suggestion') {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="text-center">
+          <div className="text-xl font-black mb-1" style={{color:'#F472B6'}}>💞 Proponi il Tema!</div>
+          {themeTimerLeft !== null && (
+            <div className="text-xs text-white/45">{themeTimerLeft}s rimasti per proporre</div>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <input type="text" value={themeInput} onChange={e => setThemeInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && void proposeTheme()}
+            placeholder="Es: Animali, Cibo, Film…" maxLength={40}
+            className="flex-1 rounded-xl px-4 py-3 text-white text-base"
+            style={{background:'rgba(255,255,255,0.08)',border:'1px solid rgba(244,114,182,0.5)',outline:'none'}}/>
+          <button onClick={() => void proposeTheme()} disabled={proposeBusy || !themeInput.trim()}
+            className="rounded-xl px-4 py-3 font-black text-sm disabled:opacity-40"
+            style={{background:'rgba(244,114,182,0.25)',border:'1px solid rgba(244,114,182,0.6)',color:'#F472B6'}}>
+            Proponi
+          </button>
+        </div>
+        {proposedThemes.length > 0 && (
+          <div className="rounded-xl p-3" style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)'}}>
+            <div className="text-xs text-white/40 mb-2 font-bold uppercase tracking-widest">Temi proposti</div>
+            <div className="flex flex-wrap gap-2">
+              {proposedThemes.map(t => (
+                <div key={t.id} className="rounded-full px-3 py-1 text-xs font-black"
+                  style={{background:'rgba(244,114,182,0.15)',border:'1px solid rgba(244,114,182,0.4)',color:'#F472B6'}}>
+                  {t.text}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {proposedThemes.length === 0 && (
+          <div className="text-center text-xs text-white/30 py-2">
+            Scrivi un tema per la gara delle coppie e premi Proponi!
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Playing phase ─────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between rounded-xl px-4 py-2"
@@ -1858,11 +1968,19 @@ function CoppieController({ payload, onFlip, player, previewUntil }: {
           : <span className="text-xs text-white/50">{isMyTurn ? '🟢 Il tuo turno!' : '⏳ Aspetta...'}</span>
         }
       </div>
+      {/* Visibility button — each player gets one use */}
+      {!hasUsedVisibility && !previewActive && matched < total && (
+        <button onClick={() => void requestVisibility()} disabled={visibilityBusy}
+          className="flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-black disabled:opacity-40"
+          style={{background:'rgba(244,114,182,0.12)',border:'1px solid rgba(244,114,182,0.4)',color:'#F472B6'}}>
+          👁 Attiva Visibilità +10s
+        </button>
+      )}
+      {hasUsedVisibility && !previewActive && (
+        <div className="text-center text-xs text-white/30 py-1">Visibilità già usata</div>
+      )}
       <div className="grid gap-2" style={{gridTemplateColumns:`repeat(${cols},minmax(0,1fr))`}}>
         {cards.map(card => {
-          // P4: Phones must NOT reveal flipped-but-unmatched cards — those are visible
-          // only on the TV projection. All phones share the same server card state, so
-          // showing card.flipped here means every phone reveals the same card on tap.
           const showFace = card.matched || previewActive;
           return (
             <button key={card.id}

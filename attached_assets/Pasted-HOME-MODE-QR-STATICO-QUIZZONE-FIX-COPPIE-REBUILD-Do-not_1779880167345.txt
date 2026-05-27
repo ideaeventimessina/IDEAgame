@@ -1,0 +1,277 @@
+HOME MODE — QR STATICO + QUIZZONE FIX + COPPIE REBUILD.
+
+Do not touch Karaoke search/playback.
+Do not touch WordBack.
+Do not touch Ballo.
+Do not touch Secret Messages.
+Do not touch Percorso now.
+
+==================================================
+PART 1 — STATIC QR ALWAYS VISIBLE ON TV
+==================================================
+
+Problem:
+Karaoke works but QR code is still not always visible top-right.
+
+Required:
+On TV HomeGame, show a static QR overlay in top-right for the whole Home session, not only Karaoke.
+
+Visible during:
+- Karaoke
+- Quizzone
+- Coppie
+- Percorso
+- waiting/booking/voting/results
+
+Hide only if it overlaps a final full-screen ceremony, otherwise keep it.
+
+QR links to:
+/home/join?s=SESSION_CODE
+
+Text:
+“Scansiona e partecipa”
+“Prenotati, vota o gioca”
+
+Style:
+fixed top-right
+z-index above iframe
+large enough from distance
+never hidden behind YouTube/player
+
+==================================================
+PART 2 — REMOVE USELESS TOP TIMER / AVANTI FOR FULL SESSION MODES
+==================================================
+
+Problem:
+Top timer shows 0 and is useless.
+“Avanti” sends wrong flow / lobby.
+
+Required:
+Hide global timer and Avanti button for:
+- Karaoke Live
+- Percorso a Risate
+- Coppie new flow if self-managed
+- Quizzone if timer is question-specific
+
+Do not remove:
+- Fine gioco
+- Chiudi & classifica
+
+Each game must use its own internal next/progression controls.
+
+==================================================
+PART 3 — QUIZZONE TIMER AND LATE ANSWER FIX
+==================================================
+
+Problems:
+- TV timer is 10 sec
+- phones timer is 30 sec
+- after timer expires, phones can still answer and server accepts correct answers
+
+Required:
+Single source of truth:
+server questionStartedAt + questionEndsAt.
+
+TV and phones must compute:
+remaining = questionEndsAt - Date.now()
+
+Same remaining time on all devices.
+
+When remaining <= 0:
+- question closes immediately server-side
+- no more answers accepted
+- late answers return 409 round_closed / time_expired
+- TV shows “TEMPO SCADUTO”
+- reveal answer / move to reveal phase
+- phones show “Tempo scaduto”
+
+Do not rely only on local timers.
+
+Also:
+If all connected players answer before timer ends:
+- close question early
+- reveal immediately.
+
+Audit:
+- Quizzone board TV
+- Quizzone phone controller
+- /quiz-answer endpoint
+- timer state
+- answer acceptance guard
+
+==================================================
+PART 4 — QUIZZONE QUESTION VARIETY / ANTI-REPEAT
+==================================================
+
+Current:
+Themes exist and can stay.
+But DB/static questions risk repeating.
+
+Required for now:
+- track used question IDs per session
+- do not repeat same question in same session
+- if not enough questions, shuffle fallback but log warning
+
+Future:
+AI generation later, not now.
+
+Add:
+usedQuestionIds in gameConfig/session state.
+
+==================================================
+PART 5 — CHROME DEVICES STUCK / RESYNC HARDENING
+==================================================
+
+Problem:
+Some Chrome devices do not follow live state and need manual refresh.
+Manual refresh works.
+
+Required:
+Make resync button perform same effect as manual refresh:
+- refetch session
+- refetch players
+- re-register socket
+- rejoin home room
+- replace local state from server
+- clear transient local states
+- restart timers from server timestamps
+
+Also:
+On socket reconnect:
+- automatically resync current session
+- re-emit home:player_register
+- rejoin home room
+
+Add visible small status:
+“Riconnesso”
+when auto-resync succeeds.
+
+==================================================
+PART 6 — COPPIE OLD THEME PAGE REDESIGN
+==================================================
+
+Problem:
+The Coppie theme page is ugly, old style, huge text, inconsistent layout.
+
+Required:
+Replace with new premium theme selection flow.
+
+New flow:
+1. Theme suggestion phase
+2. Players propose themes from phones
+3. TV shows up to first 10 proposed themes
+4. 20 second timer
+5. players vote/select theme
+6. chosen theme becomes game theme
+7. Jonny generates/loads 10 pairs based on selected theme
+
+TV:
+- title: “Scegli il tema delle coppie”
+- short instruction
+- 10 theme cards max
+- countdown 20s
+- no huge paragraphs
+- clean grid
+
+Phone:
+- input: “Scrivi un tema”
+- submit button
+- after submit: “Tema inviato”
+- can vote/select existing themes if implemented
+
+If fewer themes submitted:
+- Johnny adds fallback themes.
+
+==================================================
+PART 7 — COPPIE BOARD: 10 PAIRS, NOT 9
+==================================================
+
+Problem:
+Grid has missing squares and looks bad.
+
+Required:
+Use 10 pairs = 20 cards.
+
+TV grid:
+responsive 5x4 or 4x5 depending viewport.
+No missing empty slots.
+No bottom row hidden.
+
+Phone/tablet:
+cards/images must be much larger.
+Currently too small.
+
+==================================================
+PART 8 — COPPIE IMAGES MUST BE IDENTICAL PAIRS IN HOME MODE
+==================================================
+
+Problem:
+Images do not make sense as pairs.
+
+Required:
+In Home Mode:
+each pair must be identical images.
+
+Example:
+Pair 1:
+imageA = same image
+imageB = same image
+
+No conceptual pairing for now.
+Simple memory game.
+
+Images must not always be the same every session.
+
+If AI image generation/Jonny exists:
+generate/request 10 image concepts based on selected theme.
+
+If not available:
+use themed placeholder image set with randomization.
+But pairs must still be identical.
+
+==================================================
+PART 9 — COPPIE GLOBAL VISIBILITY REQUEST
+==================================================
+
+Feature:
+Each non-TV player can request +10 seconds global visibility once per manche.
+
+Phone:
+Button:
+“👀 Altri 10 secondi”
+
+Rules:
+- player can use once per manche
+- only during active game
+- if global visibility timer is already active, request ignored or queued? Prefer ignored with message.
+- after use, button disabled:
+“Già usato”
+
+TV:
+when accepted:
+all cards visible for 10 seconds globally.
+show countdown:
+“Visione globale: 10s”
+
+Timer is the only guard.
+No manual approval.
+
+==================================================
+PART 10 — TYPECHECK + MANUAL TEST
+==================================================
+
+Output:
+A. files audited
+B. files modified
+C. QR global fixed
+D. top timer/Avanti hidden
+E. Quizzone timer unified
+F. late answers rejected
+G. anti-repeat question logic
+H. Chrome resync hardened
+I. Coppie theme flow redesigned
+J. 10 pairs / 20 cards
+K. identical pair images
+L. global visibility +10s request
+M. typecheck result
+N. manual test checklist
