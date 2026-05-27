@@ -28,6 +28,7 @@ import {
 import { GameFlowEngine } from '@/components/GameFlowEngine';
 import { AudioManager } from '@/audio/AudioManager';
 import { useAudioSettings } from '@/contexts/AudioContext';
+import { IS_LOW_POWER } from '@/hooks/useLowPower';
 
 // Gate verbose logs in production
 const _log: typeof console.log = import.meta.env.DEV ? console.log.bind(console) : () => {};
@@ -916,6 +917,7 @@ export default function HomeGame() {
     if (phase !== 'playing' || !session?.id) return;
     const sid = session.id;
     const interval = setInterval(() => {
+      if (document.hidden) return;
       fetch(`/api/home/sessions/${sid}`)
         .then(r => r.ok ? r.json() : null)
         .then((d: { session: HomeSession; players: HomePlayer[] } | null) => {
@@ -946,6 +948,7 @@ export default function HomeGame() {
     if ((phase !== 'join' && phase !== 'board') || !session?.id) return;
     const sid = session.id;
     const interval = setInterval(() => {
+      if (document.hidden) return;
       fetch(`/api/home/sessions/${sid}`)
         .then(r => r.ok ? r.json() : null)
         .then((d: { session: HomeSession; players: HomePlayer[] } | null) => {
@@ -3531,7 +3534,7 @@ function YTClipPlayer({ clip, roundIndex, sessionId }: {
         )}
         {status === 'loading' && (
           <div className="absolute inset-0 flex items-center justify-center" style={{ background: '#07061a' }}>
-            <motion.div animate={{ scale: [1,1.12,1], opacity:[0.5,1,0.5] }} transition={{ repeat: Infinity, duration: 1.2 }} className="text-5xl">🎵</motion.div>
+            <motion.div animate={{ scale: [1,1.12,1], opacity:[0.5,1,0.5] }} transition={{ repeat: IS_LOW_POWER ? 0 : Infinity, duration: 1.2 }} className="text-5xl">🎵</motion.div>
           </div>
         )}
       </div>
@@ -3669,14 +3672,14 @@ function SaraMusicaBoard({ payload, session, players }: {
   // ── generating ───────────────────────────────────────────────────────────────
   if (phase === 'generating') return (
     <div className="flex flex-col items-center gap-7 text-center">
-      <motion.div animate={{ scale: [1,1.08,1], opacity: [0.7,1,0.7] }} transition={{ repeat: Infinity, duration: 1.8 }}
+      <motion.div animate={{ scale: [1,1.08,1], opacity: [0.7,1,0.7] }} transition={{ repeat: IS_LOW_POWER ? 0 : Infinity, duration: 1.8 }}
         className="text-8xl">🎵</motion.div>
       <div className="text-display text-3xl font-black text-white">Jonny sta preparando</div>
       <div className="text-display text-4xl font-black" style={{color:SM}}>la sfida musicale…</div>
       <div className="flex gap-2">
         {[0,1,2,3,4].map(i => (
           <motion.div key={i} className="h-3 w-3 rounded-full" style={{background:SM}}
-            animate={{ y: [0,-12,0] }} transition={{ repeat: Infinity, duration: 0.8, delay: i * 0.15 }}/>
+            animate={{ y: [0,-12,0] }} transition={{ repeat: IS_LOW_POWER ? 0 : Infinity, duration: 0.8, delay: i * 0.15 }}/>
         ))}
       </div>
       <div className="text-white/40 text-sm">Tema: {themeName} · {roundCount} manche</div>
@@ -5133,14 +5136,14 @@ function CoppieBoard({ payload, onNext, sessionId }: { payload: Record<string,un
   // Loading guard: theme selected but cards not yet built (transient server state)
   if (cards.length === 0) return (
     <div className="flex flex-col items-center gap-7 text-center">
-      <motion.div animate={{ scale: [1,1.08,1], opacity: [0.7,1,0.7] }} transition={{ repeat: Infinity, duration: 1.8 }}
+      <motion.div animate={{ scale: [1,1.08,1], opacity: [0.7,1,0.7] }} transition={{ repeat: IS_LOW_POWER ? 0 : Infinity, duration: 1.8 }}
         className="text-8xl">💞</motion.div>
       <div className="text-display text-3xl font-black text-white">Jonny sta creando</div>
       <div className="text-display text-4xl font-black" style={{ color: '#F472B6' }}>gli abbinamenti…</div>
       <div className="flex gap-2 mt-2">
         {[0,1,2,3,4].map(i => (
           <motion.div key={i} className="h-3 w-3 rounded-full" style={{ background: '#F472B6' }}
-            animate={{ y: [0,-10,0] }} transition={{ repeat: Infinity, duration: 0.8, delay: i*0.15 }} />
+            animate={{ y: [0,-10,0] }} transition={{ repeat: IS_LOW_POWER ? 0 : Infinity, duration: 0.8, delay: i*0.15 }} />
         ))}
       </div>
     </div>
@@ -6137,7 +6140,7 @@ function FreestyleBattleBoard({ sessionId, state: s, post }: {
               <div className="text-display text-4xl font-black" style={{ color: FR }}>{battle.score}</div>
             </div>
             {battle.combo > 0 && (
-              <motion.div animate={{ scale: [1, 1.1, 1] }} transition={{ repeat: Infinity, duration: 0.6 }}
+              <motion.div animate={{ scale: [1, 1.1, 1] }} transition={{ repeat: IS_LOW_POWER ? 0 : Infinity, duration: 0.6 }}
                 className="rounded-xl px-4 py-2 text-center"
                 style={{ background: '#f59e0b20', border: '2px solid #f59e0b' }}>
                 <div className="text-xs font-black text-amber-400">COMBO x{battle.combo}</div>

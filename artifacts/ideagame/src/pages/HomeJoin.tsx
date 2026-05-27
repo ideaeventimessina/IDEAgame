@@ -25,6 +25,7 @@ import {
 } from '@/data/karaoke-home';
 import { GameFlowPhone } from '@/components/GameFlowPhone';
 import PressToTalkAnswer, { type AnswerResult } from '@/components/PressToTalkAnswer';
+import { IS_LOW_POWER } from '@/hooks/useLowPower';
 
 // Gate verbose logs in production
 const _log: typeof console.log = import.meta.env.DEV ? console.log.bind(console) : () => {};
@@ -1710,7 +1711,7 @@ function QuizzoneThemeSuggestor({ session, player }: {
 
   return (
     <div className="flex flex-col gap-5 py-4 text-center">
-      <motion.div animate={{ scale: [1,1.08,1] }} transition={{ repeat: Infinity, duration: 2 }}
+      <motion.div animate={{ scale: [1,1.08,1] }} transition={{ repeat: IS_LOW_POWER ? 0 : Infinity, duration: 2 }}
         className="text-5xl">⭐</motion.div>
       <div>
         <div className="text-display text-xl font-black text-white">Che tema per il Quizzone?</div>
@@ -2337,7 +2338,7 @@ function PercorsoHomeController({ sessionId, player, payload, timeLeft }: {
   if (!rs) {
     return (
       <div className="flex flex-col items-center gap-3 py-6 text-center">
-        <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 2, ease: 'linear' }}
+        <motion.div animate={{ rotate: 360 }} transition={{ repeat: IS_LOW_POWER ? 0 : Infinity, duration: 2, ease: 'linear' }}
           className="text-4xl">⏳</motion.div>
         <div className="text-sm text-white/50">In attesa dell'animatore…</div>
       </div>
@@ -3201,7 +3202,7 @@ function SaraMusicaController({ payload, player, session }: {
     const w = WAIT_PHASES[phase] ?? { emoji: '🎵', msg: 'Attendi…' };
     return (
       <div className="flex flex-col items-center gap-5 py-8 text-center">
-        <motion.div animate={{ scale: [1, 1.1, 1] }} transition={{ repeat: Infinity, duration: 1.6 }}
+        <motion.div animate={{ scale: [1, 1.1, 1] }} transition={{ repeat: IS_LOW_POWER ? 0 : Infinity, duration: 1.6 }}
           className="text-6xl">{w.emoji}</motion.div>
         <div className="text-xl font-black text-white">{w.msg}</div>
         {w.sub && <div className="text-white/40 text-sm">{w.sub}</div>}
@@ -3501,7 +3502,7 @@ function AdultController({ payload, player, session }: {
       <div className="flex flex-col items-center gap-6 py-8 text-center">
         <motion.div
           animate={{ rotate: 360 }}
-          transition={{ repeat: Infinity, duration: 0.8, ease: 'linear' }}
+          transition={{ repeat: IS_LOW_POWER ? 0 : Infinity, duration: 0.8, ease: 'linear' }}
           style={{ fontSize: 56, lineHeight: 1 }}>
           🍾
         </motion.div>
@@ -4417,7 +4418,7 @@ function FreestyleController({ payload, timeLeft }: { payload: Record<string,unk
         </button>
       ) : (
         <motion.button onClick={stopListening}
-          animate={{ scale: [1, 1.04, 1] }} transition={{ repeat: Infinity, duration: 1.2 }}
+          animate={{ scale: [1, 1.04, 1] }} transition={{ repeat: IS_LOW_POWER ? 0 : Infinity, duration: 1.2 }}
           className="flex items-center gap-2 rounded-2xl px-6 py-3 text-sm font-black bg-red-500 text-white shadow-lg shadow-red-500/40">
           <span className="h-2 w-2 rounded-full bg-white animate-pulse" />
           🎙️ In ascolto… (tocca per stop)
@@ -4704,7 +4705,7 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
     const item = s.queue.find(q => q.id === s.currentQueueItemId);
     return (
       <div className="flex flex-col items-center justify-center h-full gap-5 text-center px-4">
-        <motion.div animate={{ scale: [1, 1.05, 1] }} transition={{ repeat: Infinity, duration: 1.5 }}>
+        <motion.div animate={{ scale: [1, 1.05, 1] }} transition={{ repeat: IS_LOW_POWER ? 0 : Infinity, duration: 1.5 }}>
           <div className="text-7xl">🎤</div>
         </motion.div>
         <div className="text-display text-3xl font-black" style={{ color: KK_J }}>Sei sul palco!</div>

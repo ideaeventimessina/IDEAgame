@@ -1,0 +1,235 @@
+PERFORMANCE EMERGENCY — PS4 BROWSER UNPLAYABLE
+
+STOP all feature development immediately.
+
+Critical issue:
+Published Home Mode tested on PS4 browser is unusably slow from first load.
+Lag starts before gameplay.
+
+This is now a blocking architecture problem.
+
+Do not add any features.
+Do not touch game rules.
+Only performance.
+
+==================================================
+GOAL
+==================================================
+
+Make Home Mode usable on low-power browsers:
+- PlayStation 4 browser
+- older Android Chrome
+- cheap tablets
+- iPad Safari
+- Smart TV browser
+
+Target:
+smooth navigation
+fast lobby
+responsive join flow
+low memory usage
+
+==================================================
+PART 1 — MEASURE REAL COST
+==================================================
+
+Run a full production performance audit.
+
+Measure:
+
+- initial JS bundle size
+- first contentful paint
+- time to interactive
+- memory usage after entering /home
+- memory after entering game
+- number of mounted React nodes
+- render count per second
+- socket listener count
+- active intervals/timeouts count
+- image memory usage
+- YouTube iframe cost
+- chat overlay cost
+
+Return exact numbers.
+
+==================================================
+PART 2 — HARD CODE SPLITTING
+==================================================
+
+HomeGame.tsx and HomeJoin.tsx are too large.
+
+Split immediately into lazy-loaded modules.
+
+Required:
+
+lazy(() => import(...))
+
+Only mount active game.
+
+Examples:
+KaraokeBoard
+QuizBoard
+SaraMusicaBoard
+CoppieBoard
+PercorsoBoard
+AdultOnlyBoard
+WordBackBoard
+
+Same for phone controllers.
+
+Inactive games MUST NOT be imported on initial load.
+
+==================================================
+PART 3 — DEFER EVERYTHING NON-CRITICAL
+==================================================
+
+On app boot:
+
+load only:
+- room join
+- player identity
+- minimal UI shell
+
+Delay everything else until needed:
+- YouTube API
+- chat inbox
+- floating emojis
+- heavy animation assets
+- audio manager
+- image preload
+- hidden players
+
+Use dynamic import or deferred init.
+
+==================================================
+PART 4 — REMOVE HEAVY BACKGROUND WORK
+==================================================
+
+Audit all:
+setInterval
+setTimeout
+requestAnimationFrame
+
+Remove anything not essential.
+
+Pause loops when:
+- tab hidden
+- game inactive
+- board not mounted
+
+==================================================
+PART 5 — TV/PHONE CONDITIONAL MOUNT
+==================================================
+
+TV should not mount phone-only components.
+Phone should not mount TV-only components.
+
+No hidden heavy DOM trees.
+
+If not visible:
+unmount completely.
+
+==================================================
+PART 6 — IMAGE OPTIMIZATION
+==================================================
+
+Compress all game assets:
+- thumbnails
+- pair images
+- yoga images
+- previews
+
+Use:
+webp where possible
+
+Prevent loading full-size assets in lobby.
+
+Use:
+lazy image loading
+intersection observer if useful
+
+==================================================
+PART 7 — DISABLE EXPENSIVE ANIMATIONS ON LOW POWER DEVICES
+==================================================
+
+Detect low-power browsers:
+
+PS4 browser
+old Android
+memory-constrained devices
+
+On these:
+disable:
+- particle backgrounds
+- heavy Framer Motion loops
+- large glow effects
+- blur filters
+- infinite transitions
+
+Fallback to static CSS.
+
+==================================================
+PART 8 — REACT RENDER OPTIMIZATION
+==================================================
+
+Audit rerenders.
+
+Use:
+React.memo
+useMemo
+useCallback
+
+especially on:
+- player lists
+- vote grids
+- cards
+- emoji reactions
+- message lists
+- timers
+
+Prevent parent rerender causing whole game rerender.
+
+==================================================
+PART 9 — BUILD OPTIMIZATION
+==================================================
+
+Check Vite output.
+
+Use:
+manualChunks
+
+Split vendor:
+react
+framer-motion
+youtube
+game modules
+
+Goal:
+small initial entry bundle.
+
+==================================================
+PART 10 — TEST ON PS4 PROFILE
+==================================================
+
+Simulate very low-power browser.
+
+Verify:
+
+- room page opens fast
+- join page responsive
+- lobby smooth
+- enter game without stutter
+- timer smooth
+- voting responsive
+
+==================================================
+OUTPUT REQUIRED
+==================================================
+
+A. top 10 performance bottlenecks
+B. exact files modified
+C. bundle size before/after
+D. memory before/after
+E. initial load before/after
+F. PS4 test result
+G. typecheck result
