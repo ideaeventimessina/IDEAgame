@@ -3840,6 +3840,9 @@ function AdultOnlyBoard({ payload, session, players }: {
   const escalationVotes   = (payload.escalationVotes ?? {}) as Record<string, boolean>;
   const rankingData       = (payload.rankingData ?? []) as { playerId: string; nickname: string; score: number; delta: number }[];
   const emergencyStop     = Boolean(payload.emergencyStop);
+  const spinFinalAngle    = Number(payload.spinFinalAngle ?? 1440);
+  const spinDurationMs    = Number(payload.spinDurationMs ?? 4000);
+  const spinStartedAt     = payload.spinStartedAt as string | null;
 
   const levelObj  = AO_BOARD_LEVELS.find(l => l.level === level) ?? AO_BOARD_LEVELS[0]!;
   const AC        = levelObj.color;
@@ -3866,6 +3869,36 @@ function AdultOnlyBoard({ payload, session, players }: {
     }
     finally { setBusy(false); }
   };
+
+  // Auto-complete when challenge timer reaches 0
+  const autoCompleteCalledRef = useRef(false);
+  useEffect(() => {
+    if (phase !== 'challenge') { autoCompleteCalledRef.current = false; return; }
+    if (timeLeft !== 0 || autoCompleteCalledRef.current) return;
+    autoCompleteCalledRef.current = true;
+    void fetch(`/api/home/sessions/${session.id}/adult/complete`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  }, [timeLeft, phase, session.id]);
+
+  // Bottle spin animation state + auto-reveal after spin
+  const [bottleTargetAngle, setBottleTargetAngle] = useState(0);
+  const spinRevealCalledRef = useRef(false);
+  useEffect(() => {
+    if (phase !== 'spinning') {
+      spinRevealCalledRef.current = false;
+      setBottleTargetAngle(0);
+      return;
+    }
+    const t1 = setTimeout(() => setBottleTargetAngle(spinFinalAngle), 80);
+    if (spinRevealCalledRef.current) return;
+    const elapsed = spinStartedAt ? Date.now() - new Date(spinStartedAt).getTime() : spinDurationMs;
+    const remaining = Math.max(600, spinDurationMs - elapsed + 900);
+    const t2 = setTimeout(() => {
+      if (spinRevealCalledRef.current) return;
+      spinRevealCalledRef.current = true;
+      void fetch(`/api/home/sessions/${session.id}/adult/reveal-spin`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    }, remaining);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [phase, spinFinalAngle, spinStartedAt, spinDurationMs, session.id]);
 
   const LevelBadge = () => (
     <div className="rounded-full px-4 py-2 text-sm font-black"
@@ -3936,6 +3969,66 @@ function AdultOnlyBoard({ payload, session, players }: {
           {busy ? '…' : consentedCount === 0 ? 'Aspetta i giocatori…' : '🍾 Gira la Bottiglia!'}
         </button>
         <div className="text-white/20 text-xs">I giocatori scelgono dal loro telefono — poi clicca per girare</div>
+      </div>
+    );
+  }
+
+  // ── spinning (bottle animation) ───────────────────────────────────────────
+  if (phase === 'spinning') {
+    const N      = Math.max(1, activePlayers.length);
+    const R      = N <= 3 ? 110 : N <= 6 ? 130 : 145;
+    const SZ     = 360;
+    const CENTER = SZ / 2;
+    return (
+      <div className="flex flex-col items-center gap-5 w-full max-w-3xl">
+        <div className="flex items-center justify-between w-full">
+          <LevelBadge />
+          <div className="text-white/40 text-sm">Round {roundNumber}</div>
+        </div>
+        <div className="text-white/60 text-sm font-bold animate-pulse tracking-widest uppercase">
+          🍾 La bottiglia sta girando…
+        </div>
+
+        <div className="relative flex-shrink-0" style={{ width: SZ, height: SZ }}>
+          <div className="absolute inset-0 rounded-full"
+            style={{ background: `radial-gradient(circle at 50% 50%, ${AC}18 0%, transparent 68%)` }}/>
+          <div className="absolute rounded-full" style={{ inset: 8, border: `1px solid ${AC}20`, borderRadius: '50%' }}/>
+
+          {activePlayers.map((pid, i) => {
+            const pl       = players.find(p => p.id === pid);
+            const angleDeg = i * 360 / N - 90;
+            const angleRad = angleDeg * Math.PI / 180;
+            const x        = CENTER + Math.cos(angleRad) * R;
+            const y        = CENTER + Math.sin(angleRad) * R;
+            return (
+              <div key={pid} className="absolute flex flex-col items-center gap-1"
+                style={{ left: x, top: y, transform: 'translate(-50%, -50%)' }}>
+                <div className="rounded-full flex items-center justify-center font-black text-sm"
+                  style={{ width: 44, height: 44, background: `${AC}18`, border: `2px solid ${AC}40`, color: 'rgba(255,255,255,0.7)' }}>
+                  {(pl?.nickname ?? '?').slice(0, 2).toUpperCase()}
+                </div>
+                <div className="text-xs font-bold max-w-[56px] truncate text-center" style={{ color: 'rgba(255,255,255,0.45)' }}>
+                  {pl?.nickname ?? '?'}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Bottle — rotates via CSS transition toward selected player */}
+          <div className="absolute" style={{
+            left: CENTER, top: CENTER,
+            transform: `translate(-50%, -50%) rotate(${bottleTargetAngle}deg)`,
+            transition: `transform ${(spinDurationMs / 1000).toFixed(1)}s cubic-bezier(0.17, 0.67, 0.12, 0.99)`,
+            fontSize: 72, lineHeight: 1,
+            filter: `drop-shadow(0 0 24px ${AC}88)`,
+            userSelect: 'none',
+          }}>🍾</div>
+
+          <div className="absolute rounded-full"
+            style={{ width: 12, height: 12, left: CENTER - 6, top: CENTER - 6, background: AC, boxShadow: `0 0 12px ${AC}` }}/>
+        </div>
+
+        <div className="text-white/20 text-xs">La sfida sarà rivelata a fine animazione</div>
       </div>
     );
   }

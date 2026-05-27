@@ -3348,6 +3348,26 @@ function AdultController({ payload, player, session }: {
     );
   }
 
+  // ── spinning (bottle animation in progress) ───────────────────────────────
+  if (phase === 'spinning') {
+    return (
+      <div className="flex flex-col items-center gap-6 py-8 text-center">
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ repeat: Infinity, duration: 0.8, ease: 'linear' }}
+          style={{ fontSize: 56, lineHeight: 1 }}>
+          🍾
+        </motion.div>
+        <div className="text-xl font-black text-white">La bottiglia sta girando…</div>
+        <div className="text-white/40 text-sm">Aspetta che si fermi!</div>
+        <div className="rounded-2xl px-5 py-3 font-black text-sm"
+          style={{ background: `${AC}18`, border: `1px solid ${AC}40`, color: AC }}>
+          {levelObj.emoji} {levelLabel}
+        </div>
+      </div>
+    );
+  }
+
   // ── challenge ─────────────────────────────────────────────────────────────
   if (phase === 'challenge') {
     const dur = challenge?.durationSeconds ?? 60;

@@ -1889,18 +1889,39 @@ router.post("/home/sessions/:id/adult/spin", async (req, res): Promise<void> => 
   const selectedId = activePlayers[Math.floor(Math.random() * activePlayers.length)]!;
   const challenge = await pickBottleChallenge(level, usedIds);
   if (!challenge) { res.status(400).json({ error: "Nessuna sfida disponibile. Aggiungi contenuti nel pannello admin." }); return; }
-  const challengeEndsAt = new Date(Date.now() + (challenge.durationSeconds ?? 60) * 1000).toISOString();
   const spectatorPowers = assignSpectatorPowers(spectatorPlayers, (rp["spectatorPowers"] ?? {}) as Record<string, string | null>);
+  const selIdx = activePlayers.indexOf(selectedId);
+  const spinFinalAngle = activePlayers.length > 0
+    ? (selIdx >= 0 ? selIdx : 0) * 360 / activePlayers.length + 4 * 360
+    : 4 * 360;
+  const spinDurationMs = 4000;
   await adultUpdate(id, {
-    phase: "challenge", roundNumber, activePlayers, spectatorPlayers,
+    phase: "spinning", roundNumber, activePlayers, spectatorPlayers,
     selectedPlayerId: selectedId, selectedPlayerNickname: players.find(p => p.id === selectedId)?.nickname ?? "?",
-    currentChallenge: challenge, challengeEndsAt,
+    currentChallenge: challenge,
+    spinFinalAngle, spinDurationMs, spinStartedAt: new Date().toISOString(),
     votes: {}, votingEndsAt: null, lastValidated: null, lastPoints: 0,
     doublePoints: false, forcePublicVote: false, forcedValidate: false,
     activePower: null, spectatorPowers, usedChallengeIds: [...usedIds, challenge.id],
   });
   await db.update(homeSessionsTable).set({ currentRound: roundNumber }).where(eq(homeSessionsTable.id, id));
-  req.log.info({ sessionId: id, round: roundNumber, player: players.find(p => p.id === selectedId)?.nickname }, "[AdultBottle] spin → challenge");
+  req.log.info({ sessionId: id, round: roundNumber, player: players.find(p => p.id === selectedId)?.nickname, spinFinalAngle }, "[ADULT_BOTTLE_SPIN] spin → spinning");
+  res.json({ ok: true });
+});
+
+// POST /adult/reveal-spin — TV calls after bottle animation completes → transition to challenge
+router.post("/home/sessions/:id/adult/reveal-spin", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-adult") { res.status(409).json({ error: "Non in modalità adult" }); return; }
+  if (String(rp["phase"]) !== "spinning") { res.json({ ok: true }); return; } // idempotent
+  const challenge = rp["currentChallenge"] as { durationSeconds?: number } | null;
+  const challengeEndsAt = new Date(Date.now() + (challenge?.durationSeconds ?? 60) * 1000).toISOString();
+  await adultUpdate(id, { phase: "challenge", challengeEndsAt });
+  req.log.info({ sessionId: id }, "[ADULT_BOTTLE_SPIN] reveal-spin → challenge");
   res.json({ ok: true });
 });
 
