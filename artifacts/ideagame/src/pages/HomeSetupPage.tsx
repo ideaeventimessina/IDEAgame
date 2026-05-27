@@ -53,9 +53,7 @@ function SceneBg() {
 export default function HomeSetupPage() {
   const [, navigate] = useLocation();
   const [hostName, setHostName]         = useState('');
-  const [selectedGames, setSelectedGames] = useState<string[]>(
-    GAME_OPTIONS.map(g => g.slug)
-  );
+  const [selectedGames, setSelectedGames] = useState<string[]>([]);
   const [loading, setLoading]           = useState(false);
   const [error, setError]               = useState('');
 

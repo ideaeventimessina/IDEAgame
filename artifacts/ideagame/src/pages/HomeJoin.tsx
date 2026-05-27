@@ -26,6 +26,9 @@ import {
 import { GameFlowPhone } from '@/components/GameFlowPhone';
 import PressToTalkAnswer, { type AnswerResult } from '@/components/PressToTalkAnswer';
 
+// Gate verbose logs in production
+const _log: typeof console.log = import.meta.env.DEV ? console.log.bind(console) : () => {};
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface HomeSession {
@@ -110,7 +113,7 @@ const BUILD_STAMP_JOIN = `bfb3131 · ${new Date().toISOString().slice(0,16).repl
 
 function HomeJoinInner() {
   useEffect(() => {
-    console.log('[BuildCheck] HomeJoin BUILD=' + BUILD_STAMP_JOIN);
+    _log('[BuildCheck] HomeJoin BUILD=' + BUILD_STAMP_JOIN);
   }, []);
   const [, navigate] = useLocation();
   const urlParams = new URLSearchParams(window.location.search);
@@ -267,14 +270,14 @@ function HomeJoinInner() {
     emit('join:home', sid);
     const socket = getSocket();
     const onReconnect = () => {
-      console.log('[HomeFlow] phone socket reconnected — re-joining home room', sid);
+      _log('[HomeFlow] phone socket reconnected — re-joining home room', sid);
       emit('join:home', sid);
       // P1: Re-register player so server marks them isConnected=true again.
       // Without this, isConnected stays false after reconnect → quiz effectiveCount drops,
       // booking purge removes them, and host sees phantom disconnected players.
       if (playerRef.current?.id) {
         emit('home:player_register', { sessionId: sid, playerId: playerRef.current.id });
-        console.log('[PlayerIdentity] re-registered after reconnect', { sid, playerId: playerRef.current.id });
+        _log('[PlayerIdentity] re-registered after reconnect', { sid, playerId: playerRef.current.id });
       }
     };
     socket.on('connect', onReconnect);
@@ -297,16 +300,16 @@ function HomeJoinInner() {
     const sid = session?.id;
     const pid = player?.id;
     if (!sid || !pid || resyncLoading) return;
-    console.log('[HomeSync] forceResync start');
-    console.log('[HomeSync] reason:', reason);
+    _log('[HomeSync] forceResync start');
+    _log('[HomeSync] reason:', reason);
     setResyncLoading(true);
     try {
       const resp = await fetch(`/api/home/sessions/${sid}`);
-      if (!resp.ok) { console.log('[HomeSync] fetch failed', resp.status); return; }
+      if (!resp.ok) { _log('[HomeSync] fetch failed', resp.status); return; }
       const data = await resp.json() as { session: HomeSession; players: HomePlayer[]; stateVersion?: number };
       const fetchedVersion = data.stateVersion ?? 0;
-      console.log('[HomeSync] fetched version:', fetchedVersion);
-      console.log('[HomeSync] local version:', lastSeenVersionRef.current);
+      _log('[HomeSync] fetched version:', fetchedVersion);
+      _log('[HomeSync] local version:', lastSeenVersionRef.current);
 
       // Replace session + players entirely
       setSession(data.session);
@@ -331,20 +334,20 @@ function HomeJoinInner() {
         const rMode = String(data.session.roundPayload?.mode ?? '');
         if (rMode !== 'home-percorso') {
           startRoundTimer(data.session.roundPayload ?? {});
-          console.log('[HomeSync] timer aligned from server timestamps, mode=', rMode);
+          _log('[HomeSync] timer aligned from server timestamps, mode=', rMode);
         }
       }
 
       // Re-join socket room + re-register player
       emit('join:home', sid);
       emit('home:player_register', { sessionId: sid, playerId: pid });
-      console.log('[HomeSync] socket rejoined');
-      console.log('[HomeSync] state replaced');
+      _log('[HomeSync] socket rejoined');
+      _log('[HomeSync] state replaced');
 
       setReconnectedMsg(true);
       setTimeout(() => setReconnectedMsg(false), 3000);
     } catch (err) {
-      console.log('[HomeSync] error', err);
+      _log('[HomeSync] error', err);
     } finally {
       setResyncLoading(false);
     }
@@ -356,7 +359,7 @@ function HomeJoinInner() {
     const socket = getSocket();
     const onConnect = () => {
       if (phaseRef.current === 'playing') {
-        console.log('[HomeSync] socket reconnected while playing — auto-resyncing');
+        _log('[HomeSync] socket reconnected while playing — auto-resyncing');
         setTimeout(() => { void forceResync('socket-reconnect'); }, 800);
       }
     };
@@ -371,7 +374,7 @@ function HomeJoinInner() {
       if (phaseRef.current !== 'playing') return;
       const staleSince = Date.now() - lastStateAtRef.current;
       if (staleSince > 8000) {
-        console.log('[HomeSync] heartbeat: no update for', staleSince, 'ms — forcing resync');
+        _log('[HomeSync] heartbeat: no update for', staleSince, 'ms — forcing resync');
         void forceResync('heartbeat-stale');
       }
     }, 3000);
@@ -382,18 +385,18 @@ function HomeJoinInner() {
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState === 'visible' && phaseRef.current === 'playing') {
-        console.log('[HomeSync] tab became visible — resyncing');
+        _log('[HomeSync] tab became visible — resyncing');
         void forceResync('visibilitychange');
       }
     };
     const onFocus = () => {
       if (phaseRef.current === 'playing') {
-        console.log('[HomeSync] window focused — resyncing');
+        _log('[HomeSync] window focused — resyncing');
         void forceResync('window-focus');
       }
     };
     const onOnline = () => {
-      console.log('[HomeSync] network back online — resyncing');
+      _log('[HomeSync] network back online — resyncing');
       void forceResync('online');
     };
     document.addEventListener('visibilitychange', onVisible);
@@ -468,7 +471,7 @@ function HomeJoinInner() {
           const versionStale = polledVersion > 0 && polledVersion > lastSeenVersionRef.current;
 
           if (versionStale) {
-            console.log('[HomeSync] polling caught stale state version', lastSeenVersionRef.current, '→', polledVersion);
+            _log('[HomeSync] polling caught stale state version', lastSeenVersionRef.current, '→', polledVersion);
             lastSeenVersionRef.current = polledVersion;
             lastStateAtRef.current = Date.now();
           }
@@ -480,7 +483,7 @@ function HomeJoinInner() {
 
           if (versionStale || slugChanged || roundChanged || notPlaying || flowPhaseChanged) {
             if (flowPhaseChanged) {
-              console.log('[HomeFlow] phone polling: gameFlowPhase', flowPhaseRef.current, '→', polledFlowPhase);
+              _log('[HomeFlow] phone polling: gameFlowPhase', flowPhaseRef.current, '→', polledFlowPhase);
             }
             setSession(data.session);
             if (data.session.status === 'lobby') {
@@ -539,7 +542,7 @@ function HomeJoinInner() {
           // currentModeRef is updated by the home:round handler first (normal path),
           // so this branch only acts when home:round truly never arrived.
           if (prevMode === 'home-flow' && newMode !== 'home-flow' && newMode !== '') {
-            console.log('[BalloFlow] home:state: flow→game transition (fallback)', prevMode, '→', newMode);
+            _log('[BalloFlow] home:state: flow→game transition (fallback)', prevMode, '→', newMode);
             setAnswered(null);
             setRevealed(false);
             currentModeRef.current = newMode;
@@ -588,13 +591,13 @@ function HomeJoinInner() {
       const prevMode  = currentModeRef.current;
       currentModeRef.current = roundMode;
       prevCurrentRoundRef.current = d.round;
-      console.log('[BalloFlow] home:round → mode:', roundMode, '| prevMode:', prevMode, '| round:', d.round);
+      _log('[BalloFlow] home:round → mode:', roundMode, '| prevMode:', prevMode, '| round:', d.round);
       setSession(prev => prev ? { ...prev, currentRound: d.round, roundPayload: d.payload } : prev);
       setAnswered(null);
       setRevealed(false);
       setWordbackSolved(false);
       setWordbackTimedOut(false);
-      console.log('[WordBackTimer] next round reset — wordbackSolved + wordbackTimedOut cleared');
+      _log('[WordBackTimer] next round reset — wordbackSolved + wordbackTimedOut cleared');
       startRoundTimer(d.payload ?? {});
     });
 
@@ -634,11 +637,11 @@ function HomeJoinInner() {
     });
 
     const u9 = on<{ sessionId: string; round: number; correctIndex: number }>('home:quiz_all_answered', (d) => {
-      console.log('[QuizTrace:phone] received home:quiz_all_answered', d);
+      _log('[QuizTrace:phone] received home:quiz_all_answered', d);
       // All players answered — reveal answer on phone even if this player hasn't answered yet
       if (timerRef.current) clearInterval(timerRef.current);
       setRevealed(true);
-      console.log('[QuizTrace:phone] showing result');
+      _log('[QuizTrace:phone] showing result');
     });
 
     // Admin sensitivity broadcast — TV host can adjust ballo sensitivity mid-session
@@ -656,14 +659,14 @@ function HomeJoinInner() {
     });
 
     const u12 = on<{ guesserId: string; guesserNickname?: string; word?: string; pts: number }>('home:wordback_correct', () => {
-      console.log('[WordBackTimer] correct received on phone — stopping timer');
+      _log('[WordBackTimer] correct received on phone — stopping timer');
       if (timerRef.current) clearInterval(timerRef.current);
       setWordbackSolved(true);
-      console.log('[WordBackTimer] timer stopped');
+      _log('[WordBackTimer] timer stopped');
     });
 
     const u13Phone = on<{ reason: string; guesserId: string; suggesterId: string; word: string; bonusPlayerIds: string[]; bonusPoints: number }>('home:wordback_timeout', () => {
-      console.log('[WordBackTimer] timeout received on phone — locking round');
+      _log('[WordBackTimer] timeout received on phone — locking round');
       if (timerRef.current) clearInterval(timerRef.current);
       setWordbackTimedOut(true);
     });
@@ -801,7 +804,7 @@ function HomeJoinInner() {
    */
   const handleEnterRoom = async () => {
     // ── VERY FIRST LINE — proof of execution ────────────────────────────────
-    console.log('[DevicePreflight] HANDLE ENTER CALLED');
+    _log('[DevicePreflight] HANDLE ENTER CALLED');
 
     if (!session || !nickname.trim() || loading) return;
 
@@ -814,7 +817,7 @@ function HomeJoinInner() {
     // ── 1. Fire ALL permission requests synchronously ───────────────────────
     // Must happen before any `await` — iOS links requestPermission() to the
     // gesture call stack; an await breaks that link.
-    console.log('[DevicePreflight] audio — unlocking AudioContext');
+    _log('[DevicePreflight] audio — unlocking AudioContext');
     let audioUnlocked = false;
     try {
       const ac = new AudioContext();
@@ -834,10 +837,10 @@ function HomeJoinInner() {
       let p: Promise<string>;
       try { p = dme.requestPermission(); } catch { p = Promise.resolve('denied'); }
       motionPermP = p;
-      console.log('[DevicePreflight] motion — requestPermission kicked');
+      _log('[DevicePreflight] motion — requestPermission kicked');
     } else {
       motionPermP = Promise.resolve(typeof DeviceMotionEvent !== 'undefined' ? 'granted' : 'unsupported');
-      console.log('[DevicePreflight] motion — no requestPermission API, auto-resolved');
+      _log('[DevicePreflight] motion — no requestPermission API, auto-resolved');
     }
 
     let orientPermP: Promise<string>;
@@ -845,10 +848,10 @@ function HomeJoinInner() {
       let p: Promise<string>;
       try { p = doe.requestPermission(); } catch { p = Promise.resolve('denied'); }
       orientPermP = p;
-      console.log('[DevicePreflight] orientation — requestPermission kicked');
+      _log('[DevicePreflight] orientation — requestPermission kicked');
     } else {
       orientPermP = Promise.resolve(typeof DeviceOrientationEvent !== 'undefined' ? 'granted' : 'unsupported');
-      console.log('[DevicePreflight] orientation — no requestPermission API, auto-resolved');
+      _log('[DevicePreflight] orientation — no requestPermission API, auto-resolved');
     }
 
     let micPermP: Promise<string>;
@@ -857,10 +860,10 @@ function HomeJoinInner() {
         .getUserMedia({ audio: true })
         .then(stream => { stream.getTracks().forEach(t => t.stop()); return 'granted'; })
         .catch(() => 'denied');
-      console.log('[DevicePreflight] microphone — getUserMedia kicked');
+      _log('[DevicePreflight] microphone — getUserMedia kicked');
     } else {
       micPermP = Promise.resolve('unsupported');
-      console.log('[DevicePreflight] microphone — getUserMedia unavailable');
+      _log('[DevicePreflight] microphone — getUserMedia unavailable');
     }
 
     // ── 2. SpeechRecognition detection (sync, no permission needed) ─────────
@@ -868,7 +871,7 @@ function HomeJoinInner() {
       (window as unknown as Record<string, unknown>).SpeechRecognition ??
       (window as unknown as Record<string, unknown>).webkitSpeechRecognition
     );
-    console.log('[DevicePreflight] speechRecognition', { speechRecognitionSupported });
+    _log('[DevicePreflight] speechRecognition', { speechRecognitionSupported });
 
     // ── 3. Join + preflight run in parallel — join is never blocked ─────────
     void joinSession();
@@ -885,9 +888,9 @@ function HomeJoinInner() {
     const orientPerm = settled[1].status === 'fulfilled' ? settled[1].value : 'unknown';
     const micPerm    = settled[2].status === 'fulfilled' ? settled[2].value : 'unknown';
 
-    console.log('[DevicePreflight] motion', motionPerm);
-    console.log('[DevicePreflight] orientation', orientPerm);
-    console.log('[DevicePreflight] microphone', micPerm);
+    _log('[DevicePreflight] motion', motionPerm);
+    _log('[DevicePreflight] orientation', orientPerm);
+    _log('[DevicePreflight] microphone', micPerm);
 
     const caps = {
       audioUnlocked,
@@ -897,7 +900,7 @@ function HomeJoinInner() {
       speechRecognitionSupported,
       timestamp: Date.now(),
     };
-    console.log('[DevicePreflight] result', caps);
+    _log('[DevicePreflight] result', caps);
     try { sessionStorage.setItem('ideagame:device-capabilities', JSON.stringify(caps)); } catch { /* ignore */ }
 
     // Mirror mic grant to the wordback-specific key so PressToTalkAnswer skips
@@ -1368,12 +1371,12 @@ function HomeJoinInner() {
                 }
                 // Report answer to server so it can detect when all players answered
                 if (String(p.mode) === 'home-quiz' && player) {
-                  console.log('[QuizTrace:phone] answer submitted', { playerId: player.id, round: session.currentRound, answer: idx });
+                  _log('[QuizTrace:phone] answer submitted', { playerId: player.id, round: session.currentRound, answer: idx });
                   void fetch(`/api/home/sessions/${session.id}/answer`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ playerId: player.id, answerIndex: idx, round: session.currentRound }),
-                  }).then(r => r.json()).then(d => console.log('[QuizTrace:phone] answer POST response', d)).catch(err => console.log('[QuizTrace:phone] answer POST failed', err));
+                  }).then(r => r.json()).then(d => _log('[QuizTrace:phone] answer POST response', d)).catch(err => _log('[QuizTrace:phone] answer POST failed', err));
                 }
               }}
               onFlip={flipCard}
@@ -2735,8 +2738,8 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem('ideagame:ballo-diag');
-      if (raw) console.log('[SensorFinal] BalloController mount — bookingDiag:', JSON.parse(raw));
-      else      console.log('[SensorFinal] BalloController mount — no bookingDiag in sessionStorage');
+      if (raw) _log('[SensorFinal] BalloController mount — bookingDiag:', JSON.parse(raw));
+      else      _log('[SensorFinal] BalloController mount — no bookingDiag in sessionStorage');
     } catch { /* ignore */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -2795,7 +2798,7 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
   // ── SensorBridge polling — drain samples every 400ms, compute energy, emit ─
   useEffect(() => {
     const bridge = SensorBridge.getStatus();
-    console.log('[SensorBridge] BalloController mount — started:', bridge.started,
+    _log('[SensorBridge] BalloController mount — started:', bridge.started,
       '| motion:', bridge.motionEvents, '| orient:', bridge.orientEvents);
 
     setSensorError(false);
@@ -2805,7 +2808,7 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
     const sensorWatchdog = setTimeout(() => {
       const s = SensorBridge.getStatus();
       if (s.motionEvents === 0 && s.orientEvents === 0) {
-        console.log('[SensorBridge] 5s watchdog — zero events');
+        _log('[SensorBridge] 5s watchdog — zero events');
         stalledErrorActive = true;
         setSensorError(true);
       }
@@ -2845,7 +2848,7 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
       if (tl === null || tl > 0) {
         emit('home:ballo_energy', { sessionId, playerId, energy: smoothed, round: round ?? 0 });
         SensorBridge.setLastEmit(smoothed);
-        console.log('[SensorBridge] energy emit —', { smoothed, motion: s.motionEvents, orient: s.orientEvents });
+        _log('[SensorBridge] energy emit —', { smoothed, motion: s.motionEvents, orient: s.orientEvents });
       }
     }, 400);
 
@@ -3799,18 +3802,18 @@ function WordBackBookingPhone({ payload, player, sessionId }: {
     setBooking(true);
     // Mic preflight for INDOVINO — request permission inside the user gesture before the round starts
     if (role === 'guesser' && navigator.mediaDevices?.getUserMedia) {
-      console.log('[WordBackMicPreflight] booking role: guesser');
-      console.log('[WordBackMicPreflight] getUserMedia start');
+      _log('[WordBackMicPreflight] booking role: guesser');
+      _log('[WordBackMicPreflight] getUserMedia start');
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         stream.getTracks().forEach(t => t.stop());
         try { sessionStorage.setItem('ideagame:wordback-mic-ready', 'true'); } catch { /* ignore */ }
         setMicReady(true);
-        console.log('[WordBackMicPreflight] granted — micReady saved');
+        _log('[WordBackMicPreflight] granted — micReady saved');
       } catch {
         try { sessionStorage.setItem('ideagame:wordback-mic-ready', 'false'); } catch { /* ignore */ }
         setMicReady(false);
-        console.log('[WordBackMicPreflight] denied');
+        _log('[WordBackMicPreflight] denied');
       }
     }
     try {
@@ -3929,12 +3932,12 @@ function WordBackController({ payload, timeLeft, player, sessionId, emit, wordba
 
   const handleCorrect = useCallback(async (answerText: string): Promise<AnswerResult | void> => {
     if (answered || scored) {
-      console.log('[WordBackAnswer] guard — already answered/scored', { answered, scored });
+      _log('[WordBackAnswer] guard — already answered/scored', { answered, scored });
       return { ok: false, code: '409', message: 'Risposta già registrata per questo round' };
     }
     setAnswered(true);
     setWrongInfo(null);
-    console.log('[WordBackAnswer] POST correct', { answerText, sessionId, playerId: player.id, round });
+    _log('[WordBackAnswer] POST correct', { answerText, sessionId, playerId: player.id, round });
     try {
       const res = await fetch(`/api/home/sessions/${sessionId}/wordback-correct`, {
         method: 'POST',
@@ -3942,13 +3945,13 @@ function WordBackController({ payload, timeLeft, player, sessionId, emit, wordba
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ playerId: player.id, answerText, round }),
       });
-      console.log('[WordBackAnswer] POST status', res.status);
+      _log('[WordBackAnswer] POST status', res.status);
       if (res.ok) {
-        console.log('[WordBackAnswer] success — overlay shown, locking round');
+        _log('[WordBackAnswer] success — overlay shown, locking round');
         setScored(true);
         if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
         overlayTimerRef.current = setTimeout(() => {
-          console.log('[WordBackAnswer] overlay cleared — waiting for host next-round');
+          _log('[WordBackAnswer] overlay cleared — waiting for host next-round');
           setAnswered(false);
         }, 2000);
         return { ok: true };
@@ -3962,7 +3965,7 @@ function WordBackController({ payload, timeLeft, player, sessionId, emit, wordba
           roundClosed?: boolean;
           reason?: string;
         };
-        console.log('[WordBackAnswer] POST failure', { status: res.status, body });
+        _log('[WordBackAnswer] POST failure', { status: res.status, body });
         setAnswered(false);
 
         if (res.status === 409) {
@@ -3980,7 +3983,7 @@ function WordBackController({ payload, timeLeft, player, sessionId, emit, wordba
         return { ok: false, code: 'error', message: body.error ?? `Errore ${res.status}` };
       }
     } catch (err) {
-      console.log('[WordBackAnswer] POST exception', { err: String(err) });
+      _log('[WordBackAnswer] POST exception', { err: String(err) });
       setAnswered(false);
       return { ok: false, code: 'error', message: 'Errore di connessione, riprova' };
     }
@@ -3991,12 +3994,12 @@ function WordBackController({ payload, timeLeft, player, sessionId, emit, wordba
   // Does NOT set answered=true (avoids false "CORRETTO!" flash).
   const handleWrong = useCallback(async (answerText: string): Promise<void> => {
     if (scored || isPostingRef.current) {
-      console.log('[WordBackWrong] guard — scored or posting in flight', { scored });
+      _log('[WordBackWrong] guard — scored or posting in flight', { scored });
       return;
     }
     if (!answerText.trim()) return;
     isPostingRef.current = true;
-    console.log('[WordBackWrong] POST wrong answer to server', { answerText, round });
+    _log('[WordBackWrong] POST wrong answer to server', { answerText, round });
     try {
       const res = await fetch(`/api/home/sessions/${sessionId}/wordback-correct`, {
         method: 'POST',
@@ -4011,7 +4014,7 @@ function WordBackController({ payload, timeLeft, player, sessionId, emit, wordba
         penalty?: number;
         roundClosed?: boolean;
       };
-      console.log('[WordBackWrong] POST result', { status: res.status, body });
+      _log('[WordBackWrong] POST result', { status: res.status, body });
       if (res.status === 422) {
         const wAttempts = body.wrongAttempts ?? 1;
         const remaining = body.remainingAttempts ?? 2;
@@ -4024,7 +4027,7 @@ function WordBackController({ payload, timeLeft, player, sessionId, emit, wordba
       } else if (res.ok) {
         // Server normalization accepted it as correct even though local match failed.
         // Treat as correct: lock the round.
-        console.log('[WordBackWrong] server accepted as correct despite local mismatch');
+        _log('[WordBackWrong] server accepted as correct despite local mismatch');
         setScored(true);
         setAnswered(true);
         if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
@@ -4032,7 +4035,7 @@ function WordBackController({ payload, timeLeft, player, sessionId, emit, wordba
       }
       // 409 = already closed, nothing to do
     } catch (err) {
-      console.log('[WordBackWrong] POST exception', { err: String(err) });
+      _log('[WordBackWrong] POST exception', { err: String(err) });
     } finally {
       isPostingRef.current = false;
     }
@@ -4527,7 +4530,7 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
       setSearchResults(results);
       setNoKaraokeFound(d.noKaraokeFound ?? results.length === 0);
       setSearchWarning(results.length > 0 ? (d.warning ?? null) : null);
-      console.log(`[KARAOKE_SEARCH] ok | youtubeQuery="${d.youtubeQuery}" | mock=${d.mock ?? false} | results=${results.length} | noKaraokeFound=${d.noKaraokeFound} | warning=${d.warning ?? null} | first="${results[0]?.title ?? 'none'}" (${results[0]?.videoId ?? 'none'})`);
+      _log(`[KARAOKE_SEARCH] ok | youtubeQuery="${d.youtubeQuery}" | mock=${d.mock ?? false} | results=${results.length} | noKaraokeFound=${d.noKaraokeFound} | warning=${d.warning ?? null} | first="${results[0]?.title ?? 'none'}" (${results[0]?.videoId ?? 'none'})`);
     } finally { setSearching(false); }
   }, [searchQuery, sessionId]);
 

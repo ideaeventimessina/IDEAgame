@@ -29,6 +29,9 @@ import { GameFlowEngine } from '@/components/GameFlowEngine';
 import { AudioManager } from '@/audio/AudioManager';
 import { useAudioSettings } from '@/contexts/AudioContext';
 
+// Gate verbose logs in production
+const _log: typeof console.log = import.meta.env.DEV ? console.log.bind(console) : () => {};
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface HomeSession {
@@ -473,7 +476,7 @@ function useHomeSocket(sessionId: string | null) {
     // Re-join home room on socket reconnect — useEventSocket only re-joins event:* rooms
     const socket = getSocket();
     const onReconnect = () => {
-      console.log('[HomeFlow] TV socket reconnected — re-joining home room', sid);
+      _log('[HomeFlow] TV socket reconnected — re-joining home room', sid);
       emit('join:home', sid);
     };
     socket.on('connect', onReconnect);
@@ -521,7 +524,7 @@ function isSafeToShowTvMessages(session: HomeSession | null, phase: string): boo
     return gfp === 'booking' || gfp === 'theme_select';
   }
   if (mode === 'home-adult') return false;
-  if (mode === 'home-saramusica') return String(rp['phase'] ?? '') !== 'playing';
+  if (mode === 'home-saramusica') return false; // board handles all phases internally
   if (mode === 'home-freestyle') {
     const fp = String(rp['phase'] ?? '');
     return fp !== 'performing' && fp !== 'battle';
@@ -536,7 +539,7 @@ type Phase = 'welcome' | 'join' | 'board' | 'playing' | 'champion';
 const BUILD_STAMP = `bfb3131 · ${new Date().toISOString().slice(0,16).replace('T',' ')} · HomeGame`;
 export default function HomeGame() {
   useEffect(() => {
-    console.log('[BuildCheck] HomeGame BUILD=' + BUILD_STAMP);
+    _log('[BuildCheck] HomeGame BUILD=' + BUILD_STAMP);
   }, []);
   const [, navigate] = useLocation();
   const urlParams = new URLSearchParams(window.location.search);
@@ -546,7 +549,7 @@ export default function HomeGame() {
   const [phase, setPhase] = useState<Phase>('board');
   useEffect(() => {
     if (!urlSessionId) {
-      console.log('[RoutingCheck] /home without session redirected to /home-v4');
+      _log('[RoutingCheck] /home without session redirected to /home-v4');
       navigate('/home-v4');
     }
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
@@ -693,14 +696,14 @@ export default function HomeGame() {
         } else if (data.session.status === 'playing') {
           if (p === 'board') {
             // Between games: show board UI + start lobby music
-            console.log('[AudioFlowDebug] load-session status=playing phase=board — playLoop hub/lobby_loop');
+            _log('[AudioFlowDebug] load-session status=playing phase=board — playLoop hub/lobby_loop');
             setPhase('board');
             AudioManager.stopLoop(true);
             void AudioManager.playLoop('hub', 'lobby_loop');
           } else {
             // Game in progress — restore correct music based on mode
             const flowMode = String(data.session.roundPayload?.mode ?? '');
-            console.log('[AudioFlowDebug] load-session status=playing phase=playing flowMode=' + flowMode + ' slug=' + (data.session.gameSlug ?? 'null'));
+            _log('[AudioFlowDebug] load-session status=playing phase=playing flowMode=' + flowMode + ' slug=' + (data.session.gameSlug ?? 'null'));
             setPhase('playing');
             setRevealed(false);
             if (flowMode === 'home-flow') {
@@ -731,12 +734,12 @@ export default function HomeGame() {
       const newMode  = String(d.session.roundPayload?.mode ?? '');
       const newFlowPhase = String(d.session.roundPayload?.gameFlowPhase ?? '');
       const prevMode = currentModeRef.current;
-      console.log('[HomeFlow] TV received home:state — mode:', newMode, '| gameFlowPhase:', newFlowPhase, '| status:', d.session.status);
+      _log('[HomeFlow] TV received home:state — mode:', newMode, '| gameFlowPhase:', newFlowPhase, '| status:', d.session.status);
       // ── Fallback: flow→ballo detected in home:state (handles missed home:round) ──
       // currentModeRef is set by home:round first in the normal path, so this only fires
       // when home:round was truly missed.
       if (prevMode === 'home-flow' && newMode === 'home-ballo') {
-        console.log('[BalloFlow] home:state (TV): flow→ballo fallback — starting ballo timer');
+        _log('[BalloFlow] home:state (TV): flow→ballo fallback — starting ballo timer');
         currentModeRef.current = newMode;
         flowPhaseRef.current = newFlowPhase;
         setBalloEnergies({});
@@ -758,7 +761,7 @@ export default function HomeGame() {
       setPhase('board');
       setJonnyMood('excited');
       setJonnyMsg('Scegli il tuo gioco!');
-      console.log('[AudioTrace] home:board — stopLoop then playLoop hub/lobby_loop');
+      _log('[AudioTrace] home:board — stopLoop then playLoop hub/lobby_loop');
       setBalloResult(null);
       AudioManager.stopLoop(true);
       void AudioManager.playLoop('hub', 'lobby_loop');
@@ -774,11 +777,11 @@ export default function HomeGame() {
       setJonnyMood('thinking');
       // Flow pilot: skip timer + audio — music stays as lobby, switches on first home:round
       if (String(d.session.roundPayload?.mode ?? '') === 'home-flow') {
-        console.log('[HomeAudioFlow] home:game_started flow — skipping timer+audio, phase=theme_select');
+        _log('[HomeAudioFlow] home:game_started flow — skipping timer+audio, phase=theme_select');
         return;
       }
       startTimer(Number(d.payload?.timeLimit ?? 30));
-      console.log('[AudioTrace] home:game_started — stopLoop then playLoop', { slug: d.session.gameSlug ?? 'global', type: 'round_loop' });
+      _log('[AudioTrace] home:game_started — stopLoop then playLoop', { slug: d.session.gameSlug ?? 'global', type: 'round_loop' });
       AudioManager.stopLoop(true);
       void AudioManager.playLoop(d.session.gameSlug ?? 'global', 'round_loop');
     });
@@ -786,7 +789,7 @@ export default function HomeGame() {
       const roundMode = String(d.payload?.mode ?? '');
       const prevMode  = currentModeRef.current;
       currentModeRef.current = roundMode;
-      console.log('[BalloFlow] home:round (TV) → mode:', roundMode, '| prevMode:', prevMode, '| round:', d.round);
+      _log('[BalloFlow] home:round (TV) → mode:', roundMode, '| prevMode:', prevMode, '| round:', d.round);
       setSession(prev => prev ? { ...prev, currentRound: d.round, roundPayload: d.payload } : prev);
       setRevealed(false);
       setBalloEnergies({});
@@ -797,7 +800,7 @@ export default function HomeGame() {
       setJonnyMood('thinking');
       // Audio switch: covers both normal ballo AND flow→ballo transition
       if (roundMode === 'home-ballo') {
-        console.log('[HomeAudioFlow] home:round home-ballo — switching to ballo audio');
+        _log('[HomeAudioFlow] home:round home-ballo — switching to ballo audio');
         AudioManager.stopLoop(true);
         void AudioManager.playLoop('sfida-ballo', 'round_loop');
       }
@@ -807,7 +810,7 @@ export default function HomeGame() {
       setPlayers(d.players);
       setJonnyMood('winner');
       setJonnyMsg(`${ALL_GAMES.find(g => g.slug === d.gameSlug)?.name ?? 'Gioco'} completato! 🎉`);
-      console.log('[AudioFlowDebug] home:game_ended — stopLoop then playLoop hub/lobby_loop for post-game screen');
+      _log('[AudioFlowDebug] home:game_ended — stopLoop then playLoop hub/lobby_loop for post-game screen');
       AudioManager.stopLoop(true);
       void AudioManager.playLoop('hub', 'lobby_loop');
       setPostGame({ gameSlug: d.gameSlug, players: d.players });
@@ -825,12 +828,12 @@ export default function HomeGame() {
       if (d.players) setPlayers(d.players);
     });
     const u8 = on<{ currentEnergies: Record<string, number>; peakEnergies: Record<string, number>; round: number }>('home:ballo_live', (d) => {
-      console.log('[BalloTrace:tv] received home:ballo_live', { current: d.currentEnergies, peak: d.peakEnergies });
+      _log('[BalloTrace:tv] received home:ballo_live', { current: d.currentEnergies, peak: d.peakEnergies });
       setBalloCurrent(d.currentEnergies);
       setBalloEnergies(d.peakEnergies);
     });
     const u9 = on<{ winnerId: string | null; winnerNickname: string | null; points: number; energies: Record<string, number>; teamResult?: { winnerTeamId: string; winnerTeamPlayers: { id: string; nickname: string }[]; perPlayer: number; teamScores: { teamId: string; players: { id: string; nickname: string }[]; totalEnergy: number }[] } | null }>('home:ballo_result', (d) => {
-      console.log('[BalloTrace:tv] received home:ballo_result', { winnerId: d.winnerId, teamResult: d.teamResult });
+      _log('[BalloTrace:tv] received home:ballo_result', { winnerId: d.winnerId, teamResult: d.teamResult });
       // Optimistic score update for solo winner
       if (d.winnerId) setPlayers(prev => prev.map(p => p.id === d.winnerId ? { ...p, score: p.score + d.points } : p));
       // Optimistic score update for team winners
@@ -842,15 +845,15 @@ export default function HomeGame() {
       setJonnyMood('winner');
     });
     const u10 = on<{ sessionId: string; round: number; correctIndex: number }>('home:quiz_all_answered', (d) => {
-      console.log('[QuizTrace:tv] received home:quiz_all_answered', d);
+      _log('[QuizTrace:tv] received home:quiz_all_answered', d);
       // All players answered — freeze timer and reveal correct answer on TV
-      if (timerRef.current) { clearInterval(timerRef.current); console.log('[QuizTrace:tv] timer stopped'); }
+      if (timerRef.current) { clearInterval(timerRef.current); _log('[QuizTrace:tv] timer stopped'); }
       setRevealed(true);
-      console.log('[QuizTrace:tv] set revealed true');
+      _log('[QuizTrace:tv] set revealed true');
       setJonnyMood('correct');
     });
     const u11 = on<{ playerId: string; nickname: string; round: number; points: number }>('home:saramusica_winner', (d) => {
-      console.log('[SaraTrace:tv] received home:saramusica_winner', d);
+      _log('[SaraTrace:tv] received home:saramusica_winner', d);
       setSaraMusicaWinner({ nickname: d.nickname, points: d.points, round: d.round });
       setPlayers(prev => prev.map(p => p.id === d.playerId ? { ...p, score: p.score + d.points } : p));
       setRevealed(true);
@@ -925,7 +928,7 @@ export default function HomeGame() {
           // gameFlowPhase changing, so a phase-diff check alone misses new bookings.
           const bookingRefresh = isFlow && polledPhase === 'booking';
           if (phaseChanged || bookingRefresh) {
-            console.log('[HomeFlow] TV polling: phase', flowPhaseRef.current, '→', polledPhase, '| bookingRefresh:', bookingRefresh);
+            _log('[HomeFlow] TV polling: phase', flowPhaseRef.current, '→', polledPhase, '| bookingRefresh:', bookingRefresh);
             flowPhaseRef.current = polledPhase;
             currentModeRef.current = polledMode;
             setSession(d.session);
@@ -992,12 +995,12 @@ export default function HomeGame() {
     if (mode !== 'home-wordback') return;
     if (wordbackTimeoutFiredRef.current) return;
     wordbackTimeoutFiredRef.current = true;
-    console.log('[WordBackTimer:tv] timeLeft=0 — POST /wordback-timeout');
+    _log('[WordBackTimer:tv] timeLeft=0 — POST /wordback-timeout');
     fetch(`/api/home/sessions/${session.id}/wordback-timeout`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-    }).catch((err) => console.log('[WordBackTimer:tv] timeout POST failed', err));
+    }).catch((err) => _log('[WordBackTimer:tv] timeout POST failed', err));
   }, [timeLeft, session?.id, session?.roundPayload?.mode]);
 
   // ── Fetch home media (intro videos tagged home_intro_{slug}) ───────────────
@@ -1117,7 +1120,7 @@ export default function HomeGame() {
       // Do NOT start timer, do NOT switch audio, do NOT show intro video.
       // Music keeps playing (lobby_loop). Audio switches on first home:round.
       if (String(d.session.roundPayload?.mode ?? '') === 'home-flow') {
-        console.log('[HomeAudioFlow] flow mode detected in selectGame — keeping lobby audio, entering theme_select');
+        _log('[HomeAudioFlow] flow mode detected in selectGame — keeping lobby audio, entering theme_select');
         setPhase('playing');
         return;
       }
@@ -1157,7 +1160,7 @@ export default function HomeGame() {
         setSession(d.session);
         if (d.players) setPlayers(d.players);
         setJonnyMood('winner');
-        console.log('[AudioFlowDebug] nextRound gameEnded — stopLoop then playLoop hub/lobby_loop for post-game screen');
+        _log('[AudioFlowDebug] nextRound gameEnded — stopLoop then playLoop hub/lobby_loop for post-game screen');
         AudioManager.stopLoop(true);
         void AudioManager.playLoop('hub', 'lobby_loop');
         setPostGame({ gameSlug: finishedSlug ?? '', players: d.players ?? players });
@@ -1199,7 +1202,7 @@ export default function HomeGame() {
       setSession(d.session);
       setPlayers(d.players);
       setJonnyMood('winner');
-      console.log('[AudioFlowDebug] endGame — stopLoop then playLoop hub/lobby_loop for post-game screen');
+      _log('[AudioFlowDebug] endGame — stopLoop then playLoop hub/lobby_loop for post-game screen');
       AudioManager.stopLoop(true);
       void AudioManager.playLoop('hub', 'lobby_loop');
       setPostGame({ gameSlug: finishedSlug ?? '', players: d.players });
@@ -2649,7 +2652,7 @@ function BalloBoard({ session, payload, players, balloEnergies, balloCurrent, ba
     const safeWinnerPlayers = teamResult?.winnerTeamPlayers ?? [];
     const safeTeamScores   = teamResult?.teamScores ?? [];
     const safeBookedPlayers = (payload.bookedPlayers as {id:string;nickname:string;avatarColor:string}[] | undefined) ?? [];
-    console.log('[BalloCrashGuard] result phase', { balloStage, balloPhase, teamResult: !!teamResult, winnerId: balloResult?.winnerId ?? null, bookedCount: safeBookedPlayers.length, teamsCount: safeTeamScores.length });
+    _log('[BalloCrashGuard] result phase', { balloStage, balloPhase, teamResult: !!teamResult, winnerId: balloResult?.winnerId ?? null, bookedCount: safeBookedPlayers.length, teamsCount: safeTeamScores.length });
     return (
       <motion.div initial={{opacity:0,y:16}} animate={{opacity:1,y:0}}
         className="flex w-full flex-col items-center gap-5">
@@ -3461,7 +3464,7 @@ function YTClipPlayer({ clip, roundIndex, sessionId }: {
   const startClip = async () => {
     if (status !== 'idle' && status !== 'error') return;
     setStatus('loading'); setElapsed(0);
-    console.log('[SARAMUSICA_CLIP]', { youtubeId: clip.youtubeId, clipType: clip.clipType, startSecond: clip.startSecond, duration: clip.durationSeconds, event: 'init', sessionId, roundIndex });
+    _log('[SARAMUSICA_CLIP]', { youtubeId: clip.youtubeId, clipType: clip.clipType, startSecond: clip.startSecond, duration: clip.durationSeconds, event: 'init', sessionId, roundIndex });
     try {
       await loadYTApi();
       if (!divRef.current) { setStatus('error'); return; }
@@ -3473,19 +3476,19 @@ function YTClipPlayer({ clip, roundIndex, sessionId }: {
         events: {
           onReady: (evt: { target: YTPlayerInst }) => {
             evt.target.seekTo(clip.startSecond, true);
-            console.log('[SARAMUSICA_CLIP]', { youtubeId: clip.youtubeId, event: 'seekTo', startSecond: clip.startSecond });
+            _log('[SARAMUSICA_CLIP]', { youtubeId: clip.youtubeId, event: 'seekTo', startSecond: clip.startSecond });
             setTimeout(() => {
               evt.target.playVideo(); setStatus('playing');
-              console.log('[SARAMUSICA_CLIP]', { youtubeId: clip.youtubeId, event: 'play' });
+              _log('[SARAMUSICA_CLIP]', { youtubeId: clip.youtubeId, event: 'play' });
               let e = 0;
               tickRef.current = setInterval(() => { e += 0.25; setElapsed(Math.min(e, clip.durationSeconds)); if (e >= clip.durationSeconds && tickRef.current) clearInterval(tickRef.current); }, 250);
               timerRef.current = setTimeout(() => {
                 evt.target.pauseVideo(); setStatus('done');
-                console.log('[SARAMUSICA_CLIP]', { youtubeId: clip.youtubeId, event: 'pause', durationSeconds: clip.durationSeconds });
+                _log('[SARAMUSICA_CLIP]', { youtubeId: clip.youtubeId, event: 'pause', durationSeconds: clip.durationSeconds });
               }, clip.durationSeconds * 1000);
             }, 700);
           },
-          onError: () => { console.log('[SARAMUSICA_CLIP]', { youtubeId: clip.youtubeId, event: 'error' }); setStatus('error'); },
+          onError: () => { _log('[SARAMUSICA_CLIP]', { youtubeId: clip.youtubeId, event: 'error' }); setStatus('error'); },
         },
       });
     } catch { setStatus('error'); }
@@ -4045,7 +4048,7 @@ function AdultOnlyBoard({ payload, session, players }: {
   const aoPost = async (sub: string, body?: Record<string,unknown>) => {
     setBusy(true);
     try {
-      console.log('[ADULT_ONLY_PHASE] aoPost', sub, { phase, roundNumber, challengeId: String((challenge as Record<string,unknown> | null)?.text ?? '').slice(0, 30) });
+      _log('[ADULT_ONLY_PHASE] aoPost', sub, { phase, roundNumber, challengeId: String((challenge as Record<string,unknown> | null)?.text ?? '').slice(0, 30) });
       await fetch(`/api/home/sessions/${session.id}/adult/${sub}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) });
     }
     finally { setBusy(false); }
@@ -4632,7 +4635,7 @@ function WordBackBoard({ payload, players, onScore, onReveal, tabooAlarm, sessio
   useEffect(() => {
     const unsub = on<{ guesserId: string; guesserNickname?: string; word?: string; pts: number }>('home:wordback_correct', (d) => {
       if (autoAwarded || awarded) return;
-      console.log('[WordBackCorrect] correct received — TV overlay shown');
+      _log('[WordBackCorrect] correct received — TV overlay shown');
       setAutoAwarded(true);
       setCorrectData({ guesserNickname: d.guesserNickname ?? '', word: d.word ?? word });
 
@@ -4641,7 +4644,7 @@ function WordBackBoard({ payload, players, onScore, onReveal, tabooAlarm, sessio
 
       // Auto-clear overlay after 2 s, then hand off to host (next-round button)
       overlayTimerRef.current = setTimeout(() => {
-        console.log('[WordBackCorrect] TV overlay cleared — returning to board');
+        _log('[WordBackCorrect] TV overlay cleared — returning to board');
         setAutoAwarded(false);
         setCorrectData(null);
         onReveal(); // stops the round timer, transitions host view
@@ -5356,7 +5359,7 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
           const liveVid = liveSlotRef.current === 'A' ? slotAVideoIdRef.current : slotBVideoIdRef.current;
           const queue = liveStateRef.current?.queue ?? [];
           const item = queue.find(q => q.videoId === liveVid);
-          console.log(`[KARAOKE_PLAYER_ERROR] videoId=${liveVid ?? '?'} title="${item?.title ?? '?'}" errorCode=${errorCode} embedUrl=https://www.youtube-nocookie.com/embed/${liveVid ?? '?'}`);
+          _log(`[KARAOKE_PLAYER_ERROR] videoId=${liveVid ?? '?'} title="${item?.title ?? '?'}" errorCode=${errorCode} embedUrl=https://www.youtube-nocookie.com/embed/${liveVid ?? '?'}`);
           setVideoError({ videoId: liveVid ?? '', title: item?.title ?? '', errorCode });
           return;
         }
@@ -5368,14 +5371,14 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
         const vid = liveSlotRef.current === 'B' ? slotAVideoIdRef.current : slotBVideoIdRef.current;
         if (ytState === 1 || ytState === 5) {
           if (backstageStatusRef.current !== 'ready') {
-            console.log(`[KARAOKE_BACKSTAGE] ready | videoId=${vid ?? '?'}`);
+            _log(`[KARAOKE_BACKSTAGE] ready | videoId=${vid ?? '?'}`);
             setBackstageStatus('ready');
             backstageStatusRef.current = 'ready';
             setBackstageReadyVideoId(vid);
             if (vid) void apiFetch(`/home/sessions/${sessionId}/karaoke/backstage-status`, { nextVideoId: vid, status: 'ready' });
           }
         } else if (ytState === 3) {
-          console.log(`[KARAOKE_BACKSTAGE] buffering | videoId=${vid ?? '?'}`);
+          _log(`[KARAOKE_BACKSTAGE] buffering | videoId=${vid ?? '?'}`);
           if (backstageStatusRef.current === 'idle') {
             setBackstageStatus('loading');
             backstageStatusRef.current = 'loading';
@@ -5412,7 +5415,7 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
 
     if (backstageVid === vid && backstageStatusRef.current === 'ready') {
       // ── INSTANT SWAP ────────────────────────────────────────────────────
-      console.log(`[KARAOKE_BACKSTAGE] live swap | in=${vid}`);
+      _log(`[KARAOKE_BACKSTAGE] live swap | in=${vid}`);
       ytCmd(bkstIframeRef, 'unMute');
       ytCmd(liveIframeRef, 'mute');
       const newLive = curLive === 'A' ? 'B' : 'A';
@@ -5427,12 +5430,12 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
         else                  { setSlotBVideoId(nextVid); slotBVideoIdRef.current = nextVid; }
         setBackstageStatus('loading');
         backstageStatusRef.current = 'loading';
-        console.log(`[KARAOKE_BACKSTAGE] preload start | videoId=${nextVid}`);
+        _log(`[KARAOKE_BACKSTAGE] preload start | videoId=${nextVid}`);
         void apiFetch(`/home/sessions/${sessionId}/karaoke/backstage-status`, { nextVideoId: nextVid, status: 'loading' });
       }
     } else {
       // ── NORMAL LOAD (fallback — no ready preload) ─────────────────────
-      console.log(`[KARAOKE_BACKSTAGE] preload missed — loading normally | videoId=${vid}`);
+      _log(`[KARAOKE_BACKSTAGE] preload missed — loading normally | videoId=${vid}`);
       if (curLive === 'A') { setSlotAVideoId(vid); slotAVideoIdRef.current = vid; }
       else                  { setSlotBVideoId(vid); slotBVideoIdRef.current = vid; }
       // Unmute live after brief init delay
@@ -5443,7 +5446,7 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
         else                  { setSlotAVideoId(nextVid); slotAVideoIdRef.current = nextVid; }
         setBackstageStatus('loading');
         backstageStatusRef.current = 'loading';
-        console.log(`[KARAOKE_BACKSTAGE] preload start | videoId=${nextVid}`);
+        _log(`[KARAOKE_BACKSTAGE] preload start | videoId=${nextVid}`);
         void apiFetch(`/home/sessions/${sessionId}/karaoke/backstage-status`, { nextVideoId: nextVid, status: 'loading' });
       }
     }

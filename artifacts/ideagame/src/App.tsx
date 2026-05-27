@@ -71,12 +71,8 @@ import Presenter from "@/pages/Presenter";
 import PresenterLive from "@/pages/PresenterLive";
 import ProjectorStandby from "@/pages/ProjectorStandby";
 import DevTest from "@/pages/DevTest";
-import HomeV2 from "@/pages/HomeV2";
-import HomeV3 from "@/pages/HomeV3";
 import HomeV4 from "@/pages/HomeV4";
-import HomeV5 from "@/pages/HomeV5";
 import ModeSelect from "@/pages/ModeSelect";
-import HomeRoom from "@/pages/HomeRoom";
 
 const queryClient = new QueryClient();
 
@@ -104,14 +100,8 @@ function Router() {
     <Switch>
       <Route path="/" component={RootRoute} />
       <Route path="/projector" component={ProjectorStandby} />
-      {/* LEGACY — prototype routes, unreachable from active UI, pending deletion */}
-      <Route path="/dev-test" component={DevTest} />
-      <Route path="/home-v2" component={HomeV2} />
-      <Route path="/home-v3" component={HomeV3} />
       <Route path="/home-v4" component={HomeV4} />
-      <Route path="/home-v5" component={HomeV5} />
-      <Route path="/home-room" component={HomeRoom} />
-      {/* END LEGACY */}
+      <Route path="/dev-test" component={DevTest} />
       <Route path="/mode-select" component={ModeSelect} />
       <Route path="/cockpit" component={Cockpit} />
       <Route path="/splash" component={Splash} />
