@@ -1,0 +1,198 @@
+KARAOKE LIVE — CRITICAL FIX PACK
+
+Do not touch other games.
+Fix only Karaoke Live.
+
+Current runtime issues:
+
+--------------------------------------------------
+FIX 1 — YOUTUBE EMBED BLOCKED VIDEO
+--------------------------------------------------
+
+Problem:
+Many songs load correctly on YouTube website,
+but inside iframe player show:
+
+"Video non disponibile.
+La riproduzione su altri siti web è stata disattivata"
+
+Examples:
+- We Will Rock You
+- Moondance
+
+Cause:
+Video exists but embedding is disabled by uploader.
+
+Required:
+
+When searching karaoke results:
+DO NOT select videos with embed disabled.
+
+Search pipeline:
+1. search YouTube results
+2. validate embeddability
+3. keep only embeddable videos
+4. rank results
+5. return top 5 valid embeddable karaoke videos
+
+Reject:
+- embedding disabled
+- unavailable
+- private
+- blocked
+
+Preferred:
+karaoke version
+instrumental karaoke
+backing track
+lyrics karaoke
+
+If all results blocked:
+return:
+"Nessuna base karaoke riproducibile trovata"
+
+Show fallback on phone:
+"Prova con un altro titolo o artista"
+
+Add log:
+[KARAOKE_EMBED_CHECK]
+query
+videoId
+embeddable true/false
+
+--------------------------------------------------
+FIX 2 — REPEAT PERFORMANCE VOTING RESET
+--------------------------------------------------
+
+Problem:
+When same singer sings again later,
+previous stars remain already selected on player phones.
+
+Wrong.
+
+Required:
+
+Every performance starts fresh.
+
+For each new performance:
+reset:
+- starsSelected
+- voteSubmitted
+- emoji counters local state
+- performanceVoteState
+
+UI starts from zero.
+
+But:
+score history of previous performances remains stored.
+
+New votes are added cumulatively to player total score.
+
+Flow:
+performance 1 → votes saved
+performance 2 → voting UI reset visually
+performance 2 votes added to existing score total
+
+--------------------------------------------------
+FIX 3 — PLAYER ALREADY IN QUEUE MESSAGE
+--------------------------------------------------
+
+Problem:
+If player already booked,
+phone still shows search area as if free.
+
+Required:
+
+If player has active booking:
+hide new booking CTA.
+
+Show message card:
+
+🎤 Sei già in coda
+Canterai tra circa X minuti
+
+Buttons:
+[Modifica brano]
+[Annulla prenotazione]
+
+Search field disabled until:
+- song performed OR
+- booking cancelled
+
+--------------------------------------------------
+FIX 4 — CHANGE SONG MUST KEEP QUEUE SLOT
+--------------------------------------------------
+
+Problem:
+Changing booked song says:
+"non c'è abbastanza tempo"
+
+even when session still has available time.
+
+Required:
+
+If player already booked:
+button "Modifica brano"
+
+Flow:
+- open search again
+- choose new song
+- replace old song in same queue slot
+- preserve queue position
+- preserve estimated singing time
+
+DO NOT send singer to bottom of queue.
+
+Only update:
+songTitle
+youtubeVideoId
+durationEstimate
+
+Queue position unchanged.
+
+--------------------------------------------------
+FIX 5 — VOTING TIMER HARD LOCK
+--------------------------------------------------
+
+Problem:
+When voting countdown reaches zero,
+players can still submit stars.
+
+Wrong.
+
+Required:
+
+At timer == 0:
+vote session closes immediately.
+
+Server rejects:
+late votes.
+
+Phone:
+disable stars
+show:
+"Votazione chiusa"
+
+Ignore:
+double submit
+late submit
+
+TV:
+freeze score
+show final result
+
+Add backend guard:
+if now > voteCloseAt → reject 409
+
+--------------------------------------------------
+OUTPUT REQUIRED
+--------------------------------------------------
+
+A. files modified
+B. karaoke search embeddable-filter implemented
+C. repeat performance vote reset
+D. already-booked queue card
+E. change-song preserving queue slot
+F. vote timer hard close
+G. typecheck result
+H. manual test checklist

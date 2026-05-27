@@ -3607,6 +3607,7 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
   const [remaining, setRemaining] = useState(0);
   const [error, setError] = useState('');
   const [backstageReadyVideoId, setBackstageReadyVideoId] = useState<string | null>(null);
+  const [changingBook, setChangingBook] = useState(false);
   // Dedication flow
   const [selectedVideo, setSelectedVideo] = useState<YTSearchResult | null>(null);
   const [dedicateeId, setDedicateeId] = useState<string | null>(null);
@@ -3614,10 +3615,14 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
   const [dedicationStep, setDedicationStep] = useState<'confirm' | 'pick_player' | null>(null);
 
   useEffect(() => { setState(initialState); }, [initialState]);
+  // FIX 2: Reset vote + ballot whenever a new performance starts (currentQueueItemId changes)
+  useEffect(() => {
+    setVoted(false);
+    setMyBallot({ intonazione: 0, presenza: 0, emozione: 0, originalita: 0 });
+  }, [state.currentQueueItemId]);
   useEffect(() => {
     const u1 = on<{ state: KaraokeHomeState }>('home:karaoke_state', ({ state: s }) => {
       setState(s);
-      // Reset vote state when phase changes away from voting
       if (s.karaokePhase !== 'voting') { setVoted(false); }
     });
     const u2 = on<{ nextVideoId: string; status: string }>('home:karaoke_backstage_update', ({ nextVideoId, status }) => {
@@ -3712,8 +3717,16 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
       setSearchQuery('');
       setNoKaraokeFound(false);
       setSearchWarning(null);
+      setChangingBook(false);
     } finally { setBooking(false); }
   }, [post, playerId, nickname, avatarColor]);
+
+  const doCancel = useCallback(async () => {
+    await post('/karaoke/cancel-song', { playerId });
+    setSearchResults([]);
+    setSearchQuery('');
+    setChangingBook(false);
+  }, [post, playerId]);
 
   const sendReaction = useCallback(async (emoji: string) => {
     setReactionSent(emoji);
@@ -3926,11 +3939,15 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
   if (s.karaokePhase === 'voting') {
     const cats = ['intonazione', 'presenza', 'emozione', 'originalita'] as const;
     const labels: Record<string, string> = { intonazione: 'Intonazione', presenza: 'Presenza', emozione: 'Emozione', originalita: 'Originalità' };
-    if (voted) {
+    // FIX 5: disable vote UI after timer expires
+    const votingExpired = !!(s.voteCloseAt && Date.now() > new Date(s.voteCloseAt).getTime());
+    if (voted || votingExpired) {
       return (
         <div className="flex flex-col items-center justify-center h-full gap-4 text-center px-4">
-          <div className="text-5xl">⭐</div>
-          <div className="text-xl font-black text-green-400">Voto inviato!</div>
+          <div className="text-5xl">{votingExpired && !voted ? '⏰' : '⭐'}</div>
+          <div className={`text-xl font-black ${votingExpired && !voted ? 'text-amber-400' : 'text-green-400'}`}>
+            {votingExpired && !voted ? 'Votazione chiusa' : 'Voto inviato!'}
+          </div>
           <div className="text-sm text-white/40">Aspetta i risultati…</div>
           {/* Booking strip — still visible after voting */}
           {myQueueItem ? (
@@ -4125,9 +4142,10 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
   if (s.karaokePhase === 'queue_open') {
     if (myQueueItem) {
       return (
-        <div className="flex flex-col gap-5 px-4 py-6 h-full">
-          <div className="rounded-3xl p-5 text-center" style={{ background: `${KK_J}15`, border: `2px solid ${KK_J}55` }}>
-            <div className="text-xs font-black uppercase tracking-widest mb-1" style={{ color: `${KK_J}aa` }}>La tua prenotazione</div>
+        <div className="flex flex-col gap-4 px-4 py-6 h-full">
+          {/* Booking card */}
+          <div className="rounded-3xl p-5 text-center shrink-0" style={{ background: `${KK_J}15`, border: `2px solid ${KK_J}55` }}>
+            <div className="text-xs font-black uppercase tracking-widest mb-1" style={{ color: `${KK_J}aa` }}>🎤 Sei già in coda</div>
             <div className="text-lg font-black text-white mb-1">{myQueueItem.title}</div>
             <div className="text-sm text-white/40">{myQueueItem.channel}</div>
             {myPos > 0 && <div className="mt-2 text-xl font-black" style={{ color: KK_J }}>#{myPos} in coda</div>}
@@ -4138,50 +4156,73 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
             )}
           </div>
 
-          <div className="text-xs font-black uppercase tracking-widest text-white/30 text-center">Vuoi cambiare brano?</div>
-
-          <div className="flex gap-2">
-            <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && void doSearch()}
-              placeholder="Cerca su YouTube…"
-              className="flex-1 rounded-2xl px-4 py-3 text-white bg-white/08 border border-white/15 text-sm outline-none focus:border-orange-400/60"
-              style={{fontSize:16}}
-            />
-            <button onClick={() => void doSearch()} disabled={searching}
-              className="rounded-2xl px-4 py-3 font-black"
-              style={{ background: `${KK_J}25`, border: `1px solid ${KK_J}55`, color: KK_J }}>
-              {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : '🔍'}
-            </button>
-          </div>
-
-          <div className="flex-1 overflow-y-auto space-y-2">
-            {searchResults.map(r => (
-              <div key={r.videoId} className="rounded-2xl p-3 flex items-center gap-3"
-                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
-                <img src={r.thumbnailUrl} alt={r.title} className="h-12 w-20 rounded-lg object-cover shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-bold text-white leading-tight line-clamp-2">{r.title}</div>
-                  <div className="text-xs text-white/40">{r.channel} • {r.durationFormatted}</div>
-                </div>
-                <button onClick={() => void doChangeBook(r)} disabled={booking}
-                  className="shrink-0 rounded-xl px-3 py-2 text-xs font-black"
+          {/* Action buttons */}
+          {!changingBook ? (
+            <div className="flex gap-3 shrink-0">
+              <button onClick={() => { setChangingBook(true); setSearchResults([]); setSearchQuery(''); }}
+                className="flex-1 rounded-2xl py-3 text-sm font-black"
+                style={{ background: `${KK_J}20`, border: `1.5px solid ${KK_J}50`, color: KK_J }}>
+                🔄 Modifica brano
+              </button>
+              <button onClick={() => void doCancel()}
+                className="flex-1 rounded-2xl py-3 text-sm font-black text-red-400"
+                style={{ background: 'rgba(239,68,68,0.10)', border: '1.5px solid rgba(239,68,68,0.30)' }}>
+                ✕ Annulla
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 shrink-0">
+                <button onClick={() => { setChangingBook(false); setSearchResults([]); setSearchQuery(''); }}
+                  className="rounded-xl px-3 py-2 text-xs font-black text-white/50"
+                  style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)' }}>
+                  ← Indietro
+                </button>
+                <div className="text-xs font-black uppercase tracking-widest text-white/30">Cerca un nuovo brano</div>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && void doSearch()}
+                  placeholder="Cerca su YouTube…"
+                  className="flex-1 rounded-2xl px-4 py-3 text-white bg-white/08 border border-white/15 text-sm outline-none focus:border-orange-400/60"
+                  style={{fontSize:16}}
+                />
+                <button onClick={() => void doSearch()} disabled={searching}
+                  className="rounded-2xl px-4 py-3 font-black"
                   style={{ background: `${KK_J}25`, border: `1px solid ${KK_J}55`, color: KK_J }}>
-                  {booking ? <Loader2 className="h-3 w-3 animate-spin" /> : '↩️'}
+                  {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : '🔍'}
                 </button>
               </div>
-            ))}
-            {noKaraokeFound && !searching && (
-              <div className="rounded-2xl p-4 text-center text-sm text-amber-400/80" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)' }}>
-                🎤 Nessuna base karaoke trovata — prova a scrivere titolo + artista
+              <div className="flex-1 overflow-y-auto space-y-2">
+                {searchResults.map(r => (
+                  <div key={r.videoId} className="rounded-2xl p-3 flex items-center gap-3"
+                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                    <img src={r.thumbnailUrl} alt={r.title} className="h-12 w-20 rounded-lg object-cover shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-bold text-white leading-tight line-clamp-2">{r.title}</div>
+                      <div className="text-xs text-white/40">{r.channel} • {r.durationFormatted}</div>
+                    </div>
+                    <button onClick={() => void doChangeBook(r)} disabled={booking}
+                      className="shrink-0 rounded-xl px-3 py-2 text-xs font-black"
+                      style={{ background: `${KK_J}25`, border: `1px solid ${KK_J}55`, color: KK_J }}>
+                      {booking ? <Loader2 className="h-3 w-3 animate-spin" /> : '↩️'}
+                    </button>
+                  </div>
+                ))}
+                {noKaraokeFound && !searching && (
+                  <div className="rounded-2xl p-4 text-center text-sm text-amber-400/80" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)' }}>
+                    🎤 Nessuna base karaoke trovata — prova a scrivere titolo + artista
+                  </div>
+                )}
+                {searchWarning && !searching && searchResults.length > 0 && (
+                  <div className="rounded-xl px-3 py-2 text-center text-xs text-amber-300/70" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.18)' }}>
+                    ⚠️ {searchWarning}
+                  </div>
+                )}
               </div>
-            )}
-            {searchWarning && !searching && searchResults.length > 0 && (
-              <div className="rounded-xl px-3 py-2 text-center text-xs text-amber-300/70" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.18)' }}>
-                ⚠️ {searchWarning}
-              </div>
-            )}
-          </div>
-          {error && <div className="text-sm text-red-400 text-center rounded-xl p-2 bg-red-500/10">{error}</div>}
+            </>
+          )}
+          {error && <div className="text-sm text-red-400 text-center rounded-xl p-2 bg-red-500/10 shrink-0">{error}</div>}
         </div>
       );
     }

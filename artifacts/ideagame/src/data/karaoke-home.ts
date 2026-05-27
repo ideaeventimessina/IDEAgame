@@ -115,6 +115,7 @@ export interface KaraokeHomeState {
   reactionsCurrentSong: Record<string, number>;
   currentVotes: Record<string, VotingBallot>;
   queueIsOpen: boolean;
+  voteCloseAt: string | null;
   freestylePhase: "idle" | "booking" | "battling" | "battle_result";
   freestyleBookings: FreestyleBooking[];
   currentBattle: FreestyleBattle | null;

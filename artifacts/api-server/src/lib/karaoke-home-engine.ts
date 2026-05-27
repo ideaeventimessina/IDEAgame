@@ -86,6 +86,7 @@ export interface KaraokeHomeState {
   reactionsCurrentSong: Record<string, number>;
   currentVotes: Record<string, VotingBallot>;
   queueIsOpen: boolean;
+  voteCloseAt: string | null;
   // Freestyle
   freestylePhase: "idle" | "booking" | "battling" | "battle_result";
   freestyleBookings: FreestyleBooking[];
@@ -114,6 +115,7 @@ export function createBlankKaraokeState(
     reactionsCurrentSong: {},
     currentVotes: {},
     queueIsOpen: false,
+    voteCloseAt: null,
     freestylePhase: "idle",
     freestyleBookings: [],
     currentBattle: null,
@@ -211,18 +213,39 @@ export function changeSong(
 ): { state: KaraokeHomeState; error?: string } {
   const existing = state.queue.find(q => q.playerId === playerId && q.status === "queued");
   if (!existing) return { state, error: "Nessuna prenotazione attiva da cambiare" };
-  if (!canBookSong(state, item.durationSeconds, now)) {
-    return { state, error: "Non c'è purtroppo tempo per inserire questa richiesta in coda." };
+  // Only check if new song is longer than the existing slot — otherwise it always fits
+  const newSlotDur = item.durationSeconds + SLOT_OVERHEAD;
+  const deltaSeconds = newSlotDur - existing.estimatedSlotDuration;
+  if (deltaSeconds > 0) {
+    const avail = remainingSeconds(state, now) - queuedSeconds(state);
+    if (avail < deltaSeconds) {
+      return { state, error: "Non c'è purtroppo tempo per inserire questa richiesta in coda." };
+    }
   }
-  // Remove old, add new at end
-  const filtered = state.queue.filter(q => q.id !== existing.id);
-  const newItem: KaraokeQueueItem = {
-    ...item, id: randomUUID(),
-    estimatedSlotDuration: item.durationSeconds + SLOT_OVERHEAD,
-    estimatedStartAt: null,
-    status: "queued",
-  };
-  return { state: recalculateTimes({ ...state, queue: [...filtered, newItem] }, new Date(now)) };
+  // Replace in-place to preserve queue position (FIX 4)
+  const queue = state.queue.map(q =>
+    q.id === existing.id
+      ? {
+          ...q,
+          videoId: item.videoId, title: item.title, channel: item.channel,
+          thumbnailUrl: item.thumbnailUrl, durationSeconds: item.durationSeconds,
+          estimatedSlotDuration: newSlotDur,
+          dedicationTargetPlayerId: item.dedicationTargetPlayerId ?? null,
+          dedicationTargetNickname: item.dedicationTargetNickname ?? null,
+        }
+      : q
+  );
+  return { state: recalculateTimes({ ...state, queue }, new Date(now)) };
+}
+
+export function cancelSong(
+  state: KaraokeHomeState,
+  playerId: string,
+): { state: KaraokeHomeState; error?: string } {
+  const existing = state.queue.find(q => q.playerId === playerId && q.status === "queued");
+  if (!existing) return { state, error: "Nessuna prenotazione da annullare" };
+  const queue = state.queue.filter(q => q.id !== existing.id);
+  return { state: recalculateTimes({ ...state, queue }) };
 }
 
 /* ─── Karaoke Live: playback ─────────────────────────────────────────────── */
@@ -260,11 +283,14 @@ export function submitVote(
   return { ...state, currentVotes: votes };
 }
 
-export function openVoting(state: KaraokeHomeState): KaraokeHomeState {
+const VOTING_DURATION_MS = 30_000;
+
+export function openVoting(state: KaraokeHomeState, now = Date.now()): KaraokeHomeState {
   const queue = state.queue.map(q =>
     q.id === state.currentQueueItemId ? { ...q, status: "voting" as const } : q
   );
-  return { ...state, queue, karaokePhase: "voting", currentVotes: {} };
+  const voteCloseAt = new Date(now + VOTING_DURATION_MS).toISOString();
+  return { ...state, queue, karaokePhase: "voting", currentVotes: {}, voteCloseAt };
 }
 
 export function endVoting(state: KaraokeHomeState, now = new Date()): { state: KaraokeHomeState; result: KaraokePerformanceResult | null } {

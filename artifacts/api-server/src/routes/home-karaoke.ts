@@ -11,7 +11,7 @@ import { emitToRoom } from "../socket";
 import {
   KARAOKE_VERSION, createBlankKaraokeState,
   setMode, setDuration,
-  bookSong, changeSong, startNext, openVoting, addReaction, submitVote, endVoting, endSession,
+  bookSong, changeSong, cancelSong, startNext, openVoting, addReaction, submitVote, endVoting, endSession,
   freestyleBook, freestyleStartBattle, freestyleNextWord, freestyleValidateWord, freestyleEndBattle,
   type KaraokeHomeState, type VotingBallot,
 } from "../lib/karaoke-home-engine";
@@ -248,15 +248,29 @@ async function searchYouTube(rawInput: string): Promise<SearchResult> {
       return { ok: false, error: "youtube_zero_results", youtubeQuery };
     }
 
-    // ── 4. Fetch durations ────────────────────────────────────────────────────
+    // ── 4. Fetch durations + embeddability (FIX 1) ───────────────────────────
     const ids = items.map(i => i.id.videoId).join(",");
-    const durUrl = `https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${ids}&key=${YOUTUBE_API_KEY}`;
+    const durUrl = `https://www.googleapis.com/youtube/v3/videos?part=contentDetails,status&id=${ids}&key=${YOUTUBE_API_KEY}`;
     const durResp = await fetch(durUrl);
-    const durData = await durResp.json() as { items?: { id: string; contentDetails: { duration: string } }[] };
-    const durMap = new Map((durData.items ?? []).map(v => [v.id, v.contentDetails.duration]));
+    const durData = await durResp.json() as {
+      items?: { id: string; contentDetails: { duration: string }; status: { embeddable: boolean } }[]
+    };
+    const durItems = durData.items ?? [];
+    const embeddableIds = new Set(durItems.filter(v => v.status?.embeddable !== false).map(v => v.id));
+    const durMap = new Map(durItems.map(v => [v.id, v.contentDetails.duration]));
+    logger.info({
+      totalIds: items.length,
+      embeddableCount: embeddableIds.size,
+      filteredOut: items.length - embeddableIds.size,
+    }, "[KARAOKE_EMBED_CHECK]");
+    // Keep only embeddable videos
+    const embeddableItems = items.filter(i => embeddableIds.has(i.id.videoId));
+    if (embeddableItems.length === 0) {
+      return { ok: false, error: "youtube_zero_results", youtubeQuery };
+    }
 
     // ── 5. Build result objects ───────────────────────────────────────────────
-    const raw: YTSearchResult[] = items.map(item => {
+    const raw: YTSearchResult[] = embeddableItems.map(item => {
       const videoId = item.id.videoId;
       const durationSeconds = parseDuration(durMap.get(videoId) ?? "PT0S");
       return {
@@ -469,6 +483,23 @@ router.post("/home/sessions/:id/karaoke/react", async (req: Request, res: Respon
   res.json({ ok: true });
 });
 
+/* ── POST cancel-song ────────────────────────────────────────────────────── */
+router.post("/home/sessions/:id/karaoke/cancel-song", async (req: Request, res: Response): Promise<void> => {
+  const id = String(req.params["id"]);
+  const { playerId } = req.body as { playerId?: string };
+  if (!playerId) { res.status(400).json({ error: "playerId richiesto" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Sessione non trovata" }); return; }
+  const cfg = (session.gameConfig as Record<string, unknown>) ?? {};
+  const state = getKaraokeState(cfg);
+  if (!state) { res.status(404).json({ error: "Karaoke non inizializzato" }); return; }
+  const result = cancelSong(state, playerId);
+  if (result.error) { res.status(400).json({ error: result.error }); return; }
+  await saveState(id, result.state, cfg);
+  emit(id, result.state);
+  res.json({ state: result.state });
+});
+
 /* ── POST vote ───────────────────────────────────────────────────────────── */
 router.post("/home/sessions/:id/karaoke/vote", async (req: Request, res: Response): Promise<void> => {
   const id = String(req.params["id"]);
@@ -479,6 +510,10 @@ router.post("/home/sessions/:id/karaoke/vote", async (req: Request, res: Respons
   const cfg = (session.gameConfig as Record<string, unknown>) ?? {};
   const state = getKaraokeState(cfg);
   if (!state) { res.status(404).json({ error: "Karaoke non inizializzato" }); return; }
+  // FIX 5: Hard-lock votes after timer expires
+  if (state.voteCloseAt && Date.now() > new Date(state.voteCloseAt).getTime()) {
+    res.status(409).json({ error: "Votazione chiusa" }); return;
+  }
   const next = submitVote(state, voterId, ballot);
   await saveState(id, next, cfg);
   emit(id, next);
