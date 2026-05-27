@@ -1,0 +1,161 @@
+SARA'MUSICA — YOUTUBE CLIP MODE
+
+Do not touch Karaoke.
+Do not touch Quizzone.
+Do not touch Coppie.
+
+Add YouTube Clip gameplay to Sara’Musica Home.
+
+Goal:
+Use YouTube videos already loading inside the app,
+but do NOT play full songs.
+
+Play only short strategic clip excerpts.
+
+==================================================
+CORE IDEA
+==================================================
+
+Each Sara’Musica round loads a YouTube video.
+
+But playback starts from a selected timestamp
+and stops automatically after a few seconds.
+
+This creates a fast music challenge.
+
+==================================================
+CLIP TYPES
+==================================================
+
+1. chorus_guess
+Play:
+10–15s of chorus
+Question:
+"Che canzone è?"
+
+2. missing_word
+Play:
+phrase until key word
+Mute/pause before last word
+Question:
+"Quale parola manca?"
+
+3. artist_guess
+Play:
+8–12s
+Question:
+"Chi canta?"
+
+4. stop_and_continue
+Play:
+clip starts
+pause suddenly
+Question:
+"Come continua?"
+
+5. duel_song
+Play clip A
+then clip B
+Question:
+Which one...?
+or
+Which came first?
+
+==================================================
+YOUTUBE PLAYER CONTROL
+==================================================
+
+Use existing iframe player.
+
+Must support:
+
+player.seekTo(startSecond)
+player.playVideo()
+player.pauseVideo()
+
+Clip config:
+
+{
+  youtubeId,
+  startSecond,
+  durationSeconds,
+  clipType,
+  expectedAnswer
+}
+
+Playback:
+
+seekTo(startSecond)
+play
+wait durationSeconds
+pause automatically
+
+==================================================
+CLIP TIMING
+==================================================
+
+default:
+12 seconds
+
+short:
+8 seconds
+
+long:
+15 seconds
+
+==================================================
+TV
+==================================================
+
+Show:
+song theme
+countdown
+video clip
+answer reveal
+ranking
+
+==================================================
+PHONE
+==================================================
+
+Show:
+question
+4 answer buttons
+lock answer
+wait reveal
+
+==================================================
+IMPORTANT
+==================================================
+
+Do not play full songs.
+Do not autoplay random full video.
+
+Always:
+seek → play excerpt → stop automatically.
+
+If player API unavailable:
+fallback to text-only round.
+
+Add logs:
+
+[SARAMUSICA_CLIP]
+youtubeId
+clipType
+startSecond
+duration
+play
+pause
+reveal
+
+==================================================
+OUTPUT
+==================================================
+
+A. files modified
+B. youtube clip player logic
+C. clip timing logic
+D. phone answer flow
+E. fallback behavior
+F. typecheck
+G. manual test

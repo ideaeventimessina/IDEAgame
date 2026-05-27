@@ -21,6 +21,15 @@ export type MusicRoundType =
   | "progressive_clue_music"
   | "final_tormentone";
 
+export type ClipType = 'chorus_guess' | 'missing_word' | 'artist_guess' | 'stop_and_continue' | 'duel_song';
+
+export interface YoutubeClip {
+  youtubeId: string;
+  startSecond: number;
+  durationSeconds: number;
+  clipType: ClipType;
+}
+
 export interface MusicRound {
   id: string;
   type: MusicRoundType;
@@ -36,6 +45,7 @@ export interface MusicRound {
   points: number;
   timeLimit: number;
   explanation?: string;
+  youtubeClip?: YoutubeClip;
 }
 
 export const SM_THEMES = [
@@ -89,6 +99,7 @@ type RawRound = {
   pts?: number;
   tl?: number;
   ex?: string;
+  yt?: { id: string; s: number; d: number; ct: ClipType };
 };
 
 function r(theme: string, idx: number, raw: RawRound): MusicRound {
@@ -106,6 +117,7 @@ function r(theme: string, idx: number, raw: RawRound): MusicRound {
     points: raw.pts ?? TYPE_POINTS[raw.t],
     timeLimit: raw.tl ?? TYPE_TIME[raw.t],
     explanation: raw.ex,
+    youtubeClip: raw.yt ? { youtubeId: raw.yt.id, startSecond: raw.yt.s, durationSeconds: raw.yt.d, clipType: raw.yt.ct } : undefined,
   };
 }
 
@@ -114,22 +126,22 @@ function r(theme: string, idx: number, raw: RawRound): MusicRound {
 const BANK: Record<string, MusicRound[]> = {
 
   anni80: [
-    r("anni80", 0, { t: "guess_artist", q: "Chi canta 'Thriller' (1982)?", a: ["Michael Jackson", "Prince", "David Bowie", "Madonna"], c: 0, ar: "Michael Jackson", st: "Thriller", yr: 1982 }),
+    r("anni80", 0, { t: "guess_artist", q: "Chi canta 'Thriller' (1982)?", a: ["Michael Jackson", "Prince", "David Bowie", "Madonna"], c: 0, ar: "Michael Jackson", st: "Thriller", yr: 1982, yt: { id: "sOnqjkJTMaA", s: 50, d: 15, ct: "chorus_guess" } }),
     r("anni80", 1, { t: "complete_lyrics", q: "Completa: 'We will, we will ___ you!'", a: ["ROCK", "BEAT", "HIT", "LOVE"], c: 0, ar: "Queen", st: "We Will Rock You", yr: 1977, ex: "Queen - We Will Rock You (1977)" }),
     r("anni80", 2, { t: "song_vs_song", q: "Quale è uscita prima?", a: ["Billie Jean (1983)", "Like a Virgin (1984)"], c: 0, ex: "Billie Jean di Michael Jackson uscì nel 1983, un anno prima di Like a Virgin di Madonna" }),
     r("anni80", 3, { t: "speed_music", q: "VELOCE! Chi è il cantante dei Wham!?", a: ["George Michael", "Sting", "Bono", "Simon Le Bon"], c: 0, ar: "Wham!" }),
     r("anni80", 4, { t: "progressive_clue_music", q: "Di chi si tratta?", a: ["ABBA", "Bee Gees", "Boney M", "Donna Summer"], c: 0, cl: ["Questo gruppo svedese ha dominato la disco degli anni '80", "Il loro album 'Gold' è tra i più venduti di sempre", "Una loro hit si chiama 'Dancing Queen'"], ex: "ABBA è il gruppo svedese più iconico della storia pop" }),
-    r("anni80", 5, { t: "guess_song", q: "Che canzone è? 🎵 'Take on me, take me on...'", a: ["Take On Me", "Don't You (Forget About Me)", "Girls Just Want to Have Fun", "Wake Me Up Before You Go-Go"], c: 0, ar: "a-ha", yr: 1985 }),
-    r("anni80", 6, { t: "guess_artist", q: "Chi canta 'Don't Stop Believin'' (1981)?", a: ["Journey", "Foreigner", "Boston", "REO Speedwagon"], c: 0, st: "Don't Stop Believin'", yr: 1981 }),
-    r("anni80", 7, { t: "complete_lyrics", q: "Completa: 'Girls just want to have ___'", a: ["FUN", "LOVE", "MORE", "LIFE"], c: 0, ar: "Cyndi Lauper", yr: 1983 }),
+    r("anni80", 5, { t: "guess_song", q: "Che canzone è? 🎵 'Take on me, take me on...'", a: ["Take On Me", "Don't You (Forget About Me)", "Girls Just Want to Have Fun", "Wake Me Up Before You Go-Go"], c: 0, ar: "a-ha", yr: 1985, yt: { id: "djV11Xbc914", s: 45, d: 12, ct: "chorus_guess" } }),
+    r("anni80", 6, { t: "guess_artist", q: "Chi canta 'Don't Stop Believin'' (1981)?", a: ["Journey", "Foreigner", "Boston", "REO Speedwagon"], c: 0, st: "Don't Stop Believin'", yr: 1981, yt: { id: "1k8craCGpgs", s: 60, d: 12, ct: "artist_guess" } }),
+    r("anni80", 7, { t: "complete_lyrics", q: "Completa: 'Girls just want to have ___'", a: ["FUN", "LOVE", "MORE", "LIFE"], c: 0, ar: "Cyndi Lauper", yr: 1983, yt: { id: "PIb6AZdTr-A", s: 37, d: 10, ct: "missing_word" } }),
     r("anni80", 8, { t: "guess_artist", q: "Chi canta 'Vado al Massimo' (1982)?", a: ["Vasco Rossi", "Lucio Battisti", "Zucchero", "Gianna Nannini"], c: 0, st: "Vado al Massimo", yr: 1982 }),
     r("anni80", 9, { t: "final_tormentone", q: "FINALE DOPPIO! Quale canzone italiana ha vinto il Festival di Sanremo 1987?", a: ["Si può dare di più (Morandi/Ruggeri/Tozzi)", "Sarà perché ti amo (Ricchi e Poveri)", "Ci sei o non ci sei (Ornella Vanoni)", "Brivido felice (Pino Daniele)"], c: 0, yr: 1987, ex: "Si può dare di più di Gianni Morandi, Umberto Tozzi e Enrico Ruggeri vinse Sanremo 1987", pts: 200, tl: 25 }),
   ],
 
   anni90: [
-    r("anni90", 0, { t: "guess_artist", q: "Chi canta '...Baby One More Time' (1998)?", a: ["Britney Spears", "Christina Aguilera", "Mariah Carey", "Whitney Houston"], c: 0, st: "...Baby One More Time", yr: 1998 }),
-    r("anni90", 1, { t: "guess_song", q: "Che canzone è? 🎵 'Wannabe' era delle...", a: ["Spice Girls", "Destiny's Child", "TLC", "En Vogue"], c: 0, ex: "Wannabe è il primo singolo delle Spice Girls (1996)" }),
-    r("anni90", 2, { t: "complete_lyrics", q: "Completa: 'Macarena... Hey! ___'", a: ["Macarena", "Olé", "Asereje", "Baila"], c: 0, ar: "Los Del Rio", yr: 1994 }),
+    r("anni90", 0, { t: "guess_artist", q: "Chi canta '...Baby One More Time' (1998)?", a: ["Britney Spears", "Christina Aguilera", "Mariah Carey", "Whitney Houston"], c: 0, st: "...Baby One More Time", yr: 1998, yt: { id: "C-u5WLJ9Ig0", s: 54, d: 12, ct: "artist_guess" } }),
+    r("anni90", 1, { t: "guess_song", q: "Che canzone è? 🎵 'Wannabe' era delle...", a: ["Spice Girls", "Destiny's Child", "TLC", "En Vogue"], c: 0, ex: "Wannabe è il primo singolo delle Spice Girls (1996)", yt: { id: "gJLIiF15wGQ", s: 0, d: 10, ct: "artist_guess" } }),
+    r("anni90", 2, { t: "complete_lyrics", q: "Completa: 'Macarena... Hey! ___'", a: ["Macarena", "Olé", "Asereje", "Baila"], c: 0, ar: "Los Del Rio", yr: 1994, yt: { id: "HwY7PACdsgQ", s: 35, d: 12, ct: "chorus_guess" } }),
     r("anni90", 3, { t: "song_vs_song", q: "Quale canzone è degli anni '90?", a: ["Smells Like Teen Spirit (1991)", "Bohemian Rhapsody (1975)"], c: 0, ex: "Smells Like Teen Spirit dei Nirvana uscì nel 1991" }),
     r("anni90", 4, { t: "speed_music", q: "VELOCE! In quale anno esce 'Vivo per lei' di Andrea Bocelli?", a: ["1995", "1993", "1998", "2000"], c: 0, ar: "Andrea Bocelli" }),
     r("anni90", 5, { t: "progressive_clue_music", q: "Di chi si tratta?", a: ["Eros Ramazzotti", "Zucchero", "Laura Pausini", "Giorgia"], c: 0, cl: ["Ha vinto il Festival di Sanremo nel 1994 tra i giovani", "La sua voce è riconoscibile in tutto il mondo", "Ha cantato 'La Solitudine'"], ex: "Laura Pausini vinse Sanremo Nuove Proposte 1993 con La Solitudine" }),
@@ -140,11 +152,11 @@ const BANK: Record<string, MusicRound[]> = {
   ],
 
   anni2000: [
-    r("anni2000", 0, { t: "guess_artist", q: "Chi canta 'Toxic' (2003)?", a: ["Britney Spears", "Kylie Minogue", "Beyoncé", "Shakira"], c: 0, st: "Toxic", yr: 2003 }),
+    r("anni2000", 0, { t: "guess_artist", q: "Chi canta 'Toxic' (2003)?", a: ["Britney Spears", "Kylie Minogue", "Beyoncé", "Shakira"], c: 0, st: "Toxic", yr: 2003, yt: { id: "LOZuxwVk7TU", s: 44, d: 12, ct: "chorus_guess" } }),
     r("anni2000", 1, { t: "guess_song", q: "Che canzone è? 🎵 'Crazy in Love' era di...", a: ["Beyoncé ft. Jay-Z", "Rihanna ft. Jay-Z", "Mariah Carey", "Alicia Keys"], c: 0, yr: 2003 }),
     r("anni2000", 2, { t: "complete_lyrics", q: "Completa: 'Somebody that I used to ___' (Gotye)", a: ["KNOW", "LOVE", "SEE", "MISS"], c: 0, ar: "Gotye", yr: 2011 }),
     r("anni2000", 3, { t: "song_vs_song", q: "Quale canzone è degli anni 2000?", a: ["Since U Been Gone - Kelly Clarkson (2004)", "My Heart Will Go On - Céline Dion (1997)"], c: 0 }),
-    r("anni2000", 4, { t: "speed_music", q: "VELOCE! Chi canta 'Fix You' (2005)?", a: ["Coldplay", "U2", "Radiohead", "Muse"], c: 0 }),
+    r("anni2000", 4, { t: "speed_music", q: "VELOCE! Chi canta 'Fix You' (2005)?", a: ["Coldplay", "U2", "Radiohead", "Muse"], c: 0, yt: { id: "k4V3Mo61fJM", s: 75, d: 12, ct: "artist_guess" } }),
     r("anni2000", 5, { t: "progressive_clue_music", q: "Di chi si tratta?", a: ["Marco Carta", "Valerio Scanu", "Gigi D'Alessio", "Tiziano Ferro"], c: 0, cl: ["Ha partecipato ad Amici di Maria De Filippi e ha vinto Sanremo nel 2009", "Il suo singolo di esordio ha battuto tutti i record di vendita italiani", "Ha cantato 'La Forza Mia'"], ex: "Marco Carta vinse Sanremo 2009 con 'La Forza Mia'" }),
     r("anni2000", 6, { t: "guess_artist", q: "Chi canta 'Perdono' e 'Xdono' con un mix di italiano e spagnolo?", a: ["Tiziano Ferro", "Marco Mengoni", "Francesco Renga", "Biagio Antonacci"], c: 0 }),
     r("anni2000", 7, { t: "complete_lyrics", q: "Completa: 'Siamo una generazione ___' (Elisa, Sanremo 2001)", a: ["appesa a un filo", "che non si ferma", "che corre via", "senza paura"], c: 0, ar: "Elisa", st: "Luce (Tramonti a Nord Est)", yr: 2001 }),
@@ -154,10 +166,10 @@ const BANK: Record<string, MusicRound[]> = {
 
   sanremo: [
     r("sanremo", 0, { t: "guess_artist", q: "Chi ha vinto Sanremo 2016 con 'No Degree of Separation'?", a: ["Francesca Michielin", "Alessandra Amoroso", "Emma Marrone", "Annalisa"], c: 0, yr: 2016 }),
-    r("sanremo", 1, { t: "guess_song", q: "Con quale canzone Mahmood ha vinto Sanremo 2019?", a: ["Soldi", "Barrio", "Rapide", "Takagi"], c: 0, ar: "Mahmood", yr: 2019 }),
+    r("sanremo", 1, { t: "guess_song", q: "Con quale canzone Mahmood ha vinto Sanremo 2019?", a: ["Soldi", "Barrio", "Rapide", "Takagi"], c: 0, ar: "Mahmood", yr: 2019, yt: { id: "9k_KqHe8ULQ", s: 52, d: 12, ct: "chorus_guess" } }),
     r("sanremo", 2, { t: "complete_lyrics", q: "Completa: 'Ciao ciao, arrivederci e grazie...' (Arisa, Sanremo 2014)", a: ["a tutti voi", "al mio amore", "per sempre", "e addio"], c: 0, ar: "Arisa", ex: "Controvento di Arisa a Sanremo 2014" }),
     r("sanremo", 3, { t: "song_vs_song", q: "Quale ha vinto Sanremo?", a: ["Grande Amore - Il Volo (2015)", "Almeno tu nell'universo - Mia Martini (1989)"], c: 0, ex: "Grande Amore del trio Il Volo vinse Sanremo 2015" }),
-    r("sanremo", 4, { t: "speed_music", q: "VELOCE! Chi ha vinto Sanremo 2021?", a: ["Måneskin", "Ermal Meta", "Diodato", "Francesco Renga"], c: 0 }),
+    r("sanremo", 4, { t: "speed_music", q: "VELOCE! Chi ha vinto Sanremo 2021?", a: ["Måneskin", "Ermal Meta", "Diodato", "Francesco Renga"], c: 0, yt: { id: "DnuJFY1PBQQ", s: 50, d: 12, ct: "artist_guess" } }),
     r("sanremo", 5, { t: "progressive_clue_music", q: "Di chi si tratta?", a: ["Lucio Battisti", "Fabrizio De André", "Lucio Dalla", "Francesco De Gregori"], c: 0, cl: ["Non ha mai partecipato a Sanremo come artista in gara", "Ha scritto hit come '4/3/1943' e 'Caruso'", "La sua canzone 'Canzone' è fra le più suonate della storia italiana"], ex: "Lucio Dalla è uno degli artisti italiani più amati e influenti di sempre" }),
     r("sanremo", 6, { t: "guess_artist", q: "Chi ha vinto Sanremo 2023 con 'Due Vite'?", a: ["Marco Mengoni", "Tiziano Ferro", "Ultimo", "Lazza"], c: 0, yr: 2023 }),
     r("sanremo", 7, { t: "complete_lyrics", q: "Completa: 'Zitti e buoni, fuori dal coro...' (Måneskin, Sanremo 2021)", a: ["siamo fuori di testa", "siamo ancora vivi", "siamo la rivoluzione", "siamo diversi dagli altri"], c: 0, ar: "Måneskin" }),
@@ -179,7 +191,7 @@ const BANK: Record<string, MusicRound[]> = {
   ],
 
   disney: [
-    r("disney", 0, { t: "guess_song", q: "In quale film Disney si canta 'Let It Go'?", a: ["Frozen", "Brave", "Tangled", "Encanto"], c: 0, yr: 2013 }),
+    r("disney", 0, { t: "guess_song", q: "In quale film Disney si canta 'Let It Go'?", a: ["Frozen", "Brave", "Tangled", "Encanto"], c: 0, yr: 2013, yt: { id: "moSFlvxnbgk", s: 62, d: 15, ct: "chorus_guess" } }),
     r("disney", 1, { t: "guess_artist", q: "Chi doppia Simba ne 'Il Re Leone' (versione italiana)?", a: ["Marco Columbro", "Luca Biagini", "Stefano Masciarelli", "Pietro Ubaldi"], c: 0 }),
     r("disney", 2, { t: "complete_lyrics", q: "Completa: 'Hakuna Matata, che ___ vita è!'", a: ["bella", "magnifica", "straordinaria", "meravigliosa"], c: 0, st: "Hakuna Matata", ex: "Hakuna Matata dal Re Leone - 'che bella vita è!'" }),
     r("disney", 3, { t: "song_vs_song", q: "Quale film Disney è più recente?", a: ["Encanto (2021)", "Frozen (2013)"], c: 0 }),
@@ -192,24 +204,24 @@ const BANK: Record<string, MusicRound[]> = {
   ],
 
   rock: [
-    r("rock", 0, { t: "guess_artist", q: "Chi canta 'Bohemian Rhapsody' (1975)?", a: ["Queen", "Led Zeppelin", "Pink Floyd", "The Rolling Stones"], c: 0, st: "Bohemian Rhapsody", yr: 1975 }),
+    r("rock", 0, { t: "guess_artist", q: "Chi canta 'Bohemian Rhapsody' (1975)?", a: ["Queen", "Led Zeppelin", "Pink Floyd", "The Rolling Stones"], c: 0, st: "Bohemian Rhapsody", yr: 1975, yt: { id: "fJ9rUzIMcZQ", s: 0, d: 15, ct: "chorus_guess" } }),
     r("rock", 1, { t: "guess_song", q: "Che canzone rock è? 🎵 'I can't get no satisfaction...'", a: ["Satisfaction (Rolling Stones)", "Start Me Up (Rolling Stones)", "Paint It Black (Rolling Stones)", "Jumpin' Jack Flash"], c: 0, yr: 1965 }),
     r("rock", 2, { t: "complete_lyrics", q: "Completa: 'We are the champions, my ___'", a: ["friends", "kings", "people", "world"], c: 0, ar: "Queen", st: "We Are the Champions", yr: 1977 }),
     r("rock", 3, { t: "song_vs_song", q: "Quale canzone è dei Led Zeppelin?", a: ["Stairway to Heaven (Led Zeppelin)", "Born to Run (Bruce Springsteen)"], c: 0, yr: 1971 }),
     r("rock", 4, { t: "speed_music", q: "VELOCE! Quante corde ha una chitarra standard?", a: ["6", "4", "5", "7"], c: 0, ex: "Una chitarra standard ha 6 corde" }),
     r("rock", 5, { t: "progressive_clue_music", q: "Di chi si tratta?", a: ["Nirvana", "Pearl Jam", "Soundgarden", "Alice in Chains"], c: 0, cl: ["Il loro frontman si chiamava Kurt Cobain", "L'album 'Nevermind' del 1991 ha rivoluzionato la musica rock", "La loro canzone più famosa è 'Smells Like Teen Spirit'"], ex: "Nirvana, la band grunge di Seattle guidata da Kurt Cobain" }),
-    r("rock", 6, { t: "guess_artist", q: "Chi canta 'Hotel California' (1977)?", a: ["Eagles", "Fleetwood Mac", "The Doobie Brothers", "Steely Dan"], c: 0, st: "Hotel California", yr: 1977 }),
+    r("rock", 6, { t: "guess_artist", q: "Chi canta 'Hotel California' (1977)?", a: ["Eagles", "Fleetwood Mac", "The Doobie Brothers", "Steely Dan"], c: 0, st: "Hotel California", yr: 1977, yt: { id: "BciS5grgsF8", s: 0, d: 12, ct: "artist_guess" } }),
     r("rock", 7, { t: "complete_lyrics", q: "Completa: 'Should I stay or should I ___' (The Clash)", a: ["go", "run", "leave", "stay"], c: 0, ar: "The Clash", yr: 1982 }),
     r("rock", 8, { t: "guess_song", q: "Che canzone è? 🎵 'Under the bridge downtown, I could not get enough...'", a: ["Under the Bridge (RHCP)", "Californication (RHCP)", "Give It Away (RHCP)", "Scar Tissue (RHCP)"], c: 0, ar: "Red Hot Chili Peppers", yr: 1992 }),
     r("rock", 9, { t: "final_tormentone", q: "FINALE DOPPIO! Quale canzone rock italiana è considerata l'inno di una generazione?", a: ["Albachiara (Vasco Rossi)", "Come Vorrei (Battisti)", "La Locomotiva (Guccini)", "Generale (De Gregori)"], c: 0, pts: 200, tl: 25, ex: "Albachiara di Vasco Rossi (1979) è considerata l'inno generazionale del rock italiano" }),
   ],
 
   dance: [
-    r("dance", 0, { t: "guess_artist", q: "Chi canta 'Blue (Da Ba Dee)' (1998)?", a: ["Eiffel 65", "Aqua", "Real McCoy", "2 Unlimited"], c: 0, st: "Blue (Da Ba Dee)", yr: 1998 }),
+    r("dance", 0, { t: "guess_artist", q: "Chi canta 'Blue (Da Ba Dee)' (1998)?", a: ["Eiffel 65", "Aqua", "Real McCoy", "2 Unlimited"], c: 0, st: "Blue (Da Ba Dee)", yr: 1998, yt: { id: "68ugkg9RePc", s: 0, d: 12, ct: "chorus_guess" } }),
     r("dance", 1, { t: "guess_song", q: "Che hit eurodance è? 🎵 'Around the world, around the world...'", a: ["Around the World (Daft Punk)", "Blue (Eiffel 65)", "Get Ready for This (2 Unlimited)", "Gonna Make You Sweat (C+C Music Factory)"], c: 0, ar: "Daft Punk", yr: 1997 }),
     r("dance", 2, { t: "complete_lyrics", q: "Completa: 'Freed from desire, mind and ___ sensation!' (Gala)", a: ["senses", "body", "soul", "rhythm"], c: 0, ar: "Gala", yr: 1997 }),
     r("dance", 3, { t: "song_vs_song", q: "Quale hit dance è più recente?", a: ["Lean On - Major Lazer (2015)", "One More Time - Daft Punk (2000)"], c: 0 }),
-    r("dance", 4, { t: "speed_music", q: "VELOCE! Chi canta 'Sandstorm'?", a: ["Darude", "Tiësto", "Paul van Dyk", "Armin van Buuren"], c: 0, yr: 1999 }),
+    r("dance", 4, { t: "speed_music", q: "VELOCE! Chi canta 'Sandstorm'?", a: ["Darude", "Tiësto", "Paul van Dyk", "Armin van Buuren"], c: 0, yr: 1999, yt: { id: "y6120QOlsfU", s: 42, d: 12, ct: "artist_guess" } }),
     r("dance", 5, { t: "progressive_clue_music", q: "Di chi si tratta?", a: ["Corona", "Alexia", "Prezioso", "Gigi D'Agostino"], c: 0, cl: ["DJ e produttore italiano di Torino", "La sua hit più famosa è ambientata in estate", "Ha inciso 'L'Amour Toujours'"], ex: "Gigi D'Agostino, DJ e produttore italiano autore di L'Amour Toujours (1999)" }),
     r("dance", 6, { t: "guess_artist", q: "Chi canta 'Barbie Girl' (1997)?", a: ["Aqua", "Ace of Base", "La Bouche", "Whigfield"], c: 0, st: "Barbie Girl", yr: 1997 }),
     r("dance", 7, { t: "complete_lyrics", q: "Completa: 'Saturday night, I feel the air, I feel the ___' (Whigfield)", a: ["beat", "love", "music", "night"], c: 0, ar: "Whigfield", st: "Saturday Night", yr: 1994 }),
@@ -222,7 +234,7 @@ const BANK: Record<string, MusicRound[]> = {
     r("trap_urban", 1, { t: "guess_song", q: "Quale canzone ha reso famoso Sfera Ebbasta nel 2015?", a: ["XDVR", "Cupido", "Rockstar", "Stellato"], c: 0, ar: "Sfera Ebbasta", yr: 2015 }),
     r("trap_urban", 2, { t: "complete_lyrics", q: "Completa: 'Cara Italia, ho bisogno di stare da ___' (Ghali)", a: ["solo", "te", "voi", "lei"], c: 0, ar: "Ghali", st: "Cara Italia", yr: 2019 }),
     r("trap_urban", 3, { t: "song_vs_song", q: "Quale è uscita prima?", a: ["Good Vibes - Ghali (2017)", "Notti in Bianco - Blanco (2021)"], c: 0 }),
-    r("trap_urban", 4, { t: "speed_music", q: "VELOCE! Chi canta 'Brividi' a Sanremo 2022?", a: ["Mahmood & Blanco", "Ghali & Sfera Ebbasta", "Lazza & Mahmood", "Irama & Rkomi"], c: 0, yr: 2022 }),
+    r("trap_urban", 4, { t: "speed_music", q: "VELOCE! Chi canta 'Brividi' a Sanremo 2022?", a: ["Mahmood & Blanco", "Ghali & Sfera Ebbasta", "Lazza & Mahmood", "Irama & Rkomi"], c: 0, yr: 2022, yt: { id: "RQZr2NgKPiU", s: 60, d: 12, ct: "artist_guess" } }),
     r("trap_urban", 5, { t: "progressive_clue_music", q: "Di chi si tratta?", a: ["Lazza", "Salmo", "Marracash", "Club Dogo"], c: 0, cl: ["È uno dei rapper italiani più ascoltati di sempre su Spotify", "Il suo album 'Sirio' del 2022 ha battuto ogni record di streaming", "Ha cantato 'Cenere' e 'Stressed Out'"], ex: "Lazza con l'album Sirio (2022) ha raggiunto 1 miliardo di stream in meno di un anno" }),
     r("trap_urban", 6, { t: "guess_artist", q: "Chi canta 'Sapore' con Sfera Ebbasta?", a: ["Mahmood", "Ghali", "Gué Pequeno", "Lazza"], c: 0 }),
     r("trap_urban", 7, { t: "complete_lyrics", q: "Completa: 'Rolls Royce mia, lei è con ___' (Sfera Ebbasta)", a: ["me", "noi", "te", "lei"], c: 0, ar: "Sfera Ebbasta", st: "Rolls Royce" }),

@@ -3398,6 +3398,158 @@ function AudioPlayer({ src, label = 'Riproduci', color = '#60A5FA' }: { src: str
   );
 }
 
+// ── YouTube IFrame API ───────────────────────────────────────────────────────
+
+declare global {
+  interface Window {
+    YT: { Player: new (el: HTMLElement, opts: Record<string,unknown>) => YTPlayerInst };
+    onYouTubeIframeAPIReady?: () => void;
+  }
+}
+type YTPlayerInst = { seekTo(s: number, a: boolean): void; playVideo(): void; pauseVideo(): void; destroy(): void };
+
+let _ytLoading = false;
+let _ytReady   = false;
+const _ytCbs: Array<() => void> = [];
+
+function loadYTApi(): Promise<void> {
+  return new Promise(resolve => {
+    if (_ytReady) { resolve(); return; }
+    _ytCbs.push(resolve);
+    if (!_ytLoading) {
+      _ytLoading = true;
+      const s = document.createElement('script');
+      s.src = 'https://www.youtube.com/iframe_api';
+      document.head.appendChild(s);
+      const prev = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => { prev?.(); _ytReady = true; _ytCbs.forEach(cb => cb()); _ytCbs.length = 0; };
+    }
+  });
+}
+
+type YTClipStatus = 'idle' | 'loading' | 'playing' | 'done' | 'error';
+
+const CLIP_BADGES: Record<string, { emoji: string; label: string }> = {
+  chorus_guess:      { emoji: '🎵', label: 'INDOVINA DAL RITORNELLO' },
+  missing_word:      { emoji: '🤐', label: 'PAROLA MANCANTE' },
+  artist_guess:      { emoji: '🎤', label: 'CHI CANTA IL CLIP?' },
+  stop_and_continue: { emoji: '✋', label: 'COME CONTINUA?' },
+  duel_song:         { emoji: '⚔️', label: 'SFIDA CLIP' },
+};
+
+function YTClipPlayer({ clip, roundIndex, sessionId }: {
+  clip: { youtubeId: string; startSecond: number; durationSeconds: number; clipType: string };
+  roundIndex: number;
+  sessionId: string;
+}) {
+  const SM = '#60A5FA';
+  const divRef    = useRef<HTMLDivElement>(null);
+  const playerRef = useRef<YTPlayerInst | null>(null);
+  const timerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tickRef   = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [status,  setStatus]  = useState<YTClipStatus>('idle');
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      if (tickRef.current)  clearInterval(tickRef.current);
+      if (playerRef.current) { try { playerRef.current.destroy(); } catch { /**/ } playerRef.current = null; }
+    };
+  }, [clip.youtubeId, roundIndex]);
+
+  const startClip = async () => {
+    if (status !== 'idle' && status !== 'error') return;
+    setStatus('loading'); setElapsed(0);
+    console.log('[SARAMUSICA_CLIP]', { youtubeId: clip.youtubeId, clipType: clip.clipType, startSecond: clip.startSecond, duration: clip.durationSeconds, event: 'init', sessionId, roundIndex });
+    try {
+      await loadYTApi();
+      if (!divRef.current) { setStatus('error'); return; }
+      if (playerRef.current) { try { playerRef.current.destroy(); } catch { /**/ } playerRef.current = null; }
+      playerRef.current = new window.YT.Player(divRef.current, {
+        videoId: clip.youtubeId,
+        width: '100%', height: '100%',
+        playerVars: { autoplay: 0, controls: 0, rel: 0, modestbranding: 1, playsinline: 1, enablejsapi: 1 },
+        events: {
+          onReady: (evt: { target: YTPlayerInst }) => {
+            evt.target.seekTo(clip.startSecond, true);
+            console.log('[SARAMUSICA_CLIP]', { youtubeId: clip.youtubeId, event: 'seekTo', startSecond: clip.startSecond });
+            setTimeout(() => {
+              evt.target.playVideo(); setStatus('playing');
+              console.log('[SARAMUSICA_CLIP]', { youtubeId: clip.youtubeId, event: 'play' });
+              let e = 0;
+              tickRef.current = setInterval(() => { e += 0.25; setElapsed(Math.min(e, clip.durationSeconds)); if (e >= clip.durationSeconds && tickRef.current) clearInterval(tickRef.current); }, 250);
+              timerRef.current = setTimeout(() => {
+                evt.target.pauseVideo(); setStatus('done');
+                console.log('[SARAMUSICA_CLIP]', { youtubeId: clip.youtubeId, event: 'pause', durationSeconds: clip.durationSeconds });
+              }, clip.durationSeconds * 1000);
+            }, 700);
+          },
+          onError: () => { console.log('[SARAMUSICA_CLIP]', { youtubeId: clip.youtubeId, event: 'error' }); setStatus('error'); },
+        },
+      });
+    } catch { setStatus('error'); }
+  };
+
+  const badge = CLIP_BADGES[clip.clipType] ?? { emoji: '🎵', label: 'CLIP MUSICALE' };
+  const pct   = clip.durationSeconds > 0 ? Math.min(elapsed / clip.durationSeconds, 1) : 0;
+
+  if (status === 'error') return (
+    <div className="rounded-2xl p-4 text-center" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)' }}>
+      <div className="text-2xl mb-1">🎵</div>
+      <div className="text-white/40 text-sm">Clip non disponibile — continua con il testo</div>
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="rounded-full px-3 py-1 text-xs font-black" style={{ background: `${SM}22`, border: `1px solid ${SM}44`, color: SM }}>
+          {badge.emoji} {badge.label}
+        </div>
+        <div className="text-xs text-white/30">{clip.durationSeconds}s · YouTube</div>
+        {status === 'done'    && <div className="text-xs font-bold text-green-400">✓ Completato</div>}
+        {status === 'loading' && <div className="text-xs font-bold text-yellow-400 animate-pulse">⏩ Caricamento…</div>}
+        {status === 'playing' && <div className="text-xs font-bold animate-pulse" style={{ color: SM }}>▶ In riproduzione</div>}
+      </div>
+
+      <div className="relative rounded-2xl overflow-hidden" style={{ paddingBottom: '38%', background: '#000' }}>
+        <div className="absolute inset-0" ref={divRef} />
+        {status === 'idle' && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3"
+            style={{ background: 'linear-gradient(135deg,#07061a,#0d0d20)' }}>
+            <div className="text-4xl">🎵</div>
+            <button onClick={() => void startClip()}
+              className="flex items-center gap-2 rounded-2xl px-7 py-3 text-base font-black text-white transition-all hover:scale-105 active:scale-95"
+              style={{ background: `linear-gradient(135deg,${SM},#2563eb)`, boxShadow: `0 0 40px ${SM}66` }}>
+              ▶ AVVIA CLIP MUSICALE
+            </button>
+          </div>
+        )}
+        {status === 'loading' && (
+          <div className="absolute inset-0 flex items-center justify-center" style={{ background: '#07061a' }}>
+            <motion.div animate={{ scale: [1,1.12,1], opacity:[0.5,1,0.5] }} transition={{ repeat: Infinity, duration: 1.2 }} className="text-5xl">🎵</motion.div>
+          </div>
+        )}
+      </div>
+
+      {(status === 'playing' || status === 'done') && (
+        <div className="h-1.5 w-full rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+          <div className="h-full rounded-full transition-all duration-[250ms] ease-linear"
+            style={{ background: status === 'done' ? '#4ade80' : `linear-gradient(90deg,${SM},#3b82f6)`, width: `${pct*100}%` }}/>
+        </div>
+      )}
+      {status === 'done' && (
+        <button onClick={() => { setStatus('idle'); setElapsed(0); }}
+          className="self-end rounded-xl px-3 py-1.5 text-xs font-black"
+          style={{ background: `${SM}18`, border: `1px solid ${SM}40`, color: SM }}>
+          🔁 Riascolta
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ── SaraMusicaBoard ───────────────────────────────────────────────────────────
 
 const SM_THEME_LIST = [
@@ -3416,6 +3568,7 @@ const SM_THEME_LIST = [
 type SMRound = {
   type: string; question: string; answers: string[]; correctAnswerIndex: number;
   year?: number; clues?: string[]; points: number; timeLimit: number; explanation?: string;
+  youtubeClip?: { youtubeId: string; startSecond: number; durationSeconds: number; clipType: string };
 };
 
 const SM_TYPE_BADGES: Record<string, { emoji: string; label: string; color: string }> = {
@@ -3588,6 +3741,15 @@ function SaraMusicaBoard({ payload, session, players }: {
           <div className="h-full rounded-full transition-all duration-[250ms] ease-linear"
             style={{ background: isSpeed ? `linear-gradient(90deg,${timerColor},#FBBF24)` : timerColor, width: `${timerPct * 100}%` }}/>
         </div>
+
+        {/* YouTube Clip Player */}
+        {currentQ.youtubeClip && (
+          <YTClipPlayer
+            clip={currentQ.youtubeClip}
+            roundIndex={currentIndex}
+            sessionId={String(session.id ?? '')}
+          />
+        )}
 
         {/* Question card */}
         <div className="rounded-3xl p-6"

@@ -3139,6 +3139,15 @@ function SaraMusicaController({ payload, player, session }: {
       );
     }
 
+    const ytClip = currentQ.youtubeClip as { youtubeId: string; clipType: string } | undefined;
+    const CLIP_TYPE_LABELS: Record<string,string> = {
+      chorus_guess:      '🎵 Ascolta il ritornello sulla TV',
+      missing_word:      '🤐 Qual è la parola mancante?',
+      artist_guess:      '🎤 Indovina chi canta il clip',
+      stop_and_continue: '✋ Come continua la canzone?',
+      duel_song:         '⚔️ Sfida clip — scegli la risposta',
+    };
+
     return (
       <div className="flex flex-col items-center gap-4 py-3 text-center">
         <div className="text-sm font-black"
@@ -3147,6 +3156,20 @@ function SaraMusicaController({ payload, player, session }: {
         </div>
         {isFinal && <div className="text-xs text-orange-400 font-bold animate-pulse">DOPPIO PUNTEGGIO 200pt!</div>}
         {isSpeed && <div className="text-xs text-yellow-400 font-bold">⚡ Più veloce = più punti bonus!</div>}
+
+        {ytClip && (
+          <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
+            className="w-full rounded-2xl px-4 py-3 flex items-center gap-3"
+            style={{ background: `${SM}12`, border: `1px solid ${SM}30` }}>
+            <div className="text-2xl">📺</div>
+            <div className="text-left flex-1">
+              <div className="text-sm font-black text-white">Guarda il clip sulla TV!</div>
+              <div className="text-xs mt-0.5" style={{ color: SM }}>
+                {CLIP_TYPE_LABELS[ytClip.clipType] ?? '🎵 Clip musicale in riproduzione'}
+              </div>
+            </div>
+          </motion.div>
+        )}
 
         {isSongVsSong ? (
           <div className="flex flex-col gap-3 w-full">

@@ -1,0 +1,257 @@
+HOME MODE — CRITICAL SYNC STABILITY SPRINT + ADULT VOTE DEFAULT FIX.
+
+STOP adding features.
+Do not redesign UI.
+Do not touch game rules except Adult vote default.
+
+We have a critical runtime problem:
+some player phones stop following the live game state and must manually refresh the page.
+Manual refresh usually restores the correct screen, so server state is valid but client sync is unreliable.
+
+Fix this globally.
+
+==================================================
+PART 1 — ADULT ONLY VOTE DEFAULT
+==================================================
+
+Bug:
+Adult Only voting UI defaults every category to 3 stars.
+
+Required:
+Default must be 0 stars for every category.
+
+Categories:
+- Intensità
+- Coraggio
+- Spettacolo
+- Performance
+
+Rules:
+- no stars selected by default
+- submit button disabled until all categories have at least 1 star
+- after vote sent, show “Voto inviato”
+- reset vote state to 0 for every new Adult challenge/voting phase
+
+Patch only Adult voting UI/state.
+
+==================================================
+PART 2 — GLOBAL CLIENT SYNC PROBLEM
+==================================================
+
+Problem:
+Some phones, especially Chrome, do not follow game state changes.
+They remain stuck until manual page reload.
+
+Manual reload works, so:
+- backend/session state is probably correct
+- client socket/polling/reducer/state replacement is unreliable
+
+Required:
+Make HomeJoin client self-healing.
+
+==================================================
+PART 3 — SERVER STATE VERSIONING
+==================================================
+
+Add monotonic state version to every Home session update.
+
+Server:
+Every time session state changes, increment:
+
+homeStateVersion: number
+
+Include it in every:
+- home:state
+- home:round
+- polling GET /home/sessions/:id
+- any game-specific state if possible
+
+Examples of state-changing operations:
+- game selected
+- phase changed
+- booking changed
+- round changed
+- voting opened/closed
+- quiz question changed
+- karaoke phase changed
+- adult phase changed
+- percorso phase changed
+- coppie card state changed
+
+Client stores:
+lastSeenHomeStateVersion
+
+If received version > local:
+replace local session state.
+
+If local version is stale for too long:
+force refetch.
+
+==================================================
+PART 4 — HEARTBEAT / STALE DETECTION
+==================================================
+
+On HomeJoin phone client:
+
+Add heartbeat watchdog:
+
+Every 3 seconds:
+- check last home:state/home:round received timestamp
+- check socket.connected
+- check if page is visible
+
+If no state update for > 8 seconds while game is active:
+- call forceResync()
+
+Also listen to:
+- visibilitychange
+- focus
+- online
+- socket reconnect
+
+On these events:
+- forceResync()
+
+==================================================
+PART 5 — FORCE RESYNC FUNCTION
+==================================================
+
+Implement one canonical function:
+
+forceResync(reason)
+
+It must:
+1. GET current session from server
+2. GET current players if needed
+3. replace session state entirely
+4. replace roundPayload entirely
+5. re-identify current player from playerId
+6. emit join:home
+7. emit home:player_register
+8. reset only transient local UI states:
+   - overlays
+   - pending clicks
+   - local timers
+   - local answered flags only if server phase changed
+9. recompute timers from server timestamps
+10. show small toast:
+   “Riallineato”
+
+Do not require browser reload.
+
+Logs:
+[HomeSync] forceResync start
+[HomeSync] reason
+[HomeSync] fetched version
+[HomeSync] local version
+[HomeSync] socket rejoined
+[HomeSync] state replaced
+[HomeSync] timer aligned
+
+==================================================
+PART 6 — SOCKET REJOIN HARDENING
+==================================================
+
+On socket connect/reconnect:
+- emit join:home with sessionId
+- emit home:player_register with sessionId + playerId
+- request latest state immediately:
+  home:get_state or HTTP GET fallback
+
+Important:
+Do not rely on socket room membership surviving reconnect.
+
+==================================================
+PART 7 — POLLING FALLBACK
+==================================================
+
+Add fallback polling every 5 seconds on HomeJoin while in active game.
+
+Polling:
+GET session state.
+
+If returned homeStateVersion > local version:
+- replace local state
+- log:
+  [HomeSync] polling caught stale state
+
+If same version:
+do nothing.
+
+This is fallback only, not primary.
+
+==================================================
+PART 8 — TIMER ALIGNMENT
+==================================================
+
+All phone timers must derive from server timestamps:
+- phaseStartedAt
+- phaseEndsAt
+- questionEndsAt
+- votingEndsAt
+- missionEndsAt
+- karaoke voting end
+- adult voting end
+
+Never restart timer locally from full duration after resync.
+
+If timestamp missing:
+fallback to existing behavior but log:
+[HomeSync] missing server timer timestamp
+
+==================================================
+PART 9 — GAME-SPECIFIC CHECKS
+==================================================
+
+Verify sync across these games:
+
+- Adult Only:
+  phase consent/challenge/voting/result
+  vote state resets to 0 per voting phase
+
+- Quizzone:
+  question/reveal/timer expired
+
+- Karaoke:
+  playing/voting/transition/current singer
+
+- Percorso:
+  booking/public_choice/active/voting/result
+
+- Coppie:
+  theme proposal/generation/playing/visibility
+
+- WordBack:
+  booking/active/correct/timeout
+
+==================================================
+PART 10 — ERROR BOUNDARY
+==================================================
+
+If HomeJoin hits a render error:
+- show recovery screen
+- button “Riallinea”
+- call forceResync()
+- do not require full reload if possible
+
+==================================================
+OUTPUT REQUIRED
+==================================================
+
+A. root cause hypothesis after audit
+B. files modified
+C. Adult default vote fixed
+D. homeStateVersion added
+E. forceResync implemented
+F. heartbeat/watchdog implemented
+G. socket reconnect hardened
+H. polling fallback implemented
+I. timer alignment fixed
+J. typecheck result
+K. manual test:
+   - 4 phones
+   - Chrome lock/unlock screen
+   - switch tab
+   - WiFi off/on
+   - Adult vote default 0 stars
+   - no manual reload needed
