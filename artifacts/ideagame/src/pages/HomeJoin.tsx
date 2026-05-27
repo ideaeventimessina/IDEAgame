@@ -1021,7 +1021,7 @@ function HomeJoinInner() {
 
       {/* ── Messaggi Segreti: incoming popup ── */}
       {chatPopup && (
-        <div className="fixed bottom-24 inset-x-3 z-[9991] rounded-2xl p-4 shadow-2xl"
+        <div className="fixed bottom-24 inset-x-3 z-[9991] rounded-2xl p-4 shadow-2xl safe-bottom"
           style={{background:'rgba(20,10,50,0.96)',border:'1px solid rgba(168,85,247,0.5)',backdropFilter:'blur(16px)'}}>
           <div className="flex items-start gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg"
@@ -1064,7 +1064,7 @@ function HomeJoinInner() {
         </div>
       )}
       {preflightMsg && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9998] pointer-events-none">
+        <div className="fixed left-1/2 -translate-x-1/2 z-[9998] pointer-events-none" style={{ bottom: 'max(1.5rem, calc(env(safe-area-inset-bottom, 0px) + 1rem))' }}>
           <div className="flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-black"
             style={{
               background: preflightMsg === 'Pronto'
