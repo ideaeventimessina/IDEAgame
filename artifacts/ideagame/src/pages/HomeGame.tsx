@@ -1326,8 +1326,17 @@ export default function HomeGame() {
           {/* Attiva audio */}
           <button
             onClick={() => {
-              if (!audioUnlocked) unlockAudio();
-              setAudioEnabled(true);
+              // Call resumeContext() synchronously (gesture must be sync)
+              // then update settings BEFORE starting the loop so playLoop
+              // reads muted=false and creates the element already unmuted.
+              AudioManager.resumeContext();
+              setAudioEnabled(true);          // AudioManager.applySettings called sync → muted=false
+              if (!audioUnlocked) {
+                setAudioUnlocked(true);
+                void AudioManager.playLoop('hub', 'lobby_loop').then(started => {
+                  if (!started) setAudioWarning(true);
+                });
+              }
             }}
             className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-black transition-all duration-200 active:scale-95 select-none"
             style={{
@@ -4823,7 +4832,7 @@ function HomeSessionQROverlay({ joinCode }: { joinCode: string }) {
   const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&bgcolor=0a0a0f&color=A78BFA&data=${encodeURIComponent(joinUrl)}`;
   return (
     <div style={{
-      position: 'fixed', top: 14, right: 14, zIndex: 99999,
+      position: 'fixed', bottom: 170, right: 14, zIndex: 99999,
       background: 'rgba(10,10,20,0.95)', border: '2px solid rgba(167,139,250,0.55)',
       borderRadius: 16, padding: '12px 14px',
       display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
