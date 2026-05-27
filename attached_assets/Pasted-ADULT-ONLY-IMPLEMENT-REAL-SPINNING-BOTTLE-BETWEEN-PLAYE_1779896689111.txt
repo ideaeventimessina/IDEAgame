@@ -1,0 +1,97 @@
+ADULT ONLY — IMPLEMENT REAL SPINNING BOTTLE BETWEEN PLAYER NAMES.
+
+Do not touch other games.
+Do not redesign Adult Only rules.
+Fix only the missing bottle experience.
+
+Problem:
+Adult Only currently has no real bottle spinning animation between player names.
+The game must visually behave like a “gioco della bottiglia”.
+
+Required TV behavior:
+
+1. During spin phase:
+- show all active consenting players arranged in a circle around the center
+- show a bottle in the center
+- bottle rotates visibly
+- rotation lasts 3–5 seconds
+- bottle slows down with easing
+- bottle stops pointing to selected player
+
+2. If challenge needs 2 players:
+- after first stop, bottle spins again or selects opposite/second player visually
+- highlight Player A and Player B
+- show connector line or glow between them
+
+3. TV must show:
+- active level
+- active players around circle
+- bottle animation
+- selected player(s)
+- challenge reveal only AFTER bottle stops
+
+4. Phone behavior:
+- while bottle spins, phones show:
+  “La bottiglia sta girando…”
+- selected player receives:
+  “Sei stato scelto”
+- second selected player receives:
+  “Sei stato scelto con [nickname]”
+- spectators see selected pair after spin.
+
+Implementation details:
+
+Add state:
+adultSpinState:
+{
+  spinning: boolean,
+  targetPlayerId,
+  secondTargetPlayerId,
+  startedAt,
+  durationMs,
+  finalAngle,
+  phase: "idle" | "spinning_first" | "spinning_second" | "revealed"
+}
+
+TV layout:
+- circular player positions using CSS transform:
+  left: 50% + cos(angle) * radius
+  top: 50% + sin(angle) * radius
+- bottle element centered
+- rotate bottle with CSS transition:
+  transform: rotate(finalAngle deg)
+  transition: transform 4s cubic-bezier(...)
+- finalAngle must point toward target player's angle.
+
+If no image asset:
+use emoji / simple SVG bottle:
+🍾
+but animate it properly.
+
+Do not reveal challenge until animation complete.
+
+Backend:
+- spin endpoint must choose player(s)
+- return spin target(s) + finalAngle
+- after animation duration, frontend reveals challenge
+OR server emits reveal event after duration.
+
+Important:
+The selected player shown by animation and backend challenge target must be the same.
+No visual mismatch.
+
+Add logs:
+[ADULT_BOTTLE_SPIN]
+players
+target
+secondTarget
+finalAngle
+challengeId
+
+Output:
+A. files modified
+B. bottle spin state
+C. TV bottle animation
+D. phone spin waiting state
+E. selected player consistency
+F. typecheck result
