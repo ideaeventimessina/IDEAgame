@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { useState, useEffect } from 'react';
 import { Home, Mic2, ChevronLeft, Users, Star, Zap, Building2 } from 'lucide-react';
 import { AudioManager } from '@/audio/AudioManager';
+import { useAuth, canSee } from '@/auth/roles';
 
 /* ── asset helper ─────────────────────────────── */
 const BASE = (import.meta.env.BASE_URL as string) ?? '/';
@@ -77,14 +78,22 @@ function ModeCard({
   mode,
   delay,
   compact = false,
+  onSelect,
 }: {
   mode: Mode;
   delay: number;
   compact?: boolean;
+  onSelect?: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
   const [, navigate] = useLocation();
   const { Icon, tagIcons: TagIcons } = mode;
+
+  const handleSelect = () => {
+    AudioManager.resumeContext();
+    if (onSelect) { onSelect(); return; }
+    navigate(mode.route);
+  };
 
   const iconSize    = compact ? 52 : 64;
   const iconInner   = compact ? 24 : 29;
@@ -104,10 +113,7 @@ function ModeCard({
       transition={{ delay, duration: 0.55, ease: 'easeOut' as const }}
       onHoverStart={() => setHovered(true)}
       onHoverEnd={() => setHovered(false)}
-      onClick={() => {
-        AudioManager.resumeContext();
-        navigate(mode.route);
-      }}
+      onClick={handleSelect}
       style={{
         position: 'relative',
         cursor: 'pointer',
@@ -225,24 +231,49 @@ function ModeCard({
           width: 'calc(100% - 24px)', flexShrink: 0,
         }}
         whileTap={{ scale: 0.97 }}
-        onClick={e => {
-          e.stopPropagation();
-          AudioManager.resumeContext();
-          navigate(mode.route);
-        }}
+        onClick={e => { e.stopPropagation(); handleSelect(); }}
       >{mode.cta}</motion.button>
     </motion.div>
   );
 }
 
+const LIVE_DEST = '/admin/content-packs';
+const LIVE_ROLES = ['super_admin', 'tenant_owner', 'game_manager', 'entertainer'] as const;
+
 /* ── page ─────────────────────────────────────── */
 export default function ModeSelect() {
   const [, navigate] = useLocation();
   const vw = useViewport();
+  const { user, role, isLoading } = useAuth();
 
   const isMobile  = vw < 640;
   const isTablet  = vw >= 640 && vw < 900;
   const compact   = vw < 900;
+
+  // Auth-aware handler for Modalità Live button
+  const handleLiveSelect = () => {
+    AudioManager.resumeContext();
+    console.log('[LiveLoginFlow] clicked live', { isLoading, user: user?.email ?? null, role });
+    if (isLoading) return; // wait for auth to resolve
+
+    if (!user) {
+      const target = `${LIVE_DEST}`;
+      console.log('[LiveLoginFlow] not authenticated → redirect to login', { target });
+      navigate(`/login?redirect=${encodeURIComponent(target)}`);
+      return;
+    }
+
+    const hasAccess = (LIVE_ROLES as readonly string[]).includes(role);
+    console.log('[LiveLoginFlow] authenticated', { role, hasAccess, dest: LIVE_DEST });
+
+    if (hasAccess) {
+      navigate(LIVE_DEST);
+    } else {
+      // Authenticated but role doesn't have admin access (e.g. player)
+      console.log('[LiveLoginFlow] role denied', { role });
+      navigate('/login?redirect=' + encodeURIComponent(LIVE_DEST));
+    }
+  };
 
   /* card dimensions scale with viewport */
   const cardW     = isMobile ? '100%' : isTablet ? 220 : 260;
@@ -389,7 +420,12 @@ export default function ModeSelect() {
                 minHeight: cardH,
               }}
             >
-              <ModeCard mode={mode} delay={0.22 + i * 0.13} compact={compact} />
+              <ModeCard
+                mode={mode}
+                delay={0.22 + i * 0.13}
+                compact={compact}
+                onSelect={mode.id === 'live' ? handleLiveSelect : undefined}
+              />
             </div>
           ))}
         </div>

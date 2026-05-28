@@ -14,14 +14,26 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // Read redirect param from URL: /login?redirect=/admin/content-packs
+  const redirectTarget = (() => {
+    const params = new URLSearchParams(window.location.search);
+    const r = params.get('redirect');
+    // Only allow internal paths (must start with /)
+    if (r && r.startsWith('/') && !r.startsWith('//')) return r;
+    return '/admin/content-packs';
+  })();
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setBusy(true);
+    console.log('[LiveLoginFlow] login attempt', { email, redirectTarget });
     try {
-      await login(email, password);
-      navigate('/cockpit');
+      const user = await login(email, password);
+      console.log('[LiveLoginFlow] login success', { role: user.role, redirectTarget });
+      navigate(redirectTarget);
     } catch (err) {
+      console.log('[LiveLoginFlow] login error', err);
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
       setBusy(false);

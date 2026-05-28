@@ -12,7 +12,10 @@ export function Guard({ route, children }: { route: string; children: ReactNode 
   const [, navigate] = useLocation();
 
   useEffect(() => {
-    if (!isLoading && !user) navigate('/login');
+    if (!isLoading && !user) {
+      const redirect = encodeURIComponent(window.location.pathname + window.location.search);
+      navigate(`/login?redirect=${redirect}`);
+    }
   }, [isLoading, user, navigate]);
 
   if (isLoading) {
