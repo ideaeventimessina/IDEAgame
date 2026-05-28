@@ -9,7 +9,6 @@ import { SlidersHorizontal } from 'lucide-react';
  * Allowlist — if the current path does not start with one of these, return null.
  */
 const ALLOWED_PREFIXES = [
-  '/admin',
   '/cockpit',
   '/control',
   '/presenter',
