@@ -1683,6 +1683,7 @@ function PhoneController({
   if (mode === 'home-saramusica') return <SaraMusicaController payload={p} player={player} session={session}/>;
   if (mode === 'home-adult')      return <AdultController payload={p} player={player} session={session}/>;
   if (mode === 'home-ballo')      return <BalloController payload={p} timeLeft={timeLeft} sessionId={session.id} emit={emit} playerId={player.id} round={session.currentRound} adminSensitivity={adminSensitivity ?? 1.0}/>;
+  if (mode === 'home-wordback-setup') return <WordBackSetupController payload={p} player={player} session={session}/>;
   if (mode === 'home-wordback' || mode === 'home-wordback-booking')   return <WordBackController payload={p} timeLeft={timeLeft} player={player} sessionId={session.id} emit={emit} wordbackSolved={wordbackSolved ?? false} wordbackTimedOut={wordbackTimedOut ?? false}/>;
   if (mode === 'home-karaoke')    return <KaraokeController payload={p} sessionId={session.id}/>;
   if (mode === 'home-freestyle')  return <FreestyleController payload={p} timeLeft={timeLeft}/>;
@@ -1692,6 +1693,90 @@ function PhoneController({
     return <KaraokeLiveController sessionId={session.id} playerId={player.id} nickname={player.nickname} avatarColor={player.avatarColor} initialState={ks} />;
   }
   return <div className="text-center text-white/40 py-8">In attesa del gioco…</div>;
+}
+
+// ── WordBackSetupController ────────────────────────────────────────────────────
+// Phone shown during home-wordback-setup phases
+
+function WordBackSetupController({ payload, player, session }: {
+  payload: Record<string, unknown>;
+  player: HomePlayer;
+  session: HomeSession;
+}) {
+  const phase = String(payload.phase ?? 'setup_choice');
+  const WB_COL = '#67E8F9';
+  const [theme, setTheme] = useState('');
+  const [submitted, setSubmitted] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const propose = async () => {
+    const trimmed = theme.trim();
+    if (!trimmed || busy) return;
+    setBusy(true);
+    try {
+      await fetch(`/api/home/sessions/${session.id}/wordback/jonny-propose`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ theme: trimmed, playerId: player.id, nickname: player.nickname }),
+      });
+      setSubmitted(trimmed);
+      setTheme('');
+    } finally { setBusy(false); }
+  };
+
+  if (phase === 'setup_jonny_input') return (
+    <div className="flex flex-col items-center gap-6 py-6 px-4 text-center w-full max-w-sm mx-auto">
+      <div className="text-5xl">🤖</div>
+      <div className="text-xl font-black text-yellow-300">Proponi un tema!</div>
+      <div className="text-white/50 text-sm">L'animatore sceglierà tra i temi proposti</div>
+
+      {submitted ? (
+        <div className="w-full rounded-2xl px-5 py-4 text-center"
+          style={{background:'rgba(250,204,21,0.12)',border:'2px solid rgba(250,204,21,0.4)'}}>
+          <div className="text-yellow-300 font-black text-lg">✓ Proposta inviata!</div>
+          <div className="text-white/60 text-sm mt-1">"{submitted}"</div>
+          <button onClick={() => setSubmitted('')}
+            className="mt-3 text-xs text-white/40 underline">Cambia proposta</button>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3 w-full">
+          <input
+            className="w-full rounded-xl px-4 py-3 text-white font-bold text-center outline-none text-lg"
+            style={{background:'rgba(255,255,255,0.08)',border:`2px solid ${WB_COL}44`}}
+            placeholder="es. Cucina, Anni 80, Animali…"
+            value={theme}
+            onChange={e => setTheme(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') void propose(); }}
+            maxLength={40}
+            autoComplete="off"
+          />
+          <button onClick={() => void propose()}
+            disabled={!theme.trim() || busy}
+            className="w-full rounded-xl py-3 font-black text-slate-900 text-lg transition-all disabled:opacity-40"
+            style={{background:WB_COL}}>
+            {busy ? 'Invio…' : 'Proponi 💬'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
+  // All other setup phases: waiting screen
+  const msgs: Record<string, string> = {
+    setup_choice:            "L'animatore sta scegliendo la modalità…",
+    setup_preset:            "L'animatore sta scegliendo il tema…",
+    setup_jonny_diff:        "L'animatore sta configurando Jonny…",
+    setup_jonny_generating:  "Jonny sta creando le parole… 🤖",
+  };
+  const msg = msgs[phase] ?? "Preparazione in corso…";
+
+  return (
+    <div className="flex flex-col items-center gap-5 py-10 px-4 text-center">
+      <motion.div animate={{scale:[1,1.05,1]}} transition={{duration:1.5,repeat:Infinity}} className="text-5xl">💬</motion.div>
+      <div className="text-lg font-bold text-white/70">{msg}</div>
+      <div className="text-white/30 text-sm">Parola alle Spalle</div>
+    </div>
+  );
 }
 
 // ── QuizzoneThemeSuggestor ─────────────────────────────────────────────────────

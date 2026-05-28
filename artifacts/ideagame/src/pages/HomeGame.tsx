@@ -511,6 +511,7 @@ function isSafeToShowTvMessages(session: HomeSession | null, phase: string): boo
     const bp = String(rp['balloPhase'] ?? '');
     return bp === 'result' || bp === 'booking' || bp === '';
   }
+  if (mode === 'home-wordback-setup') return false; // setup board handles interactions internally
   if (mode === 'home-wordback-booking') return true;
   if (mode === 'home-wordback') return String(rp['phase'] ?? '') === 'result';
   if (mode === 'home-quizzone') {
@@ -2015,6 +2016,7 @@ function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, bal
   if (mode === 'home-coppie')     return <CoppieBoard payload={p} onNext={onNext} sessionId={session.id}/>;
   if (mode === 'home-saramusica') return <SaraMusicaBoard payload={p} session={session} players={players}/>;
   if (mode === 'home-adult')      return <AdultOnlyBoard payload={p} session={session} players={players}/>;
+  if (mode === 'home-wordback-setup') return <WordBackSetupBoard payload={p} sessionId={session.id}/>;
   if (mode === 'home-wordback' || mode === 'home-wordback-booking')   return <WordBackBoard payload={p} players={players} onScore={onScore} onReveal={onReveal} tabooAlarm={tabooAlarm ?? null} sessionId={session.id} timeoutOverlay={wordbackTimeoutOverlay} wrongOverlay={wordbackWrongOverlay}/>;
   // FIX: version=3 check MUST come before mode-based routing (mode is still 'home-karaoke' even for new system)
   const ks = _ks_probe;
@@ -4573,6 +4575,315 @@ function AdultOnlyBoard({ payload, session, players }: {
       <div className="text-5xl">🍾</div>
       <div className="text-white/50">Jonny After Dark…</div>
     </div>
+  );
+}
+
+// ── WordBackSetupBoard (TV view: choose preset or Jonny AI generation) ───────────
+
+const WB_COUNTS = [5, 10, 15, 20] as const;
+const WB_COLOR = '#67E8F9';
+
+function WordBackSetupBoard({ payload, sessionId }: {
+  payload: Record<string, unknown>;
+  sessionId: string;
+}) {
+  const phase       = String(payload.phase ?? 'setup_choice');
+  const proposals   = (payload.proposals as Array<{ theme: string; nickname: string }>) ?? [];
+  const builtinPacks= (payload.builtinPacks as Array<{ id: string; name: string; emoji: string }>) ?? [];
+  const availableDb = (payload.availableDbThemes as Array<{ id: string; name: string }>) ?? [];
+  const proposalEndsAt = String(payload.proposalEndsAt ?? '');
+  const selectedJonnyTheme = String(payload.selectedJonnyTheme ?? '');
+
+  const [busy, setBusy] = useState(false);
+  const [selectedThemeId, setSelectedThemeId] = useState<string>('');
+  const [selectedThemeName, setSelectedThemeName] = useState<string>('');
+  const [selectedDiff, setSelectedDiff] = useState<'easy'|'medium'|'hard'>('medium');
+  const [selectedCount, setSelectedCount] = useState<number>(10);
+  const [selectedJonnyInput, setSelectedJonnyInput] = useState<string>('');
+  const [proposalCountdown, setProposalCountdown] = useState<number>(20);
+
+  // Countdown timer for jonny_input phase
+  useEffect(() => {
+    if (phase !== 'setup_jonny_input' || !proposalEndsAt) return;
+    const update = () => {
+      const left = Math.max(0, Math.round((new Date(proposalEndsAt).getTime() - Date.now()) / 1000));
+      setProposalCountdown(left);
+    };
+    update();
+    const iv = setInterval(update, 500);
+    return () => clearInterval(iv);
+  }, [phase, proposalEndsAt]);
+
+  const post = async (path: string, body: Record<string, unknown>) => {
+    setBusy(true);
+    try {
+      await fetch(`/api/home/sessions/${sessionId}/${path}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        credentials: 'include', body: JSON.stringify(body),
+      });
+    } finally { setBusy(false); }
+  };
+
+  const allThemes = [
+    ...builtinPacks,
+    ...availableDb.map(d => ({ id: d.id, name: d.name, emoji: '📦' })),
+  ];
+
+  // ── setup_choice ──────────────────────────────────────────────────────────────
+  if (phase === 'setup_choice') return (
+    <motion.div key="wb-choice" initial={{opacity:0,scale:0.92}} animate={{opacity:1,scale:1}}
+      className="flex w-full max-w-xl flex-col items-center gap-8 text-center">
+      <div>
+        <div className="text-5xl font-black tracking-tight text-white mb-2">PAROLA ALLE SPALLE</div>
+        <div className="text-xl text-white/60">Come vuoi giocare?</div>
+      </div>
+      <div className="flex flex-col gap-4 w-full">
+        <motion.button whileHover={{scale:1.03}} whileTap={{scale:0.97}}
+          onClick={() => post('wordback/select-mode', { mode: 'preset' })}
+          disabled={busy}
+          className="w-full rounded-2xl px-8 py-5 text-left flex items-center gap-4 font-bold text-lg transition-all disabled:opacity-50"
+          style={{background:'rgba(103,232,249,0.12)',border:'2px solid rgba(103,232,249,0.35)'}}>
+          <span className="text-3xl">📚</span>
+          <div>
+            <div className="text-white text-xl font-black">A — Temi predefiniti</div>
+            <div className="text-white/50 text-sm font-normal">Film, Sport, Disney e altri 6 temi pronti</div>
+          </div>
+        </motion.button>
+        <motion.button whileHover={{scale:1.03}} whileTap={{scale:0.97}}
+          onClick={() => post('wordback/select-mode', { mode: 'jonny' })}
+          disabled={busy}
+          className="w-full rounded-2xl px-8 py-5 text-left flex items-center gap-4 font-bold text-lg transition-all disabled:opacity-50"
+          style={{background:'rgba(251,191,36,0.12)',border:'2px solid rgba(251,191,36,0.35)'}}>
+          <span className="text-3xl">🤖</span>
+          <div>
+            <div className="text-yellow-300 text-xl font-black">B — Genera con Jonny</div>
+            <div className="text-white/50 text-sm font-normal">I giocatori propongono un tema, Jonny crea le parole</div>
+          </div>
+        </motion.button>
+      </div>
+    </motion.div>
+  );
+
+  // ── setup_preset ──────────────────────────────────────────────────────────────
+  if (phase === 'setup_preset') return (
+    <motion.div key="wb-preset" initial={{opacity:0,y:16}} animate={{opacity:1,y:0}}
+      className="flex w-full max-w-2xl flex-col items-center gap-6">
+      <div className="text-3xl font-black text-white tracking-tight">Scegli un tema</div>
+      <div className="grid grid-cols-3 gap-3 w-full">
+        {allThemes.map(t => (
+          <motion.button key={t.id} whileHover={{scale:1.04}} whileTap={{scale:0.96}}
+            onClick={() => { setSelectedThemeId(t.id); setSelectedThemeName(t.name); }}
+            className="rounded-xl px-3 py-4 flex flex-col items-center gap-1 text-sm font-bold transition-all"
+            style={{
+              background: selectedThemeId === t.id ? `rgba(103,232,249,0.25)` : 'rgba(255,255,255,0.06)',
+              border: `2px solid ${selectedThemeId === t.id ? WB_COLOR : 'rgba(255,255,255,0.1)'}`,
+              color: selectedThemeId === t.id ? WB_COLOR : 'rgba(255,255,255,0.75)',
+            }}>
+            <span className="text-2xl">{t.emoji}</span>
+            <span>{t.name}</span>
+          </motion.button>
+        ))}
+      </div>
+
+      {selectedThemeId && (
+        <motion.div initial={{opacity:0}} animate={{opacity:1}} className="flex flex-col items-center gap-4 w-full">
+          <div className="text-white/60 text-sm">Numero di parole</div>
+          <div className="flex gap-3">
+            {WB_COUNTS.map(c => (
+              <motion.button key={c} whileTap={{scale:0.92}}
+                onClick={() => setSelectedCount(c)}
+                className="w-16 h-16 rounded-xl font-black text-xl transition-all"
+                style={{
+                  background: selectedCount === c ? WB_COLOR : 'rgba(255,255,255,0.08)',
+                  color: selectedCount === c ? '#0f172a' : 'white',
+                }}>
+                {c}
+              </motion.button>
+            ))}
+          </div>
+          <motion.button whileHover={{scale:1.03}} whileTap={{scale:0.97}}
+            onClick={() => post('wordback/preset-start', { themeId: selectedThemeId, themeName: selectedThemeName, count: selectedCount })}
+            disabled={busy}
+            className="rounded-2xl px-10 py-3 font-black text-lg text-slate-900 transition-all disabled:opacity-50"
+            style={{background: WB_COLOR}}>
+            {busy ? 'Avvio…' : `Inizia con ${selectedThemeName} →`}
+          </motion.button>
+        </motion.div>
+      )}
+    </motion.div>
+  );
+
+  // ── setup_jonny_input ─────────────────────────────────────────────────────────
+  if (phase === 'setup_jonny_input') return (
+    <motion.div key="wb-jonny-input" initial={{opacity:0,y:16}} animate={{opacity:1,y:0}}
+      className="flex w-full max-w-xl flex-col items-center gap-6 text-center">
+      <div>
+        <div className="text-4xl font-black text-yellow-300 tracking-tight mb-1">CHE TEMA VUOI?</div>
+        <div className="text-white/60">I giocatori propongono un tema dal telefono</div>
+      </div>
+
+      {/* Countdown ring */}
+      <div className="relative w-24 h-24 flex items-center justify-center">
+        <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 96 96">
+          <circle cx="48" cy="48" r="42" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="8"/>
+          <circle cx="48" cy="48" r="42" fill="none" stroke="#FACC15" strokeWidth="8"
+            strokeDasharray={`${2 * Math.PI * 42}`}
+            strokeDashoffset={`${2 * Math.PI * 42 * (1 - proposalCountdown / 20)}`}
+            strokeLinecap="round" style={{transition:'stroke-dashoffset 0.5s linear'}}/>
+        </svg>
+        <span className="text-3xl font-black text-white">{proposalCountdown}</span>
+      </div>
+
+      {/* Proposals feed */}
+      <div className="w-full flex flex-col gap-2 min-h-[120px]">
+        <AnimatePresence>
+          {proposals.length === 0 && (
+            <div className="text-white/30 text-sm py-4">In attesa di proposte…</div>
+          )}
+          {proposals.map((p, i) => (
+            <motion.div key={p.theme} initial={{opacity:0,x:-12}} animate={{opacity:1,x:0}}
+              className="flex items-center gap-3 rounded-xl px-4 py-2"
+              style={{background:'rgba(250,204,21,0.1)',border:'1px solid rgba(250,204,21,0.2)'}}>
+              <span className="text-yellow-300 font-black text-sm w-6">{i+1}</span>
+              <span className="text-white font-bold">{p.theme}</span>
+              <span className="text-white/40 text-xs ml-auto">— {p.nickname}</span>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
+
+      <motion.button whileTap={{scale:0.96}}
+        onClick={() => post('wordback/jonny-advance', {})}
+        disabled={busy}
+        className="rounded-xl px-6 py-2 text-sm font-bold text-white/60 transition-all disabled:opacity-40"
+        style={{background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.12)'}}>
+        Chiudi proposte →
+      </motion.button>
+    </motion.div>
+  );
+
+  // ── setup_jonny_diff ──────────────────────────────────────────────────────────
+  if (phase === 'setup_jonny_diff') {
+    const themeOptions = proposals.length > 0
+      ? proposals.map(p => p.theme)
+      : ['Tema libero'];
+    const jonnyTheme = selectedJonnyInput || (themeOptions[0] ?? '');
+
+    return (
+      <motion.div key="wb-jonny-diff" initial={{opacity:0,y:16}} animate={{opacity:1,y:0}}
+        className="flex w-full max-w-xl flex-col items-center gap-6">
+        <div className="text-3xl font-black text-yellow-300 tracking-tight text-center">Configura Jonny</div>
+
+        {/* Proposals to pick or custom */}
+        {proposals.length > 0 ? (
+          <div className="w-full">
+            <div className="text-white/50 text-xs mb-2 text-center">Scegli un tema proposto</div>
+            <div className="flex flex-wrap gap-2 justify-center">
+              {themeOptions.map(t => (
+                <motion.button key={t} whileTap={{scale:0.92}}
+                  onClick={() => setSelectedJonnyInput(t)}
+                  className="rounded-xl px-4 py-2 text-sm font-bold transition-all"
+                  style={{
+                    background: jonnyTheme === t ? 'rgba(250,204,21,0.25)' : 'rgba(255,255,255,0.06)',
+                    border: `2px solid ${jonnyTheme === t ? '#FACC15' : 'rgba(255,255,255,0.12)'}`,
+                    color: jonnyTheme === t ? '#FACC15' : 'rgba(255,255,255,0.7)',
+                  }}>
+                  {t}
+                </motion.button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="w-full">
+            <div className="text-white/50 text-xs mb-1 text-center">Scrivi il tema</div>
+            <input
+              className="w-full rounded-xl px-4 py-3 text-white font-bold text-center outline-none"
+              style={{background:'rgba(255,255,255,0.08)',border:'2px solid rgba(250,204,21,0.35)'}}
+              placeholder="es. Cucina italiana, Anni 80, Sport estremi…"
+              value={selectedJonnyInput}
+              onChange={e => setSelectedJonnyInput(e.target.value)}
+              maxLength={40}
+            />
+          </div>
+        )}
+
+        {/* Difficulty */}
+        <div className="flex flex-col items-center gap-2 w-full">
+          <div className="text-white/50 text-xs">Difficoltà</div>
+          <div className="flex gap-3">
+            {(['easy','medium','hard'] as const).map(d => {
+              const labels = { easy: '😊 Facile', medium: '😐 Medio', hard: '🔥 Difficile' };
+              const colors = { easy: '#34D399', medium: '#60A5FA', hard: '#F87171' };
+              return (
+                <motion.button key={d} whileTap={{scale:0.92}}
+                  onClick={() => setSelectedDiff(d)}
+                  className="rounded-xl px-5 py-2 text-sm font-bold transition-all"
+                  style={{
+                    background: selectedDiff === d ? `${colors[d]}22` : 'rgba(255,255,255,0.06)',
+                    border: `2px solid ${selectedDiff === d ? colors[d] : 'rgba(255,255,255,0.12)'}`,
+                    color: selectedDiff === d ? colors[d] : 'rgba(255,255,255,0.6)',
+                  }}>
+                  {labels[d]}
+                </motion.button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Count */}
+        <div className="flex flex-col items-center gap-2">
+          <div className="text-white/50 text-xs">Numero di parole</div>
+          <div className="flex gap-3">
+            {WB_COUNTS.map(c => (
+              <motion.button key={c} whileTap={{scale:0.92}}
+                onClick={() => setSelectedCount(c)}
+                className="w-14 h-14 rounded-xl font-black text-lg transition-all"
+                style={{
+                  background: selectedCount === c ? '#FACC15' : 'rgba(255,255,255,0.08)',
+                  color: selectedCount === c ? '#0f172a' : 'white',
+                }}>
+                {c}
+              </motion.button>
+            ))}
+          </div>
+        </div>
+
+        <motion.button whileHover={{scale:1.03}} whileTap={{scale:0.97}}
+          onClick={() => post('wordback/jonny-generate', {
+            theme: jonnyTheme,
+            difficulty: selectedDiff,
+            count: selectedCount,
+          })}
+          disabled={busy || !jonnyTheme.trim()}
+          className="rounded-2xl px-10 py-3 font-black text-lg text-slate-900 transition-all disabled:opacity-40"
+          style={{background:'#FACC15'}}>
+          {busy ? 'Avvio…' : '🤖 Genera con Jonny →'}
+        </motion.button>
+      </motion.div>
+    );
+  }
+
+  // ── setup_jonny_generating ────────────────────────────────────────────────────
+  return (
+    <motion.div key="wb-generating" initial={{opacity:0}} animate={{opacity:1}}
+      className="flex flex-col items-center gap-6 text-center">
+      <motion.div
+        animate={{scale:[1,1.08,1],rotate:[0,5,-5,0]}}
+        transition={{duration:1.2,repeat:Infinity,ease:'easeInOut'}}
+        className="text-7xl">🤖</motion.div>
+      <div className="text-3xl font-black text-yellow-300">Jonny sta creando le parole proibite…</div>
+      <div className="text-white/50">
+        {selectedJonnyTheme
+          ? <>Tema: <span className="text-yellow-300 font-bold">{selectedJonnyTheme}</span></>
+          : 'Generazione in corso…'}
+      </div>
+      <div className="flex gap-2">
+        {[0,1,2].map(i => (
+          <motion.div key={i} className="w-3 h-3 rounded-full bg-yellow-300"
+            animate={{y:[0,-10,0]}} transition={{duration:0.8,delay:i*0.15,repeat:Infinity}}/>
+        ))}
+      </div>
+    </motion.div>
   );
 }
 
