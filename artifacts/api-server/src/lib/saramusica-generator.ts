@@ -253,7 +253,7 @@ BANK["custom"] = shuffleArr(
 
 // ── Fallback generator ────────────────────────────────────────────────────────
 
-export function generateSaraMusicaFallback(themeId: string, count: number): MusicRound[] {
+export function generateSaraMusicaFallback(themeId: string, count: number, difficulty: "easy" | "medium" | "hard" = "medium"): MusicRound[] {
   const bank = BANK[themeId] ?? BANK["anni90"] ?? [];
   const shuffled = shuffleArr([...bank]);
   // If count > bank size, repeat shuffled rounds with new ids
@@ -265,10 +265,18 @@ export function generateSaraMusicaFallback(themeId: string, count: number): Musi
       result.push({ ...round, id: `${themeId}_${idx}` });
     }
   }
+  // Apply difficulty multipliers
+  const timeMult = difficulty === "easy" ? 1.4 : difficulty === "hard" ? 0.7 : 1.0;
+  const ptsMult  = difficulty === "easy" ? 0.8 : difficulty === "hard" ? 1.25 : 1.0;
+  const adjusted = result.map(r => ({
+    ...r,
+    timeLimit: Math.max(5, Math.round(r.timeLimit * timeMult)),
+    points: Math.round(r.points * ptsMult),
+  }));
   // Ensure last round is final_tormentone
-  if (result.length > 0) {
-    const last = result[result.length - 1]!;
-    result[result.length - 1] = {
+  if (adjusted.length > 0) {
+    const last = adjusted[adjusted.length - 1]!;
+    adjusted[adjusted.length - 1] = {
       ...last,
       type: "final_tormentone",
       points: 200,
@@ -276,12 +284,12 @@ export function generateSaraMusicaFallback(themeId: string, count: number): Musi
       question: last.question.startsWith("FINALE") ? last.question : `FINALE DOPPIO! ${last.question}`,
     };
   }
-  return result;
+  return adjusted;
 }
 
 // ── AI generator ──────────────────────────────────────────────────────────────
 
-export async function generateSaraMusicaRoundsAI(themeId: string, count: number): Promise<MusicRound[]> {
+export async function generateSaraMusicaRoundsAI(themeId: string, count: number, difficulty: "easy" | "medium" | "hard" = "medium"): Promise<MusicRound[]> {
   const baseURL = process.env["AI_INTEGRATIONS_OPENAI_BASE_URL"];
   const apiKey  = process.env["AI_INTEGRATIONS_OPENAI_API_KEY"];
   if (!baseURL || !apiKey) throw new Error("AI non configurato");
@@ -289,7 +297,14 @@ export async function generateSaraMusicaRoundsAI(themeId: string, count: number)
   const themeName = SM_THEMES.find(t => t.id === themeId)?.label ?? themeId;
   const openai = new OpenAI({ baseURL, apiKey });
 
+  const diffLabel = difficulty === "easy"
+    ? "Facile — artisti famosissimi, canzoni iconiche, risposte ovvie, timeLimit generosi"
+    : difficulty === "hard"
+    ? "Difficile — artisti di nicchia, canzoni meno note, clues ambigui, timeLimit ridotti"
+    : "Medio — equilibrato, artisti noti ma non banali";
+
   const systemPrompt = `Sei Jonny, l'host di un gioco musicale per feste italiane. Genera domande musicali sul tema "${themeName}" per un quiz party.
+Difficoltà richiesta: ${diffLabel}.
 Rispondi SOLO con un array JSON valido, senza markdown, senza spiegazioni.`;
 
   const userPrompt = `Genera esattamente ${count} domande musicali sul tema "${themeName}" (musica italiana e internazionale).
@@ -316,10 +331,11 @@ Struttura JSON di ogni elemento:
 Regole:
 - song_vs_song ha SOLO 2 risposte
 - progressive_clue_music ha SEMPRE 3 clues e 4 risposte
-- speed_music: timeLimit 8, domanda facilissima
-- final_tormentone: points 200, timeLimit 25, domanda interessante
+- speed_music: timeLimit 8, domanda velocissima
+- final_tormentone: points 200, timeLimit 25, domanda emozionante
 - Tutte le domande in italiano
-- Usa artisti e canzoni reali e verificabili`;
+- Usa artisti e canzoni reali e verificabili
+- Rispetta il livello di difficoltà: ${diffLabel}`;
 
   const completion = await openai.chat.completions.create({
     model: "gpt-5-mini",
@@ -327,8 +343,7 @@ Regole:
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
     ],
-    temperature: 0.8,
-    max_tokens: 4000,
+    max_completion_tokens: 4000,
   });
 
   const raw = completion.choices[0]?.message?.content ?? "";
@@ -355,15 +370,15 @@ Regole:
 
 // ── Main export ───────────────────────────────────────────────────────────────
 
-export async function generateSaraMusicaRounds(themeId: string, count: number): Promise<MusicRound[]> {
-  logger.info({ themeId, count }, "[JONNY_SARAMUSICA_AI] start");
+export async function generateSaraMusicaRounds(themeId: string, count: number, difficulty: "easy" | "medium" | "hard" = "medium"): Promise<MusicRound[]> {
+  logger.info({ themeId, count, difficulty }, "[JONNY_SARAMUSICA_AI] start");
   try {
-    const rounds = await generateSaraMusicaRoundsAI(themeId, count);
+    const rounds = await generateSaraMusicaRoundsAI(themeId, count, difficulty);
     if (!Array.isArray(rounds) || rounds.length === 0) throw new Error("AI returned empty");
-    logger.info({ themeId, count, generated: rounds.length }, "[JONNY_SARAMUSICA_AI] success");
+    logger.info({ themeId, count, difficulty, generated: rounds.length }, "[JONNY_SARAMUSICA_AI] success");
     return rounds;
   } catch (err) {
-    logger.warn({ err, themeId, count }, "[JONNY_SARAMUSICA_AI] fallback");
-    return generateSaraMusicaFallback(themeId, count);
+    logger.warn({ err, themeId, count, difficulty }, "[JONNY_SARAMUSICA_AI] fallback");
+    return generateSaraMusicaFallback(themeId, count, difficulty);
   }
 }

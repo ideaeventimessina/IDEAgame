@@ -1,0 +1,257 @@
+HOME MODE — GLOBAL TIMER / VOTE / AUDIO CONSISTENCY AUDIT + FIX.
+
+Stop adding features.
+Do not redesign games.
+Do not touch PS4 performance mode.
+
+Goal:
+Make all games follow the same core rules:
+
+1. TV/server is the source of truth for every timer.
+2. Phones must only mirror TV/server time.
+3. When time expires, the phase must close automatically.
+4. Late actions must be rejected.
+5. All star ratings start empty.
+6. Only one background music layer may play at a time.
+7. Generated games must ask difficulty: facile / medio / difficile.
+
+==================================================
+PART 1 — GLOBAL TIMER AUDIT
+==================================================
+
+Audit every active Home game:
+
+- Karaoke Live
+- Quizzone
+- Sara’Musica
+- Coppie
+- Percorso a Risate
+- Adult Only
+- WordBack
+- Ballo
+- Freestyle
+
+For each game list:
+- timer shown on TV
+- timer shown on phone
+- server timestamp fields used
+- local intervals used
+- what happens at 0
+- whether late actions are accepted
+
+Output table:
+game | phase | tv timer | phone timer | server timestamp | expiry behavior | bug found
+
+==================================================
+PART 2 — SERVER-SOURCE TIMER RULE
+==================================================
+
+Implement/standardize one helper pattern:
+
+Every timed phase must have:
+
+{
+  phaseStartedAt,
+  phaseEndsAt
+}
+
+or phase-specific:
+{
+  questionStartedAt,
+  questionEndsAt,
+  votingStartedAt,
+  votingEndsAt,
+  missionStartedAt,
+  missionEndsAt
+}
+
+Phones and TV calculate:
+
+remaining = max(0, phaseEndsAt - Date.now())
+
+Do NOT start independent local countdowns from full duration.
+
+If a phase has no server timestamp:
+add one.
+
+==================================================
+PART 3 — TIMER EXPIRY MUST ADVANCE STATE
+==================================================
+
+For every timed phase:
+
+When Date.now() >= phaseEndsAt:
+server must automatically close the phase.
+
+Examples:
+- Quiz question expired → reveal / time expired
+- Sara’Musica expired → reveal / time expired
+- Percorso active expired → voting or result
+- Adult voting expired → close vote/result
+- Karaoke voting expired → close vote/ranking/transition
+- Coppie preview expired → hide cards
+- WordBack expired → timeout
+- Ballo expired → voting/podium
+
+No phase may remain waiting with time=0.
+
+Add guard:
+if timeLeft <= 0 and phase is active:
+force transition to next valid phase.
+
+==================================================
+PART 4 — LATE ACTION REJECTION
+==================================================
+
+Server must reject any action submitted after phaseEndsAt:
+
+- answers
+- votes
+- public choices
+- mission validations
+- star ratings
+- taboo alarms if round closed
+- visibility requests if timer expired
+
+Return:
+409 time_expired
+
+Phone:
+show:
+“Tempo scaduto”
+
+Do not assign points.
+
+==================================================
+PART 5 — STAR RATINGS DEFAULT EMPTY
+==================================================
+
+Audit every star rating component.
+
+Required:
+Default = 0 stars.
+
+Never default to 3.
+
+Submit disabled until required rating is selected.
+
+Apply to:
+- Adult Only
+- Percorso a Risate
+- Karaoke voting
+- Sara’Musica if stars used
+- Barzelletta
+- Yoga
+- Sfilata
+- any future rating UI
+
+On new round/performance:
+reset local vote state to 0.
+
+==================================================
+PART 6 — SINGLE AUDIO LAYER POLICY
+==================================================
+
+Bug:
+On Safari, background music overlaps between rooms/lobby/games.
+
+Required:
+Centralize audio playback.
+
+There must be only one active background track at a time.
+
+Implement AudioManager policy:
+
+playBackground(trackId):
+- stop/fade out any currently playing background
+- unload previous if needed
+- start new one
+
+On route change:
+- stop lobby music when entering room/game
+- stop game music when returning lobby
+- stop all previous loops before starting new loop
+
+On Safari:
+- prevent duplicate Audio instances
+- use one singleton audio element if possible
+- guard against double play caused by remount
+
+Add logs:
+[AudioManager]
+stop previous
+play background
+route changed
+duplicate prevented
+
+==================================================
+PART 7 — GENERATED GAMES DIFFICULTY SELECT
+==================================================
+
+For games using generated content:
+
+- Quizzone
+- Sara’Musica
+- Coppie
+- Adult Only where applicable
+- Percorso if generated packs are used
+
+Before generation ask:
+
+“Livello di difficoltà”
+
+Buttons:
+- Facile
+- Medio
+- Difficile
+
+Store:
+difficulty: "easy" | "medium" | "hard"
+
+Generation must respect difficulty.
+
+Examples:
+Quizzone:
+easy = common knowledge
+medium = moderate
+hard = niche / faster / trickier
+
+Sara’Musica:
+easy = famous songs, obvious clues
+medium = moderate
+hard = harder clues / less obvious
+
+Coppie:
+easy = simple identical image pairs
+medium = more similar-looking pairs
+hard = visually confusing pairs
+
+Adult:
+difficulty may map to intensity style within selected level, but still consent-gated.
+
+==================================================
+PART 8 — OUTPUT REQUIRED
+==================================================
+
+Before patch:
+A. full timer audit table
+B. star rating audit
+C. audio overlap root cause
+D. generated games missing difficulty
+
+After patch:
+E. files modified
+F. timers standardized
+G. expiry transitions fixed
+H. late action rejection fixed
+I. star ratings default empty
+J. audio singleton policy
+K. difficulty selector added
+L. typecheck result
+M. manual test checklist:
+   - timer expires on every game
+   - phone and TV timers match
+   - late vote rejected
+   - stars start empty
+   - Safari audio does not overlap
+   - generated game asks difficulty

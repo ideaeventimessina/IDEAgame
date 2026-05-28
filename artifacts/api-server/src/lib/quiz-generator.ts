@@ -206,7 +206,7 @@ function makeId(): string {
   return `q_${Date.now()}_${++_idCounter}`;
 }
 
-export function generateQuiz(themeId: string, count: number): QuizQuestion[] {
+export function generateQuiz(themeId: string, count: number, difficulty: "easy" | "medium" | "hard" = "medium"): QuizQuestion[] {
   const normalizedTheme = themeId === 'fallback' ? 'cultura_generale' : themeId;
   const pool = BANK.filter(q => q.theme === normalizedTheme);
   const fallback = BANK.filter(q => q.theme === 'cultura_generale');
@@ -243,5 +243,12 @@ export function generateQuiz(themeId: string, count: number): QuizQuestion[] {
     ...(finalQ ? [finalQ] : []),
   ].map(q => ({ ...q, id: makeId() }));
 
-  return questions;
+  // Apply difficulty multipliers to timeLimit and points
+  const timeMult  = difficulty === "easy" ? 1.4 : difficulty === "hard" ? 0.7 : 1.0;
+  const ptsMult   = difficulty === "easy" ? 0.8 : difficulty === "hard" ? 1.25 : 1.0;
+  return questions.map(q => ({
+    ...q,
+    timeLimit: Math.max(5, Math.round(q.timeLimit * timeMult)),
+    points:    Math.round(q.points * ptsMult),
+  }));
 }

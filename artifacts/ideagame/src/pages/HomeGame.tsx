@@ -2136,6 +2136,8 @@ function QuizzoneBoard({ payload, session, players }: {
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const [selectedDiff, setSelectedDiff] = useState<"easy"|"medium"|"hard">("medium");
+
   const phase = String(payload.phase ?? 'setup_theme');
   const questions = (payload.questions as QzQuestion[]) ?? [];
   const currentIndex = Number(payload.currentIndex ?? -1);
@@ -2247,25 +2249,48 @@ function QuizzoneBoard({ payload, session, players }: {
   }
 
   // ── setup_count ────────────────────────────────────────────────────────────
-  if (phase === 'setup_count') return (
-    <div className="flex flex-col items-center gap-10 w-full max-w-2xl">
-      <div className="text-center">
-        <div className="text-xl font-bold text-white/50 mb-1">Tema: <span style={{ color: QZ }}>{themeName}</span></div>
-        <div className="text-display text-4xl font-black text-white">Quante domande?</div>
+  if (phase === 'setup_count') {
+    const DIFFS: { id: "easy"|"medium"|"hard"; label: string; emoji: string; desc: string }[] = [
+      { id:"easy",   label:"Facile",  emoji:"🟢", desc:"Più tempo · Meno punti" },
+      { id:"medium", label:"Medio",   emoji:"🟡", desc:"Bilanciato" },
+      { id:"hard",   label:"Difficile",emoji:"🔴", desc:"Meno tempo · Più punti" },
+    ];
+    return (
+      <div className="flex flex-col items-center gap-8 w-full max-w-2xl">
+        <div className="text-center">
+          <div className="text-xl font-bold text-white/50 mb-1">Tema: <span style={{ color: QZ }}>{themeName}</span></div>
+          <div className="text-display text-4xl font-black text-white">Difficoltà e domande</div>
+        </div>
+        <div className="flex gap-3 w-full">
+          {DIFFS.map(d => (
+            <button key={d.id} onClick={() => setSelectedDiff(d.id)}
+              className="flex-1 flex flex-col items-center gap-1 rounded-2xl py-4 px-2 transition-all hover:scale-105 border-2"
+              style={{
+                background: selectedDiff === d.id ? `${QZ}22` : 'rgba(255,255,255,0.04)',
+                borderColor: selectedDiff === d.id ? QZ : 'rgba(255,255,255,0.1)',
+                boxShadow: selectedDiff === d.id ? `0 0 20px ${QZ}44` : 'none',
+              }}>
+              <span className="text-2xl">{d.emoji}</span>
+              <span className="font-black text-white text-sm">{d.label}</span>
+              <span className="text-xs text-white/40">{d.desc}</span>
+            </button>
+          ))}
+        </div>
+        <div className="text-white/50 text-sm font-bold">Quante domande?</div>
+        <div className="grid grid-cols-2 gap-5 w-full">
+          {[5,10,15,20].map(n => (
+            <button key={n} onClick={() => void post('/quiz/select-count', { count: n, difficulty: selectedDiff })}
+              disabled={busy}
+              className="flex flex-col items-center gap-1 rounded-3xl py-8 transition-all hover:scale-105"
+              style={{ background:`linear-gradient(135deg,${QZ}22,${QZ}08)`, border:`2px solid ${QZ}55`, boxShadow: busy ? 'none' : `0 0 30px ${QZ}22` }}>
+              <span className="text-display text-6xl font-black" style={{ color: QZ }}>{n}</span>
+              <span className="text-sm font-bold text-white/50">domande</span>
+            </button>
+          ))}
+        </div>
       </div>
-      <div className="grid grid-cols-2 gap-5 w-full">
-        {[5,10,15,20].map(n => (
-          <button key={n} onClick={() => void post('/quiz/select-count', { count: n })}
-            disabled={busy}
-            className="flex flex-col items-center gap-1 rounded-3xl py-8 transition-all hover:scale-105"
-            style={{ background:`linear-gradient(135deg,${QZ}22,${QZ}08)`, border:`2px solid ${QZ}55`, boxShadow: busy ? 'none' : `0 0 30px ${QZ}22` }}>
-            <span className="text-display text-6xl font-black" style={{ color: QZ }}>{n}</span>
-            <span className="text-sm font-bold text-white/50">domande</span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
+    );
+  }
 
   // ── generating ─────────────────────────────────────────────────────────────
   if (phase === 'generating') return (
@@ -3598,6 +3623,8 @@ function SaraMusicaBoard({ payload, session, players }: {
   const SM = '#60A5FA';
   const SM_GLOW = 'rgba(96,165,250,0.4)';
 
+  const [smSelectedDiff, setSmSelectedDiff] = useState<"easy"|"medium"|"hard">("medium");
+
   const phase         = String(payload.phase ?? '');
   const themeName     = String(payload.themeName ?? '');
   const roundCount    = Number(payload.roundCount ?? 10);
@@ -3651,25 +3678,48 @@ function SaraMusicaBoard({ payload, session, players }: {
   );
 
   // ── setup_count ──────────────────────────────────────────────────────────────
-  if (phase === 'setup_count') return (
-    <div className="flex flex-col items-center gap-8 text-center">
-      <div className="flex flex-col items-center gap-2">
-        <div className="text-5xl">🎵</div>
-        <div className="text-white/60">Tema: <span className="font-black" style={{color:SM}}>{themeName}</span></div>
-        <div className="text-display text-4xl font-black text-white">Quante manche?</div>
+  if (phase === 'setup_count') {
+    const SM_DIFFS: { id: "easy"|"medium"|"hard"; label: string; emoji: string; desc: string }[] = [
+      { id:"easy",   label:"Facile",   emoji:"🟢", desc:"Canzoni famose · Più tempo" },
+      { id:"medium", label:"Medio",    emoji:"🟡", desc:"Bilanciato" },
+      { id:"hard",   label:"Difficile",emoji:"🔴", desc:"Nicchia · Meno tempo" },
+    ];
+    return (
+      <div className="flex flex-col items-center gap-8 w-full max-w-2xl text-center">
+        <div className="flex flex-col items-center gap-2">
+          <div className="text-5xl">🎵</div>
+          <div className="text-white/60">Tema: <span className="font-black" style={{color:SM}}>{themeName}</span></div>
+          <div className="text-display text-4xl font-black text-white">Difficoltà e manche</div>
+        </div>
+        <div className="flex gap-3 w-full">
+          {SM_DIFFS.map(d => (
+            <button key={d.id} onClick={() => setSmSelectedDiff(d.id)}
+              className="flex-1 flex flex-col items-center gap-1 rounded-2xl py-4 px-2 transition-all hover:scale-105 border-2"
+              style={{
+                background: smSelectedDiff === d.id ? `${SM}22` : 'rgba(255,255,255,0.04)',
+                borderColor: smSelectedDiff === d.id ? SM : 'rgba(255,255,255,0.1)',
+                boxShadow: smSelectedDiff === d.id ? `0 0 20px ${SM}44` : 'none',
+              }}>
+              <span className="text-2xl">{d.emoji}</span>
+              <span className="font-black text-white text-sm">{d.label}</span>
+              <span className="text-xs text-white/40">{d.desc}</span>
+            </button>
+          ))}
+        </div>
+        <div className="text-white/50 text-sm font-bold">Quante manche?</div>
+        <div className="flex gap-5 justify-center">
+          {[5, 10, 15, 20].map(n => (
+            <button key={n} onClick={() => void smPost('select-count', { count: n, difficulty: smSelectedDiff })} disabled={busy}
+              className="flex flex-col items-center gap-2 rounded-3xl px-10 py-7 text-5xl font-black text-white transition-all hover:scale-110 disabled:opacity-50"
+              style={{ background: `linear-gradient(135deg,${SM}30,rgba(0,0,0,0.5))`, border: `2px solid ${SM}66`, boxShadow: `0 0 40px ${SM_GLOW}` }}>
+              {n}
+              <span className="text-sm opacity-60 font-bold">manche</span>
+            </button>
+          ))}
+        </div>
       </div>
-      <div className="flex gap-5">
-        {[5, 10, 15, 20].map(n => (
-          <button key={n} onClick={() => void smPost('select-count', { count: n })} disabled={busy}
-            className="flex flex-col items-center gap-2 rounded-3xl px-10 py-7 text-5xl font-black text-white transition-all hover:scale-110 disabled:opacity-50"
-            style={{ background: `linear-gradient(135deg,${SM}30,rgba(0,0,0,0.5))`, border: `2px solid ${SM}66`, boxShadow: `0 0 40px ${SM_GLOW}` }}>
-            {n}
-            <span className="text-sm opacity-60 font-bold">manche</span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
+    );
+  }
 
   // ── generating ───────────────────────────────────────────────────────────────
   if (phase === 'generating') return (

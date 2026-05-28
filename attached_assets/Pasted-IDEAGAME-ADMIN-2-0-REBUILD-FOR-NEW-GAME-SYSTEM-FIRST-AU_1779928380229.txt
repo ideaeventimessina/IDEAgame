@@ -1,0 +1,446 @@
+IDEAGAME — ADMIN 2.0 REBUILD FOR NEW GAME SYSTEM.
+
+FIRST AUDIT, THEN PLAN, THEN PATCH.
+Do not touch player Home gameplay yet.
+Do not touch TV runtime except where strictly necessary for admin-created content loading.
+
+Problem:
+The current admin is disconnected from the new game architecture.
+
+Admin must become the content/theme control center for both:
+- Home Mode
+- Live Mode
+
+Admin is where we create, edit, organize, enable/disable and expand default themes, packs, questions, missions, images, audio and generated content.
+
+==================================================
+GOAL
+==================================================
+
+Rebuild admin around the new game system.
+
+Admin must manage content for:
+
+- Karaoke
+- Freestyle
+- Quizzone
+- Sara’Musica
+- Parola alle Spalle
+- Gioco delle Coppie
+- Percorso a Risate
+- Adult Only
+- Ballo
+- Live Mode variants
+
+Admin must support:
+- default themes
+- custom themes
+- AI/Jonny generated packs
+- manual editing
+- media upload/reference
+- Home/Live availability
+- difficulty levels
+- activation toggle
+- preview/test
+
+==================================================
+PART 1 — AUDIT CURRENT ADMIN
+==================================================
+
+Audit all admin routes/components:
+
+- App.tsx admin routes
+- admin dashboard
+- current theme editors
+- game editors
+- DB schema for themes/packs
+- API routes for admin content
+- Live Mode admin if present
+
+Output:
+A. current admin pages
+B. which ones are still useful
+C. which ones are obsolete
+D. DB tables currently used by old games
+E. DB tables needed for new games
+
+==================================================
+PART 2 — NEW ADMIN INFORMATION ARCHITECTURE
+==================================================
+
+Create new admin sections:
+
+1. Dashboard
+- status of content packs
+- missing media
+- inactive packs
+- last generated packs
+
+2. Games
+List all games:
+- Karaoke
+- Freestyle
+- Quizzone
+- Sara’Musica
+- WordBack / Parola alle Spalle
+- Coppie
+- Percorso a Risate
+- Adult Only
+- Ballo
+
+3. Theme Packs
+Reusable themes:
+- title
+- description
+- gameSlug
+- modeAvailability: home/live/both
+- difficulty: easy/medium/hard/mixed
+- active true/false
+- createdBy: admin/jonny
+- tags
+- language
+- version
+
+4. Content Items
+Per-game content editor.
+
+5. Media Library
+Images, audio, icons, YouTube IDs, backgrounds.
+
+6. Jonny Generator
+Generate pack:
+- choose game
+- choose theme
+- choose difficulty
+- choose quantity
+- generate
+- review
+- edit
+- approve
+- publish
+
+==================================================
+PART 3 — UNIVERSAL CONTENT PACK MODEL
+==================================================
+
+Create or adapt a universal model:
+
+GameContentPack {
+  id,
+  gameSlug,
+  modeAvailability: "home" | "live" | "both",
+  title,
+  description,
+  theme,
+  difficulty,
+  language,
+  active,
+  createdBy: "admin" | "jonny",
+  version,
+  tags,
+  mediaRequired,
+  createdAt,
+  updatedAt
+}
+
+GameContentItem {
+  id,
+  packId,
+  gameSlug,
+  type,
+  title,
+  payloadJson,
+  mediaJson,
+  difficulty,
+  active,
+  sortOrder
+}
+
+Do not force all games into one rigid shape.
+Use payloadJson per game.
+
+==================================================
+PART 4 — GAME-SPECIFIC CONTENT SHAPES
+==================================================
+
+Quizzone item:
+{
+  questionType,
+  question,
+  answers,
+  correctAnswer,
+  explanation,
+  timeLimit,
+  points,
+  imageA,
+  imageB
+}
+
+Sara’Musica item:
+{
+  roundType,
+  question,
+  answers,
+  correctAnswer,
+  artist,
+  songTitle,
+  year,
+  youtubeId,
+  clipStart,
+  clipDuration,
+  audioPreviewUrl,
+  explanation
+}
+
+WordBack item:
+{
+  word,
+  tabooWords: string[5],
+  hint,
+  category,
+  points,
+  timeLimit
+}
+
+Coppie item:
+{
+  label,
+  imagePrompt,
+  imageUrl,
+  pairId
+}
+
+Percorso item:
+{
+  missionType,
+  title,
+  instruction,
+  duration,
+  publicChoiceOptions,
+  scoringType,
+  media
+}
+
+AdultOnly item:
+{
+  level,
+  category,
+  title,
+  text,
+  requiredPlayers,
+  duration,
+  requiresConsent,
+  allowVoting,
+  tags
+}
+
+Freestyle item:
+{
+  beatTitle,
+  audioUrl,
+  bpm,
+  promptWords,
+  duration
+}
+
+Karaoke item:
+{
+  title,
+  artist,
+  youtubeId,
+  durationSeconds,
+  category,
+  embeddable
+}
+
+Ballo item:
+{
+  challengeTitle,
+  instruction,
+  musicUrl,
+  duration,
+  scoringRules
+}
+
+==================================================
+PART 5 — ADMIN UI REQUIREMENTS
+==================================================
+
+Admin must have:
+
+- clean Apple-like UI
+- sidebar games
+- table/list packs
+- editor drawer
+- duplicate pack
+- activate/deactivate
+- publish/unpublish
+- filter by game/mode/difficulty
+- search
+- bulk import JSON
+- export JSON
+- preview content item
+- test in Home Mode
+- test in Live Mode
+
+Do not overload mobile.
+Admin desktop-first is ok.
+
+==================================================
+PART 6 — JONNY GENERATOR ADMIN
+==================================================
+
+Admin can generate default packs with Jonny.
+
+Flow:
+1. choose game
+2. choose mode: Home / Live / Both
+3. choose theme
+4. choose difficulty
+5. choose quantity
+6. click “Genera con Jonny”
+7. review generated items
+8. edit
+9. approve
+10. publish
+
+Generated content must not go live automatically without approval.
+
+Status:
+draft → review → published → archived
+
+==================================================
+PART 7 — CONNECTION TO HOME/LIVE GAMES
+==================================================
+
+Runtime games must load active packs from admin system.
+
+Rules:
+- Home Mode loads only packs where modeAvailability = home or both
+- Live Mode loads only live or both
+- inactive packs ignored
+- difficulty selector filters packs
+- if no admin pack exists, fallback to built-in emergency pack
+- log:
+[ContentPack] loaded from admin
+[ContentPack] fallback used
+
+==================================================
+PART 8 — MEDIA LIBRARY
+==================================================
+
+Admin media library must support:
+- imageUrl
+- audioUrl
+- youtubeId
+- icon
+- background
+- prompt image
+- yoga pose image
+- card images
+- beat files
+
+For now:
+URL-based media is enough.
+File upload can come later unless already available.
+
+Must show missing media warning:
+- Yoga pose without image
+- Coppie pair without image
+- Sara’Musica clip without YouTube ID
+- Karaoke video not embeddable
+- Freestyle beat missing audio
+
+==================================================
+PART 9 — MIGRATION / BACKWARD COMPATIBILITY
+==================================================
+
+Do not break existing content.
+
+Add migration/fallback layer:
+- old theme tables still readable
+- new admin packs preferred
+- if new pack missing, use old data
+- mark old content as LEGACY
+
+Build a migration script:
+old themes → new GameContentPack
+old rounds → new GameContentItem
+
+Do not delete old tables yet.
+
+==================================================
+PART 10 — SAFETY / VALIDATION
+==================================================
+
+Validation per game:
+
+Quizzone:
+- must have correctAnswer in answers
+
+Sara’Musica:
+- youtubeId optional but if present must be valid format
+- clipStart >= 0
+- clipDuration 5–20 sec
+
+WordBack:
+- tabooWords exactly 5
+- tabooWords cannot include word
+
+Coppie:
+- 10 pairs target for Home
+- images can fallback but warning
+
+Percorso:
+- mission duration required
+- public choices validated
+
+AdultOnly:
+- level required
+- consentRequired for level >= 2
+- requiredPlayers >= 1
+
+Karaoke:
+- youtubeId valid
+- embeddable flag if known
+
+==================================================
+PART 11 — IMPLEMENTATION STRATEGY
+==================================================
+
+Do not rewrite everything in one unsafe pass.
+
+Step 1:
+Audit + DB schema + admin pack list page.
+
+Step 2:
+Pack editor + item editor.
+
+Step 3:
+Jonny generator draft flow.
+
+Step 4:
+Runtime games read admin packs.
+
+Step 5:
+Migration from legacy.
+
+==================================================
+OUTPUT REQUIRED
+==================================================
+
+Before patch:
+A. current admin audit
+B. active admin routes
+C. old theme/content DB tables
+D. new schema proposal
+E. migration plan
+
+After patch step 1:
+F. files modified
+G. DB schema added
+H. admin routes added
+I. pack list page
+J. basic create/edit/activate pack
+K. typecheck result
+L. next step plan

@@ -721,9 +721,22 @@ function HomeJoinInner() {
 
   useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
 
-  // Server-authoritative timer: derives remaining time from server-stamped roundStartedAt.
+  // Server-authoritative timer: prefers roundEndsAt when present, falls back to roundStartedAt+timeLimit.
   // Prevents timer reset on phone reload — phones join mid-round with the correct countdown.
   const startRoundTimer = useCallback((payload: Record<string, unknown>) => {
+    // Priority 1: explicit roundEndsAt (server-stamped absolute deadline)
+    const endsAt = payload.roundEndsAt as string | null;
+    if (endsAt) {
+      const remaining = Math.max(0, Math.ceil((new Date(endsAt).getTime() - Date.now()) / 1000));
+      if (remaining <= 0) {
+        if (timerRef.current) clearInterval(timerRef.current);
+        setTimeLeft(0); setRevealed(true);
+      } else {
+        startTimer(remaining);
+      }
+      return;
+    }
+    // Priority 2: derive from roundStartedAt + timeLimit
     const tl = Number(payload.timeLimit ?? 30);
     const rsa = payload.roundStartedAt as string | null;
     const remaining = rsa

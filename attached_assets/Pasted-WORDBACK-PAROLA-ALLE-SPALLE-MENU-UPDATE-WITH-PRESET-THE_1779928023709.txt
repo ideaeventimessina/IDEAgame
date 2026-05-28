@@ -1,0 +1,247 @@
+WORDBACK / PAROLA ALLE SPALLE — MENU UPDATE WITH PRESET THEMES + JONNY GENERATION.
+
+Do not touch Karaoke.
+Do not touch Ballo.
+Do not touch Quizzone.
+Do not touch SaraMusica.
+Do not touch Adult Only.
+Do not touch global sync.
+
+Patch only:
+- WordBack / Parola alle Spalle setup menu
+- word generation source
+
+==================================================
+GOAL
+==================================================
+
+Update Parola alle Spalle Home setup.
+
+Host/TV must be able to choose:
+
+1. Temi predefiniti
+2. Genera con Jonny
+
+WordBack must support both:
+- static preset word packs
+- generated custom word packs
+
+==================================================
+NEW FLOW
+==================================================
+
+When host selects Parola alle Spalle:
+
+TV first screen:
+
+PAROLA ALLE SPALLE
+Come vuoi giocare?
+
+Buttons:
+
+A. Temi predefiniti
+B. Genera con Jonny
+
+--------------------------------------------------
+OPTION A — PRESET THEMES
+--------------------------------------------------
+
+Show existing preset themes:
+
+- Film
+- Musica
+- Sport
+- Disney
+- Oggetti
+- Personaggi
+- Cibo
+- Animali
+- Cultura generale
+- Custom / Altro if exists
+
+Host selects theme.
+
+Then:
+- choose number of words/rounds:
+  5 / 10 / 15 / 20
+
+Then:
+- start booking players.
+
+Use current existing DB/static packs.
+
+Do not break current working WordBack logic.
+
+--------------------------------------------------
+OPTION B — GENERA CON JONNY
+--------------------------------------------------
+
+TV asks:
+
+“Che tema vuoi generare?”
+
+Input from TV/host if possible,
+or from phone players if existing architecture supports it.
+
+Alternative:
+players propose themes from phones for 20 seconds,
+TV shows max 10 proposals,
+Jonny selects or host selects one.
+
+Then choose:
+
+Difficoltà:
+- Facile
+- Medio
+- Difficile
+
+Then choose number of words:
+- 5
+- 10
+- 15
+- 20
+
+Then TV shows:
+
+“Jonny sta creando le parole proibite…”
+
+==================================================
+GENERATED WORDBACK DATA
+==================================================
+
+Each generated round must include:
+
+{
+  word,
+  tabooWords: string[5],
+  hint,
+  category,
+  difficulty,
+  points,
+  timeLimit
+}
+
+Rules:
+- word must be easy to guess from clues
+- tabooWords must be common forbidden words
+- tabooWords must not include the exact word
+- no duplicate words
+- no duplicate tabooWords
+- avoid too obscure words on easy
+- harder themes on difficult
+
+==================================================
+AI GENERATION
+==================================================
+
+If AI provider configured:
+use Jonny AI generation.
+
+If AI fails or not configured:
+use deterministic fallback generator:
+- take preset word bank
+- generate tabooWords from related terms
+- log:
+[WORDBACK_AI_FALLBACK]
+
+Logs:
+[JONNY_WORDBACK_AI] start
+[JONNY_WORDBACK_AI] success
+[JONNY_WORDBACK_AI] fallback
+
+==================================================
+PRESERVE EXISTING GAMEPLAY
+==================================================
+
+Do not break:
+- guesser/suggester roles
+- taboo alarm button
+- public taboo validation
+- correct answer fallback input
+- microphone fallback
+- role rotation every 3 words
+- booking every 3 words
+- scoring rules
+
+Only change setup/source of rounds.
+
+==================================================
+SERVER STATE
+==================================================
+
+Add/extend WordBack config:
+
+{
+  setupMode: "preset" | "jonny",
+  selectedTheme,
+  difficulty,
+  wordCount,
+  generatedRounds,
+  currentIndex
+}
+
+If setupMode = preset:
+load from existing pack.
+
+If setupMode = jonny:
+generate rounds then store in session/gameConfig.
+
+==================================================
+TV UI
+==================================================
+
+TV must show:
+- setup choice
+- preset theme selection
+- Jonny generation setup
+- generating loading state
+- then normal booking/game flow
+
+No old ugly theme cards if Jonny mode selected.
+
+==================================================
+PHONE UI
+==================================================
+
+During setup:
+phones show:
+“L’animatore sta preparando Parola alle Spalle”
+
+If player theme proposal is implemented:
+phones can submit theme suggestions.
+
+During game:
+unchanged.
+
+==================================================
+TIMER / SYNC RULE
+==================================================
+
+All setup/generation transitions must use server state.
+No client-only transition.
+
+==================================================
+OUTPUT REQUIRED
+==================================================
+
+Before patch:
+A. current WordBack setup architecture
+B. current word pack loader
+C. files to modify
+
+After patch:
+D. files modified
+E. setup mode selector
+F. preset theme flow
+G. Jonny generation flow
+H. generated word shape
+I. fallback behavior
+J. existing gameplay preserved
+K. typecheck result
+L. manual test:
+   - preset theme works
+   - Jonny generated theme works
+   - tabooWords appear
+   - booking still works
+   - correct answer still works
+   - role rotation every 3 words still works

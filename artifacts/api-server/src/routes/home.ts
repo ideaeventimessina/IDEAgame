@@ -93,6 +93,11 @@ const saraMusicaWinnerMap = new Map<string, Map<number, string>>();
 const quizzoneAnswerMap = new Map<string, Map<number, Map<string, { answerIndex: number; answeredAt: number }>>>();
 // Auto-reveal timers — cleared when all players answer early
 const quizzoneRevealTimers = new Map<string, ReturnType<typeof setTimeout>>();
+// Adult Only: server-side auto-close timers (challenge → voting, voting → result)
+const adultChallengeTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const adultVotingTimers    = new Map<string, ReturnType<typeof setTimeout>>();
+// Coppie: theme suggestion phase auto-advance timer
+const coppieThemeTimers    = new Map<string, ReturnType<typeof setTimeout>>();
 
 /** Fisher-Yates shuffle that tracks where the correct answer moved. */
 function shuffleWithCorrectIndex(
@@ -1379,14 +1384,16 @@ router.post("/home/sessions/:id/quiz/select-count", async (req, res): Promise<vo
   const count = Number(req.body?.count ?? 10);
   const validCounts = [5, 10, 15, 20];
   const questionCount = validCounts.includes(count) ? count : 10;
+  const rawDiff = String((req.body as Record<string,unknown>)?.difficulty ?? "medium");
+  const difficulty = (["easy","medium","hard"] as const).includes(rawDiff as "easy"|"medium"|"hard") ? rawDiff as "easy"|"medium"|"hard" : "medium";
   const themeId = String(rp["theme"] ?? "cultura_generale");
   // Start generating
-  await qzUpdate(id, { phase: "generating", questionCount });
+  await qzUpdate(id, { phase: "generating", questionCount, difficulty });
   res.json({ ok: true });
   // After 3s generate questions and start countdown
   setTimeout(async () => {
     try {
-      const questions = generateQuiz(themeId, questionCount);
+      const questions = generateQuiz(themeId, questionCount, difficulty);
       const sess2 = await getSession(id);
       if (!sess2) return;
       const rp2 = (sess2.roundPayload ?? {}) as Record<string, unknown>;
@@ -1655,12 +1662,14 @@ router.post("/home/sessions/:id/saramusica/select-count", async (req, res): Prom
   const count = Number((req.body as Record<string,unknown>)?.count ?? 10);
   const validCounts = [5, 10, 15, 20];
   const roundCount = validCounts.includes(count) ? count : 10;
+  const rawDiff = String((req.body as Record<string,unknown>)?.difficulty ?? "medium");
+  const smDifficulty = (["easy","medium","hard"] as const).includes(rawDiff as "easy"|"medium"|"hard") ? rawDiff as "easy"|"medium"|"hard" : "medium";
   const themeId = String(rp["theme"] ?? "anni90");
-  await smUpdate(id, { phase: "generating", roundCount });
+  await smUpdate(id, { phase: "generating", roundCount, difficulty: smDifficulty });
   res.json({ ok: true });
   setTimeout(async () => {
     try {
-      const rounds = await generateSaraMusicaRounds(themeId, roundCount);
+      const rounds = await generateSaraMusicaRounds(themeId, roundCount, smDifficulty);
       const sess2 = await getSession(id);
       if (!sess2) return;
       const rp2 = (sess2.roundPayload ?? {}) as Record<string, unknown>;
@@ -1934,6 +1943,7 @@ router.post("/home/sessions/:id/adult/reveal-spin", async (req, res): Promise<vo
   const challenge = rp["currentChallenge"] as { durationSeconds?: number } | null;
   const challengeEndsAt = new Date(Date.now() + (challenge?.durationSeconds ?? 60) * 1000).toISOString();
   await adultUpdate(id, { phase: "challenge", challengeEndsAt });
+  scheduleAdultChallengeAutoExpire(id, challengeEndsAt);
   req.log.info({ sessionId: id }, "[ADULT_BOTTLE_SPIN] reveal-spin → challenge");
   res.json({ ok: true });
 });
@@ -1980,6 +1990,80 @@ function calcStarScore(votes: Record<string, StarVote>, doublePoints: boolean): 
   return doublePoints ? base * 2 : base;
 }
 
+// ── Adult Only: server-authoritative auto-close helpers ────────────────────────
+
+async function _adultCloseVoting(sessionId: string): Promise<void> {
+  adultVotingTimers.delete(sessionId);
+  const sess = await getSession(sessionId); if (!sess) return;
+  const rp = (sess.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-adult" || String(rp["phase"]) !== "voting") return;
+  const votes = (rp["votes"] ?? {}) as Record<string, StarVote>;
+  const selectedId = String(rp["selectedPlayerId"] ?? "");
+  const pts = calcStarScore(votes, Boolean(rp["doublePoints"]));
+  const players = await getPlayers(sessionId);
+  const sel = players.find(p => p.id === selectedId);
+  if (sel && pts > 0) await db.update(homePlayersTable).set({ score: sel.score + pts }).where(eq(homePlayersTable.id, selectedId));
+  const updated = await getPlayers(sessionId);
+  await adultUpdate(sessionId, { phase: "result", lastValidated: true, lastPoints: pts, rankingData: aoRanking(updated, pts > 0 ? { [selectedId]: pts } : {}) });
+  logger.info({ sessionId }, "[ADULT_VOTE] auto-closed by server timer");
+}
+
+function scheduleAdultVotingAutoClose(sessionId: string, votingEndsAt: string): void {
+  const ex = adultVotingTimers.get(sessionId); if (ex) clearTimeout(ex);
+  const delay = Math.max(0, new Date(votingEndsAt).getTime() - Date.now()) + 600;
+  const t = setTimeout(() => void _adultCloseVoting(sessionId), delay);
+  adultVotingTimers.set(sessionId, t);
+}
+
+function scheduleAdultChallengeAutoExpire(sessionId: string, challengeEndsAt: string): void {
+  const ex = adultChallengeTimers.get(sessionId); if (ex) clearTimeout(ex);
+  const delay = Math.max(0, new Date(challengeEndsAt).getTime() - Date.now()) + 600;
+  const t = setTimeout(async () => {
+    adultChallengeTimers.delete(sessionId);
+    const sess = await getSession(sessionId); if (!sess) return;
+    const rp = (sess.roundPayload ?? {}) as Record<string, unknown>;
+    if (rp["mode"] !== "home-adult" || String(rp["phase"]) !== "challenge") return;
+    const votingEndsAt = new Date(Date.now() + 15_000).toISOString();
+    await adultUpdate(sessionId, { phase: "voting", votes: {}, votingEndsAt, activePower: null });
+    scheduleAdultVotingAutoClose(sessionId, votingEndsAt);
+    logger.info({ sessionId }, "[ADULT_CHALLENGE] auto-expired → voting by server timer");
+  }, delay);
+  adultChallengeTimers.set(sessionId, t);
+}
+
+// ── Coppie: theme suggestion auto-advance helper ───────────────────────────────
+
+function scheduleCoppieThemeAutoAdvance(sessionId: string, themeTimerEndsAt: string): void {
+  const ex = coppieThemeTimers.get(sessionId); if (ex) clearTimeout(ex);
+  const delay = Math.max(0, new Date(themeTimerEndsAt).getTime() - Date.now()) + 600;
+  const t = setTimeout(async () => {
+    coppieThemeTimers.delete(sessionId);
+    const sess = await getSession(sessionId); if (!sess) return;
+    const rp = (sess.roundPayload ?? {}) as Record<string, unknown>;
+    if (rp["mode"] !== "home-coppie" || String(rp["themePhase"] ?? "") !== "suggestion") return;
+    // Auto-select: pick most-voted theme or fallback
+    const proposed = (rp["proposedThemes"] ?? []) as { themeId: string; playerId: string }[];
+    const available = (rp["availableSets"] ?? []) as { id: string; name: string }[];
+    const tally: Record<string, number> = {};
+    for (const p of proposed) tally[p.themeId] = (tally[p.themeId] ?? 0) + 1;
+    const topThemeId = Object.entries(tally).sort((a, b) => b[1] - a[1])[0]?.[0];
+    const chosenSet = available.find(s => s.id === topThemeId) ?? available[0];
+    const patch: Record<string, unknown> = { themePhase: "playing", themeTimerEndsAt: null };
+    if (chosenSet) {
+      patch["selectedTheme"] = { id: chosenSet.id, name: chosenSet.name };
+      patch["category"] = chosenSet.name;
+    }
+    const sess2 = await getSession(sessionId); if (!sess2) return;
+    const rp2 = (sess2.roundPayload ?? {}) as Record<string, unknown>;
+    await db.update(homeSessionsTable).set({ roundPayload: { ...rp2, ...patch } }).where(eq(homeSessionsTable.id, sessionId));
+    const updated = await getSession(sessionId);
+    const players = await getPlayers(sessionId);
+    if (updated) emitHomeState(sessionId, updated, players);
+    logger.info({ sessionId, chosenSet }, "[COPPIE] theme timer auto-advanced → playing");
+  }, delay);
+  coppieThemeTimers.set(sessionId, t);
+}
+
 // POST /adult/complete — challenge done → always opens performance voting (15s)
 router.post("/home/sessions/:id/adult/complete", async (req, res): Promise<void> => {
   const id = String(req.params["id"]);
@@ -2002,7 +2086,11 @@ router.post("/home/sessions/:id/adult/complete", async (req, res): Promise<void>
   } else {
     // Always open performance voting (4-category star rating, 15 s)
     req.log.info({ sessionId: id }, "[ADULT_VOTE] phase_started");
-    await adultUpdate(id, { phase: "voting", votes: {}, votingEndsAt: new Date(Date.now() + 15_000).toISOString(), activePower: null });
+    const votingEndsAt = new Date(Date.now() + 15_000).toISOString();
+    // Cancel any pending challenge timer — player has manually completed
+    const existingCt = adultChallengeTimers.get(id); if (existingCt) { clearTimeout(existingCt); adultChallengeTimers.delete(id); }
+    await adultUpdate(id, { phase: "voting", votes: {}, votingEndsAt, activePower: null });
+    scheduleAdultVotingAutoClose(id, votingEndsAt);
   }
   res.json({ ok: true });
 });
@@ -2015,6 +2103,8 @@ router.post("/home/sessions/:id/adult/skip", async (req, res): Promise<void> => 
   if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
   const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
   if (rp["mode"] !== "home-adult" || String(rp["phase"]) !== "challenge") { res.status(409).json({ error: "Non in fase sfida" }); return; }
+  // Cancel server challenge timer (player/host skipped early)
+  const existingCt = adultChallengeTimers.get(id); if (existingCt) { clearTimeout(existingCt); adultChallengeTimers.delete(id); }
   await adultUpdate(id, { phase: "result", lastValidated: false, lastPoints: 0, rankingData: aoRanking(await getPlayers(id)), activePower: null });
   res.json({ ok: true });
 });
@@ -2076,6 +2166,8 @@ router.post("/home/sessions/:id/adult/close-vote", async (req, res): Promise<voi
   const selectedId = String(rp["selectedPlayerId"] ?? "");
   const pts = calcStarScore(votes, Boolean(rp["doublePoints"]));
   req.log.info({ sessionId: id, voteCount: Object.keys(votes).length, pts }, "[ADULT_VOTE] vote_closed manual");
+  // Cancel server voting timer (host closed early)
+  const existingVt = adultVotingTimers.get(id); if (existingVt) { clearTimeout(existingVt); adultVotingTimers.delete(id); }
   const players = await getPlayers(id);
   const sel = players.find(p => p.id === selectedId);
   if (sel && pts > 0) await db.update(homePlayersTable).set({ score: sel.score + pts }).where(eq(homePlayersTable.id, selectedId));
@@ -2291,6 +2383,9 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
     const coppPlayers = await getPlayers(id);
     emitToRoom(homeRoom(id), "home:game_started", { session: coppieUpdated, players: coppPlayers, payload: coppiePayload });
     emitHomeState(id, coppieUpdated, coppPlayers);
+    // Start server-authoritative theme suggestion timer
+    const coppieThemeEnd = (coppiePayload as Record<string,unknown>)?.themeTimerEndsAt as string | null;
+    if (coppieThemeEnd) scheduleCoppieThemeAutoAdvance(id, coppieThemeEnd);
     res.json({ session: coppieUpdated, players: coppPlayers });
     return;
   }
@@ -2663,9 +2758,13 @@ router.post("/home/sessions/:id/flow/confirm", async (req, res): Promise<void> =
               }))
             : preloadedRounds;
           // Carry bookedPlayers into the round payload so TV boards can filter participants.
+          const _sr0 = stampedRounds[0] as Record<string, unknown> | undefined;
           const firstRound: RoundPayload = {
-            ...(stampedRounds[0] ?? {}),
+            ...(_sr0 ?? {}),
             roundStartedAt: new Date().toISOString(),
+            roundEndsAt: _sr0?.timeLimit
+              ? new Date(Date.now() + Number(_sr0.timeLimit) * 1000).toISOString()
+              : null,
             bookedPlayers: bp,
           } as RoundPayload;
           logger.info({ sessionId: id, mode: firstRound["mode"], bookedCount: bp.length, gameSlug: launchSlug }, "[GameFlow] payload mode");
@@ -2786,9 +2885,13 @@ router.post("/home/sessions/:id/next", async (req, res): Promise<void> => {
     suggesterNickname: currentPayload["suggesterNickname"] ?? null,
   } : {};
 
+  const _nextRoundData = preloadedRounds[nextRound] as Record<string, unknown> | undefined;
   const nextPayload = {
-    ...(preloadedRounds[nextRound] ?? { mode: "unknown", roundIndex: nextRound }),
+    ...(_nextRoundData ?? { mode: "unknown", roundIndex: nextRound }),
     roundStartedAt: new Date().toISOString(),
+    roundEndsAt: _nextRoundData?.timeLimit
+      ? new Date(Date.now() + Number(_nextRoundData.timeLimit) * 1000).toISOString()
+      : null,
     ...(bookedPlayers.length > 0 ? { bookedPlayers } : {}),
     ...wordbackPairFields,
   };
