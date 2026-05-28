@@ -165,7 +165,7 @@ function Router() {
         <Route path="/home/join" component={HomeJoin} />
         <Route path="/presenter-live" component={PresenterLive} />
         <Route path="/presenter" component={Presenter} />
-        <Route path="/admin"><Guard route="/admin"><AdminDashboard /></Guard></Route>
+        <Route path="/admin">{() => { window.location.replace('/admin/giochi'); return null; }}</Route>
         <Route path="/admin/games"><Guard route="/admin/games"><AdminGames /></Guard></Route>
         <Route path="/admin/quizzes"><Guard route="/admin/quizzes"><AdminQuizzes /></Guard></Route>
         <Route path="/admin/media"><Guard route="/admin/media"><AdminMedia /></Guard></Route>

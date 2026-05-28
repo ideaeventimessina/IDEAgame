@@ -20,7 +20,7 @@ export default function Login() {
     const r = params.get('redirect');
     // Only allow internal paths (must start with /)
     if (r && r.startsWith('/') && !r.startsWith('//')) return r;
-    return '/admin/content-packs';
+    return '/admin/giochi';
   })();
 
   const submit = async (e: React.FormEvent) => {
