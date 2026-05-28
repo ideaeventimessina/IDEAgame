@@ -1,0 +1,183 @@
+HOME MODE — FINAL FREEZE AUDIT BEFORE LIVE MODE.
+
+Stop adding features.
+Do not patch gameplay yet.
+We need a precise status report and cleanup plan.
+
+Goals:
+1. Identify all remaining Home versions/routes.
+2. Confirm which Home route is the only active production route.
+3. Remove/hide all debug overlays from production and optionally from preview.
+4. Produce a final Home Mode status matrix by game.
+5. Prepare checklist before moving to Live Mode.
+
+==================================================
+PART 1 — HOME ROUTES AUDIT
+==================================================
+
+Search all routes/pages:
+
+HomeV1
+HomeV2
+HomeV3
+HomeV4
+HomeV5
+HomeRoom
+HomeGame
+HomeJoin
+HomeSetup
+HomeLobby
+ModeSelect
+Hub
+
+Output table:
+
+route | component | file | active? | legacy? | can delete? | notes
+
+We need to know:
+- does HomeV2/V3/V5 still exist?
+- are they imported anywhere?
+- are they reachable by URL?
+- are they in production bundle?
+- are they safe to delete?
+
+==================================================
+PART 2 — DEFINE SINGLE ACTIVE HOME
+==================================================
+
+Confirm production active Home should be:
+
+/home-v4 → room creation hub
+/home → TV/game board
+/home/join → phone player
+
+Everything else should be:
+- deleted
+or
+- redirect to /home-v4
+or
+- marked legacy and not bundled.
+
+Output exact decision.
+
+==================================================
+PART 3 — DEBUG OVERLAY CLEANUP
+==================================================
+
+User still sees debug bars in preview.
+
+Find and remove from ALL environments, not only production:
+
+- ACTIVE ROUTE / COMPONENT / FILE / BUILD top bar
+- bottom-right build hash badge
+- PS4 MODE ACTIVE badge
+- audit badges
+- runtime route badges
+- component debug badges
+- build stamps visible on screen
+
+Keep only console logs if DEV.
+
+There must be ZERO visible debug overlay on:
+- /home-v4
+- /home
+- /home/join
+- /admin
+- /login
+
+Output:
+file | debug UI removed | remaining debug logs
+
+==================================================
+PART 4 — HOME MODE GAME STATUS MATRIX
+==================================================
+
+Audit every Home game and produce status:
+
+Games:
+- Karaoke Live
+- Freestyle
+- Quizzone
+- Sara’Musica
+- Parola alle Spalle
+- Gioco delle Coppie
+- Percorso a Risate
+- Adult Only
+- Sfida Ballo
+
+For each:
+- flow status
+- TV status
+- phone status
+- timer status
+- sync status
+- scoring status
+- content source
+- known bugs
+- priority before test
+
+Output table:
+game | playable? | critical bugs | next fixes | ready for playtest yes/no
+
+==================================================
+PART 5 — ROLES MATRIX
+==================================================
+
+For every game define roles:
+
+- TV
+- phone player
+- active contestant
+- spectator/public
+- host/control buttons
+- admin/content manager
+
+Output:
+game | TV role | phone role | active player role | public role | host actions
+
+==================================================
+PART 6 — CONTENT SOURCE MATRIX
+==================================================
+
+For each game, identify content source:
+
+- static fallback
+- admin content packs
+- Jonny AI
+- YouTube
+- user proposal
+- uploaded media
+
+Output:
+game | current source | desired final source | gap
+
+==================================================
+PART 7 — PERFORMANCE STATUS
+==================================================
+
+Report:
+- current lazy loading status
+- PS4 mode status
+- remaining heavy files
+- whether HomeGame/HomeJoin are still monolithic
+- next performance refactor needed or not
+
+==================================================
+PART 8 — OUTPUT ONLY, NO PATCH EXCEPT DEBUG REMOVAL
+==================================================
+
+Allowed patch:
+- remove visible debug overlays from all environments
+- redirect/delete clearly dead Home routes only if 100% safe
+
+Do not patch game logic yet.
+
+Final output:
+A. active routes
+B. legacy routes
+C. debug overlays removed
+D. game status matrix
+E. roles matrix
+F. content source matrix
+G. top 10 remaining blockers before Home playtest
+H. recommendation: ready for Home playtest? yes/no
