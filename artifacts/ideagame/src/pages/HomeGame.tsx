@@ -3680,7 +3680,7 @@ function AudioPlayer({ src, label = 'Riproduci', color = '#60A5FA' }: { src: str
 
 declare global {
   interface Window {
-    YT: { Player: new (el: HTMLElement, opts: Record<string,unknown>) => YTPlayerInst };
+    YT: { Player: new (el: string | HTMLElement, opts: Record<string,unknown>) => YTPlayerInst };
     onYouTubeIframeAPIReady?: () => void;
   }
 }
@@ -3700,7 +3700,13 @@ function loadYTApi(): Promise<void> {
       s.src = 'https://www.youtube.com/iframe_api';
       document.head.appendChild(s);
       const prev = window.onYouTubeIframeAPIReady;
-      window.onYouTubeIframeAPIReady = () => { prev?.(); _ytReady = true; _ytCbs.forEach(cb => cb()); _ytCbs.length = 0; };
+      window.onYouTubeIframeAPIReady = () => {
+        prev?.();
+        _ytReady = true;
+        _log('[SARAMUSICA_YT]', { event: 'api_loaded' });
+        _ytCbs.forEach(cb => cb());
+        _ytCbs.length = 0;
+      };
     }
   });
 }
@@ -3721,7 +3727,7 @@ function YTClipPlayer({ clip, roundIndex, sessionId }: {
   sessionId: string;
 }) {
   const SM = '#60A5FA';
-  const divRef    = useRef<HTMLDivElement>(null);
+  const containerId = `yt-clip-${roundIndex}-${clip.youtubeId.slice(0, 8)}`;
   const playerRef = useRef<YTPlayerInst | null>(null);
   const timerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tickRef   = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -3736,37 +3742,52 @@ function YTClipPlayer({ clip, roundIndex, sessionId }: {
     };
   }, [clip.youtubeId, roundIndex]);
 
+  // ── startClip: called from button click (satisfies browser gesture requirement) ──
   const startClip = async () => {
     if (status !== 'idle' && status !== 'error') return;
     setStatus('loading'); setElapsed(0);
-    _log('[SARAMUSICA_CLIP]', { youtubeId: clip.youtubeId, clipType: clip.clipType, startSecond: clip.startSecond, duration: clip.durationSeconds, event: 'init', sessionId, roundIndex });
+    _log('[SARAMUSICA_YT]', { event: 'play_clicked', youtubeId: clip.youtubeId, startSecond: clip.startSecond, durationSeconds: clip.durationSeconds, clipType: clip.clipType, sessionId, roundIndex });
     try {
+      // Pre-load resolves instantly if already done — keeps gesture context alive
       await loadYTApi();
-      if (!divRef.current) { setStatus('error'); return; }
+      _log('[SARAMUSICA_YT]', { event: 'clip_loaded', youtubeId: clip.youtubeId });
       if (playerRef.current) { try { playerRef.current.destroy(); } catch { /**/ } playerRef.current = null; }
-      playerRef.current = new window.YT.Player(divRef.current, {
+      // Use string container ID — more reliable across YT API versions
+      playerRef.current = new window.YT.Player(containerId, {
         videoId: clip.youtubeId,
         width: '100%', height: '100%',
-        playerVars: { autoplay: 0, controls: 0, rel: 0, modestbranding: 1, playsinline: 1, enablejsapi: 1 },
+        playerVars: { autoplay: 1, controls: 0, rel: 0, modestbranding: 1, playsinline: 1, enablejsapi: 1, start: clip.startSecond },
         events: {
           onReady: (evt: { target: YTPlayerInst }) => {
+            _log('[SARAMUSICA_YT]', { event: 'player_ready', youtubeId: clip.youtubeId });
+            // seekTo + playVideo in same synchronous tick — no delay
             evt.target.seekTo(clip.startSecond, true);
-            _log('[SARAMUSICA_CLIP]', { youtubeId: clip.youtubeId, event: 'seekTo', startSecond: clip.startSecond });
-            setTimeout(() => {
-              evt.target.playVideo(); setStatus('playing');
-              _log('[SARAMUSICA_CLIP]', { youtubeId: clip.youtubeId, event: 'play' });
-              let e = 0;
-              tickRef.current = setInterval(() => { e += 0.25; setElapsed(Math.min(e, clip.durationSeconds)); if (e >= clip.durationSeconds && tickRef.current) clearInterval(tickRef.current); }, 250);
-              timerRef.current = setTimeout(() => {
-                evt.target.pauseVideo(); setStatus('done');
-                _log('[SARAMUSICA_CLIP]', { youtubeId: clip.youtubeId, event: 'pause', durationSeconds: clip.durationSeconds });
-              }, clip.durationSeconds * 1000);
-            }, 700);
+            _log('[SARAMUSICA_YT]', { event: 'seek_to', startSecond: clip.startSecond });
+            evt.target.playVideo();
+            setStatus('playing');
+            _log('[SARAMUSICA_YT]', { event: 'play_started', youtubeId: clip.youtubeId });
+            let e = 0;
+            tickRef.current = setInterval(() => {
+              e += 0.25;
+              setElapsed(Math.min(e, clip.durationSeconds));
+              if (e >= clip.durationSeconds && tickRef.current) clearInterval(tickRef.current);
+            }, 250);
+            timerRef.current = setTimeout(() => {
+              evt.target.pauseVideo();
+              setStatus('done');
+              _log('[SARAMUSICA_YT]', { event: 'pause_at_duration', youtubeId: clip.youtubeId, durationSeconds: clip.durationSeconds });
+            }, clip.durationSeconds * 1000);
           },
-          onError: () => { _log('[SARAMUSICA_CLIP]', { youtubeId: clip.youtubeId, event: 'error' }); setStatus('error'); },
+          onError: (e: { data: number }) => {
+            _log('[SARAMUSICA_YT]', { event: 'player_error', youtubeId: clip.youtubeId, errorCode: e.data });
+            setStatus('error');
+          },
         },
       });
-    } catch { setStatus('error'); }
+    } catch (err) {
+      _log('[SARAMUSICA_YT]', { event: 'player_error', youtubeId: clip.youtubeId, err: String(err) });
+      setStatus('error');
+    }
   };
 
   const badge = CLIP_BADGES[clip.clipType] ?? { emoji: '🎵', label: 'CLIP MUSICALE' };
@@ -3792,7 +3813,7 @@ function YTClipPlayer({ clip, roundIndex, sessionId }: {
       </div>
 
       <div className="relative rounded-2xl overflow-hidden" style={{ paddingBottom: '38%', background: '#000' }}>
-        <div className="absolute inset-0" ref={divRef} />
+        <div id={containerId} className="absolute inset-0" />
         {status === 'idle' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3"
             style={{ background: 'linear-gradient(135deg,#07061a,#0d0d20)' }}>
@@ -3900,23 +3921,46 @@ function SaraMusicaBoard({ payload, session, players }: {
     finally { setBusy(false); }
   };
 
+  // Pre-load YouTube IFrame API as soon as board mounts (before any clip round)
+  useEffect(() => { void loadYTApi(); }, []);
+
   // ── setup_theme ──────────────────────────────────────────────────────────────
+  const SM_THEME_COLORS: Record<string, string> = {
+    anni80: '#EC4899', anni90: '#06B6D4', anni2000: '#8B5CF6',
+    sanremo: '#F43F5E', sigle_tv: '#F97316', disney: '#FBBF24',
+    rock: '#EF4444', dance: '#10B981', trap_urban: '#94A3B8',
+    custom: '#F5B642',
+  };
+
   if (phase === 'setup_theme') return (
-    <div className="flex flex-col items-center gap-8 text-center w-full max-w-4xl">
+    <div className="flex flex-col items-center gap-8 text-center w-full max-w-5xl">
       <div className="flex flex-col items-center gap-2">
         <div className="text-5xl">🎵</div>
         <div className="text-display text-4xl font-black text-white">Scegli il Tema Musicale</div>
         <div className="text-white/50 text-sm">L'host sceglie, i giocatori si preparano</div>
       </div>
-      <div className="grid grid-cols-5 gap-3 w-full">
-        {SM_THEME_LIST.map(t => (
-          <button key={t.id} onClick={() => void smPost('select-theme', { themeId: t.id })} disabled={busy}
-            className="flex flex-col items-center gap-2 rounded-2xl p-5 transition-all hover:scale-105 disabled:opacity-50"
-            style={{ background: `linear-gradient(135deg,${SM}18,rgba(0,0,0,0.4))`, border: `2px solid ${SM}44` }}>
-            <div className="text-3xl">{t.emoji}</div>
-            <div className="text-sm font-black text-white leading-tight">{t.label}</div>
-          </button>
-        ))}
+      <div className="grid grid-cols-5 gap-4 w-full">
+        {SM_THEME_LIST.map(t => {
+          const c = SM_THEME_COLORS[t.id] ?? SM;
+          return (
+            <button key={t.id} onClick={() => void smPost('select-theme', { themeId: t.id })} disabled={busy}
+              className="group relative flex flex-col items-center gap-3 rounded-3xl p-5 transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-40 overflow-hidden"
+              style={{ background: `linear-gradient(145deg,${c}28,${c}08,rgba(0,0,0,0.6))`, border: `1.5px solid ${c}50`, boxShadow: `0 4px 32px ${c}20` }}>
+              {/* glow ring on hover */}
+              <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-3xl"
+                style={{ background: `radial-gradient(ellipse at 50% 0%,${c}30,transparent 70%)` }} />
+              {/* music bars decoration */}
+              <div className="flex items-end gap-0.5 h-4 opacity-40" aria-hidden="true">
+                {[5,9,6,11,7,10,5].map((h,i) => (
+                  <div key={i} className="w-0.5 rounded-full" style={{ height: `${h}px`, background: c }} />
+                ))}
+              </div>
+              <div className="text-4xl drop-shadow-lg leading-none">{t.emoji}</div>
+              <div className="text-sm font-black text-white leading-tight tracking-wide">{t.label}</div>
+              <div className="absolute bottom-0 left-0 right-0 h-px" style={{ background: `linear-gradient(90deg,transparent,${c}60,transparent)` }} />
+            </button>
+          );
+        })}
       </div>
       <div className="text-white/30 text-xs">{players.length} giocatori connessi</div>
     </div>
@@ -4046,7 +4090,7 @@ function SaraMusicaBoard({ payload, session, players }: {
         </div>
 
         {/* YouTube Clip Player */}
-        {currentQ.youtubeClip && (
+        {currentQ.youtubeClip?.youtubeId && (
           <YTClipPlayer
             clip={currentQ.youtubeClip}
             roundIndex={currentIndex}
