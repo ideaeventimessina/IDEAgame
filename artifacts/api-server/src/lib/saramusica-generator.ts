@@ -338,7 +338,7 @@ Regole:
 - Rispetta il livello di difficoltà: ${diffLabel}`;
 
   const completion = await openai.chat.completions.create({
-    model: "gpt-5-mini",
+    model: "gpt-4o-mini",
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },

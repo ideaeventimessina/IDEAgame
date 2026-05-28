@@ -1,0 +1,149 @@
+PAROLA ALLE SPALLE — TIMER CLEANUP + PHONE LAYOUT FIX + AUTO NEXT WORD
+
+Patch only Parola alle Spalle.
+Do not touch other games.
+
+Current bugs from real device test:
+1. TV shows useless ghost timer at top = 0
+2. phone timer loops/reset continuously (30s loop) even when no active timed phase exists
+3. microphone fallback block is too tall and goes off-screen on iPhone Safari
+4. after word validation the game should auto advance immediately to next word
+
+==================================================
+PART 1 — REMOVE TV GHOST TIMER
+==================================================
+
+Current:
+TV shows top red timer box with 0 even when not needed.
+
+Required:
+Remove timer UI from TV in every WordBack phase where timer is irrelevant.
+
+Show timer ONLY during active timed guess phase.
+
+Do NOT show:
+- setup
+- Jonny generating
+- reveal
+- transition
+- result
+- waiting pair rotation
+
+If remaining <= 0 and phase not timed:
+render nothing.
+
+No red timer box with zero.
+
+==================================================
+PART 2 — PHONE TIMER LOOP FIX
+==================================================
+
+Bug:
+Phone timer restarts from ~30 seconds in loop.
+
+Required:
+Phone must use server state only.
+
+Use:
+roundEndsAt
+
+Compute:
+remaining = max(0, roundEndsAt - Date.now())
+
+Only if current phase = timed_guess
+
+If phase != timed_guess:
+- no countdown visible
+- no interval running
+- no local resetTimer
+
+Critical:
+Do NOT restart timer unless:
+- roundId changes OR
+- phase changes into active timed_guess
+
+When remaining reaches 0:
+freeze at 0
+wait for server transition
+
+No loop.
+
+==================================================
+PART 3 — MICROPHONE FALLBACK MOBILE LAYOUT FIX
+==================================================
+
+Bug:
+Mic fallback card goes outside viewport on iPhone Safari.
+Player cannot answer because UI becomes clipped.
+
+Required:
+Keep the entire screen non-scrollable as now,
+BUT everything must fit inside visible viewport.
+
+Fix fallback UI:
+
+- reduce vertical height
+- reduce padding
+- collapse help text
+- shrink title/body
+- allow internal scroll only inside fallback help box if absolutely needed
+- bottom answer input must always remain reachable
+- mic fallback must never push answer CTA below fold
+
+Use safe mobile layout:
+height: 100dvh
+overflow: hidden
+
+Internal:
+flex column
+justify between
+min-height aware
+
+Input / response CTA always visible.
+
+==================================================
+PART 4 — AUTO ADVANCE WHEN WORD VALIDATED
+==================================================
+
+Current:
+Word validated but game waits.
+
+Required:
+When word becomes validated/correct:
+
+Immediately:
+- award points
+- show success feedback briefly (max 1s)
+- server advances automatically to next word
+
+No manual click required.
+
+Flow:
+correct word
+→ +points
+→ success flash
+→ next word auto
+
+If last word:
+→ end round normally
+
+==================================================
+PART 5 — OUTPUT REQUIRED
+==================================================
+
+A. root cause TV ghost timer
+B. root cause phone timer loop
+C. root cause mic fallback overflow on iPhone
+D. files modified
+E. TV timer only in timed guess phase
+F. phone timer loop fixed
+G. fallback fits inside 100dvh mobile viewport
+H. word validated → auto next
+I. typecheck result
+J. manual test:
+   - enter WordBack on iPhone Safari
+   - no ghost timer on TV
+   - phone timer does not loop
+   - mic fallback visible fully on one screen
+   - answer CTA reachable
+   - correct word instantly advances to next
