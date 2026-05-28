@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useLocation } from 'wouter';
 import { AdminLayout } from './AdminLayout';
-import { ArrowLeft, Sparkles, Plus, Edit2, Trash2, Copy, Home, Tv, ChevronDown, Check } from 'lucide-react';
+import { ArrowLeft, Sparkles, Plus, Edit2, Trash2, Copy, Home, Tv, ChevronDown, ChevronUp, Check, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // ── Game definitions ──────────────────────────────────────────────────────────
@@ -121,6 +121,25 @@ interface MediaSlot {
   label: string;
 }
 
+interface PackItem {
+  id: string;
+  type: string;
+  title: string;
+  payloadJson: Record<string, unknown> | null;
+  sortOrder: number;
+  isActive: boolean;
+}
+
+// ── Adult Only level config ───────────────────────────────────────────────────
+
+const ADULT_LEVELS = [
+  { level: 1, label: 'Sociale',  emoji: '🥂',  color: '#34D399' },
+  { level: 2, label: 'Flirt',    emoji: '💋',  color: '#FB7185' },
+  { level: 3, label: 'Hot',      emoji: '🔥',  color: '#EF4444' },
+  { level: 4, label: 'Spinto',   emoji: '🔒',  color: '#A855F7' },
+  { level: 5, label: 'Esclusivo',emoji: '🌙',  color: '#818CF8' },
+] as const;
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function modeHomeActive(mode: string)  { return mode === 'home' || mode === 'both'; }
@@ -161,6 +180,13 @@ export default function GameContentPage({ slug }: { slug: string }) {
   const [editId,   setEditId]   = useState<string | null>(null);
   const [editName, setEditName] = useState('');
 
+  // ── Pack item expansion state ─────────────────────────────────────────────────
+  const [expandedPackId,   setExpandedPackId]   = useState<string | null>(null);
+  const [packItems,        setPackItems]        = useState<PackItem[]>([]);
+  const [loadingItems,     setLoadingItems]     = useState(false);
+  const [addingCell,       setAddingCell]       = useState<string | null>(null); // "verita_1" format
+  const [addText,          setAddText]          = useState('');
+
   // ── Media slots state ────────────────────────────────────────────────────────
   const [slots,     setSlots]     = useState<MediaSlot[]>([]);
   const [slotEdits, setSlotEdits] = useState<Record<string, string>>({});
@@ -189,6 +215,52 @@ export default function GameContentPage({ slug }: { slug: string }) {
   }, [slug]);
 
   useEffect(() => { void loadPacks(); void loadSlots(); }, [loadPacks, loadSlots]);
+
+  // ── Load pack items ───────────────────────────────────────────────────────────
+  const loadPackItems = useCallback(async (packId: string) => {
+    setLoadingItems(true);
+    try {
+      const r = await fetch(`/api/game-content-packs/${packId}/items`, { credentials: 'include' });
+      const data = await r.json() as PackItem[];
+      setPackItems(Array.isArray(data) ? data : []);
+    } finally {
+      setLoadingItems(false);
+    }
+  }, []);
+
+  const toggleExpand = async (packId: string) => {
+    if (expandedPackId === packId) {
+      setExpandedPackId(null);
+      setPackItems([]);
+    } else {
+      setExpandedPackId(packId);
+      await loadPackItems(packId);
+    }
+  };
+
+  const deleteItem = async (itemId: string) => {
+    await fetch(`/api/game-content-items/${itemId}`, { method: 'DELETE', credentials: 'include' });
+    if (expandedPackId) await loadPackItems(expandedPackId);
+    await loadPacks();
+  };
+
+  const addItem = async (category: 'verita' | 'obbligo', level: number) => {
+    if (!addText.trim() || !expandedPackId) return;
+    await fetch(`/api/game-content-packs/${expandedPackId}/items`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: category,
+        title: addText.trim(),
+        payloadJson: { category, text: addText.trim(), level, durationSeconds: 60 },
+        difficulty: level <= 2 ? 'easy' : level <= 3 ? 'medium' : 'hard',
+      }),
+    });
+    setAddText('');
+    setAddingCell(null);
+    await loadPackItems(expandedPackId);
+    await loadPacks();
+  };
 
   // ── Generate ─────────────────────────────────────────────────────────────────
   const generate = async () => {
@@ -471,7 +543,18 @@ export default function GameContentPage({ slug }: { slug: string }) {
                       </div>
 
                       {/* Actions */}
-                      <div className="flex gap-2 justify-end">
+                      <div className="flex gap-2 flex-wrap">
+                        <button onClick={() => void toggleExpand(pack.id)}
+                          className="flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs font-bold transition-all"
+                          style={{
+                            background: expandedPackId === pack.id ? `${C}22` : 'transparent',
+                            border: `1.5px solid ${expandedPackId === pack.id ? C + '60' : 'rgba(255,255,255,0.12)'}`,
+                            color: expandedPackId === pack.id ? C : 'rgba(255,255,255,0.5)',
+                          }}>
+                          {expandedPackId === pack.id ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                          {expandedPackId === pack.id ? 'Nascondi carte' : 'Sfoglia carte'}
+                        </button>
+                        <div className="flex-1" />
                         <button onClick={() => { setEditId(pack.id); setEditName(pack.title); }}
                           className="flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs font-bold text-muted-foreground hover:text-foreground border border-border hover-elevate transition-colors">
                           <Edit2 className="h-3 w-3" /> Rinomina
@@ -485,6 +568,143 @@ export default function GameContentPage({ slug }: { slug: string }) {
                           <Trash2 className="h-3 w-3" /> Elimina
                         </button>
                       </div>
+
+                      {/* ── Adult Only expanded items ─────────────────────── */}
+                      <AnimatePresence>
+                      {expandedPackId === pack.id && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="overflow-hidden"
+                        >
+                          <div className="pt-3 border-t border-border/40 space-y-4">
+                            {loadingItems ? (
+                              <div className="text-xs text-muted-foreground flex items-center gap-2 py-2">
+                                <span className="animate-spin">⭐</span> Caricamento carte…
+                              </div>
+                            ) : slug === 'adult-only' ? (
+                              /* Adult Only: grid Livelli × Categoria */
+                              <div className="space-y-4">
+                                <div className="grid grid-cols-2 gap-2">
+                                  {(['verita', 'obbligo'] as const).map(cat => (
+                                    <div key={cat} className="text-center text-xs font-black uppercase tracking-widest py-1.5 rounded-xl"
+                                      style={{
+                                        background: cat === 'verita' ? 'rgba(96,165,250,0.15)' : 'rgba(249,115,22,0.15)',
+                                        color: cat === 'verita' ? '#60A5FA' : '#F97316',
+                                        border: `1px solid ${cat === 'verita' ? 'rgba(96,165,250,0.3)' : 'rgba(249,115,22,0.3)'}`,
+                                      }}>
+                                      {cat === 'verita' ? '💬 Verità' : '🎯 Obblighi'}
+                                    </div>
+                                  ))}
+                                </div>
+
+                                {ADULT_LEVELS.map(lvl => {
+                                  const rowItems = packItems.filter(it => {
+                                    const pay = it.payloadJson ?? {};
+                                    const itemLevel = Number((pay as Record<string,unknown>)['level'] ?? 1);
+                                    return itemLevel === lvl.level || (lvl.level === 1 && itemLevel === 0);
+                                  });
+
+                                  return (
+                                    <div key={lvl.level} className="rounded-2xl overflow-hidden"
+                                      style={{ border: `1px solid ${lvl.color}25` }}>
+                                      {/* Level header */}
+                                      <div className="flex items-center gap-2 px-3 py-2"
+                                        style={{ background: `${lvl.color}12` }}>
+                                        <span className="text-base">{lvl.emoji}</span>
+                                        <span className="text-xs font-black" style={{ color: lvl.color }}>
+                                          Livello {lvl.level} — {lvl.label}
+                                        </span>
+                                        <span className="ml-auto text-[10px] text-muted-foreground">
+                                          {rowItems.length} carte
+                                        </span>
+                                      </div>
+
+                                      {/* 2 columns: verità | obblighi */}
+                                      <div className="grid grid-cols-2 gap-0 divide-x divide-border/30">
+                                        {(['verita', 'obbligo'] as const).map(cat => {
+                                          const cellKey = `${cat}_${lvl.level}`;
+                                          const cellItems = rowItems.filter(it => it.type === cat);
+                                          const isAdding = addingCell === cellKey;
+
+                                          return (
+                                            <div key={cat} className="p-2 space-y-1.5">
+                                              {cellItems.map(item => (
+                                                <div key={item.id}
+                                                  className="group flex items-start gap-1.5 rounded-xl px-2 py-1.5 text-xs text-foreground/80"
+                                                  style={{ background: 'rgba(255,255,255,0.04)' }}>
+                                                  <span className="flex-1 leading-relaxed">{item.title}</span>
+                                                  <button
+                                                    onClick={() => void deleteItem(item.id)}
+                                                    className="opacity-0 group-hover:opacity-100 shrink-0 p-0.5 rounded text-red-400/60 hover:text-red-400 transition-all">
+                                                    <X className="h-2.5 w-2.5" />
+                                                  </button>
+                                                </div>
+                                              ))}
+
+                                              {isAdding ? (
+                                                <div className="space-y-1">
+                                                  <textarea
+                                                    autoFocus
+                                                    value={addText}
+                                                    onChange={e => setAddText(e.target.value)}
+                                                    placeholder="Testo della carta…"
+                                                    rows={2}
+                                                    className="w-full rounded-xl px-2 py-1.5 text-xs bg-card border border-border focus:outline-none resize-none"
+                                                    onKeyDown={e => {
+                                                      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void addItem(cat, lvl.level); }
+                                                      if (e.key === 'Escape') { setAddingCell(null); setAddText(''); }
+                                                    }}
+                                                  />
+                                                  <div className="flex gap-1">
+                                                    <button onClick={() => void addItem(cat, lvl.level)}
+                                                      className="flex-1 rounded-lg py-1 text-[10px] font-black"
+                                                      style={{ background: `${lvl.color}30`, color: lvl.color }}>✓ Aggiungi</button>
+                                                    <button onClick={() => { setAddingCell(null); setAddText(''); }}
+                                                      className="rounded-lg px-2 py-1 text-[10px] text-muted-foreground border border-border">✕</button>
+                                                  </div>
+                                                </div>
+                                              ) : (
+                                                <button
+                                                  onClick={() => { setAddingCell(cellKey); setAddText(''); }}
+                                                  className="w-full flex items-center gap-1 rounded-xl px-2 py-1 text-[10px] text-muted-foreground/50 hover:text-muted-foreground border border-dashed border-border/40 hover:border-border/60 transition-colors">
+                                                  <Plus className="h-2.5 w-2.5" /> Aggiungi
+                                                </button>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              /* Generic items list for other games */
+                              <div className="space-y-1.5">
+                                {packItems.length === 0 ? (
+                                  <div className="text-xs text-muted-foreground/60 py-2">Nessun elemento — genera il tema con AI per popolare.</div>
+                                ) : packItems.map(item => (
+                                  <div key={item.id}
+                                    className="group flex items-center gap-2 rounded-xl px-3 py-2 text-xs"
+                                    style={{ background: 'rgba(255,255,255,0.04)' }}>
+                                    <span className="font-mono text-muted-foreground/40 w-5 text-right shrink-0">{item.sortOrder + 1}</span>
+                                    <span className="flex-1 text-foreground/80 leading-relaxed">{item.title}</span>
+                                    <span className="shrink-0 text-[10px] font-bold rounded-full px-2 py-0.5"
+                                      style={{ background: `${C}15`, color: C }}>{item.type}</span>
+                                    <button onClick={() => void deleteItem(item.id)}
+                                      className="opacity-0 group-hover:opacity-100 shrink-0 p-1 rounded text-red-400/60 hover:text-red-400 transition-all">
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </motion.div>
+                      )}
+                      </AnimatePresence>
                     </motion.div>
                   );
                 })}
