@@ -26,6 +26,10 @@ export const FREESTYLE_WORD_BANK = [
   "cuore", "sogno", "mare", "città", "tempo", "amico", "sole", "musica",
   "fame", "mano", "vita", "porta", "occhi", "voce", "casa", "vento",
   "fiore", "paura", "festa", "cielo", "acqua", "libertà", "verità", "speranza",
+  "bicchiere", "rumore", "specchio", "regina", "caos", "bacio", "viaggio", "microfono",
+  "fumo", "stelle", "drago", "borsa", "colore", "fiume", "pietra", "dubbio",
+  "confine", "perdono", "treno", "foresta", "silenzio", "fantasma", "denaro", "ghiaccio",
+  "trucco", "volpe", "polvere", "diamante", "asfalto", "corona", "mostro", "coraggio",
 ];
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
@@ -64,6 +68,8 @@ export interface FreestyleBattle {
   playerId: string; nickname: string; avatarColor: string; beatId: string;
   startedAt: string; words: FreestyleWord[]; currentWordIndex: number;
   score: number; combo: number;
+  battleEndsAt?: string | null;
+  battleLocked?: boolean;
 }
 export interface FreestyleBattleResult {
   playerId: string; nickname: string; avatarColor: string;
@@ -376,9 +382,9 @@ export function freestyleStartBattle(state: KaraokeHomeState, beatId?: string): 
 
   if (!beat) return { state, error: "Nessuna base musicale disponibile" };
 
-  // Pick 8 random words for the battle
-  const shuffled = [...FREESTYLE_WORD_BANK].sort(() => Math.random() - 0.5).slice(0, 8);
-  const words: FreestyleWord[] = shuffled.map(w => ({ id: randomUUID(), word: w, validatedBy: [], validated: false }));
+  // Pick 16 random words — full grid shown simultaneously on TV and phones
+  const shuffled = [...FREESTYLE_WORD_BANK].sort(() => Math.random() - 0.5).slice(0, 16);
+  const words: FreestyleWord[] = shuffled.map(w => ({ id: randomUUID(), word: w.toUpperCase(), validatedBy: [], validated: false }));
 
   const battle: FreestyleBattle = {
     playerId: next.playerId,
@@ -390,6 +396,8 @@ export function freestyleStartBattle(state: KaraokeHomeState, beatId?: string): 
     currentWordIndex: 0,
     score: 0,
     combo: 0,
+    battleEndsAt: new Date(Date.now() + 60_000).toISOString(),
+    battleLocked: false,
   };
 
   const freestyleBookings = state.freestyleBookings.map(b =>
@@ -401,60 +409,69 @@ export function freestyleStartBattle(state: KaraokeHomeState, beatId?: string): 
   };
 }
 
+/** No-op — backward compatibility; grid mode shows all words simultaneously. */
 export function freestyleNextWord(state: KaraokeHomeState): KaraokeHomeState {
-  if (!state.currentBattle) return state;
-  const next = Math.min(state.currentBattle.currentWordIndex + 1, state.currentBattle.words.length - 1);
-  return { ...state, currentBattle: { ...state.currentBattle, currentWordIndex: next, combo: 0 } };
+  return state;
 }
 
-export function freestyleValidateWord(
+/** Spectator taps a word to validate it. Rapper cannot tap own words.
+ *  Threshold: max(1, ceil(spectatorCount * 0.35)) — tuned for small parties.
+ *  Score is recalculated live as confirmedWords × 20.
+ */
+export function freestyleWordTap(
   state: KaraokeHomeState,
   playerId: string,
-  totalPlayers: number,
-): KaraokeHomeState {
-  if (!state.currentBattle) return state;
+  wordId: string,
+  spectatorCount: number,
+): { state: KaraokeHomeState; error?: string } {
+  if (!state.currentBattle) return { state, error: "Nessuna battle in corso" };
   const battle = state.currentBattle;
-  const wordIdx = battle.currentWordIndex;
-  const word = battle.words[wordIdx];
-  if (!word || word.validated) return state;
-  if (word.validatedBy.includes(playerId)) return state;
+  if (battle.battleLocked) return { state, error: "time_expired" };
+  if (battle.playerId === playerId) return { state, error: "Il rapper non può validare le proprie parole" };
 
-  const threshold = Math.max(1, Math.min(2, Math.floor(totalPlayers * 0.4)));
-  const updatedWord = { ...word, validatedBy: [...word.validatedBy, playerId] };
-  const isNowValidated = updatedWord.validatedBy.length >= threshold;
+  const wordIdx = battle.words.findIndex(w => w.id === wordId);
+  if (wordIdx === -1) return { state, error: "Parola non trovata" };
 
-  let newScore = battle.score;
-  let newCombo = battle.combo;
+  const word = battle.words[wordIdx]!;
+  if (word.validated) return { state }; // already confirmed — idempotent
+  if (word.validatedBy.includes(playerId)) return { state }; // already tapped by this player
 
-  if (isNowValidated) {
+  const threshold = Math.max(1, Math.ceil(spectatorCount * 0.35));
+  const updatedWord: FreestyleWord = { ...word, validatedBy: [...word.validatedBy, playerId] };
+  if (updatedWord.validatedBy.length >= threshold) {
     updatedWord.validated = true;
-    newScore += 50;
-    newCombo += 1;
-    if (newCombo === 3) {
-      newScore += 100; // combo bonus
-      newCombo = 0;
-    }
   }
 
   const words = battle.words.map((w, i) => i === wordIdx ? updatedWord : w);
-  return { ...state, currentBattle: { ...battle, words, score: newScore, combo: newCombo } };
+  const liveScore = words.filter(w => w.validated).length * 20;
+
+  return { state: { ...state, currentBattle: { ...battle, words, score: liveScore } } };
+}
+
+/** Lock the battle (timer expired) — prevents further taps. */
+export function freestyleLockBattle(state: KaraokeHomeState): KaraokeHomeState {
+  if (!state.currentBattle) return state;
+  return { ...state, currentBattle: { ...state.currentBattle, battleLocked: true } };
 }
 
 export function freestyleEndBattle(state: KaraokeHomeState, now = new Date()): KaraokeHomeState {
   if (!state.currentBattle) return state;
   const battle = state.currentBattle;
 
+  const confirmedWords = battle.words.filter(w => w.validated);
+  const finalScore = confirmedWords.length * 20;
+
   const result: FreestyleBattleResult = {
     playerId: battle.playerId,
     nickname: battle.nickname,
     avatarColor: battle.avatarColor,
-    score: battle.score,
-    wordsValidated: battle.words.filter(w => w.validated).length,
+    score: finalScore,
+    wordsValidated: confirmedWords.length,
     completedAt: now.toISOString(),
   };
 
   const players = state.players.map(p =>
-    p.id === battle.playerId ? { ...p, score: p.score + battle.score } : p
+    p.id === battle.playerId ? { ...p, score: p.score + finalScore } : p
   );
 
   const freestyleBookings = state.freestyleBookings.map(b =>

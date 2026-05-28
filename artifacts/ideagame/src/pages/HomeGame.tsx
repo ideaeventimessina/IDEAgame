@@ -6404,6 +6404,9 @@ function FreestyleBattleBoard({ sessionId, state: s, post }: {
   const FR = '#F59E0B';
   const { on } = useEventSocket(null);
   const [liveState, setLiveState] = useState<KaraokeHomeState>(s);
+  const [secsLeft, setSecsLeft] = useState<number>(60);
+  const endFiredRef = useRef(false);
+
   useEffect(() => { setLiveState(s); }, [s]);
   useEffect(() => {
     const u = on<{ state: KaraokeHomeState }>('home:karaoke_state', ({ state: ns }) => setLiveState(ns));
@@ -6412,9 +6415,26 @@ function FreestyleBattleBoard({ sessionId, state: s, post }: {
 
   const ls = liveState;
   const battle = ls.currentBattle;
-  const currentWord = battle?.words[battle.currentWordIndex];
   const waitingBookings = ls.freestyleBookings.filter(b => b.status === 'waiting');
   const currentBeat = battle ? ls.beats.find(b => b.id === battle.beatId) : null;
+
+  // Countdown timer — auto-fires end-battle when time runs out
+  useEffect(() => {
+    const endsAt = battle?.battleEndsAt;
+    endFiredRef.current = false;
+    if (!endsAt || (battle.battleLocked ?? false)) { setSecsLeft(0); return; }
+    const tick = () => {
+      const s = Math.max(0, Math.round((new Date(endsAt).getTime() - Date.now()) / 1000));
+      setSecsLeft(s);
+      if (s === 0 && !endFiredRef.current) {
+        endFiredRef.current = true;
+        void post('/freestyle/end-battle');
+      }
+    };
+    tick();
+    const id = setInterval(tick, 500);
+    return () => clearInterval(id);
+  }, [battle?.battleEndsAt, battle?.battleLocked, post]);
 
   // Booking phase
   if (ls.freestylePhase === 'idle' || ls.freestylePhase === 'booking') {
@@ -6436,7 +6456,7 @@ function FreestyleBattleBoard({ sessionId, state: s, post }: {
           </div>
         )}
         {waitingBookings.length > 0 && (
-          <div className="flex gap-3">
+          <div className="flex gap-3 flex-wrap justify-center">
             {ls.beats.slice(0, 4).map(beat => (
               <button key={beat.id} onClick={() => void post('/freestyle/start-battle', { beatId: beat.id })}
                 className="rounded-xl px-4 py-2 text-sm font-black"
@@ -6455,11 +6475,16 @@ function FreestyleBattleBoard({ sessionId, state: s, post }: {
     );
   }
 
-  // Battling
-  if (ls.freestylePhase === 'battling' && battle && currentWord) {
-    const validationCount = currentWord.validatedBy.length;
+  // Battling — full word grid shown simultaneously
+  if (ls.freestylePhase === 'battling' && battle) {
+    const confirmedCount = battle.words.filter(w => w.validated).length;
+    const liveScore = confirmedCount * 20;
+    const timerExpired = (battle.battleLocked ?? false) || secsLeft === 0;
+    const timerColor = secsLeft <= 10 && !timerExpired ? '#ef4444' : FR;
+
     return (
-      <div className="flex flex-col h-full gap-5 p-6">
+      <div className="flex flex-col h-full gap-4 p-6">
+        {/* Header */}
         <div className="flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="h-12 w-12 rounded-full flex items-center justify-center text-xl font-black text-black"
@@ -6468,62 +6493,80 @@ function FreestyleBattleBoard({ sessionId, state: s, post }: {
               <div className="text-xs font-black uppercase tracking-widest" style={{ color: FR }}>🎙️ Sul palco</div>
               <div className="text-display text-2xl font-black text-white">{battle.nickname}</div>
             </div>
+            {currentBeat && (
+              <div className="ml-3 px-3 py-1 rounded-lg text-xs font-bold"
+                style={{ background: `${FR}15`, color: `${FR}cc` }}>
+                {currentBeat.title} · {currentBeat.bpm} BPM
+              </div>
+            )}
           </div>
-          {currentBeat && (
-            <div className="text-right">
-              <div className="text-xs text-white/30">Base</div>
-              <div className="text-sm font-bold" style={{ color: FR }}>{currentBeat.title} • {currentBeat.bpm} BPM</div>
-            </div>
+          {/* Countdown timer */}
+          {battle.battleEndsAt && (
+            <motion.div
+              animate={secsLeft <= 10 && !timerExpired && !IS_LOW_POWER ? { scale: [1, 1.06, 1] } : {}}
+              transition={{ repeat: Infinity, duration: 0.8 }}
+              className="rounded-2xl px-5 py-3 text-center min-w-[80px]"
+              style={{
+                background: timerExpired ? '#ef444420' : `${timerColor}20`,
+                border: `2px solid ${timerExpired ? '#ef444488' : timerColor + '88'}`,
+              }}>
+              <div className="text-xs font-black uppercase tracking-widest"
+                style={{ color: timerExpired ? '#ef4444' : timerColor }}>
+                {timerExpired ? 'TEMPO!' : 'Tempo'}
+              </div>
+              <div className="text-display text-3xl font-black tabular-nums"
+                style={{ color: timerExpired ? '#ef4444' : timerColor }}>
+                {timerExpired ? '0' : secsLeft}s
+              </div>
+            </motion.div>
           )}
         </div>
 
-        <div className="flex-1 flex flex-col items-center justify-center gap-6">
-          <motion.div key={currentWord.word}
-            initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring' }}
-            className="rounded-3xl px-14 py-8 text-center"
-            style={{ background: currentWord.validated ? '#22c55e20' : `${FR}20`, border: `3px solid ${currentWord.validated ? '#22c55e' : FR}`, boxShadow: `0 0 60px ${currentWord.validated ? '#22c55e55' : FR + '55'}` }}>
-            <div className="text-display font-black" style={{ fontSize: 'clamp(3rem,10vw,7rem)', color: currentWord.validated ? '#22c55e' : FR }}>
-              {currentWord.validated ? '✅ ' : ''}{currentWord.word}
-            </div>
-            <div className="mt-2 text-white/40 text-sm">{validationCount} validazione{validationCount !== 1 ? 'i' : ''}</div>
-          </motion.div>
-
-          <div className="flex flex-wrap gap-2 justify-center">
-            {battle.words.map((w, i) => (
-              <div key={w.id} className={`rounded-xl px-3 py-1 text-sm font-bold transition-all ${
-                w.validated ? 'bg-green-500/25 text-green-300 border border-green-500/50' :
-                i === battle.currentWordIndex ? 'border-2 text-white' : 'bg-white/05 text-white/25 border border-white/10'
-              }`} style={i === battle.currentWordIndex ? { borderColor: FR, background: `${FR}15`, color: FR } : {}}>
-                {w.word}
-              </div>
-            ))}
-          </div>
-
-          <div className="flex items-center gap-6">
-            <div className="text-center">
-              <div className="text-xs text-white/30 mb-1">Punti</div>
-              <div className="text-display text-4xl font-black" style={{ color: FR }}>{battle.score}</div>
-            </div>
-            {battle.combo > 0 && (
-              <motion.div animate={{ scale: [1, 1.1, 1] }} transition={{ repeat: IS_LOW_POWER ? 0 : Infinity, duration: 0.6 }}
-                className="rounded-xl px-4 py-2 text-center"
-                style={{ background: '#f59e0b20', border: '2px solid #f59e0b' }}>
-                <div className="text-xs font-black text-amber-400">COMBO x{battle.combo}</div>
+        {/* Word grid — 4 × 4 */}
+        <div className="flex-1 grid grid-cols-4 gap-3 content-center">
+          {battle.words.map(w => {
+            const tapCount = w.validatedBy.length;
+            return (
+              <motion.div key={w.id}
+                initial={{ scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+                transition={{ type: 'spring', stiffness: 300 }}
+                className="rounded-2xl px-2 py-3 text-center flex flex-col items-center justify-center gap-1"
+                style={{
+                  background: w.validated ? '#22c55e18' : tapCount > 0 ? `${FR}18` : 'rgba(255,255,255,0.04)',
+                  border: `2px solid ${w.validated ? '#22c55e' : tapCount > 0 ? `${FR}77` : 'rgba(255,255,255,0.08)'}`,
+                  boxShadow: w.validated ? '0 0 18px #22c55e40' : undefined,
+                }}>
+                <div className="font-black text-sm tracking-wide leading-tight"
+                  style={{ color: w.validated ? '#4ade80' : tapCount > 0 ? FR : 'rgba(255,255,255,0.45)' }}>
+                  {w.word}
+                </div>
+                {w.validated && <div className="text-green-400 text-xs">✅</div>}
+                {!w.validated && tapCount > 0 && (
+                  <div className="text-xs" style={{ color: `${FR}99` }}>👆 {tapCount}</div>
+                )}
               </motion.div>
-            )}
-          </div>
+            );
+          })}
         </div>
 
-        <div className="flex justify-center gap-3 shrink-0">
-          <button onClick={() => void post('/freestyle/next-word')}
-            className="rounded-2xl px-6 py-3 font-black text-black"
-            style={{ background: `linear-gradient(135deg,${FR},#d97706)` }}>
-            Parola dopo →
-          </button>
+        {/* Score bar + end button */}
+        <div className="shrink-0 flex items-center gap-4 rounded-2xl px-5 py-3"
+          style={{ background: `${FR}12`, border: `1px solid ${FR}30` }}>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-white/40 uppercase tracking-widest">Parole</span>
+            <span className="text-xl font-black text-white tabular-nums">{confirmedCount}</span>
+            <span className="text-xs text-white/30">/ {battle.words.length}</span>
+          </div>
+          <div className="flex-1" />
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-white/40 uppercase tracking-widest">Punti</span>
+            <span className="text-2xl font-black tabular-nums" style={{ color: FR }}>{liveScore}</span>
+            <span className="text-xs text-white/30">pt</span>
+          </div>
           <button onClick={() => void post('/freestyle/end-battle')}
-            className="rounded-2xl px-6 py-3 font-black text-white/60"
-            style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)' }}>
-            Fine battle
+            className="rounded-xl px-4 py-2 font-black text-sm"
+            style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.6)' }}>
+            Fine battle ▪
           </button>
         </div>
       </div>
@@ -6540,7 +6583,7 @@ function FreestyleBattleBoard({ sessionId, state: s, post }: {
           <div className="rounded-3xl p-6 w-full max-w-xs" style={{ background: `${FR}15`, border: `2px solid ${FR}55` }}>
             <div className="text-display text-3xl font-black text-white">{lastResult.nickname}</div>
             <div className="text-display text-5xl font-black mt-2" style={{ color: FR }}>{lastResult.score} pt</div>
-            <div className="text-sm text-white/40 mt-1">{lastResult.wordsValidated} parole validate</div>
+            <div className="text-sm text-white/40 mt-1">{lastResult.wordsValidated} parole confermate</div>
           </div>
         )}
         <div className="space-y-2 w-full max-w-xs">

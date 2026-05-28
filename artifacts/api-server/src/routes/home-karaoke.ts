@@ -12,7 +12,7 @@ import {
   KARAOKE_VERSION, createBlankKaraokeState,
   setMode, setDuration,
   bookSong, changeSong, cancelSong, startNext, openVoting, addReaction, submitVote, endVoting, endSession,
-  freestyleBook, freestyleStartBattle, freestyleNextWord, freestyleValidateWord, freestyleEndBattle,
+  freestyleBook, freestyleStartBattle, freestyleWordTap, freestyleLockBattle, freestyleEndBattle,
   type KaraokeHomeState, type VotingBallot,
 } from "../lib/karaoke-home-engine";
 
@@ -601,35 +601,41 @@ router.post("/home/sessions/:id/freestyle/start-battle", async (req: Request, re
   res.json({ state: result.state });
 });
 
-/* ── Freestyle: POST next-word ───────────────────────────────────────────── */
-router.post("/home/sessions/:id/freestyle/next-word", async (req: Request, res: Response): Promise<void> => {
-  const id = String(req.params["id"]);
-  const session = await getSession(id);
-  if (!session) { res.status(404).json({ error: "Sessione non trovata" }); return; }
-  const cfg = (session.gameConfig as Record<string, unknown>) ?? {};
-  const state = getKaraokeState(cfg);
-  if (!state) { res.status(404).json({ error: "Karaoke non inizializzato" }); return; }
-  const next = freestyleNextWord(state);
-  await saveState(id, next, cfg);
-  emit(id, next);
-  res.json({ state: next });
+/* ── Freestyle: POST next-word (no-op — grid shows all words) ─────────────── */
+router.post("/home/sessions/:id/freestyle/next-word", async (_req: Request, res: Response): Promise<void> => {
+  res.json({ ok: true });
 });
 
-/* ── Freestyle: POST validate-word ──────────────────────────────────────── */
-router.post("/home/sessions/:id/freestyle/validate-word", async (req: Request, res: Response): Promise<void> => {
+/* ── Freestyle: POST word-tap (crowd validation of a word) ──────────────── */
+router.post("/home/sessions/:id/freestyle/word-tap", async (req: Request, res: Response): Promise<void> => {
   const id = String(req.params["id"]);
-  const { playerId } = req.body as { playerId?: string };
-  if (!playerId) { res.status(400).json({ error: "playerId richiesto" }); return; }
+  const { playerId, wordId } = req.body as { playerId?: string; wordId?: string };
+  if (!playerId || !wordId) { res.status(400).json({ error: "playerId e wordId richiesti" }); return; }
   const session = await getSession(id);
   if (!session) { res.status(404).json({ error: "Sessione non trovata" }); return; }
   const cfg = (session.gameConfig as Record<string, unknown>) ?? {};
   const state = getKaraokeState(cfg);
   if (!state) { res.status(404).json({ error: "Karaoke non inizializzato" }); return; }
+
+  // Auto-expire check: if timer has run out, lock the battle and reject
+  const battle = state.currentBattle;
+  if (battle?.battleEndsAt && !(battle.battleLocked ?? false) && Date.now() > new Date(battle.battleEndsAt).getTime()) {
+    const locked = freestyleLockBattle(state);
+    await saveState(id, locked, cfg);
+    emit(id, locked);
+    res.status(409).json({ error: "time_expired" }); return;
+  }
+
   const dbPlayers = await getPlayers(id);
-  const next = freestyleValidateWord(state, playerId, dbPlayers.length);
-  await saveState(id, next, cfg);
-  emit(id, next);
-  res.json({ state: next });
+  // Spectators = all players minus the rapper (at least 1 to avoid div/0)
+  const spectatorCount = Math.max(1, dbPlayers.length - 1);
+
+  const result = freestyleWordTap(state, playerId, wordId, spectatorCount);
+  if (result.error === "time_expired") { res.status(409).json({ error: result.error }); return; }
+  if (result.error) { res.status(400).json({ error: result.error }); return; }
+  await saveState(id, result.state, cfg);
+  emit(id, result.state);
+  res.json({ state: result.state });
 });
 
 /* ── Freestyle: POST end-battle ──────────────────────────────────────────── */
@@ -640,9 +646,12 @@ router.post("/home/sessions/:id/freestyle/end-battle", async (req: Request, res:
   const cfg = (session.gameConfig as Record<string, unknown>) ?? {};
   const state = getKaraokeState(cfg);
   if (!state) { res.status(404).json({ error: "Karaoke non inizializzato" }); return; }
-  const next = freestyleEndBattle(state);
 
-  // Write score to homePlayersTable
+  // Lock first to stop any concurrent taps, then calculate final score
+  const locked = freestyleLockBattle(state);
+  const next = freestyleEndBattle(locked);
+
+  // Write final score to homePlayersTable
   const battle = state.currentBattle;
   if (battle) {
     const updated = next.players.find(p => p.id === battle.playerId);

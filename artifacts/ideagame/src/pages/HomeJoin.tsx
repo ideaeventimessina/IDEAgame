@@ -4718,48 +4718,80 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
     const myBooking = s.freestyleBookings.find(b => b.playerId === playerId);
     const battle = s.currentBattle;
     const isRapper = battle?.playerId === playerId;
-    const currentWord = battle?.words[battle.currentWordIndex];
-    const hasValidated = currentWord ? currentWord.validatedBy.includes(playerId) : false;
 
     if (s.freestylePhase === 'battling' && battle) {
+      const confirmedCount = battle.words.filter(w => w.validated).length;
+      const liveScore = confirmedCount * 20;
+
       if (isRapper) {
         return (
-          <div className="flex flex-col items-center justify-center h-full gap-5 text-center px-4">
-            <div className="text-xs font-black uppercase tracking-widest text-amber-400">🎙️ Sei sul palco!</div>
-            {currentWord && (
-              <div className="rounded-3xl px-8 py-6 w-full"
-                style={{ background: '#f59e0b20', border: '3px solid #f59e0b' }}>
-                <div className="text-display font-black text-4xl text-amber-400">{currentWord.word}</div>
-                {currentWord.validated && <div className="text-green-400 mt-1 font-bold">✅ Validata!</div>}
-              </div>
-            )}
-            <div className="text-4xl font-black text-amber-400">{battle.score} pt</div>
-            {battle.combo > 1 && (
-              <div className="text-sm font-black text-amber-400">🔥 Combo x{battle.combo}!</div>
-            )}
+          <div className="flex flex-col h-full gap-4 px-4 py-5">
+            <div className="text-center shrink-0">
+              <div className="text-xs font-black uppercase tracking-widest text-amber-400 mb-1">🎙️ Sei sul palco!</div>
+              <div className="text-xs text-white/40">Il pubblico convalida le parole che pronunci</div>
+            </div>
+            <div className="flex-1 grid grid-cols-3 gap-2 content-center">
+              {battle.words.map(w => (
+                <div key={w.id}
+                  className="rounded-xl px-2 py-2 text-center text-xs font-black"
+                  style={{
+                    background: w.validated ? '#22c55e18' : 'rgba(255,255,255,0.04)',
+                    border: `1.5px solid ${w.validated ? '#22c55e' : 'rgba(255,255,255,0.08)'}`,
+                    color: w.validated ? '#4ade80' : 'rgba(255,255,255,0.4)',
+                  }}>
+                  {w.validated && '✅ '}{w.word}
+                </div>
+              ))}
+            </div>
+            <div className="shrink-0 text-center">
+              <div className="text-3xl font-black tabular-nums text-amber-400">{liveScore} pt</div>
+              <div className="text-xs text-white/30">{confirmedCount} / {battle.words.length} parole</div>
+            </div>
           </div>
         );
       }
-      // Public: validate word
+
+      // Spectator: tap words to confirm you heard them
       return (
-        <div className="flex flex-col items-center justify-center h-full gap-5 text-center px-4">
-          <div className="text-sm text-white/50">{battle.nickname} sta rappando…</div>
-          {currentWord && (
-            <div className="rounded-3xl px-8 py-6 w-full"
-              style={{ background: '#f59e0b10', border: '2px solid #f59e0b55' }}>
-              <div className="text-display font-black text-3xl text-amber-300">{currentWord.word}</div>
+        <div className="flex flex-col h-full gap-3 px-4 py-5">
+          <div className="text-center shrink-0">
+            <div className="text-sm text-white/60">
+              <span className="text-amber-400 font-bold">{battle.nickname}</span> sta rappando…
             </div>
-          )}
-          {!hasValidated && !currentWord?.validated ? (
-            <motion.button whileTap={{ scale: 0.93 }}
-              onClick={() => void post('/freestyle/validate-word', { playerId })}
-              className="w-full rounded-3xl py-6 text-xl font-black"
-              style={{ background: 'linear-gradient(135deg,#f59e0b,#d97706)', boxShadow: '0 0 30px #f59e0b55' }}>
-              ✅ Ha detto la parola!
-            </motion.button>
-          ) : (
-            <div className="text-green-400 font-black text-lg">✅ Validato!</div>
-          )}
+            <div className="text-xs text-white/30 mt-1">Tocca le parole che senti pronunciare!</div>
+          </div>
+          <div className="flex-1 grid grid-cols-3 gap-2 content-center">
+            {battle.words.map(w => {
+              const iAlreadyTapped = w.validatedBy.includes(playerId);
+              const isConfirmed = w.validated;
+              const isLocked = battle.battleLocked ?? false;
+              return (
+                <motion.button key={w.id}
+                  whileTap={!isConfirmed && !iAlreadyTapped && !isLocked ? { scale: 0.91 } : {}}
+                  disabled={isConfirmed || iAlreadyTapped || isLocked}
+                  onClick={() => {
+                    if (!isConfirmed && !iAlreadyTapped && !isLocked) {
+                      void post('/freestyle/word-tap', { playerId, wordId: w.id });
+                    }
+                  }}
+                  className="rounded-xl px-2 py-3 text-center text-xs font-black transition-all"
+                  style={{
+                    background: isConfirmed ? '#22c55e18' : iAlreadyTapped ? '#f59e0b20' : 'rgba(255,255,255,0.06)',
+                    border: `2px solid ${isConfirmed ? '#22c55e' : iAlreadyTapped ? '#f59e0b88' : 'rgba(255,255,255,0.1)'}`,
+                    color: isConfirmed ? '#4ade80' : iAlreadyTapped ? '#f59e0b' : 'rgba(255,255,255,0.7)',
+                    opacity: isLocked && !isConfirmed ? 0.4 : 1,
+                  }}>
+                  {isConfirmed ? '✅ ' : iAlreadyTapped ? '👆 ' : ''}{w.word}
+                </motion.button>
+              );
+            })}
+          </div>
+          <div className="shrink-0 text-center">
+            <div className="text-sm text-white/40">
+              {confirmedCount} / {battle.words.length} confermate ·{' '}
+              <span style={{ color: '#F59E0B' }}>{liveScore} pt</span>
+            </div>
+          </div>
         </div>
       );
     }

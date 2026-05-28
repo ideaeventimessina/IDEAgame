@@ -1,0 +1,280 @@
+HOME MODE — PERCORSO TIMER/RED BUTTON FIX + KARAOKE/FREESTYLE UNIFIED QUEUE.
+
+Do not touch unrelated games.
+Do not redesign HomeV4.
+Patch only:
+1. Percorso a Risate timer + red button feedback
+2. Karaoke/Freestyle booking flow
+
+==================================================
+PART 1 — PERCORSO A RISATE TIMER SYNC
+==================================================
+
+Bug:
+Percorso timer on player phones does not match TV timer.
+
+This was already requested before but is still wrong.
+
+Required:
+TV/server is source of truth.
+
+For every Percorso phase:
+- booking
+- public_choice
+- active
+- voting
+- result
+
+Server must set:
+phaseStartedAt
+phaseEndsAt
+
+Phones and TV must compute:
+remaining = max(0, phaseEndsAt - Date.now())
+
+No phone-local independent countdown from full duration.
+
+Audit:
+- PercorsoBoard TV timer
+- PercorsoHomeController phone timer
+- server state in home.ts / percorso routes
+- socket payloads
+
+Fix:
+- add missing phaseEndsAt where absent
+- emit phaseEndsAt to TV + phones
+- phone uses same timestamp as TV
+- resync button restores same remaining time
+
+At time 0:
+- server closes phase
+- TV and phones show same next phase
+- no waiting forever.
+
+==================================================
+PART 2 — PERCORSO RED BUTTON FEEDBACK
+==================================================
+
+Bug:
+When public presses red button, nothing appears on TV and no sound plays.
+
+Required:
+When any public player presses red button:
+
+Phone:
+- button gives immediate local feedback:
+  “Allarme inviato”
+
+TV:
+- show big red overlay:
+  “🚨 ALLARME!”
+  “Premuto da [nickname]”
+  duration 3 seconds
+
+Audio:
+- try to play alarm SFX if available
+- if missing in DB/mediaManifest, do NOT fail silently
+- use fallback generated/simple beep via WebAudio or existing error_buzzer
+- log:
+  [PERCORSO_ALARM] sound missing, using fallback beep
+
+Server/socket:
+event:
+home:percorso_alarm
+payload:
+{
+  sessionId,
+  playerId,
+  nickname,
+  missionIndex,
+  timestamp
+}
+
+Broadcast to room:
+home:percorso_alarm
+
+Debounce:
+same player max once every 2 seconds.
+
+Do not stop the timer.
+Do not block the mission.
+
+==================================================
+PART 3 — KARAOKE/FREESTYLE UNIFIED OPEN SESSION
+==================================================
+
+Current:
+Karaoke and Freestyle are too separate / require rigid initial choice.
+
+New direction:
+During the same Karaoke Live session, every player can choose at booking time:
+
+A. 🎤 Cantare una canzone
+B. 🔥 Prenotare Freestyle Battle
+
+No rigid initial mode choice.
+
+The night must remain dynamic:
+song
+song
+freestyle
+song
+freestyle
+song
+
+==================================================
+KARAOKE SESSION FLOW
+==================================================
+
+When host starts Karaoke Live:
+
+Still choose session duration.
+
+Then open one unified queue:
+
+QueueItem {
+  id,
+  type: "song" | "freestyle",
+  playerId,
+  nickname,
+  title,
+  youtubeId?,
+  durationSeconds?,
+  freestyleMode?,
+  estimatedSlotDuration,
+  queuePosition,
+  estimatedStartAt,
+  status
+}
+
+==================================================
+PHONE BOOKING UX
+==================================================
+
+If player is not booked:
+
+Show two big buttons:
+
+🎤 Canta una canzone
+🔥 Freestyle Battle
+
+If “Canta una canzone”:
+- current YouTube search flow
+- choose result
+- confirm booking
+
+If “Freestyle Battle”:
+- choose optional style/theme:
+  - Libero
+  - Comico
+  - Aggressivo
+  - Romantico
+  - Trap
+  - Old School
+- confirm booking
+- no YouTube search needed
+
+If player already has active queue item:
+show:
+“Sei già in coda”
+with:
+- type: canzone/freestyle
+- estimated wait
+- position
+- button cancel/change if supported
+
+==================================================
+TV QUEUE UX
+==================================================
+
+TV queue must show mixed queue:
+
+1. Marco — 🎤 Bella Stronza
+2. Vale — 🔥 Freestyle Old School
+3. Luca — 🎤 Shallow
+4. Sara — 🔥 Freestyle Comico
+
+Current item:
+If type = song:
+- show YouTube player
+
+If type = freestyle:
+- show Freestyle board:
+  - beat / timer
+  - full word grid
+  - public validation
+  - score = confirmed words × 20
+
+After item ends:
+- voting/ranking if needed
+- then next queue item
+
+==================================================
+ESTIMATED SLOT DURATION
+==================================================
+
+Song:
+durationSeconds + 30 voting + 60 transition
+
+Freestyle:
+fixed 120 seconds
+or:
+freestyleDurationSeconds + 30 voting + 60 transition
+
+Use same queue capacity logic:
+do not accept if session time cannot fit item.
+
+==================================================
+FREESTYLE INSIDE QUEUE
+==================================================
+
+Reuse the updated Freestyle word-grid logic:
+
+- generate full word grid at freestyle item start
+- all words visible on TV
+- same grid on public phones
+- spectators tap words to validate
+- active rapper cannot validate own words
+- score = confirmedWords × 20
+
+At freestyle end:
+- save performance result
+- update ranking
+
+==================================================
+REMOVE RIGID MODE SELECT
+==================================================
+
+Old initial choice:
+Karaoke / Freestyle / Mixed
+
+Should be removed or simplified.
+
+Host chooses:
+Karaoke Live Session Duration
+
+Then players decide per booking:
+song or freestyle.
+
+Mixed becomes natural by queue.
+
+==================================================
+OUTPUT REQUIRED
+==================================================
+
+A. files audited
+B. files modified
+C. Percorso timer sync fixed
+D. Percorso red alarm overlay + sound fallback
+E. unified queue data model
+F. phone booking two-button UX
+G. TV mixed queue UX
+H. freestyle item inside karaoke queue
+I. typecheck result
+J. manual tests:
+   - percorso timer TV vs phone
+   - red button shows overlay + sound fallback
+   - karaoke player books song
+   - another books freestyle
+   - queue alternates song/freestyle
+   - freestyle score = confirmed words × 20

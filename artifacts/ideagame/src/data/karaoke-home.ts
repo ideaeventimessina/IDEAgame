@@ -94,6 +94,8 @@ export interface FreestyleBattle {
   playerId: string; nickname: string; avatarColor: string; beatId: string;
   startedAt: string; words: FreestyleWord[]; currentWordIndex: number;
   score: number; combo: number;
+  battleEndsAt?: string | null;
+  battleLocked?: boolean;
 }
 export interface FreestyleBattleResult {
   playerId: string; nickname: string; avatarColor: string;

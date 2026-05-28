@@ -1,0 +1,206 @@
+FREESTYLE BATTLE — WORD GRID VALIDATION UPDATE.
+
+Do not touch Karaoke Live.
+Do not touch Sara’Musica.
+Do not touch Quizzone.
+Patch only Freestyle Battle mode.
+
+Problem:
+Current Freestyle shows one word at a time.
+It is too slow for real freestyle.
+Players cannot wait for single-word progression.
+
+Required new flow:
+
+1. At start of freestyle round, generate a full word grid.
+2. Show all words on TV at the same time.
+3. Show the same word grid on all spectator phones.
+4. Public validates each word manually by tapping it when the rapper says it.
+5. At the end of timer, score = 20 points for every word confirmed by the public.
+
+==================================================
+WORD GRID
+==================================================
+
+Generate 12–20 words per freestyle round.
+
+Each round must use different words.
+
+Avoid repeating the exact same word set across the session.
+
+Word categories can mix:
+- objects
+- emotions
+- places
+- party words
+- absurd words
+- event words
+- difficult words
+
+Example:
+LUNA
+FUOCO
+STRADA
+BICCHIERE
+RUMORE
+SPECCHIO
+NOTTE
+REGINA
+CASINO
+BACIO
+VIAGGIO
+MICROFONO
+
+==================================================
+TV UI
+==================================================
+
+TV shows:
+- current rapper / team
+- timer
+- full word grid
+- words already validated highlighted green
+- score live:
+  “Parole confermate: 7 / 16”
+  “Punti: 140”
+
+No one-word cycling.
+
+==================================================
+PHONE UI
+==================================================
+
+Spectator phones show:
+same word grid.
+
+Each word is a big tappable button.
+
+When spectator hears rapper say a word:
+tap the word.
+
+After tap:
+- button shows selected/confirmed locally
+- disable double tap by same user for that word
+
+==================================================
+VALIDATION RULE
+==================================================
+
+A word is confirmed when:
+
+minimum confirmations reached.
+
+Use threshold:
+max(1, ceil(activeSpectators * 0.35))
+
+Examples:
+1 spectator → 1 confirmation
+3 spectators → 2 confirmations
+6 spectators → 3 confirmations
+10 spectators → 4 confirmations
+
+Rapper/active performer cannot validate own words.
+
+If no spectators:
+fallback: host/TV can validate manually.
+
+==================================================
+SCORING
+==================================================
+
+At end of timer:
+
+score = confirmedWords.length * 20
+
+Example:
+9 confirmed words → 180 points
+
+No bonus for unconfirmed words.
+
+Store:
+validatedWords[]
+wordConfirmations[wordId][playerId]
+
+==================================================
+ROUND END
+==================================================
+
+When timer expires:
+- lock validation
+- calculate score
+- show result screen
+- update ranking
+- button next freestyle battle
+
+Late taps after timer:
+return/reject:
+time_expired
+
+==================================================
+WORD GENERATION
+==================================================
+
+Use existing freestyle word bank if present.
+If not enough words:
+create fallback word bank.
+
+Need:
+- shuffle
+- session usedWords tracking
+- no duplicate word in same round
+- different set every round
+- if pool exhausted, reset usedWords but reshuffle
+
+If AI/Jonny exists:
+optionally generate themed words later.
+For now deterministic/random word bank is fine.
+
+==================================================
+SOCKET / API
+==================================================
+
+Add/adjust events:
+
+home:freestyle_word_tap
+payload:
+{
+  sessionId,
+  playerId,
+  wordId
+}
+
+Server:
+- validates player is not active rapper
+- validates timer active
+- records confirmation
+- if threshold reached:
+  marks word confirmed
+- broadcasts updated state
+
+Broadcast:
+home:freestyle_state_update
+{
+  validatedWords,
+  confirmations,
+  score
+}
+
+==================================================
+OUTPUT
+==================================================
+
+A. files modified
+B. new word grid state
+C. TV word grid UI
+D. phone validation UI
+E. threshold logic
+F. scoring logic
+G. timer expiry lock
+H. typecheck result
+I. manual test:
+   - start freestyle
+   - see all words on TV
+   - spectators tap words
+   - words turn green on TV
+   - timer expires
+   - score = confirmed words × 20
