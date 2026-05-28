@@ -409,6 +409,7 @@ export default function ModeSelect() {
           width: '100%',
           maxWidth: maxCards,
           alignItems: 'stretch',
+          transform: isMobile ? undefined : isTablet ? 'translateY(-40px)' : 'translateY(-80px)',
         }}>
           {MODES.map((mode, i) => (
             <div
