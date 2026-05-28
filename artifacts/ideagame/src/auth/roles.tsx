@@ -5,7 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 export type Role = 'super_admin' | 'tenant_owner' | 'game_manager' | 'entertainer' | 'player';
 
 export const ADMIN_NAV: { key: string; route: string; label: string; roles: Role[] }[] = [
-  { key: 'dashboard', route: '/admin/giochi',   label: 'Dashboard',       roles: ['super_admin','tenant_owner','game_manager','entertainer'] },
+  { key: 'dashboard', route: '/admin/dashboard', label: 'Dashboard',       roles: ['super_admin','tenant_owner','game_manager','entertainer'] },
   { key: 'show',      route: '/admin/events',   label: 'Show',            roles: ['super_admin','tenant_owner','game_manager'] },
   { key: 'giochi',    route: '/admin/giochi',   label: 'Giochi',          roles: ['super_admin','tenant_owner','game_manager'] },
   { key: 'media',     route: '/admin/media',    label: 'Libreria Media',  roles: ['super_admin','tenant_owner','game_manager'] },
