@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq, and, or, isNull, desc, sql } from "drizzle-orm";
 import { db, gameContentPacksTable, gameContentItemsTable } from "@workspace/db";
 import { type AuthedRequest, requireAuth, requireRole } from "../middlewares/auth";
+import { generateContentItems } from "../lib/content-generator.js";
 
 const router: IRouter = Router();
 
@@ -241,6 +242,95 @@ router.delete("/game-content-items/:itemId", requireAuth, requireRole("game_mana
   }).where(eq(gameContentPacksTable.id, item.packId));
 
   res.status(204).send();
+});
+
+// ── POST /game-content-packs/:id/duplicate ────────────────────────────────────
+
+router.post("/game-content-packs/:id/duplicate", requireAuth, requireRole("game_manager"), async (req: AuthedRequest, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+
+  const me = req.user!;
+  const [src] = await db.select().from(gameContentPacksTable).where(eq(gameContentPacksTable.id, id));
+  if (!src) { res.status(404).json({ error: "Pack non trovato" }); return; }
+  if (me.role !== "super_admin" && src.tenantId && src.tenantId !== me.tenantId) {
+    res.status(403).json({ error: "Accesso negato" }); return;
+  }
+
+  const [newPack] = await db.insert(gameContentPacksTable).values({
+    ...src,
+    id: undefined as unknown as string,
+    title: `${src.title} (copia)`,
+    isActive: false,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }).returning();
+
+  const srcItems = await db.select().from(gameContentItemsTable).where(eq(gameContentItemsTable.packId, id));
+  if (srcItems.length > 0) {
+    await db.insert(gameContentItemsTable).values(
+      srcItems.map(item => ({ ...item, id: undefined as unknown as string, packId: newPack!.id, createdAt: new Date() }))
+    );
+    await db.update(gameContentPacksTable).set({ itemCount: srcItems.length }).where(eq(gameContentPacksTable.id, newPack!.id));
+  }
+
+  res.status(201).json(newPack);
+});
+
+// ── POST /game-content-packs/generate (AI) ───────────────────────────────────
+
+router.post("/game-content-packs/generate", requireAuth, requireRole("game_manager"), async (req: AuthedRequest, res): Promise<void> => {
+  const me = req.user!;
+  const body = req.body as Record<string, unknown>;
+
+  const gameSlug  = String(body["gameSlug"]  ?? "");
+  const themeName = String(body["themeName"] ?? "");
+  const difficulty = (body["difficulty"] as "easy" | "medium" | "hard") ?? "medium";
+  const count     = Math.min(30, Math.max(1, Number(body["count"] ?? 10)));
+
+  if (!gameSlug)  { res.status(400).json({ error: "gameSlug obbligatorio" }); return; }
+  if (!themeName) { res.status(400).json({ error: "themeName obbligatorio" }); return; }
+
+  const tenantId = me.role === "super_admin" ? (body["tenantId"] as string | null ?? null) : me.tenantId ?? null;
+
+  const [pack] = await db.insert(gameContentPacksTable).values({
+    tenantId,
+    gameSlug,
+    title:            themeName,
+    theme:            themeName,
+    difficulty,
+    modeAvailability: "both",
+    isActive:         true,
+    createdBy:        "jonny",
+    status:           "published",
+    itemCount:        0,
+    tags:             ["ai-generated"],
+  }).returning();
+
+  let items: Awaited<ReturnType<typeof generateContentItems>>;
+  try {
+    items = await generateContentItems({ gameSlug, themeName, difficulty, count });
+  } catch {
+    items = [];
+  }
+
+  if (items.length > 0) {
+    await db.insert(gameContentItemsTable).values(
+      items.map(item => ({
+        packId:      pack!.id,
+        gameSlug,
+        type:        item.type,
+        title:       item.title,
+        payloadJson: item.payloadJson,
+        sortOrder:   item.sortOrder,
+        isActive:    true,
+      }))
+    );
+    await db.update(gameContentPacksTable).set({ itemCount: items.length }).where(eq(gameContentPacksTable.id, pack!.id));
+  }
+
+  const [updated] = await db.select().from(gameContentPacksTable).where(eq(gameContentPacksTable.id, pack!.id));
+  res.status(201).json({ pack: updated, itemCount: items.length });
 });
 
 export default router;

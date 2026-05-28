@@ -29,3 +29,4 @@ export * from "./jonny";
 export * from "./home-sessions";
 export * from "./jonny-poses";
 export * from "./content-packs";
+export * from "./game-media-slots";

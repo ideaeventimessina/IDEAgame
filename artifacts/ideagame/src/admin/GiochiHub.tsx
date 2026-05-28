@@ -1,52 +1,67 @@
 import { useLocation } from 'wouter';
 import { AdminLayout } from './AdminLayout';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Sparkles } from 'lucide-react';
 
 const GAMES = [
   {
     id: 'adult-only',
     label: 'Adult Only',
     emoji: '🔞',
-    route: '/admin/adult-only',
+    route: '/admin/giochi/adult-only',
     desc: 'Verità e obblighi per livello 1–5',
     color: '#EF4444',
-    tags: ['Verità', 'Obbligo', 'Livelli'],
-  },
-  {
-    id: 'percorso-risate',
-    label: 'Percorso a Risate',
-    emoji: '⚡',
-    route: '/admin/percorso-risate',
-    desc: 'Set di sfide: mimo, ballo, veloce…',
-    color: '#F59E0B',
-    tags: ['Set', 'Sfide', 'Squadre'],
-  },
-  {
-    id: 'parola-alle-spalle',
-    label: 'Parola alle Spalle',
-    emoji: '🗣️',
-    route: '/admin/parola-alle-spalle',
-    desc: 'Parole e categorie per indovinare',
-    color: '#8B5CF6',
-    tags: ['Parole', 'Categorie'],
+    tags: ['Verità', 'Obbligo', 'AI', 'Livelli'],
+    hasContentPage: true,
   },
   {
     id: 'saramusica',
     label: 'SaraMusica',
     emoji: '🎵',
-    route: '/admin/saramusica',
+    route: '/admin/giochi/saramusica',
     desc: 'Round musicali e clip YouTube',
     color: '#60A5FA',
-    tags: ['Quiz', 'Musica', 'Clip'],
+    tags: ['Quiz', 'Musica', 'AI', 'Clip'],
+    hasContentPage: true,
   },
   {
-    id: 'quizzes',
-    label: 'Quiz',
+    id: 'quizzone',
+    label: 'Quizzone',
     emoji: '❓',
-    route: '/admin/quizzes',
-    desc: 'Domande multi-lingua per il Quizzone',
+    route: '/admin/giochi/quizzone',
+    desc: 'Domande multi-lingua per il quiz show',
     color: '#10B981',
     tags: ['Domande', 'Categorie', 'AI'],
+    hasContentPage: true,
+  },
+  {
+    id: 'parola-alle-spalle',
+    label: 'Parola alle Spalle',
+    emoji: '🗣️',
+    route: '/admin/giochi/parola-alle-spalle',
+    desc: 'Parole e categorie per indovinare',
+    color: '#8B5CF6',
+    tags: ['Parole', 'Categorie', 'AI'],
+    hasContentPage: true,
+  },
+  {
+    id: 'percorso-risate',
+    label: 'Percorso a Risate',
+    emoji: '⚡',
+    route: '/admin/giochi/percorso-risate',
+    desc: 'Set di sfide: mimo, ballo, veloce…',
+    color: '#F59E0B',
+    tags: ['Sfide', 'Squadre', 'AI'],
+    hasContentPage: true,
+  },
+  {
+    id: 'karaoke-battle',
+    label: 'Karaoke Battle',
+    emoji: '🎤',
+    route: '/admin/giochi/karaoke-battle',
+    desc: 'Canzoni e testi per il karaoke',
+    color: '#F97316',
+    tags: ['Canzoni', 'Testi', 'AI'],
+    hasContentPage: true,
   },
   {
     id: 'card-sets',
@@ -56,15 +71,7 @@ const GAMES = [
     desc: 'Deck di carte immagine per il memory',
     color: '#EC4899',
     tags: ['Carte', 'Immagini', 'Coppie'],
-  },
-  {
-    id: 'karaoke-battle',
-    label: 'Karaoke Battle',
-    emoji: '🎤',
-    route: '/admin/karaoke-battle',
-    desc: 'Canzoni e testi per il karaoke',
-    color: '#F97316',
-    tags: ['Canzoni', 'Testi'],
+    hasContentPage: false,
   },
   {
     id: 'sfida-ballo',
@@ -74,6 +81,7 @@ const GAMES = [
     desc: 'Challenge con accelerometro',
     color: '#A855F7',
     tags: ['Ballo', 'Accelerometro'],
+    hasContentPage: false,
   },
 ] as const;
 
@@ -116,10 +124,19 @@ export default function GiochiHub() {
                 >
                   {game.emoji}
                 </div>
-                <ChevronRight
-                  className="h-5 w-5 mt-1 opacity-30 group-hover:opacity-80 transition-opacity"
-                  style={{ color: game.color }}
-                />
+                <div className="flex items-center gap-2">
+                  {game.hasContentPage && (
+                    <div className="flex items-center gap-1 rounded-full px-2 py-0.5"
+                      style={{ background: `${game.color}20`, border: `1px solid ${game.color}40` }}>
+                      <Sparkles className="h-2.5 w-2.5" style={{ color: game.color }} />
+                      <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: game.color }}>AI</span>
+                    </div>
+                  )}
+                  <ChevronRight
+                    className="h-5 w-5 mt-0.5 opacity-30 group-hover:opacity-80 transition-opacity"
+                    style={{ color: game.color }}
+                  />
+                </div>
               </div>
 
               <div className="relative flex-1">

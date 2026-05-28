@@ -45,6 +45,7 @@ import homeKaraokeRouter from "./home-karaoke";
 import storageRouter from "./storage";
 import setupRouter from "./setup";
 import contentPacksRouter from "./content-packs";
+import gameMediaSlotsRouter from "./game-media-slots";
 
 const router: IRouter = Router();
 
@@ -98,5 +99,6 @@ router.use(homeKaraokeRouter);
 router.use(storageRouter);
 router.use(setupRouter);
 router.use(contentPacksRouter);
+router.use(gameMediaSlotsRouter);
 
 export default router;

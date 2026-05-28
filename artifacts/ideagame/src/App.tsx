@@ -94,6 +94,7 @@ const AdminAudit          = lazy(() => import("@/admin/Audit"));
 const AdminJonnyPoses     = lazy(() => import("@/admin/JonnyPoses"));
 const AdminContentPacks   = lazy(() => import("@/admin/ContentPacks"));
 const AdminGiochiHub      = lazy(() => import("@/admin/GiochiHub"));
+const AdminGameContent    = lazy(() => import("@/admin/GameContentPage"));
 
 // ── Page loading fallback ─────────────────────────────────────────────────────
 function PageFallback() {
@@ -191,6 +192,7 @@ function Router() {
         <Route path="/admin/jonny-poses"><Guard route="/admin/jonny-poses"><AdminJonnyPoses /></Guard></Route>
         <Route path="/admin/content-packs"><Guard route="/admin/content-packs"><AdminContentPacks /></Guard></Route>
         <Route path="/admin/giochi"><Guard route="/admin/giochi"><AdminGiochiHub /></Guard></Route>
+        <Route path="/admin/giochi/:slug">{(p) => <Guard route="/admin/giochi"><AdminGameContent slug={p.slug} /></Guard>}</Route>
         <Route component={NotFound} />
       </Switch>
     </Suspense>
