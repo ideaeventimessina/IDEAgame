@@ -44,6 +44,7 @@ import homeRisateRouter from "./home-risate";
 import homeKaraokeRouter from "./home-karaoke";
 import storageRouter from "./storage";
 import setupRouter from "./setup";
+import contentPacksRouter from "./content-packs";
 
 const router: IRouter = Router();
 
@@ -96,5 +97,6 @@ router.use(homeRisateRouter);
 router.use(homeKaraokeRouter);
 router.use(storageRouter);
 router.use(setupRouter);
+router.use(contentPacksRouter);
 
 export default router;

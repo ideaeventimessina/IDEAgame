@@ -29,6 +29,7 @@ export const ADMIN_NAV: { key: string; route: string; labelKey: string; roles: R
   { key: 'jonny-creator', route: '/admin/jonny-creator', labelKey: 'admin.jonny_creator', roles: ['super_admin', 'tenant_owner', 'game_manager'] },
   { key: 'jonny-poses', route: '/admin/jonny-poses', labelKey: 'admin.jonny_poses', roles: ['super_admin', 'tenant_owner', 'game_manager'] },
   { key: 'audio', route: '/admin/audio', labelKey: 'admin.audio', roles: ['super_admin', 'tenant_owner', 'game_manager', 'entertainer'] },
+  { key: 'content-packs', route: '/admin/content-packs', labelKey: 'admin.content_packs', roles: ['super_admin', 'tenant_owner', 'game_manager'] },
 ];
 
 export interface CurrentUser {

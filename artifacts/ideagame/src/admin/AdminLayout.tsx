@@ -2,7 +2,7 @@ import { Link, useLocation } from 'wouter';
 import {
   LayoutDashboard, Gamepad2, BookOpen, Image as ImageIcon, Users2,
   Building2, CreditCard, ShieldCheck, Languages, Settings as SettingsIcon,
-  LogOut, Layers, Sparkles, Menu, X, Route, Flame, CalendarDays, Wand2, Volume2, ClipboardList, SmilePlus
+  LogOut, Layers, Sparkles, Menu, X, Route, Flame, CalendarDays, Wand2, Volume2, ClipboardList, SmilePlus, PackageOpen
 } from 'lucide-react';
 import { useT } from '@/i18n';
 import { LocaleSwitcher } from '@/components/LocaleSwitcher';
@@ -14,6 +14,7 @@ const ICONS: Record<string, typeof LayoutDashboard> = {
   media: ImageIcon, teams: Users2, tenants: Building2, billing: CreditCard, users: ShieldCheck,
   translations: Languages, settings: SettingsIcon, 'percorso-risate': Route, 'adult-only': Flame,
   'jonny-creator': Wand2, 'jonny-poses': SmilePlus, 'audio': Volume2, audit: ClipboardList,
+  'content-packs': PackageOpen,
 };
 
 export function AdminLayout({ children, title }: { children: ReactNode; title: string }) {

@@ -92,6 +92,7 @@ const AdminSaraMusica     = lazy(() => import("@/admin/SaraMusica"));
 const AdminAudioSettings  = lazy(() => import("@/admin/AudioSettings"));
 const AdminAudit          = lazy(() => import("@/admin/Audit"));
 const AdminJonnyPoses     = lazy(() => import("@/admin/JonnyPoses"));
+const AdminContentPacks   = lazy(() => import("@/admin/ContentPacks"));
 
 // ── Page loading fallback ─────────────────────────────────────────────────────
 function PageFallback() {
@@ -187,6 +188,7 @@ function Router() {
         <Route path="/admin/audio"><Guard route="/admin/audio"><AdminAudioSettings /></Guard></Route>
         <Route path="/admin/audit"><Guard route="/admin/audit"><AdminAudit /></Guard></Route>
         <Route path="/admin/jonny-poses"><Guard route="/admin/jonny-poses"><AdminJonnyPoses /></Guard></Route>
+        <Route path="/admin/content-packs"><Guard route="/admin/content-packs"><AdminContentPacks /></Guard></Route>
         <Route component={NotFound} />
       </Switch>
     </Suspense>
