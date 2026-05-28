@@ -4,32 +4,12 @@ import { useQueryClient } from '@tanstack/react-query';
 
 export type Role = 'super_admin' | 'tenant_owner' | 'game_manager' | 'entertainer' | 'player';
 
-export const ADMIN_NAV: { key: string; route: string; labelKey: string; roles: Role[] }[] = [
-  { key: 'dashboard', route: '/admin', labelKey: 'admin.dashboard', roles: ['super_admin', 'tenant_owner', 'game_manager', 'entertainer'] },
-  { key: 'events', route: '/admin/events', labelKey: 'admin.events', roles: ['super_admin', 'tenant_owner', 'game_manager'] },
-  { key: 'games', route: '/admin/games', labelKey: 'admin.games', roles: ['super_admin', 'tenant_owner', 'game_manager'] },
-  { key: 'card-sets', route: '/admin/card-sets', labelKey: 'admin.card_sets', roles: ['super_admin', 'tenant_owner', 'game_manager'] },
-  { key: 'percorso-risate', route: '/admin/percorso-risate', labelKey: 'admin.percorso_risate', roles: ['super_admin', 'tenant_owner', 'game_manager'] },
-  { key: 'adult-only', route: '/admin/adult-only', labelKey: 'admin.adult_only', roles: ['super_admin', 'tenant_owner', 'game_manager'] },
-  { key: 'sfida-ballo', route: '/admin/sfida-ballo', labelKey: 'admin.sfida_ballo', roles: ['super_admin', 'tenant_owner', 'game_manager'] },
-  { key: 'parola-alle-spalle', route: '/admin/parola-alle-spalle', labelKey: 'admin.parola_alle_spalle', roles: ['super_admin', 'tenant_owner', 'game_manager'] },
-  { key: 'karaoke-battle', route: '/admin/karaoke-battle', labelKey: 'admin.karaoke_battle', roles: ['super_admin', 'tenant_owner', 'game_manager'] },
-  { key: 'saramusica', route: '/admin/saramusica', labelKey: 'admin.saramusica', roles: ['super_admin', 'tenant_owner', 'game_manager'] },
-  { key: 'quizzes', route: '/admin/quizzes', labelKey: 'admin.quizzes', roles: ['super_admin', 'tenant_owner', 'game_manager'] },
-  { key: 'quiz-packs', route: '/admin/quiz-packs', labelKey: 'admin.quiz_packs', roles: ['super_admin', 'tenant_owner', 'game_manager'] },
-  { key: 'media', route: '/admin/media', labelKey: 'admin.media', roles: ['super_admin', 'tenant_owner', 'game_manager'] },
-  { key: 'teams', route: '/admin/teams', labelKey: 'admin.teams', roles: ['super_admin', 'tenant_owner', 'game_manager', 'entertainer'] },
-  { key: 'audit', route: '/admin/audit', labelKey: 'admin.audit', roles: ['super_admin', 'tenant_owner'] },
-  { key: 'tenants', route: '/admin/tenants', labelKey: 'admin.tenants', roles: ['super_admin'] },
-  { key: 'billing', route: '/admin/billing', labelKey: 'admin.billing', roles: ['super_admin', 'tenant_owner'] },
-  { key: 'users', route: '/admin/users', labelKey: 'admin.users', roles: ['super_admin', 'tenant_owner'] },
-  { key: 'translations', route: '/admin/translations', labelKey: 'admin.translations', roles: ['super_admin', 'tenant_owner'] },
-  { key: 'settings', route: '/admin/settings', labelKey: 'admin.settings', roles: ['super_admin', 'tenant_owner'] },
-  { key: 'system', route: '/admin/system', labelKey: 'admin.system', roles: ['super_admin', 'tenant_owner', 'game_manager'] },
-  { key: 'jonny-creator', route: '/admin/jonny-creator', labelKey: 'admin.jonny_creator', roles: ['super_admin', 'tenant_owner', 'game_manager'] },
-  { key: 'jonny-poses', route: '/admin/jonny-poses', labelKey: 'admin.jonny_poses', roles: ['super_admin', 'tenant_owner', 'game_manager'] },
-  { key: 'audio', route: '/admin/audio', labelKey: 'admin.audio', roles: ['super_admin', 'tenant_owner', 'game_manager', 'entertainer'] },
-  { key: 'content-packs', route: '/admin/content-packs', labelKey: 'admin.content_packs', roles: ['super_admin', 'tenant_owner', 'game_manager'] },
+export const ADMIN_NAV: { key: string; route: string; label: string; roles: Role[] }[] = [
+  { key: 'dashboard', route: '/admin',          label: 'Dashboard',       roles: ['super_admin','tenant_owner','game_manager','entertainer'] },
+  { key: 'show',      route: '/admin/events',   label: 'Show',            roles: ['super_admin','tenant_owner','game_manager'] },
+  { key: 'giochi',    route: '/admin/giochi',   label: 'Giochi',          roles: ['super_admin','tenant_owner','game_manager'] },
+  { key: 'media',     route: '/admin/media',    label: 'Libreria Media',  roles: ['super_admin','tenant_owner','game_manager'] },
+  { key: 'settings',  route: '/admin/settings', label: 'Impostazioni',    roles: ['super_admin','tenant_owner','game_manager','entertainer'] },
 ];
 
 export interface CurrentUser {
