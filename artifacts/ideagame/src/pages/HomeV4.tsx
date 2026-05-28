@@ -1162,10 +1162,12 @@ export default function HomeV4() {
   return (
     <div className="fixed inset-0 overflow-hidden"
       style={{ background:'#030010', fontFamily:"'Outfit','Space Grotesk','Arial Black',sans-serif" }}>
-      {/* ── AUDIT BADGE ── */}
-      <div style={{position:'fixed',top:6,left:'50%',transform:'translateX(-50%)',zIndex:99999,background:'rgba(0,0,0,0.85)',color:'#F5B642',fontFamily:'monospace',fontSize:11,padding:'3px 12px',borderRadius:5,border:'1px solid #F5B64280',pointerEvents:'none',whiteSpace:'nowrap'}}>
-        ACTIVE ROUTE: /home-v4 · COMPONENT: HomeV4 · FILE: src/pages/HomeV4.tsx · BUILD: {String(typeof __COMMIT_HASH__ !== 'undefined' ? __COMMIT_HASH__ : '?')} {String(typeof __BUILD_DATE__ !== 'undefined' ? __BUILD_DATE__ : '')}
-      </div>
+      {/* ── AUDIT BADGE — DEV only ── */}
+      {import.meta.env.DEV && (
+        <div style={{position:'fixed',top:6,left:'50%',transform:'translateX(-50%)',zIndex:99999,background:'rgba(0,0,0,0.85)',color:'#F5B642',fontFamily:'monospace',fontSize:11,padding:'3px 12px',borderRadius:5,border:'1px solid #F5B64280',pointerEvents:'none',whiteSpace:'nowrap'}}>
+          ACTIVE ROUTE: /home-v4 · COMPONENT: HomeV4 · FILE: src/pages/HomeV4.tsx · BUILD: {String(typeof __COMMIT_HASH__ !== 'undefined' ? __COMMIT_HASH__ : '?')} {String(typeof __BUILD_DATE__ !== 'undefined' ? __BUILD_DATE__ : '')}
+        </div>
+      )}
       {/* Stage/Sparks moved into Arena — ShowLanding has its own official bg image */}
       <AnimatePresence mode="wait">
         {screen==='show'   && <ShowLanding onArena={()=>navigate('/mode-select')}/>}
