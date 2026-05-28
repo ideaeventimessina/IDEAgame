@@ -2325,7 +2325,10 @@ function QuizzoneBoard({ payload, session, players }: {
 
   // ── question ───────────────────────────────────────────────────────────────
   if (phase === 'question' && currentQ) {
-    const timerPct = timeLeft !== null && currentQ.timeLimit > 0 ? timeLeft / currentQ.timeLimit : 1;
+    const endsAt = payload.questionEndsAt ? new Date(String(payload.questionEndsAt)).getTime() : null;
+    const startAt = payload.questionStartedAt ? new Date(String(payload.questionStartedAt)).getTime() : null;
+    const totalDuration = endsAt && startAt ? Math.max(1, (endsAt - startAt) / 1000) : currentQ.timeLimit;
+    const timerPct = timeLeft !== null ? timeLeft / totalDuration : 1;
     const timerColor = timerPct > 0.5 ? '#4ade80' : timerPct > 0.25 ? '#facc15' : '#ef4444';
     const clues = currentQ.clues ?? [];
     const visibleClues = clues.slice(0, currentClueIndex + 1);
@@ -2383,18 +2386,38 @@ function QuizzoneBoard({ payload, session, players }: {
           )}
         </div>
         {/* Answers */}
-        <div className={currentQ.type === 'true_false' || currentQ.type === 'image_vs_image' ? 'flex gap-4' : 'grid grid-cols-2 gap-3'}>
-          {currentQ.answers.map((ans, i) => (
-            <div key={i} className="flex items-center gap-3 rounded-2xl px-5 py-4"
-              style={{ background:`${ANS_COLORS[i] ?? QZ}18`, border:`2px solid ${ANS_COLORS[i] ?? QZ}44`, flex: (currentQ.type === 'true_false' || currentQ.type === 'image_vs_image') ? '1' : undefined }}>
-              {currentQ.type !== 'true_false' && currentQ.type !== 'image_vs_image' && (
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-black text-sm"
-                  style={{ background: ANS_COLORS[i] ?? QZ, color:'#000' }}>{LETTERS[i]}</div>
-              )}
-              <div className="font-black text-base text-white text-center flex-1">{ans}</div>
-            </div>
-          ))}
-        </div>
+        {currentQ.type === 'image_vs_image' ? (
+          <div className="flex gap-4">
+            {[0, 1].map(i => {
+              const imgSrc = i === 0 ? currentQ.imageA : currentQ.imageB;
+              const label = currentQ.answers[i] ?? (i === 0 ? 'A' : 'B');
+              const color = ANS_COLORS[i] ?? QZ;
+              const placeholder = `https://placehold.co/600x400/1a1a2e/F5B642?text=${encodeURIComponent(label)}`;
+              return (
+                <div key={i} className="flex-1 flex flex-col items-center gap-2 rounded-2xl overflow-hidden"
+                  style={{ border:`2px solid ${color}55`, background:`${color}12` }}>
+                  <img src={imgSrc ?? placeholder} alt={label}
+                    className="w-full object-cover" style={{ height:'180px' }}
+                    onError={(e) => { (e.target as HTMLImageElement).src = placeholder; }} />
+                  <div className="pb-3 px-3 text-center font-black text-base text-white leading-snug">{label}</div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className={currentQ.type === 'true_false' ? 'flex gap-4' : 'grid grid-cols-2 gap-3'}>
+            {currentQ.answers.map((ans, i) => (
+              <div key={i} className="flex items-center gap-3 rounded-2xl px-5 py-4"
+                style={{ background:`${ANS_COLORS[i] ?? QZ}18`, border:`2px solid ${ANS_COLORS[i] ?? QZ}44`, flex: currentQ.type === 'true_false' ? '1' : undefined }}>
+                {currentQ.type !== 'true_false' && (
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-black text-sm"
+                    style={{ background: ANS_COLORS[i] ?? QZ, color:'#000' }}>{LETTERS[i]}</div>
+                )}
+                <div className="font-black text-base text-white text-center flex-1">{ans}</div>
+              </div>
+            ))}
+          </div>
+        )}
         {/* Host controls */}
         <div className="flex items-center justify-between mt-1">
           {currentQ.type === 'progressive_clue' && currentClueIndex < (clues.length - 1) && (

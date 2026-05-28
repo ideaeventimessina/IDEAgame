@@ -206,20 +206,136 @@ function makeId(): string {
   return `q_${Date.now()}_${++_idCounter}`;
 }
 
+const TIME_LIMITS: Record<QuestionType, number> = {
+  multiple_choice:  15,
+  true_false:       12,
+  image_vs_image:   15,
+  speed_round:       8,
+  progressive_clue: 25,
+  order_choice:     18,
+  final_bomb:       20,
+};
+
+function validateAndRepair(raw: Record<string, unknown>, theme: string): QuizQuestion | null {
+  const type = (raw['type'] as string) ?? 'multiple_choice';
+  const question = (raw['question'] as string)?.trim();
+  if (!question) return null;
+
+  const answers = Array.isArray(raw['answers']) ? (raw['answers'] as unknown[]).map(String) : [];
+  if (answers.length < 2) return null;
+
+  const correctAnswerIndex = Number(raw['correctAnswerIndex'] ?? raw['correct_answer_index'] ?? 0);
+  if (correctAnswerIndex < 0 || correctAnswerIndex >= answers.length) return null;
+
+  const points  = Number(raw['points']    ?? 100);
+  const timeLimit = Number(raw['timeLimit'] ?? raw['time_limit'] ?? TIME_LIMITS[type as QuestionType] ?? 15);
+
+  let imageA = raw['imageA'] as string | undefined;
+  let imageB = raw['imageB'] as string | undefined;
+
+  if (type === 'image_vs_image') {
+    const labelA = answers[0] ?? 'A';
+    const labelB = answers[1] ?? 'B';
+    if (!imageA) imageA = `https://placehold.co/600x400/1a1a2e/F5B642?text=${encodeURIComponent(labelA)}`;
+    if (!imageB) imageB = `https://placehold.co/600x400/1a1a2e/F5B642?text=${encodeURIComponent(labelB)}`;
+  }
+
+  return {
+    id: makeId(),
+    type: type as QuestionType,
+    theme,
+    question,
+    answers,
+    correctAnswerIndex,
+    imageA,
+    imageB,
+    clues: Array.isArray(raw['clues']) ? (raw['clues'] as string[]) : undefined,
+    points:    Math.max(50, Math.round(points)),
+    timeLimit: Math.max(5, Math.round(timeLimit)),
+  };
+}
+
+async function generateQuizQuestionsAI(
+  themeText: string,
+  count: number,
+  difficulty: "easy" | "medium" | "hard",
+): Promise<QuizQuestion[]> {
+  const baseUrl = process.env['AI_INTEGRATIONS_OPENAI_BASE_URL'];
+  const apiKey  = process.env['AI_INTEGRATIONS_OPENAI_API_KEY'];
+  if (!baseUrl || !apiKey) throw new Error("AI env vars not set");
+
+  const timeMult = difficulty === "easy" ? 1.4 : difficulty === "hard" ? 0.7 : 1.0;
+  const ptsMult  = difficulty === "easy" ? 0.8 : difficulty === "hard" ? 1.25 : 1.0;
+
+  const systemPrompt = `Sei Jonny, il co-host di IDEAgame, un'app di quiz per feste italiane.
+Genera esattamente ${count} domande sul tema: "${themeText}".
+TUTTE le domande DEVONO essere strettamente sul tema indicato.
+Rispondi SOLO con un array JSON valido. Nessun testo aggiuntivo.
+
+Struttura ogni domanda:
+{
+  "type": "multiple_choice"|"true_false"|"image_vs_image"|"speed_round"|"progressive_clue"|"order_choice"|"final_bomb",
+  "question": "testo della domanda",
+  "answers": ["risposta A","risposta B","risposta C","risposta D"],
+  "correctAnswerIndex": 0,
+  "imageA": "URL immagine solo per image_vs_image (opzionale)",
+  "imageB": "URL immagine solo per image_vs_image (opzionale)",
+  "clues": ["indizio 1","indizio 2","indizio 3"] // solo per progressive_clue,
+  "points": 100,
+  "timeLimit": 15
+}
+
+Regole:
+- true_false: answers deve essere ["VERO","FALSO"]
+- speed_round: 3 risposte, timeLimit = 8
+- image_vs_image: 2 risposte (etichette tipo "HARRY ◄","HERMIONE ►"), fornisci imageA e imageB se possibile
+- final_bomb: ultima domanda, points = 200, timeLimit = 20
+- progressive_clue: clues array con 3 indizi
+- Usa sempre l'italiano.
+- L'ultima domanda DEVE essere di tipo "final_bomb".
+- Mix di tipi: almeno 1 true_false, 1 speed_round.`;
+
+  const resp = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: systemPrompt }],
+      temperature: 0.8,
+      max_tokens: 3000,
+    }),
+  });
+
+  if (!resp.ok) throw new Error(`AI error ${resp.status}: ${await resp.text()}`);
+  const data = await resp.json() as { choices: { message: { content: string } }[] };
+  const raw = data.choices[0]?.message?.content ?? '[]';
+  const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  const parsed = JSON.parse(cleaned) as Record<string, unknown>[];
+
+  const valid: QuizQuestion[] = [];
+  for (const q of parsed) {
+    const repaired = validateAndRepair(q, themeText);
+    if (repaired) {
+      valid.push({
+        ...repaired,
+        timeLimit: Math.max(5, Math.round(repaired.timeLimit * timeMult)),
+        points:    Math.round(repaired.points * ptsMult),
+      });
+    }
+  }
+  return valid;
+}
+
 export function generateQuiz(themeId: string, count: number, difficulty: "easy" | "medium" | "hard" = "medium"): QuizQuestion[] {
   const normalizedTheme = themeId === 'fallback' ? 'cultura_generale' : themeId;
   const pool = BANK.filter(q => q.theme === normalizedTheme);
   const fallback = BANK.filter(q => q.theme === 'cultura_generale');
   const source = pool.length >= 5 ? pool : fallback;
 
-  // Separate final_bomb questions and regular questions
   const finals   = shuffleArr(source.filter(q => q.type === 'final_bomb'));
   const regulars = shuffleArr(source.filter(q => q.type !== 'final_bomb'));
-
-  // Build mixed list: take up to (count-1) regular questions, then append one final_bomb
   const taken = regulars.slice(0, Math.max(count - 1, 1));
 
-  // Ensure at least one of each desired type (if available)
   const desiredTypes: QuestionType[] = ['true_false', 'speed_round', 'progressive_clue'];
   for (const dt of desiredTypes) {
     const hasType = taken.some(q => q.type === dt);
@@ -229,7 +345,6 @@ export function generateQuiz(themeId: string, count: number, difficulty: "easy" 
     }
   }
 
-  // Pad if needed with custom/fallback
   if (taken.length < count - 1) {
     const pad = shuffleArr(BANK.filter(q => q.theme === 'custom' && q.type !== 'final_bomb'))
       .filter(q => !taken.includes(q))
@@ -243,12 +358,37 @@ export function generateQuiz(themeId: string, count: number, difficulty: "easy" 
     ...(finalQ ? [finalQ] : []),
   ].map(q => ({ ...q, id: makeId() }));
 
-  // Apply difficulty multipliers to timeLimit and points
-  const timeMult  = difficulty === "easy" ? 1.4 : difficulty === "hard" ? 0.7 : 1.0;
-  const ptsMult   = difficulty === "easy" ? 0.8 : difficulty === "hard" ? 1.25 : 1.0;
+  const timeMult = difficulty === "easy" ? 1.4 : difficulty === "hard" ? 0.7 : 1.0;
+  const ptsMult  = difficulty === "easy" ? 0.8 : difficulty === "hard" ? 1.25 : 1.0;
   return questions.map(q => ({
     ...q,
     timeLimit: Math.max(5, Math.round(q.timeLimit * timeMult)),
     points:    Math.round(q.points * ptsMult),
   }));
+}
+
+/** Async entry point: uses AI for custom/unknown themes, bank for known themes. */
+export async function generateQuizAsync(
+  themeId: string,
+  count: number,
+  difficulty: "easy" | "medium" | "hard" = "medium",
+): Promise<QuizQuestion[]> {
+  const knownTheme = QUIZ_THEMES.find(t => t.id === themeId);
+  const hasBank    = knownTheme && BANK.filter(q => q.theme === themeId).length >= 5;
+
+  if (!hasBank) {
+    const themeText = knownTheme ? knownTheme.label : themeId;
+    try {
+      const aiQuestions = await generateQuizQuestionsAI(themeText, count, difficulty);
+      if (aiQuestions.length >= Math.min(count, 3)) {
+        return aiQuestions.slice(0, count);
+      }
+    } catch (err) {
+      console.error('[QUIZ_GENERATE] AI failed, using bank fallback', err instanceof Error ? err.message : err);
+    }
+    const bankQuestions = generateQuiz('cultura_generale', count, difficulty);
+    return bankQuestions.map(q => ({ ...q, theme: themeId }));
+  }
+
+  return generateQuiz(themeId, count, difficulty);
 }

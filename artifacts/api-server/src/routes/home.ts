@@ -21,7 +21,7 @@ import { Router, type IRouter } from "express";
 import multer from "multer";
 import OpenAI from "openai";
 import { createBlankKaraokeState } from "../lib/karaoke-home-engine.js";
-import { generateQuiz, QUIZ_THEMES } from "../lib/quiz-generator.js";
+import { generateQuiz, generateQuizAsync, QUIZ_THEMES } from "../lib/quiz-generator.js";
 import { generateSaraMusicaRounds, SM_THEMES, type MusicRound } from "../lib/saramusica-generator.js";
 import { BOTTLE_LEVELS, pickFromBank, assignSpectatorPowers, type BottleChallenge, type BottleLevel } from "../lib/adult-generator.js";
 import { eq, and, or, lt, asc, desc, isNull, notInArray } from "drizzle-orm";
@@ -1397,7 +1397,8 @@ router.post("/home/sessions/:id/quiz/select-count", async (req, res): Promise<vo
   // After 3s generate questions and start countdown
   setTimeout(async () => {
     try {
-      const questions = generateQuiz(themeId, questionCount, difficulty);
+      const questions = await generateQuizAsync(themeId, questionCount, difficulty);
+      logger.info({ sessionId: id, selectedTheme: themeId, requestedDifficulty: difficulty, questionCount, firstQuestionTheme: questions[0]?.theme }, "[QUIZ_GENERATE]");
       const sess2 = await getSession(id);
       if (!sess2) return;
       const rp2 = (sess2.roundPayload ?? {}) as Record<string, unknown>;

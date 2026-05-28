@@ -1923,6 +1923,10 @@ function QuizzoneController({ payload, session, player }: {
 }) {
   const [answeredIdx, setAnsweredIdx] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+  const [timedOut, setTimedOut] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const phase = String(payload.phase ?? 'setup_theme');
   const currentIndex = Number(payload.currentIndex ?? -1);
   const questions = (payload.questions as QzcQuestion[]) ?? [];
@@ -1935,10 +1939,36 @@ function QuizzoneController({ payload, session, player }: {
   const themeName = String(payload.themeName ?? '');
 
   // Reset answer when question changes
-  useEffect(() => { setAnsweredIdx(null); }, [currentIndex]);
+  useEffect(() => { setAnsweredIdx(null); setTimedOut(false); }, [currentIndex]);
+
+  // Server-authoritative countdown — guard: only re-run when index or phase changes
+  useEffect(() => {
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    if (phase !== 'question' || !currentQ) { setTimeLeft(null); return; }
+    const endsAt = payload.questionEndsAt
+      ? new Date(String(payload.questionEndsAt)).getTime()
+      : null;
+    if (!endsAt) { setTimeLeft(null); return; }
+    // Guard: if already expired, show timeout immediately, do not start timer
+    const initialRemaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+    if (initialRemaining <= 0) { setTimeLeft(0); setTimedOut(true); return; }
+    setTimedOut(false);
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+      setTimeLeft(remaining);
+      if (remaining <= 0) {
+        if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+        setTimedOut(true);
+      }
+    };
+    tick();
+    timerRef.current = setInterval(tick, 250);
+    return () => { if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; } };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, currentIndex]);
 
   const submitAnswer = async (idx: number) => {
-    if (busy || answeredIdx !== null || phase !== 'question') return;
+    if (busy || answeredIdx !== null || phase !== 'question' || timedOut) return;
     setAnsweredIdx(idx);
     setBusy(true);
     try {
@@ -2030,8 +2060,24 @@ function QuizzoneController({ payload, session, player }: {
     const visibleClue = type === 'progressive_clue' ? clues[currentClueIndex] : null;
 
     // Header
+    const timerColor = timeLeft !== null
+      ? (timeLeft > (currentQ.timeLimit * 0.5) ? '#4ade80' : timeLeft > (currentQ.timeLimit * 0.25) ? '#facc15' : '#ef4444')
+      : '#4ade80';
+
     const headerEl = (
       <div className="flex flex-col gap-2">
+        {/* Timer bar — server authoritative */}
+        {timeLeft !== null && (
+          <div className="flex items-center gap-2">
+            <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background:'rgba(255,255,255,0.08)' }}>
+              <div className="h-full rounded-full transition-all duration-300"
+                style={{ background: timerColor, width:`${Math.max(0, (timeLeft / Math.max(currentQ.timeLimit, 1)) * 100)}%` }} />
+            </div>
+            <div className="text-base font-black tabular-nums w-10 text-right" style={{ color: timerColor }}>
+              {timedOut ? '⏰' : `${timeLeft}s`}
+            </div>
+          </div>
+        )}
         {type === 'final_bomb' && (
           <div className="rounded-xl px-3 py-2 text-center text-xs font-black" style={{ background:'rgba(239,68,68,0.2)', border:'1px solid rgba(239,68,68,0.5)', color:'#ef4444' }}>
             💣 DOMANDA FINALE — VALE DOPPIO!
@@ -2054,6 +2100,21 @@ function QuizzoneController({ payload, session, player }: {
         </div>
       </div>
     );
+
+    // Timed out — show overlay, no answers
+    if (timedOut && answeredIdx === null) {
+      return (
+        <div className="flex flex-col gap-4">
+          {headerEl}
+          <div className="flex flex-col items-center gap-3 rounded-3xl py-10 px-6 text-center"
+            style={{ background:'rgba(239,68,68,0.10)', border:'1px solid rgba(239,68,68,0.35)' }}>
+            <div className="text-5xl">⏰</div>
+            <div className="text-display text-lg font-black text-white">Tempo scaduto!</div>
+            <div className="text-xs text-white/40">Aspetta la risposta corretta…</div>
+          </div>
+        </div>
+      );
+    }
 
     // Already answered — lock screen
     if (answeredIdx !== null) {
