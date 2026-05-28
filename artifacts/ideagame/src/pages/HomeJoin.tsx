@@ -724,6 +724,13 @@ function HomeJoinInner() {
   // Server-authoritative timer: prefers roundEndsAt when present, falls back to roundStartedAt+timeLimit.
   // Prevents timer reset on phone reload — phones join mid-round with the correct countdown.
   const startRoundTimer = useCallback((payload: Record<string, unknown>) => {
+    // WordBack manages its own per-round timer on TV — phone has no countdown
+    const mode = String(payload.mode ?? '');
+    if (mode === 'home-wordback' || mode === 'home-wordback-booking' || mode === 'home-wordback-setup') {
+      if (timerRef.current) clearInterval(timerRef.current);
+      setTimeLeft(null);
+      return;
+    }
     // Priority 1: explicit roundEndsAt (server-stamped absolute deadline)
     const endsAt = payload.roundEndsAt as string | null;
     if (endsAt) {

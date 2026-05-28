@@ -757,7 +757,7 @@ export default function PressToTalkAnswer({
     const { isIOS, isSafariIOS } = detectBrowser();
     const isNonSafariIOS = isIOS && !isSafariIOS;
     return (
-      <div className="flex flex-col items-center gap-3 rounded-2xl px-5 py-4 text-center"
+      <div className="flex flex-col items-center gap-2 rounded-2xl px-3 py-3 text-center overflow-y-auto max-h-[72vh]"
         style={{background:'rgba(239,68,68,0.12)',border:'1.5px solid rgba(239,68,68,0.4)'}}>
         <div className="text-2xl">🚫</div>
         <div className="text-sm font-black" style={{color:'#f87171'}}>Microfono non autorizzato</div>

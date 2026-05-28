@@ -3934,6 +3934,16 @@ router.post("/home/sessions/:id/wordback-correct", async (req, res): Promise<voi
 
   await broadcastState(id);
   res.json({ ok: true, pts });
+
+  // ── Auto-advance to booking phase after 1.5 s ─────────────────────────────
+  // Gives clients time to show the "✅ Corretto!" celebration before moving on.
+  const cfg = (session.gameConfig ?? {}) as Record<string, unknown>;
+  const preloadedRounds = (cfg["preloadedRounds"] as RoundPayload[] | undefined) ?? [];
+  const prevPair = { guesserId, suggesterId };
+  const nextRoundIndex = roundIndex + 1;
+  setTimeout(() => {
+    void enterWordBackBookingPhase(id, nextRoundIndex, preloadedRounds, cfg, prevPair);
+  }, 1500);
 });
 
 // ── POST /home/sessions/:id/wordback-timeout ─────────────────────────────────
