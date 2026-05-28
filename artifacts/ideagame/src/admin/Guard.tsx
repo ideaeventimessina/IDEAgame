@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useEffect } from 'react';
 import { useLocation } from 'wouter';
-import { useAuth, canSee } from '@/auth/roles';
+import { useAuth, canSee, ADMIN_NAV } from '@/auth/roles';
 import { AdminLayout } from './AdminLayout';
 import { useT } from '@/i18n';
 import { ShieldAlert, Loader2 } from 'lucide-react';
@@ -10,6 +10,26 @@ export function Guard({ route, children }: { route: string; children: ReactNode 
   const { role, user, isLoading } = useAuth();
   const t = useT();
   const [, navigate] = useLocation();
+
+  // ── [AdminAuth] diagnostic console log ──────────────────────────────────────
+  useEffect(() => {
+    if (isLoading) return;
+    const isSuperAdmin = role === 'super_admin';
+    const visibleNavItems = ADMIN_NAV.filter(n => canSee(n.route, role)).map(n => n.key);
+    const canAccessRoute = canSee(route, role);
+    const redirectTarget = !user ? `/login?redirect=${encodeURIComponent(window.location.pathname)}` : (!canAccessRoute ? '/admin (access restricted)' : null);
+    // eslint-disable-next-line no-console
+    console.log('[AdminAuth]', {
+      email: user?.email ?? null,
+      role,
+      isSuperAdmin,
+      tenantId: user?.tenantId ?? null,
+      route,
+      canAccessRoute,
+      visibleNavItems,
+      redirectTarget,
+    });
+  }, [isLoading, user, role, route]);
 
   useEffect(() => {
     if (!isLoading && !user) {
