@@ -1,0 +1,190 @@
+QUIZZONE HOME — CRITICAL FIX: THEME RESPECT, TIMER SYNC, IMAGE ROUNDS.
+
+Do not touch other games.
+Patch only Quizzone Home.
+
+Current bugs:
+1. Guest-selected theme is ignored; Jonny generates generic unrelated questions.
+2. TV timer shows 8 seconds while phones show 30.
+3. When phone timer reaches 0, it restarts/loops forever.
+4. Image questions do not show images on TV or phones.
+
+==================================================
+PART 1 — THEME MUST BE RESPECTED
+==================================================
+
+Audit:
+- Quizzone setup theme flow
+- guest proposed themes
+- selectedTheme stored in gameConfig/roundPayload
+- quiz generator input
+- AI prompt
+- fallback generator
+
+Required:
+The final selected theme must be passed to the generator.
+
+If guests choose/write:
+"Harry Potter"
+
+Generated questions must be about:
+Harry Potter.
+
+Not generic culture.
+
+Add log:
+[QUIZ_GENERATE]
+selectedTheme
+requestedDifficulty
+questionCount
+firstQuestionTheme
+
+If fallback is used:
+fallback must still be theme-aware.
+If no local bank for theme:
+create theme-generic questions using the theme text, not unrelated generic questions.
+
+==================================================
+PART 2 — TIMER SINGLE SOURCE OF TRUTH
+==================================================
+
+Bug:
+TV timer 8s, phone 30s.
+
+Required:
+Server decides questionEndsAt.
+TV and phones both calculate:
+remaining = max(0, questionEndsAt - Date.now())
+
+No local countdown duration on phones.
+
+Question duration must be stored per question:
+timeLimitSeconds
+
+Example:
+easy: 20s
+medium: 15s
+hard: 10s
+speed_round: 8s
+
+But both TV and phones must use the exact same questionEndsAt.
+
+==================================================
+PART 3 — NO INFINITE TIMER LOOP ON PHONES
+==================================================
+
+Bug:
+Phone reaches 0 then restarts in loop.
+
+Required:
+When remaining <= 0:
+- phone shows “Tempo scaduto”
+- answer buttons disabled
+- no timer restart
+- wait for server reveal
+- do not call local startTimer again unless currentQuestionId changes
+
+Guard:
+if currentQuestionId unchanged and phase unchanged:
+do not reset timer.
+
+Add log:
+[QUIZ_TIMER]
+questionId
+phase
+questionEndsAt
+remaining
+source:"server"
+
+==================================================
+PART 4 — SERVER CLOSES QUESTION ON TIMEOUT
+==================================================
+
+When questionEndsAt expires:
+- server changes phase to reveal/time_expired
+- late answers rejected with 409 time_expired
+- TV shows correct answer
+- phones show time expired/reveal
+
+No state can stay in question phase after questionEndsAt.
+
+==================================================
+PART 5 — IMAGE QUESTIONS MUST SHOW IMAGES
+==================================================
+
+Bug:
+image_vs_image rounds do not display images.
+
+Audit:
+- generated question shape
+- imageA/imageB fields
+- TV rendering
+- phone rendering
+- fallback placeholder
+
+Required:
+For image_vs_image:
+question must include:
+{
+  imageA: { url, label },
+  imageB: { url, label }
+}
+
+TV:
+show two large images side-by-side.
+Buttons/labels:
+A / B
+
+Phone:
+show two large tappable cards:
+A / B
+with same images.
+
+If image URL missing:
+show themed placeholder card with label.
+Do not show blank.
+
+If AI cannot provide images:
+use generated placeholder URLs:
+https://placehold.co/600x400?text=...
+
+==================================================
+PART 6 — GENERATED QUESTION VALIDATION
+==================================================
+
+Before storing quiz questions:
+validate every question.
+
+If type=image_vs_image and images missing:
+create placeholders.
+
+If answers missing:
+repair or discard.
+
+If correctAnswer not in answers:
+repair or discard.
+
+If question theme does not match selectedTheme:
+log warning and regenerate/fallback.
+
+==================================================
+OUTPUT REQUIRED
+==================================================
+
+A. root cause for theme ignored
+B. root cause for timer mismatch
+C. root cause for phone timer loop
+D. root cause for missing images
+E. files modified
+F. selected theme passed to generator
+G. unified timer fixed
+H. timeout closes question
+I. image rendering fixed TV + phone
+J. typecheck result
+K. manual test:
+   - theme “Harry Potter”
+   - 5 questions
+   - images visible
+   - TV/phone timer identical
+   - after 0 phone cannot answer
+   - no timer loop

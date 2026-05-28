@@ -3058,6 +3058,31 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [choiceTimeLeft, rs?.phase, busy]);
 
+  // ── Part 3: Voting countdown (server-authoritative votingEndsAt) ───────────
+  const [votingTimeLeft, setVotingTimeLeft] = useState<number | null>(null);
+  useEffect(() => {
+    if (!rs || rs.phase !== 'voting' || !rs.votingEndsAt) { setVotingTimeLeft(null); return; }
+    const tick = () => Math.max(0, Math.round((new Date(rs.votingEndsAt!).getTime() - Date.now()) / 1000));
+    setVotingTimeLeft(tick());
+    const iv = setInterval(() => { const tl = tick(); setVotingTimeLeft(tl); if (tl <= 0) clearInterval(iv); }, 1000);
+    return () => clearInterval(iv);
+  }, [rs?.phase, rs?.votingEndsAt]);
+
+  // ── Part 2: Ripetilo overlay (flashes 2.5s each time count increments) ────
+  const [showRipetiloOverlay, setShowRipetiloOverlay] = useState(false);
+  const prevRepeatRef = useRef(0);
+  useEffect(() => {
+    if (!rs) return undefined;
+    const count = rs.repeatRequestsUsed ?? 0;
+    if (count > prevRepeatRef.current) {
+      prevRepeatRef.current = count;
+      setShowRipetiloOverlay(true);
+      const t = setTimeout(() => setShowRipetiloOverlay(false), 2500);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [rs?.repeatRequestsUsed]);
+
   const apiPost = async (path: string) => {
     setBusy(true); setMsg('');
     try {
@@ -3117,8 +3142,29 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
     switch (rs.phase) {
       case 'mission_intro': return '🙋 Apri Prenotazioni →';
       case 'booking': return `⚡ Inizia! (${rs.bookings.length}/${mission?.playerCount ?? '?'})`;
-      case 'public_choice': return rs.publicChoice ? `🚀 Vai con: ${rs.publicChoice}` : '🚀 Avanza →';
-      case 'active': return mission?.phases.includes('voting') ? '⭐ Apri Votazione →' : '🏆 Risultati →';
+      case 'public_choice': {
+        if (mission?.id === 'venditore') return `🚀 Conferma ${(rs.ambulanteProducts ?? []).length}/5 prodotti →`;
+        if (mission?.id === 'oggetto') return `🎯 Conferma ${(rs.oggettoTargets ?? []).length}/3 bersagli →`;
+        if (mission?.id === 'poliglotta') {
+          if (rs.poliglottaStep === 'language' || !rs.poliglottaStep) return rs.publicChoice ? `🌍 Lingua: ${rs.publicChoice} → Frasi` : '🌍 Aspetta lingua…';
+          if (rs.poliglottaStep === 'phrase_input') {
+            const phrases = (rs.poliglottaSubmittedPhrases ?? []).length;
+            return phrases >= 2 ? '🚀 Traduci e Vai! →' : `📝 Aspetta frasi (${phrases}/2)…`;
+          }
+          return '🚀 Avanza →';
+        }
+        return rs.publicChoice ? `🚀 Vai con: ${rs.publicChoice}` : '🚀 Avanza →';
+      }
+      case 'active': {
+        if (mission?.id === 'poliglotta') {
+          if (rs.poliglottaStep === 'reading') return `📖 Rivela frase ${(rs.poliglottaPhraseIndex ?? 0) + 1} →`;
+          if (rs.poliglottaStep === 'reveal') {
+            if ((rs.poliglottaPhraseIndex ?? 0) === 0) return '📖 Frase 2 →';
+            return '⭐ Apri Votazione →';
+          }
+        }
+        return mission?.phases.includes('voting') ? '⭐ Apri Votazione →' : '🏆 Risultati →';
+      }
       case 'voting': return '🏆 Chiudi e Risultati →';
       case 'result': return rs.missionIndex < 9 ? `🎯 Missione ${rs.missionIndex + 2}/10 →` : '🏁 Fine Serata!';
       default: return '→ Avanza';
@@ -3209,8 +3255,68 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
             );
           })()}
 
-          {/* public_choice: per-player assignments for venditore/sfilata */}
-          {rs.phase === 'public_choice' && mission?.perPlayerChoice && rs.perPlayerChoices.length > 0 && (
+          {/* Part 4: public_choice — venditore ambulante multi-pick (up to 5 products) */}
+          {rs.phase === 'public_choice' && mission?.id === 'venditore' && (
+            <div className="flex flex-col items-center gap-2 w-full mt-1">
+              <div className="text-xs font-black" style={{ color: PERCORSO_ACCENT }}>
+                Selezionati: {(rs.ambulanteProducts ?? []).length}/5
+              </div>
+              <div className="flex flex-wrap justify-center gap-2">
+                {rs.publicChoiceOptions.map(opt => {
+                  const selected = (rs.ambulanteProducts ?? []).includes(opt);
+                  return (
+                    <div key={opt} className="rounded-xl px-4 py-2 text-sm font-bold transition-all"
+                      style={selected
+                        ? { background: `linear-gradient(135deg,${PERCORSO_ACCENT},#059669)`, color: '#000', boxShadow: `0 0 16px ${PERCORSO_ACCENT}55` }
+                        : { background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.14)', color: 'rgba(255,255,255,0.65)' }}>
+                      {selected ? '✅ ' : ''}{opt}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Part 6: public_choice — oggetto 3-target selection */}
+          {rs.phase === 'public_choice' && mission?.id === 'oggetto' && (
+            <div className="flex flex-col items-center gap-2 w-full mt-1">
+              <div className="text-xs font-black" style={{ color: '#34D399' }}>
+                Bersagli: {(rs.oggettoTargets ?? []).length}/3
+              </div>
+              <div className="flex flex-wrap justify-center gap-2">
+                {rs.publicChoiceOptions.map(opt => {
+                  const selected = (rs.oggettoTargets ?? []).includes(opt);
+                  return (
+                    <div key={opt} className="rounded-xl px-4 py-2 text-sm font-bold transition-all"
+                      style={selected
+                        ? { background: 'rgba(52,211,153,0.25)', border: '2px solid rgba(52,211,153,0.6)', color: '#34D399' }
+                        : { background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.14)', color: 'rgba(255,255,255,0.65)' }}>
+                      {selected ? '🎯 ' : ''}{opt}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Part 5: public_choice — poliglotta status (phrase_input or translating) */}
+          {rs.phase === 'public_choice' && mission?.id === 'poliglotta' && (rs.poliglottaStep === 'phrase_input' || (rs.poliglottaStep as string) === 'translating') && (
+            <div className="flex flex-col items-center gap-2 mt-1">
+              <div className="rounded-xl px-5 py-2 text-sm font-black"
+                style={{ background: 'rgba(96,165,250,0.15)', border: '1px solid rgba(96,165,250,0.40)', color: '#60A5FA' }}>
+                🌍 {rs.publicChoice ?? rs.poliglottaLanguage ?? '—'}
+              </div>
+              <div className="text-xs text-white/45">
+                Frasi ricevute: {(rs.poliglottaSubmittedPhrases ?? []).length}/2 — i giocatori le inseriscono sul telefono
+              </div>
+              {(rs.poliglottaStep as string) === 'translating' && (
+                <div className="text-xs font-black animate-pulse" style={{ color: '#60A5FA' }}>🤖 Traduzione AI in corso…</div>
+              )}
+            </div>
+          )}
+
+          {/* public_choice: per-player assignments for sfilata */}
+          {rs.phase === 'public_choice' && mission?.perPlayerChoice && mission.id !== 'venditore' && rs.perPlayerChoices.length > 0 && (
             <div className="flex flex-wrap justify-center gap-3 mt-1">
               {rs.bookings.map((b, i) => (
                 <div key={b.playerId} className="flex flex-col items-center gap-1 rounded-xl px-5 py-3 text-sm font-black"
@@ -3287,6 +3393,80 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
             </div>
           )}
 
+          {/* Part 2: Active — scioglilingua ripetilo counter */}
+          {rs.phase === 'active' && mission?.id === 'scioglilingua' && (
+            <div className="flex items-center justify-between rounded-xl px-5 py-2.5 w-full max-w-sm"
+              style={{ background: 'rgba(167,139,250,0.10)', border: '1px solid rgba(167,139,250,0.30)' }}>
+              <span className="text-sm font-black" style={{ color: '#a78bfa' }}>🔁 RIPETILO</span>
+              <span className="text-sm font-black text-white/70">
+                rimasti: {Math.max(0, 3 - (rs.repeatRequestsUsed ?? 0))}/3
+              </span>
+            </div>
+          )}
+
+          {/* Part 4: Active — venditore ambulante products list */}
+          {rs.phase === 'active' && mission?.id === 'venditore' && (rs.ambulanteProducts ?? []).length > 0 && (
+            <div className="flex flex-col items-center gap-2 rounded-2xl px-6 py-4 w-full max-w-md"
+              style={{ background: 'rgba(245,182,66,0.10)', border: '2px solid rgba(245,182,66,0.35)' }}>
+              <div className="text-xs font-black text-white/55 uppercase tracking-widest">🛒 Prodotti da vendere</div>
+              <div className="flex flex-wrap justify-center gap-2">
+                {rs.ambulanteProducts!.map((p, i) => (
+                  <div key={i} className="rounded-xl px-4 py-2 text-base font-black text-white"
+                    style={{ background: 'rgba(245,182,66,0.22)', border: '1.5px solid rgba(245,182,66,0.50)' }}>
+                    {p}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Part 5: Active — poliglotta translated phrase (reading/reveal) */}
+          {rs.phase === 'active' && mission?.id === 'poliglotta' && (rs.poliglottaStep === 'reading' || rs.poliglottaStep === 'reveal') && (
+            <div className="flex flex-col items-center gap-3 rounded-2xl px-6 py-5 w-full max-w-lg"
+              style={{ background: 'rgba(96,165,250,0.10)', border: '2px solid rgba(96,165,250,0.35)' }}>
+              <div className="flex items-center gap-2 text-sm font-black" style={{ color: '#60A5FA' }}>
+                <span>🌍 {rs.poliglottaLanguage ?? rs.publicChoice ?? '—'}</span>
+                <span className="text-white/30">·</span>
+                <span>Frase {(rs.poliglottaPhraseIndex ?? 0) + 1}/2</span>
+              </div>
+              <div className="text-2xl font-black text-white leading-relaxed text-center">
+                {rs.poliglottaTranslations?.[(rs.poliglottaPhraseIndex ?? 0)] ?? '…'}
+              </div>
+              {rs.poliglottaStep === 'reveal' && (
+                <div className="text-sm text-white/45 text-center border-t border-white/10 pt-2 mt-1 w-full">
+                  Originale: <span className="italic">{rs.poliglottaSubmittedPhrases?.[(rs.poliglottaPhraseIndex ?? 0)] ?? '—'}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Part 6: Active — trova oggetto 3 targets display */}
+          {rs.phase === 'active' && mission?.id === 'oggetto' && (rs.oggettoTargets ?? []).length > 0 && (
+            <div className="flex flex-col items-center gap-2 rounded-2xl px-6 py-4 w-full max-w-md"
+              style={{ background: 'rgba(52,211,153,0.08)', border: '2px solid rgba(52,211,153,0.30)' }}>
+              <div className="text-xs font-black text-white/50 uppercase tracking-widest">🔍 Bersagli</div>
+              <div className="flex flex-col gap-2 w-full">
+                {rs.oggettoTargets!.map((target, i) => {
+                  const found = rs.oggettoFound?.[i] ?? false;
+                  const cnt = rs.oggettoValidationCounts?.[String(i)] ?? 0;
+                  return (
+                    <div key={i} className="flex items-center gap-3 rounded-xl px-4 py-2.5 transition-all"
+                      style={{
+                        background: found ? 'rgba(52,211,153,0.22)' : 'rgba(255,255,255,0.07)',
+                        border: `1.5px solid ${found ? 'rgba(52,211,153,0.55)' : 'rgba(255,255,255,0.14)'}`,
+                      }}>
+                      <span className="text-xl">{found ? '✅' : '🔍'}</span>
+                      <span className="flex-1 text-sm font-black text-white text-left">{target}</span>
+                      {!found && cnt > 0 && (
+                        <span className="text-xs text-white/40">{cnt}/2 voti</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Bookings */}
           {(rs.bookings.length > 0 || rs.phase === 'booking') && (
             <div className="flex flex-wrap justify-center gap-2">
@@ -3312,6 +3492,23 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Part 3: Voting countdown timer */}
+          {rs.phase === 'voting' && votingTimeLeft !== null && (
+            <div className="flex items-center gap-3 rounded-xl px-5 py-2.5 w-full max-w-sm"
+              style={{
+                background: votingTimeLeft <= 3 ? 'rgba(239,68,68,0.18)' : 'rgba(245,182,66,0.12)',
+                border: `2px solid ${votingTimeLeft <= 3 ? 'rgba(239,68,68,0.55)' : 'rgba(245,182,66,0.40)'}`,
+              }}>
+              <span className="text-display font-black tabular-nums"
+                style={{ fontSize: '2rem', color: votingTimeLeft <= 3 ? '#f87171' : '#F5B642' }}>
+                {votingTimeLeft}s
+              </span>
+              <span className="flex-1 text-sm font-black" style={{ color: votingTimeLeft <= 3 ? '#f87171' : '#F5B642' }}>
+                {votingTimeLeft <= 3 ? '⏰ Ultimi secondi!' : '⭐ Vota adesso!'}
+              </span>
             </div>
           )}
 
@@ -3374,6 +3571,29 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
         style={{ background: `linear-gradient(135deg,${PERCORSO_ACCENT},#059669)`, boxShadow: `0 0 30px ${PERCORSO_ACCENT}44`, opacity: busy ? 0.6 : 1 }}>
         {busy ? '⏳…' : advanceLabel}
       </button>
+
+      {/* Part 2: Ripetilo TV overlay — flashes 2.5s */}
+      {showRipetiloOverlay && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.7 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="fixed inset-0 pointer-events-none flex items-center justify-center z-50">
+          <div className="rounded-3xl px-14 py-10 text-center"
+            style={{
+              background: 'rgba(109,40,217,0.88)',
+              border: '3px solid #a78bfa',
+              boxShadow: '0 0 120px rgba(167,139,250,0.75)',
+            }}>
+            <div style={{ fontSize: '5rem', lineHeight: 1 }}>🔁</div>
+            <div className="text-display font-black mt-2" style={{ fontSize: '3.5rem', color: '#a78bfa' }}>
+              RIPETILO!
+            </div>
+            <div className="text-white/60 text-lg mt-2">
+              rimasti: {Math.max(0, 3 - (rs.repeatRequestsUsed ?? 0))}/3
+            </div>
+          </div>
+        </motion.div>
+      )}
     </div>
   );
 }

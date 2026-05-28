@@ -162,8 +162,27 @@ export interface RisateState {
   // server timestamps for client-side timer alignment
   bookingStartedAt: string | null;
   publicChoiceStartedAt: string | null;
-  // per-player choices: index matches booking slot (venditore, sfilata)
+  // per-player choices: index matches booking slot (sfilata)
   perPlayerChoices: string[];
+  // Part 1 — scioglilingua pool tracking
+  usedTongueTwisters?: string[];
+  // Part 2 — ripetilo counter (max 3 per mission)
+  repeatRequestsUsed?: number;
+  // Part 3 — server-authoritative voting timer (10s)
+  votingStartedAt?: string | null;
+  votingEndsAt?: string | null;
+  // Part 4 — ambulante 5 products (shared list for both players)
+  ambulanteProducts?: string[];
+  // Part 5 — poliglotta two-step flow
+  poliglottaStep?: 'language' | 'phrase_input' | 'translating' | 'reading' | 'reveal' | null;
+  poliglottaLanguage?: string | null;
+  poliglottaSubmittedPhrases?: string[];
+  poliglottaTranslations?: string[];
+  poliglottaPhraseIndex?: number;
+  // Part 6 — trova oggetto 3-target validation
+  oggettoTargets?: string[];
+  oggettoValidationCounts?: Record<string, number>;
+  oggettoFound?: boolean[];
 }
 
 /* ─── Zod insert schemas ─────────────────────────────────────────────── */

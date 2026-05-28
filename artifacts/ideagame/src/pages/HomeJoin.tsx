@@ -2296,6 +2296,53 @@ function CoppieController({ payload, onFlip, player, previewUntil, sessionId }: 
   );
 }
 
+// ── PoliglottaPhraseInput — phrase text entry for poliglotta step B ──────────
+function PoliglottaPhraseInput({ mySlot, rs, post, busy, msg, player }: {
+  mySlot: number;
+  rs: RisateState;
+  post: (path: string, body?: Record<string, unknown>) => Promise<void>;
+  busy: boolean;
+  msg: string;
+  player: HomePlayer;
+}) {
+  const [phrase, setPhrase] = useState('');
+  return (
+    <div className="flex flex-col items-center gap-4 py-4 w-full text-center">
+      <div className="text-4xl">🌍</div>
+      <div className="text-base font-black text-white">
+        Scrivi una frase in <span style={{ color: '#60A5FA' }}>{rs.publicChoice ?? rs.poliglottaLanguage}</span>
+      </div>
+      <div className="text-xs text-white/45">
+        Slot {mySlot + 1}/2 · Il motore AI la tradurrà per te
+      </div>
+      <textarea
+        value={phrase}
+        onChange={e => setPhrase(e.target.value)}
+        placeholder="Es: Voglio una pizza al tartufo con mozzarella di bufala…"
+        maxLength={140}
+        rows={3}
+        className="w-full rounded-2xl px-4 py-3 text-sm text-white resize-none outline-none"
+        style={{ background: 'rgba(96,165,250,0.10)', border: '1.5px solid rgba(96,165,250,0.40)' }}
+      />
+      <div className="text-xs text-white/30">{phrase.length}/140</div>
+      <motion.button whileTap={{ scale: 0.95 }}
+        disabled={busy || phrase.trim().length < 3}
+        onClick={() => void post('poliglotta-phrase', { slot: mySlot, phrase: phrase.trim(), playerId: player.id })}
+        className="w-full rounded-2xl px-6 py-4 text-base font-black text-white"
+        style={{
+          background: phrase.trim().length >= 3
+            ? 'linear-gradient(135deg,#60A5FA,#3b82f6)'
+            : 'rgba(255,255,255,0.06)',
+          border: phrase.trim().length >= 3 ? 'none' : '1px solid rgba(255,255,255,0.12)',
+          opacity: busy ? 0.7 : 1,
+        }}>
+        {busy ? '⏳ Invio…' : '📤 Invia Frase'}
+      </motion.button>
+      {msg && <div className="text-xs text-red-400">{msg}</div>}
+    </div>
+  );
+}
+
 // ── PercorsoHomeController — Risate Missioni Improvvise 2.0 (player phone) ────
 
 // ── PercorsoVotePanel — separated to allow local votedFor state ────────────────
@@ -2307,6 +2354,16 @@ function PercorsoVotePanel({ rs, player, post, msg, isBooked }: {
   isBooked: boolean;
 }) {
   const [votedFor, setVotedFor] = useState<Record<string, number>>({});
+  // Part 3 — voting countdown (server-authoritative votingEndsAt)
+  const [votingTL, setVotingTL] = useState<number | null>(null);
+  useEffect(() => {
+    if (!rs.votingEndsAt) { setVotingTL(null); return; }
+    const tick = () => Math.max(0, Math.round((new Date(rs.votingEndsAt!).getTime() - Date.now()) / 1000));
+    setVotingTL(tick());
+    const iv = setInterval(() => { const t = tick(); setVotingTL(t); if (t <= 0) clearInterval(iv); }, 1000);
+    return () => clearInterval(iv);
+  }, [rs.votingEndsAt]);
+
   if (isBooked) {
     return (
       <div className="flex flex-col items-center gap-4 py-4 text-center">
@@ -2330,6 +2387,17 @@ function PercorsoVotePanel({ rs, player, post, msg, isBooked }: {
     <div className="flex flex-col items-center gap-4 py-4 text-center">
       <div className="text-5xl">⭐</div>
       <div className="text-xl font-black text-white">Dai il tuo voto!</div>
+      {/* Part 3: voting countdown */}
+      {votingTL !== null && (
+        <div className="rounded-xl px-5 py-2 text-sm font-black"
+          style={{
+            background: votingTL <= 3 ? 'rgba(239,68,68,0.18)' : 'rgba(245,182,66,0.12)',
+            border: `1px solid ${votingTL <= 3 ? 'rgba(239,68,68,0.55)' : 'rgba(245,182,66,0.40)'}`,
+            color: votingTL <= 3 ? '#f87171' : '#F5B642',
+          }}>
+          {votingTL <= 3 ? `⏰ ${votingTL}s rimasti!` : `⏱ ${votingTL}s`}
+        </div>
+      )}
       {allVoted ? (
         <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
           className="rounded-2xl px-6 py-4 text-center w-full"
@@ -2540,7 +2608,102 @@ function PercorsoHomeController({ sessionId, player, payload, timeLeft }: {
     const isYoga = mission?.id === 'yoga';
     const isPerPlayer = mission?.perPlayerChoice ?? false;
 
-    // Per-player choice missions (venditore, sfilata): public reassigns slots
+    // Part 4: Venditore ambulante — multi-select up to 5 products
+    if (mission?.id === 'venditore') {
+      const selected = rs.ambulanteProducts ?? [];
+      return (
+        <div className="flex flex-col items-center gap-4 py-4 text-center">
+          <div className="text-4xl">{mission.emoji}</div>
+          <div className="text-base font-black text-white">{mission.choiceLabel}</div>
+          <div className="text-xs font-black" style={{ color: '#34D399' }}>
+            Selezionati: {selected.length}/5
+          </div>
+          <div className="grid grid-cols-2 gap-2 w-full">
+            {(rs.publicChoiceOptions.length > 0 ? rs.publicChoiceOptions : (mission.choiceOptions ?? [])).map(opt => {
+              const isOn = selected.includes(opt);
+              const atMax = selected.length >= 5;
+              return (
+                <motion.button key={opt} whileTap={{ scale: 0.95 }}
+                  onClick={() => void post('ambulante-toggle', { product: opt })}
+                  disabled={busy || (atMax && !isOn)}
+                  className="rounded-2xl px-3 py-3 text-sm font-black text-center"
+                  style={isOn
+                    ? { background: 'linear-gradient(135deg,#34D399,#059669)', color: '#000', boxShadow: '0 0 16px rgba(52,211,153,0.45)' }
+                    : { background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.14)', color: atMax ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.8)', opacity: atMax && !isOn ? 0.4 : 1 }}>
+                  {isOn ? '✅ ' : ''}{opt}
+                </motion.button>
+              );
+            })}
+          </div>
+          {msg && <div className="text-xs text-red-400">{msg}</div>}
+        </div>
+      );
+    }
+
+    // Part 5: Poliglotta — phrase_input step (giocatori inseriscono frasi)
+    if (mission?.id === 'poliglotta' && (rs.poliglottaStep === 'phrase_input' || rs.poliglottaStep === 'translating')) {
+      const mySlot = rs.bookings.findIndex(b => b.playerId === player.id);
+      const alreadySubmitted = (rs.poliglottaSubmittedPhrases ?? []).length > mySlot && mySlot >= 0;
+      if (mySlot < 0) {
+        return (
+          <div className="flex flex-col items-center gap-3 py-6 text-center">
+            <div className="text-4xl">🌍</div>
+            <div className="text-sm font-black text-white/55">Lingua scelta: {rs.publicChoice ?? rs.poliglottaLanguage}</div>
+            <div className="text-xs text-white/35">
+              {rs.poliglottaStep === 'translating'
+                ? '🤖 Traduzione AI in corso…'
+                : `I giocatori inseriscono le frasi… (${(rs.poliglottaSubmittedPhrases ?? []).length}/2)`}
+            </div>
+          </div>
+        );
+      }
+      if (alreadySubmitted || rs.poliglottaStep === 'translating') {
+        return (
+          <div className="flex flex-col items-center gap-3 py-6 text-center">
+            <div className="text-4xl">✅</div>
+            <div className="text-sm font-black" style={{ color: '#60A5FA' }}>Frase inviata!</div>
+            <div className="text-xs text-white/35">
+              {rs.poliglottaStep === 'translating' ? '🤖 Traduzione AI in corso…' : 'Attendi l\'altra frase…'}
+            </div>
+          </div>
+        );
+      }
+      return <PoliglottaPhraseInput mySlot={mySlot} rs={rs} post={post} busy={busy} msg={msg} player={player} />;
+    }
+
+    // Part 6: Oggetto — multi-target selection (3 bersagli)
+    if (mission?.id === 'oggetto') {
+      const selected = rs.oggettoTargets ?? [];
+      return (
+        <div className="flex flex-col items-center gap-4 py-4 text-center">
+          <div className="text-4xl">{mission.emoji}</div>
+          <div className="text-base font-black text-white">{mission.choiceLabel}</div>
+          <div className="text-xs font-black" style={{ color: '#34D399' }}>
+            Bersagli: {selected.length}/3
+          </div>
+          <div className="flex flex-col gap-2 w-full">
+            {(rs.publicChoiceOptions.length > 0 ? rs.publicChoiceOptions : (mission.choiceOptions ?? [])).map(opt => {
+              const isOn = selected.includes(opt);
+              const atMax = selected.length >= 3;
+              return (
+                <motion.button key={opt} whileTap={{ scale: 0.95 }}
+                  onClick={() => void post('oggetto-target-toggle', { target: opt })}
+                  disabled={busy || (atMax && !isOn)}
+                  className="w-full rounded-2xl px-5 py-3 text-base font-black"
+                  style={isOn
+                    ? { background: 'rgba(52,211,153,0.25)', border: '2px solid rgba(52,211,153,0.6)', color: '#34D399' }
+                    : { background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.14)', color: atMax ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.85)', opacity: atMax && !isOn ? 0.4 : 1 }}>
+                  {isOn ? '🎯 ' : ''}{opt}
+                </motion.button>
+              );
+            })}
+          </div>
+          {msg && <div className="text-xs text-red-400">{msg}</div>}
+        </div>
+      );
+    }
+
+    // Per-player choice missions (sfilata): public reassigns slots
     if (isPerPlayer) {
       return (
         <div className="flex flex-col items-center gap-4 py-4 text-center">
@@ -2681,14 +2844,29 @@ function PercorsoHomeController({ sessionId, player, payload, timeLeft }: {
           </div>
         )}
 
-        {ap === 'ripetilo' && !isBooked && (
-          <motion.button onClick={() => void post('action', { action: 'ripetilo', playerId: player.id, nickname: player.nickname })}
-            disabled={busy} whileTap={{ scale: 0.92 }}
-            className="rounded-2xl px-8 py-5 text-2xl font-black text-white w-full"
-            style={{ background: 'linear-gradient(135deg,#a78bfa,#7c3aed)', boxShadow: '0 0 40px rgba(167,139,250,0.4)' }}>
-            🔁 RIPETILO!
-          </motion.button>
-        )}
+        {ap === 'ripetilo' && !isBooked && (() => {
+          const used = rs.repeatRequestsUsed ?? 0;
+          const remaining = 3 - used;
+          const disabled = busy || remaining <= 0;
+          return (
+            <div className="flex flex-col items-center gap-2 w-full">
+              <motion.button
+                onClick={() => void post('action', { action: 'ripetilo', playerId: player.id, nickname: player.nickname })}
+                disabled={disabled} whileTap={{ scale: disabled ? 1 : 0.92 }}
+                className="rounded-2xl px-8 py-5 text-2xl font-black text-white w-full"
+                style={{
+                  background: disabled ? 'rgba(167,139,250,0.18)' : 'linear-gradient(135deg,#a78bfa,#7c3aed)',
+                  boxShadow: disabled ? 'none' : '0 0 40px rgba(167,139,250,0.4)',
+                  opacity: disabled ? 0.55 : 1,
+                }}>
+                🔁 RIPETILO!
+              </motion.button>
+              <div className="text-xs font-black" style={{ color: '#a78bfa' }}>
+                {remaining > 0 ? `Rimasti: ${remaining}/3` : '❌ Esauriti'}
+              </div>
+            </div>
+          );
+        })()}
 
         {ap === 'cambio_stile' && !isBooked && (
           <motion.button onClick={() => void post('action', { action: 'cambio_stile', playerId: player.id, nickname: player.nickname })}
@@ -2701,16 +2879,44 @@ function PercorsoHomeController({ sessionId, player, payload, timeLeft }: {
 
         {ap === 'found' && (
           <div className="flex flex-col gap-2 w-full">
-            <div className="text-xs text-white/50 mb-1">Chi ha trovato per primo?</div>
-            {rs.bookings.map(b => (
-              <motion.button key={b.playerId} whileTap={{ scale: 0.95 }}
-                onClick={() => void post('action', { action: 'found', playerId: player.id, nickname: player.nickname, targetPlayerId: b.playerId })}
-                disabled={busy}
-                className="w-full rounded-2xl px-5 py-3.5 text-base font-black text-white"
-                style={{ background: 'rgba(52,211,153,0.12)', border: '1px solid rgba(52,211,153,0.35)' }}>
-                {b.nickname} ✅
-              </motion.button>
-            ))}
+            {mission?.id === 'oggetto' && (rs.oggettoTargets ?? []).length > 0 ? (
+              // Part 6: 3-target separate validation
+              <>
+                <div className="text-xs text-white/50 mb-1">🔍 Convalida i bersagli trovati (2 voti = trovato):</div>
+                {rs.oggettoTargets!.map((target, idx) => {
+                  const found = rs.oggettoFound?.[idx] ?? false;
+                  return (
+                    <motion.button key={idx}
+                      whileTap={{ scale: found ? 1 : 0.95 }}
+                      onClick={() => !found && void post('action', {
+                        action: 'oggetto_validate', playerId: player.id,
+                        nickname: player.nickname, targetIndex: idx,
+                      })}
+                      disabled={busy || found}
+                      className="w-full rounded-2xl px-5 py-3.5 text-base font-black"
+                      style={found
+                        ? { background: 'rgba(52,211,153,0.22)', border: '2px solid rgba(52,211,153,0.55)', color: '#34D399' }
+                        : { background: 'rgba(52,211,153,0.10)', border: '1px solid rgba(52,211,153,0.30)', color: 'rgba(255,255,255,0.85)' }}>
+                      {found ? '✅' : '🔍'} {target}
+                    </motion.button>
+                  );
+                })}
+              </>
+            ) : (
+              // Legacy / first-found fallback
+              <>
+                <div className="text-xs text-white/50 mb-1">Chi ha trovato per primo?</div>
+                {rs.bookings.map(b => (
+                  <motion.button key={b.playerId} whileTap={{ scale: 0.95 }}
+                    onClick={() => void post('action', { action: 'found', playerId: player.id, nickname: player.nickname, targetPlayerId: b.playerId })}
+                    disabled={busy}
+                    className="w-full rounded-2xl px-5 py-3.5 text-base font-black text-white"
+                    style={{ background: 'rgba(52,211,153,0.12)', border: '1px solid rgba(52,211,153,0.35)' }}>
+                    {b.nickname} ✅
+                  </motion.button>
+                ))}
+              </>
+            )}
           </div>
         )}
 

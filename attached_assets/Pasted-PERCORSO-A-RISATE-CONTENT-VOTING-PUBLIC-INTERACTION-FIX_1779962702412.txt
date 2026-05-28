@@ -1,0 +1,228 @@
+PERCORSO A RISATE — CONTENT + VOTING + PUBLIC INTERACTION FIX PACK
+
+Patch only Percorso a Risate.
+Do not touch other games.
+
+We are fixing:
+- Scioglilingua
+- Ripetilo
+- Voting timers
+- Ambulante
+- Poliglotta
+- Trova l’Oggetto
+
+==================================================
+PART 1 — SCIOGLILINGUA
+==================================================
+
+Current bug:
+Only 3 tongue twisters rotate repeatedly.
+
+Required:
+Create a bank of minimum 30 tongue twisters.
+
+Rules:
+- random selection each round
+- avoid repeating the same phrase during the same session until pool exhausted
+- reshuffle only after full exhaustion
+- store usedTongueTwisters[] in session state
+
+Examples:
+- Trentatré trentini entrarono a Trento...
+- Sopra la panca la capra campa...
+- Apelle figlio di Apollo...
+etc.
+
+At each Scioglilingua mission:
+pick random from unused bank.
+
+==================================================
+PART 2 — RIPETILO BUTTON
+==================================================
+
+Current bug:
+Public taps "Ripetilo" but nothing visible happens.
+
+Required:
+
+When public taps RIPETILO:
+
+TV:
+show overlay:
+🔁 RIPETILO!
+
+visible 2–3 sec.
+
+Then replay/re-show phrase.
+
+Global limit:
+max 3 repeat requests total per mission.
+
+State:
+repeatRequestsUsed = 0..3
+
+TV should also show:
+
+Ripetilo rimasti:
+3 / 2 / 1 / 0
+
+If 0:
+disable button for everyone.
+
+==================================================
+PART 3 — VOTING TIMER (ALL PERCORSO MISSIONS)
+==================================================
+
+Current bug:
+Voting timer starts at 0 or behaves inconsistently.
+
+Required:
+For every voting phase in every Percorso mission:
+
+Voting duration:
+10 seconds exact
+
+Server source of truth:
+votingStartedAt
+votingEndsAt
+
+Phones + TV both compute from votingEndsAt.
+
+At time 0:
+- voting closes immediately
+- calculate score
+- if no votes → score = 0
+- auto advance to next screen
+
+No waiting forever.
+
+Applies to ALL mission voting:
+- yoga
+- barzelletta
+- dichiarazione
+- ambulante
+- poliglotta
+- sfilata
+- coreografia
+- trova oggetto
+etc.
+
+==================================================
+PART 4 — AMBULANTE
+==================================================
+
+Current:
+only 1 product assigned.
+
+Required:
+Each player receives 5 products.
+
+Public chooses products.
+
+Rules:
+- max 5 products per player
+- all shown on TV as list/cards
+- player must improvise selling all 5
+
+Examples:
+- banana
+- melanzana
+- cocomero
+- limone
+- zucchina
+
+Public votes performance after.
+
+==================================================
+PART 5 — POLIGLOTTA
+==================================================
+
+Current:
+public chooses only language.
+
+Required:
+public chooses:
+1. language
+2. phrase to translate
+
+Flow:
+
+STEP A
+Public chooses language:
+- english
+- french
+- spanish
+- german
+- portuguese
+- arabic
+etc.
+
+STEP B
+Phone shows text input:
+“Scrivi una frase”
+
+Users submit phrase.
+
+Use first 2 valid submitted phrases only.
+
+Jonny:
+translate both phrases into chosen language.
+
+TV:
+show ONLY translated phrase.
+
+Player reads it aloud.
+
+After validation:
+TV reveals original phrase.
+
+Repeat with second phrase.
+
+Player must complete BOTH to pass.
+
+==================================================
+PART 6 — TROVA L’OGGETTO
+==================================================
+
+Current:
+single object.
+
+Required:
+3 objects per mission.
+
+Public chooses 3 targets.
+
+Examples:
+- qualcosa di rosso
+- qualcosa di rotondo
+- qualcosa di bianco
+
+or:
+- qualcosa che punge
+- qualcosa di morbido
+- qualcosa di rumoroso
+
+TV shows all 3 simultaneously.
+
+Player must find all 3.
+
+Public validates each one separately:
+✓ trovato
+or
+✕ non valido
+
+Score based on number validated.
+
+==================================================
+OUTPUT REQUIRED
+==================================================
+
+A. files modified
+B. scioglilingua bank size
+C. ripetilo request counter
+D. voting timer unified to 10s
+E. ambulante 5-product assignment
+F. poliglotta phrase input + Jonny translation flow
+G. trova oggetto 3-target validation
+H. typecheck
+I. manual test checklist

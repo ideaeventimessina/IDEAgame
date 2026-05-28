@@ -1,0 +1,189 @@
+SARA’MUSICA HOME — VISUAL THEME CLEANUP + YOUTUBE CLIP AUDIO FIX.
+
+Do not touch other games.
+Patch only Sara’Musica Home.
+
+Current bugs:
+1. Theme selection layout is structurally ok, but images look like cheap 90s clipart.
+2. Music/audio is missing.
+3. YouTube clip/background player is not working.
+4. Sara’Musica must play real short YouTube clips during questions.
+
+==================================================
+PART 1 — REMOVE CHEAP CLIPART THEME IMAGES
+==================================================
+
+Problem:
+Theme cards use ugly clipart-style images.
+
+Required:
+Replace theme visuals with premium visual system.
+
+Options:
+A. remove images entirely and use elegant gradient/icon cards
+B. use high-quality abstract music visuals
+C. use emoji/icon only if styled premium
+
+Preferred:
+No clipart images.
+
+Theme cards should show:
+- big elegant title
+- small subtitle
+- clean music icon
+- premium dark/glow background
+
+Themes:
+- Anni 80
+- Anni 90
+- Anni 2000
+- Sanremo
+- Sigle TV
+- Disney
+- Rock
+- Dance
+- Trap/Urban
+- Custom
+
+No cheesy cartoon images.
+
+==================================================
+PART 2 — YOUTUBE CLIP PLAYER AUDIT
+==================================================
+
+Audit existing Sara’Musica YouTube clip implementation:
+
+- youtubeClip field in generated rounds
+- youtubeId
+- clipStart/startSecond
+- clipDuration/durationSeconds
+- YTClipPlayer component
+- YouTube iframe API loading
+- autoplay restrictions
+- start button
+- seekTo
+- playVideo
+- pauseVideo
+- error events
+
+Find why audio/video is not playing.
+
+Required logs:
+[SARAMUSICA_YT]
+api_loaded
+player_ready
+clip_loaded
+seek_to
+play_clicked
+play_started
+pause_at_duration
+player_error
+
+==================================================
+PART 3 — RELIABLE CLIP PLAYBACK
+==================================================
+
+For every round with youtubeClip:
+
+TV must show a player card:
+
+▶️ Avvia clip musicale
+
+On click:
+- load YouTube video by ID
+- seekTo(startSecond)
+- playVideo()
+- after durationSeconds, pauseVideo()
+
+If browser blocks autoplay:
+button click must satisfy gesture requirement.
+
+Do NOT attempt background autoplay without user gesture.
+
+==================================================
+PART 4 — NO BACKGROUND SYSTEM UNTIL BASIC WORKS
+==================================================
+
+Disable/remove any broken hidden background preload for Sara’Musica.
+
+First make visible/manual clip playback work reliably.
+
+No hidden iframe.
+No backstage player.
+No dual player.
+
+Simple first:
+visible YouTube iframe/player
+manual “Avvia clip”
+auto-stop after duration.
+
+Once stable, we can reintroduce preload later.
+
+==================================================
+PART 5 — FALLBACK IF YOUTUBE FAILS
+==================================================
+
+If YouTube clip fails:
+
+TV:
+show:
+“Clip non disponibile”
+and continue with text clue.
+
+Phone:
+still allows answering.
+
+Do not crash.
+Do not block round.
+
+==================================================
+PART 6 — GENERATED ROUNDS MUST INCLUDE CLIP DATA WHERE POSSIBLE
+==================================================
+
+Generator should produce youtubeClip only if it has known/valid youtubeId.
+
+If no youtubeId:
+round still works as text-only.
+
+Do not show empty player for missing clips.
+
+Data shape:
+
+youtubeClip: {
+  youtubeId,
+  startSecond,
+  durationSeconds,
+  clipType
+}
+
+Validate before render.
+
+==================================================
+PART 7 — PHONE UI
+==================================================
+
+Phones should show:
+“Guarda/ascolta il clip sulla TV”
+
+Do not show fake clipart.
+Do not show broken player on phones.
+
+==================================================
+OUTPUT REQUIRED
+==================================================
+
+A. root cause for no music
+B. files modified
+C. theme visuals cleaned
+D. YouTube player fixed
+E. hidden/background broken system disabled
+F. manual clip playback works
+G. fallback behavior
+H. typecheck result
+I. manual test:
+   - choose Anni 90
+   - generated round with youtubeClip
+   - click Avvia clip
+   - hear audio
+   - clip stops after duration
+   - answer/reveal continues

@@ -6,26 +6,45 @@
 import type {
   RisateState, RisateTeam, RisatePlayer, RisateBooking, RisateMissionResult,
 } from "@workspace/db";
-import { RISATE_MISSIONS, YOGA_POSES, LANGUAGE_PHRASES } from "./risate-missions";
+import { RISATE_MISSIONS, YOGA_POSES, LANGUAGE_PHRASES, TONGUE_TWISTER_BANK } from "./risate-missions";
 
-export { RISATE_MISSIONS };
+export { RISATE_MISSIONS, LANGUAGE_PHRASES };
 
 /* ─── Constants ───────────────────────────────────────────────────────────── */
 export const VALIDATE_THRESHOLD   = 2;
 export const FOUND_THRESHOLD      = 2;
-export const REPEAT_THRESHOLD     = 4;
+export const REPEAT_THRESHOLD     = 4;   // kept for compat; actual cap is REPEAT_MAX
+export const REPEAT_MAX           = 3;   // Part 2: max ripetilo requests per mission
 export const CAMBIO_STILE_THRESHOLD = 5;
+export const OGGETTO_TARGET_COUNT = 3;   // Part 6: targets per trova-oggetto mission
+export const VOTING_DURATION_MS   = 10_000; // Part 3: 10s voting timer
 
 /* ─── Helpers ─────────────────────────────────────────────────────────────── */
 function shuffled<T>(arr: T[]): T[] { return [...arr].sort(() => Math.random() - 0.5); }
 function pick<T>(arr: T[], n: number): T[] { return shuffled(arr).slice(0, n); }
 
-function buildChoiceOptions(state: RisateState): string[] {
+/* Part 1 — scioglilingua bank with pool tracking */
+function pickTongueTwisters(state: RisateState): { options: string[]; used: string[] } {
+  const used = state.usedTongueTwisters ?? [];
+  let available = TONGUE_TWISTER_BANK.filter(t => !used.includes(t));
+  if (available.length < 3) {
+    // Pool exhausted — reshuffle
+    available = [...TONGUE_TWISTER_BANK];
+  }
+  const options = pick(available, 3);
+  const newUsed = [...used, ...options].filter((t, i, arr) => arr.indexOf(t) === i);
+  return { options, used: newUsed };
+}
+
+function buildChoiceOptions(state: RisateState): { options: string[]; usedTongueTwisters?: string[] } {
   const m = RISATE_MISSIONS[state.missionIndex];
-  if (!m) return [];
-  if (m.id === "yoga") return pick(YOGA_POSES, 3).map(p => `${p.emoji} ${p.name}`);
-  if (m.id === "scioglilingua") return pick(m.choiceOptions ?? [], 3);
-  return shuffled(m.choiceOptions ?? []);
+  if (!m) return { options: [] };
+  if (m.id === "yoga") return { options: pick(YOGA_POSES, 3).map(p => `${p.emoji} ${p.name}`) };
+  if (m.id === "scioglilingua") {
+    const { options, used } = pickTongueTwisters(state);
+    return { options, usedTongueTwisters: used };
+  }
+  return { options: shuffled(m.choiceOptions ?? []) };
 }
 
 function pickLoveTarget(state: RisateState): string {
@@ -43,10 +62,16 @@ function resetMission(s: RisateState): RisateState {
     questionIndex: 0, errorCount: 0, validations: [],
     currentPoseId: null, poseChangesUsed: 0,
     repeatVoteCount: 0, repeatTriggered: false,
+    repeatRequestsUsed: 0,
     foundConfirmations: {},
     cambioStileVoteCount: 0, cambioStileTriggered: false,
     publicEvents: [], loveTarget: null,
     bookingStartedAt: null, publicChoiceStartedAt: null, perPlayerChoices: [],
+    votingStartedAt: null, votingEndsAt: null,
+    ambulanteProducts: [],
+    poliglottaStep: null, poliglottaLanguage: null,
+    poliglottaSubmittedPhrases: [], poliglottaTranslations: [], poliglottaPhraseIndex: 0,
+    oggettoTargets: [], oggettoValidationCounts: {}, oggettoFound: [],
   };
 }
 
@@ -65,10 +90,17 @@ export function createBlankRisateState(
     questionIndex: 0, errorCount: 0, validations: [],
     currentPoseId: null, poseChangesUsed: 0,
     repeatVoteCount: 0, repeatTriggered: false,
+    repeatRequestsUsed: 0,
     foundConfirmations: {},
     cambioStileVoteCount: 0, cambioStileTriggered: false,
     publicEvents: [], loveTarget: null,
     bookingStartedAt: null, publicChoiceStartedAt: null, perPlayerChoices: [],
+    usedTongueTwisters: [],
+    votingStartedAt: null, votingEndsAt: null,
+    ambulanteProducts: [],
+    poliglottaStep: null, poliglottaLanguage: null,
+    poliglottaSubmittedPhrases: [], poliglottaTranslations: [], poliglottaPhraseIndex: 0,
+    oggettoTargets: [], oggettoValidationCounts: {}, oggettoFound: [],
   };
 }
 
@@ -111,6 +143,24 @@ export function calculateMissionScores(state: RisateState): RisateMissionResult 
     }
 
     case "first_found": {
+      // Part 6: trova oggetto — score per found target
+      if (mission.id === "oggetto" && state.oggettoTargets && state.oggettoTargets.length > 0) {
+        const foundCount = (state.oggettoFound ?? []).filter(Boolean).length;
+        const pts = foundCount * 100;
+        const scores = state.bookings.map(b => ({
+          playerId: b.playerId, nickname: b.nickname, teamId: b.teamId, pts,
+        }));
+        const foundLabels = (state.oggettoTargets ?? [])
+          .filter((_, i) => (state.oggettoFound ?? [])[i])
+          .join(", ");
+        return {
+          text: foundCount > 0
+            ? `🔍 Trovati ${foundCount}/${state.oggettoTargets.length}! ${foundLabels} — +${pts}pt`
+            : "😅 Nessun oggetto trovato in tempo!",
+          scores,
+        };
+      }
+      // Legacy: first_found logic
       let winner: RisateBooking | null = null;
       let best = { count: 0, ts: Infinity };
       for (const b of state.bookings) {
@@ -163,16 +213,43 @@ export function advancePhase(state: RisateState): AdvanceResult {
     case "booking":
       if (mission.phases.includes("public_choice")) {
         s.phase = "public_choice";
-        s.publicChoiceOptions = buildChoiceOptions(s);
+        const choiceResult = buildChoiceOptions(s);
+        s.publicChoiceOptions = choiceResult.options;
+        if (choiceResult.usedTongueTwisters) s.usedTongueTwisters = choiceResult.usedTongueTwisters;
         s.publicChoice = null;
         s.publicChoiceStartedAt = new Date().toISOString();
-        // per-player missions: pre-assign 2 random different choices
-        if (mission.perPlayerChoice) {
+
+        // Mission-specific init for public_choice
+        if (mission.id === "venditore") {
+          // Part 4: pre-select 5 random products
+          s.ambulanteProducts = shuffled(s.publicChoiceOptions).slice(0, 5);
+          s.perPlayerChoices = [];
+        } else if (mission.perPlayerChoice) {
+          // sfilata: per-player single choice
           const preOpts = shuffled(s.publicChoiceOptions);
           s.perPlayerChoices = preOpts.slice(0, mission.playerCount);
+          s.ambulanteProducts = [];
         } else {
           s.perPlayerChoices = [];
+          s.ambulanteProducts = [];
         }
+
+        // Part 6: trova oggetto — pre-select 3 targets
+        if (mission.id === "oggetto") {
+          s.oggettoTargets = shuffled(s.publicChoiceOptions).slice(0, OGGETTO_TARGET_COUNT);
+          s.oggettoValidationCounts = {};
+          s.oggettoFound = [false, false, false];
+        }
+
+        // Part 5: poliglotta — start with language selection step
+        if (mission.id === "poliglotta") {
+          s.poliglottaStep = "language";
+          s.poliglottaLanguage = null;
+          s.poliglottaSubmittedPhrases = [];
+          s.poliglottaTranslations = [];
+          s.poliglottaPhraseIndex = 0;
+        }
+
         s.lastFlash = { text: mission.choiceLabel ?? "Scegli!", type: "step" };
       } else {
         s = startActive(s, mission.id);
@@ -190,16 +267,23 @@ export function advancePhase(state: RisateState): AdvanceResult {
 
     case "active":
       if (mission.phases.includes("voting")) {
+        // Part 3: server-authoritative voting timer (10s)
+        const now = new Date();
         s.phase = "voting";
         s.votingOpen = true;
         s.votes = {};
-        s.lastFlash = { text: "⭐ Vota adesso!", type: "step" };
+        s.votingStartedAt = now.toISOString();
+        s.votingEndsAt = new Date(now.getTime() + VOTING_DURATION_MS).toISOString();
+        s.lastFlash = { text: "⭐ Vota adesso! 10 secondi!", type: "step" };
       } else {
         const fr1 = finalizeResult(s, scores); s = fr1.s; scores = fr1.scores;
       }
       break;
 
     case "voting":
+      // Part 3: clear timer on close
+      s.votingStartedAt = null;
+      s.votingEndsAt = null;
       { const fr2 = finalizeResult(s, scores); s = fr2.s; scores = fr2.scores; }
       break;
 
@@ -229,7 +313,7 @@ function startActive(s: RisateState, missionId: string): RisateState {
     missionStartedAt: new Date().toISOString(),
     questionIndex: 0, errorCount: 0, validations: [],
     foundConfirmations: {}, publicEvents: [],
-    repeatVoteCount: 0, repeatTriggered: false,
+    repeatVoteCount: 0, repeatTriggered: false, repeatRequestsUsed: 0,
     cambioStileVoteCount: 0, cambioStileTriggered: false,
     lastFlash: { text: `🚀 Via!`, type: "step" },
   };
@@ -242,7 +326,7 @@ function finalizeResult(
   scores: { teamId: string; pts: number; round: number }[],
 ): { s: RisateState; scores: typeof scores } {
   const result = calculateMissionScores(s);
-  s = { ...s, phase: "result", votingOpen: false, missionResult: result };
+  s = { ...s, phase: "result", votingOpen: false, missionResult: result, votingStartedAt: null, votingEndsAt: null };
   for (const sc of result.scores) {
     if (sc.pts > 0) {
       const ti = s.teams.findIndex(t => t.id === sc.teamId);
@@ -268,7 +352,7 @@ export function applyBooking(
   return { state: { ...state, bookings: [...state.bookings, { playerId, nickname, role, teamId }] } };
 }
 
-/* ─── Auto-book: fill empty booking slots with random players ──────────────── */
+/* ─── Auto-book ────────────────────────────────────────────────────────────── */
 export function applyAutoBook(
   state: RisateState,
 ): { state: RisateState; error?: string } {
@@ -293,7 +377,7 @@ export function applyAutoBook(
   return { state: s };
 }
 
-/* ─── Auto-choice: random selection when public choice timer expires ────────── */
+/* ─── Auto-choice ──────────────────────────────────────────────────────────── */
 export function applyAutoChoice(
   state: RisateState,
 ): { state: RisateState; error?: string } {
@@ -303,8 +387,25 @@ export function applyAutoChoice(
   const opts = state.publicChoiceOptions;
   if (opts.length === 0) return { state, error: "Nessuna opzione disponibile" };
 
+  if (m.id === "venditore") {
+    // If ambulanteProducts not yet filled, pick 5 random
+    if ((state.ambulanteProducts ?? []).length < 5) {
+      const filled = shuffled(opts).slice(0, 5);
+      return { state: { ...state, ambulanteProducts: filled } };
+    }
+    return { state };
+  }
+
+  if (m.id === "oggetto") {
+    // If oggettoTargets not yet set, pick 3 random
+    if ((state.oggettoTargets ?? []).length < OGGETTO_TARGET_COUNT) {
+      const targets = shuffled(opts).slice(0, OGGETTO_TARGET_COUNT);
+      return { state: { ...state, oggettoTargets: targets, oggettoFound: [false, false, false] } };
+    }
+    return { state };
+  }
+
   if (m.perPlayerChoice) {
-    // Already pre-assigned in advancePhase — just ensure all slots are filled with different choices
     const shuffledOpts = shuffled(opts);
     const choices: string[] = [];
     for (let i = 0; i < m.playerCount; i++) {
@@ -323,21 +424,59 @@ export function applyAutoChoice(
   return { state: { ...state, publicChoice: choice } };
 }
 
-/* ─── Per-player choice: public assigns a specific slot ──────────────────────── */
+/* ─── Per-player choice (sfilata etc.) ──────────────────────────────────────── */
 export function applyPerPlayerChoice(
   state: RisateState, choice: string, slot: number,
 ): { state: RisateState; error?: string } {
   if (state.phase !== "public_choice") return { state, error: "Non è la fase di scelta pubblica" };
   const m = RISATE_MISSIONS[state.missionIndex];
-  if (!m?.perPlayerChoice) return { state, error: "Non è una missione con scelta per giocatore" };
+  if (!m?.perPlayerChoice || m.id === "venditore") return { state, error: "Non è una missione con scelta per giocatore" };
   if (!state.publicChoiceOptions.includes(choice)) return { state, error: "Scelta non valida" };
   if (slot < 0 || slot >= m.playerCount) return { state, error: "Slot non valido" };
 
-  // ensure the two slots have different choices
   const newChoices = [...(state.perPlayerChoices.length >= m.playerCount ? state.perPlayerChoices : Array(m.playerCount).fill(''))];
   newChoices[slot] = choice;
-
   return { state: { ...state, perPlayerChoices: newChoices, publicChoice: newChoices[0] ?? null } };
+}
+
+/* ─── Part 4: Ambulante multi-product toggle ─────────────────────────────── */
+export function applyAmbulanteToggle(
+  state: RisateState, product: string,
+): { state: RisateState; error?: string } {
+  if (state.phase !== "public_choice") return { state, error: "Non è la fase di scelta pubblica" };
+  const m = RISATE_MISSIONS[state.missionIndex];
+  if (m?.id !== "venditore") return { state, error: "Non è la missione venditore" };
+  if (!state.publicChoiceOptions.includes(product)) return { state, error: "Prodotto non valido" };
+
+  const current = state.ambulanteProducts ?? [];
+  const idx = current.indexOf(product);
+  if (idx >= 0) {
+    return { state: { ...state, ambulanteProducts: current.filter(p => p !== product) } };
+  } else if (current.length < 5) {
+    return { state: { ...state, ambulanteProducts: [...current, product] } };
+  }
+  return { state }; // Already 5, ignore
+}
+
+/* ─── Part 6: Trova oggetto target toggle ────────────────────────────────── */
+export function applyOggettoTargetToggle(
+  state: RisateState, target: string,
+): { state: RisateState; error?: string } {
+  if (state.phase !== "public_choice") return { state, error: "Non è la fase di scelta pubblica" };
+  const m = RISATE_MISSIONS[state.missionIndex];
+  if (m?.id !== "oggetto") return { state, error: "Non è la missione trova oggetto" };
+  if (!state.publicChoiceOptions.includes(target)) return { state, error: "Bersaglio non valido" };
+
+  const current = state.oggettoTargets ?? [];
+  const idx = current.indexOf(target);
+  if (idx >= 0) {
+    const newTargets = current.filter(t => t !== target);
+    return { state: { ...state, oggettoTargets: newTargets, oggettoFound: newTargets.map(() => false) } };
+  } else if (current.length < OGGETTO_TARGET_COUNT) {
+    const newTargets = [...current, target];
+    return { state: { ...state, oggettoTargets: newTargets, oggettoFound: newTargets.map(() => false) } };
+  }
+  return { state }; // Already 3, ignore
 }
 
 /* ─── Public choice ───────────────────────────────────────────────────────── */
@@ -346,6 +485,13 @@ export function applyPublicChoice(
 ): { state: RisateState; error?: string } {
   if (state.phase !== "public_choice") return { state, error: "Non è la fase di scelta pubblica" };
   if (!state.publicChoiceOptions.includes(choice)) return { state, error: "Scelta non valida" };
+
+  // Part 5: for poliglotta, language selection auto-advances to phrase_input
+  const m = RISATE_MISSIONS[state.missionIndex];
+  if (m?.id === "poliglotta") {
+    return { state: { ...state, publicChoice: choice, poliglottaLanguage: choice, poliglottaStep: "phrase_input" } };
+  }
+
   return { state: { ...state, publicChoice: choice } };
 }
 
@@ -377,7 +523,7 @@ export function applyPublicAction(
   action: string,
   playerId: string,
   nickname: string,
-  opts: { targetPlayerId?: string; emoji?: string } = {},
+  opts: { targetPlayerId?: string; emoji?: string; targetIndex?: number } = {},
 ): ActionResult {
   switch (action) {
     case "validate": {
@@ -434,16 +580,50 @@ export function applyPublicAction(
       return { state: { ...state, foundConfirmations: newFC }, autoAdvance: newInfo.count >= FOUND_THRESHOLD };
     }
 
+    case "oggetto_validate": {
+      // Part 6: validate one specific oggetto target
+      if (state.phase !== "active") return { state, error: "Non è la fase attiva" };
+      const idx = opts.targetIndex ?? -1;
+      if (idx < 0 || !state.oggettoTargets?.[idx]) return { state, error: "Target non valido" };
+      if (state.oggettoFound?.[idx]) return { state }; // Already found
+
+      const counts = { ...(state.oggettoValidationCounts ?? {}) };
+      const key = String(idx);
+      counts[key] = (counts[key] ?? 0) + 1;
+
+      const found = [...(state.oggettoFound ?? [false, false, false])];
+      if ((counts[key] ?? 0) >= FOUND_THRESHOLD) found[idx] = true;
+
+      const allFound = state.oggettoTargets.every((_, i) => found[i]);
+      const foundTarget = state.oggettoTargets[idx]!;
+      const newState: RisateState = {
+        ...state,
+        oggettoValidationCounts: counts,
+        oggettoFound: found,
+        lastFlash: found[idx]
+          ? { text: `✅ Trovato: ${foundTarget}!`, type: "event" }
+          : state.lastFlash,
+        publicEvents: found[idx]
+          ? [{ emoji: "✅", nickname: "Il pubblico", ts: Date.now() }, ...state.publicEvents.slice(0, 19)]
+          : state.publicEvents,
+      };
+      return { state: newState, autoAdvance: allFound };
+    }
+
     case "ripetilo": {
+      // Part 2: counter-based (max 3 per mission), each tap triggers overlay
       if (state.phase !== "active") return { state };
-      const cnt = state.repeatVoteCount + 1;
-      const triggered = !state.repeatTriggered && cnt >= REPEAT_THRESHOLD;
+      const used = state.repeatRequestsUsed ?? 0;
+      if (used >= REPEAT_MAX) return { state }; // Disabled
+      const newUsed = used + 1;
       return {
         state: {
-          ...state, repeatVoteCount: cnt,
-          repeatTriggered: state.repeatTriggered || triggered,
-          lastFlash: triggered ? { text: "🔁 RIPETILO! Più veloce!", type: "event" } : state.lastFlash,
-          publicEvents: triggered ? [{ emoji: "🔁", nickname: "Il pubblico", ts: Date.now() }, ...state.publicEvents.slice(0, 19)] : state.publicEvents,
+          ...state,
+          repeatRequestsUsed: newUsed,
+          repeatVoteCount: state.repeatVoteCount + 1,
+          repeatTriggered: true,
+          lastFlash: { text: `🔁 RIPETILO! (${newUsed}/${REPEAT_MAX})`, type: "event" },
+          publicEvents: [{ emoji: "🔁", nickname: nickname || "Il pubblico", ts: Date.now() }, ...state.publicEvents.slice(0, 19)],
         },
       };
     }
@@ -473,7 +653,6 @@ export function applyPoseChange(
 ): { state: RisateState; error?: string } {
   if (state.poseChangesUsed >= 5) return { state, error: "Massimo 5 cambi posa" };
   if (!state.publicChoiceOptions.includes(newChoice)) {
-    // add as new option if not present
     return {
       state: {
         ...state,
@@ -487,7 +666,6 @@ export function applyPoseChange(
 }
 
 /* ─── Language phrase lookup ──────────────────────────────────────────────── */
-export { LANGUAGE_PHRASES };
 export function getLangPhrase(choice: string | null): string | null {
   if (!choice) return null;
   return LANGUAGE_PHRASES[choice] ?? null;

@@ -39,7 +39,7 @@ export interface RisateMission {
   choiceOptions?: string[];
   questions?: string[];
   bgMusic?: string;
-  /** true = each booked player gets a different choice (e.g. venditore, sfilata) */
+  /** true = each booked player gets a different choice (sfilata only) */
   perPlayerChoice?: boolean;
 }
 
@@ -135,20 +135,13 @@ export const RISATE_MISSIONS: RisateMission[] = [
     activePublicAction: 'ripetilo',
     activePublicLabel: '🔁 RIPETILO!',
     choiceLabel: 'Scegli lo scioglilingua!',
-    choiceOptions: [
-      'Sopra la panca la capra campa, sotto la panca la capra crepa',
-      'Trentatré trentini entrarono a Trento, tutti e trentatré trotterellando',
-      'Apelle figlio di Apollo fece una palla di pelle di pollo',
-      "Se l'arcivescovo di Costantinopoli si disarcivescovizzasse chi lo disarcivescovizzerebbe?",
-      'Tigre contro tigre, tre tigri contro tre tigri',
-      'Nel pozzo lo storto fece il salto e lo storto dal pozzo uscì storto',
-    ],
+    choiceOptions: [],
   },
   {
     id: 'venditore',
     index: 5,
     title: 'VENDITORE AMBULANTE',
-    subtitle: 'Vendi al mercato il prodotto scelto dal pubblico in 40 secondi',
+    subtitle: 'Vendi tutti e 5 i prodotti scelti dal pubblico in 40 secondi',
     emoji: '🛒',
     playerCount: 2,
     roles: ['Venditore 1', 'Venditore 2'],
@@ -156,42 +149,30 @@ export const RISATE_MISSIONS: RisateMission[] = [
     duration: 40,
     scoringType: 'star_vote',
     activePublicAction: 'none',
-    choiceLabel: 'Cosa devono vendere?',
+    choiceLabel: 'Scegli 5 prodotti da vendere!',
     choiceOptions: [
-      'limoni 🍋',
-      'angurie 🍉',
-      'patate 🥔',
-      'melanzane 🍆',
-      'cipolle 🧅',
-      'lattuga 🥬',
-      'zucchine 🥒',
-      'pomodori 🍅',
-      'banane 🍌',
-      'arance 🍊',
+      'limoni 🍋', 'angurie 🍉', 'patate 🥔', 'melanzane 🍆', 'cipolle 🧅',
+      'lattuga 🥬', 'zucchine 🥒', 'pomodori 🍅', 'banane 🍌', 'arance 🍊',
     ],
     bgMusic: 'bg-market-loop',
-    perPlayerChoice: true,
   },
   {
     id: 'poliglotta',
     index: 6,
     title: 'POLIGLOTTA IMPROVVISATO',
-    subtitle: 'Leggi la frase nella lingua scelta dal pubblico col miglior accento possibile',
+    subtitle: 'Leggi le frasi del pubblico nella lingua scelta col miglior accento possibile',
     emoji: '🌍',
     playerCount: 2,
     roles: ['Poliglotta 1', 'Poliglotta 2'],
     phases: ['mission_intro', 'booking', 'public_choice', 'active', 'voting', 'result'],
-    duration: 20,
+    duration: 30,
     scoringType: 'star_vote',
     activePublicAction: 'none',
     choiceLabel: 'Che lingua devono parlare?',
     choiceOptions: [
-      'English 🇬🇧',
-      'Español 🇪🇸',
-      'Français 🇫🇷',
-      'Deutsch 🇩🇪',
-      '日本語 🇯🇵',
-      'Русский 🇷🇺',
+      'English 🇬🇧', 'Español 🇪🇸', 'Français 🇫🇷',
+      'Deutsch 🇩🇪', '日本語 🇯🇵', 'Русский 🇷🇺',
+      'Português 🇵🇹', 'العربية 🇸🇦',
     ],
     bgMusic: 'bg-world-loop',
   },
@@ -199,7 +180,7 @@ export const RISATE_MISSIONS: RisateMission[] = [
     id: 'oggetto',
     index: 7,
     title: "TROVA L'OGGETTO",
-    subtitle: 'Trova per primo il bersaglio scelto dal pubblico entro 40 secondi',
+    subtitle: 'Trova i 3 bersagli scelti dal pubblico entro 40 secondi',
     emoji: '🔍',
     playerCount: 2,
     roles: ['Cercatore 1', 'Cercatore 2'],
@@ -207,7 +188,7 @@ export const RISATE_MISSIONS: RisateMission[] = [
     duration: 40,
     scoringType: 'first_found',
     activePublicAction: 'found',
-    choiceLabel: 'Cosa devono trovare?',
+    choiceLabel: 'Scegli 3 cose da trovare!',
     choiceOptions: [
       'qualcosa di rosso 🔴',
       'qualcosa di bianco ⚪',
@@ -271,6 +252,40 @@ export const RISATE_MISSIONS: RisateMission[] = [
   },
 ];
 
+/* ─── Scioglilingua bank — 30 tongue twisters ────────────────────────── */
+export const TONGUE_TWISTER_BANK: string[] = [
+  'Trentatré trentini entrarono a Trento, tutti e trentatré trotterellando',
+  'Sopra la panca la capra campa, sotto la panca la capra crepa',
+  'Apelle figlio di Apollo fece una palla di pelle di pollo',
+  "Se l'arcivescovo di Costantinopoli si disarcivescovizzasse chi lo disarcivescovizzerebbe?",
+  'Tigre contro tigre, tre tigri contro tre tigri',
+  'Nel pozzo lo storto fece il salto e lo storto dal pozzo uscì storto',
+  'Frugano in fondo al furgone frenetici fruttivendoli frenetici',
+  'Porta la coperta rotta al corvo sotto il bordo del porto corto',
+  'Sedici, sedicimila sedici, e sedicimilasedici!',
+  'Re Carlo era un re calvo, il re calvo era Carlo',
+  'Chi è di guardia guardi di là, di là guardi chi è di guardia',
+  'Il papa non papà, il papà non papa, papà papa papa',
+  'Bufalo gufò, gufò bufalo, bufalo bufò, bufò bufalo',
+  'A Capri mi capisce capì, a Capri non capisce nessun capì',
+  'Un limone mezzo limone, mezzo limone un limone',
+  'La rana nera e rara nella radura raduna le rane nere e rare',
+  'Sette sassi spigolosi in sette strette strade sassose',
+  'Guglielmo il gaglioffo gargarizza con garofano e glicerina',
+  'Bello è il babbo di Beppe e bello è il bimbo di Beppe bello',
+  'La gallina di Gregorio gracchiò su un greto del Garda grigio',
+  'Pelo di capra, capra di pelo, pelo di capra, capra di pelo',
+  'Cielo stellato non stellato, chi lo stellerà, chi lo distell­erà?',
+  'Tre mele, sei pele, una mela bela, sei pele tre mele',
+  'Fatti i fatti tuoi e lascia fare i fatti degli altri agli altri',
+  'Pipa pipa pipì, pipa pipì, pipì pipa, pipa pipì',
+  'Sotto i ponti di Praga passa gente frettolosa e presa fresca',
+  'Sono cinque cinghiali che cinguettano in cima al campanile',
+  'Caro Carla, Carlo canta canzoni carini con calore carissimo',
+  'Mi ricordo la rondine che corre nel corridoio corridore',
+  'Pesci asciutti e asciutti pesci, pesci asciutti asciugatevi',
+];
+
 /* ─── Yoga poses — 30 entries ─────────────────────────────────────────── */
 export const YOGA_POSES: YogaPose[] = [
   { id: 'mountain',        name: 'Posizione della Montagna', emoji: '🏔️' },
@@ -307,12 +322,14 @@ export const YOGA_POSES: YogaPose[] = [
 
 /* ─── Language phrases for mission 7 ─────────────────────────────────── */
 export const LANGUAGE_PHRASES: Record<string, string> = {
-  'English 🇬🇧':  'I am the king of the dance floor and I love pizza very much!',
-  'Español 🇪🇸':  'Necesito una paella gigante para bailar en la fiesta esta noche!',
-  'Français 🇫🇷': "Je voudrais un croissant au chocolat s'il vous plaît mon ami!",
-  'Deutsch 🇩🇪':  'Ich tanze mit einer Kartoffel auf dem großen Tisch ja wirklich!',
-  '日本語 🇯🇵':    'Watashi wa sushi to ramen ga daisuki desu totemo oishii ne!',
-  'Русский 🇷🇺':  'Ya lyublyu piccu i tantsy pod dozhdem kazhdy vecher!',
+  'English 🇬🇧':   'I am the king of the dance floor and I love pizza very much!',
+  'Español 🇪🇸':   'Necesito una paella gigante para bailar en la fiesta esta noche!',
+  'Français 🇫🇷':  "Je voudrais un croissant au chocolat s'il vous plaît mon ami!",
+  'Deutsch 🇩🇪':   'Ich tanze mit einer Kartoffel auf dem großen Tisch ja wirklich!',
+  '日本語 🇯🇵':     'Watashi wa sushi to ramen ga daisuki desu totemo oishii ne!',
+  'Русский 🇷🇺':   'Ya lyublyu piccu i tantsy pod dozhdem kazhdy vecher!',
+  'Português 🇵🇹': 'Quero uma sandes de presunto com queijo e muito obrigado!',
+  'العربية 🇸🇦':  'Uhibbu al-pizza wal-musiqa wa-ardaqsu kulla layla!',
 };
 
 /* ─── Reaction emojis used in missions 3 / 4 ─────────────────────────── */
@@ -352,9 +369,26 @@ export interface RisateState {
   cambioStileTriggered: boolean;
   publicEvents: { emoji: string; nickname: string; ts: number }[];
   loveTarget: string | null;
-  // server timestamps for client-side timer alignment
   bookingStartedAt: string | null;
   publicChoiceStartedAt: string | null;
-  // per-player choices: index matches booking slot (venditore, sfilata)
   perPlayerChoices: string[];
+  // Part 1 — scioglilingua pool tracking
+  usedTongueTwisters?: string[];
+  // Part 2 — ripetilo counter (max 3 per mission)
+  repeatRequestsUsed?: number;
+  // Part 3 — server-authoritative voting timer (10s)
+  votingStartedAt?: string | null;
+  votingEndsAt?: string | null;
+  // Part 4 — ambulante 5 products (shared list)
+  ambulanteProducts?: string[];
+  // Part 5 — poliglotta two-step flow
+  poliglottaStep?: 'language' | 'phrase_input' | 'translating' | 'reading' | 'reveal' | null;
+  poliglottaLanguage?: string | null;
+  poliglottaSubmittedPhrases?: string[];
+  poliglottaTranslations?: string[];
+  poliglottaPhraseIndex?: number;
+  // Part 6 — trova oggetto 3-target validation
+  oggettoTargets?: string[];
+  oggettoValidationCounts?: Record<string, number>;
+  oggettoFound?: boolean[];
 }
