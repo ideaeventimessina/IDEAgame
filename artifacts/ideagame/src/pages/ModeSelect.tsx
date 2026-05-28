@@ -86,11 +86,11 @@ function ModeCard({
   const [, navigate] = useLocation();
   const { Icon, tagIcons: TagIcons } = mode;
 
-  const iconSize = compact ? 52 : 66;
-  const iconInner = compact ? 24 : 30;
-  const titleSize = compact ? '0.88rem' : '1rem';
+  const iconSize    = compact ? 52 : 64;
+  const iconInner   = compact ? 24 : 29;
+  const titleSize   = compact ? '0.88rem' : '1rem';
   const subtitleSize = compact ? '0.7rem' : '0.74rem';
-  const descSize = compact ? '0.63rem' : '0.67rem';
+  const descSize    = compact ? '0.63rem' : '0.67rem';
   const tagFontSize = compact ? '0.58rem' : '0.62rem';
   const ctaFontSize = compact ? '0.78rem' : '0.82rem';
   const paddingBottom = compact ? 16 : 20;
@@ -240,211 +240,161 @@ export default function ModeSelect() {
   const [, navigate] = useLocation();
   const vw = useViewport();
 
-  // ── Mobile layout (< 640px) ────────────────────────────────────────────────
-  if (vw < 640) {
-    return (
-      <div style={{
-        position: 'fixed', inset: 0,
-        fontFamily: "'Outfit','Space Grotesk','Arial Black',sans-serif",
-        display: 'flex', flexDirection: 'column',
-        background: '#09050f',
-        overflowY: 'auto',
-      }}>
-        {/* Background image — subtle, positioned to show Jonny if present */}
-        <img
-          src={pub('/mode-select-bg.png')}
-          alt="" aria-hidden
-          style={{
-            position: 'fixed', inset: 0,
-            width: '100%', height: '100%',
-            objectFit: 'cover', objectPosition: 'left center',
-            zIndex: 0, pointerEvents: 'none', userSelect: 'none',
-            opacity: 0.35,
-          }}
-        />
-        <div style={{
-          position: 'fixed', inset: 0,
-          background: 'linear-gradient(to bottom, rgba(9,5,15,0.55) 0%, rgba(9,5,15,0.80) 100%)',
-          zIndex: 1, pointerEvents: 'none',
-        }}/>
+  const isMobile  = vw < 640;
+  const isTablet  = vw >= 640 && vw < 900;
+  const compact   = vw < 900;
 
-        {/* Content */}
-        <div style={{ position: 'relative', zIndex: 10, display: 'flex', flexDirection: 'column', flex: 1, padding: '20px 16px 24px' }}>
-
-          {/* Back button — top left */}
-          <motion.button
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.1 }}
-            onClick={() => navigate('/')}
-            style={{
-              alignSelf: 'flex-start',
-              display: 'flex', alignItems: 'center', gap: '0.35rem',
-              padding: '0.4rem 0.9rem',
-              background: 'rgba(0,0,0,0.5)',
-              border: '1.5px solid rgba(255,255,255,0.18)',
-              borderRadius: 100,
-              color: 'rgba(255,255,255,0.6)',
-              fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.05em',
-              cursor: 'pointer',
-              backdropFilter: 'blur(12px)',
-              WebkitBackdropFilter: 'blur(12px)',
-            }}
-          >
-            <ChevronLeft size={13}/> MENU
-          </motion.button>
-
-          {/* Title */}
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.15, duration: 0.45 }}
-            style={{ textAlign: 'center', marginTop: 20, marginBottom: 18 }}
-          >
-            <div style={{
-              fontFamily: "'Outfit','Arial Black',sans-serif",
-              fontWeight: 900, fontSize: '1.3rem', letterSpacing: '0.04em',
-              color: '#fff', lineHeight: 1.1,
-              textShadow: '0 2px 16px rgba(0,0,0,0.9)',
-            }}>
-              SCEGLI LA TUA MODALITÀ
-            </div>
-            <div style={{
-              marginTop: 5, fontSize: '0.65rem', letterSpacing: '0.18em',
-              color: 'rgba(255,255,255,0.5)', fontWeight: 600,
-              textTransform: 'uppercase',
-            }}>
-              Due esperienze. Un solo show.
-            </div>
-          </motion.div>
-
-          {/* Cards — stacked or side-by-side depending on width */}
-          <div style={{
-            display: 'flex',
-            flexDirection: vw >= 420 ? 'row' : 'column',
-            gap: 14,
-            flex: 1,
-          }}>
-            {MODES.map((mode, i) => (
-              <div key={mode.id} style={{ flex: 1, minHeight: vw >= 420 ? 300 : 260 }}>
-                <ModeCard mode={mode} delay={0.2 + i * 0.12} compact />
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Desktop layout (≥ 640px) — pixel-perfect with background artwork ───────
-  /*
-   * Background image: JONNY'S WORLD logo occupies roughly y=0–248px.
-   * Road/pathway center ≈ 42% of 1280px = 538px.
-   * Two 260px cards + 40px gap = 560px, centered: left = 538-280 = 258px.
-   * TITLE_Y=270 clears logo. CARD_H=338 keeps back-button inside 720px.
-   */
-  const CARD_X   = 258;
-  const CARD_W   = 260;
-  const CARD_H   = 338;
-  const CARD_GAP = 40;
-  const TITLE_Y  = 270;
-  const CARD_Y   = 318;
-  const CARDS_TOTAL_W = CARD_W * 2 + CARD_GAP; // 560
+  /* card dimensions scale with viewport */
+  const cardW     = isMobile ? '100%' : isTablet ? 220 : 260;
+  const cardH     = isMobile ? 280    : isTablet ? 310  : 338;
+  const cardsDir  = isMobile ? 'column' as const : 'row' as const;
+  const cardsGap  = isMobile ? 14 : 28;
+  const maxCards  = isMobile ? 420 : isTablet ? 490 : 580;
 
   return (
-    <div className="fixed inset-0 overflow-hidden"
-      style={{ fontFamily: "'Outfit','Space Grotesk','Arial Black',sans-serif" }}>
+    <div style={{
+      position: 'fixed', inset: 0,
+      minHeight: '100dvh',
+      overflowX: 'hidden',
+      overflowY: isMobile ? 'auto' : 'hidden',
+      fontFamily: "'Outfit','Space Grotesk','Arial Black',sans-serif",
+      background: '#09050f',
+    }}>
 
-      {/* fullscreen background */}
+      {/* ── Background image: cover with Jonny/park centred ── */}
       <img
         src={pub('/mode-select-bg.png')}
         alt="" aria-hidden
         style={{
-          position: 'absolute', inset: 0,
+          position: 'fixed', inset: 0,
           width: '100%', height: '100%',
           objectFit: 'cover',
+          objectPosition: 'center 18%',
           zIndex: 0, pointerEvents: 'none', userSelect: 'none',
+          opacity: isMobile ? 0.35 : 1,
         }}
       />
 
-      {/* 20% dark veil */}
-      <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.20)', zIndex: 1, pointerEvents: 'none' }}/>
-
-      {/* center-column contrast gradient */}
-      <div className="absolute inset-0" style={{
-        background: 'radial-gradient(ellipse 52% 72% at 42% 62%, rgba(5,2,16,0.52) 0%, transparent 70%)',
-        zIndex: 2, pointerEvents: 'none',
+      {/* ── Dark overlay ── */}
+      <div style={{
+        position: 'fixed', inset: 0,
+        background: isMobile
+          ? 'linear-gradient(to bottom,rgba(9,5,15,0.55) 0%,rgba(9,5,15,0.82) 100%)'
+          : 'rgba(0,0,0,0.22)',
+        zIndex: 1, pointerEvents: 'none',
       }}/>
 
-      {/* title */}
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.08, duration: 0.5, ease: 'easeOut' as const }}
-        style={{
-          position: 'absolute',
-          left: CARD_X, top: TITLE_Y,
-          width: CARDS_TOTAL_W,
-          textAlign: 'center', zIndex: 20,
-        }}
-      >
+      {/* ── Centre-column contrast gradient (desktop only) ── */}
+      {!isMobile && (
         <div style={{
-          fontFamily: "'Outfit','Arial Black',sans-serif",
-          fontWeight: 900, fontSize: '1.65rem', letterSpacing: '0.05em',
-          color: '#fff', lineHeight: 1.1,
-          textShadow: '0 2px 16px rgba(0,0,0,0.95), 0 0 40px rgba(0,0,0,0.7)',
-        }}>
-          SCEGLI LA TUA MODALITÀ
-        </div>
+          position: 'fixed', inset: 0,
+          background: 'radial-gradient(ellipse 62% 78% at 50% 68%, rgba(5,2,16,0.58) 0%, transparent 72%)',
+          zIndex: 2, pointerEvents: 'none',
+        }}/>
+      )}
+
+      {/* ── Content column ──
+           Desktop/tablet: flex-end pushes cards into the lower half, leaving
+           the Jonny's World artwork visible above. Mobile: flex-start + scroll. */}
+      <div style={{
+        position: 'relative', zIndex: 20,
+        minHeight: '100dvh',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: isMobile ? 'flex-start' : 'flex-end',
+        paddingBottom: isMobile ? 28 : isTablet ? '6vh' : '5vh',
+        padding: isMobile ? '20px 16px 28px' : undefined,
+        paddingTop: isMobile ? undefined : '12px',
+        paddingLeft: isMobile ? undefined : '24px',
+        paddingRight: isMobile ? undefined : '24px',
+        boxSizing: 'border-box',
+      }}>
+
+        {/* Back button — pinned top-left */}
+        <motion.button
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.1 }}
+          onClick={() => navigate('/')}
+          style={{
+            position: 'absolute',
+            top: isMobile ? 16 : 20,
+            left: isMobile ? 16 : 24,
+            display: 'flex', alignItems: 'center', gap: '0.35rem',
+            padding: '0.4rem 0.9rem',
+            background: 'rgba(0,0,0,0.55)',
+            border: '1.5px solid rgba(255,255,255,0.2)',
+            borderRadius: 100,
+            color: 'rgba(255,255,255,0.6)',
+            fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.05em',
+            cursor: 'pointer',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+          }}
+        >
+          <ChevronLeft size={13}/> {isMobile ? 'MENU' : 'TORNA AL MENU'}
+        </motion.button>
+
+        {/* ── Title block — sits above cards with breathing room ── */}
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.12, duration: 0.48, ease: 'easeOut' as const }}
+          style={{
+            textAlign: 'center',
+            marginBottom: isMobile ? 20 : 40,
+            marginTop: isMobile ? 48 : 0,
+          }}
+        >
+          <div style={{
+            fontFamily: "'Outfit','Arial Black',sans-serif",
+            fontWeight: 900,
+            fontSize: isMobile ? '1.3rem' : isTablet ? '1.5rem' : '1.7rem',
+            letterSpacing: '0.05em',
+            color: '#fff', lineHeight: 1.1,
+            textShadow: '0 2px 20px rgba(0,0,0,0.95), 0 0 60px rgba(0,0,0,0.7)',
+          }}>
+            SCEGLI LA TUA MODALITÀ
+          </div>
+          <div style={{
+            marginTop: 7,
+            fontSize: isMobile ? '0.64rem' : '0.72rem',
+            letterSpacing: '0.2em',
+            color: 'rgba(255,255,255,0.55)',
+            fontWeight: 600,
+            textTransform: 'uppercase',
+            textShadow: '0 1px 12px rgba(0,0,0,0.95)',
+          }}>
+            Due esperienze. Un solo show.
+          </div>
+        </motion.div>
+
+        {/* ── Cards row / column ── */}
         <div style={{
-          marginTop: 6, fontSize: '0.72rem', letterSpacing: '0.22em',
-          color: 'rgba(255,255,255,0.58)', fontWeight: 600,
-          textTransform: 'uppercase',
-          textShadow: '0 1px 10px rgba(0,0,0,0.95)',
+          display: 'flex',
+          flexDirection: cardsDir,
+          gap: cardsGap,
+          width: '100%',
+          maxWidth: maxCards,
+          alignItems: 'stretch',
         }}>
-          Due esperienze. Un solo show.
+          {MODES.map((mode, i) => (
+            <div
+              key={mode.id}
+              style={{
+                flex: 1,
+                width: isMobile ? '100%' : cardW,
+                minWidth: isMobile ? undefined : cardW,
+                minHeight: cardH,
+              }}
+            >
+              <ModeCard mode={mode} delay={0.22 + i * 0.13} compact={compact} />
+            </div>
+          ))}
         </div>
-      </motion.div>
 
-      {/* Home card */}
-      <div style={{ position: 'absolute', left: CARD_X, top: CARD_Y, width: CARD_W, height: CARD_H, zIndex: 20 }}>
-        <ModeCard mode={MODES[0]} delay={0.26} />
       </div>
-
-      {/* Live card */}
-      <div style={{ position: 'absolute', left: CARD_X + CARD_W + CARD_GAP, top: CARD_Y, width: CARD_W, height: CARD_H, zIndex: 20 }}>
-        <ModeCard mode={MODES[1]} delay={0.38} />
-      </div>
-
-      {/* Back button */}
-      <motion.button
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.55, duration: 0.35 }}
-        onClick={() => navigate('/')}
-        style={{
-          position: 'absolute',
-          left: CARD_X + CARDS_TOTAL_W / 2,
-          transform: 'translateX(-50%)',
-          top: CARD_Y + CARD_H + 14,
-          zIndex: 20,
-          display: 'flex', alignItems: 'center', gap: '0.4rem',
-          padding: '0.45rem 1.2rem',
-          background: 'rgba(0,0,0,0.55)',
-          border: '1.5px solid rgba(255,255,255,0.2)',
-          borderRadius: 100,
-          color: 'rgba(255,255,255,0.58)',
-          fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.05em',
-          cursor: 'pointer',
-          backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)',
-          transition: 'all 0.2s',
-        }}
-        whileHover={{ borderColor: 'rgba(255,255,255,0.45)', color: 'rgba(255,255,255,0.9)' }}
-        whileTap={{ scale: 0.97 }}
-      >
-        <ChevronLeft size={13}/> TORNA AL MENU
-      </motion.button>
     </div>
   );
 }
