@@ -1,0 +1,238 @@
+ADMIN 2.0 — MAKE GAMES AND MEDIA PAGES ACTUALLY USABLE
+
+Current situation:
+The new admin landing exists, but it is not operational enough.
+
+Problems:
+1. Game pages do not show the required creation flow:
+   New Theme → Difficulty → Generate.
+2. The Generate button does not generate anything usable.
+3. Media Library is generic and useless.
+4. Media must be organized by game and by expected usage slot, not as a generic upload bucket.
+
+Patch only Admin 2.0.
+
+==================================================
+PART 1 — GAME PAGE MUST HAVE STANDARD GENERATOR HEADER
+==================================================
+
+For every game detail page:
+
+Adult Only
+SaraMusica
+Quizzone
+Parola alle Spalle
+Percorso a Risate
+Karaoke Battle
+Gioco delle Coppie
+Sfida di Ballo
+
+At the top show:
+
+[ Nuovo tema input ]
+[ Difficoltà: Facile / Medio / Difficile ]
+[ Genera ]
+
+This must be visible immediately when entering a game.
+
+Below:
+Themes already created for that game.
+
+Each theme card:
+- title
+- difficulty
+- item count
+- status
+- Home ON/OFF
+- Live ON/OFF
+- Edit
+- Delete
+- Preview / Sfoglia contenuti
+
+==================================================
+PART 2 — GENERATE BUTTON MUST WORK
+==================================================
+
+When clicking GENERA:
+
+- create a new GameContentPack
+- call AI generator if available
+- generate items according to selected game
+- save items in game_content_items
+- show generated pack immediately in the list
+
+If AI fails:
+use fallback static generator.
+Do not show only “impossibile”.
+Show exact error and still create fallback if possible.
+
+Game-specific generation:
+
+Adult Only:
+generate Verità and Obblighi divided by level 1–5.
+
+SaraMusica:
+generate music rounds with question, answers, youtube search terms if possible.
+
+Quizzone:
+generate quiz questions, answers, correctAnswer, explanation, optional placeholder images.
+
+Parola alle Spalle:
+generate word, 5 taboo words, hint.
+
+Percorso a Risate:
+generate missions by type.
+
+Coppie:
+generate 10 identical image pairs using placeholder image URLs.
+
+Karaoke:
+generate theme playlist placeholders / YouTube search queries.
+
+Ballo:
+generate dance mood/challenge set.
+
+==================================================
+PART 3 — GAME CONTENT EDITOR MUST BE CLEAR
+==================================================
+
+When opening a generated theme:
+
+Adult Only:
+show clear tabs:
+- Verità
+- Obblighi
+- Livello 1
+- Livello 2
+- Livello 3
+- Livello 4
+- Livello 5
+
+Each item editable.
+
+Quizzone:
+table of questions.
+
+SaraMusica:
+table of music rounds.
+
+Coppie:
+grid of 10 image pairs.
+
+Percorso:
+mission list by type.
+
+Parola:
+word/taboo table.
+
+==================================================
+PART 4 — MEDIA PAGE REBUILD BY GAME + SLOT
+==================================================
+
+Current generic Media Library is useless.
+
+Replace it with game-specific media boxes.
+
+Page layout:
+
+For each game section:
+
+ADULT ONLY
+- Background music URL
+- Bottle spin sound URL
+- Level up sound URL
+- Vote open sound URL
+- Jonny pose idle image URL
+- Jonny reaction animation URL
+
+SARAMUSICA
+- Intro sound URL
+- Correct answer sound URL
+- Wrong answer sound URL
+- Countdown sound URL
+- YouTube clip fallback URL
+- Background visual URL
+
+QUIZZONE
+- Question reveal sound URL
+- Correct answer sound URL
+- Wrong answer sound URL
+- Timer tick sound URL
+- Background image URL
+
+PERCORSO A RISATE
+- Red alarm sound URL
+- Laugh track URL
+- Mission intro sound URL
+- Voting open sound URL
+- Yoga pose image pack URL / JSON
+
+PAROLA ALLE SPALLE
+- Thinking loop sound URL
+- Correct word sound URL
+- Time expired sound URL
+- Jonny idle pose image URL
+
+KARAOKE
+- Applause sound URL
+- Boo sound URL
+- Transition sound URL
+- Queue background URL
+
+COPPIE
+- Card back image URL
+- Match sound URL
+- Mismatch sound URL
+- Reveal sound URL
+
+BALLO
+- Dance intro sound URL
+- Round start sound URL
+- Round end sound URL
+- Energy boost sound URL
+
+Each media box:
+- label
+- description
+- input URL
+- save button
+- preview button
+- active/inactive toggle
+
+Store in DB as static media config keyed by:
+gameSlug + slotKey
+
+Example:
+adult-only.bottle_spin_sound
+saramusica.correct_sound
+percorso.red_alarm_sound
+
+==================================================
+PART 5 — NO GENERIC MEDIA ONLY
+==================================================
+
+Generic upload/list can stay as secondary,
+but the main Media page must be the structured game-slot editor.
+
+The admin must immediately understand:
+where to paste sounds,
+where to paste animations,
+where to paste Jonny poses,
+where to paste YouTube links.
+
+==================================================
+OUTPUT REQUIRED
+==================================================
+
+A. files modified
+B. Game page generator header implemented
+C. Generate button creates real pack/items
+D. Adult Only Verità/Obblighi levels visible
+E. Media page rebuilt by game slots
+F. DB model for media slots
+G. fallback generation behavior
+H. typecheck result
+I. screenshots:
+   - /admin/giochi
+   - Adult Only game page
+   - Media page with game-specific slots

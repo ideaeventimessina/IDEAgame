@@ -307,12 +307,8 @@ router.post("/game-content-packs/generate", requireAuth, requireRole("game_manag
     tags:             ["ai-generated"],
   }).returning();
 
-  let items: Awaited<ReturnType<typeof generateContentItems>>;
-  try {
-    items = await generateContentItems({ gameSlug, themeName, difficulty, count });
-  } catch {
-    items = [];
-  }
+  const result = await generateContentItems({ gameSlug, themeName, difficulty, count });
+  const { items, source, error: genError } = result;
 
   if (items.length > 0) {
     await db.insert(gameContentItemsTable).values(
@@ -326,11 +322,14 @@ router.post("/game-content-packs/generate", requireAuth, requireRole("game_manag
         isActive:    true,
       }))
     );
-    await db.update(gameContentPacksTable).set({ itemCount: items.length }).where(eq(gameContentPacksTable.id, pack!.id));
+    await db.update(gameContentPacksTable).set({
+      itemCount: items.length,
+      tags: source === "ai" ? ["ai-generated"] : ["static-fallback"],
+    }).where(eq(gameContentPacksTable.id, pack!.id));
   }
 
   const [updated] = await db.select().from(gameContentPacksTable).where(eq(gameContentPacksTable.id, pack!.id));
-  res.status(201).json({ pack: updated, itemCount: items.length });
+  res.status(201).json({ pack: updated, itemCount: items.length, source, warning: genError ?? null });
 });
 
 export default router;

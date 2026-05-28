@@ -34,6 +34,7 @@ export function requireRole(...roles: string[]) {
       res.status(401).json({ error: "Unauthorized" });
       return;
     }
+    if (req.user.role === "super_admin") { next(); return; }
     if (!roles.includes(req.user.role)) {
       res.status(403).json({ error: "Forbidden" });
       return;

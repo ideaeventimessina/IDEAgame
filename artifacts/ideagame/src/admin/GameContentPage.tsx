@@ -274,11 +274,18 @@ export default function GameContentPage({ slug }: { slug: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ gameSlug: slug, themeName: name, difficulty, count: genCount }),
       });
-      if (!r.ok) { setGenMsg('Errore nella generazione'); return; }
-      setGenMsg(`✅ Tema "${name}" generato!`);
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({})) as Record<string,unknown>;
+        setGenMsg(`❌ ${String(err['error'] ?? `Errore ${r.status}`)}`);
+        return;
+      }
+      const data = await r.json() as { itemCount?: number; source?: string; warning?: string };
+      const sourceLabel = data.source === 'ai' ? '⭐ AI' : '📦 statico';
+      const warnPart = data.warning ? ` · ${data.warning}` : '';
+      setGenMsg(`✅ "${name}" — ${data.itemCount ?? 0} elementi [${sourceLabel}]${warnPart}`);
       setThemeName(''); setThemeInput('');
       await loadPacks();
-    } catch { setGenMsg('Errore di rete'); }
+    } catch { setGenMsg('❌ Errore di rete'); }
     finally { setGenerating(false); }
   };
 
