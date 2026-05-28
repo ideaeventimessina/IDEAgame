@@ -367,7 +367,16 @@ export default function ModeSelect() {
           <ChevronLeft size={13}/> {isMobile ? 'MENU' : 'TORNA AL MENU'}
         </motion.button>
 
-        {/* ── Title block — sits above cards with breathing room ── */}
+        {/* ── Title + Cards — lifted together on desktop/tablet ── */}
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          width: '100%',
+          transform: isMobile ? undefined : isTablet ? 'translateY(-40px)' : 'translateY(-80px)',
+        }}>
+
+        {/* ── Title block ── */}
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -409,7 +418,6 @@ export default function ModeSelect() {
           width: '100%',
           maxWidth: maxCards,
           alignItems: 'stretch',
-          transform: isMobile ? undefined : isTablet ? 'translateY(-40px)' : 'translateY(-80px)',
         }}>
           {MODES.map((mode, i) => (
             <div
@@ -430,6 +438,8 @@ export default function ModeSelect() {
             </div>
           ))}
         </div>
+
+        </div>{/* end title+cards wrapper */}
 
       </div>
     </div>
