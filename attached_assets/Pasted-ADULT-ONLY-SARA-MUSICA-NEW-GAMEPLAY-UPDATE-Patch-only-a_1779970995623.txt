@@ -1,0 +1,142 @@
+ADULT ONLY + SARA'MUSICA NEW GAMEPLAY UPDATE
+
+Patch only:
+- adult-only
+- sara-musica
+
+Do not touch unrelated games.
+
+==================================================
+PART 1 — ADULT ONLY → OBBLIGO O VERITÀ
+==================================================
+
+Current:
+Bottle spins → player selected → challenge assigned immediately.
+
+New flow:
+
+spin bottle
+→ selected player highlighted on TV
+→ selected player receives on phone:
+
+[ OBBLIGO ]
+[ VERITÀ ]
+
+Player chooses.
+
+If VERITÀ:
+server pulls random truth question from adult-only truth bank
+
+Examples:
+- qual è stata la tua figuraccia peggiore?
+- chi baceresti qui dentro?
+- cosa non hai mai detto a nessuno?
+
+If OBBLIGO:
+server pulls random dare/challenge from adult-only dare bank
+
+Examples:
+- imita qualcuno nel gruppo
+- manda un vocale assurdo
+- balla 20 secondi
+
+TV:
+show large animation:
+🔥 OBBLIGO
+or
+👀 VERITÀ
+
+then reveal challenge/question.
+
+If no choice within 8s:
+auto-random choice by server.
+
+Admin:
+split DB content into:
+adultTruth[]
+adultDare[]
+
+==================================================
+PART 2 — SARA'MUSICA → ASTA A RIBASSO / SARABANDA MODE
+==================================================
+
+Yes:
+use YouTube.
+
+New round type:
+seconds_bid
+
+Goal:
+guess song with the lowest requested number of seconds.
+
+Flow:
+
+TV:
+show:
+🎵 INDOVINA LA CANZONE
+QUANTI SECONDI TI SERVONO?
+
+Players on phone:
+choose bid:
+1
+2
+3
+4
+5
+6
+7
+8
+10
+
+Lowest bid wins clip access.
+
+TV announces:
+"BOSS VINCE L'ASTA — 2 SECONDI"
+
+Then:
+play ONLY requested clip duration from YouTube:
+startSecond random
+duration = winningBid seconds
+
+Clip stops automatically.
+
+Winner player answers first.
+
+If correct:
+points bonus:
+100 - bid*10
+
+If wrong:
+open answer to everyone:
+multiple choice OR buzz
+
+Can use same YouTube infrastructure already active:
+youtubeId
+startSecond
+durationSeconds = winningBid
+
+No need new provider.
+
+==================================================
+PART 3 — OUTPUT
+==================================================
+
+A. files modified
+B. Adult Only:
+   spin → player → obbligo/verità → reveal
+C. fallback random after 8s
+D. DB split truth/dare
+E. Sara'Musica:
+   new round type seconds_bid
+F. bid UI on phone
+G. YouTube clip limited to X seconds
+H. scoring rule
+I. typecheck
+J. manual test:
+   - bottle selects player
+   - player chooses obbligo/verità
+   - reveal shown on TV
+   - SaraMusica seconds bid starts
+   - lowest bidder wins
+   - clip plays only for selected duration
+   - answer flow completes

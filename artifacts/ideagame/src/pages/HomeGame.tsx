@@ -3878,6 +3878,7 @@ const SM_TYPE_BADGES: Record<string, { emoji: string; label: string; color: stri
   song_vs_song:           { emoji: '⚔️', label: 'SFIDA MUSICALE',       color: '#F87171' },
   progressive_clue_music: { emoji: '🔍', label: 'INDIZI MUSICALI',      color: '#F59E0B' },
   final_tormentone:       { emoji: '🏆', label: 'TORMENTONE FINALE',    color: '#F97316' },
+  seconds_bid:            { emoji: '🎰', label: 'ASTA MUSICALE',         color: '#EC4899' },
 };
 const SM_ANS_COLORS = ['#60A5FA', '#A78BFA', '#34D399', '#FBBF24'];
 
@@ -3903,7 +3904,12 @@ function SaraMusicaBoard({ payload, session, players }: {
   const answeredCount = Number(payload.answeredCount ?? 0);
   const allAnswered   = Boolean(payload.allAnsweredForCurrent);
   const questionEndsAt = payload.questionEndsAt as string | undefined;
-  const clueIndex     = Number(payload.currentClueIndex ?? 0);
+  const clueIndex      = Number(payload.currentClueIndex ?? 0);
+  const bidMap         = (payload.bidMap ?? {}) as Record<string, number>;
+  const winnerPlayerId = payload.winnerPlayerId as string | null;
+  const winnerNickname = payload.winnerNickname as string | null;
+  const winningBid     = payload.winningBid as number | null;
+  const bidWrongOpen   = Boolean(payload.bidWrongOpen);
 
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   useEffect(() => {
@@ -4159,6 +4165,151 @@ function SaraMusicaBoard({ payload, session, players }: {
     );
   }
 
+  // ── bid_open (asta: tutti puntano) ────────────────────────────────────────────
+  if (phase === 'bid_open' && currentQ) {
+    const bidEntries = Object.entries(bidMap);
+    const badge = SM_TYPE_BADGES['seconds_bid']!;
+    return (
+      <div className="flex flex-col gap-5 w-full max-w-4xl">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-black"
+            style={{ background: `${badge.color}22`, border: `1px solid ${badge.color}55`, color: badge.color }}>
+            {badge.emoji} {badge.label}
+          </div>
+          <div className="rounded-full px-3 py-1 text-sm font-bold text-white/50" style={{background:'rgba(255,255,255,0.08)'}}>
+            {currentIndex + 1} / {roundCount}
+          </div>
+        </div>
+        <div className="rounded-3xl p-8 text-center"
+          style={{ background: `linear-gradient(135deg,${badge.color}18,rgba(0,0,0,0.3))`, border: `1px solid ${badge.color}44` }}>
+          <div className="text-display text-2xl font-black text-white leading-snug mb-2">{currentQ.question}</div>
+          <div className="text-white/40 text-sm">Il vincitore (offerta più bassa) ascolterà il clip per i secondi scelti</div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          {currentQ.answers.map((ans, i) => (
+            <div key={i} className="rounded-2xl px-4 py-3 flex items-center gap-3"
+              style={{ background: `${SM_ANS_COLORS[i] ?? SM}18`, border: `1px solid ${SM_ANS_COLORS[i] ?? SM}33` }}>
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl font-black text-xs"
+                style={{ background: SM_ANS_COLORS[i] ?? SM, color: '#000' }}>
+                {['A','B','C','D'][i]}
+              </div>
+              <div className="font-bold text-sm text-white/70">{ans}</div>
+            </div>
+          ))}
+        </div>
+        <div className="rounded-2xl p-4" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
+          <div className="text-sm font-black text-white/50 mb-3">🎰 Offerte ricevute ({bidEntries.length}/{players.length})</div>
+          {bidEntries.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {bidEntries.map(([pid, b]) => {
+                const pl = players.find(p => p.id === pid);
+                return (
+                  <div key={pid} className="rounded-full px-3 py-1 text-sm font-black"
+                    style={{ background: `${badge.color}25`, color: badge.color, border: `1px solid ${badge.color}44` }}>
+                    {pl?.nickname ?? '?'}: {b}s
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-white/30 text-sm text-center">I giocatori stanno scegliendo…</div>
+          )}
+        </div>
+        <div className="flex gap-3 justify-center">
+          <button onClick={() => void smPost('close-bid')} disabled={busy || bidEntries.length === 0}
+            className="rounded-2xl px-10 py-4 text-base font-black text-black disabled:opacity-40 transition-all hover:scale-105"
+            style={{ background: `linear-gradient(135deg,${badge.color},#be185d)`, boxShadow: `0 0 40px ${badge.color}66` }}>
+            {busy ? '…' : `🎰 Chiudi Asta (${bidEntries.length} offerte)`}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── bid_winner (vincitore annunciato, clip in partenza) ───────────────────────
+  if (phase === 'bid_winner' && currentQ) {
+    const badge = SM_TYPE_BADGES['seconds_bid']!;
+    return (
+      <div className="flex flex-col gap-5 w-full max-w-4xl items-center text-center">
+        <motion.div initial={{ scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring' }}
+          className="rounded-3xl px-10 py-8 w-full"
+          style={{ background: `linear-gradient(135deg,${badge.color}25,rgba(0,0,0,0.4))`, border: `2px solid ${badge.color}60`, boxShadow: `0 0 80px ${badge.color}44` }}>
+          <div className="text-xs font-black uppercase tracking-widest text-white/40 mb-2">🏆 VINCITORE DELL'ASTA</div>
+          <div className="text-display text-5xl font-black mb-3" style={{ color: badge.color }}>{winnerNickname ?? '?'}</div>
+          <div className="text-2xl font-bold text-white/80">ha scommesso <span className="font-black" style={{ color: badge.color }}>{winningBid}s</span></div>
+        </motion.div>
+        {currentQ.youtubeClip?.youtubeId && winningBid && (
+          <YTClipPlayer
+            clip={{ ...currentQ.youtubeClip, durationSeconds: winningBid }}
+            roundIndex={currentIndex}
+            sessionId={String(session.id ?? '')}
+          />
+        )}
+        <div className="grid grid-cols-2 gap-3 w-full">
+          {currentQ.answers.map((ans, i) => (
+            <div key={i} className="rounded-2xl px-4 py-3 flex items-center gap-3"
+              style={{ background: `${SM_ANS_COLORS[i] ?? SM}18`, border: `1px solid ${SM_ANS_COLORS[i] ?? SM}33` }}>
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl font-black text-xs"
+                style={{ background: SM_ANS_COLORS[i] ?? SM, color: '#000' }}>
+                {['A','B','C','D'][i]}
+              </div>
+              <div className="font-bold text-sm text-white/70">{ans}</div>
+            </div>
+          ))}
+        </div>
+        <button onClick={() => void smPost('bid-start-answer')} disabled={busy}
+          className="rounded-2xl px-10 py-4 text-base font-black text-black disabled:opacity-40 transition-all hover:scale-105"
+          style={{ background: `linear-gradient(135deg,${badge.color},#be185d)`, boxShadow: `0 0 40px ${badge.color}66` }}>
+          {busy ? '…' : `🎤 ${winnerNickname} risponde!`}
+        </button>
+      </div>
+    );
+  }
+
+  // ── bid_answer (vincitore risponde, o tutti se sbagliato) ────────────────────
+  if (phase === 'bid_answer' && currentQ) {
+    const badge = SM_TYPE_BADGES['seconds_bid']!;
+    return (
+      <div className="flex flex-col gap-5 w-full max-w-4xl">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-black"
+            style={{ background: `${badge.color}22`, border: `1px solid ${badge.color}55`, color: badge.color }}>
+            {bidWrongOpen ? '🔓 APERTO A TUTTI' : `🎤 ${winnerNickname ?? '?'} risponde`}
+          </div>
+          {!bidWrongOpen && winningBid !== null && (
+            <div className="text-sm font-bold" style={{ color: badge.color }}>
+              Punteggio: {Math.max(10, 100 - winningBid * 10)}pt se corretto
+            </div>
+          )}
+        </div>
+        <div className="rounded-2xl p-5"
+          style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
+          <div className="text-display text-xl font-black text-white leading-snug">{currentQ.question}</div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          {currentQ.answers.map((ans, i) => (
+            <div key={i} className="rounded-2xl px-4 py-4 flex items-center gap-3"
+              style={{ background: `${SM_ANS_COLORS[i] ?? SM}18`, border: `2px solid ${SM_ANS_COLORS[i] ?? SM}44` }}>
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl font-black text-sm"
+                style={{ background: SM_ANS_COLORS[i] ?? SM, color: '#000' }}>
+                {['A','B','C','D'][i]}
+              </div>
+              <div className="font-black text-sm text-white">{ans}</div>
+            </div>
+          ))}
+        </div>
+        {answeredCount > 0 && (
+          <div className="text-sm text-white/40 text-center">{answeredCount} risposta/e ricevuta/e</div>
+        )}
+        <button onClick={() => void smPost('reveal')} disabled={busy}
+          className="rounded-2xl px-8 py-4 text-base font-black text-black transition-all hover:scale-105 disabled:opacity-50"
+          style={{ background: `linear-gradient(135deg,${SM},#2563eb)`, boxShadow: `0 0 30px ${SM_GLOW}` }}>
+          {busy ? '…' : '🎵 Rivela risposta'}
+        </button>
+      </div>
+    );
+  }
+
   // ── reveal ───────────────────────────────────────────────────────────────────
   if (phase === 'reveal' && currentQ && revealData) {
     const badge      = SM_TYPE_BADGES[currentQ.type] ?? { emoji: '🎵', label: 'RISPOSTA', color: SM };
@@ -4354,6 +4505,8 @@ function AdultOnlyBoard({ payload, session, players }: {
   const spinDurationMs    = Number(payload.spinDurationMs ?? 4000);
   const spinStartedAt     = payload.spinStartedAt as string | null;
   const votingEndsAt      = payload.votingEndsAt as string | null;
+  const chosenType        = payload.chosenType as string | null;
+  const choiceDeadlineAt  = payload.choiceDeadlineAt as string | null;
 
   const levelObj  = AO_BOARD_LEVELS.find(l => l.level === level) ?? AO_BOARD_LEVELS[0]!;
   const AC        = levelObj.color;
@@ -4376,6 +4529,15 @@ function AdultOnlyBoard({ payload, session, players }: {
     const t = setInterval(tick, 250);
     return () => clearInterval(t);
   }, [votingEndsAt, phase]);
+
+  const [choiceTimeLeft, setChoiceTimeLeft] = useState<number | null>(null);
+  useEffect(() => {
+    if (!choiceDeadlineAt || phase !== 'choice') { setChoiceTimeLeft(null); return; }
+    const tick = () => setChoiceTimeLeft(Math.max(0, Math.ceil((new Date(choiceDeadlineAt).getTime() - Date.now()) / 1000)));
+    tick();
+    const t = setInterval(tick, 250);
+    return () => clearInterval(t);
+  }, [choiceDeadlineAt, phase]);
 
   const autoCloseVoteCalledRef = useRef(false);
   useEffect(() => {
@@ -4497,6 +4659,50 @@ function AdultOnlyBoard({ payload, session, players }: {
           {busy ? '…' : consentedCount === 0 ? 'Aspetta i giocatori…' : '🍾 Gira la Bottiglia!'}
         </button>
         <div className="text-white/20 text-xs">I giocatori scelgono dal loro telefono — poi clicca per girare</div>
+      </div>
+    );
+  }
+
+  // ── choice (selected player picks Obbligo or Verità) ─────────────────────
+  if (phase === 'choice') {
+    const isObbligo = chosenType === 'obbligo';
+    const isVerita  = chosenType === 'verita';
+    return (
+      <div className="flex flex-col items-center gap-8 text-center w-full max-w-3xl">
+        <div className="flex items-center justify-between w-full">
+          <LevelBadge />
+          <div className="text-white/40 text-sm">Round {roundNumber}</div>
+        </div>
+        <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring' }}
+          className="rounded-3xl px-10 py-8 w-full"
+          style={{ background: `${AC}18`, border: `2px solid ${AC}55`, boxShadow: `0 0 60px ${AC}33` }}>
+          <div className="text-xs font-black uppercase tracking-widest text-white/30 mb-2">🍾 LA BOTTIGLIA PUNTA SU</div>
+          <div className="text-display text-5xl font-black mb-4" style={{ color: AC }}>{selectedNickname ?? '?'}</div>
+          <div className="text-xl font-bold text-white/60">STA SCEGLIENDO…</div>
+        </motion.div>
+        <div className="flex gap-8 items-center justify-center w-full">
+          <div className={`flex flex-col items-center gap-2 transition-all ${isObbligo ? 'scale-110' : isVerita ? 'opacity-20' : 'opacity-50'}`}>
+            <div className="text-7xl">🔥</div>
+            <div className="text-2xl font-black text-white">OBBLIGO</div>
+            {isObbligo && <div className="text-sm font-black text-red-400 animate-pulse">SCELTO!</div>}
+          </div>
+          <div className="flex flex-col items-center gap-2">
+            {choiceTimeLeft !== null && (
+              <motion.div key={choiceTimeLeft} animate={{ scale: [1.15, 1] }} transition={{ duration: 0.25 }}
+                className="text-5xl font-black tabular-nums"
+                style={{ color: choiceTimeLeft > 3 ? AC : '#ef4444', textShadow: `0 0 30px ${choiceTimeLeft > 3 ? AC : '#ef444488'}` }}>
+                {choiceTimeLeft}s
+              </motion.div>
+            )}
+            <div className="text-white/20 text-xs">o</div>
+          </div>
+          <div className={`flex flex-col items-center gap-2 transition-all ${isVerita ? 'scale-110' : isObbligo ? 'opacity-20' : 'opacity-50'}`}>
+            <div className="text-7xl">👀</div>
+            <div className="text-2xl font-black text-white">VERITÀ</div>
+            {isVerita && <div className="text-sm font-black text-blue-400 animate-pulse">SCELTA!</div>}
+          </div>
+        </div>
+        <div className="text-white/25 text-xs">Il giocatore sceglie dal suo telefono • auto-scelta tra {choiceTimeLeft ?? 8}s</div>
       </div>
     );
   }

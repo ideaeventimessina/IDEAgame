@@ -119,6 +119,128 @@ export function pickFromBank(level: BottleLevel, usedIds: string[]): BottleChall
   return source.length > 0 ? source[Math.floor(Math.random() * source.length)]! : null;
 }
 
+// ── Truth / Dare banks (Obbligo o Verità) ────────────────────────────────────
+
+export const ADULT_TRUTH_BANK: Record<1 | 2 | 3, string[]> = {
+  1: [
+    "Qual è stata la tua figuraccia più grande in pubblico?",
+    "Qual è la cosa più strana che hai fatto da solo/a a casa?",
+    "Chi era il tuo crush segreto al liceo?",
+    "Qual è la bugia più grande che hai detto a un amico/a?",
+    "Qual è la cosa più imbarazzante che ti è capitata a scuola o al lavoro?",
+    "Qual è l'acquisto più stupido che hai fatto?",
+    "Quante volte hai fatto la firma falsa dei tuoi genitori?",
+    "Qual è la cosa più infantile che fai ancora oggi?",
+    "Qual è il film che hai rivisto più volte senza ammetterlo?",
+    "Hai mai mentito sulla tua età? Quanti anni hai detto di avere?",
+    "Qual è il cibo che mangi in segreto?",
+    "Qual è il momento in cui ti sei sentito/a più stupido/a?",
+    "Hai mai rubato qualcosa di piccolo? Cosa?",
+    "Qual è la cosa che non ammetteresti mai ai tuoi genitori?",
+    "Quale abitudine segreta hai che nessuno qui sa?",
+  ],
+  2: [
+    "Chi baceresti tra i presenti se potessi?",
+    "Descriva il tuo primo bacio: dove, come, con chi (senza il nome).",
+    "Qual è il tuo flirt più imbarazzante mai tentato?",
+    "Qual è il messaggio più cringe che hai inviato per conquistare qualcuno?",
+    "Chi è la persona più attraente in questa stanza? Di' solo la prima lettera del nome.",
+    "Hai mai avuto un crush su qualcuno già impegnato?",
+    "Qual è la cosa più audace che hai fatto per attirare l'attenzione di qualcuno?",
+    "Hai mai scritto un messaggio romantico e non inviato? A chi era?",
+    "Qual è la serata romantica più disastrosa che hai vissuto?",
+    "Hai mai ingelosito qualcuno apposta? Come?",
+    "Ti sei mai innamorato/a di un amico/a? Come è finita?",
+    "Qual è la cosa che cerchi in un partner e non hai mai ammesso?",
+    "Hai mai fatto una cosa romantica per qualcuno e fatto una figura pessima?",
+    "Qual è la persona più inaspettata che hai mai baciato?",
+    "Descrivi la persona che ti ha fatto battere più forte il cuore quest'anno.",
+  ],
+  3: [
+    "Descrivi il tuo bacio più memorabile — dove eri, com'è andata.",
+    "Qual è la cosa più hot che avresti voglia di dire ma non dici mai?",
+    "Qual è il tuo scenario romantico ideale? Nessun limite.",
+    "Hai mai guardato qualcuno in questa stanza pensando cose che non dovresti?",
+    "Qual è il tuo superpotere di seduzione? Sii onesto/a.",
+    "Descrivi la serata più selvaggia della tua vita (versione censurata).",
+    "Cosa faresti se potessi essere invisibile per una notte?",
+    "Hai mai baciato qualcuno per scommessa?",
+    "Qual è il tuo punto G sentimentale — cosa ti fa innamorare in modo irrazionale?",
+    "Hai mai confessato qualcosa a qualcuno sotto effetto della serata?",
+    "Qual è la dedica romantica più audace che hai ricevuto o fatto?",
+    "Chi nel gruppo ti ha fatto una buona impressione appena l'hai visto/a stasera?",
+    "Descrivi con una metafora l'ultima persona di cui ti sei innamorato/a.",
+    "Qual è la cosa più coraggiosa che hai fatto in una notte?",
+    "Qual è la cosa che ami delle relazioni fisiche e non dici mai ad alta voce?",
+  ],
+};
+
+export const ADULT_DARE_BANK: Record<1 | 2 | 3, string[]> = {
+  1: [
+    "Imita qualcuno nel gruppo per 30 secondi. Il gruppo indovina chi è.",
+    "Balla 20 secondi senza musica con la massima serietà.",
+    "Canta i primi 10 secondi di una canzone a scelta del gruppo.",
+    "Telefona a qualcuno in rubrica e di' 'ho qualcosa di importante da dirti' — poi riaggancia.",
+    "Fai un complimento sincero e specifico a ogni persona nel gruppo.",
+    "Parla per 30 secondi usando solo parole di massimo 3 lettere.",
+    "Descrivi la tua giornata di oggi in stile telenovela drammatica.",
+    "Manda un messaggio vocale assurdo a un contatto a caso dalla rubrica.",
+    "Racconta una barzelletta. Se non fa ridere nessuno, fanne un'altra.",
+    "Cammina come un robot per i prossimi 2 minuti.",
+    "Inventa uno slogan per il prodotto più strano che hai in borsa/tasca.",
+    "Fai una posa da supereroe per 30 secondi mentre il gruppo fa 3 domande.",
+    "Fai 10 salti sul posto cantando una filastrocca.",
+    "Imita un personaggio famoso per 45 secondi — il gruppo indovina.",
+    "Lascia che il gruppo ti faccia fare una foto imbarazzante da postare.",
+  ],
+  2: [
+    "Sussurra all'orecchio del giocatore alla tua sinistra qualcosa che non diresti ad alta voce.",
+    "Guarda negli occhi la persona di fronte a te per 30 secondi senza ridere.",
+    "Di' a ognuno nel gruppo una cosa che ti piace di lui/lei senza imbarazzo.",
+    "Lascia che il gruppo legga il tuo ultimo messaggio ricevuto ad alta voce.",
+    "Fai un massaggio alle spalle al giocatore alla tua destra per 30 secondi.",
+    "Crea un profilo di dating app per te in 1 minuto e leggilo al gruppo.",
+    "Di' tre cose che trovi attraenti del giocatore davanti a te — in modo serio.",
+    "Balla lentamente da solo/a per 20 secondi mentre il gruppo guarda.",
+    "Lascia che il gruppo veda le tue ultime 5 emoji usate.",
+    "Stai seduto/a sulle ginocchia di qualcuno scelto dal gruppo per il prossimo round.",
+    "Invia un GIF romantico a un numero del gruppo senza spiegazioni.",
+    "Manda uno sticker romantico a un contatto scelto dal gruppo.",
+    "Descriva il tipo ideale — il gruppo indovina a chi assomiglia tra i presenti.",
+    "Scrivi un messaggio di flirt convincente e mostralo prima di inviare.",
+    "Di' il nome del tuo ex in maniera artistica — con musica di sottofondo immaginaria.",
+  ],
+  3: [
+    "Di' la frase più hot che ti viene in mente al giocatore di fronte a te.",
+    "Mostra al gruppo il messaggio più piccante che hai ricevuto (puoi censurare il nome).",
+    "Recita una scena romantica improvvisata con il giocatore scelto dal gruppo.",
+    "Fai una posa sexy e tieni il personaggio per 20 secondi.",
+    "Racconta il dettaglio più hot di una serata che non hai mai condiviso.",
+    "Di' una cosa che non diresti mai sobrio/a — ma sei libero/a di dirla ora.",
+    "Il gruppo sceglie due persone: guardarsi negli occhi per 1 minuto senza parlare.",
+    "Lascia che il gruppo scelga il tuo prossimo messaggio da inviare a un contatto.",
+    "Manda un messaggio romantico al contatto scelto dal gruppo.",
+    "Lascia che il gruppo ti ponga 3 domande sulla tua vita amorosa a cui devi rispondere onestamente.",
+    "Fai una dedica musicale a qualcuno nel gruppo — canta o canticchia.",
+    "Siedi sul grembo del giocatore scelto dal gruppo per 30 secondi.",
+    "Dai un bacio sulla guancia al giocatore alla tua sinistra.",
+    "Il gruppo sceglie due persone che devono dirsi 3 cose vere che si attraggono.",
+    "Descrive la persona a destra come se fosse il protagonista di un romanzo romantico.",
+  ],
+};
+
+export function pickRandomTruth(level: number): string {
+  const l = Math.min(3, Math.max(1, level)) as 1 | 2 | 3;
+  const bank = ADULT_TRUTH_BANK[l];
+  return bank[Math.floor(Math.random() * bank.length)]!;
+}
+
+export function pickRandomDare(level: number): string {
+  const l = Math.min(3, Math.max(1, level)) as 1 | 2 | 3;
+  const bank = ADULT_DARE_BANK[l];
+  return bank[Math.floor(Math.random() * bank.length)]!;
+}
+
 // ── Old AdultMission compat (kept for backward compat, not used by new engine) ─
 
 export type AdultLevel = "flirt" | "tension" | "hot" | "extreme" | "after_dark";
