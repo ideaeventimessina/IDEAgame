@@ -3880,7 +3880,6 @@ const SM_TYPE_BADGES: Record<string, { emoji: string; label: string; color: stri
   song_vs_song:           { emoji: '⚔️', label: 'SFIDA MUSICALE',       color: '#F87171' },
   progressive_clue_music: { emoji: '🔍', label: 'INDIZI MUSICALI',      color: '#F59E0B' },
   final_tormentone:       { emoji: '🏆', label: 'TORMENTONE FINALE',    color: '#F97316' },
-  seconds_bid:            { emoji: '🎰', label: 'ASTA MUSICALE',         color: '#EC4899' },
 };
 const SM_ANS_COLORS = ['#60A5FA', '#A78BFA', '#34D399', '#FBBF24'];
 
@@ -3907,11 +3906,6 @@ function SaraMusicaBoard({ payload, session, players }: {
   const allAnswered   = Boolean(payload.allAnsweredForCurrent);
   const questionEndsAt = payload.questionEndsAt as string | undefined;
   const clueIndex      = Number(payload.currentClueIndex ?? 0);
-  const bidMap         = (payload.bidMap ?? {}) as Record<string, number>;
-  const winnerPlayerId = payload.winnerPlayerId as string | null;
-  const winnerNickname = payload.winnerNickname as string | null;
-  const winningBid     = payload.winningBid as number | null;
-  const bidWrongOpen   = Boolean(payload.bidWrongOpen);
 
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   useEffect(() => {

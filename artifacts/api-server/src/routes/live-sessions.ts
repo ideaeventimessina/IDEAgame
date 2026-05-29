@@ -284,6 +284,7 @@ const VALID_COMMANDS = [
   "start_game", "pause", "resume", "next_phase", "force_reveal", "force_ranking",
   "blackout", "standby_logo", "stop_audio", "trigger_media",
   "override_timer", "override_score", "toggle_voting", "toggle_ai", "force_next_round",
+  "set_home_session",
 ] as const;
 
 router.post("/live-sessions/:id/command", async (req: Request, res: Response): Promise<void> => {
@@ -314,6 +315,12 @@ router.post("/live-sessions/:id/command", async (req: Request, res: Response): P
     stateUpdate = { currentPhase: "standby" };
   } else if (command === "blackout") {
     stateUpdate = { currentPhase: "blackout" };
+  } else if (command === "set_home_session") {
+    const { homeSessionId } = (payload ?? {}) as { homeSessionId?: string };
+    const current = await getState(session.id);
+    const existing = (current?.payload as Record<string, unknown>) ?? {};
+    stateUpdate = { payload: { ...existing, homeSessionId: homeSessionId ?? null } };
+    logger.info({ sessionId: session.id, homeSessionId }, "[LiveCommand] set_home_session");
   }
 
   if (Object.keys(stateUpdate).length > 0) {

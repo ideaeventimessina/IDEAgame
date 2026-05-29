@@ -140,6 +140,21 @@ export default function LiveTV() {
     );
   }
 
+  // ── Home Session (renders HomeGame.tsx fullscreen via iframe) ───────────
+  const homeSessionId = state?.payload?.homeSessionId as string | null | undefined;
+  if (homeSessionId && session?.currentGameSlug !== 'gioco-coppie') {
+    return (
+      <div style={{ position: 'fixed', inset: 0, background: '#09050f' }}>
+        <iframe
+          src={`${BASE}home?session=${homeSessionId}`}
+          style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
+          allow="autoplay"
+        />
+        <ConnectionDot connected={connected} />
+      </div>
+    );
+  }
+
   // ── Coppie Live ─────────────────────────────────────────────────────────
   const coppie = state?.payload?.coppie as CoppiePayload | undefined;
   if (session?.currentGameSlug === 'gioco-coppie') {

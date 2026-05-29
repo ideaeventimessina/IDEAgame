@@ -2,15 +2,14 @@
  * /live-control — Show Director Control Room
  * Requires authentication. Reads admin settings. Sends commands via API+socket.
  */
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { useAuth } from '@/auth/roles';
 import { getSocket } from '@/hooks/useEventSocket';
 import { toast } from 'sonner';
 import {
   Loader2, Power, Pause, Play, SkipForward, Eye, MonitorOff, Monitor,
-  Volume2, VolumeX, Users, Mic2, Zap, Settings2, Radio, Plus, Trash2,
-  ChevronDown, Wifi, WifiOff, AlertCircle,
+  VolumeX, Users, Radio, Wifi, WifiOff, Link2,
 } from 'lucide-react';
 
 const BASE = (import.meta.env.BASE_URL as string) ?? '/';
@@ -58,64 +57,52 @@ export default function LiveRoom() {
   const [, navigate] = useLocation();
   const { user, isLoading: authLoading } = useAuth();
 
-  const [sessions, setSessions] = useState<LiveSession[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(() => {
-    return new URLSearchParams(window.location.search).get('session');
-  });
-  const [settings, setSettings] = useState<SettingsVal>(SETTINGS_DEFAULTS);
-  const [creating, setCreating] = useState(false);
-  const [cmdLoading, setCmdLoading] = useState<string | null>(null);
-  const [connected, setConnected] = useState(false);
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [newTitle, setNewTitle] = useState('');
-  const [showCreate, setShowCreate] = useState(false);
+  const selectedId = new URLSearchParams(window.location.search).get('session');
+  const [selected, setSelected]         = useState<LiveSession | null>(null);
+  const [sessionLoading, setSessionLoading] = useState(true);
+  const [settings, setSettings]         = useState<SettingsVal>(SETTINGS_DEFAULTS);
+  const [cmdLoading, setCmdLoading]     = useState<string | null>(null);
+  const [connected, setConnected]       = useState(false);
+  const [homeSessionInput, setHomeSessionInput] = useState('');
   const socketRef = useRef(getSocket());
-
-  const selected = sessions.find(s => s.id === selectedId) ?? null;
 
   // Auth guard
   useEffect(() => {
-    if (!authLoading && !user) {
-      navigate('/login?redirect=/live-control');
-    }
-  }, [authLoading, user]);
+    if (!authLoading && !user) navigate('/login?redirect=/live-dashboard');
+  }, [authLoading, user, navigate]);
+
+  // Redirect to dashboard if no session param
+  useEffect(() => {
+    if (!authLoading && user && !selectedId) navigate('/live-dashboard');
+  }, [authLoading, user, selectedId, navigate]);
+
+  // Load single session by ID
+  useEffect(() => {
+    if (!selectedId) return;
+    apiFetch<LiveSession>(`/live-sessions/${selectedId}`)
+      .then(setSelected)
+      .catch(() => {})
+      .finally(() => setSessionLoading(false));
+  }, [selectedId]);
 
   // Load admin settings
   useEffect(() => {
     apiFetch<{ key: string; value: unknown }[]>('/system-settings').then(rows => {
       const row = rows.find(r => r.key === 'tenant.settings');
-      if (row?.value && typeof row.value === 'object') {
+      if (row?.value && typeof row.value === 'object')
         setSettings({ ...SETTINGS_DEFAULTS, ...(row.value as SettingsVal) });
-        console.log('[LiveSettings] loaded', row.value);
-      } else {
-        console.log('[LiveSettings] fallback — using defaults');
-      }
-    }).catch(() => {
-      console.log('[LiveSettings] fallback — settings endpoint unreachable');
-    });
+    }).catch(() => {});
   }, []);
-
-  // Load sessions list
-  const loadSessions = useCallback(async () => {
-    try {
-      const data = await apiFetch<LiveSession[]>('/live-sessions');
-      setSessions(data);
-      if (!selectedId && data.length > 0) setSelectedId(data[0]!.id);
-    } catch { /* noop */ }
-  }, [selectedId]);
-
-  useEffect(() => { void loadSessions(); }, []);
 
   // Socket connection for live room
   useEffect(() => {
     if (!selectedId) return;
     const socket = socketRef.current;
     socket.emit('live:join', { sessionId: selectedId, code: selected?.tvCode ?? '' });
-    const onConnect = () => setConnected(true);
+    const onConnect    = () => setConnected(true);
     const onDisconnect = () => setConnected(false);
-    const onSessionUpdated = (data: Partial<LiveSession>) => {
-      setSessions(prev => prev.map(s => s.id === selectedId ? { ...s, ...data } : s));
-    };
+    const onSessionUpdated = (data: Partial<LiveSession>) =>
+      setSelected(prev => prev ? { ...prev, ...data } : prev);
     if (socket.connected) setConnected(true);
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
@@ -128,55 +115,21 @@ export default function LiveRoom() {
     };
   }, [selectedId]);
 
-  const createSession = async () => {
-    if (creating) return;
-    setCreating(true);
-    try {
-      const session = await apiFetch<LiveSession>('/live-sessions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: newTitle || 'Serata Live' }),
-      });
-      setSessions(prev => [session, ...prev]);
-      setSelectedId(session.id);
-      setShowCreate(false);
-      setNewTitle('');
-      toast.success('Sessione creata', { description: `TV: ${session.tvCode} · Presenter: ${session.presenterCode}` });
-    } catch (e: unknown) {
-      toast.error('Errore', { description: e instanceof Error ? e.message : 'Errore creazione' });
-    } finally {
-      setCreating(false);
-    }
-  };
-
   const sendCommand = async (command: string, payload?: unknown, label?: string) => {
     if (!selectedId) return;
     const key = command + JSON.stringify(payload ?? '');
     setCmdLoading(key);
     try {
       await apiFetch(`/live-sessions/${selectedId}/command`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command, payload }),
       });
       if (label) toast.success(label);
-      void loadSessions();
+      apiFetch<LiveSession>(`/live-sessions/${selectedId}`).then(setSelected).catch(() => {});
     } catch (e: unknown) {
       toast.error('Comando fallito', { description: e instanceof Error ? e.message : '' });
     } finally {
       setCmdLoading(null);
-    }
-  };
-
-  const deleteSession = async () => {
-    if (!selectedId || !confirm('Eliminare questa sessione live?')) return;
-    try {
-      await apiFetch(`/live-sessions/${selectedId}`, { method: 'DELETE' });
-      setSessions(prev => prev.filter(s => s.id !== selectedId));
-      setSelectedId(null);
-      toast.success('Sessione eliminata');
-    } catch (e: unknown) {
-      toast.error('Errore eliminazione', { description: e instanceof Error ? e.message : '' });
     }
   };
 
@@ -219,84 +172,36 @@ export default function LiveRoom() {
 
       <div style={{ maxWidth: 1400, margin: '0 auto', padding: '20px 24px', display: 'grid', gap: 20 }}>
 
-        {/* ── Session selector ──────────────────────────────────────── */}
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ position: 'relative', flex: 1, minWidth: 220 }}>
-            <button onClick={() => setDropdownOpen(v => !v)}
-              style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '10px 16px', background: 'rgba(168,85,247,0.08)', border: `1px solid ${selected ? 'rgba(168,85,247,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 12, cursor: 'pointer', color: '#fff', fontSize: '0.85rem', fontWeight: 700 }}>
-              <span>{selected ? selected.title : 'Seleziona sessione...'}</span>
-              <ChevronDown size={14} />
-            </button>
-            {dropdownOpen && (
-              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, marginTop: 4, background: '#12091f', border: '1px solid rgba(168,85,247,0.3)', borderRadius: 12, overflow: 'hidden', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
-                {sessions.length === 0 && <div style={{ padding: '12px 16px', color: 'rgba(255,255,255,0.4)', fontSize: '0.8rem' }}>Nessuna sessione</div>}
-                {sessions.map(s => (
-                  <button key={s.id} onClick={() => { setSelectedId(s.id); setDropdownOpen(false); }}
-                    style={{ width: '100%', textAlign: 'left', padding: '10px 16px', background: s.id === selectedId ? 'rgba(168,85,247,0.15)' : 'transparent', border: 'none', color: s.id === selectedId ? PURPLE : 'rgba(255,255,255,0.8)', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span>{s.title}</span>
-                    <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>{s.status} · TV: {s.tvCode}</span>
-                  </button>
-                ))}
+        {/* ── Session info + quick links ────────────────────────────── */}
+        {(sessionLoading || !selected) ? (
+          <div style={{ padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(168,85,247,0.06)', border: '1px solid rgba(168,85,247,0.2)', borderRadius: 14 }}>
+            {sessionLoading
+              ? <><Loader2 size={16} className="animate-spin" style={{ color: PURPLE }} /><span style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)' }}>Caricamento sessione…</span></>
+              : <><span style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.45)' }}>Sessione non trovata.</span>
+                  <a href="/live-dashboard" style={{ fontSize: '0.82rem', color: PURPLE, textDecoration: 'underline' }}>← Vai alla dashboard</a></>
+            }
+          </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 18px', background: 'rgba(168,85,247,0.07)', border: '1px solid rgba(168,85,247,0.22)', borderRadius: 14, flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontWeight: 900, fontSize: '1rem' }}>{selected.title}</div>
+              <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', marginTop: 1 }}>
+                {selected.currentGameSlug ?? 'standby'} · {selected.status}
               </div>
-            )}
-          </div>
-
-          <button onClick={() => setShowCreate(v => !v)}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', background: `linear-gradient(135deg,${PURPLE},#7C3AED)`, border: 'none', borderRadius: 12, color: '#fff', fontSize: '0.82rem', fontWeight: 900, cursor: 'pointer', boxShadow: '0 0 20px rgba(168,85,247,0.4)' }}>
-            <Plus size={14} /> Nuova Sessione
-          </button>
-
-          {selected && (
-            <button onClick={deleteSession} style={{ padding: '10px 12px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 12, color: '#EF4444', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.78rem' }}>
-              <Trash2 size={13} />
-            </button>
-          )}
-        </div>
-
-        {/* ── Create form ───────────────────────────────────────────── */}
-        {showCreate && (
-          <div style={{ display: 'flex', gap: 10, padding: '14px 16px', background: 'rgba(168,85,247,0.06)', border: '1px solid rgba(168,85,247,0.2)', borderRadius: 12 }}>
-            <input value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Nome della serata..."
-              style={{ flex: 1, padding: '8px 12px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, color: '#fff', fontSize: '0.85rem', outline: 'none' }} />
-            <button onClick={createSession} disabled={creating}
-              style={{ padding: '8px 16px', background: PURPLE, border: 'none', borderRadius: 8, color: '#fff', fontWeight: 900, fontSize: '0.82rem', cursor: 'pointer' }}>
-              {creating ? <Loader2 size={14} className="animate-spin" /> : 'Crea'}
-            </button>
-          </div>
-        )}
-
-        {/* ── Session launcher buttons ─────────────────────────────── */}
-        {selected && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-            {/* REGIA — apre live-control in un nuovo tab con sessione pre-selezionata */}
-            <a href={`/live-control?session=${selected.id}`} target="_blank" rel="noreferrer"
-              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '14px 8px', background: `${PURPLE}14`, border: `1.5px solid ${PURPLE}40`, borderRadius: 12, color: PURPLE, textDecoration: 'none', textAlign: 'center', transition: 'background 0.15s' }}>
-              <span style={{ fontSize: '1.5rem' }}>🎛️</span>
-              <span style={{ fontWeight: 900, fontSize: '0.78rem', letterSpacing: '0.06em' }}>REGIA</span>
-              <span style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.35)' }}>Animatore</span>
+            </div>
+            <div style={{ flex: 1 }} />
+            <a href={`/live-dashboard`}
+              style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', textDecoration: 'none', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '4px 10px' }}>
+              ← Dashboard
             </a>
-            {/* TV — proiettore */}
             <a href={tvUrl} target="_blank" rel="noreferrer"
-              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '14px 8px', background: 'rgba(96,165,250,0.1)', border: '1.5px solid rgba(96,165,250,0.35)', borderRadius: 12, color: '#60A5FA', textDecoration: 'none', textAlign: 'center' }}>
-              <span style={{ fontSize: '1.5rem' }}>📺</span>
-              <span style={{ fontWeight: 900, fontSize: '0.78rem', letterSpacing: '0.06em' }}>TV</span>
-              <span style={{ fontFamily: 'monospace', fontSize: '0.65rem', color: 'rgba(255,255,255,0.45)', background: 'rgba(0,0,0,0.3)', padding: '1px 5px', borderRadius: 4, letterSpacing: '0.12em' }}>{selected.tvCode}</span>
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', background: 'rgba(96,165,250,0.1)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: 8, color: '#60A5FA', textDecoration: 'none', fontSize: '0.78rem', fontWeight: 700 }}>
+              📺 <span>TV</span> <code style={{ fontSize: '0.65rem', background: 'rgba(0,0,0,0.3)', padding: '0 4px', borderRadius: 3 }}>{selected.tvCode}</code>
             </a>
-            {/* PRESENTER — telefono */}
             <a href={presenterUrl} target="_blank" rel="noreferrer"
-              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '14px 8px', background: 'rgba(52,211,153,0.08)', border: '1.5px solid rgba(52,211,153,0.3)', borderRadius: 12, color: '#34D399', textDecoration: 'none', textAlign: 'center' }}>
-              <span style={{ fontSize: '1.5rem' }}>🎤</span>
-              <span style={{ fontWeight: 900, fontSize: '0.78rem', letterSpacing: '0.06em' }}>PRESENTER</span>
-              <span style={{ fontFamily: 'monospace', fontSize: '0.65rem', color: 'rgba(255,255,255,0.45)', background: 'rgba(0,0,0,0.3)', padding: '1px 5px', borderRadius: 4, letterSpacing: '0.12em' }}>{selected.presenterCode}</span>
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', background: 'rgba(52,211,153,0.08)', border: '1px solid rgba(52,211,153,0.25)', borderRadius: 8, color: '#34D399', textDecoration: 'none', fontSize: '0.78rem', fontWeight: 700 }}>
+              🎤 <span>PRESENTER</span> <code style={{ fontSize: '0.65rem', background: 'rgba(0,0,0,0.3)', padding: '0 4px', borderRadius: 3 }}>{selected.presenterCode}</code>
             </a>
-          </div>
-        )}
-
-        {!selected && (
-          <div style={{ padding: '48px 24px', textAlign: 'center', border: '2px dashed rgba(168,85,247,0.2)', borderRadius: 16, color: 'rgba(255,255,255,0.35)' }}>
-            <Radio size={32} style={{ marginBottom: 12, opacity: 0.4 }} />
-            <div style={{ fontWeight: 900, fontSize: '0.9rem' }}>Nessuna sessione live attiva</div>
-            <div style={{ fontSize: '0.78rem', marginTop: 4 }}>Crea una nuova sessione per iniziare lo show.</div>
           </div>
         )}
 
@@ -398,6 +303,41 @@ export default function LiveRoom() {
               </div>
               <div style={{ marginTop: 8, fontSize: '0.72rem', color: 'rgba(255,255,255,0.3)' }}>
                 Sessione: <code style={{ color: '#A78BFA' }}>{selected.id.slice(0, 8)}…</code>
+              </div>
+            </Panel>
+
+            {/* ── 6. HOME SESSION (TV = HomeGame.tsx) ───────── */}
+            <Panel emoji="🏠" title="HOME SESSION — TV" color="#60A5FA">
+              <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.45)', marginBottom: 10, lineHeight: 1.5 }}>
+                Collega la TV a una sessione Home per mostrare l'interfaccia HomeGame in fullscreen sul proiettore.
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  value={homeSessionInput}
+                  onChange={e => setHomeSessionInput(e.target.value)}
+                  placeholder="Home Session ID..."
+                  style={{ flex: 1, padding: '8px 12px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, color: '#fff', fontSize: '0.8rem', outline: 'none', fontFamily: 'monospace' }}
+                />
+                <CmdButton
+                  label="Collega"
+                  icon={<Link2 size={12} />}
+                  color="#60A5FA"
+                  loading={cmdLoading === `set_home_session${JSON.stringify({ homeSessionId: homeSessionInput })}`}
+                  onClick={() => {
+                    if (!homeSessionInput.trim()) return;
+                    void sendCommand('set_home_session', { homeSessionId: homeSessionInput.trim() }, 'TV collegata a Home Session');
+                    setHomeSessionInput('');
+                  }}
+                />
+                <CmdButton
+                  label="Scollega"
+                  color="#6B7280"
+                  loading={cmdLoading === `set_home_session${JSON.stringify({ homeSessionId: null })}`}
+                  onClick={() => sendCommand('set_home_session', { homeSessionId: null }, 'TV scollegata')}
+                />
+              </div>
+              <div style={{ marginTop: 8, fontSize: '0.7rem', color: 'rgba(255,255,255,0.3)' }}>
+                La TV mostra HomeGame in iframe finché è collegata. Usa "Scollega" per tornare alla schermata default.
               </div>
             </Panel>
 

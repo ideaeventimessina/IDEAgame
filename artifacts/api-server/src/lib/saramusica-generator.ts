@@ -19,8 +19,7 @@ export type MusicRoundType =
   | "speed_music"
   | "song_vs_song"
   | "progressive_clue_music"
-  | "final_tormentone"
-  | "seconds_bid";
+  | "final_tormentone";
 
 export type ClipType = 'chorus_guess' | 'missing_word' | 'artist_guess' | 'stop_and_continue' | 'duel_song';
 
@@ -74,7 +73,6 @@ const TYPE_POINTS: Record<MusicRoundType, number> = {
   song_vs_song: 100,
   progressive_clue_music: 150,
   final_tormentone: 200,
-  seconds_bid: 100,
 };
 
 const TYPE_TIME: Record<MusicRoundType, number> = {
@@ -85,7 +83,6 @@ const TYPE_TIME: Record<MusicRoundType, number> = {
   song_vs_song: 12,
   progressive_clue_music: 35,
   final_tormentone: 25,
-  seconds_bid: 60,
 };
 
 // ── Compact round builder ─────────────────────────────────────────────────────
@@ -139,8 +136,6 @@ const BANK: Record<string, MusicRound[]> = {
     r("anni80", 7, { t: "complete_lyrics", q: "Completa: 'Girls just want to have ___'", a: ["FUN", "LOVE", "MORE", "LIFE"], c: 0, ar: "Cyndi Lauper", yr: 1983, yt: { id: "PIb6AZdTr-A", s: 37, d: 10, ct: "missing_word" } }),
     r("anni80", 8, { t: "guess_artist", q: "Chi canta 'Vado al Massimo' (1982)?", a: ["Vasco Rossi", "Lucio Battisti", "Zucchero", "Gianna Nannini"], c: 0, st: "Vado al Massimo", yr: 1982 }),
     r("anni80", 9, { t: "final_tormentone", q: "FINALE DOPPIO! Quale canzone italiana ha vinto il Festival di Sanremo 1987?", a: ["Si può dare di più (Morandi/Ruggeri/Tozzi)", "Sarà perché ti amo (Ricchi e Poveri)", "Ci sei o non ci sei (Ornella Vanoni)", "Brivido felice (Pino Daniele)"], c: 0, yr: 1987, ex: "Si può dare di più di Gianni Morandi, Umberto Tozzi e Enrico Ruggeri vinse Sanremo 1987", pts: 200, tl: 25 }),
-    r("anni80", 10, { t: "seconds_bid", q: "🎵 ASTA! Quanti secondi ti bastano per indovinare questa canzone?", a: ["Take On Me (a-ha)", "Don't You (Forget About Me) (Simple Minds)", "Girls Just Want to Have Fun (Cyndi Lauper)", "Wake Me Up Before You Go-Go (Wham!)"], c: 0, ar: "a-ha", st: "Take On Me", yr: 1985, yt: { id: "djV11Xbc914", s: 45, d: 30, ct: "chorus_guess" }, pts: 100, tl: 60 }),
-    r("anni80", 11, { t: "seconds_bid", q: "🎵 ASTA! Pochi secondi bastano al campione — quanti ne vuoi?", a: ["Billie Jean (Michael Jackson)", "Purple Rain (Prince)", "Beat It (Michael Jackson)", "Karma Chameleon (Culture Club)"], c: 0, ar: "Michael Jackson", st: "Billie Jean", yr: 1983, yt: { id: "Zi_XLOBDo_Y", s: 55, d: 30, ct: "chorus_guess" }, pts: 100, tl: 60 }),
   ],
 
   anni90: [
@@ -154,8 +149,6 @@ const BANK: Record<string, MusicRound[]> = {
     r("anni90", 7, { t: "complete_lyrics", q: "Completa: 'No woman, no ___' (Bob Marley)", a: ["CRY", "WAY", "LOVE", "MORE"], c: 0, ar: "Bob Marley" }),
     r("anni90", 8, { t: "guess_artist", q: "Chi canta 'Un'estate italiana' (Italia 90)?", a: ["Edoardo Bennato & Gianna Nannini", "Vasco Rossi & Zucchero", "Lucio Dalla & Francesco De Gregori", "Eros Ramazzotti & Laura Pausini"], c: 0, yr: 1990 }),
     r("anni90", 9, { t: "final_tormentone", q: "FINALE DOPPIO! Quale artista italiano ha venduto più dischi negli anni '90?", a: ["Eros Ramazzotti", "Zucchero", "Laura Pausini", "Andrea Bocelli"], c: 0, pts: 200, tl: 25, ex: "Eros Ramazzotti ha venduto oltre 60 milioni di dischi nel mondo" }),
-    r("anni90", 10, { t: "seconds_bid", q: "🎵 ASTA! Quanti secondi ti bastano per indovinare questa hit?", a: ["...Baby One More Time (Britney Spears)", "Genie in a Bottle (Christina Aguilera)", "I Want It That Way (Backstreet Boys)", "Bye Bye Bye (NSYNC)"], c: 0, ar: "Britney Spears", st: "...Baby One More Time", yr: 1998, yt: { id: "C-u5WLJ9Ig0", s: 54, d: 30, ct: "chorus_guess" }, pts: 100, tl: 60 }),
-    r("anni90", 11, { t: "seconds_bid", q: "🎵 ASTA! Il campione di musica ne ha bisogno di pochi — e tu?", a: ["Wannabe (Spice Girls)", "Independent Women (Destiny's Child)", "Waterfalls (TLC)", "Say My Name (Destiny's Child)"], c: 0, ar: "Spice Girls", st: "Wannabe", yr: 1996, yt: { id: "gJLIiF15wGQ", s: 0, d: 30, ct: "chorus_guess" }, pts: 100, tl: 60 }),
   ],
 
   anni2000: [
@@ -261,7 +254,7 @@ BANK["custom"] = shuffleArr(
 // ── Fallback generator ────────────────────────────────────────────────────────
 
 export function generateSaraMusicaFallback(themeId: string, count: number, difficulty: "easy" | "medium" | "hard" = "medium"): MusicRound[] {
-  const bank = (BANK[themeId] ?? BANK["anni90"] ?? []).filter(r => r.type !== "seconds_bid");
+  const bank = BANK[themeId] ?? BANK["anni90"] ?? [];
   const shuffled = shuffleArr([...bank]);
   // If count > bank size, repeat shuffled rounds with new ids
   const result: MusicRound[] = [];

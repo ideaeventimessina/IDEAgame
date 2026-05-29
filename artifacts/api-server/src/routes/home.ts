@@ -101,8 +101,6 @@ const quizzoneRevealTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const adultChallengeTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const adultVotingTimers    = new Map<string, ReturnType<typeof setTimeout>>();
 const adultChoiceTimers    = new Map<string, ReturnType<typeof setTimeout>>();
-// SaraMusica bid: per-session bid map { playerId → bid }
-const smBidMaps            = new Map<string, Map<string, number>>();
 // Coppie: theme suggestion phase auto-advance timer
 const coppieThemeTimers    = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -1688,24 +1686,13 @@ router.post("/home/sessions/:id/saramusica/select-count", async (req, res): Prom
           await smUpdate(id, { countdownValue: 1 });
           setTimeout(async () => {
             const firstQ = rounds[0] as MusicRound | undefined;
-            const isBidFirst = firstQ?.type === "seconds_bid";
             const firstEndsAt = Date.now() + (firstQ?.timeLimit ?? 20) * 1000;
-            if (isBidFirst) {
-              await smUpdate(id, {
-                phase: "bid_open", currentIndex: 0, countdownValue: null,
-                bidMap: {}, winnerPlayerId: null, winnerNickname: null, winningBid: null, bidWrongOpen: false,
-                questionStartedAt: new Date().toISOString(), questionEndsAt: null,
-                currentClueIndex: 0, allAnsweredForCurrent: false, answeredCount: 0, revealData: null, rankingData: null, totalRounds: roundCount,
-              });
-            } else {
-              await smUpdate(id, {
-                phase: "question", currentIndex: 0, countdownValue: null,
-                questionStartedAt: new Date().toISOString(), questionEndsAt: new Date(firstEndsAt).toISOString(),
-                currentClueIndex: 0, allAnsweredForCurrent: false, answeredCount: 0, revealData: null, rankingData: null, totalRounds: roundCount,
-                bidMap: {}, winnerPlayerId: null, winnerNickname: null, winningBid: null, bidWrongOpen: false,
-              });
-              scheduleSmAutoReveal(id, 0, firstEndsAt);
-            }
+            await smUpdate(id, {
+              phase: "question", currentIndex: 0, countdownValue: null,
+              questionStartedAt: new Date().toISOString(), questionEndsAt: new Date(firstEndsAt).toISOString(),
+              currentClueIndex: 0, allAnsweredForCurrent: false, answeredCount: 0, revealData: null, rankingData: null, totalRounds: roundCount,
+            });
+            scheduleSmAutoReveal(id, 0, firstEndsAt);
             await db.update(homeSessionsTable)
               .set({ totalRounds: roundCount, currentRound: 0 })
               .where(eq(homeSessionsTable.id, id));
@@ -1774,7 +1761,7 @@ router.post("/home/sessions/:id/saramusica/reveal", async (req, res): Promise<vo
   const session = await getSession(id);
   if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
   const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
-  if (rp["mode"] !== "home-saramusica" || !["question","bid_answer"].includes(String(rp["phase"] ?? ""))) { res.status(409).json({ error: "Fase non corretta" }); return; }
+  if (rp["mode"] !== "home-saramusica" || rp["phase"] !== "question") { res.status(409).json({ error: "Fase non corretta" }); return; }
   const currentIndex = Number(rp["currentIndex"] ?? 0);
   const existing = smRevealTimers.get(id);
   if (existing) { clearTimeout(existing); smRevealTimers.delete(id); }
@@ -1819,132 +1806,16 @@ router.post("/home/sessions/:id/saramusica/next", async (req, res): Promise<void
     return;
   }
   const nextQ = (rounds[nextIndex] as MusicRound | undefined);
-  const isBidNext = nextQ?.type === "seconds_bid";
   const nextEndsAt = Date.now() + (nextQ?.timeLimit ?? 20) * 1000;
-  if (isBidNext) {
-    smBidMaps.delete(id);
-    await smUpdate(id, {
-      phase: "bid_open", currentIndex: nextIndex,
-      bidMap: {}, winnerPlayerId: null, winnerNickname: null, winningBid: null, bidWrongOpen: false,
-      questionStartedAt: new Date().toISOString(), questionEndsAt: null,
-      currentClueIndex: 0, allAnsweredForCurrent: false, answeredCount: 0, revealData: null,
-      rankingData: rp["phase"] === "ranking" ? rankingData : rp["rankingData"],
-    });
-  } else {
-    await smUpdate(id, {
-      phase: "question", currentIndex: nextIndex,
-      questionStartedAt: new Date().toISOString(), questionEndsAt: new Date(nextEndsAt).toISOString(),
-      currentClueIndex: 0, allAnsweredForCurrent: false, answeredCount: 0, revealData: null,
-      bidMap: {}, winnerPlayerId: null, winnerNickname: null, winningBid: null, bidWrongOpen: false,
-      rankingData: rp["phase"] === "ranking" ? rankingData : rp["rankingData"],
-    });
-    scheduleSmAutoReveal(id, nextIndex, nextEndsAt);
-  }
+  await smUpdate(id, {
+    phase: "question", currentIndex: nextIndex,
+    questionStartedAt: new Date().toISOString(), questionEndsAt: new Date(nextEndsAt).toISOString(),
+    currentClueIndex: 0, allAnsweredForCurrent: false, answeredCount: 0, revealData: null,
+    rankingData: rp["phase"] === "ranking" ? rankingData : rp["rankingData"],
+  });
+  scheduleSmAutoReveal(id, nextIndex, nextEndsAt);
   await db.update(homeSessionsTable).set({ currentRound: nextIndex }).where(eq(homeSessionsTable.id, id));
   logger.info({ sessionId: id, nextIndex }, "[SaraMusicaHome] advanced to next question");
-  res.json({ ok: true });
-});
-
-// ── Adult Only — Bottiglia Party Engine ───────────────────────────────────────
-
-// ── SaraMusica: Seconds Bid routes ───────────────────────────────────────────
-
-// POST /saramusica/bid — player submits bid (1-10s)
-router.post("/home/sessions/:id/saramusica/bid", async (req, res): Promise<void> => {
-  const id = String(req.params["id"]);
-  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
-  const session = await getSession(id);
-  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
-  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
-  if (rp["mode"] !== "home-saramusica" || rp["phase"] !== "bid_open") { res.status(409).json({ error: "Non in fase asta" }); return; }
-  const { playerId, bid } = req.body as { playerId: string; bid: number };
-  if (!playerId || typeof bid !== "number" || bid < 1 || bid > 10) { res.status(400).json({ error: "Offerta non valida (1-10)" }); return; }
-  if (!smBidMaps.has(id)) smBidMaps.set(id, new Map());
-  smBidMaps.get(id)!.set(playerId, bid);
-  const bidMap: Record<string, number> = {};
-  smBidMaps.get(id)!.forEach((v, k) => { bidMap[k] = v; });
-  await smUpdate(id, { bidMap });
-  res.json({ ok: true });
-});
-
-// POST /saramusica/close-bid — host closes auction: picks lowest bid winner
-router.post("/home/sessions/:id/saramusica/close-bid", async (req, res): Promise<void> => {
-  const id = String(req.params["id"]);
-  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
-  const session = await getSession(id);
-  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
-  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
-  if (rp["mode"] !== "home-saramusica" || rp["phase"] !== "bid_open") { res.status(409).json({ error: "Non in fase asta" }); return; }
-  const bidMap = (rp["bidMap"] ?? {}) as Record<string, number>;
-  const entries = Object.entries(bidMap);
-  if (entries.length === 0) { res.status(400).json({ error: "Nessuna offerta ricevuta" }); return; }
-  const minBid = Math.min(...entries.map(([, v]) => v));
-  const tied = entries.filter(([, v]) => v === minBid);
-  const [winnerId] = tied[Math.floor(Math.random() * tied.length)]!;
-  const players = await getPlayers(id);
-  const winnerNickname = players.find(p => p.id === winnerId)?.nickname ?? "?";
-  await smUpdate(id, { phase: "bid_winner", winnerPlayerId: winnerId, winnerNickname, winningBid: minBid });
-  res.json({ ok: true, winnerPlayerId: winnerId, winnerNickname, winningBid: minBid });
-});
-
-// POST /saramusica/bid-start-answer — host confirms clip done, winner can answer
-router.post("/home/sessions/:id/saramusica/bid-start-answer", async (req, res): Promise<void> => {
-  const id = String(req.params["id"]);
-  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
-  const session = await getSession(id);
-  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
-  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
-  if (rp["mode"] !== "home-saramusica" || rp["phase"] !== "bid_winner") { res.status(409).json({ error: "Fase non corretta" }); return; }
-  await smUpdate(id, { phase: "bid_answer", bidWrongOpen: false });
-  res.json({ ok: true });
-});
-
-// POST /saramusica/bid-answer — winner (or all if bidWrongOpen) submits answer
-router.post("/home/sessions/:id/saramusica/bid-answer", async (req, res): Promise<void> => {
-  const id = String(req.params["id"]);
-  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
-  const { playerId, answerIndex } = req.body as { playerId: string; answerIndex: number };
-  if (!playerId || typeof answerIndex !== "number") { res.status(400).json({ error: "Parametri mancanti" }); return; }
-  const session = await getSession(id);
-  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
-  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
-  if (rp["mode"] !== "home-saramusica" || rp["phase"] !== "bid_answer") { res.status(409).json({ error: "Non in fase risposta" }); return; }
-  const winnerPlayerId = String(rp["winnerPlayerId"] ?? "");
-  const winningBid     = Number(rp["winningBid"] ?? 5);
-  const bidWrongOpen   = Boolean(rp["bidWrongOpen"]);
-  if (!bidWrongOpen && playerId !== winnerPlayerId) { res.status(409).json({ error: "Non sei il vincitore dell'asta" }); return; }
-  const currentIndex = Number(rp["currentIndex"] ?? 0);
-  const rounds = (rp["rounds"] ?? []) as MusicRound[];
-  const q = rounds[currentIndex] as MusicRound | undefined;
-  const correct = q ? answerIndex === q.correctAnswerIndex : false;
-  if (!smAnswerMap.has(id)) smAnswerMap.set(id, new Map());
-  const sessionMap = smAnswerMap.get(id)!;
-  if (!sessionMap.has(currentIndex)) sessionMap.set(currentIndex, new Map());
-  sessionMap.get(currentIndex)!.set(playerId, { answerIndex, answeredAt: Date.now() });
-  if (correct && !bidWrongOpen) {
-    // Winner correct — award bid-scaled points, then reveal
-    const pts = Math.max(10, 100 - winningBid * 10);
-    const players2 = await getPlayers(id);
-    const winner = players2.find(p => p.id === winnerPlayerId);
-    if (winner) await db.update(homePlayersTable).set({ score: winner.score + pts }).where(eq(homePlayersTable.id, winnerPlayerId));
-    await performSmReveal(id, currentIndex);
-    res.json({ ok: true, correct: true, pts });
-    return;
-  }
-  if (!correct && !bidWrongOpen) {
-    // Winner wrong — open to everyone
-    await smUpdate(id, { bidWrongOpen: true });
-    res.json({ ok: true, correct: false, open: true });
-    return;
-  }
-  // Open mode: record answer, check if all connected players answered
-  const players2 = await getPlayers(id);
-  const connected = players2.filter(p => p.isConnected);
-  const effectiveCount = connected.length > 0 ? connected.length : players2.length;
-  const answeredCount = sessionMap.get(currentIndex)!.size;
-  const allAnswered = effectiveCount > 0 && answeredCount >= effectiveCount;
-  await smUpdate(id, { answeredCount, allAnsweredForCurrent: allAnswered });
-  if (allAnswered) await performSmReveal(id, currentIndex);
   res.json({ ok: true });
 });
 

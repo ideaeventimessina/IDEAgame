@@ -1,0 +1,158 @@
+LIVE MODE REBUILD — FIX ARCHITETTURA TV / REGIA / PRESENTER
+
+Abbiamo individuato un errore concettuale nella modalità Live.
+
+Correggere seguendo queste regole.
+
+---
+
+1. TV = renderer della modalità Home
+
+---
+
+NON usare schermate placeholder nere custom.
+
+La TV deve renderizzare direttamente:
+
+HomeGame.tsx
+
+in fullscreen.
+
+Riutilizzare lo stesso motore visuale già usato in modalità Home:
+
+* intro
+* countdown
+* timer
+* reveal
+* risultati
+* classifiche
+* sfondi
+* media
+* overlay
+* animazioni
+
+La TV deve essere:
+
+fullscreen
+clean
+senza menu
+senza debug
+senza codice TV al centro
+senza stato “in attesa del presentatore”
+
+TV = stessa esperienza grafica della modalità Home.
+
+---
+
+2. REGIA
+
+---
+
+La regia resta il pannello principale di controllo.
+
+Mantiene:
+
+* start
+* pausa
+* resume
+* next
+* reveal
+* classifica
+* blackout
+* audio stop
+* media triggers
+* punti squadra
+* override giochi
+
+UI:
+
+meno scura.
+
+Aumentare luminosità pannello del 20–30%.
+
+Migliorare contrasto.
+
+---
+
+3. PRESENTER
+
+---
+
+Il presenter NON deve aprirsi mostrando subito Coppie Live.
+
+Prima schermata presenter:
+
+dashboard presenter con grossi pulsanti.
+
+Mostrare:
+
+* scegli gioco
+* start
+* pausa
+* avanti
+* reveal
+* classifica
+
+solo entrando in “Gioco delle Coppie LIVE” mostrare:
+
+10 slot coppie
+
+con:
+
+Nome coppia
+Foto A
+Foto B
+
+camera upload da telefono.
+
+---
+
+4. FLOW LIVE
+
+---
+
+Correggere routing.
+
+Attualmente:
+Modalità Live → entra subito nella sessione
+
+Corretto:
+Modalità Live → /live-dashboard
+
+Dashboard live mostra:
+
+* Nuova Sessione
+  Sessioni esistenti
+
+aprendo una sessione:
+
+REGIA
+TV
+PRESENTER
+
+---
+
+5. GIOCO COPPIE LIVE
+
+---
+
+Le foto delle 10 coppie vengono scattate SOLO dal presenter.
+
+Il presenter crea:
+
+Coppia 1 → Foto A + Foto B
+Coppia 2 → Foto A + Foto B
+
+...
+
+fino a Coppia 10.
+
+La TV mostra il memory usando quelle immagini reali.
+
+Fallback:
+se non caricate foto sufficienti:
+usa categorie pre-esistenti del gioco coppie.
+
+NON introdurre nuovi layout custom inutili.
+
+Riutilizzare sempre il sistema grafico già esistente Home dove possibile.
