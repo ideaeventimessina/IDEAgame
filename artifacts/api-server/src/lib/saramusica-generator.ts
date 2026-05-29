@@ -261,7 +261,7 @@ BANK["custom"] = shuffleArr(
 // ── Fallback generator ────────────────────────────────────────────────────────
 
 export function generateSaraMusicaFallback(themeId: string, count: number, difficulty: "easy" | "medium" | "hard" = "medium"): MusicRound[] {
-  const bank = BANK[themeId] ?? BANK["anni90"] ?? [];
+  const bank = (BANK[themeId] ?? BANK["anni90"] ?? []).filter(r => r.type !== "seconds_bid");
   const shuffled = shuffleArr([...bank]);
   // If count > bank size, repeat shuffled rounds with new ids
   const result: MusicRound[] = [];
@@ -345,7 +345,7 @@ Regole:
 - Rispetta il livello di difficoltà: ${diffLabel}`;
 
   const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
+    model: "gpt-5-mini",
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },

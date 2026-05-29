@@ -412,8 +412,8 @@ export default function LiveRoom() {
 
 function Panel({ emoji, title, color, children }: { emoji: string; title: string; color: string; children: React.ReactNode }) {
   return (
-    <div style={{ borderRadius: 16, border: `1px solid ${color}20`, background: 'rgba(255,255,255,0.02)', overflow: 'hidden' }}>
-      <div style={{ padding: '12px 16px', background: `${color}0a`, borderBottom: `1px solid ${color}15` }}>
+    <div style={{ borderRadius: 16, border: `1px solid ${color}38`, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
+      <div style={{ padding: '12px 16px', background: `${color}18`, borderBottom: `1px solid ${color}28` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: '1.1rem' }}>{emoji}</span>
           <span style={{ fontWeight: 900, fontSize: '0.75rem', letterSpacing: '0.12em', color }}>{title}</span>
@@ -429,7 +429,7 @@ function CmdButton({ label, icon, color, loading, onClick }: {
 }) {
   return (
     <button onClick={onClick} disabled={loading}
-      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '8px 10px', background: `${color}14`, border: `1px solid ${color}35`, borderRadius: 8, color, fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s', opacity: loading ? 0.6 : 1 }}>
+      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '8px 10px', background: `${color}25`, border: `1px solid ${color}55`, borderRadius: 8, color, fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s', opacity: loading ? 0.6 : 1 }}>
       {loading ? <Loader2 size={12} className="animate-spin" /> : icon}
       {label}
     </button>

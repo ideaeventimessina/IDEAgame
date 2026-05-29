@@ -159,34 +159,49 @@ export default function LiveTV() {
   // ── Standby ─────────────────────────────────────────────────────────────
   if (!session?.currentGameSlug || session.currentPhase === 'standby') {
     return (
-      <FullScreen>
+      <div style={{ position: 'fixed', inset: 0, background: '#09050f', display: 'grid', placeItems: 'center', fontFamily: "'Outfit','Space Grotesk',sans-serif", color: '#fff' }}>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '5rem', marginBottom: 24, filter: 'drop-shadow(0 0 30px rgba(168,85,247,0.6))' }}>🎤</div>
-          <div style={{ fontWeight: 900, fontSize: '2rem', letterSpacing: '0.1em', color: '#A855F7', marginBottom: 8 }}>
+          <div style={{ fontSize: '6rem', marginBottom: 28, filter: 'drop-shadow(0 0 50px rgba(168,85,247,0.7)) drop-shadow(0 0 100px rgba(168,85,247,0.3))' }}>🎤</div>
+          <div style={{ fontWeight: 900, fontSize: '2.4rem', letterSpacing: '0.08em', color: '#A855F7', textShadow: '0 0 60px rgba(168,85,247,0.5)' }}>
             {session?.title ?? 'SERATA LIVE'}
           </div>
-          <div style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.4)', marginBottom: 32 }}>
-            In attesa del presentatore…
-          </div>
-          <CodeBadge label="CODICE TV" code={code} color="#A855F7" />
-          <ConnectionDot connected={connected} />
         </div>
-      </FullScreen>
+        <ConnectionDot connected={connected} />
+      </div>
     );
   }
 
-  // ── Other game placeholder ───────────────────────────────────────────────
+  // ── Other game (playing) ─────────────────────────────────────────────────
+  const GAME_EMOJI: Record<string, string> = {
+    'gioco-coppie': '🃏', 'percorso-a-risate': '🎲', 'quizzone': '❓',
+    'sfida-ballo': '💃', 'sara-musica': '🎵',
+  };
+  const GAME_NAME: Record<string, string> = {
+    'gioco-coppie': 'COPPIE LIVE', 'percorso-a-risate': 'PERCORSO A RISATE',
+    'quizzone': 'QUIZZONE', 'sfida-ballo': 'SFIDA DI BALLO', 'sara-musica': "SARA'MUSICA",
+  };
+  const GAME_COLOR: Record<string, string> = {
+    'gioco-coppie': '#A855F7', 'percorso-a-risate': '#F59E0B',
+    'quizzone': '#60A5FA', 'sfida-ballo': '#EC4899', 'sara-musica': '#34D399',
+  };
+  const slug  = session.currentGameSlug;
+  const emoji = GAME_EMOJI[slug] ?? '🎮';
+  const name  = GAME_NAME[slug]  ?? slug.toUpperCase();
+  const color = GAME_COLOR[slug] ?? '#A855F7';
   return (
-    <FullScreen>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: '0.8rem', letterSpacing: '0.2em', color: '#A855F7', marginBottom: 12 }}>LIVE</div>
-        <div style={{ fontWeight: 900, fontSize: '2.5rem', marginBottom: 8 }}>
-          {session.currentGameSlug}
+    <div style={{ position: 'fixed', inset: 0, background: '#09050f', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: "'Outfit','Space Grotesk',sans-serif", color: '#fff' }}>
+      <div style={{ position: 'absolute', inset: 0, background: `radial-gradient(ellipse 60% 55% at 50% 50%, ${color}18 0%, transparent 70%)`, pointerEvents: 'none' }} />
+      <div style={{ textAlign: 'center', position: 'relative' }}>
+        <div style={{ fontSize: '8rem', marginBottom: 24, filter: `drop-shadow(0 0 60px ${color}88)` }}>{emoji}</div>
+        <div style={{ fontWeight: 900, fontSize: '3rem', letterSpacing: '0.12em', color, textShadow: `0 0 80px ${color}66`, marginBottom: 12 }}>
+          {name}
         </div>
-        <div style={{ fontSize: '1rem', color: 'rgba(255,255,255,0.5)' }}>{session.currentPhase}</div>
-        <ConnectionDot connected={connected} />
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 20px', background: `${color}18`, border: `1px solid ${color}44`, borderRadius: 100, fontSize: '0.9rem', fontWeight: 700, color: 'rgba(255,255,255,0.6)', letterSpacing: '0.08em' }}>
+          {session.currentPhase}
+        </div>
       </div>
-    </FullScreen>
+      <ConnectionDot connected={connected} />
+    </div>
   );
 }
 
