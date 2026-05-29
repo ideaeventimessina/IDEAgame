@@ -1577,7 +1577,9 @@ export default function HomeGame() {
           <motion.div key="playing" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
             className="relative z-10 flex flex-1 flex-col">
 
-            <HomeSessionQROverlay joinCode={session.joinCode} />
+            {!(session.gameSlug === 'karaoke-battle' &&
+                ((session.gameConfig as Record<string,unknown>)?.karaokeHomeState as {version?:number}|undefined)?.version === 3
+              ) && <HomeSessionQROverlay joinCode={session.joinCode} />}
             {/* Top bar */}
             <div className="flex items-center justify-between px-6 py-3"
               style={{background:'rgba(0,0,0,0.5)',backdropFilter:'blur(14px)',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
