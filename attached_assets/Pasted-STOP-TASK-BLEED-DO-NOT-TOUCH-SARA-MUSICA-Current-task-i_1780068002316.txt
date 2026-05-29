@@ -1,0 +1,140 @@
+STOP TASK BLEED. DO NOT TOUCH SARA'MUSICA.
+
+Current task is ONLY Live Mode navigation + TV architecture.
+
+Problems:
+1. Clicking Modalità Live still lands on Regia / live-control.
+2. I explicitly asked to land on a Live Dashboard first.
+3. /live-tv is worse than before and still uses custom placeholder logic.
+4. Reports keep mentioning Sara'Musica even when it is not in scope.
+
+MANDATORY RULE:
+Do not read, audit, edit, typecheck specifically, or mention Sara'Musica.
+If a global typecheck includes it, fine, but do not report on it.
+
+==================================================
+PART 1 — CREATE REAL /live-dashboard
+==================================================
+
+Create route:
+/live-dashboard
+
+This must be the first landing page after clicking Modalità Live.
+
+ModeSelect Live button must go to:
+/live-dashboard
+
+NOT:
+/live-control
+NOT:
+/live-tv
+NOT:
+/admin
+NOT Home.
+
+Live Dashboard must show:
+- title: Live Dashboard
+- button: + Nuova sessione
+- list of existing live sessions
+- for each session:
+  - session name
+  - status
+  - codes
+  - buttons:
+    REGIA
+    TV
+    PRESENTER
+
+Clicking:
+REGIA → /live-control?session=SESSION_ID
+TV → /live-tv?s=TV_CODE
+PRESENTER → /live-presenter?s=PRESENTER_CODE
+
+==================================================
+PART 2 — /live-control ONLY AFTER SESSION SELECTION
+==================================================
+
+/live-control must not be the landing page.
+
+If /live-control opens with no session:
+show:
+“Seleziona una sessione dalla Live Dashboard”
+button:
+Vai alla Live Dashboard
+
+==================================================
+PART 3 — FIX LIVE TV ARCHITECTURE
+==================================================
+
+TV must NOT invent a new placeholder show.
+
+Remove custom “microphone / name / waiting presenter” TV screen.
+
+If no game active:
+show the same visual standby/landing style as Home mode, not a black minimal placeholder.
+
+If game active:
+TV must reuse the existing Home game renderer/board where possible.
+
+For now:
+- create LiveTVRenderer wrapper
+- map live runtime payload to the existing HomeGame board component/visual components
+- if mapping not possible yet, show clean branded standby with Jonny’s World background, not black empty screen.
+
+Do NOT create separate ugly custom TV screens.
+
+==================================================
+PART 4 — PRESENTER FIRST SCREEN
+==================================================
+
+Presenter must not open directly on Coppie Live form.
+
+First screen:
+Presenter Dashboard
+
+Large buttons:
+- Scegli gioco
+- Start
+- Pausa
+- Avanti
+- Reveal
+- Classifica
+- Coppie Live
+- Stop audio
+
+Only when clicking Coppie Live:
+show the 10 couples photo capture UI.
+
+==================================================
+PART 5 — VISUAL BRIGHTNESS
+==================================================
+
+Live Control and Presenter are too dark.
+
+Increase readability:
+- lighter panels
+- stronger contrast
+- larger buttons
+- less black empty space
+- clearer active session state
+
+Do not make it white.
+Keep Jonny dark premium, but usable in event environment.
+
+==================================================
+OUTPUT REQUIRED
+==================================================
+
+A. Confirm Sara'Musica untouched.
+B. files modified
+C. /live-dashboard created
+D. ModeSelect Live redirects to /live-dashboard
+E. /live-control no session behavior fixed
+F. /live-tv placeholder removed
+G. Presenter first screen fixed
+H. screenshots:
+   - /live-dashboard
+   - /live-control with session
+   - /live-tv standby
+   - /live-presenter dashboard
+I. typecheck
