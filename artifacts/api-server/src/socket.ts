@@ -95,6 +95,23 @@ export function initSocket(server: HttpServer): SocketServer {
       void socket.leave(`event:${eventId}`);
     });
 
+    // ── Live Mode rooms ──────────────────────────────────────────────────
+    socket.on("live:join", (data: unknown) => {
+      if (!data || typeof data !== "object") return;
+      const d = data as Record<string, unknown>;
+      const sessionId = d["sessionId"];
+      if (typeof sessionId !== "string" || !sessionId) return;
+      void socket.join(`live:${sessionId}`);
+      logger.info({ sid: socket.id, sessionId }, "ws:live:join");
+    });
+
+    socket.on("live:leave", (data: unknown) => {
+      if (!data || typeof data !== "object") return;
+      const d = data as Record<string, unknown>;
+      const sessionId = d["sessionId"];
+      if (typeof sessionId === "string") void socket.leave(`live:${sessionId}`);
+    });
+
     /**
      * Players call this after a successful POST /events/:id/players.
      * Links this socketId to a playerId so we can track connect/disconnect.

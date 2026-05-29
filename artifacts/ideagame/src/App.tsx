@@ -58,6 +58,11 @@ const GameKaraoke    = lazy(() => import("@/pages/GameKaraoke"));
 const GameFreestyle  = lazy(() => import("@/pages/GameFreestyle"));
 const GameSaraMusica = lazy(() => import("@/pages/GameSaraMusica"));
 
+// Live Mode
+const LiveRoom       = lazy(() => import("@/pages/LiveRoom"));
+const LiveTV         = lazy(() => import("@/pages/LiveTV"));
+const LivePresenter  = lazy(() => import("@/pages/LivePresenter"));
+
 // Misc
 const LiveControl    = lazy(() => import("@/pages/LiveControl"));
 const EventSetup     = lazy(() => import("@/pages/EventSetup"));
@@ -163,6 +168,9 @@ function Router() {
         <Route path="/join/:code" component={JoinPage} />
         <Route path="/home" component={HomeGame} />
         <Route path="/home/join" component={HomeJoin} />
+        <Route path="/live-control" component={LiveRoom} />
+        <Route path="/live-tv" component={LiveTV} />
+        <Route path="/live-presenter" component={LivePresenter} />
         <Route path="/presenter-live" component={PresenterLive} />
         <Route path="/presenter" component={Presenter} />
         <Route path="/admin">{() => { window.location.replace('/admin/dashboard'); return null; }}</Route>

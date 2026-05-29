@@ -46,6 +46,7 @@ import storageRouter from "./storage";
 import setupRouter from "./setup";
 import contentPacksRouter from "./content-packs";
 import gameMediaSlotsRouter from "./game-media-slots";
+import liveSessionsRouter from "./live-sessions";
 
 const router: IRouter = Router();
 
@@ -100,5 +101,7 @@ router.use(storageRouter);
 router.use(setupRouter);
 router.use(contentPacksRouter);
 router.use(gameMediaSlotsRouter);
+// live-sessions/by-code/:code must come BEFORE live-sessions/:id to avoid param collision
+router.use(liveSessionsRouter);
 
 export default router;

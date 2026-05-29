@@ -1,0 +1,386 @@
+LIVE MODE — BUILD REAL SHOW CONTROL SYSTEM
+
+Current state:
+- Home Mode works.
+- Admin exists for content/settings.
+- Live Mode is not yet a real show control system.
+
+Goal:
+Create the first real Live Control architecture that connects:
+ADMIN → LIVE CONTROL → TV → PRESENTER → PLAYERS.
+
+Do not break Home Mode.
+Do not rewrite games.
+Start with the Live runtime shell + one complete example: Gioco delle Coppie Live.
+
+==================================================
+PART 1 — LIVE MODE ENTRY FLOW
+==================================================
+
+When user clicks “Modalità Live” from /mode-select:
+
+If not logged in:
+redirect to login.
+
+After login:
+land on:
+/live-control
+
+Do not send user to Home.
+Do not send user to old Admin.
+
+==================================================
+PART 2 — LIVE CONTROL ROUTE
+==================================================
+
+Create route:
+
+/live-control
+
+This is NOT admin.
+This is runtime show direction.
+
+Page sections:
+
+1. TV REGIA
+- Start game
+- Pause
+- Resume
+- Next phase
+- Force reveal
+- Force ranking
+- Blackout screen
+- Show logo standby
+- Stop all audio
+
+2. PRESENTER
+- current game
+- next action
+- timer
+- host notes
+- suggested phrase to say
+- selected players
+- emergency skip
+
+3. PLAYERS
+- connected players
+- online/offline
+- role
+- battery if available
+- kick/rejoin
+
+4. MEDIA TRIGGERS
+- applause
+- laugh
+- suspense
+- fail
+- victory
+- countdown
+- stop all
+
+5. GAME OVERRIDES
+- override timer
+- override score
+- enable/disable audience voting
+- enable/disable AI
+- force next round
+
+==================================================
+PART 3 — LIVE SESSION MODEL
+==================================================
+
+Add DB/runtime model:
+
+live_sessions {
+  id,
+  title,
+  status: "draft" | "active" | "paused" | "ended",
+  currentGameSlug,
+  currentPhase,
+  tvCode,
+  presenterCode,
+  createdBy,
+  createdAt,
+  updatedAt
+}
+
+live_game_assets {
+  id,
+  liveSessionId,
+  gameSlug,
+  assetType,
+  label,
+  url,
+  metadataJson,
+  createdBy,
+  createdAt
+}
+
+live_runtime_state {
+  liveSessionId,
+  currentGameSlug,
+  currentPhase,
+  payloadJson,
+  updatedAt
+}
+
+==================================================
+PART 4 — ROLE ENTRY SYSTEM
+==================================================
+
+Create separate role links:
+
+TV:
+/live-tv?s=CODE
+
+Presenter:
+/live-presenter?s=CODE
+
+Regia:
+/live-control?s=CODE
+
+Assistant:
+/live-assistant?s=CODE
+
+Player:
+/live-join?s=CODE
+
+Each role sees a different UI.
+
+==================================================
+PART 5 — ADMIN SETTINGS CONNECTION
+==================================================
+
+Live Control must read from Admin settings:
+
+- language
+- projector mode
+- audio volumes
+- Jonny enabled
+- vote timer defaults
+- reveal timer defaults
+- media slot URLs
+
+If admin settings are missing:
+use safe defaults.
+
+Add logs:
+[LiveSettings] loaded
+[LiveSettings] fallback
+
+==================================================
+PART 6 — CONTENT SOURCE RULE
+==================================================
+
+Live games must load only content with:
+
+live_enabled = true
+
+Home games must load only:
+
+home_enabled = true
+
+If content pack has both:
+usable in both.
+
+If no live pack exists:
+show warning in Live Control:
+“Questo gioco non ha contenuti Live attivi.”
+
+==================================================
+PART 7 — COPPIE LIVE — COMPLETE FIRST EXAMPLE
+==================================================
+
+Build Gioco delle Coppie Live as first full Live example.
+
+Home behavior:
+uses static/generated image deck.
+
+Live behavior:
+uses real guest photos captured by presenter.
+
+Presenter flow on phone:
+
+Page:
+/live-presenter?s=CODE
+
+Inside Coppie Live:
+
+- button: 📷 Scatta foto ospite
+- button: Carica da galleria
+- list of uploaded guests
+
+Need 10 photos.
+
+For each photo:
+{
+  guestName optional,
+  imageUrl,
+  createdAt
+}
+
+When 10 photos uploaded:
+button:
+CREA MAZZO LIVE
+
+System:
+- duplicates each of the 10 photos
+- creates 20 cards
+- shuffles deck
+- saves deck in live_runtime_state
+- sends it to TV
+
+TV:
+shows memory board with real guest photos.
+
+Rules:
+- 10 pairs
+- identical images
+- large cards
+- live-safe layout
+- no tiny thumbnails
+- no placeholder if 10 photos are ready
+
+If fewer than 10 photos:
+TV shows:
+“Servono ancora X foto ospiti”
+
+==================================================
+PART 8 — PHOTO UPLOAD
+==================================================
+
+Phone presenter must support:
+- camera capture
+- gallery upload
+
+For now:
+store uploaded image as:
+- base64 if no storage exists
+OR
+- existing upload/media endpoint if available
+
+Do not block implementation waiting for S3.
+
+Compress image client-side:
+max width 900px
+quality 0.75
+
+==================================================
+PART 9 — TV REGIA COMMANDS
+==================================================
+
+Implement socket commands:
+
+live:command
+{
+  liveSessionId,
+  command,
+  payload
+}
+
+Commands:
+- start_game
+- pause
+- resume
+- next_phase
+- force_reveal
+- force_ranking
+- blackout
+- standby_logo
+- stop_audio
+- trigger_media
+- override_timer
+- override_score
+
+TV listens and updates immediately.
+
+Presenter listens and updates immediately.
+
+==================================================
+PART 10 — LIVE TV PAGE
+==================================================
+
+/live-tv?s=CODE
+
+Must show:
+- standby logo if no game
+- current game
+- current phase
+- timer
+- media triggers
+- blackout state
+- for Coppie Live: real guest memory board
+
+This page is the LEDwall/projector page.
+
+==================================================
+PART 11 — LIVE PRESENTER PAGE
+==================================================
+
+/live-presenter?s=CODE
+
+Must show:
+- current game
+- next instruction
+- timer
+- host note
+- buttons for game-specific actions
+
+For Coppie Live:
+- capture/upload 10 guest photos
+- create deck
+- start memory game
+- reset photos
+
+This must be mobile-first.
+
+==================================================
+PART 12 — PHASE 1 LIMITS
+==================================================
+
+Do NOT implement every game live override now.
+
+Implement:
+- Live shell
+- Live session model
+- Live TV
+- Live Presenter
+- Live Control
+- Media command skeleton
+- Admin settings read
+- Coppie Live real photo flow
+
+Leave other games as placeholders:
+“Live version coming soon”
+
+==================================================
+PART 13 — OUTPUT REQUIRED
+==================================================
+
+Before patch:
+A. current Live routes audit
+B. current Admin settings API audit
+C. current media slot API audit
+D. existing upload/media capability
+
+After patch:
+E. files modified
+F. new DB schema/models
+G. /live-control working
+H. /live-tv working
+I. /live-presenter working
+J. Coppie Live photo upload working
+K. real guest photo deck generated
+L. TV memory board from live photos
+M. admin settings loaded by Live
+N. typecheck result
+O. manual test:
+   - click Live from /mode-select
+   - login
+   - land on /live-control
+   - create live session
+   - open /live-tv?s=CODE
+   - open /live-presenter?s=CODE on phone
+   - upload/capture 10 photos
+   - create deck
+   - TV shows 20 cards from real guests
