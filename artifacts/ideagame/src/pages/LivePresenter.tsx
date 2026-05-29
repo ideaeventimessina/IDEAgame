@@ -406,17 +406,19 @@ export default function LivePresenter() {
   const isCoppie       = session?.currentGameSlug === 'gioco-coppie';
   const completeCouples = couples.filter(c => c.complete).length;
 
-  const BIG_BTNS: { cmd: string; emoji: string; label: string; color: string; payload?: unknown; disabled?: boolean }[] = [
-    { cmd: 'start_game', emoji: '▶', label: 'AVVIA', color: GREEN, payload: { gameSlug: selectedGame }, disabled: !selectedGame },
+  type BigBtn = { cmd: string; emoji: string; label: string; color: string; payload?: unknown; disabled?: boolean };
+  const BIG_BTNS: BigBtn[] = [
+    { cmd: 'start_game',    emoji: '▶',  label: 'AVVIA',       color: GREEN,     payload: { gameSlug: selectedGame }, disabled: !selectedGame },
     isPaused
-      ? { cmd: 'resume', emoji: '▶', label: 'RIPRENDI', color: GREEN }
-      : { cmd: 'pause',  emoji: '⏸', label: 'PAUSA',    color: '#F59E0B' },
-    { cmd: 'next_phase',    emoji: '→',  label: 'AVANTI',     color: PURPLE },
-    { cmd: 'force_reveal',  emoji: '👁', label: 'RIVELA',     color: '#60A5FA' },
-    { cmd: 'force_ranking', emoji: '🏆', label: 'CLASSIFICA', color: GOLD },
-    { cmd: 'blackout',      emoji: '⬛', label: 'BLACKOUT',   color: '#EF4444' },
-    { cmd: 'standby_logo',  emoji: '🏠', label: 'STANDBY',    color: '#6B7280' },
-    { cmd: 'stop_audio',    emoji: '🔇', label: 'STOP AUDIO', color: '#6B7280' },
+      ? { cmd: 'resume',    emoji: '▶',  label: 'RIPRENDI',    color: GREEN }
+      : { cmd: 'pause',     emoji: '⏸', label: 'PAUSA',        color: '#F59E0B' },
+    { cmd: 'next_phase',    emoji: '→',  label: 'AVANTI',      color: PURPLE },
+    { cmd: 'force_reveal',  emoji: '👁', label: 'RIVELA',      color: '#60A5FA' },
+    { cmd: 'force_ranking', emoji: '🏆', label: 'CLASSIFICA',  color: GOLD },
+    { cmd: '__coppie__',    emoji: '🃏', label: 'COPPIE LIVE', color: PURPLE,
+      ...(completeCouples > 0 ? { emoji: `🃏`, label: `COPPIE (${completeCouples}/10)` } : {}) },
+    { cmd: 'blackout',      emoji: '⬛', label: 'BLACKOUT',    color: '#EF4444' },
+    { cmd: 'stop_audio',    emoji: '🔇', label: 'STOP AUDIO',  color: '#6B7280' },
   ];
 
   return (
@@ -426,7 +428,7 @@ export default function LivePresenter() {
       <div style={{ flex: 1, overflowY: 'auto', padding: '14px', display: 'flex', flexDirection: 'column', gap: 14 }}>
 
         {/* ── Status card ──────────────────────────────────────── */}
-        <div style={{ padding: '14px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ padding: '14px', background: 'rgba(255,255,255,0.09)', border: '1px solid rgba(255,255,255,0.18)', borderRadius: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ fontSize: '2rem' }}>{currentGame?.emoji ?? '🎮'}</div>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 900, fontSize: '0.9rem', color: currentGame?.color ?? 'rgba(255,255,255,0.6)' }}>
@@ -440,7 +442,7 @@ export default function LivePresenter() {
         </div>
 
         {/* ── Game selector ────────────────────────────────────── */}
-        <div style={{ padding: '12px 14px', background: 'rgba(168,85,247,0.06)', border: '1px solid rgba(168,85,247,0.2)', borderRadius: 14 }}>
+        <div style={{ padding: '12px 14px', background: 'rgba(168,85,247,0.13)', border: '1px solid rgba(168,85,247,0.35)', borderRadius: 14 }}>
           <div style={{ fontSize: '0.72rem', fontWeight: 900, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.1em', marginBottom: 10 }}>SCEGLI GIOCO</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             {LIVE_GAMES.map(g => {
@@ -456,54 +458,43 @@ export default function LivePresenter() {
         </div>
 
         {/* ── Command buttons ───────────────────────────────────── */}
-        <div style={{ padding: '12px 14px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14 }}>
-          <div style={{ fontSize: '0.72rem', fontWeight: 900, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.1em', marginBottom: 10 }}>CONTROLLI SHOW</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        <div style={{ padding: '12px 14px', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 14 }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 900, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.1em', marginBottom: 10 }}>CONTROLLI SHOW</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9 }}>
             {BIG_BTNS.map(btn => {
               const isLoading = cmdLoading === btn.cmd;
+              const isCoppieBtn = btn.cmd === '__coppie__';
               return (
-                <button key={btn.cmd}
-                  onClick={() => { if (!btn.disabled) void sendCommand(btn.cmd, btn.payload); }}
-                  disabled={!!btn.disabled || !!cmdLoading}
+                <button key={btn.cmd + btn.label}
+                  onClick={() => {
+                    if (isCoppieBtn) { setView('coppie'); return; }
+                    if (!btn.disabled) void sendCommand(btn.cmd, btn.payload);
+                  }}
+                  disabled={!isCoppieBtn && (!!btn.disabled || !!cmdLoading)}
                   style={{
-                    padding: '14px 8px',
-                    background: `${btn.color}1e`,
-                    border: `1.5px solid ${btn.color}55`,
+                    padding: '16px 8px',
+                    background: isCoppie && isCoppieBtn ? `${btn.color}35` : `${btn.color}28`,
+                    border: `1.5px solid ${btn.color}${isCoppie && isCoppieBtn ? 'AA' : '70'}`,
                     borderRadius: 12,
                     color: btn.disabled ? 'rgba(255,255,255,0.25)' : btn.color,
                     fontWeight: 900,
-                    fontSize: '0.82rem',
-                    cursor: btn.disabled || cmdLoading ? 'default' : 'pointer',
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-                    opacity: btn.disabled ? 0.4 : 1,
+                    fontSize: '0.84rem',
+                    cursor: (btn.disabled && !isCoppieBtn) ? 'default' : 'pointer',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
+                    opacity: btn.disabled && !isCoppieBtn ? 0.4 : 1,
                     transition: 'all 0.15s',
-                    boxShadow: isActive && btn.cmd === 'start_game' ? `0 0 16px ${btn.color}44` : 'none',
+                    boxShadow: isActive && btn.cmd === 'start_game' ? `0 0 20px ${btn.color}55`
+                      : isCoppie && isCoppieBtn ? `0 0 18px ${btn.color}44` : 'none',
                   }}>
                   {isLoading
                     ? <Loader2 size={18} className="animate-spin" />
-                    : <span style={{ fontSize: '1.2rem' }}>{btn.emoji}</span>}
-                  <span style={{ fontSize: '0.68rem', letterSpacing: '0.06em' }}>{btn.label}</span>
+                    : <span style={{ fontSize: '1.3rem' }}>{btn.emoji}</span>}
+                  <span style={{ fontSize: '0.7rem', letterSpacing: '0.05em' }}>{btn.label}</span>
                 </button>
               );
             })}
           </div>
         </div>
-
-        {/* ── Coppie LIVE shortcut ─────────────────────────────── */}
-        {isCoppie && (
-          <button onClick={() => setView('coppie')}
-            style={{ padding: '16px', background: `${PURPLE}1a`, border: `1.5px solid ${PURPLE}55`, borderRadius: 14, color: PURPLE, fontWeight: 900, fontSize: '0.95rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, boxShadow: `0 0 20px ${PURPLE}33` }}>
-            <span style={{ fontSize: '1.3rem' }}>🃏</span>
-            Apri Coppie LIVE
-            {completeCouples > 0 && <span style={{ fontSize: '0.75rem', color: completeCouples === 10 ? GREEN : GOLD, fontWeight: 900 }}>({completeCouples}/10)</span>}
-          </button>
-        )}
-        {!isCoppie && selectedGame === 'gioco-coppie' && (
-          <button onClick={() => setView('coppie')}
-            style={{ padding: '12px', background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.2)', borderRadius: 12, color: 'rgba(168,85,247,0.7)', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', textAlign: 'center' }}>
-            🃏 Prepara foto Coppie
-          </button>
-        )}
 
         <div style={{ height: 16 }} />
       </div>

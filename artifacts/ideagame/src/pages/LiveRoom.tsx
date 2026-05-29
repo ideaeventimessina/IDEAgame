@@ -182,7 +182,7 @@ export default function LiveRoom() {
             }
           </div>
         ) : (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 18px', background: 'rgba(168,85,247,0.07)', border: '1px solid rgba(168,85,247,0.22)', borderRadius: 14, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', background: 'rgba(168,85,247,0.14)', border: '1px solid rgba(168,85,247,0.40)', borderRadius: 14, flexWrap: 'wrap' }}>
             <div>
               <div style={{ fontWeight: 900, fontSize: '1rem' }}>{selected.title}</div>
               <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', marginTop: 1 }}>
@@ -352,14 +352,14 @@ export default function LiveRoom() {
 
 function Panel({ emoji, title, color, children }: { emoji: string; title: string; color: string; children: React.ReactNode }) {
   return (
-    <div style={{ borderRadius: 16, border: `1px solid ${color}38`, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
-      <div style={{ padding: '12px 16px', background: `${color}18`, borderBottom: `1px solid ${color}28` }}>
+    <div style={{ borderRadius: 16, border: `1px solid ${color}55`, background: 'rgba(255,255,255,0.11)', overflow: 'hidden' }}>
+      <div style={{ padding: '13px 18px', background: `${color}25`, borderBottom: `1px solid ${color}38` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: '1.1rem' }}>{emoji}</span>
-          <span style={{ fontWeight: 900, fontSize: '0.75rem', letterSpacing: '0.12em', color }}>{title}</span>
+          <span style={{ fontSize: '1.15rem' }}>{emoji}</span>
+          <span style={{ fontWeight: 900, fontSize: '0.78rem', letterSpacing: '0.12em', color }}>{title}</span>
         </div>
       </div>
-      <div style={{ padding: '14px 16px' }}>{children}</div>
+      <div style={{ padding: '16px 18px' }}>{children}</div>
     </div>
   );
 }
@@ -369,8 +369,8 @@ function CmdButton({ label, icon, color, loading, onClick }: {
 }) {
   return (
     <button onClick={onClick} disabled={loading}
-      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '8px 10px', background: `${color}25`, border: `1px solid ${color}55`, borderRadius: 8, color, fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s', opacity: loading ? 0.6 : 1 }}>
-      {loading ? <Loader2 size={12} className="animate-spin" /> : icon}
+      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '11px 14px', background: `${color}30`, border: `1.5px solid ${color}70`, borderRadius: 10, color, fontSize: '0.8rem', fontWeight: 800, cursor: 'pointer', transition: 'all 0.15s', opacity: loading ? 0.6 : 1, letterSpacing: '0.02em' }}>
+      {loading ? <Loader2 size={13} className="animate-spin" /> : icon}
       {label}
     </button>
   );
