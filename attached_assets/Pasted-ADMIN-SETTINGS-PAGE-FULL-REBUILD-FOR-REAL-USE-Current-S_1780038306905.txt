@@ -1,0 +1,175 @@
+ADMIN SETTINGS PAGE — FULL REBUILD FOR REAL USE
+
+Current Settings page feels decorative and unclear.
+
+Need a practical control room.
+
+Keep only settings that affect gameplay or show runtime.
+
+Remove cosmetic controls that do not produce visible results.
+
+==================================================
+1. GLOBAL SHOW SETTINGS
+==================================================
+
+Section:
+SHOW DEFAULTS
+
+Controls:
+
+- Default language
+- Projector mode ON/OFF
+- Offline mode ON/OFF
+- Enable Jonny co-host ON/OFF
+- Home default / Live default
+
+For each item show:
+title
+1 line description
+"where this affects the experience"
+
+Example:
+Projector Mode
+Improves contrast and font weight on TV/projector screens.
+
+==================================================
+2. GAMEPLAY ENGINE SETTINGS
+==================================================
+
+Section:
+GAME ENGINE
+
+A. Default vote timer
+(default 10s)
+
+Used by:
+Adult Only
+Percorso
+Karaoke votes
+Dance votes
+All public voting phases
+
+B. Default reveal timer
+(default 5s)
+
+C. Transition speed
+slow / normal / fast
+
+D. Sound master volume
+0–100
+
+E. Background music volume
+0–100
+
+==================================================
+3. DANCE SETTINGS
+==================================================
+
+Keep Dance sensitivity
+but explain visually.
+
+Show:
+
+Soft → lower movement required
+Normal → balanced
+Party → more energetic
+Chaos → extreme movement required
+
+Under slider add live preview:
+
+Shake phone lightly → small bar movement
+Shake harder → higher bar movement
+
+Need visual understanding immediately.
+
+==================================================
+4. JONNY SETTINGS
+==================================================
+
+Section:
+JONNY AI HOST
+
+Controls:
+
+- Enabled
+- Home mode personality
+- Live mode personality
+- Voice enabled
+- Voice volume
+- Reaction frequency
+- Can interrupt game: yes/no
+
+Optional:
+Upload Jonny idle image
+Upload Jonny celebration animation
+Upload Jonny angry animation
+
+==================================================
+5. LANGUAGE SYSTEM MUST ACTUALLY WORK
+==================================================
+
+Current IT/EN/ES/FR selector appears visual only.
+
+Fix:
+
+when switching language:
+all admin labels update instantly.
+
+Required:
+- sidebar labels
+- buttons
+- form labels
+- helper text
+- empty states
+
+Persist in:
+localStorage + DB settings
+
+On refresh keep selected language.
+
+If translation missing:
+fallback to Italian.
+
+==================================================
+6. BRAND COLOR
+==================================================
+
+Keep only if used globally.
+
+When changed it must update:
+- buttons
+- active tabs
+- toggles
+- badges
+- primary CTA
+
+Live preview required.
+
+If not applied globally → remove.
+
+==================================================
+7. SAVE SYSTEM
+==================================================
+
+Add:
+
+Sticky footer:
+Save
+Reset defaults
+
+Toast:
+Settings saved successfully
+
+Unsaved changes warning before leaving page.
+
+==================================================
+OUTPUT
+==================================================
+
+A. files modified
+B. removed useless settings
+C. new sections created
+D. language switch fixed runtime
+E. saved in DB/localStorage
+F. typecheck
+G. screenshot of new Settings page

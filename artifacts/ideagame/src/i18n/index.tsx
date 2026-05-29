@@ -18,8 +18,24 @@ export const LOCALES: { code: Locale; label: string; flag: string }[] = [
   { code: 'fr', label: 'Français', flag: 'FR' },
 ];
 
+const VALID_LOCALES = LOCALES.map(l => l.code);
+const LS_LOCALE = 'ideagame:locale';
+
+function readInitialLocale(): Locale {
+  try {
+    const saved = localStorage.getItem(LS_LOCALE);
+    if (saved && VALID_LOCALES.includes(saved as Locale)) return saved as Locale;
+  } catch { /* noop */ }
+  return 'it';
+}
+
 export function I18nProvider({ children }: { children: React.ReactNode }) {
-  const [locale, setLocale] = useState<Locale>('it');
+  const [locale, setLocaleState] = useState<Locale>(readInitialLocale);
+
+  const setLocale = (l: Locale) => {
+    try { localStorage.setItem(LS_LOCALE, l); } catch { /* noop */ }
+    setLocaleState(l);
+  };
 
   const value = useMemo<I18nContextType>(() => {
     const t = (key: string, fallback?: string): string => {
