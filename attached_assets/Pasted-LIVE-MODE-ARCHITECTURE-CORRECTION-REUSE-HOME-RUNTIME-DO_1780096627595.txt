@@ -1,0 +1,194 @@
+LIVE MODE ARCHITECTURE CORRECTION — REUSE HOME RUNTIME, DO NOT INVENT NEW LIVE APP.
+
+Stop adding new Live-specific game UIs.
+Stop creating separate TV game logic.
+Stop duplicating Home gameplay.
+
+Current mistake:
+Live Mode has become a separate mini-app with its own TV placeholders, presenter pages and game flow.
+This is wrong.
+
+Correct architecture:
+
+ADMIN
+- creates and manages content, media, settings
+- enables content for Home and/or Live
+
+HOME RUNTIME
+- existing game engine and visual renderer
+- already contains TV boards, phone controllers, timers, scoring, sync, QR, media
+- must remain the single source of gameplay rendering
+
+LIVE MODE
+- does NOT reinvent games
+- wraps the existing Home runtime
+- adds:
+  1. Regia controls
+  2. Presenter controls
+  3. Live-specific inputs
+  4. Live overrides
+  5. Live asset preparation
+
+==================================================
+PART 1 — STOP USING CUSTOM LIVE TV GAME UI
+==================================================
+
+/live-tv must not render custom game screens.
+
+It must render the existing HomeGame visual engine in TV mode, using the live session state.
+
+Implementation strategy:
+- create LiveHomeRuntimeAdapter
+- maps liveSession/liveRuntimeState to the same session shape expected by HomeGame visual boards
+- reuse existing board components where possible
+
+If direct reuse of entire HomeGame is too hard:
+extract reusable game board components from HomeGame one by one.
+But DO NOT create new duplicate game screens.
+
+==================================================
+PART 2 — LIVE CONTROL IS NOT A GAME UI
+==================================================
+
+/live-control is only the regia.
+
+It must:
+- choose session
+- choose game
+- send commands to runtime
+- open TV
+- open Presenter
+- trigger media
+- pause/resume/next/reveal/ranking
+- apply overrides
+
+It must also link to Admin content/media pages:
+- Manage game content
+- Manage media slots
+- Manage settings
+
+Do not duplicate admin editors inside Live Control.
+Use links or embedded panels from Admin.
+
+==================================================
+PART 3 — PRESENTER IS NOT A GAME UI
+==================================================
+
+/live-presenter is a conductor panel.
+
+It must:
+- show current game
+- show current phase
+- show next instruction
+- provide large action buttons
+- provide live-specific capture/input tools only when needed
+
+Example:
+Coppie Live:
+Presenter can capture 10 real couples:
+Coppia 1: Foto A + Foto B
+...
+Coppia 10: Foto A + Foto B
+
+After deck is ready, it sends deck to the SAME Home runtime board.
+
+Presenter does not render a separate game.
+
+==================================================
+PART 4 — ADMIN MUST REMAIN THE CONTENT CENTER
+==================================================
+
+Live Control must not replace Admin.
+
+Admin pages already created:
+- /admin/giochi
+- /admin/media
+- /admin/settings
+
+Live Control must show shortcuts:
+- Content Admin
+- Media Slots
+- Settings
+
+If a game needs media:
+open /admin/media filtered by game.
+If a game needs content:
+open /admin/giochi/{gameSlug}
+
+==================================================
+PART 5 — REMOVE OR DEPRECATE USELESS LIVE PAGES
+==================================================
+
+Audit current Live-specific files:
+- LiveTV custom placeholder
+- LivePresenter custom game screens
+- LiveRoom duplicate controls
+- any copied game logic
+
+Mark each:
+KEEP / WRAP / DELETE / REPLACE
+
+Do not delete until replacement works.
+
+Output table:
+file | current role | problem | decision
+
+==================================================
+PART 6 — FIRST CONCRETE TARGET: COPPIE LIVE
+==================================================
+
+Live Coppie must reuse Coppie board style from Home.
+
+Only difference:
+Home deck source:
+- static/generated images
+
+Live deck source:
+- 10 real couples, 20 photos
+
+Flow:
+Presenter captures:
+10 couples × 2 photos = 20 photos
+
+Then:
+build runtime deck:
+20 cards
+pairId = coupleId
+imageA = partner A
+imageB = partner B
+
+Send this deck to the same Coppie visual board used by Home.
+
+TV must show same large memory game style, not a custom Live grid if Home already has it.
+
+==================================================
+PART 7 — IMPLEMENTATION ORDER
+==================================================
+
+Step 1:
+Audit and produce architecture correction report.
+
+Step 2:
+Modify Live Control to link Admin sections and stop pretending to be Admin.
+
+Step 3:
+Modify /live-tv to use Home runtime adapter / existing board component.
+
+Step 4:
+Modify Coppie Live to feed deck into existing Coppie board.
+
+Step 5:
+Remove placeholder custom live screens.
+
+==================================================
+OUTPUT REQUIRED BEFORE PATCH
+==================================================
+
+A. exact current files that duplicate Home logic
+B. exact existing Home components/sections reusable for Live
+C. decision table KEEP/WRAP/DELETE/REPLACE
+D. proposed adapter shape:
+   liveRuntimeState → HomeGameSessionShape
+E. risks before coding
+
+ONLY AFTER THAT patch.
