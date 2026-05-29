@@ -59,7 +59,9 @@ export default function LiveRoom() {
   const { user, isLoading: authLoading } = useAuth();
 
   const [sessions, setSessions] = useState<LiveSession[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(() => {
+    return new URLSearchParams(window.location.search).get('session');
+  });
   const [settings, setSettings] = useState<SettingsVal>(SETTINGS_DEFAULTS);
   const [creating, setCreating] = useState(false);
   const [cmdLoading, setCmdLoading] = useState<string | null>(null);
@@ -263,19 +265,30 @@ export default function LiveRoom() {
           </div>
         )}
 
-        {/* ── Session links ────────────────────────────────────────── */}
+        {/* ── Session launcher buttons ─────────────────────────────── */}
         {selected && (
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            {[
-              { label: '📺 TV (proiettore)', url: tvUrl, code: selected.tvCode, color: '#60A5FA' },
-              { label: '🎤 Presenter (telefono)', url: presenterUrl, code: selected.presenterCode, color: '#34D399' },
-            ].map(link => (
-              <a key={link.label} href={link.url} target="_blank" rel="noreferrer"
-                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', background: `${link.color}12`, border: `1px solid ${link.color}30`, borderRadius: 10, color: link.color, textDecoration: 'none', fontSize: '0.78rem', fontWeight: 700 }}>
-                {link.label}
-                <span style={{ fontFamily: 'monospace', background: 'rgba(0,0,0,0.3)', padding: '2px 6px', borderRadius: 4, letterSpacing: '0.1em' }}>{link.code}</span>
-              </a>
-            ))}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+            {/* REGIA — apre live-control in un nuovo tab con sessione pre-selezionata */}
+            <a href={`/live-control?session=${selected.id}`} target="_blank" rel="noreferrer"
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '14px 8px', background: `${PURPLE}14`, border: `1.5px solid ${PURPLE}40`, borderRadius: 12, color: PURPLE, textDecoration: 'none', textAlign: 'center', transition: 'background 0.15s' }}>
+              <span style={{ fontSize: '1.5rem' }}>🎛️</span>
+              <span style={{ fontWeight: 900, fontSize: '0.78rem', letterSpacing: '0.06em' }}>REGIA</span>
+              <span style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.35)' }}>Animatore</span>
+            </a>
+            {/* TV — proiettore */}
+            <a href={tvUrl} target="_blank" rel="noreferrer"
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '14px 8px', background: 'rgba(96,165,250,0.1)', border: '1.5px solid rgba(96,165,250,0.35)', borderRadius: 12, color: '#60A5FA', textDecoration: 'none', textAlign: 'center' }}>
+              <span style={{ fontSize: '1.5rem' }}>📺</span>
+              <span style={{ fontWeight: 900, fontSize: '0.78rem', letterSpacing: '0.06em' }}>TV</span>
+              <span style={{ fontFamily: 'monospace', fontSize: '0.65rem', color: 'rgba(255,255,255,0.45)', background: 'rgba(0,0,0,0.3)', padding: '1px 5px', borderRadius: 4, letterSpacing: '0.12em' }}>{selected.tvCode}</span>
+            </a>
+            {/* PRESENTER — telefono */}
+            <a href={presenterUrl} target="_blank" rel="noreferrer"
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '14px 8px', background: 'rgba(52,211,153,0.08)', border: '1.5px solid rgba(52,211,153,0.3)', borderRadius: 12, color: '#34D399', textDecoration: 'none', textAlign: 'center' }}>
+              <span style={{ fontSize: '1.5rem' }}>🎤</span>
+              <span style={{ fontWeight: 900, fontSize: '0.78rem', letterSpacing: '0.06em' }}>PRESENTER</span>
+              <span style={{ fontFamily: 'monospace', fontSize: '0.65rem', color: 'rgba(255,255,255,0.45)', background: 'rgba(0,0,0,0.3)', padding: '1px 5px', borderRadius: 4, letterSpacing: '0.12em' }}>{selected.presenterCode}</span>
+            </a>
           </div>
         )}
 

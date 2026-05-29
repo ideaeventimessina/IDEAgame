@@ -1,0 +1,246 @@
+LIVE MODE — FIX ROLE LAUNCHER + COPPIE LIVE REAL COUPLES FLOW
+
+Patch only Live Mode.
+Do not touch Home Mode.
+
+==================================================
+PART 1 — LIVE DASHBOARD ROLE LAUNCHER
+==================================================
+
+Current:
+Live dashboard shows buttons:
+- Regia
+- Presentatore
+
+Required:
+Add third button:
+- TV
+
+All 3 buttons must open interfaces connected to the SAME live session.
+
+Buttons:
+1. REGIA
+opens:
+/live-control?s=CODE
+
+2. PRESENTATORE
+opens:
+/live-presenter?s=CODE
+
+3. TV
+opens:
+/live-tv?s=CODE
+
+Important:
+Same logged-in account can open all three in different browser tabs/windows/devices.
+Do not force different users.
+Do not logout other tabs.
+Do not invalidate session.
+
+Expected workflow:
+- Browser 1: Regia
+- Browser 2: TV
+- Browser 3 / phone: Presentatore
+
+All synced by liveSessionId and socket.
+
+==================================================
+PART 2 — COPPIE LIVE REAL COUPLES FLOW
+==================================================
+
+Current wrong assumption:
+10 single guest photos duplicated into 20 cards.
+
+Correct requirement:
+Coppie Live uses 10 real couples.
+
+Presenter creates 10 couples.
+Each couple has 2 photos:
+- Partner A
+- Partner B
+
+Total:
+10 couples = 20 photos = 20 cards.
+
+==================================================
+PART 3 — PRESENTER UI FOR COPPIE LIVE
+==================================================
+
+In /live-presenter, when current game is Coppie Live:
+
+Show:
+
+COPPIE LIVE — CREA LE 10 COPPIE
+
+Progress:
+Coppia 1 / 10
+Coppia 2 / 10
+...
+Coppia 10 / 10
+
+For each couple:
+
+Card:
+Coppia #1
+
+Fields:
+- Nome coppia optional
+- Nome partner A optional
+- Nome partner B optional
+
+Buttons:
+- Scatta foto partner A
+- Carica foto partner A
+- Scatta foto partner B
+- Carica foto partner B
+
+After both photos:
+status:
+✅ Coppia completa
+
+Actions:
+- Modifica
+- Elimina coppia
+
+When 10 couples complete:
+button:
+CREA MAZZO LIVE
+
+==================================================
+PART 4 — LIVE DECK LOGIC
+==================================================
+
+Create deck from 10 real couples.
+
+Card shape:
+{
+  id,
+  coupleId,
+  partner: "A" | "B",
+  imageUrl,
+  partnerName?,
+  coupleName?
+}
+
+Matching rule:
+card A and card B match when same coupleId.
+
+IMPORTANT:
+Images are NOT identical.
+They are the two partners of the real couple.
+
+This is Live only.
+
+Home mode stays:
+identical image memory pairs.
+
+==================================================
+PART 5 — TV BOARD
+==================================================
+
+/live-tv for Coppie Live:
+
+Show 20 cards.
+
+When two cards are flipped:
+- if same coupleId → match
+- else mismatch
+
+Matched couple:
+show both partner photos together
+optional text:
+“Coppia trovata!”
+
+Layout:
+- large images
+- 5x4 grid on TV
+- no tiny thumbnails
+- safe TV padding
+
+==================================================
+PART 6 — STORAGE
+==================================================
+
+Store in live_game_assets or live_runtime_state.
+
+Preferred:
+
+live_game_assets:
+{
+  liveSessionId,
+  gameSlug: "coppie-live",
+  assetType: "couple_photo",
+  label,
+  url,
+  metadataJson: {
+    coupleId,
+    coupleIndex,
+    partner: "A" | "B",
+    partnerName,
+    coupleName
+  }
+}
+
+live_runtime_state:
+payloadJson:
+{
+  gameSlug: "coppie-live",
+  couples: [...],
+  deck: shuffled 20 cards,
+  matchedCoupleIds: [],
+  flippedCardIds: []
+}
+
+==================================================
+PART 7 — BUTTON STATES
+==================================================
+
+Presenter:
+- CREA MAZZO LIVE disabled until all 10 couples have both photos.
+- Show missing count:
+“Servono ancora X foto”
+or
+“Servono ancora Y coppie complete”
+
+TV:
+If deck not ready:
+show:
+“Il presentatore sta creando le coppie”
+“Coppie complete: X / 10”
+
+==================================================
+PART 8 — DO NOT BREAK CURRENT LIVE SHELL
+==================================================
+
+Keep:
+- /live-control
+- /live-presenter
+- /live-tv
+- live socket sync
+- live session model
+
+Only change:
+- add TV launcher button
+- change Coppie Live asset/deck logic from 10 singles duplicated to 10 couples with 2 photos each
+
+==================================================
+OUTPUT REQUIRED
+==================================================
+
+A. files modified
+B. TV button added to live dashboard
+C. same account multi-tab confirmed
+D. presenter Coppie Live 10 couples UI
+E. photo storage model
+F. deck generation with 10 coupleId pairs
+G. TV matching logic by coupleId
+H. typecheck result
+I. manual test:
+   - login once
+   - open Regia tab
+   - open TV tab
+   - open Presentatore tab
+   - create 10 couples / 20 photos
+   - create deck
+   - TV shows 20 cards
+   - matching works by coupleId

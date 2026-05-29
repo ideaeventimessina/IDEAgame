@@ -11,9 +11,12 @@
  *   GET    /live-sessions/by-code/:code        — resolve session by any code
  *   GET    /live-sessions/:id/state            — get runtime state
  *   POST   /live-sessions/:id/command          — send show command (broadcasts via socket)
- *   POST   /live-sessions/:id/photos           — add asset (Coppie Live photos)
- *   GET    /live-sessions/:id/photos           — list photo assets for a session
- *   POST   /live-sessions/:id/create-deck      — create Coppie Live deck from photos
+ *   GET    /live-sessions/:id/couples          — list 10 couple slots with A/B photos
+ *   POST   /live-sessions/:id/photos           — add/replace couple photo (coupleIndex+partner) or legacy single photo
+ *   GET    /live-sessions/:id/photos           — list photo assets for a session (legacy)
+ *   DELETE /live-sessions/:id/photos/:photoId  — delete a photo asset
+ *   POST   /live-sessions/:id/create-deck      — create Coppie Live deck from 10 real couples
+ *   POST   /live-sessions/:id/coppie-flip      — flip a card (TV-driven)
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
@@ -33,6 +36,29 @@ const router: IRouter = Router();
 
 function makeCode(len = 6) {
   return randomBytes(len).toString("hex").toUpperCase().slice(0, len);
+}
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+interface CoupleMeta {
+  coupleIndex: number;
+  partner: "A" | "B";
+  coupleName?: string;
+  partnerName?: string;
+  imageData?: string;
+}
+
+interface DeckCard {
+  id: string;
+  pairId: string;        // = coupleId — same for A and B of the same couple
+  partner: "A" | "B";
+  coupleName?: string;
+  partnerName?: string;
+  label: string | null;
+  imageData: string | undefined;
+  url: string | null;
+  flipped: boolean;
+  matched: boolean;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -93,6 +119,43 @@ async function resolveSession(req: Request): Promise<typeof liveSessionsTable.$i
   const upper = code.toUpperCase();
   if (upper === session.tvCode || upper === session.presenterCode) return session;
   return null;
+}
+
+// Build 10-slot couple list from couple_photo assets
+async function buildCouplesList(liveSessionId: string) {
+  const assets = await db
+    .select()
+    .from(liveGameAssetsTable)
+    .where(
+      and(
+        eq(liveGameAssetsTable.liveSessionId, liveSessionId),
+        eq(liveGameAssetsTable.assetType, "couple_photo"),
+      ),
+    )
+    .orderBy(liveGameAssetsTable.createdAt);
+
+  type Slot = { photoA: (typeof assets)[0] | null; photoB: (typeof assets)[0] | null; coupleName?: string };
+  const map = new Map<number, Slot>();
+  for (let i = 0; i < 10; i++) map.set(i, { photoA: null, photoB: null });
+
+  for (const asset of assets) {
+    const meta = asset.metadata as unknown as CoupleMeta;
+    const idx = meta.coupleIndex ?? 0;
+    const slot = map.get(idx) ?? { photoA: null, photoB: null };
+    if (meta.partner === "A") slot.photoA = asset;
+    else slot.photoB = asset;
+    if (meta.coupleName) slot.coupleName = meta.coupleName;
+    map.set(idx, slot);
+  }
+
+  return Array.from(map.entries()).map(([idx, slot]) => ({
+    coupleIndex: idx,
+    coupleId: `couple-${idx}`,
+    coupleName: slot.coupleName,
+    photoA: slot.photoA,
+    photoB: slot.photoB,
+    complete: !!(slot.photoA && slot.photoB),
+  }));
 }
 
 // ── POST /live-sessions ──────────────────────────────────────────────────────
@@ -160,7 +223,6 @@ router.get("/live-sessions", requireAuth, async (req: AuthedRequest, res: Respon
 router.get("/live-sessions/by-code/:code", async (req: Request, res: Response): Promise<void> => {
   const session = await getSessionByCode(req.params.code);
   if (!session) { res.status(404).json({ error: "Session not found" }); return; }
-  // Don't expose presenterCode to TV requests — infer role from code
   const code = (Array.isArray(req.params.code) ? req.params.code[0]! : req.params.code).toUpperCase();
   const role = code === session.tvCode ? "tv" : "presenter";
   res.json({ ...session, role });
@@ -234,7 +296,6 @@ router.post("/live-sessions/:id/command", async (req: Request, res: Response): P
     return;
   }
 
-  // Apply state transitions for game flow commands
   let stateUpdate: Partial<typeof liveRuntimeStateTable.$inferInsert> = {};
 
   if (command === "start_game") {
@@ -266,7 +327,16 @@ router.post("/live-sessions/:id/command", async (req: Request, res: Response): P
   res.json({ ok: true, ...event });
 });
 
-// ── GET /live-sessions/:id/photos ────────────────────────────────────────────
+// ── GET /live-sessions/:id/couples ───────────────────────────────────────────
+
+router.get("/live-sessions/:id/couples", async (req: Request, res: Response): Promise<void> => {
+  const session = await resolveSession(req);
+  if (!session) { res.status(404).json({ error: "Not found or access denied" }); return; }
+  const couples = await buildCouplesList(session.id);
+  res.json(couples);
+});
+
+// ── GET /live-sessions/:id/photos (legacy) ────────────────────────────────────
 
 router.get("/live-sessions/:id/photos", async (req: Request, res: Response): Promise<void> => {
   const session = await resolveSession(req);
@@ -286,18 +356,88 @@ router.get("/live-sessions/:id/photos", async (req: Request, res: Response): Pro
 });
 
 // ── POST /live-sessions/:id/photos ───────────────────────────────────────────
+// Couple photo: body includes coupleIndex (0-9) + partner ("A"|"B")
+// Legacy single photo: body includes just label + imageData/url
 
 router.post("/live-sessions/:id/photos", async (req: Request, res: Response): Promise<void> => {
   const session = await resolveSession(req);
   if (!session) { res.status(404).json({ error: "Not found or access denied" }); return; }
 
-  const { label, imageData, url } = req.body as { label?: string; imageData?: string; url?: string };
+  const { label, imageData, url, coupleIndex, partner, coupleName, partnerName } =
+    req.body as {
+      label?: string; imageData?: string; url?: string;
+      coupleIndex?: number; partner?: "A" | "B";
+      coupleName?: string; partnerName?: string;
+    };
+
   if (!imageData && !url) {
     res.status(400).json({ error: "imageData or url required" });
     return;
   }
 
-  // Check limit: max 20 photos per session
+  // ── Couple photo flow ────────────────────────────────────────────────────
+  if (coupleIndex !== undefined && partner !== undefined) {
+    if (coupleIndex < 0 || coupleIndex > 9) {
+      res.status(400).json({ error: "coupleIndex must be 0-9" });
+      return;
+    }
+    if (partner !== "A" && partner !== "B") {
+      res.status(400).json({ error: "partner must be A or B" });
+      return;
+    }
+
+    // Upsert: delete existing for same couple+partner, then insert
+    const existing = await db
+      .select()
+      .from(liveGameAssetsTable)
+      .where(
+        and(
+          eq(liveGameAssetsTable.liveSessionId, session.id),
+          eq(liveGameAssetsTable.assetType, "couple_photo"),
+        ),
+      );
+    const toDelete = existing.find(a => {
+      const m = a.metadata as unknown as CoupleMeta;
+      return m.coupleIndex === coupleIndex && m.partner === partner;
+    });
+    if (toDelete) {
+      await db.delete(liveGameAssetsTable).where(eq(liveGameAssetsTable.id, toDelete.id));
+    }
+
+    const meta: CoupleMeta = {
+      coupleIndex,
+      partner,
+      ...(coupleName && { coupleName }),
+      ...(partnerName && { partnerName }),
+      ...(imageData && { imageData }),
+    };
+
+    const [asset] = await db
+      .insert(liveGameAssetsTable)
+      .values({
+        liveSessionId: session.id,
+        gameSlug: "gioco-coppie",
+        assetType: "couple_photo",
+        label: coupleName ?? partnerName ?? label ?? null,
+        url: url ?? null,
+        metadata: meta as unknown as Record<string, unknown>,
+      })
+      .returning();
+
+    // Emit updated couples list to all connected (TV shows progress)
+    const couples = await buildCouplesList(session.id);
+    const completeCouplesCount = couples.filter(c => c.complete).length;
+    emitToRoom(`live:${session.id}`, "live:couples_updated", { couples, completeCouplesCount });
+
+    logger.info(
+      { sessionId: session.id, coupleIndex, partner, completeCouplesCount },
+      "[LiveCoppie] couple photo upserted",
+    );
+    res.status(201).json({ asset, couples, completeCouplesCount });
+    return;
+  }
+
+  // ── Legacy single photo flow ─────────────────────────────────────────────
   const existing = await db
     .select()
     .from(liveGameAssetsTable)
@@ -324,7 +464,6 @@ router.post("/live-sessions/:id/photos", async (req: Request, res: Response): Pr
     })
     .returning();
 
-  // Notify all connected (so presenter can see live count on TV)
   const allPhotos = await db
     .select()
     .from(liveGameAssetsTable)
@@ -346,71 +485,86 @@ router.post("/live-sessions/:id/photos", async (req: Request, res: Response): Pr
 router.delete("/live-sessions/:id/photos/:photoId", async (req: Request, res: Response): Promise<void> => {
   const session = await resolveSession(req);
   if (!session) { res.status(404).json({ error: "Not found or access denied" }); return; }
-  await db
-    .delete(liveGameAssetsTable)
-    .where(
-      and(
-        eq(liveGameAssetsTable.id, Array.isArray(req.params.photoId) ? req.params.photoId[0]! : req.params.photoId),
-        eq(liveGameAssetsTable.liveSessionId, session.id),
-      ),
-    );
-  const remaining = await db
+
+  const photoId = Array.isArray(req.params.photoId) ? req.params.photoId[0]! : req.params.photoId;
+
+  const [deleted] = await db
     .select()
     .from(liveGameAssetsTable)
-    .where(and(eq(liveGameAssetsTable.liveSessionId, session.id), eq(liveGameAssetsTable.assetType, "photo")))
-    .orderBy(liveGameAssetsTable.createdAt);
-  emitToRoom(`live:${session.id}`, "live:photos_updated", { photos: remaining, count: remaining.length });
+    .where(and(eq(liveGameAssetsTable.id, photoId), eq(liveGameAssetsTable.liveSessionId, session.id)));
+
+  await db
+    .delete(liveGameAssetsTable)
+    .where(and(eq(liveGameAssetsTable.id, photoId), eq(liveGameAssetsTable.liveSessionId, session.id)));
+
+  // Emit updated list based on asset type
+  if (deleted?.assetType === "couple_photo") {
+    const couples = await buildCouplesList(session.id);
+    const completeCouplesCount = couples.filter(c => c.complete).length;
+    emitToRoom(`live:${session.id}`, "live:couples_updated", { couples, completeCouplesCount });
+  } else {
+    const remaining = await db
+      .select()
+      .from(liveGameAssetsTable)
+      .where(and(eq(liveGameAssetsTable.liveSessionId, session.id), eq(liveGameAssetsTable.assetType, "photo")))
+      .orderBy(liveGameAssetsTable.createdAt);
+    emitToRoom(`live:${session.id}`, "live:photos_updated", { photos: remaining, count: remaining.length });
+  }
   res.status(204).end();
 });
 
 // ── POST /live-sessions/:id/create-deck ──────────────────────────────────────
+// Builds a real couples deck: 10 couples × 2 different photos = 20 cards.
+// Each couple's Card A and Card B share the same pairId but have different images.
+// Matching: same pairId.
 
 router.post("/live-sessions/:id/create-deck", async (req: Request, res: Response): Promise<void> => {
   const session = await resolveSession(req);
   if (!session) { res.status(404).json({ error: "Not found or access denied" }); return; }
 
-  const photos = await db
-    .select()
-    .from(liveGameAssetsTable)
-    .where(
-      and(
-        eq(liveGameAssetsTable.liveSessionId, session.id),
-        eq(liveGameAssetsTable.assetType, "photo"),
-      ),
-    )
-    .orderBy(liveGameAssetsTable.createdAt)
-    .limit(20);
+  const couples = await buildCouplesList(session.id);
+  const completeCouples = couples.filter(c => c.complete);
 
-  if (photos.length < 2) {
-    res.status(400).json({ error: `Servono almeno 2 foto ospiti (hai ${photos.length})` });
+  if (completeCouples.length < 2) {
+    res.status(400).json({
+      error: `Servono almeno 2 coppie complete (hai ${completeCouples.length}). Ogni coppia deve avere la foto del partner A e del partner B.`,
+    });
     return;
   }
 
-  // Build pairs: duplicate each photo, assign pairId
-  interface DeckCard {
-    id: string;
-    pairId: string;
-    label: string | null;
-    imageData: string | undefined;
-    url: string | null;
-    flipped: boolean;
-    matched: boolean;
-  }
-
+  // Build deck: 2 different cards per couple
   const cards: DeckCard[] = [];
-  photos.forEach((p, i) => {
-    const pairId = `pair-${i}`;
-    const card = {
-      pairId,
-      label: p.label,
-      imageData: (p.metadata as Record<string, unknown>).imageData as string | undefined,
-      url: p.url,
+  for (const couple of completeCouples) {
+    const coupleId = couple.coupleId;
+    const metaA = couple.photoA!.metadata as unknown as CoupleMeta;
+    const metaB = couple.photoB!.metadata as unknown as CoupleMeta;
+    const cName = metaA.coupleName ?? metaB.coupleName ?? couple.coupleName ?? couple.photoA!.label ?? null;
+
+    cards.push({
+      id: `${coupleId}-a`,
+      pairId: coupleId,
+      partner: "A",
+      coupleName: cName ?? undefined,
+      partnerName: metaA.partnerName,
+      label: cName,
+      imageData: metaA.imageData,
+      url: couple.photoA!.url,
       flipped: false,
       matched: false,
-    };
-    cards.push({ id: `${pairId}-a`, ...card });
-    cards.push({ id: `${pairId}-b`, ...card });
-  });
+    });
+    cards.push({
+      id: `${coupleId}-b`,
+      pairId: coupleId,
+      partner: "B",
+      coupleName: cName ?? undefined,
+      partnerName: metaB.partnerName,
+      label: cName,
+      imageData: metaB.imageData,
+      url: couple.photoB!.url,
+      flipped: false,
+      matched: false,
+    });
+  }
 
   // Fisher-Yates shuffle
   for (let i = cards.length - 1; i > 0; i--) {
@@ -420,12 +574,13 @@ router.post("/live-sessions/:id/create-deck", async (req: Request, res: Response
 
   const deckPayload = {
     cards,
-    totalPairs: photos.length,
+    totalPairs: completeCouples.length,
     matchedPairs: 0,
     currentTeamTurn: null as string | null,
     flippedCards: [] as string[],
     scores: {} as Record<string, number>,
     gameOver: false,
+    completeCouplesCount: completeCouples.length,
     createdAt: Date.now(),
   };
 
@@ -447,11 +602,15 @@ router.post("/live-sessions/:id/create-deck", async (req: Request, res: Response
     ts: Date.now(),
   });
 
-  logger.info({ sessionId: session.id, pairs: photos.length, cards: cards.length }, "[LiveCoppie] deck created");
-  res.json({ ok: true, pairs: photos.length, cards: cards.length, deck: deckPayload });
+  logger.info(
+    { sessionId: session.id, couples: completeCouples.length, cards: cards.length },
+    "[LiveCoppie] real couple deck created",
+  );
+  res.json({ ok: true, pairs: completeCouples.length, cards: cards.length, deck: deckPayload });
 });
 
 // ── POST /live-sessions/:id/coppie-flip ──────────────────────────────────────
+// Flip a card. Matching: a.pairId === b.pairId (same couple).
 
 router.post("/live-sessions/:id/coppie-flip", async (req: Request, res: Response): Promise<void> => {
   const session = await resolveSession(req);
@@ -486,6 +645,7 @@ router.post("/live-sessions/:id/coppie-flip", async (req: Request, res: Response
     const a = cards.find(c => c.id === aId);
     const b = cards.find(c => c.id === bId);
     if (a && b && a.pairId === b.pairId) {
+      // Match!
       a.matched = true;
       b.matched = true;
       matched = true;
@@ -496,20 +656,30 @@ router.post("/live-sessions/:id/coppie-flip", async (req: Request, res: Response
       const newState = { ...coppie, cards, flippedCards: [], matchedPairs, scores, gameOver };
       await upsertState(session.id, { payload: { coppie: newState } });
       emitToRoom(`live:${session.id}`, "live:command", {
-        sessionId: session.id, command: "coppie_match", payload: { cardId, pairId: a.pairId, teamId, scores, matchedPairs, gameOver }, ts: Date.now(),
+        sessionId: session.id,
+        command: "coppie_match",
+        payload: { cardId, pairId: a.pairId, teamId, scores, matchedPairs, gameOver },
+        ts: Date.now(),
       });
     } else {
-      const newState = { ...coppie, cards, flippedCards: [] };
+      // Mismatch — unflip after brief delay (client handles animation, state resets)
+      const newState = { ...coppie, cards: (coppie.cards as Card[]).map(c => ({ ...c })), flippedCards: [] };
       await upsertState(session.id, { payload: { coppie: newState } });
       emitToRoom(`live:${session.id}`, "live:command", {
-        sessionId: session.id, command: "coppie_mismatch", payload: { cardIds: [aId, bId] }, ts: Date.now(),
+        sessionId: session.id,
+        command: "coppie_mismatch",
+        payload: { cardIds: [aId, bId] },
+        ts: Date.now(),
       });
     }
   } else {
     const newState = { ...coppie, cards, flippedCards };
     await upsertState(session.id, { payload: { coppie: newState } });
     emitToRoom(`live:${session.id}`, "live:command", {
-      sessionId: session.id, command: "coppie_flip", payload: { cardId }, ts: Date.now(),
+      sessionId: session.id,
+      command: "coppie_flip",
+      payload: { cardId },
+      ts: Date.now(),
     });
   }
 
