@@ -58,8 +58,7 @@ const GameKaraoke    = lazy(() => import("@/pages/GameKaraoke"));
 const GameFreestyle  = lazy(() => import("@/pages/GameFreestyle"));
 const GameSaraMusica = lazy(() => import("@/pages/GameSaraMusica"));
 
-// Live Mode
-const LiveDashboard  = lazy(() => import("@/pages/LiveDashboard"));
+// Live Mode (LiveDashboard replaced by /admin/live)
 const LiveRoom       = lazy(() => import("@/pages/LiveRoom"));
 const LiveTV         = lazy(() => import("@/pages/LiveTV"));
 const LivePresenter  = lazy(() => import("@/pages/LivePresenter"));
@@ -101,6 +100,7 @@ const AdminJonnyPoses     = lazy(() => import("@/admin/JonnyPoses"));
 const AdminContentPacks   = lazy(() => import("@/admin/ContentPacks"));
 const AdminGiochiHub      = lazy(() => import("@/admin/GiochiHub"));
 const AdminGameContent    = lazy(() => import("@/admin/GameContentPage"));
+const AdminLive           = lazy(() => import("@/admin/AdminLive"));
 
 // ── Page loading fallback ─────────────────────────────────────────────────────
 function PageFallback() {
@@ -169,13 +169,14 @@ function Router() {
         <Route path="/join/:code" component={JoinPage} />
         <Route path="/home" component={HomeGame} />
         <Route path="/home/join" component={HomeJoin} />
-        <Route path="/live-dashboard" component={LiveDashboard} />
+        <Route path="/live-dashboard">{() => { window.location.replace('/admin/live'); return null; }}</Route>
         <Route path="/live-control" component={LiveRoom} />
         <Route path="/live-tv" component={LiveTV} />
         <Route path="/live-presenter" component={LivePresenter} />
         <Route path="/presenter-live" component={PresenterLive} />
         <Route path="/presenter" component={Presenter} />
         <Route path="/admin">{() => { window.location.replace('/admin/dashboard'); return null; }}</Route>
+        <Route path="/admin/live"><Guard route="/admin/live"><AdminLive /></Guard></Route>
         <Route path="/admin/dashboard"><Guard route="/admin/dashboard"><AdminDashboard /></Guard></Route>
         <Route path="/admin/games"><Guard route="/admin/games"><AdminGames /></Guard></Route>
         <Route path="/admin/quizzes"><Guard route="/admin/quizzes"><AdminQuizzes /></Guard></Route>

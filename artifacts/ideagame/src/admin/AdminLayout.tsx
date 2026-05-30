@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'wouter';
 import {
   LayoutDashboard, Gamepad2, Image as ImageIcon,
-  Settings as SettingsIcon, LogOut, Menu, X, Tv2
+  Settings as SettingsIcon, LogOut, Menu, X, Tv2, Radio
 } from 'lucide-react';
 import { LocaleSwitcher } from '@/components/LocaleSwitcher';
 import { ADMIN_NAV, useAuth, canSee } from '@/auth/roles';
@@ -9,6 +9,7 @@ import { type ReactNode, useState } from 'react';
 
 const ICONS: Record<string, typeof LayoutDashboard> = {
   dashboard: LayoutDashboard,
+  live:      Radio,
   show:      Tv2,
   giochi:    Gamepad2,
   media:     ImageIcon,
