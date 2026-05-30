@@ -27,6 +27,7 @@ import {
   liveSessionsTable,
   liveRuntimeStateTable,
   liveGameAssetsTable,
+  homeSessionsTable,
 } from "@workspace/db";
 import { type AuthedRequest, requireAuth } from "../middlewares/auth";
 import { emitToRoom } from "../socket";
@@ -591,10 +592,72 @@ router.post("/live-sessions/:id/create-deck", async (req: Request, res: Response
     createdAt: Date.now(),
   };
 
+  // ── Build Home-session cards (home-coppie format, pairId = numeric index) ─
+  interface HomeCoppieCard {
+    id: string; text: string; imageUrl: string;
+    pairId: number; flipped: boolean; matched: boolean;
+  }
+  const homeCardsList: HomeCoppieCard[] = [];
+  for (let ci = 0; ci < completeCouples.length; ci++) {
+    const couple = completeCouples[ci]!;
+    const mA = couple.photoA!.metadata as unknown as CoupleMeta;
+    const mB = couple.photoB!.metadata as unknown as CoupleMeta;
+    const cName = mA.coupleName ?? mB.coupleName ?? couple.coupleName ?? `Coppia ${ci + 1}`;
+    homeCardsList.push(
+      { id: `${couple.coupleId}-a`, text: mA.partnerName ?? cName, imageUrl: mA.imageData ?? couple.photoA!.url ?? "", pairId: ci, flipped: false, matched: false },
+      { id: `${couple.coupleId}-b`, text: mB.partnerName ?? cName, imageUrl: mB.imageData ?? couple.photoB!.url ?? "", pairId: ci, flipped: false, matched: false },
+    );
+  }
+  for (let i = homeCardsList.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [homeCardsList[i], homeCardsList[j]] = [homeCardsList[j]!, homeCardsList[i]!];
+  }
+  const homeRoundPayload = {
+    mode: "home-coppie",
+    themePhase: "playing",
+    cards: homeCardsList,
+    totalPairs: completeCouples.length,
+    matchedPairs: 0,
+    currentFlipped: [] as string[],
+    gameOver: false,
+    points: 150,
+  };
+
+  // ── Create or update the linked Home session ────────────────────────────
+  const existingState = await getState(session.id);
+  const existingPayload = (existingState?.payload ?? {}) as Record<string, unknown>;
+  const existingHomeSessionId = existingPayload.homeSessionId as string | undefined;
+
+  let homeSessionId: string;
+  if (existingHomeSessionId) {
+    await db.update(homeSessionsTable)
+      .set({ roundPayload: homeRoundPayload, status: "playing", gameSlug: "gioco-coppie", totalRounds: 1, currentRound: 0 })
+      .where(eq(homeSessionsTable.id, existingHomeSessionId));
+    homeSessionId = existingHomeSessionId;
+    logger.info({ sessionId: session.id, homeSessionId }, "[LiveCoppie] updated existing Home session for TV");
+  } else {
+    const joinCode = randomBytes(3).toString("hex").toUpperCase();
+    const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000);
+    const [homeSession] = await db.insert(homeSessionsTable).values({
+      joinCode,
+      hostName: `LIVE — ${session.title}`,
+      maxPlayers: 99,
+      expiresAt,
+      status: "playing",
+      gameSlug: "gioco-coppie",
+      gameConfig: { phase: "playing", gamesPlayed: [], preloadedRounds: [], selectedGames: ["gioco-coppie"], matchDuration: 0 },
+      roundPayload: homeRoundPayload,
+      totalRounds: 1,
+      currentRound: 0,
+    }).returning();
+    homeSessionId = homeSession!.id;
+    logger.info({ sessionId: session.id, homeSessionId }, "[LiveCoppie] created new Home session for TV");
+  }
+
   await upsertState(session.id, {
     currentGameSlug: "gioco-coppie",
     currentPhase: "playing",
-    payload: { coppie: deckPayload },
+    payload: { ...existingPayload, coppie: deckPayload, homeSessionId },
   });
 
   await db
@@ -605,15 +668,15 @@ router.post("/live-sessions/:id/create-deck", async (req: Request, res: Response
   emitToRoom(`live:${session.id}`, "live:command", {
     sessionId: session.id,
     command: "coppie_deck_ready",
-    payload: deckPayload,
+    payload: { ...deckPayload, homeSessionId },
     ts: Date.now(),
   });
 
   logger.info(
-    { sessionId: session.id, couples: completeCouples.length, cards: cards.length },
+    { sessionId: session.id, couples: completeCouples.length, cards: cards.length, homeSessionId },
     "[LiveCoppie] real couple deck created",
   );
-  res.json({ ok: true, pairs: completeCouples.length, cards: cards.length, deck: deckPayload });
+  res.json({ ok: true, pairs: completeCouples.length, cards: cards.length, deck: deckPayload, homeSessionId });
 });
 
 // ── POST /live-sessions/:id/coppie-flip ──────────────────────────────────────
@@ -627,6 +690,28 @@ router.post("/live-sessions/:id/coppie-flip", async (req: Request, res: Response
   if (!state || !state.payload) { res.status(400).json({ error: "No active deck" }); return; }
 
   const payload = state.payload as Record<string, unknown>;
+
+  // ── If a Home session is linked, delegate flip to the Home runtime ───────
+  const linkedHomeSessionId = payload.homeSessionId as string | undefined;
+  if (linkedHomeSessionId) {
+    const { cardId } = req.body as { cardId: string };
+    try {
+      const port = process.env["PORT"] ?? 8080;
+      const r = await fetch(`http://localhost:${port}/api/home/sessions/${linkedHomeSessionId}/flip`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cardId }),
+      });
+      const result = await r.json().catch(() => ({})) as { matched?: boolean; payload?: unknown };
+      if (!r.ok) { res.status(r.status).json(result); return; }
+      res.json({ ok: true, matched: result.matched ?? false, homeSessionId: linkedHomeSessionId });
+    } catch (err) {
+      logger.error({ err, homeSessionId: linkedHomeSessionId }, "[LiveCoppie] Home session flip failed");
+      res.status(502).json({ error: "Home session unreachable" });
+    }
+    return;
+  }
+
   const coppie = payload.coppie as Record<string, unknown> | undefined;
   if (!coppie) { res.status(400).json({ error: "No Coppie deck in state" }); return; }
 

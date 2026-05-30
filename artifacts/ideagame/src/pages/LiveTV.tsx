@@ -141,8 +141,10 @@ export default function LiveTV() {
   }
 
   // ── Home Session (renders HomeGame.tsx fullscreen via iframe) ───────────
+  // When homeSessionId is present, ALL games (including Coppie Live) render via
+  // the existing Home runtime iframe — no custom Live game screens needed.
   const homeSessionId = state?.payload?.homeSessionId as string | null | undefined;
-  if (homeSessionId && session?.currentGameSlug !== 'gioco-coppie') {
+  if (homeSessionId) {
     return (
       <div style={{ position: 'fixed', inset: 0, background: '#09050f' }}>
         <iframe
@@ -155,7 +157,8 @@ export default function LiveTV() {
     );
   }
 
-  // ── Coppie Live ─────────────────────────────────────────────────────────
+  // ── Coppie Live (fallback — used only when homeSessionId not yet set) ───
+  // Temporary fallback — delete after Home runtime adapter is verified end-to-end.
   const coppie = state?.payload?.coppie as CoppiePayload | undefined;
   if (session?.currentGameSlug === 'gioco-coppie') {
     return (

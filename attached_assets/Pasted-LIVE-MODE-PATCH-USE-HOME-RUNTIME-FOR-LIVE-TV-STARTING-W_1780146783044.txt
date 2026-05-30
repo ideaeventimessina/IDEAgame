@@ -1,0 +1,157 @@
+LIVE MODE PATCH — USE HOME RUNTIME FOR LIVE TV, STARTING WITH COPPIE LIVE
+
+Scope only:
+- LiveTV
+- LivePresenter create-deck flow
+- live-sessions API
+- Home session adapter for Coppie Live
+
+Do NOT touch SaraMusica.
+Do NOT create new Live game UI.
+Do NOT redesign HomeGame.
+
+GOAL:
+Live TV must reuse the existing Home runtime.
+Coppie Live must feed its real-couple photo deck into the existing Home Coppie board.
+
+==================================================
+PART 1 — LIVE TV MUST USE HOME RUNTIME ALSO FOR COPPIE
+==================================================
+
+Current:
+LiveTV already renders Home runtime in iframe when homeSessionId exists,
+but excludes gioco-coppie with a condition like:
+
+currentGameSlug !== 'gioco-coppie'
+
+Remove that exception.
+
+Required:
+If live session payload has homeSessionId:
+always render:
+
+/home?session=HOME_SESSION_ID
+
+for every game, including gioco-coppie.
+
+Do not render CoppieLiveBoard custom when homeSessionId exists.
+
+==================================================
+PART 2 — COPPIE LIVE CREATE-DECK MUST CREATE HOME SESSION PAYLOAD
+==================================================
+
+Current:
+Coppie Live creates custom live deck.
+
+Required:
+When Presenter clicks CREA MAZZO LIVE:
+
+- read 10 real couples
+- each couple has Partner A photo + Partner B photo
+- create 20 cards in Home Coppie format:
+
+{
+  id: string,
+  text: string,
+  imageUrl: string,
+  pairId: number,
+  flipped: false,
+  matched: false
+}
+
+Rules:
+- pairId = coupleIndex
+- Partner A and Partner B of same couple share pairId
+- images are different, not duplicated
+- matching works by pairId
+- text = partnerName or coupleName fallback
+
+Then:
+- create or update a Home session for gameSlug = "gioco-coppie"
+- put cards into roundPayload.cards
+- set roundPayload.mode = "home-coppie" or the existing mode used by Home Coppie
+- save the created Home session id inside live session payload:
+
+payloadJson.homeSessionId = HOME_SESSION_ID
+
+==================================================
+PART 3 — LIVE TV IFRAME
+==================================================
+
+After homeSessionId is saved:
+
+LiveTV should automatically show:
+
+iframe /home?session=HOME_SESSION_ID
+
+No custom black placeholder.
+No custom Coppie board.
+No separate Live board.
+
+The TV must show the existing Home Coppie memory board with real guest photos.
+
+==================================================
+PART 4 — KEEP CUSTOM COPPIE LIVE BOARD ONLY AS FALLBACK
+==================================================
+
+Do not delete CoppieLiveBoard yet.
+
+Use it only if:
+- no homeSessionId exists
+- or Home iframe fails
+
+Add comment:
+"Temporary fallback — delete after Home runtime adapter is verified."
+
+==================================================
+PART 5 — AUTH / PUBLIC ACCESS CHECK
+==================================================
+
+Risk:
+iframe /home?session=HOME_SESSION_ID may require auth.
+
+Test it.
+
+If iframe cannot load because of auth:
+add a public read endpoint or pass live tvCode safely.
+
+Acceptable solution:
+- /home?session=HOME_SESSION_ID&liveTvCode=TV_CODE
+- backend validates tvCode against live session
+- returns readonly Home session state for TV
+
+Do not leave TV blocked by login.
+
+==================================================
+PART 6 — PRESENTER FLOW STAYS LIVE-SPECIFIC
+==================================================
+
+Presenter remains responsible only for:
+- creating 10 couples
+- uploading 20 photos
+- pressing CREA MAZZO LIVE
+
+Presenter does not render the game board.
+
+==================================================
+PART 7 — OUTPUT REQUIRED
+==================================================
+
+A. files modified
+B. removed gioco-coppie iframe exception
+C. create-deck now creates/updates Home session
+D. Home session roundPayload shape
+E. live payload homeSessionId saved
+F. LiveTV shows Home iframe for Coppie
+G. auth/public access result
+H. fallback CoppieLiveBoard status
+I. typecheck result
+J. manual test:
+   - open Live Dashboard
+   - open Regia / TV / Presenter
+   - Presenter uploads 10 couples = 20 photos
+   - click CREA MAZZO LIVE
+   - live payload gets homeSessionId
+   - TV switches to /home iframe
+   - Home Coppie board shows 20 real guest photos
+   - matching works by pairId
