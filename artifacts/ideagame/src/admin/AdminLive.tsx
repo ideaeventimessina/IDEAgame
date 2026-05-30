@@ -213,14 +213,14 @@ export default function AdminLive() {
                   <span className="text-[10px] text-muted-foreground flex items-center gap-1"><ExternalLink size={8} /> Pannello controllo</span>
                 </a>
                 <a
-                  href={`/live-tv?s=${s.tvCode}`}
+                  href={`/live-join?s=${s.tvCode}`}
                   target="_blank"
                   rel="noreferrer"
                   className="flex flex-col items-center gap-1.5 rounded-xl border border-blue-500/25 bg-blue-500/8 hover:bg-blue-500/15 px-3 py-4 text-center text-blue-300 transition-colors no-underline"
                 >
-                  <span className="text-2xl">📺</span>
-                  <span className="text-xs font-black tracking-wider">TV</span>
-                  <code className="text-[10px] text-muted-foreground bg-black/30 px-1.5 rounded">{s.tvCode}</code>
+                  <span className="text-2xl">📡</span>
+                  <span className="text-xs font-black tracking-wider">COLLEGA</span>
+                  <span className="text-[10px] text-muted-foreground">Proiettore · Presenter · Regia</span>
                 </a>
                 <a
                   href={`/live-presenter?s=${s.presenterCode}`}

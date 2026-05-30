@@ -68,12 +68,12 @@ export default function LiveRoom() {
 
   // Auth guard
   useEffect(() => {
-    if (!authLoading && !user) navigate('/login?redirect=/live-dashboard');
+    if (!authLoading && !user) navigate('/login?redirect=/admin/live');
   }, [authLoading, user, navigate]);
 
   // Redirect to dashboard if no session param
   useEffect(() => {
-    if (!authLoading && user && !selectedId) navigate('/live-dashboard');
+    if (!authLoading && user && !selectedId) navigate('/admin/live');
   }, [authLoading, user, selectedId, navigate]);
 
   // Load single session by ID
@@ -178,7 +178,7 @@ export default function LiveRoom() {
             {sessionLoading
               ? <><Loader2 size={16} className="animate-spin" style={{ color: PURPLE }} /><span style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)' }}>Caricamento sessione…</span></>
               : <><span style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.45)' }}>Sessione non trovata.</span>
-                  <a href="/live-dashboard" style={{ fontSize: '0.82rem', color: PURPLE, textDecoration: 'underline' }}>← Vai alla dashboard</a></>
+                  <a href="/admin/live" style={{ fontSize: '0.82rem', color: PURPLE, textDecoration: 'underline' }}>← Vai alla dashboard</a></>
             }
           </div>
         ) : (
@@ -190,7 +190,7 @@ export default function LiveRoom() {
               </div>
             </div>
             <div style={{ flex: 1 }} />
-            <a href={`/live-dashboard`}
+            <a href="/admin/live"
               style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', textDecoration: 'none', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '4px 10px' }}>
               ← Dashboard
             </a>
