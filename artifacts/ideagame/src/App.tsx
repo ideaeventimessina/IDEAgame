@@ -179,7 +179,7 @@ function Router() {
         <Route path="/presenter-live" component={PresenterLive} />
         <Route path="/presenter" component={Presenter} />
         <Route path="/admin">{() => { window.location.replace('/admin/dashboard'); return null; }}</Route>
-        <Route path="/admin/show"><Guard route="/admin/show"><AdminLive /></Guard></Route>
+        <Route path="/admin/show">{() => { window.location.replace('/home-setup?mode=live'); return null; }}</Route>
         <Route path="/admin/dashboard"><Guard route="/admin/dashboard"><AdminDashboard /></Guard></Route>
         <Route path="/admin/games"><Guard route="/admin/games"><AdminGames /></Guard></Route>
         <Route path="/admin/quizzes"><Guard route="/admin/quizzes"><AdminQuizzes /></Guard></Route>

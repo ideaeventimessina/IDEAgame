@@ -237,7 +237,7 @@ function ModeCard({
   );
 }
 
-const LIVE_DEST = '/admin/show';
+const LIVE_DEST = '/home-setup?mode=live';
 const LIVE_ROLES = ['super_admin', 'tenant_owner', 'game_manager', 'entertainer'] as const;
 
 /* ── page ─────────────────────────────────────── */

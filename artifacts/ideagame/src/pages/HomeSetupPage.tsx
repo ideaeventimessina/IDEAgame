@@ -52,6 +52,8 @@ function SceneBg() {
 
 export default function HomeSetupPage() {
   const [, navigate] = useLocation();
+  const isLive = new URLSearchParams(window.location.search).get('mode') === 'live';
+
   const [hostName, setHostName]         = useState('');
   const [selectedGames, setSelectedGames] = useState<string[]>([]);
   const [loading, setLoading]           = useState(false);
@@ -69,17 +71,40 @@ export default function HomeSetupPage() {
     setError('');
     setLoading(true);
     try {
-      const res = await fetch('/api/home/sessions', {
+      // 1. Create Home session (same for both Home and Live modes)
+      const homeRes = await fetch('/api/home/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          hostName: hostName.trim(),
-          selectedGames,
-        }),
+        body: JSON.stringify({ hostName: hostName.trim(), selectedGames }),
       });
-      if (!res.ok) throw new Error('Errore nella creazione della stanza.');
-      const session = await res.json() as { id: string; joinCode: string };
-      navigate(`/home-lobby/${session.joinCode}`);
+      if (!homeRes.ok) throw new Error('Errore nella creazione della stanza.');
+      const homeSession = await homeRes.json() as { id: string; joinCode: string };
+
+      if (isLive) {
+        // 2. In Live mode: also create a Live session linked to the Home session
+        const liveRes = await fetch('/api/live-sessions', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: hostName.trim(),
+            homeSessionId: homeSession.id,
+          }),
+        });
+        if (!liveRes.ok) {
+          if (liveRes.status === 401) {
+            navigate('/login?redirect=' + encodeURIComponent('/home-setup?mode=live'));
+            return;
+          }
+          // Non-blocking — proceed to lobby even if live session creation fails
+        }
+        const liveSession = liveRes.ok
+          ? await liveRes.json() as { id: string; tvCode: string; presenterCode: string }
+          : null;
+        navigate(`/home-lobby/${homeSession.joinCode}${liveSession ? `?live=${liveSession.tvCode}` : ''}`);
+      } else {
+        navigate(`/home-lobby/${homeSession.joinCode}`);
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Errore di rete.');
     } finally {
@@ -134,9 +159,9 @@ export default function HomeSetupPage() {
         }}>CREA LA TUA STANZA</div>
         <div style={{
           fontSize: '0.65rem', letterSpacing: '0.22em',
-          color: 'rgba(255,255,255,0.35)', fontWeight: 600,
-          textTransform: 'uppercase', marginTop: 2,
-        }}>Modalità Home · Partita Privata</div>
+          color: isLive ? 'rgba(245,182,66,0.7)' : 'rgba(255,255,255,0.35)',
+          fontWeight: 600, textTransform: 'uppercase', marginTop: 2,
+        }}>{isLive ? '🔴 Modalità Live · Show Professionale' : 'Modalità Home · Partita Privata'}</div>
       </motion.div>
 
       {/* form card */}

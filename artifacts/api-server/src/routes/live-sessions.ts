@@ -198,30 +198,43 @@ router.post("/live-sessions", requireAuth, async (req: AuthedRequest, res: Respo
     })
     .returning();
 
-  // Auto-create a linked Home session so TV always renders the Home runtime from the start.
-  // homeSessionId is stored in the live state payload and read by LiveTV to render the iframe.
-  const homeJoinCode = randomBytes(3).toString("hex").toUpperCase();
-  const homeExpiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000); // 12 h
-  const [homeSession] = await db.insert(homeSessionsTable).values({
-    joinCode: homeJoinCode,
-    hostName: title,
-    maxPlayers: 50,
-    expiresAt: homeExpiresAt,
-    gameConfig: {
-      phase: "join",
-      gamesPlayed: [],
-      preloadedRounds: [],
-      selectedGames: [],
-      matchDuration: "normal",
-    },
-  }).returning();
+  // Resolve homeSessionId: use provided one (from Live setup flow) or auto-create a new one.
+  const providedHomeSessionId = req.body?.homeSessionId as string | undefined;
+  let resolvedHomeSessionId: string;
+
+  if (providedHomeSessionId) {
+    const [existing] = await db.select({ id: homeSessionsTable.id })
+      .from(homeSessionsTable)
+      .where(eq(homeSessionsTable.id, providedHomeSessionId))
+      .limit(1);
+    if (!existing) { res.status(404).json({ error: "Home session not found" }); return; }
+    resolvedHomeSessionId = providedHomeSessionId;
+  } else {
+    // Auto-create a linked Home session (used when creating live session directly from /admin/show)
+    const homeJoinCode = randomBytes(3).toString("hex").toUpperCase();
+    const homeExpiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000); // 12 h
+    const [homeSession] = await db.insert(homeSessionsTable).values({
+      joinCode: homeJoinCode,
+      hostName: title,
+      maxPlayers: 50,
+      expiresAt: homeExpiresAt,
+      gameConfig: {
+        phase: "join",
+        gamesPlayed: [],
+        preloadedRounds: [],
+        selectedGames: [],
+        matchDuration: "normal",
+      },
+    }).returning();
+    resolvedHomeSessionId = homeSession!.id;
+  }
 
   await upsertState(session!.id, {
     currentPhase: "standby",
-    payload: { homeSessionId: homeSession!.id },
+    payload: { homeSessionId: resolvedHomeSessionId },
   });
 
-  logger.info({ sessionId: session!.id, tvCode, presenterCode, homeSessionId: homeSession!.id }, "[LiveSession] created");
+  logger.info({ sessionId: session!.id, tvCode, presenterCode, homeSessionId: resolvedHomeSessionId }, "[LiveSession] created");
   res.status(201).json(session);
 });
 

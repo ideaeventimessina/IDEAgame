@@ -1,0 +1,160 @@
+LIVE MODE FINAL ROUTING — SAME START FLOW AS HOME + ACCESS BUTTON
+
+Stop building separate Live dashboards.
+Stop using /admin/show as a different room creation page.
+Stop creating a separate Live start flow.
+
+CORE RULE:
+Home and Live must share the exact same room creation and TV waiting flow.
+
+The only difference:
+Live mode shows a small “Accedi” button with role links.
+
+==================================================
+PART 1 — SAME START PAGE AS HOME
+==================================================
+
+Use the existing Home room creation page/flow for Live too.
+
+When user chooses Modalità Live:
+- open the same visual page used to create a Home room
+- same layout
+- same background
+- same create room experience
+- same TV waiting screen
+- same giant QR
+
+Do not show the current /admin/show session card layout.
+
+==================================================
+PART 2 — LIVE ACCESS BUTTON
+==================================================
+
+Only in Live mode, add a small button:
+
+“Accedi”
+
+Position:
+top-right or bottom-right, not invasive.
+
+This button must also exist already on the “create room” page in Live mode.
+
+On click:
+open a small menu/modal with 3 options:
+
+1. ADMIN
+opens:
+ /admin
+
+or current admin page
+
+2. REGIA
+opens:
+ /live-control?session=LIVE_SESSION_ID
+or, better:
+ /home-regia?session=HOME_SESSION_ID
+
+3. PRESENTATORE
+show QR code + link:
+ /live-presenter?s=PRESENTER_CODE
+
+The Presenter QR must be tied to the current live room/session.
+
+==================================================
+PART 3 — LIVE ROOM CREATION
+==================================================
+
+When creating a Live room:
+
+Create:
+- normal Home session
+- linked Live session metadata
+
+The TV must use the Home session immediately.
+
+The waiting screen must be exactly Home waiting screen:
+- same background
+- same giant QR for players
+- same join code
+- same style
+
+No Live custom waiting page.
+
+==================================================
+PART 4 — REMOVE / REDIRECT OLD SHOW PAGE
+==================================================
+
+The current /admin/show page with cards:
+TV / Regia / Presentatore
+
+is not the desired flow.
+
+Change it to redirect to the Live version of the Home room creation page.
+
+Example:
+ /admin/show → /home-v4?mode=live
+
+or whichever route is the real Home room creation route.
+
+Do not keep the current session card UI as main flow.
+
+==================================================
+PART 5 — ROLE ACCESS LOGIC
+==================================================
+
+Live room must know:
+
+homeSessionId
+liveSessionId
+tvCode
+presenterCode
+
+The Accedi menu uses those.
+
+If room is not created yet:
+Accedi menu shows only:
+- Admin
+
+After room is created:
+shows:
+- Admin
+- Regia
+- Presenter QR
+
+==================================================
+PART 6 — REGIA / PRESENTER
+==================================================
+
+Regia and Presenter are controllers for the same Home session.
+
+They must not create a new game flow.
+
+Regia controls what the TV would normally control in Home:
+- start
+- select game
+- next
+- reveal
+- ranking
+- pause
+- audio
+- media
+
+Presenter can do the same plus live-specific tools when needed:
+- Coppie Live photo capture
+
+==================================================
+PART 7 — OUTPUT REQUIRED
+==================================================
+
+A. actual Home room creation route reused
+B. Live mode route using same page
+C. Accedi button added only in Live mode
+D. Admin/Regia/Presenter menu behavior
+E. /admin/show redirect removed or updated
+F. TV waiting screen confirmed identical to Home
+G. typecheck
+H. screenshots:
+   - Live create room page identical to Home
+   - Accedi menu closed
+   - Accedi menu open with Admin/Regia/Presenter
+   - TV waiting screen with Home giant QR

@@ -85,18 +85,42 @@ function SceneBg({ pulse }: { pulse: boolean }) {
   );
 }
 
+interface LiveSessionMeta {
+  id: string;
+  tvCode: string;
+  presenterCode: string;
+}
+
 export default function HomeLobbyPage() {
   const [, navigate] = useLocation();
   const params = useParams<{ code: string }>();
   const code = (params.code ?? '').toUpperCase().trim();
 
-  const [session, setSession]   = useState<HomeSession | null>(null);
-  const [players, setPlayers]   = useState<HomePlayer[]>([]);
-  const [notFound, setNotFound] = useState(false);
-  const [starting, setStarting] = useState(false);
+  // Live mode: read ?live=TVCODE from URL
+  const liveCode = typeof window !== 'undefined'
+    ? (new URLSearchParams(window.location.search).get('live') ?? '')
+    : '';
+
+  const [session, setSession]         = useState<HomeSession | null>(null);
+  const [players, setPlayers]         = useState<HomePlayer[]>([]);
+  const [notFound, setNotFound]       = useState(false);
+  const [starting, setStarting]       = useState(false);
   const [musicPlaying, setMusicPlaying] = useState(true);
-  const [joinPulse, setJoinPulse] = useState(false);
+  const [joinPulse, setJoinPulse]     = useState(false);
   const prevPlayerCount = useRef(0);
+
+  // Live session metadata (fetched by tvCode when in live mode)
+  const [liveMeta, setLiveMeta]       = useState<LiveSessionMeta | null>(null);
+  const [showAccedi, setShowAccedi]   = useState(false);
+  const [showPresenterQR, setShowPresenterQR] = useState(false);
+
+  useEffect(() => {
+    if (!liveCode) return;
+    fetch(`/api/live-sessions/by-code/${liveCode}`)
+      .then(r => r.ok ? r.json() as Promise<LiveSessionMeta> : null)
+      .then(data => { if (data) setLiveMeta(data); })
+      .catch(() => {});
+  }, [liveCode]);
 
   const joinUrl = typeof window !== 'undefined'
     ? `${window.location.origin}${BASE.replace(/\/$/, '')}/join/${code}`
@@ -519,6 +543,157 @@ export default function HomeLobbyPage() {
           {starting ? 'AVVIO...' : canStart ? 'AVVIA LA PARTITA' : 'IN ATTESA…'}
         </motion.button>
       </div>
+
+      {/* ── ACCEDI BUTTON (Live mode only) ───────────────────────────────────── */}
+      {liveCode && (
+        <>
+          {/* Click-outside backdrop */}
+          {showAccedi && (
+            <div
+              onClick={() => setShowAccedi(false)}
+              style={{ position: 'fixed', inset: 0, zIndex: 48 }}
+            />
+          )}
+
+          {/* Accedi floating pill — bottom-right */}
+          <div style={{
+            position: 'fixed', bottom: 84, right: 20, zIndex: 50,
+            display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6,
+          }}>
+            {/* Popup menu */}
+            {showAccedi && (
+              <motion.div
+                initial={{ opacity: 0, y: 6, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 4, scale: 0.97 }}
+                transition={{ duration: 0.16 }}
+                style={{
+                  background: 'rgba(8,4,24,0.97)',
+                  border: '1.5px solid rgba(255,255,255,0.14)',
+                  borderRadius: 16, overflow: 'hidden',
+                  backdropFilter: 'blur(24px)',
+                  boxShadow: '0 12px 50px rgba(0,0,0,0.7)',
+                  minWidth: 220,
+                }}>
+                {/* Header */}
+                <div style={{
+                  padding: '10px 16px 8px',
+                  borderBottom: '1px solid rgba(255,255,255,0.07)',
+                  fontSize: '0.6rem', fontWeight: 900, letterSpacing: '0.18em',
+                  color: 'rgba(245,182,66,0.7)', textTransform: 'uppercase',
+                }}>
+                  🔴 Modalità Live
+                </div>
+
+                {/* Admin */}
+                <a href="/admin" style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '11px 16px',
+                  color: 'rgba(255,255,255,0.85)',
+                  fontSize: '0.82rem', fontWeight: 700, textDecoration: 'none',
+                  borderBottom: '1px solid rgba(255,255,255,0.05)',
+                  cursor: 'pointer', transition: 'background 0.15s',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                  🛠 <span>Admin</span>
+                  <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'rgba(255,255,255,0.25)' }}>/admin</span>
+                </a>
+
+                {/* Regia */}
+                {liveMeta ? (
+                  <a href={`/live-control?session=${liveMeta.id}`} style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '11px 16px',
+                    color: 'rgba(255,255,255,0.85)',
+                    fontSize: '0.82rem', fontWeight: 700, textDecoration: 'none',
+                    borderBottom: '1px solid rgba(255,255,255,0.05)',
+                    cursor: 'pointer', transition: 'background 0.15s',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                    📻 <span>Regia</span>
+                    <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'rgba(255,255,255,0.25)' }}>live-control</span>
+                  </a>
+                ) : (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '11px 16px',
+                    color: 'rgba(255,255,255,0.3)',
+                    fontSize: '0.82rem', fontWeight: 700,
+                    borderBottom: '1px solid rgba(255,255,255,0.05)',
+                  }}>
+                    📻 <span>Regia</span>
+                    <span style={{ marginLeft: 'auto', fontSize: '0.6rem' }}>caricamento…</span>
+                  </div>
+                )}
+
+                {/* Presentatore */}
+                {liveMeta && (
+                  <>
+                    <button onClick={() => setShowPresenterQR(v => !v)} style={{
+                      display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+                      padding: '11px 16px',
+                      background: 'none', border: 'none',
+                      color: 'rgba(255,255,255,0.85)',
+                      fontSize: '0.82rem', fontWeight: 700, textAlign: 'left',
+                      cursor: 'pointer', transition: 'background 0.15s',
+                      borderBottom: showPresenterQR ? '1px solid rgba(255,255,255,0.05)' : 'none',
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                      🎤 <span>Presentatore</span>
+                      <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'rgba(255,255,255,0.35)' }}>
+                        {showPresenterQR ? '▲' : '▼ QR'}
+                      </span>
+                    </button>
+                    {showPresenterQR && (
+                      <div style={{
+                        padding: '12px 16px 14px',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+                      }}>
+                        <div style={{
+                          background: '#fff', borderRadius: 10, padding: 8, lineHeight: 0,
+                          boxShadow: '0 0 20px rgba(245,182,66,0.3)',
+                        }}>
+                          <QRCodeSVG
+                            value={`${typeof window !== 'undefined' ? window.location.origin : ''}/live-presenter?s=${liveMeta.presenterCode}`}
+                            size={120} bgColor="#ffffff" fgColor="#03000f" level="M"
+                          />
+                        </div>
+                        <div style={{
+                          fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.08em',
+                          color: 'rgba(255,255,255,0.4)', textAlign: 'center',
+                        }}>
+                          /live-presenter?s={liveMeta.presenterCode}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </motion.div>
+            )}
+
+            {/* Floating pill button */}
+            <motion.button
+              whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
+              onClick={() => setShowAccedi(v => !v)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 7,
+                padding: '0.55rem 1.2rem',
+                background: showAccedi ? 'rgba(245,182,66,0.18)' : 'rgba(10,5,30,0.9)',
+                border: showAccedi ? '1.5px solid rgba(245,182,66,0.55)' : '1.5px solid rgba(255,255,255,0.18)',
+                borderRadius: 100,
+                color: showAccedi ? '#F5B642' : 'rgba(255,255,255,0.65)',
+                fontSize: '0.75rem', fontWeight: 800, letterSpacing: '0.08em',
+                cursor: 'pointer', backdropFilter: 'blur(16px)',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+              }}>
+              🔑 Accedi
+            </motion.button>
+          </div>
+        </>
+      )}
 
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
