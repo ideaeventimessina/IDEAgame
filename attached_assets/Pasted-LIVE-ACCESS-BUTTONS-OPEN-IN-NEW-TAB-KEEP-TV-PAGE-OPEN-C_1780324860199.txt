@@ -1,0 +1,102 @@
+LIVE ACCESS BUTTONS — OPEN IN NEW TAB, KEEP TV PAGE OPEN
+
+Current issue:
+The “Accedi” menu is rendered like a dropdown list.
+
+This is wrong.
+
+Required:
+Admin / Regia / Presentatore must be real action buttons.
+
+==================================================
+GOAL
+==================================================
+
+The current TV page stays open on the projector.
+
+From the same device I must click buttons that open NEW browser tabs/windows.
+
+The projector page must never be replaced.
+
+==================================================
+REQUIRED UI
+==================================================
+
+Replace current dropdown menu with 3 visible buttons.
+
+Do NOT use:
+dropdown
+popover list
+select menu
+
+Use:
+3 buttons side by side or stacked inside the “Accedi” panel.
+
+--------------------------------------------------
+BUTTON 1
+--------------------------------------------------
+
+🛠 ADMIN
+
+opens in new tab:
+
+/admin
+
+target="_blank"
+
+--------------------------------------------------
+BUTTON 2
+--------------------------------------------------
+
+🎛 REGIA
+
+opens in new tab:
+
+/live-control?session=LIVE_SESSION_ID
+
+target="_blank"
+
+--------------------------------------------------
+BUTTON 3
+--------------------------------------------------
+
+🎤 PRESENTATORE
+
+opens in new tab:
+
+/live-presenter?s=PRESENTER_CODE
+
+target="_blank"
+
+If QR is needed:
+show QR below button
+but button must still open the page directly.
+
+==================================================
+IMPORTANT
+==================================================
+
+Current TV page must remain untouched and visible behind.
+
+Clicking buttons must NEVER navigate away from TV page.
+
+Must use:
+
+window.open(url, '_blank')
+
+or equivalent.
+
+Never:
+router.push()
+window.location.href
+location.replace()
+
+==================================================
+OUTPUT
+==================================================
+
+A. file modified
+B. old dropdown removed
+C. buttons now open with window.open()
+D. TV page remains open while Admin/Regia/Presenter open in new tabs
+E. screenshot

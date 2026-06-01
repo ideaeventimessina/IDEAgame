@@ -146,7 +146,8 @@ export default function HomeSetupPage() {
             filter: 'drop-shadow(0 0 20px rgba(245,182,66,0.6))' }}
         />
         {isLive ? (
-          <a href="/admin"
+          <button
+            onClick={() => window.open('/admin', '_blank')}
             style={{
               display: 'flex', alignItems: 'center', gap: 7,
               padding: '0.45rem 1.1rem',
@@ -155,11 +156,11 @@ export default function HomeSetupPage() {
               borderRadius: 100,
               color: '#F5B642',
               fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.08em',
-              textDecoration: 'none',
+              cursor: 'pointer',
               backdropFilter: 'blur(8px)',
             }}>
             🔑 Accedi
-          </a>
+          </button>
         ) : (
           <div style={{ width: 100 }}/>
         )}

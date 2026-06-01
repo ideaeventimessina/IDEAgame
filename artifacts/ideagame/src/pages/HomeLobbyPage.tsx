@@ -296,7 +296,7 @@ export default function HomeLobbyPage() {
                   style={{ position: 'fixed', inset: 0, zIndex: 48 }}/>
               )}
 
-              {/* Dropdown menu */}
+              {/* Action panel — 3 real buttons */}
               {showAccedi && (
                 <motion.div
                   initial={{ opacity: 0, y: -6, scale: 0.97 }}
@@ -307,106 +307,99 @@ export default function HomeLobbyPage() {
                     position: 'absolute', top: 'calc(100% + 8px)', right: 0,
                     background: 'rgba(8,4,24,0.97)',
                     border: '1.5px solid rgba(255,255,255,0.14)',
-                    borderRadius: 16, overflow: 'hidden',
-                    backdropFilter: 'blur(24px)',
-                    boxShadow: '0 12px 50px rgba(0,0,0,0.7)',
-                    minWidth: 220, zIndex: 50,
+                    borderRadius: 18,
+                    backdropFilter: 'blur(28px)',
+                    boxShadow: '0 16px 60px rgba(0,0,0,0.75)',
+                    padding: '14px 14px 12px',
+                    display: 'flex', flexDirection: 'column', gap: 8,
+                    minWidth: 230, zIndex: 50,
                   }}>
                   {/* Header */}
                   <div style={{
-                    padding: '10px 16px 8px',
+                    fontSize: '0.58rem', fontWeight: 900, letterSpacing: '0.2em',
+                    color: 'rgba(245,182,66,0.65)', textTransform: 'uppercase',
+                    textAlign: 'center', paddingBottom: 4,
                     borderBottom: '1px solid rgba(255,255,255,0.07)',
-                    fontSize: '0.6rem', fontWeight: 900, letterSpacing: '0.18em',
-                    color: 'rgba(245,182,66,0.7)', textTransform: 'uppercase',
+                    marginBottom: 2,
                   }}>
                     🔴 Modalità Live
                   </div>
 
-                  {/* Admin */}
-                  <a href="/admin" style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '11px 16px',
-                    color: 'rgba(255,255,255,0.85)',
-                    fontSize: '0.82rem', fontWeight: 700, textDecoration: 'none',
-                    borderBottom: '1px solid rgba(255,255,255,0.05)',
-                    cursor: 'pointer', transition: 'background 0.15s',
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                    🛠 <span>Admin</span>
-                    <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'rgba(255,255,255,0.25)' }}>/admin</span>
-                  </a>
-
-                  {/* Regia */}
-                  {liveMeta ? (
-                    <a href={`/live-control?session=${liveMeta.id}`} style={{
+                  {/* BTN 1 — ADMIN */}
+                  <button
+                    onClick={() => window.open('/admin', '_blank')}
+                    style={{
                       display: 'flex', alignItems: 'center', gap: 10,
                       padding: '11px 16px',
-                      color: 'rgba(255,255,255,0.85)',
-                      fontSize: '0.82rem', fontWeight: 700, textDecoration: 'none',
-                      borderBottom: '1px solid rgba(255,255,255,0.05)',
-                      cursor: 'pointer', transition: 'background 0.15s',
+                      background: 'rgba(99,102,241,0.15)',
+                      border: '1.5px solid rgba(99,102,241,0.4)',
+                      borderRadius: 12,
+                      color: '#a5b4fc',
+                      fontSize: '0.85rem', fontWeight: 800,
+                      cursor: 'pointer', textAlign: 'left', width: '100%',
+                      transition: 'all 0.15s',
                     }}
-                    onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
-                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                      📻 <span>Regia</span>
-                      <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'rgba(255,255,255,0.25)' }}>live-control</span>
-                    </a>
-                  ) : (
-                    <div style={{
+                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.28)'; e.currentTarget.style.borderColor = 'rgba(99,102,241,0.7)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.15)'; e.currentTarget.style.borderColor = 'rgba(99,102,241,0.4)'; }}>
+                    🛠 <span>Admin</span>
+                    <span style={{ marginLeft: 'auto', fontSize: '0.6rem', opacity: 0.45 }}>↗ nuova tab</span>
+                  </button>
+
+                  {/* BTN 2 — REGIA */}
+                  <button
+                    onClick={() => liveMeta && window.open(`/live-control?session=${liveMeta.id}`, '_blank')}
+                    disabled={!liveMeta}
+                    style={{
                       display: 'flex', alignItems: 'center', gap: 10,
                       padding: '11px 16px',
-                      color: 'rgba(255,255,255,0.3)',
-                      fontSize: '0.82rem', fontWeight: 700,
-                      borderBottom: '1px solid rgba(255,255,255,0.05)',
-                    }}>
-                      📻 <span>Regia</span>
-                      <span style={{ marginLeft: 'auto', fontSize: '0.6rem' }}>caricamento…</span>
-                    </div>
-                  )}
+                      background: liveMeta ? 'rgba(245,182,66,0.13)' : 'rgba(255,255,255,0.04)',
+                      border: liveMeta ? '1.5px solid rgba(245,182,66,0.4)' : '1.5px solid rgba(255,255,255,0.08)',
+                      borderRadius: 12,
+                      color: liveMeta ? '#F5B642' : 'rgba(255,255,255,0.25)',
+                      fontSize: '0.85rem', fontWeight: 800,
+                      cursor: liveMeta ? 'pointer' : 'default', textAlign: 'left', width: '100%',
+                      transition: 'all 0.15s',
+                    }}
+                    onMouseEnter={e => { if (liveMeta) { e.currentTarget.style.background = 'rgba(245,182,66,0.25)'; e.currentTarget.style.borderColor = 'rgba(245,182,66,0.7)'; }}}
+                    onMouseLeave={e => { if (liveMeta) { e.currentTarget.style.background = 'rgba(245,182,66,0.13)'; e.currentTarget.style.borderColor = 'rgba(245,182,66,0.4)'; }}}>
+                    🎛 <span>Regia</span>
+                    <span style={{ marginLeft: 'auto', fontSize: '0.6rem', opacity: 0.45 }}>{liveMeta ? '↗ nuova tab' : '…'}</span>
+                  </button>
 
-                  {/* Presentatore */}
+                  {/* BTN 3 — PRESENTATORE */}
+                  <button
+                    onClick={() => liveMeta && window.open(`/live-presenter?s=${liveMeta.presenterCode}`, '_blank')}
+                    disabled={!liveMeta}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '11px 16px',
+                      background: liveMeta ? 'rgba(52,211,153,0.12)' : 'rgba(255,255,255,0.04)',
+                      border: liveMeta ? '1.5px solid rgba(52,211,153,0.4)' : '1.5px solid rgba(255,255,255,0.08)',
+                      borderRadius: 12,
+                      color: liveMeta ? '#6ee7b7' : 'rgba(255,255,255,0.25)',
+                      fontSize: '0.85rem', fontWeight: 800,
+                      cursor: liveMeta ? 'pointer' : 'default', textAlign: 'left', width: '100%',
+                      transition: 'all 0.15s',
+                    }}
+                    onMouseEnter={e => { if (liveMeta) { e.currentTarget.style.background = 'rgba(52,211,153,0.24)'; e.currentTarget.style.borderColor = 'rgba(52,211,153,0.7)'; }}}
+                    onMouseLeave={e => { if (liveMeta) { e.currentTarget.style.background = 'rgba(52,211,153,0.12)'; e.currentTarget.style.borderColor = 'rgba(52,211,153,0.4)'; }}}>
+                    🎤 <span>Presentatore</span>
+                    <span style={{ marginLeft: 'auto', fontSize: '0.6rem', opacity: 0.45 }}>{liveMeta ? '↗ nuova tab' : '…'}</span>
+                  </button>
+
+                  {/* QR Presentatore — always shown when liveMeta available */}
                   {liveMeta && (
-                    <>
-                      <button onClick={() => setShowPresenterQR(v => !v)} style={{
-                        display: 'flex', alignItems: 'center', gap: 10, width: '100%',
-                        padding: '11px 16px',
-                        background: 'none', border: 'none',
-                        color: 'rgba(255,255,255,0.85)',
-                        fontSize: '0.82rem', fontWeight: 700, textAlign: 'left',
-                        cursor: 'pointer', transition: 'background 0.15s',
-                        borderBottom: showPresenterQR ? '1px solid rgba(255,255,255,0.05)' : 'none',
-                      }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                        🎤 <span>Presentatore</span>
-                        <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'rgba(255,255,255,0.35)' }}>
-                          {showPresenterQR ? '▲' : '▼ QR'}
-                        </span>
-                      </button>
-                      {showPresenterQR && (
-                        <div style={{
-                          padding: '12px 16px 14px',
-                          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
-                        }}>
-                          <div style={{
-                            background: '#fff', borderRadius: 10, padding: 8, lineHeight: 0,
-                            boxShadow: '0 0 20px rgba(245,182,66,0.3)',
-                          }}>
-                            <QRCodeSVG
-                              value={`${typeof window !== 'undefined' ? window.location.origin : ''}/live-presenter?s=${liveMeta.presenterCode}`}
-                              size={120} bgColor="#ffffff" fgColor="#03000f" level="M"
-                            />
-                          </div>
-                          <div style={{
-                            fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.08em',
-                            color: 'rgba(255,255,255,0.4)', textAlign: 'center',
-                          }}>
-                            /live-presenter?s={liveMeta.presenterCode}
-                          </div>
-                        </div>
-                      )}
-                    </>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, paddingTop: 4 }}>
+                      <div style={{ background: '#fff', borderRadius: 10, padding: 7, lineHeight: 0, boxShadow: '0 0 20px rgba(52,211,153,0.25)' }}>
+                        <QRCodeSVG
+                          value={`${typeof window !== 'undefined' ? window.location.origin : ''}/live-presenter?s=${liveMeta.presenterCode}`}
+                          size={110} bgColor="#ffffff" fgColor="#03000f" level="M"
+                        />
+                      </div>
+                      <div style={{ fontSize: '0.58rem', fontWeight: 700, color: 'rgba(255,255,255,0.35)', textAlign: 'center' }}>
+                        /live-presenter?s={liveMeta.presenterCode}
+                      </div>
+                    </div>
                   )}
                 </motion.div>
               )}
