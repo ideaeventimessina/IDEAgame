@@ -17,6 +17,7 @@ import {
   Laugh, Star, Mic, ShieldAlert, Zap, MessageSquare, ChevronRight,
 } from 'lucide-react';
 import { QrPlaceholder } from '@/components/QrPlaceholder';
+import { QRCodeSVG } from 'qrcode.react';
 import { JonnyAvatar } from '@/components/JonnyAvatar';
 import { useEventSocket, getSocket } from '@/hooks/useEventSocket';
 import { RISATE_MISSIONS, YOGA_POSES, type RisateState } from '@/data/risate-missions';
@@ -546,6 +547,7 @@ export default function HomeGame() {
   const [, navigate] = useLocation();
   const urlParams = new URLSearchParams(window.location.search);
   const urlSessionId = urlParams.get('s');
+  const liveCode = urlParams.get('live') ?? '';
 
   // No sessionId → redirect to home-v4 (generic entry); sessionId present → wait for load effect
   const [phase, setPhase] = useState<Phase>('board');
@@ -606,6 +608,18 @@ export default function HomeGame() {
   const [sensorReadyMap, setSensorReadyMap] = useState<Record<string, boolean>>({});
   // Spectator votes per dancer: Record<dancerId, { total: number; count: number }>
   const [balloVotes, setBalloVotes] = useState<Record<string, { total: number; count: number }>>({});
+
+  // ── Live mode Accedi ──────────────────────────────────────────────────────
+  const [showAccedi, setShowAccedi] = useState(false);
+  const [showPresenterQR, setShowPresenterQR] = useState(false);
+  const [liveMeta, setLiveMeta] = useState<{ id: string; tvCode: string; presenterCode: string } | null>(null);
+  useEffect(() => {
+    if (!liveCode) return;
+    fetch(`/api/live-sessions/by-code/${liveCode}`)
+      .then(r => r.ok ? r.json() as Promise<{ id: string; tvCode: string; presenterCode: string }> : null)
+      .then(d => { if (d) setLiveMeta(d); })
+      .catch(() => {});
+  }, [liveCode]);
 
   // ── TV Messaggi Segreti state ─────────────────────────────────────────────
   interface TvChatMsg { id: string; senderNickname: string; isAnonymous: boolean; text: string; createdAt: string; }
@@ -1415,6 +1429,69 @@ export default function HomeGame() {
                 style={{background:'rgba(245,182,66,0.15)',border:'1px solid rgba(245,182,66,0.35)',color:'#F5B642'}}>
                 <Users className="inline h-4 w-4 mr-1"/>{players.length}
               </div>
+
+              {/* 🔑 Accedi — live mode only */}
+              {liveCode && (
+                <div style={{ position: 'relative' }}>
+                  {showAccedi && (
+                    <div onClick={() => setShowAccedi(false)}
+                      style={{ position: 'fixed', inset: 0, zIndex: 48 }}/>
+                  )}
+                  {showAccedi && (
+                    <div style={{
+                      position: 'absolute', top: 'calc(100% + 6px)', right: 0,
+                      background: 'rgba(8,4,24,0.97)',
+                      border: '1.5px solid rgba(255,255,255,0.14)',
+                      borderRadius: 14, overflow: 'hidden',
+                      backdropFilter: 'blur(24px)',
+                      boxShadow: '0 12px 50px rgba(0,0,0,0.8)',
+                      minWidth: 210, zIndex: 50,
+                    }}>
+                      <div style={{ padding:'9px 14px 7px', borderBottom:'1px solid rgba(255,255,255,0.07)', fontSize:'0.58rem', fontWeight:900, letterSpacing:'0.18em', color:'rgba(245,182,66,0.7)', textTransform:'uppercase' }}>
+                        🔴 Modalità Live
+                      </div>
+                      <a href="/admin" style={{ display:'flex', alignItems:'center', gap:9, padding:'10px 14px', color:'rgba(255,255,255,0.85)', fontSize:'0.78rem', fontWeight:700, textDecoration:'none', borderBottom:'1px solid rgba(255,255,255,0.05)', cursor:'pointer' }}
+                        onMouseEnter={e=>(e.currentTarget.style.background='rgba(255,255,255,0.06)')}
+                        onMouseLeave={e=>(e.currentTarget.style.background='transparent')}>
+                        🛠 Admin <span style={{ marginLeft:'auto', fontSize:'0.62rem', color:'rgba(255,255,255,0.25)' }}>/admin</span>
+                      </a>
+                      {liveMeta ? (
+                        <a href={`/live-control?session=${liveMeta.id}`} style={{ display:'flex', alignItems:'center', gap:9, padding:'10px 14px', color:'rgba(255,255,255,0.85)', fontSize:'0.78rem', fontWeight:700, textDecoration:'none', borderBottom:'1px solid rgba(255,255,255,0.05)', cursor:'pointer' }}
+                          onMouseEnter={e=>(e.currentTarget.style.background='rgba(255,255,255,0.06)')}
+                          onMouseLeave={e=>(e.currentTarget.style.background='transparent')}>
+                          📻 Regia <span style={{ marginLeft:'auto', fontSize:'0.62rem', color:'rgba(255,255,255,0.25)' }}>live-control</span>
+                        </a>
+                      ) : (
+                        <div style={{ display:'flex', alignItems:'center', gap:9, padding:'10px 14px', color:'rgba(255,255,255,0.3)', fontSize:'0.78rem', fontWeight:700, borderBottom:'1px solid rgba(255,255,255,0.05)' }}>
+                          📻 Regia <span style={{ marginLeft:'auto', fontSize:'0.6rem' }}>caricamento…</span>
+                        </div>
+                      )}
+                      {liveMeta && (
+                        <>
+                          <button onClick={() => setShowPresenterQR(v=>!v)} style={{ display:'flex', alignItems:'center', gap:9, width:'100%', padding:'10px 14px', background:'none', border:'none', color:'rgba(255,255,255,0.85)', fontSize:'0.78rem', fontWeight:700, textAlign:'left', cursor:'pointer', borderBottom: showPresenterQR ? '1px solid rgba(255,255,255,0.05)' : 'none' }}
+                            onMouseEnter={e=>(e.currentTarget.style.background='rgba(255,255,255,0.06)')}
+                            onMouseLeave={e=>(e.currentTarget.style.background='transparent')}>
+                            🎤 Presentatore <span style={{ marginLeft:'auto', fontSize:'0.65rem', color:'rgba(255,255,255,0.35)' }}>{showPresenterQR?'▲':'▼ QR'}</span>
+                          </button>
+                          {showPresenterQR && (
+                            <div style={{ padding:'10px 14px 12px', display:'flex', flexDirection:'column', alignItems:'center', gap:7 }}>
+                              <div style={{ background:'#fff', borderRadius:8, padding:6, lineHeight:0, boxShadow:'0 0 16px rgba(245,182,66,0.3)' }}>
+                                <QRCodeSVG value={`${window.location.origin}/live-presenter?s=${liveMeta.presenterCode}`} size={110} bgColor="#ffffff" fgColor="#03000f" level="M"/>
+                              </div>
+                              <div style={{ fontSize:'0.58rem', fontWeight:700, color:'rgba(255,255,255,0.4)', textAlign:'center' }}>/live-presenter?s={liveMeta.presenterCode}</div>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+                  <button onClick={() => setShowAccedi(v=>!v)}
+                    className="rounded-xl px-3 py-1.5 text-xs font-black transition-all hover:scale-105 active:scale-95"
+                    style={{ background: showAccedi ? 'rgba(245,182,66,0.22)' : 'rgba(245,182,66,0.12)', border: `1px solid ${showAccedi ? 'rgba(245,182,66,0.7)' : 'rgba(245,182,66,0.4)'}`, color:'#F5B642', cursor:'pointer' }}>
+                    🔑 Accedi
+                  </button>
+                </div>
+              )}
               {gamesPlayed.length > 0 && players.length > 0 && (
                 <button disabled={loading}
                   onClick={async()=>{

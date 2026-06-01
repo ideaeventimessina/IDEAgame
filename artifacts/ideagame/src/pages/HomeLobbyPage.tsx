@@ -144,7 +144,7 @@ export default function HomeLobbyPage() {
         return data.players;
       });
       if (data.session.status === 'playing') {
-        navigate(`/home?s=${data.session.id}`);
+        navigate(`/home?s=${data.session.id}${liveCode ? `&live=${liveCode}` : ''}`);
       }
     } catch { /* network hiccup */ }
   }, [code, navigate]);
@@ -177,7 +177,7 @@ export default function HomeLobbyPage() {
     setStarting(true);
     try {
       await fetch(`/api/home/sessions/${session.id}/ready`, { method: 'POST' });
-      navigate(`/home?s=${session.id}`);
+      navigate(`/home?s=${session.id}${liveCode ? `&live=${liveCode}` : ''}`);
     } catch {
       setStarting(false);
     }
