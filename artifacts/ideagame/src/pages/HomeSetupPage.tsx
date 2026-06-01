@@ -145,7 +145,24 @@ export default function HomeSetupPage() {
           style={{ width: 'clamp(7rem,11vw,9rem)', objectFit: 'contain',
             filter: 'drop-shadow(0 0 20px rgba(245,182,66,0.6))' }}
         />
-        <div style={{ width: 100 }}/>
+        {isLive ? (
+          <a href="/admin"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 7,
+              padding: '0.45rem 1.1rem',
+              background: 'rgba(245,182,66,0.12)',
+              border: '1.5px solid rgba(245,182,66,0.45)',
+              borderRadius: 100,
+              color: '#F5B642',
+              fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.08em',
+              textDecoration: 'none',
+              backdropFilter: 'blur(8px)',
+            }}>
+            🔑 Accedi
+          </a>
+        ) : (
+          <div style={{ width: 100 }}/>
+        )}
       </div>
 
       {/* page title */}
