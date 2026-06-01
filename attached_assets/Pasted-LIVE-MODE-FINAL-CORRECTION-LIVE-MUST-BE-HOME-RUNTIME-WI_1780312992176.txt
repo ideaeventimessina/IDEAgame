@@ -1,0 +1,165 @@
+LIVE MODE FINAL CORRECTION — LIVE MUST BE HOME RUNTIME WITH REGIA/PRESENTER CONTROLS
+
+Stop creating new Live UI.
+Stop creating new visual systems.
+Stop creating new TV placeholders.
+Delete/deprecate the useless Live pages that duplicate Home.
+
+CORE RULE:
+Home Mode already has the correct TV experience.
+Live Mode must reuse it everywhere.
+
+==================================================
+WHAT LIVE MUST BE
+==================================================
+
+ADMIN sidebar:
+Show → opens Live room creation page
+
+This page must be identical in style and flow to the Home room creation flow.
+
+Flow:
+
+1. Click Modalità Live
+→ lands in Admin
+
+2. Sidebar button “Show”
+→ opens “Crea stanza Live”
+
+3. Create Live room
+→ creates a normal Home runtime session underneath
+
+4. After room creation:
+show 3 role buttons:
+- Regia
+- Presentatore
+- TV
+
+All three control or view the SAME Home session.
+
+==================================================
+TV LIVE
+==================================================
+
+TV Live must show exactly the Home TV runtime.
+
+Before room/session exists:
+show the main Home landing background.
+
+After room/session exists:
+show the same giant QR waiting screen from Home.
+
+During game:
+show the same HomeGame TV board.
+
+No black placeholder.
+No “Live Show” custom screen.
+No microphone emoji.
+No new TV graphics.
+
+==================================================
+REGIA / PRESENTER
+==================================================
+
+Regia and Presenter must not invent new game flows.
+
+They are remote controls for actions that in Home mode are currently clicked on the TV.
+
+Examples:
+- start game
+- select game
+- next
+- reveal
+- ranking
+- pause
+- stop audio
+- trigger media
+- assign score
+- open voting
+- create Coppie Live photos when needed
+
+Presenter and Regia must send commands to the same Home session.
+
+==================================================
+REMOVE USELESS OLD LIVE UI
+==================================================
+
+Remove or redirect:
+- /live-dashboard standalone ugly page
+- custom Live TV placeholders
+- useless Admin Dashboard buttons:
+  “Regia”
+  “Apri Proiettore”
+  “Vai a Presentatore”
+
+These buttons are confusing and must disappear.
+
+The only place to manage Live is:
+Admin sidebar → Show
+
+==================================================
+ADMIN SHOW PAGE
+==================================================
+
+Create /admin/show or reuse /admin/events if already mapped by “Show”.
+
+This page must show:
+
+- Crea nuova stanza Live
+- existing active live rooms
+- for each room:
+  - room name
+  - join code
+  - Regia button
+  - Presentatore button
+  - TV button
+  - copy links
+
+Design must follow Home visual language, not new dark custom panels.
+
+==================================================
+IMPLEMENTATION RULE
+==================================================
+
+Use existing Home session model and HomeGame runtime.
+
+Live room must create/use:
+homeSessionId
+
+TV:
+renders /home?session=HOME_SESSION_ID
+
+Regia/Presenter:
+send actions to HOME session endpoints or new wrapper endpoints that call the same Home actions.
+
+Do not create parallel live game state unless absolutely necessary.
+
+==================================================
+COPPIE LIVE
+==================================================
+
+Only special live input:
+Presenter can create 10 real couples with 2 photos each.
+
+After photos are ready:
+build Home Coppie deck
+send to same Home Coppie board
+
+TV still renders Home board.
+
+==================================================
+OUTPUT REQUIRED
+==================================================
+
+A. files/pages to delete or redirect
+B. new Admin Show page route
+C. ModeSelect Live target
+D. proof TV uses Home runtime
+E. Regia/Presenter command mapping to Home actions
+F. removed useless admin dashboard buttons
+G. typecheck
+H. screenshots:
+   - Admin Show page
+   - TV before room: Home background
+   - TV waiting room: giant QR Home style
+   - TV game: HomeGame board

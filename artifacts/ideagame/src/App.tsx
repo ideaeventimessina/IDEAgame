@@ -170,7 +170,8 @@ function Router() {
         <Route path="/join/:code" component={JoinPage} />
         <Route path="/home" component={HomeGame} />
         <Route path="/home/join" component={HomeJoin} />
-        <Route path="/live-dashboard">{() => { window.location.replace('/admin/live'); return null; }}</Route>
+        <Route path="/live-dashboard">{() => { window.location.replace('/admin/show'); return null; }}</Route>
+        <Route path="/admin/live">{() => { window.location.replace('/admin/show'); return null; }}</Route>
         <Route path="/live-join" component={LiveJoin} />
         <Route path="/live-control" component={LiveRoom} />
         <Route path="/live-tv" component={LiveTV} />
@@ -178,7 +179,7 @@ function Router() {
         <Route path="/presenter-live" component={PresenterLive} />
         <Route path="/presenter" component={Presenter} />
         <Route path="/admin">{() => { window.location.replace('/admin/dashboard'); return null; }}</Route>
-        <Route path="/admin/live"><Guard route="/admin/live"><AdminLive /></Guard></Route>
+        <Route path="/admin/show"><Guard route="/admin/show"><AdminLive /></Guard></Route>
         <Route path="/admin/dashboard"><Guard route="/admin/dashboard"><AdminDashboard /></Guard></Route>
         <Route path="/admin/games"><Guard route="/admin/games"><AdminGames /></Guard></Route>
         <Route path="/admin/quizzes"><Guard route="/admin/quizzes"><AdminQuizzes /></Guard></Route>

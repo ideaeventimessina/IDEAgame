@@ -198,9 +198,30 @@ router.post("/live-sessions", requireAuth, async (req: AuthedRequest, res: Respo
     })
     .returning();
 
-  await upsertState(session!.id, { currentPhase: "standby", payload: {} });
+  // Auto-create a linked Home session so TV always renders the Home runtime from the start.
+  // homeSessionId is stored in the live state payload and read by LiveTV to render the iframe.
+  const homeJoinCode = randomBytes(3).toString("hex").toUpperCase();
+  const homeExpiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000); // 12 h
+  const [homeSession] = await db.insert(homeSessionsTable).values({
+    joinCode: homeJoinCode,
+    hostName: title,
+    maxPlayers: 50,
+    expiresAt: homeExpiresAt,
+    gameConfig: {
+      phase: "join",
+      gamesPlayed: [],
+      preloadedRounds: [],
+      selectedGames: [],
+      matchDuration: "normal",
+    },
+  }).returning();
 
-  logger.info({ sessionId: session!.id, tvCode, presenterCode }, "[LiveSession] created");
+  await upsertState(session!.id, {
+    currentPhase: "standby",
+    payload: { homeSessionId: homeSession!.id },
+  });
+
+  logger.info({ sessionId: session!.id, tvCode, presenterCode, homeSessionId: homeSession!.id }, "[LiveSession] created");
   res.status(201).json(session);
 });
 

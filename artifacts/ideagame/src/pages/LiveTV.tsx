@@ -157,94 +157,23 @@ export default function LiveTV() {
     );
   }
 
-  // ── Coppie Live (fallback — used only when homeSessionId not yet set) ───
-  // Temporary fallback — delete after Home runtime adapter is verified end-to-end.
-  const coppie = state?.payload?.coppie as CoppiePayload | undefined;
-  if (session?.currentGameSlug === 'gioco-coppie') {
-    return (
-      <CoppieLiveBoard
-        coppie={coppie}
-        session={session}
-        connected={connected}
-        code={code}
-        sessionId={session.id}
-        completeCouplesCount={completeCouplesCount}
-        onStateRefresh={() => fetchState(session.id)}
-      />
-    );
-  }
-
-  // ── Standby ─────────────────────────────────────────────────────────────
-  if (!session?.currentGameSlug || session.currentPhase === 'standby') {
-    return (
-      <div style={{
-        position: 'fixed', inset: 0,
-        background: 'radial-gradient(ellipse 110% 70% at 50% 15%, #2d0d5c 0%, #1a0535 40%, #09050f 72%)',
-        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        fontFamily: "'Outfit','Space Grotesk',sans-serif", color: '#fff', overflow: 'hidden',
-      }}>
-        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-          <div style={{ position: 'absolute', top: '-12%', left: '50%', transform: 'translateX(-50%)', width: '75%', height: '55%', borderRadius: '50%', background: 'radial-gradient(ellipse, rgba(168,85,247,0.28) 0%, transparent 70%)', filter: 'blur(70px)' }} />
-          <div style={{ position: 'absolute', bottom: '-8%', left: '8%', width: '42%', height: '38%', borderRadius: '50%', background: 'radial-gradient(ellipse, rgba(168,85,247,0.13) 0%, transparent 70%)', filter: 'blur(45px)' }} />
-          <div style={{ position: 'absolute', bottom: '-8%', right: '8%', width: '42%', height: '38%', borderRadius: '50%', background: 'radial-gradient(ellipse, rgba(168,85,247,0.13) 0%, transparent 70%)', filter: 'blur(45px)' }} />
-        </div>
-        <div style={{ position: 'relative', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 24 }}>
-          <div style={{ fontWeight: 900, fontSize: 'clamp(3.5rem,9vw,8rem)', letterSpacing: '0.14em', color: '#A855F7', textShadow: '0 0 50px rgba(168,85,247,0.75), 0 0 100px rgba(168,85,247,0.35)', lineHeight: 1 }}>
-            LIVE SHOW
-          </div>
-          {session?.title && (
-            <div style={{ fontWeight: 700, fontSize: 'clamp(1.1rem,3vw,2.2rem)', color: 'rgba(255,255,255,0.78)', letterSpacing: '0.04em', maxWidth: '80vw', textAlign: 'center' }}>
-              {session.title}
-            </div>
-          )}
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: '10px 30px', background: 'rgba(168,85,247,0.14)', border: '1px solid rgba(168,85,247,0.38)', borderRadius: 100, fontSize: 'clamp(0.85rem,2vw,1.15rem)', fontWeight: 700, color: 'rgba(255,255,255,0.58)', letterSpacing: '0.07em' }}>
-            <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#A855F7', boxShadow: '0 0 12px rgba(168,85,247,0.9)', display: 'inline-block', flexShrink: 0 }} />
-            In attesa della regia
-          </div>
-        </div>
-        <ConnectionDot connected={connected} />
-      </div>
-    );
-  }
-
-  // ── Other game (playing) ─────────────────────────────────────────────────
-  const GAME_NAME: Record<string, string> = {
-    'gioco-coppie': 'COPPIE LIVE', 'percorso-a-risate': 'PERCORSO A RISATE',
-    'quizzone': 'QUIZZONE', 'sfida-ballo': 'SFIDA DI BALLO', 'sara-musica': "SARA'MUSICA",
-  };
-  const GAME_COLOR: Record<string, string> = {
-    'gioco-coppie': '#A855F7', 'percorso-a-risate': '#F59E0B',
-    'quizzone': '#60A5FA', 'sfida-ballo': '#EC4899', 'sara-musica': '#34D399',
-  };
-  const slug  = session.currentGameSlug;
-  const name  = GAME_NAME[slug]  ?? slug.toUpperCase();
-  const color = GAME_COLOR[slug] ?? '#A855F7';
+  // ── No homeSessionId yet (edge case: legacy session or state still loading) ──
+  // All new sessions have homeSessionId auto-created at creation time.
   return (
-    <div style={{
-      position: 'fixed', inset: 0,
-      background: `radial-gradient(ellipse 110% 70% at 50% 15%, ${color}40 0%, #1a0535 45%, #09050f 75%)`,
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      fontFamily: "'Outfit','Space Grotesk',sans-serif", color: '#fff', overflow: 'hidden',
-    }}>
-      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-        <div style={{ position: 'absolute', top: '-12%', left: '50%', transform: 'translateX(-50%)', width: '75%', height: '55%', borderRadius: '50%', background: `radial-gradient(ellipse, ${color}30 0%, transparent 70%)`, filter: 'blur(70px)' }} />
-      </div>
-      <div style={{ position: 'relative', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 22 }}>
-        <div style={{ fontWeight: 900, fontSize: 'clamp(3rem,8vw,7rem)', letterSpacing: '0.13em', color, textShadow: `0 0 50px ${color}BB, 0 0 100px ${color}44`, lineHeight: 1 }}>
-          {name}
+    <FullScreen>
+      <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20 }}>
+        <Loader2 size={40} className="animate-spin" style={{ color: '#A855F7' }} />
+        <div style={{ fontWeight: 700, fontSize: 'clamp(0.9rem,2vw,1.1rem)', color: 'rgba(255,255,255,0.45)' }}>
+          Connessione al runtime Home…
         </div>
         {session?.title && (
-          <div style={{ fontWeight: 700, fontSize: 'clamp(0.95rem,2.5vw,1.8rem)', color: 'rgba(255,255,255,0.65)', letterSpacing: '0.04em' }}>
+          <div style={{ fontSize: 'clamp(0.75rem,1.5vw,0.9rem)', color: 'rgba(255,255,255,0.25)' }}>
             {session.title}
           </div>
         )}
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: '10px 30px', background: `${color}18`, border: `1px solid ${color}50`, borderRadius: 100, fontSize: 'clamp(0.8rem,1.8vw,1.05rem)', fontWeight: 700, color: 'rgba(255,255,255,0.6)', letterSpacing: '0.07em' }}>
-          <span style={{ width: 9, height: 9, borderRadius: '50%', background: color, boxShadow: `0 0 12px ${color}`, display: 'inline-block', flexShrink: 0 }} />
-          {session.currentPhase}
-        </div>
       </div>
       <ConnectionDot connected={connected} />
-    </div>
+    </FullScreen>
   );
 }
 
