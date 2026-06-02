@@ -613,13 +613,30 @@ export default function HomeGame() {
   const [showAccedi, setShowAccedi] = useState(false);
   const [showPresenterQR, setShowPresenterQR] = useState(false);
   const [liveMeta, setLiveMeta] = useState<{ id: string; tvCode: string; presenterCode: string } | null>(null);
+  const accediGameRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!liveCode) return;
     fetch(`/api/live-sessions/by-code/${liveCode}`)
       .then(r => r.ok ? r.json() as Promise<{ id: string; tvCode: string; presenterCode: string }> : null)
-      .then(d => { if (d) setLiveMeta(d); })
+      .then(d => {
+        if (d) {
+          setLiveMeta(d);
+          console.log('[LiveAccess] liveMeta loaded (HomeGame)', { liveCode, id: d.id, presenterCode: d.presenterCode, tvCode: d.tvCode });
+        }
+      })
       .catch(() => {});
   }, [liveCode]);
+  // Close Accedi panel on outside click — avoids z-index stacking context issues
+  useEffect(() => {
+    if (!showAccedi) return;
+    const handler = (e: MouseEvent) => {
+      if (accediGameRef.current && !accediGameRef.current.contains(e.target as Node)) {
+        setShowAccedi(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showAccedi]);
 
   // ── TV Messaggi Segreti state ─────────────────────────────────────────────
   interface TvChatMsg { id: string; senderNickname: string; isAnonymous: boolean; text: string; createdAt: string; }
@@ -1432,11 +1449,7 @@ export default function HomeGame() {
 
               {/* 🔑 Accedi — live mode only */}
               {liveCode && (
-                <div style={{ position: 'relative' }}>
-                  {showAccedi && (
-                    <div onClick={() => setShowAccedi(false)}
-                      style={{ position: 'fixed', inset: 0, zIndex: 48 }}/>
-                  )}
+                <div ref={accediGameRef} style={{ position: 'relative', zIndex: 1000 }}>
                   {showAccedi && (
                     <div style={{
                       position: 'absolute', top: 'calc(100% + 6px)', right: 0,

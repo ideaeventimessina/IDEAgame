@@ -113,14 +113,32 @@ export default function HomeLobbyPage() {
   const [liveMeta, setLiveMeta]       = useState<LiveSessionMeta | null>(null);
   const [showAccedi, setShowAccedi]   = useState(false);
   const [showPresenterQR, setShowPresenterQR] = useState(false);
+  const accediRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!liveCode) return;
     fetch(`/api/live-sessions/by-code/${liveCode}`)
       .then(r => r.ok ? r.json() as Promise<LiveSessionMeta> : null)
-      .then(data => { if (data) setLiveMeta(data); })
+      .then(data => {
+        if (data) {
+          setLiveMeta(data);
+          console.log('[LiveAccess] liveMeta loaded', { liveCode, id: data.id, presenterCode: data.presenterCode, tvCode: data.tvCode });
+        }
+      })
       .catch(() => {});
   }, [liveCode]);
+
+  // Close Accedi panel on outside click (avoids z-index stacking context issues)
+  useEffect(() => {
+    if (!showAccedi) return;
+    const handler = (e: MouseEvent) => {
+      if (accediRef.current && !accediRef.current.contains(e.target as Node)) {
+        setShowAccedi(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showAccedi]);
 
   const joinUrl = typeof window !== 'undefined'
     ? `${window.location.origin}${BASE.replace(/\/$/, '')}/join/${code}`
@@ -289,12 +307,7 @@ export default function HomeLobbyPage() {
 
           {/* 🔑 Accedi — shown only in live mode */}
           {liveCode && (
-            <div style={{ position: 'relative' }}>
-              {/* Click-outside backdrop */}
-              {showAccedi && (
-                <div onClick={() => setShowAccedi(false)}
-                  style={{ position: 'fixed', inset: 0, zIndex: 48 }}/>
-              )}
+            <div ref={accediRef} style={{ position: 'relative', zIndex: 1000 }}>
 
               {/* Action panel — 3 real buttons */}
               {showAccedi && (

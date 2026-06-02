@@ -1,0 +1,150 @@
+LIVE MODE — FIX ACCESS BUTTONS + PRESENTER GAME STATE WIRING
+
+Patch only Live mode access/presenter wiring.
+Do not touch Home gameplay.
+Do not touch SaraMusica.
+
+BUGS:
+1. In Live TV “Accedi” menu, Admin and Regia buttons are not clickable.
+2. Presenter shows “nessun gioco attivo” even after Live room is created and games are selected.
+3. Presenter game buttons do nothing; Coppie Live must open the 10-couples photo capture UI.
+
+==================================================
+PART 1 — ACCESS MENU BUTTONS MUST OPEN NEW TABS
+==================================================
+
+In the Live “Accedi” panel, Admin / Regia / Presentatore must be real clickable buttons.
+
+Required:
+
+ADMIN:
+window.open('/admin', '_blank')
+
+REGIA:
+window.open('/live-control?session=' + liveSessionId, '_blank')
+
+PRESENTATORE:
+window.open('/live-presenter?s=' + presenterCode, '_blank')
+
+Do not use disabled divs.
+Do not use router navigation.
+Do not replace the TV page.
+
+Add cursor pointer and visible hover state.
+
+==================================================
+PART 2 — PRESENTER MUST READ CURRENT LIVE + HOME SESSION
+==================================================
+
+Presenter currently says:
+“nessun gioco attivo”
+
+Fix data wiring.
+
+Presenter must load:
+- liveSession by presenterCode
+- liveRuntimeState
+- linked homeSessionId
+- current Home session state
+
+If Home session exists, Presenter must know:
+- currentGameSlug
+- current phase
+- active game
+- available live tools
+
+If current Home session has no selected game yet:
+Presenter still must show game launcher buttons.
+
+Do not block buttons because currentGameSlug is null.
+
+==================================================
+PART 3 — PRESENTER GAME BUTTONS
+==================================================
+
+Presenter dashboard must show ALL live-supported games:
+
+- Coppie Live
+- Percorso
+- Quizzone
+- Ballo
+- Sara’Musica
+- Karaoke
+- Parola alle Spalle
+- Adult Only
+
+Clicking a game button must send a command to select/start that game in the linked Home session or prepare its live tool.
+
+For now minimum required:
+COPPIE LIVE button must always work.
+
+==================================================
+PART 4 — COPPIE LIVE BUTTON BEHAVIOR
+==================================================
+
+When Presenter clicks “Coppie Live”:
+
+- do NOT require currentGameSlug already active
+- open the Coppie Live capture UI immediately
+- set live currentGameSlug = "gioco-coppie"
+- ensure linked Home session gameSlug/roundPayload is prepared for Coppie if needed
+
+Then show:
+“Coppie Live — crea le 10 coppie”
+
+with:
+Coppia 1 → Foto A / Foto B
+...
+Coppia 10 → Foto A / Foto B
+
+Buttons must work:
+- Scatta foto A
+- Carica foto A
+- Scatta foto B
+- Carica foto B
+- Crea mazzo live
+
+==================================================
+PART 5 — REGIA / PRESENTER / TV SAME SESSION CHECK
+==================================================
+
+Add console logs:
+
+[LiveAccess]
+button
+url
+liveSessionId
+presenterCode
+tvCode
+
+[LivePresenter]
+presenterCode
+liveSessionId
+homeSessionId
+currentGameSlug
+currentPhase
+availableGames
+
+[LivePresenterAction]
+gameSlug
+action
+result
+
+==================================================
+OUTPUT REQUIRED
+==================================================
+
+A. file modified
+B. Admin/Regia/Presenter buttons fixed
+C. Presenter loads linked Home session
+D. Presenter game buttons always clickable
+E. Coppie Live opens capture UI
+F. typecheck
+G. manual test:
+   - open TV
+   - click Accedi
+   - Admin opens new tab
+   - Regia opens new tab
+   - Presenter opens new tab
+   - Presenter clicks Coppie Live
+   - capture UI appears

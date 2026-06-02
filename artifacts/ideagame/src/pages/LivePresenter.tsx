@@ -1,7 +1,7 @@
 /**
  * /live-presenter?s=CODE — Mobile-first Presenter Controller
- * Dashboard-first: big control buttons (game select, start, pause, next, reveal, classifica).
- * "🃏 Coppie LIVE" section only when in coppie game or manually opened.
+ * Dashboard: game launcher + show controls.
+ * Coppie LIVE: 10-couple photo capture UI.
  */
 import { useEffect, useState, useRef, useCallback, type ChangeEvent } from 'react';
 import { getSocket } from '@/hooks/useEventSocket';
@@ -29,6 +29,16 @@ interface LiveSession {
   id: string; title: string; status: string;
   currentGameSlug: string | null; currentPhase: string;
   presenterCode: string; tvCode: string; role?: string;
+}
+
+interface LiveRuntimeState {
+  liveSessionId: string;
+  currentPhase: string;
+  currentGameSlug?: string | null;
+  payload: {
+    homeSessionId?: string;
+    [key: string]: unknown;
+  };
 }
 
 interface CouplePhoto {
@@ -74,16 +84,15 @@ const EMPTY_COUPLES: CoupleEntry[] = Array.from({ length: 10 }, (_, i) => ({
 }));
 
 const LIVE_GAMES = [
-  { slug: 'gioco-coppie',      emoji: '🃏', label: 'Coppie LIVE',    color: '#A855F7' },
-  { slug: 'percorso-a-risate', emoji: '🎲', label: 'Percorso',        color: '#F59E0B' },
-  { slug: 'quizzone',          emoji: '❓', label: 'Quizzone',         color: '#60A5FA' },
-  { slug: 'sfida-ballo',       emoji: '💃', label: 'Ballo',           color: '#EC4899' },
-  { slug: 'sara-musica',       emoji: '🎵', label: "Sara'Musica",      color: '#34D399' },
+  { slug: 'gioco-coppie',      emoji: '🃏', label: 'Coppie LIVE',       color: '#A855F7' },
+  { slug: 'percorso-a-risate', emoji: '🎲', label: 'Percorso',           color: '#F59E0B' },
+  { slug: 'quizzone',          emoji: '❓', label: 'Quizzone',            color: '#60A5FA' },
+  { slug: 'sfida-ballo',       emoji: '💃', label: 'Ballo',              color: '#EC4899' },
+  { slug: 'saramusica',        emoji: '🎵', label: "Sara'Musica",         color: '#34D399' },
+  { slug: 'karaoke-battle',    emoji: '🎤', label: 'Karaoke',            color: '#F97316' },
+  { slug: 'parola-alle-spalle',emoji: '💬', label: 'Parola alle Spalle', color: '#06B6D4' },
+  { slug: 'adult-only',        emoji: '🔞', label: 'Adult Only',          color: '#EF4444' },
 ];
-
-const GAME_LABELS: Record<string, string> = Object.fromEntries(
-  LIVE_GAMES.map(g => [g.slug, `${g.emoji} ${g.label}`])
-);
 
 const PURPLE = '#A855F7';
 const GOLD   = '#F5B642';
@@ -93,38 +102,45 @@ type View = 'dashboard' | 'coppie';
 
 export default function LivePresenter() {
   const code = useRef(getCode()).current;
-  const [session, setSession]         = useState<LiveSession | null>(null);
-  const [view, setView]               = useState<View>('dashboard');
-  const [loading, setLoading]         = useState(true);
-  const [error, setError]             = useState<string | null>(null);
-  const [connected, setConnected]     = useState(false);
-  const [cmdLoading, setCmdLoading]   = useState<string | null>(null);
+  const [session, setSession]           = useState<LiveSession | null>(null);
+  const [runtimeState, setRuntimeState] = useState<LiveRuntimeState | null>(null);
+  const [view, setView]                 = useState<View>('dashboard');
+  const [loading, setLoading]           = useState(true);
+  const [error, setError]               = useState<string | null>(null);
+  const [connected, setConnected]       = useState(false);
+  const [cmdLoading, setCmdLoading]     = useState<string | null>(null);
   const [selectedGame, setSelectedGame] = useState<string>('gioco-coppie');
 
   // Coppie state
-  const [couples, setCouples]         = useState<CoupleEntry[]>(EMPTY_COUPLES);
-  const [uploading, setUploading]     = useState(false);
+  const [couples, setCouples]           = useState<CoupleEntry[]>(EMPTY_COUPLES);
+  const [uploading, setUploading]       = useState(false);
   const [creatingDeck, setCreatingDeck] = useState(false);
-  const [deckCreated, setDeckCreated] = useState(false);
+  const [deckCreated, setDeckCreated]   = useState(false);
   const [uploadTarget, setUploadTarget] = useState<{ coupleIndex: number; partner: 'A' | 'B' } | null>(null);
   const [coupleNames, setCoupleNames]   = useState<string[]>(Array(10).fill(''));
   const [partnerANames, setPartnerANames] = useState<string[]>(Array(10).fill(''));
   const [partnerBNames, setPartnerBNames] = useState<string[]>(Array(10).fill(''));
 
-  const socketRef      = useRef(getSocket());
-  const cameraInputRef = useRef<HTMLInputElement>(null);
-  const fileInputRef   = useRef<HTMLInputElement>(null);
+  const socketRef       = useRef(getSocket());
+  const cameraInputRef  = useRef<HTMLInputElement>(null);
+  const fileInputRef    = useRef<HTMLInputElement>(null);
   const uploadTargetRef = useRef<{ coupleIndex: number; partner: 'A' | 'B' } | null>(null);
-  const pollRef        = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollRef         = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Derived state
+  const activeGameSlug = runtimeState?.currentGameSlug ?? session?.currentGameSlug ?? null;
+  const activePhase    = runtimeState?.currentPhase    ?? session?.currentPhase    ?? 'standby';
+  const homeSessionId  = runtimeState?.payload?.homeSessionId ?? null;
 
   // ── API helpers ──────────────────────────────────────────────────────────
-  const refreshSession = useCallback(async (sessionId: string) => {
+
+  const loadRuntimeState = useCallback(async (sessionId: string) => {
     try {
-      const data = await apiFetch<LiveSession[]>(`/live-sessions`);
-      const updated = data.find(s => s.id === sessionId);
-      if (updated) setSession(updated);
-    } catch { /* noop — use code fallback */ }
-  }, []);
+      const state = await apiFetch<LiveRuntimeState>(`/live-sessions/${sessionId}/state?s=${code}`);
+      setRuntimeState(state);
+      if (state.currentGameSlug) setSelectedGame(state.currentGameSlug);
+    } catch { /* no state yet — standby */ }
+  }, [code]);
 
   const loadCouples = useCallback(async (sessionId: string) => {
     try {
@@ -145,20 +161,28 @@ export default function LivePresenter() {
   }, [code]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sendCommand = async (command: string, payload?: unknown) => {
-    if (!session || cmdLoading) return;
+    if (!session) return;
     const key = command;
     setCmdLoading(key);
+    console.log('[LivePresenterAction]', { command, payload, sessionId: session.id, selectedGame });
     try {
       await apiFetch(`/live-sessions/${session.id}/command?s=${code}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command, payload }),
       });
-      // Refresh session state after command
-      await apiFetch<LiveSession>(`/live-sessions/by-code/${code}`).then(setSession).catch(() => {});
+      // Refresh session + runtime state
+      const [updatedSess] = await Promise.all([
+        apiFetch<LiveSession>(`/live-sessions/by-code/${code}`).catch(() => null),
+        loadRuntimeState(session.id),
+      ]);
+      if (updatedSess) setSession(updatedSess);
       toast.success(command.replace(/_/g, ' '));
+      console.log('[LivePresenterAction]', { command, result: 'ok' });
     } catch (err: unknown) {
-      toast.error('Comando fallito', { description: err instanceof Error ? err.message : '' });
+      const msg = err instanceof Error ? err.message : '';
+      toast.error('Comando fallito', { description: msg });
+      console.error('[LivePresenterAction] error', { command, error: msg });
     } finally {
       setCmdLoading(null);
     }
@@ -167,17 +191,48 @@ export default function LivePresenter() {
   // ── Init ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!code) { setError('Codice presenter mancante (?s=CODE)'); setLoading(false); return; }
-    apiFetch<LiveSession>(`/live-sessions/by-code/${code}`).then(async sess => {
-      if (sess.role === 'tv') {
-        setError('Questo codice è per la TV. Usa il codice presenter.');
-        return;
+    (async () => {
+      try {
+        const sess = await apiFetch<LiveSession>(`/live-sessions/by-code/${code}`);
+        if (sess.role === 'tv') {
+          setError('Questo codice è per la TV. Usa il codice presenter.');
+          return;
+        }
+        setSession(sess);
+        if (sess.currentGameSlug) setSelectedGame(sess.currentGameSlug);
+        // Load runtime state + couples in parallel
+        await Promise.all([
+          loadRuntimeState(sess.id),
+          loadCouples(sess.id),
+        ]);
+        console.log('[LivePresenter]', {
+          presenterCode: code,
+          liveSessionId: sess.id,
+          homeSessionId: null, // will be set after loadRuntimeState
+          currentGameSlug: sess.currentGameSlug,
+          currentPhase: sess.currentPhase,
+          availableGames: LIVE_GAMES.map(g => g.slug),
+        });
+      } catch {
+        setError('Sessione non trovata o codice non valido');
+      } finally {
+        setLoading(false);
       }
-      setSession(sess);
-      if (sess.currentGameSlug) setSelectedGame(sess.currentGameSlug);
-      await loadCouples(sess.id);
-    }).catch(() => setError('Sessione non trovata o codice non valido'))
-      .finally(() => setLoading(false));
+    })();
   }, [code]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Log after runtimeState is available
+  useEffect(() => {
+    if (!session || !runtimeState) return;
+    console.log('[LivePresenter] runtimeState loaded', {
+      presenterCode: code,
+      liveSessionId: session.id,
+      homeSessionId: runtimeState.payload?.homeSessionId ?? null,
+      currentGameSlug: runtimeState.currentGameSlug ?? session.currentGameSlug,
+      currentPhase: runtimeState.currentPhase,
+      availableGames: LIVE_GAMES.map(g => g.slug),
+    });
+  }, [runtimeState?.currentPhase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Socket ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -190,6 +245,8 @@ export default function LivePresenter() {
     const onSessionUpd = (data: Partial<LiveSession>) => {
       setSession(prev => prev ? { ...prev, ...data } : prev);
       if (data.currentGameSlug) setSelectedGame(data.currentGameSlug);
+      // Also reload runtime state when session updates
+      void loadRuntimeState(session.id);
     };
     const onCouplesUpd = (data: { couples: CoupleEntry[] }) => setCouples(data.couples);
     socket.on('connect', onConnect);
@@ -197,9 +254,13 @@ export default function LivePresenter() {
     socket.on('live:session_updated', onSessionUpd);
     socket.on('live:couples_updated', onCouplesUpd);
 
-    // Poll session every 6s
+    // Poll every 6s
     pollRef.current = setInterval(() => {
-      apiFetch<LiveSession>(`/live-sessions/by-code/${code}`).then(setSession).catch(() => {});
+      apiFetch<LiveSession>(`/live-sessions/by-code/${code}`).then(s => {
+        setSession(s);
+        if (s.currentGameSlug) setSelectedGame(s.currentGameSlug);
+      }).catch(() => {});
+      void loadRuntimeState(session.id);
     }, 6000);
 
     return () => {
@@ -277,6 +338,24 @@ export default function LivePresenter() {
     }
   };
 
+  // ── Open Coppie view + ensure game slug set ───────────────────────────────
+  const openCoppie = async () => {
+    setView('coppie');
+    // If no game active yet, set it to gioco-coppie
+    if (session && activeGameSlug !== 'gioco-coppie') {
+      console.log('[LivePresenterAction]', { action: 'set_current_game', gameSlug: 'gioco-coppie' });
+      try {
+        await apiFetch(`/live-sessions/${session.id}/command?s=${code}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command: 'set_current_game', payload: { gameSlug: 'gioco-coppie' } }),
+        });
+        setSelectedGame('gioco-coppie');
+        void loadRuntimeState(session.id);
+      } catch { /* noop */ }
+    }
+  };
+
   // ── Loading / Error ───────────────────────────────────────────────────────
   if (loading) return <Screen><Loader2 className="animate-spin" size={32} style={{ color: PURPLE }} /></Screen>;
   if (error) return (
@@ -328,12 +407,18 @@ export default function LivePresenter() {
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
 
+          {/* Header banner */}
+          <div style={{ padding: '12px 14px', background: 'rgba(168,85,247,0.12)', border: '1px solid rgba(168,85,247,0.35)', borderRadius: 14, textAlign: 'center' }}>
+            <div style={{ fontWeight: 900, fontSize: '1rem', color: PURPLE, marginBottom: 2 }}>🃏 Coppie LIVE — crea le 10 coppie</div>
+            <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)' }}>Scatta o carica le foto di ogni coppia</div>
+          </div>
+
           {/* Progress bar */}
           <div style={{ padding: '12px 14px', background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.22)', borderRadius: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Users size={16} style={{ color: PURPLE }} />
-                <span style={{ fontWeight: 900, fontSize: '0.9rem', color: PURPLE }}>COPPIE LIVE</span>
+                <span style={{ fontWeight: 900, fontSize: '0.9rem', color: PURPLE }}>COPPIE COMPLETATE</span>
               </div>
               <span style={{ fontWeight: 900, fontSize: '0.85rem', color: completeCouples === 10 ? GREEN : GOLD }}>{completeCouples}/10</span>
             </div>
@@ -354,15 +439,15 @@ export default function LivePresenter() {
               <div key={idx} style={{ border: `1px solid ${borderColor}`, borderRadius: 13, background: couple.complete ? 'rgba(52,211,153,0.04)' : 'rgba(255,255,255,0.02)', overflow: 'hidden' }}>
                 <div style={{ padding: '9px 12px', background: couple.complete ? 'rgba(52,211,153,0.08)' : 'rgba(255,255,255,0.03)', borderBottom: `1px solid ${borderColor}`, display: 'flex', alignItems: 'center', gap: 10 }}>
                   <div style={{ fontWeight: 900, fontSize: '0.82rem', color: couple.complete ? GREEN : 'rgba(255,255,255,0.55)', minWidth: 76 }}>
-                    Coppia #{idx + 1}{couple.complete && ' ✅'}
+                    Coppia {idx + 1}{couple.complete && ' ✅'}
                   </div>
                   <input value={coupleNames[idx] ?? ''} onChange={e => { const n = [...coupleNames]; n[idx] = e.target.value; setCoupleNames(n); }}
                     placeholder="Nome coppia (opz.)"
                     style={{ flex: 1, padding: '4px 9px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 7, color: '#fff', fontSize: '0.73rem', outline: 'none' }} />
                 </div>
                 <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <PartnerRow partner="A" label="Partner A" imgSrc={imgA} name={partnerANames[idx] ?? ''} onNameChange={v => { const n = [...partnerANames]; n[idx] = v; setPartnerANames(n); }} uploading={isUploadingA} onCamera={() => triggerUpload(idx, 'A', true)} onFile={() => triggerUpload(idx, 'A', false)} onDelete={() => deletePhoto(idx, 'A')} PURPLE={PURPLE} />
-                  <PartnerRow partner="B" label="Partner B" imgSrc={imgB} name={partnerBNames[idx] ?? ''} onNameChange={v => { const n = [...partnerBNames]; n[idx] = v; setPartnerBNames(n); }} uploading={isUploadingB} onCamera={() => triggerUpload(idx, 'B', true)} onFile={() => triggerUpload(idx, 'B', false)} onDelete={() => deletePhoto(idx, 'B')} PURPLE={PURPLE} />
+                  <PartnerRow partner="A" label="Foto A" imgSrc={imgA} name={partnerANames[idx] ?? ''} onNameChange={v => { const n = [...partnerANames]; n[idx] = v; setPartnerANames(n); }} uploading={isUploadingA} onCamera={() => triggerUpload(idx, 'A', true)} onFile={() => triggerUpload(idx, 'A', false)} onDelete={() => deletePhoto(idx, 'A')} PURPLE={PURPLE} />
+                  <PartnerRow partner="B" label="Foto B" imgSrc={imgB} name={partnerBNames[idx] ?? ''} onNameChange={v => { const n = [...partnerBNames]; n[idx] = v; setPartnerBNames(n); }} uploading={isUploadingB} onCamera={() => triggerUpload(idx, 'B', true)} onFile={() => triggerUpload(idx, 'B', false)} onDelete={() => deletePhoto(idx, 'B')} PURPLE={PURPLE} />
                 </div>
               </div>
             );
@@ -400,26 +485,10 @@ export default function LivePresenter() {
   // ══════════════════════════════════════════════════════════════════════════
   // DASHBOARD VIEW
   // ══════════════════════════════════════════════════════════════════════════
-  const currentGame    = LIVE_GAMES.find(g => g.slug === session?.currentGameSlug);
-  const isPaused       = session?.status === 'paused';
-  const isActive       = session?.status === 'active';
-  const isCoppie       = session?.currentGameSlug === 'gioco-coppie';
+  const currentGame     = LIVE_GAMES.find(g => g.slug === activeGameSlug);
+  const isPaused        = session?.status === 'paused';
+  const isActive        = session?.status === 'active';
   const completeCouples = couples.filter(c => c.complete).length;
-
-  type BigBtn = { cmd: string; emoji: string; label: string; color: string; payload?: unknown; disabled?: boolean };
-  const BIG_BTNS: BigBtn[] = [
-    { cmd: 'start_game',    emoji: '▶',  label: 'AVVIA',       color: GREEN,     payload: { gameSlug: selectedGame }, disabled: !selectedGame },
-    isPaused
-      ? { cmd: 'resume',    emoji: '▶',  label: 'RIPRENDI',    color: GREEN }
-      : { cmd: 'pause',     emoji: '⏸', label: 'PAUSA',        color: '#F59E0B' },
-    { cmd: 'next_phase',    emoji: '→',  label: 'AVANTI',      color: PURPLE },
-    { cmd: 'force_reveal',  emoji: '👁', label: 'RIVELA',      color: '#60A5FA' },
-    { cmd: 'force_ranking', emoji: '🏆', label: 'CLASSIFICA',  color: GOLD },
-    { cmd: '__coppie__',    emoji: '🃏', label: 'COPPIE LIVE', color: PURPLE,
-      ...(completeCouples > 0 ? { emoji: `🃏`, label: `COPPIE (${completeCouples}/10)` } : {}) },
-    { cmd: 'blackout',      emoji: '⬛', label: 'BLACKOUT',    color: '#EF4444' },
-    { cmd: 'stop_audio',    emoji: '🔇', label: 'STOP AUDIO',  color: '#6B7280' },
-  ];
 
   return (
     <div style={{ minHeight: '100dvh', background: '#120920', fontFamily: "'Outfit','Space Grotesk',sans-serif", color: '#fff', display: 'flex', flexDirection: 'column' }}>
@@ -432,67 +501,97 @@ export default function LivePresenter() {
           <div style={{ fontSize: '2rem' }}>{currentGame?.emoji ?? '🎮'}</div>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 900, fontSize: '0.9rem', color: currentGame?.color ?? 'rgba(255,255,255,0.6)' }}>
-              {currentGame ? `${currentGame.label}` : '— nessun gioco attivo —'}
+              {currentGame ? currentGame.label : '— seleziona un gioco —'}
             </div>
             <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>
-              {session?.currentPhase ?? 'standby'}
+              {activePhase}
+              {homeSessionId && <span style={{ marginLeft: 8, opacity: 0.5 }}>• home session collegata</span>}
             </div>
           </div>
           <StatusDot status={session?.status ?? 'draft'} />
         </div>
 
-        {/* ── Game selector ────────────────────────────────────── */}
+        {/* ── Game launcher ────────────────────────────────────── */}
         <div style={{ padding: '12px 14px', background: 'rgba(168,85,247,0.13)', border: '1px solid rgba(168,85,247,0.35)', borderRadius: 14 }}>
-          <div style={{ fontSize: '0.72rem', fontWeight: 900, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.1em', marginBottom: 10 }}>SCEGLI GIOCO</div>
+          <div style={{ fontSize: '0.72rem', fontWeight: 900, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.1em', marginBottom: 10 }}>🎮 LANCIA GIOCO</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             {LIVE_GAMES.map(g => {
-              const sel = selectedGame === g.slug;
+              const sel = selectedGame === g.slug || activeGameSlug === g.slug;
+              const isCoppieGame = g.slug === 'gioco-coppie';
               return (
-                <button key={g.slug} onClick={() => setSelectedGame(g.slug)}
-                  style={{ padding: '10px 8px', background: sel ? `${g.color}22` : 'rgba(255,255,255,0.04)', border: `1.5px solid ${sel ? g.color : 'rgba(255,255,255,0.1)'}`, borderRadius: 10, color: sel ? g.color : 'rgba(255,255,255,0.65)', fontWeight: 900, fontSize: '0.75rem', cursor: 'pointer', textAlign: 'center', transition: 'all 0.15s' }}>
-                  {g.emoji} {g.label}
+                <button key={g.slug}
+                  onClick={() => {
+                    setSelectedGame(g.slug);
+                    if (isCoppieGame) {
+                      void openCoppie();
+                    } else {
+                      console.log('[LivePresenterAction]', { action: 'select_game', gameSlug: g.slug });
+                      void sendCommand('start_game', { gameSlug: g.slug });
+                    }
+                  }}
+                  disabled={!!cmdLoading}
+                  style={{
+                    padding: '10px 8px',
+                    background: sel ? `${g.color}22` : 'rgba(255,255,255,0.04)',
+                    border: `1.5px solid ${sel ? g.color : 'rgba(255,255,255,0.1)'}`,
+                    borderRadius: 10,
+                    color: sel ? g.color : 'rgba(255,255,255,0.65)',
+                    fontWeight: 900, fontSize: '0.73rem',
+                    cursor: cmdLoading ? 'default' : 'pointer',
+                    textAlign: 'center', transition: 'all 0.15s',
+                    opacity: cmdLoading ? 0.6 : 1,
+                    boxShadow: sel ? `0 0 14px ${g.color}44` : 'none',
+                  }}>
+                  {cmdLoading === 'start_game' && sel
+                    ? <Loader2 size={14} className="animate-spin" style={{ display: 'inline' }} />
+                    : `${g.emoji} ${g.label}`}
                 </button>
               );
             })}
           </div>
         </div>
 
-        {/* ── Command buttons ───────────────────────────────────── */}
+        {/* ── Show controls ────────────────────────────────────── */}
         <div style={{ padding: '12px 14px', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 14 }}>
           <div style={{ fontSize: '0.72rem', fontWeight: 900, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.1em', marginBottom: 10 }}>CONTROLLI SHOW</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9 }}>
-            {BIG_BTNS.map(btn => {
-              const isLoading = cmdLoading === btn.cmd;
-              const isCoppieBtn = btn.cmd === '__coppie__';
-              return (
-                <button key={btn.cmd + btn.label}
-                  onClick={() => {
-                    if (isCoppieBtn) { setView('coppie'); return; }
-                    if (!btn.disabled) void sendCommand(btn.cmd, btn.payload);
-                  }}
-                  disabled={!isCoppieBtn && (!!btn.disabled || !!cmdLoading)}
-                  style={{
-                    padding: '16px 8px',
-                    background: isCoppie && isCoppieBtn ? `${btn.color}35` : `${btn.color}28`,
-                    border: `1.5px solid ${btn.color}${isCoppie && isCoppieBtn ? 'AA' : '70'}`,
-                    borderRadius: 12,
-                    color: btn.disabled ? 'rgba(255,255,255,0.25)' : btn.color,
-                    fontWeight: 900,
-                    fontSize: '0.84rem',
-                    cursor: (btn.disabled && !isCoppieBtn) ? 'default' : 'pointer',
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
-                    opacity: btn.disabled && !isCoppieBtn ? 0.4 : 1,
-                    transition: 'all 0.15s',
-                    boxShadow: isActive && btn.cmd === 'start_game' ? `0 0 20px ${btn.color}55`
-                      : isCoppie && isCoppieBtn ? `0 0 18px ${btn.color}44` : 'none',
-                  }}>
-                  {isLoading
-                    ? <Loader2 size={18} className="animate-spin" />
-                    : <span style={{ fontSize: '1.3rem' }}>{btn.emoji}</span>}
-                  <span style={{ fontSize: '0.7rem', letterSpacing: '0.05em' }}>{btn.label}</span>
-                </button>
-              );
-            })}
+            {/* AVVIA */}
+            <ShowBtn cmd="start_game" emoji="▶" label="AVVIA" color={GREEN}
+              payload={{ gameSlug: selectedGame }}
+              loading={cmdLoading === 'start_game'} onSend={sendCommand} isActive={isActive} />
+            {/* PAUSA / RIPRENDI */}
+            {isPaused
+              ? <ShowBtn cmd="resume" emoji="▶" label="RIPRENDI" color={GREEN} loading={cmdLoading === 'resume'} onSend={sendCommand} />
+              : <ShowBtn cmd="pause"  emoji="⏸" label="PAUSA"    color="#F59E0B" loading={cmdLoading === 'pause'} onSend={sendCommand} />}
+            {/* AVANTI */}
+            <ShowBtn cmd="next_phase" emoji="→" label="AVANTI" color={PURPLE} loading={cmdLoading === 'next_phase'} onSend={sendCommand} />
+            {/* RIVELA */}
+            <ShowBtn cmd="force_reveal" emoji="👁" label="RIVELA" color="#60A5FA" loading={cmdLoading === 'force_reveal'} onSend={sendCommand} />
+            {/* CLASSIFICA */}
+            <ShowBtn cmd="force_ranking" emoji="🏆" label="CLASSIFICA" color={GOLD} loading={cmdLoading === 'force_ranking'} onSend={sendCommand} />
+            {/* COPPIE LIVE */}
+            <button
+              onClick={() => void openCoppie()}
+              style={{
+                padding: '16px 8px',
+                background: activeGameSlug === 'gioco-coppie' ? `${PURPLE}35` : `${PURPLE}28`,
+                border: `1.5px solid ${PURPLE}${activeGameSlug === 'gioco-coppie' ? 'AA' : '70'}`,
+                borderRadius: 12, color: PURPLE,
+                fontWeight: 900, fontSize: '0.84rem',
+                cursor: 'pointer',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
+                transition: 'all 0.15s',
+                boxShadow: activeGameSlug === 'gioco-coppie' ? `0 0 18px ${PURPLE}44` : 'none',
+              }}>
+              <span style={{ fontSize: '1.3rem' }}>🃏</span>
+              <span style={{ fontSize: '0.7rem', letterSpacing: '0.05em' }}>
+                COPPIE LIVE {completeCouples > 0 ? `(${completeCouples}/10)` : ''}
+              </span>
+            </button>
+            {/* BLACKOUT */}
+            <ShowBtn cmd="blackout" emoji="⬛" label="BLACKOUT" color="#EF4444" loading={cmdLoading === 'blackout'} onSend={sendCommand} />
+            {/* STOP AUDIO */}
+            <ShowBtn cmd="stop_audio" emoji="🔇" label="STOP AUDIO" color="#6B7280" loading={cmdLoading === 'stop_audio'} onSend={sendCommand} />
           </div>
         </div>
 
@@ -502,8 +601,38 @@ export default function LivePresenter() {
   );
 }
 
-// ── StatusDot ────────────────────────────────────────────────────────────────
+// ── ShowBtn ───────────────────────────────────────────────────────────────
+function ShowBtn({ cmd, emoji, label, color, payload, loading, onSend, isActive }: {
+  cmd: string; emoji: string; label: string; color: string;
+  payload?: unknown; loading: boolean;
+  onSend: (cmd: string, payload?: unknown) => void;
+  isActive?: boolean;
+}) {
+  return (
+    <button
+      onClick={() => onSend(cmd, payload)}
+      disabled={loading}
+      style={{
+        padding: '16px 8px',
+        background: `${color}28`,
+        border: `1.5px solid ${color}70`,
+        borderRadius: 12, color,
+        fontWeight: 900, fontSize: '0.84rem',
+        cursor: loading ? 'default' : 'pointer',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
+        opacity: loading ? 0.6 : 1,
+        transition: 'all 0.15s',
+        boxShadow: isActive && cmd === 'start_game' ? `0 0 20px ${color}55` : 'none',
+      }}>
+      {loading
+        ? <Loader2 size={18} className="animate-spin" />
+        : <span style={{ fontSize: '1.3rem' }}>{emoji}</span>}
+      <span style={{ fontSize: '0.7rem', letterSpacing: '0.05em' }}>{label}</span>
+    </button>
+  );
+}
 
+// ── StatusDot ────────────────────────────────────────────────────────────────
 function StatusDot({ status }: { status: string }) {
   const colors: Record<string, string> = { active: '#34D399', paused: '#F59E0B', ended: '#EF4444', draft: '#6B7280' };
   const c = colors[status] ?? '#6B7280';
@@ -515,55 +644,61 @@ function StatusDot({ status }: { status: string }) {
   );
 }
 
-// ── PartnerRow ────────────────────────────────────────────────────────────────
-
-function PartnerRow({ partner, label, imgSrc, name, onNameChange, uploading, onCamera, onFile, onDelete, PURPLE }: {
-  partner: 'A' | 'B'; label: string; imgSrc: string | null; name: string;
-  onNameChange: (v: string) => void; uploading: boolean;
-  onCamera: () => void; onFile: () => void; onDelete: () => void; PURPLE: string;
-}) {
-  const color    = partner === 'A' ? '#60A5FA' : '#F472B6';
-  const hasPhoto = !!imgSrc;
-  return (
-    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-      <div style={{ width: 60, height: 75, borderRadius: 9, overflow: 'hidden', flexShrink: 0, border: `2px solid ${hasPhoto ? `${color}60` : 'rgba(255,255,255,0.1)'}`, background: hasPhoto ? 'transparent' : 'rgba(255,255,255,0.03)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-        {hasPhoto
-          ? <img src={imgSrc!} alt={label} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          : <span style={{ fontSize: '1.3rem', opacity: 0.3 }}>👤</span>}
-        {hasPhoto && (
-          <button onClick={onDelete} style={{ position: 'absolute', top: 2, right: 2, width: 17, height: 17, borderRadius: '50%', background: 'rgba(239,68,68,0.85)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
-            <Trash2 size={8} />
-          </button>
-        )}
-        <div style={{ position: 'absolute', bottom: 2, left: 0, right: 0, textAlign: 'center', fontSize: '0.52rem', fontWeight: 900, color, letterSpacing: '0.05em' }}>{partner}</div>
-      </div>
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
-        <div style={{ fontSize: '0.68rem', fontWeight: 700, color }}>{hasPhoto ? `✓ ${label}` : label}</div>
-        <input value={name} onChange={e => onNameChange(e.target.value)} placeholder={`Nome ${label} (opz.)`}
-          style={{ padding: '4px 7px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, color: '#fff', fontSize: '0.7rem', outline: 'none', width: '100%', boxSizing: 'border-box' }} />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5 }}>
-          <button onClick={onCamera} disabled={uploading} style={{ padding: '6px 4px', background: `${PURPLE}18`, border: `1px solid ${PURPLE}35`, borderRadius: 7, color: PURPLE, fontWeight: 700, fontSize: '0.66rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, opacity: uploading ? 0.5 : 1 }}>
-            {uploading ? <Loader2 size={10} className="animate-spin" /> : <Camera size={10} />} Scatta
-          </button>
-          <button onClick={onFile} disabled={uploading} style={{ padding: '6px 4px', background: 'rgba(96,165,250,0.1)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: 7, color: '#60A5FA', fontWeight: 700, fontSize: '0.66rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, opacity: uploading ? 0.5 : 1 }}>
-            {uploading ? <Loader2 size={10} className="animate-spin" /> : <Upload size={10} />} Galleria
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Screen wrapper ────────────────────────────────────────────────────────────
-
+// ── Screen ────────────────────────────────────────────────────────────────────
 function Screen({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ minHeight: '100dvh', background: '#120920', display: 'grid', placeItems: 'center', fontFamily: "'Outfit','Space Grotesk',sans-serif", color: '#fff' }}>
+    <div style={{ minHeight: '100dvh', background: '#120920', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Outfit','Space Grotesk',sans-serif" }}>
       {children}
     </div>
   );
 }
 
-// ── Unused but kept for TS ────────────────────────────────────────────────────
-const _iconRefs = { Eye, Trophy, VolumeX, MonitorOff, SkipForward, Pause, Power, Zap };
-void _iconRefs;
+// ── PartnerRow ───────────────────────────────────────────────────────────────
+function PartnerRow({ partner, label, imgSrc, name, onNameChange, uploading, onCamera, onFile, onDelete, PURPLE }: {
+  partner: 'A' | 'B'; label: string;
+  imgSrc: string | null; name: string;
+  onNameChange: (v: string) => void;
+  uploading: boolean; onCamera: () => void; onFile: () => void; onDelete: () => void;
+  PURPLE: string;
+}) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+      {/* Thumbnail */}
+      <div style={{ width: 52, height: 52, borderRadius: 9, overflow: 'hidden', flexShrink: 0, background: 'rgba(255,255,255,0.06)', border: `1px solid ${imgSrc ? 'rgba(52,211,153,0.4)' : 'rgba(255,255,255,0.1)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+        {uploading
+          ? <Loader2 size={16} className="animate-spin" style={{ color: PURPLE }} />
+          : imgSrc
+            ? <img src={imgSrc} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            : <span style={{ fontSize: '1.2rem', opacity: 0.3 }}>{partner}</span>}
+      </div>
+      {/* Name input */}
+      <input value={name} onChange={e => onNameChange(e.target.value)}
+        placeholder={`Nome ${label}`}
+        style={{ flex: 1, padding: '5px 9px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 7, color: '#fff', fontSize: '0.72rem', outline: 'none' }} />
+      {/* Buttons */}
+      <div style={{ display: 'flex', gap: 4 }}>
+        <ActionBtn onClick={onCamera} color={PURPLE} title="Scatta foto">
+          <Camera size={13} />
+        </ActionBtn>
+        <ActionBtn onClick={onFile} color="#60A5FA" title="Carica foto">
+          <Upload size={13} />
+        </ActionBtn>
+        {imgSrc && (
+          <ActionBtn onClick={onDelete} color="#EF4444" title="Elimina">
+            <Trash2 size={13} />
+          </ActionBtn>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── ActionBtn ─────────────────────────────────────────────────────────────────
+function ActionBtn({ onClick, color, title, children }: { onClick: () => void; color: string; title: string; children: React.ReactNode }) {
+  return (
+    <button onClick={onClick} title={title}
+      style={{ width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', background: `${color}22`, border: `1px solid ${color}55`, borderRadius: 7, color, cursor: 'pointer' }}>
+      {children}
+    </button>
+  );
+}
