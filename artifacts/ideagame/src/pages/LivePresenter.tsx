@@ -734,6 +734,8 @@ export default function LivePresenter() {
             <ShowBtn cmd="blackout" emoji="⬛" label="BLACKOUT" color="#EF4444" loading={cmdLoading === 'blackout'} onSend={sendCommand} />
             {/* STOP AUDIO */}
             <ShowBtn cmd="stop_audio" emoji="🔇" label="STOP AUDIO" color="#6B7280" loading={cmdLoading === 'stop_audio'} onSend={sendCommand} />
+            {/* TOGGLE AUDIO */}
+            <ShowBtn cmd="toggle_audio" emoji="🔊" label="TOGGLE AUDIO" color="#10B981" loading={cmdLoading === 'toggle_audio'} onSend={sendCommand} />
           </div>
         </div>
 

@@ -629,6 +629,27 @@ export default function HomeGame() {
       })
       .catch(() => {});
   }, [liveCode]);
+
+  // ── Join live session socket room → receive presenter commands (audio, blackout…) ──
+  useEffect(() => {
+    if (!liveMeta?.id) return;
+    const liveSessionId = liveMeta.id;
+    emit('live:join', { sessionId: liveSessionId });
+    console.log('[LiveCmd] TV joined live socket room', liveSessionId);
+    return () => { emit('live:leave', { sessionId: liveSessionId }); };
+  }, [liveMeta?.id, emit]);
+
+  useEffect(() => {
+    return on('live:command', (evt: unknown) => {
+      const e = evt as { command: string; payload?: unknown };
+      console.log('[LiveCmd] received', e.command, e.payload);
+      if (e.command === 'stop_audio') {
+        setAudioEnabled(false);
+      } else if (e.command === 'toggle_audio') {
+        setAudioEnabled(!audioEnabled);
+      }
+    });
+  }, [on, setAudioEnabled]);
   // Close Accedi portal panel on outside click
   useEffect(() => {
     if (!showAccedi) return;

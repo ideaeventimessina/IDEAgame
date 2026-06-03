@@ -2423,7 +2423,22 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
   // ── BYPASS: gioco-coppie → direct home-coppie suggestion phase ───────────────
   if (gameSlug === "gioco-coppie") {
     req.log.info({ sessionId: id }, "[FLOW_BYPASS] gioco-coppie → home-coppie suggestion phase, skipping old theme_select");
-    const coppiePayload = await loadCoppieRound(0) as RoundPayload;
+
+    // If the presenter already built a real deck via create-deck, preserve it
+    const existingRp = session.roundPayload as Record<string, unknown> | null;
+    const hasRealDeck =
+      existingRp?.["mode"] === "home-coppie" &&
+      existingRp?.["themePhase"] === "playing" &&
+      Array.isArray(existingRp?.["cards"]) &&
+      (existingRp["cards"] as unknown[]).length > 0;
+
+    if (hasRealDeck) {
+      req.log.info({ sessionId: id, cards: (existingRp!["cards"] as unknown[]).length }, "[FLOW_BYPASS] gioco-coppie — preserving presenter real deck");
+    }
+
+    const coppiePayload = hasRealDeck
+      ? existingRp as unknown as RoundPayload
+      : (await loadCoppieRound(0) as RoundPayload);
     const coppieCfg = { ...cfg, phase: "playing", gamesPlayed };
     const [coppieUpdated] = await db.update(homeSessionsTable).set({
       gameSlug,

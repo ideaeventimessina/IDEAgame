@@ -317,7 +317,7 @@ router.get("/live-sessions/:id/state", async (req: Request, res: Response): Prom
 
 const VALID_COMMANDS = [
   "start_game", "pause", "resume", "next_phase", "force_reveal", "force_ranking",
-  "blackout", "standby_logo", "stop_audio", "trigger_media",
+  "blackout", "standby_logo", "stop_audio", "toggle_audio", "trigger_media",
   "override_timer", "override_score", "toggle_voting", "toggle_ai", "force_next_round",
   "set_home_session",
 ] as const;
