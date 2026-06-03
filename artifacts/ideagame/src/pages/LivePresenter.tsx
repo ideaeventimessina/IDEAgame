@@ -124,8 +124,9 @@ export default function LivePresenter() {
   const [partnerANames, setPartnerANames] = useState<string[]>(Array(10).fill(''));
   const [partnerBNames, setPartnerBNames] = useState<string[]>(Array(10).fill(''));
 
-  const [homeSession, setHomeSession] = useState<{ id: string; joinCode: string } | null>(null);
-  const [audioMuted, setAudioMuted]   = useState(false);
+  const [homeSession, setHomeSession]   = useState<{ id: string; joinCode: string } | null>(null);
+  const [audioMuted, setAudioMuted]     = useState(false);
+  const [previewBusy, setPreviewBusy]   = useState(false);
 
   const socketRef       = useRef(getSocket());
   const cameraInputRef  = useRef<HTMLInputElement>(null);
@@ -393,6 +394,24 @@ export default function LivePresenter() {
     setSelectedGame('gioco-coppie');
     setView('coppie');
     console.log('[LivePresenterAction]', { action: 'open_coppie', gameSlug: 'gioco-coppie' });
+  };
+
+  // ── Coppie preview — broadcast 10-second board visibility to all phones ──
+  const sendCoppiePreview = async () => {
+    if (!homeSession || previewBusy) return;
+    setPreviewBusy(true);
+    try {
+      await apiFetch(`/home/sessions/${homeSession.id}/coppie-preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      toast.success('👁 Campo visibile sui telefoni per 10 secondi');
+    } catch (err: unknown) {
+      toast.error('Errore visibilità', { description: err instanceof Error ? err.message : '' });
+    } finally {
+      setTimeout(() => setPreviewBusy(false), 10_000);
+    }
   };
 
   // ── Loading / Error ───────────────────────────────────────────────────────
@@ -854,6 +873,28 @@ export default function LivePresenter() {
           <span>COPPIE LIVE {completeCouples > 0 ? `— ${completeCouples}/10 coppie` : ''}</span>
           <Zap size={15} style={{ marginLeft: 'auto', opacity: 0.6 }} />
         </button>
+
+        {/* Coppie preview — 10-second board visibility for phones */}
+        {homeSession && (
+          <button
+            onClick={() => void sendCoppiePreview()}
+            disabled={previewBusy}
+            style={{
+              width: '100%', padding: '13px',
+              background: previewBusy ? 'rgba(96,165,250,0.18)' : 'rgba(96,165,250,0.1)',
+              border: `1.5px solid ${previewBusy ? 'rgba(96,165,250,0.7)' : 'rgba(96,165,250,0.35)'}`,
+              borderRadius: 12, color: previewBusy ? '#93C5FD' : '#60A5FA',
+              fontWeight: 900, fontSize: '0.85rem',
+              cursor: previewBusy ? 'default' : 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              transition: 'all 0.15s',
+              opacity: previewBusy ? 0.7 : 1,
+            }}>
+            {previewBusy
+              ? <><Loader2 size={15} className="animate-spin" /> Visibile sui telefoni… (10s)</>
+              : <><Eye size={15} /> 👁 Mostra campo 10 secondi</>}
+          </button>
+        )}
 
         <div style={{ height: 16 }} />
       </div>
