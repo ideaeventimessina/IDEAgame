@@ -4,6 +4,7 @@
  * Optimised for projectors, LED walls, TVs — readable from 20–30 metres.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { AudioManager } from '@/audio/AudioManager';
 import { useLocation, useParams } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -113,7 +114,9 @@ export default function HomeLobbyPage() {
   const [liveMeta, setLiveMeta]       = useState<LiveSessionMeta | null>(null);
   const [showAccedi, setShowAccedi]   = useState(false);
   const [showPresenterQR, setShowPresenterQR] = useState(false);
-  const accediRef = useRef<HTMLDivElement>(null);
+  const accediRef        = useRef<HTMLDivElement>(null);
+  const accediTriggerRef = useRef<HTMLButtonElement>(null);
+  const [accediPos, setAccediPos] = useState<{ top: number; right: number } | null>(null);
 
   useEffect(() => {
     if (!liveCode) return;
@@ -128,13 +131,14 @@ export default function HomeLobbyPage() {
       .catch(() => {});
   }, [liveCode]);
 
-  // Close Accedi panel on outside click (avoids z-index stacking context issues)
+  // Close Accedi portal panel on outside click
   useEffect(() => {
     if (!showAccedi) return;
     const handler = (e: MouseEvent) => {
-      if (accediRef.current && !accediRef.current.contains(e.target as Node)) {
-        setShowAccedi(false);
-      }
+      const target = e.target as Node;
+      const insidePanel   = accediRef.current?.contains(target) ?? false;
+      const insideTrigger = accediTriggerRef.current?.contains(target) ?? false;
+      if (!insidePanel && !insideTrigger) setShowAccedi(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -307,26 +311,48 @@ export default function HomeLobbyPage() {
 
           {/* 🔑 Accedi — shown only in live mode */}
           {liveCode && (
-            <div ref={accediRef} style={{ position: 'relative', zIndex: 1000 }}>
+            <>
+              {/* Pill trigger */}
+              <motion.button
+                ref={accediTriggerRef}
+                whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
+                onClick={() => {
+                  if (!showAccedi && accediTriggerRef.current) {
+                    const r = accediTriggerRef.current.getBoundingClientRect();
+                    setAccediPos({ top: r.bottom + 8, right: window.innerWidth - r.right });
+                  }
+                  setShowAccedi(v => !v);
+                }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 7,
+                  padding: '0.45rem 1.1rem',
+                  background: showAccedi ? 'rgba(245,182,66,0.2)' : 'rgba(245,182,66,0.1)',
+                  border: showAccedi ? '1.5px solid rgba(245,182,66,0.7)' : '1.5px solid rgba(245,182,66,0.45)',
+                  borderRadius: 100,
+                  color: '#F5B642',
+                  fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.08em',
+                  cursor: 'pointer', backdropFilter: 'blur(16px)',
+                  boxShadow: '0 0 16px rgba(245,182,66,0.2)',
+                }}>
+                🔑 Accedi
+              </motion.button>
 
-              {/* Action panel — 3 real buttons */}
-              {showAccedi && (
-                <motion.div
-                  initial={{ opacity: 0, y: -6, scale: 0.97 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -4, scale: 0.97 }}
-                  transition={{ duration: 0.16 }}
-                  style={{
-                    position: 'absolute', top: 'calc(100% + 8px)', right: 0,
-                    background: 'rgba(8,4,24,0.97)',
-                    border: '1.5px solid rgba(255,255,255,0.14)',
-                    borderRadius: 18,
-                    backdropFilter: 'blur(28px)',
-                    boxShadow: '0 16px 60px rgba(0,0,0,0.75)',
-                    padding: '14px 14px 12px',
-                    display: 'flex', flexDirection: 'column', gap: 8,
-                    minWidth: 230, zIndex: 50,
-                  }}>
+              {/* Action panel — rendered via portal at body level (bypasses any stacking context) */}
+              {showAccedi && accediPos && createPortal(
+                <div ref={accediRef} style={{
+                  position: 'fixed',
+                  top: accediPos.top,
+                  right: accediPos.right,
+                  zIndex: 99999,
+                  background: 'rgba(8,4,24,0.97)',
+                  border: '1.5px solid rgba(255,255,255,0.14)',
+                  borderRadius: 18,
+                  backdropFilter: 'blur(28px)',
+                  boxShadow: '0 16px 60px rgba(0,0,0,0.75)',
+                  padding: '14px 14px 12px',
+                  display: 'flex', flexDirection: 'column', gap: 8,
+                  minWidth: 230,
+                }}>
                   {/* Header */}
                   <div style={{
                     fontSize: '0.58rem', fontWeight: 900, letterSpacing: '0.2em',
@@ -346,11 +372,9 @@ export default function HomeLobbyPage() {
                       padding: '11px 16px',
                       background: 'rgba(99,102,241,0.15)',
                       border: '1.5px solid rgba(99,102,241,0.4)',
-                      borderRadius: 12,
-                      color: '#a5b4fc',
+                      borderRadius: 12, color: '#a5b4fc',
                       fontSize: '0.85rem', fontWeight: 800,
-                      cursor: 'pointer', textAlign: 'left', width: '100%',
-                      transition: 'all 0.15s',
+                      cursor: 'pointer', textAlign: 'left', width: '100%', transition: 'all 0.15s',
                     }}
                     onMouseEnter={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.28)'; e.currentTarget.style.borderColor = 'rgba(99,102,241,0.7)'; }}
                     onMouseLeave={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.15)'; e.currentTarget.style.borderColor = 'rgba(99,102,241,0.4)'; }}>
@@ -358,7 +382,7 @@ export default function HomeLobbyPage() {
                     <span style={{ marginLeft: 'auto', fontSize: '0.6rem', opacity: 0.45 }}>↗ nuova tab</span>
                   </button>
 
-                  {/* BTN 2 — REGIA (proiettore): opens game board directly, no liveMeta needed */}
+                  {/* BTN 2 — SCHERMO TV / REGIA */}
                   <button
                     onClick={() => {
                       const url = `/home?s=${session.id}${liveCode ? `&live=${liveCode}` : ''}`;
@@ -370,11 +394,9 @@ export default function HomeLobbyPage() {
                       padding: '11px 16px',
                       background: 'rgba(245,182,66,0.13)',
                       border: '1.5px solid rgba(245,182,66,0.4)',
-                      borderRadius: 12,
-                      color: '#F5B642',
+                      borderRadius: 12, color: '#F5B642',
                       fontSize: '0.85rem', fontWeight: 800,
-                      cursor: 'pointer', textAlign: 'left', width: '100%',
-                      transition: 'all 0.15s',
+                      cursor: 'pointer', textAlign: 'left', width: '100%', transition: 'all 0.15s',
                     }}
                     onMouseEnter={e => { e.currentTarget.style.background = 'rgba(245,182,66,0.25)'; e.currentTarget.style.borderColor = 'rgba(245,182,66,0.7)'; }}
                     onMouseLeave={e => { e.currentTarget.style.background = 'rgba(245,182,66,0.13)'; e.currentTarget.style.borderColor = 'rgba(245,182,66,0.4)'; }}>
@@ -398,8 +420,7 @@ export default function HomeLobbyPage() {
                       borderRadius: 12,
                       color: liveMeta ? '#6ee7b7' : 'rgba(255,255,255,0.25)',
                       fontSize: '0.85rem', fontWeight: 800,
-                      cursor: liveMeta ? 'pointer' : 'default', textAlign: 'left', width: '100%',
-                      transition: 'all 0.15s',
+                      cursor: liveMeta ? 'pointer' : 'default', textAlign: 'left', width: '100%', transition: 'all 0.15s',
                     }}
                     onMouseEnter={e => { if (liveMeta) { e.currentTarget.style.background = 'rgba(52,211,153,0.24)'; e.currentTarget.style.borderColor = 'rgba(52,211,153,0.7)'; }}}
                     onMouseLeave={e => { if (liveMeta) { e.currentTarget.style.background = 'rgba(52,211,153,0.12)'; e.currentTarget.style.borderColor = 'rgba(52,211,153,0.4)'; }}}>
@@ -407,7 +428,7 @@ export default function HomeLobbyPage() {
                     <span style={{ marginLeft: 'auto', fontSize: '0.6rem', opacity: 0.45 }}>{liveMeta ? '↗ nuova tab' : <Loader2 size={11} className="animate-spin inline" />}</span>
                   </button>
 
-                  {/* QR Presentatore — always shown when liveMeta available */}
+                  {/* QR Presentatore */}
                   {liveMeta && (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, paddingTop: 4 }}>
                       <div style={{ background: '#fff', borderRadius: 10, padding: 7, lineHeight: 0, boxShadow: '0 0 20px rgba(52,211,153,0.25)' }}>
@@ -421,27 +442,10 @@ export default function HomeLobbyPage() {
                       </div>
                     </div>
                   )}
-                </motion.div>
+                </div>,
+                document.body
               )}
-
-              {/* Pill trigger */}
-              <motion.button
-                whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
-                onClick={() => setShowAccedi(v => !v)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 7,
-                  padding: '0.45rem 1.1rem',
-                  background: showAccedi ? 'rgba(245,182,66,0.2)' : 'rgba(245,182,66,0.1)',
-                  border: showAccedi ? '1.5px solid rgba(245,182,66,0.7)' : '1.5px solid rgba(245,182,66,0.45)',
-                  borderRadius: 100,
-                  color: '#F5B642',
-                  fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.08em',
-                  cursor: 'pointer', backdropFilter: 'blur(16px)',
-                  boxShadow: '0 0 16px rgba(245,182,66,0.2)',
-                }}>
-                🔑 Accedi
-              </motion.button>
-            </div>
+            </>
           )}
         </div>
       </div>

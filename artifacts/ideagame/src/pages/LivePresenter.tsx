@@ -110,6 +110,7 @@ export default function LivePresenter() {
   const [connected, setConnected]       = useState(false);
   const [cmdLoading, setCmdLoading]     = useState<string | null>(null);
   const [selectedGame, setSelectedGame] = useState<string>('gioco-coppie');
+  const [roomGames, setRoomGames]       = useState<string[]>([]); // slugs enabled for this room
 
   // Coppie state
   const [couples, setCouples]           = useState<CoupleEntry[]>(EMPTY_COUPLES);
@@ -230,9 +231,24 @@ export default function LivePresenter() {
       homeSessionId: runtimeState.payload?.homeSessionId ?? null,
       currentGameSlug: runtimeState.currentGameSlug ?? session.currentGameSlug,
       currentPhase: runtimeState.currentPhase,
-      availableGames: LIVE_GAMES.map(g => g.slug),
+      roomGames,
     });
   }, [runtimeState?.currentPhase]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Fetch home session to get enabled games for this room ─────────────────
+  useEffect(() => {
+    if (!homeSessionId) return;
+    (async () => {
+      try {
+        const data = await apiFetch<{ session: { gameConfig?: { selectedGames?: string[] } } }>(`/home/sessions/${homeSessionId}`);
+        const selected = data?.session?.gameConfig?.selectedGames;
+        if (Array.isArray(selected) && selected.length > 0) {
+          setRoomGames(selected);
+          console.log('[LivePresenter] roomGames loaded from homeSession', { homeSessionId, roomGames: selected });
+        }
+      } catch { /* home session fetch optional — fall back to all games */ }
+    })();
+  }, [homeSessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Socket ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -434,16 +450,16 @@ export default function LivePresenter() {
             const imgB = couple.photoB?.metadata?.imageData ?? couple.photoB?.url ?? null;
             const isUploadingA = uploading && uploadTarget?.coupleIndex === idx && uploadTarget?.partner === 'A';
             const isUploadingB = uploading && uploadTarget?.coupleIndex === idx && uploadTarget?.partner === 'B';
-            const borderColor = couple.complete ? 'rgba(52,211,153,0.4)' : 'rgba(255,255,255,0.08)';
+            const borderColor = couple.complete ? 'rgba(52,211,153,0.5)' : 'rgba(255,255,255,0.14)';
             return (
-              <div key={idx} style={{ border: `1px solid ${borderColor}`, borderRadius: 13, background: couple.complete ? 'rgba(52,211,153,0.04)' : 'rgba(255,255,255,0.02)', overflow: 'hidden' }}>
-                <div style={{ padding: '9px 12px', background: couple.complete ? 'rgba(52,211,153,0.08)' : 'rgba(255,255,255,0.03)', borderBottom: `1px solid ${borderColor}`, display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ fontWeight: 900, fontSize: '0.82rem', color: couple.complete ? GREEN : 'rgba(255,255,255,0.55)', minWidth: 76 }}>
+              <div key={idx} style={{ border: `1px solid ${borderColor}`, borderRadius: 13, background: couple.complete ? 'rgba(52,211,153,0.08)' : 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
+                <div style={{ padding: '9px 12px', background: couple.complete ? 'rgba(52,211,153,0.12)' : 'rgba(255,255,255,0.08)', borderBottom: `1px solid ${borderColor}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ fontWeight: 900, fontSize: '0.82rem', color: couple.complete ? GREEN : 'rgba(255,255,255,0.7)', minWidth: 76 }}>
                     Coppia {idx + 1}{couple.complete && ' ✅'}
                   </div>
                   <input value={coupleNames[idx] ?? ''} onChange={e => { const n = [...coupleNames]; n[idx] = e.target.value; setCoupleNames(n); }}
                     placeholder="Nome coppia (opz.)"
-                    style={{ flex: 1, padding: '4px 9px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 7, color: '#fff', fontSize: '0.73rem', outline: 'none' }} />
+                    style={{ flex: 1, padding: '4px 9px', background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 7, color: '#fff', fontSize: '0.73rem', outline: 'none' }} />
                 </div>
                 <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <PartnerRow partner="A" label="Foto A" imgSrc={imgA} name={partnerANames[idx] ?? ''} onNameChange={v => { const n = [...partnerANames]; n[idx] = v; setPartnerANames(n); }} uploading={isUploadingA} onCamera={() => triggerUpload(idx, 'A', true)} onFile={() => triggerUpload(idx, 'A', false)} onDelete={() => deletePhoto(idx, 'A')} PURPLE={PURPLE} />
@@ -489,6 +505,9 @@ export default function LivePresenter() {
   const isPaused        = session?.status === 'paused';
   const isActive        = session?.status === 'active';
   const completeCouples = couples.filter(c => c.complete).length;
+  // Show only the games configured for this room (from homeSession.gameConfig.selectedGames)
+  // Falls back to all LIVE_GAMES when no room filter is active (e.g. no homeSession linked)
+  const filteredGames   = roomGames.length > 0 ? LIVE_GAMES.filter(g => roomGames.includes(g.slug)) : LIVE_GAMES;
 
   return (
     <div style={{ minHeight: '100dvh', background: '#120920', fontFamily: "'Outfit','Space Grotesk',sans-serif", color: '#fff', display: 'flex', flexDirection: 'column' }}>
@@ -515,7 +534,7 @@ export default function LivePresenter() {
         <div style={{ padding: '12px 14px', background: 'rgba(168,85,247,0.13)', border: '1px solid rgba(168,85,247,0.35)', borderRadius: 14 }}>
           <div style={{ fontSize: '0.72rem', fontWeight: 900, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.1em', marginBottom: 10 }}>🎮 LANCIA GIOCO</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            {LIVE_GAMES.map(g => {
+            {filteredGames.map(g => {
               const sel = selectedGame === g.slug || activeGameSlug === g.slug;
               const isCoppieGame = g.slug === 'gioco-coppie';
               return (
@@ -664,17 +683,17 @@ function PartnerRow({ partner, label, imgSrc, name, onNameChange, uploading, onC
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
       {/* Thumbnail */}
-      <div style={{ width: 52, height: 52, borderRadius: 9, overflow: 'hidden', flexShrink: 0, background: 'rgba(255,255,255,0.06)', border: `1px solid ${imgSrc ? 'rgba(52,211,153,0.4)' : 'rgba(255,255,255,0.1)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+      <div style={{ width: 52, height: 52, borderRadius: 9, overflow: 'hidden', flexShrink: 0, background: 'rgba(255,255,255,0.15)', border: `1.5px solid ${imgSrc ? 'rgba(52,211,153,0.6)' : 'rgba(255,255,255,0.25)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
         {uploading
           ? <Loader2 size={16} className="animate-spin" style={{ color: PURPLE }} />
           : imgSrc
             ? <img src={imgSrc} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            : <span style={{ fontSize: '1.2rem', opacity: 0.3 }}>{partner}</span>}
+            : <span style={{ fontSize: '1.2rem', opacity: 0.55, color: '#fff' }}>{partner}</span>}
       </div>
       {/* Name input */}
       <input value={name} onChange={e => onNameChange(e.target.value)}
         placeholder={`Nome ${label}`}
-        style={{ flex: 1, padding: '5px 9px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 7, color: '#fff', fontSize: '0.72rem', outline: 'none' }} />
+        style={{ flex: 1, padding: '5px 9px', background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.22)', borderRadius: 7, color: '#fff', fontSize: '0.72rem', outline: 'none' }} />
       {/* Buttons */}
       <div style={{ display: 'flex', gap: 4 }}>
         <ActionBtn onClick={onCamera} color={PURPLE} title="Scatta foto">

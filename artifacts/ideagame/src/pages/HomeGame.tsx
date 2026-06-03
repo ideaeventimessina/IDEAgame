@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo, Component } from 'react';
+import { createPortal } from 'react-dom';
 import type { ErrorInfo, ReactNode } from 'react';
 import { useLocation } from 'wouter';
 import { motion, AnimatePresence, useAnimation } from 'framer-motion';
@@ -613,7 +614,9 @@ export default function HomeGame() {
   const [showAccedi, setShowAccedi] = useState(false);
   const [showPresenterQR, setShowPresenterQR] = useState(false);
   const [liveMeta, setLiveMeta] = useState<{ id: string; tvCode: string; presenterCode: string } | null>(null);
-  const accediGameRef = useRef<HTMLDivElement>(null);
+  const accediGameRef        = useRef<HTMLDivElement>(null);
+  const accediGameTriggerRef = useRef<HTMLButtonElement>(null);
+  const [accediGamePos, setAccediGamePos] = useState<{ top: number; right: number } | null>(null);
   useEffect(() => {
     if (!liveCode) return;
     fetch(`/api/live-sessions/by-code/${liveCode}`)
@@ -626,13 +629,14 @@ export default function HomeGame() {
       })
       .catch(() => {});
   }, [liveCode]);
-  // Close Accedi panel on outside click — avoids z-index stacking context issues
+  // Close Accedi portal panel on outside click
   useEffect(() => {
     if (!showAccedi) return;
     const handler = (e: MouseEvent) => {
-      if (accediGameRef.current && !accediGameRef.current.contains(e.target as Node)) {
-        setShowAccedi(false);
-      }
+      const target = e.target as Node;
+      const insidePanel   = accediGameRef.current?.contains(target) ?? false;
+      const insideTrigger = accediGameTriggerRef.current?.contains(target) ?? false;
+      if (!insidePanel && !insideTrigger) setShowAccedi(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -1447,12 +1451,29 @@ export default function HomeGame() {
                 <Users className="inline h-4 w-4 mr-1"/>{players.length}
               </div>
 
-              {/* 🔑 Accedi — live mode only */}
+              {/* 🔑 Accedi — live mode only (portal approach: panel rendered at body level) */}
               {liveCode && (
-                <div ref={accediGameRef} style={{ position: 'relative', zIndex: 1000 }}>
-                  {showAccedi && (
-                    <div style={{
-                      position: 'absolute', top: 'calc(100% + 6px)', right: 0,
+                <>
+                  <button
+                    ref={accediGameTriggerRef}
+                    onClick={() => {
+                      if (!showAccedi && accediGameTriggerRef.current) {
+                        const r = accediGameTriggerRef.current.getBoundingClientRect();
+                        setAccediGamePos({ top: r.bottom + 6, right: window.innerWidth - r.right });
+                      }
+                      setShowAccedi(v => !v);
+                    }}
+                    className="rounded-xl px-3 py-1.5 text-xs font-black transition-all hover:scale-105 active:scale-95"
+                    style={{ background: showAccedi ? 'rgba(245,182,66,0.22)' : 'rgba(245,182,66,0.12)', border: `1px solid ${showAccedi ? 'rgba(245,182,66,0.7)' : 'rgba(245,182,66,0.4)'}`, color:'#F5B642', cursor:'pointer' }}>
+                    🔑 Accedi
+                  </button>
+
+                  {showAccedi && accediGamePos && createPortal(
+                    <div ref={accediGameRef} style={{
+                      position: 'fixed',
+                      top: accediGamePos.top,
+                      right: accediGamePos.right,
+                      zIndex: 99999,
                       background: 'rgba(8,4,24,0.97)',
                       border: '1.5px solid rgba(255,255,255,0.14)',
                       borderRadius: 18,
@@ -1460,14 +1481,12 @@ export default function HomeGame() {
                       boxShadow: '0 16px 60px rgba(0,0,0,0.8)',
                       padding: '13px 13px 11px',
                       display: 'flex', flexDirection: 'column', gap: 7,
-                      minWidth: 226, zIndex: 50,
+                      minWidth: 226,
                     }}>
-                      {/* Header */}
                       <div style={{ fontSize:'0.57rem', fontWeight:900, letterSpacing:'0.2em', color:'rgba(245,182,66,0.65)', textTransform:'uppercase', textAlign:'center', paddingBottom:4, borderBottom:'1px solid rgba(255,255,255,0.07)', marginBottom:2 }}>
                         🔴 Modalità Live
                       </div>
 
-                      {/* BTN 1 — ADMIN */}
                       <button
                         onClick={() => { console.log('[LiveAccess] Admin clicked (game)'); window.open('/admin/live', '_blank'); }}
                         style={{ display:'flex', alignItems:'center', gap:9, padding:'10px 14px', background:'rgba(99,102,241,0.15)', border:'1.5px solid rgba(99,102,241,0.4)', borderRadius:11, color:'#a5b4fc', fontSize:'0.82rem', fontWeight:800, cursor:'pointer', width:'100%', transition:'all 0.15s' }}
@@ -1476,12 +1495,11 @@ export default function HomeGame() {
                         🛠 Admin <span style={{marginLeft:'auto',fontSize:'0.58rem',opacity:0.45}}>↗ nuova tab</span>
                       </button>
 
-                      {/* BTN 2 — REGIA (schermo TV / proiettore): uses current session, no liveMeta needed */}
                       <button
                         onClick={() => {
                           const sid = session?.id ?? urlSessionId;
                           const url = `/home?s=${sid}${liveCode ? `&live=${liveCode}` : ''}`;
-                          console.log('[LiveAccess] Regia/TV clicked (game)', { url, sessionId: sid, liveCode });
+                          console.log('[LiveAccess] Regia/TV clicked (game)', { url });
                           window.open(url, '_blank');
                         }}
                         style={{ display:'flex', alignItems:'center', gap:9, padding:'10px 14px', background:'rgba(245,182,66,0.13)', border:'1.5px solid rgba(245,182,66,0.4)', borderRadius:11, color:'#F5B642', fontSize:'0.82rem', fontWeight:800, cursor:'pointer', width:'100%', transition:'all 0.15s' }}
@@ -1490,7 +1508,6 @@ export default function HomeGame() {
                         🖥 Schermo TV / Regia <span style={{marginLeft:'auto',fontSize:'0.58rem',opacity:0.45}}>↗ nuova tab</span>
                       </button>
 
-                      {/* BTN 3 — PRESENTATORE */}
                       <button
                         onClick={() => {
                           if (!liveMeta) return;
@@ -1504,7 +1521,6 @@ export default function HomeGame() {
                         🎤 Presentatore <span style={{marginLeft:'auto',fontSize:'0.58rem',opacity:0.45}}>{liveMeta?'↗ nuova tab':'…'}</span>
                       </button>
 
-                      {/* QR Presentatore — always visible */}
                       {liveMeta && (
                         <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:5, paddingTop:3 }}>
                           <div style={{ background:'#fff', borderRadius:9, padding:6, lineHeight:0, boxShadow:'0 0 16px rgba(52,211,153,0.22)' }}>
@@ -1513,14 +1529,10 @@ export default function HomeGame() {
                           <div style={{ fontSize:'0.55rem', fontWeight:700, color:'rgba(255,255,255,0.32)', textAlign:'center' }}>/live-presenter?s={liveMeta.presenterCode}</div>
                         </div>
                       )}
-                    </div>
+                    </div>,
+                    document.body
                   )}
-                  <button onClick={() => setShowAccedi(v=>!v)}
-                    className="rounded-xl px-3 py-1.5 text-xs font-black transition-all hover:scale-105 active:scale-95"
-                    style={{ background: showAccedi ? 'rgba(245,182,66,0.22)' : 'rgba(245,182,66,0.12)', border: `1px solid ${showAccedi ? 'rgba(245,182,66,0.7)' : 'rgba(245,182,66,0.4)'}`, color:'#F5B642', cursor:'pointer' }}>
-                    🔑 Accedi
-                  </button>
-                </div>
+                </>
               )}
               {gamesPlayed.length > 0 && players.length > 0 && (
                 <button disabled={loading}
