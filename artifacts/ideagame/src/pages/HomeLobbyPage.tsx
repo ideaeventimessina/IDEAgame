@@ -340,7 +340,7 @@ export default function HomeLobbyPage() {
 
                   {/* BTN 1 — ADMIN */}
                   <button
-                    onClick={() => window.open('/admin', '_blank')}
+                    onClick={() => { console.log('[LiveAccess] Admin clicked'); window.open('/admin/live', '_blank'); }}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 10,
                       padding: '11px 16px',
@@ -358,30 +358,37 @@ export default function HomeLobbyPage() {
                     <span style={{ marginLeft: 'auto', fontSize: '0.6rem', opacity: 0.45 }}>↗ nuova tab</span>
                   </button>
 
-                  {/* BTN 2 — REGIA */}
+                  {/* BTN 2 — REGIA (proiettore): opens game board directly, no liveMeta needed */}
                   <button
-                    onClick={() => liveMeta && window.open(`/live-control?session=${liveMeta.id}`, '_blank')}
-                    disabled={!liveMeta}
+                    onClick={() => {
+                      const url = `/home?s=${session.id}${liveCode ? `&live=${liveCode}` : ''}`;
+                      console.log('[LiveAccess] Regia clicked', { url, sessionId: session.id, liveCode });
+                      window.open(url, '_blank');
+                    }}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 10,
                       padding: '11px 16px',
-                      background: liveMeta ? 'rgba(245,182,66,0.13)' : 'rgba(255,255,255,0.04)',
-                      border: liveMeta ? '1.5px solid rgba(245,182,66,0.4)' : '1.5px solid rgba(255,255,255,0.08)',
+                      background: 'rgba(245,182,66,0.13)',
+                      border: '1.5px solid rgba(245,182,66,0.4)',
                       borderRadius: 12,
-                      color: liveMeta ? '#F5B642' : 'rgba(255,255,255,0.25)',
+                      color: '#F5B642',
                       fontSize: '0.85rem', fontWeight: 800,
-                      cursor: liveMeta ? 'pointer' : 'default', textAlign: 'left', width: '100%',
+                      cursor: 'pointer', textAlign: 'left', width: '100%',
                       transition: 'all 0.15s',
                     }}
-                    onMouseEnter={e => { if (liveMeta) { e.currentTarget.style.background = 'rgba(245,182,66,0.25)'; e.currentTarget.style.borderColor = 'rgba(245,182,66,0.7)'; }}}
-                    onMouseLeave={e => { if (liveMeta) { e.currentTarget.style.background = 'rgba(245,182,66,0.13)'; e.currentTarget.style.borderColor = 'rgba(245,182,66,0.4)'; }}}>
-                    🎛 <span>Regia</span>
-                    <span style={{ marginLeft: 'auto', fontSize: '0.6rem', opacity: 0.45 }}>{liveMeta ? '↗ nuova tab' : '…'}</span>
+                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(245,182,66,0.25)'; e.currentTarget.style.borderColor = 'rgba(245,182,66,0.7)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(245,182,66,0.13)'; e.currentTarget.style.borderColor = 'rgba(245,182,66,0.4)'; }}>
+                    🖥 <span>Schermo TV / Regia</span>
+                    <span style={{ marginLeft: 'auto', fontSize: '0.6rem', opacity: 0.45 }}>↗ nuova tab</span>
                   </button>
 
                   {/* BTN 3 — PRESENTATORE */}
                   <button
-                    onClick={() => liveMeta && window.open(`/live-presenter?s=${liveMeta.presenterCode}`, '_blank')}
+                    onClick={() => {
+                      if (!liveMeta) return;
+                      console.log('[LiveAccess] Presenter clicked', { presenterCode: liveMeta.presenterCode });
+                      window.open(`/live-presenter?s=${liveMeta.presenterCode}`, '_blank');
+                    }}
                     disabled={!liveMeta}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 10,
@@ -397,7 +404,7 @@ export default function HomeLobbyPage() {
                     onMouseEnter={e => { if (liveMeta) { e.currentTarget.style.background = 'rgba(52,211,153,0.24)'; e.currentTarget.style.borderColor = 'rgba(52,211,153,0.7)'; }}}
                     onMouseLeave={e => { if (liveMeta) { e.currentTarget.style.background = 'rgba(52,211,153,0.12)'; e.currentTarget.style.borderColor = 'rgba(52,211,153,0.4)'; }}}>
                     🎤 <span>Presentatore</span>
-                    <span style={{ marginLeft: 'auto', fontSize: '0.6rem', opacity: 0.45 }}>{liveMeta ? '↗ nuova tab' : '…'}</span>
+                    <span style={{ marginLeft: 'auto', fontSize: '0.6rem', opacity: 0.45 }}>{liveMeta ? '↗ nuova tab' : <Loader2 size={11} className="animate-spin inline" />}</span>
                   </button>
 
                   {/* QR Presentatore — always shown when liveMeta available */}

@@ -1469,26 +1469,34 @@ export default function HomeGame() {
 
                       {/* BTN 1 — ADMIN */}
                       <button
-                        onClick={() => window.open('/admin', '_blank')}
+                        onClick={() => { console.log('[LiveAccess] Admin clicked (game)'); window.open('/admin/live', '_blank'); }}
                         style={{ display:'flex', alignItems:'center', gap:9, padding:'10px 14px', background:'rgba(99,102,241,0.15)', border:'1.5px solid rgba(99,102,241,0.4)', borderRadius:11, color:'#a5b4fc', fontSize:'0.82rem', fontWeight:800, cursor:'pointer', width:'100%', transition:'all 0.15s' }}
                         onMouseEnter={e=>{e.currentTarget.style.background='rgba(99,102,241,0.28)';e.currentTarget.style.borderColor='rgba(99,102,241,0.7)';}}
                         onMouseLeave={e=>{e.currentTarget.style.background='rgba(99,102,241,0.15)';e.currentTarget.style.borderColor='rgba(99,102,241,0.4)';}}>
                         🛠 Admin <span style={{marginLeft:'auto',fontSize:'0.58rem',opacity:0.45}}>↗ nuova tab</span>
                       </button>
 
-                      {/* BTN 2 — REGIA */}
+                      {/* BTN 2 — REGIA (schermo TV / proiettore): uses current session, no liveMeta needed */}
                       <button
-                        onClick={() => liveMeta && window.open(`/live-control?session=${liveMeta.id}`, '_blank')}
-                        disabled={!liveMeta}
-                        style={{ display:'flex', alignItems:'center', gap:9, padding:'10px 14px', background: liveMeta ? 'rgba(245,182,66,0.13)' : 'rgba(255,255,255,0.04)', border: liveMeta ? '1.5px solid rgba(245,182,66,0.4)' : '1.5px solid rgba(255,255,255,0.08)', borderRadius:11, color: liveMeta ? '#F5B642' : 'rgba(255,255,255,0.25)', fontSize:'0.82rem', fontWeight:800, cursor: liveMeta ? 'pointer' : 'default', width:'100%', transition:'all 0.15s' }}
-                        onMouseEnter={e=>{if(liveMeta){e.currentTarget.style.background='rgba(245,182,66,0.25)';e.currentTarget.style.borderColor='rgba(245,182,66,0.7)';}}}
-                        onMouseLeave={e=>{if(liveMeta){e.currentTarget.style.background='rgba(245,182,66,0.13)';e.currentTarget.style.borderColor='rgba(245,182,66,0.4)';}}}>
-                        🎛 Regia <span style={{marginLeft:'auto',fontSize:'0.58rem',opacity:0.45}}>{liveMeta?'↗ nuova tab':'…'}</span>
+                        onClick={() => {
+                          const sid = session?.id ?? urlSessionId;
+                          const url = `/home?s=${sid}${liveCode ? `&live=${liveCode}` : ''}`;
+                          console.log('[LiveAccess] Regia/TV clicked (game)', { url, sessionId: sid, liveCode });
+                          window.open(url, '_blank');
+                        }}
+                        style={{ display:'flex', alignItems:'center', gap:9, padding:'10px 14px', background:'rgba(245,182,66,0.13)', border:'1.5px solid rgba(245,182,66,0.4)', borderRadius:11, color:'#F5B642', fontSize:'0.82rem', fontWeight:800, cursor:'pointer', width:'100%', transition:'all 0.15s' }}
+                        onMouseEnter={e=>{e.currentTarget.style.background='rgba(245,182,66,0.25)';e.currentTarget.style.borderColor='rgba(245,182,66,0.7)';}}
+                        onMouseLeave={e=>{e.currentTarget.style.background='rgba(245,182,66,0.13)';e.currentTarget.style.borderColor='rgba(245,182,66,0.4)';}}>
+                        🖥 Schermo TV / Regia <span style={{marginLeft:'auto',fontSize:'0.58rem',opacity:0.45}}>↗ nuova tab</span>
                       </button>
 
                       {/* BTN 3 — PRESENTATORE */}
                       <button
-                        onClick={() => liveMeta && window.open(`/live-presenter?s=${liveMeta.presenterCode}`, '_blank')}
+                        onClick={() => {
+                          if (!liveMeta) return;
+                          console.log('[LiveAccess] Presenter clicked (game)', { presenterCode: liveMeta.presenterCode });
+                          window.open(`/live-presenter?s=${liveMeta.presenterCode}`, '_blank');
+                        }}
                         disabled={!liveMeta}
                         style={{ display:'flex', alignItems:'center', gap:9, padding:'10px 14px', background: liveMeta ? 'rgba(52,211,153,0.12)' : 'rgba(255,255,255,0.04)', border: liveMeta ? '1.5px solid rgba(52,211,153,0.4)' : '1.5px solid rgba(255,255,255,0.08)', borderRadius:11, color: liveMeta ? '#6ee7b7' : 'rgba(255,255,255,0.25)', fontSize:'0.82rem', fontWeight:800, cursor: liveMeta ? 'pointer' : 'default', width:'100%', transition:'all 0.15s' }}
                         onMouseEnter={e=>{if(liveMeta){e.currentTarget.style.background='rgba(52,211,153,0.24)';e.currentTarget.style.borderColor='rgba(52,211,153,0.7)';}}}
