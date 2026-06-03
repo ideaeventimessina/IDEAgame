@@ -1,0 +1,166 @@
+LIVE PRESENTER — PROVE REAL CONNECTION TO LIVE/HOME SESSION + FIX COMMANDS
+
+Patch only LivePresenter and Live command wiring.
+Do not touch SaraMusica.
+Do not redesign Home.
+
+Current bugs:
+1. Presenter says “home session collegata” but no useful session identity is visible.
+2. Presenter shows “modalità home” text — wrong. Presenter exists only in Live.
+3. Buttons do not control the TV/Home session.
+4. Stop audio works once but cannot re-enable audio.
+5. Coppie Live button still does not open the 10-couples capture flow reliably.
+
+==================================================
+PART 1 — SHOW REAL SESSION CONNECTION
+==================================================
+
+At top of LivePresenter show a clear session card:
+
+- Nome stanza live
+- Live session ID short
+- Home session ID short
+- TV code
+- Presenter code
+- Player join code
+- QR code for player join
+- status: connected / disconnected
+
+This proves Presenter is connected to the same room.
+
+Remove text:
+“modalità home”
+
+Replace with:
+“Modalità LIVE — collegata alla stanza [name]”
+
+==================================================
+PART 2 — PRESENTER COMMANDS MUST TARGET HOME SESSION
+==================================================
+
+Every presenter button must send command to the linked Home session, not a dead Live-only state.
+
+Map:
+
+AVVIA
+→ start / flow confirm on homeSessionId
+
+PAUSA
+→ pause home session or live pause command that TV iframe reacts to
+
+AVANTI
+→ next phase on homeSessionId
+
+RIVELA
+→ reveal on homeSessionId
+
+CLASSIFICA
+→ force ranking on homeSessionId
+
+BLACKOUT
+→ live overlay command to TV wrapper
+
+STOP AUDIO
+→ stop audio in Home runtime
+
+TOGGLE AUDIO
+→ if muted, re-enable audio in Home runtime
+
+If endpoint does not exist, create wrapper endpoint:
+POST /api/live-sessions/:id/home-command
+
+body:
+{
+  command,
+  payload
+}
+
+It must internally call/update the Home session state.
+
+==================================================
+PART 3 — BUTTON FEEDBACK
+==================================================
+
+After every button click show:
+
+- loading
+- success toast: “Comando inviato”
+- error toast with real backend error
+
+Disable nothing permanently unless request is pending.
+
+Add logs:
+[LivePresenterCommand]
+command
+liveSessionId
+homeSessionId
+result
+
+==================================================
+PART 4 — AUDIO TOGGLE FIX
+==================================================
+
+Current:
+Stop audio works but cannot restore.
+
+Fix:
+Use one toggle state:
+audioMuted: true/false
+
+Button label:
+if false → “Silenzia audio”
+if true → “Riattiva audio”
+
+Command:
+set_audio_muted { muted: true/false }
+
+TV/Home runtime must receive and apply it.
+
+==================================================
+PART 5 — COPPIE LIVE BUTTON
+==================================================
+
+Click “Coppie Live” must always:
+- set currentGameSlug = "gioco-coppie"
+- open presenter capture UI
+- never require an already active game
+- show 10 couples × Foto A/B
+
+The top current game card must update to:
+“Coppie Live”
+
+==================================================
+PART 6 — QR CODE ON PRESENTER
+==================================================
+
+Presenter must display QR code for player join.
+
+Use the linked Home session join URL:
+ /home/join?s=HOME_SESSION_CODE
+or existing join route.
+
+QR must be visible in session card or expandable.
+
+==================================================
+OUTPUT REQUIRED
+==================================================
+
+A. files modified
+B. removed wrong “modalità home” text
+C. Presenter session card with live/home IDs and QR
+D. command mapping table
+E. audio toggle fixed
+F. Coppie Live opens capture UI
+G. typecheck
+H. manual test:
+   - open TV
+   - open Presenter
+   - verify same session name/code
+   - click Avvia from Presenter
+   - TV changes
+   - click Silenzia
+   - audio stops
+   - click Riattiva
+   - audio returns
+   - click Coppie Live
+   - capture UI opens

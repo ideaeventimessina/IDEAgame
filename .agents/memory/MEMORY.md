@@ -1,0 +1,2 @@
+- [LivePresenter command routing](live-presenter-routing.md) — sendCommand → live session; sendHomeCommand → /home-command bridge → home session (home:command socket)
+- [HomeGame home:command effect](homegame-home-command.md) — uses session?.id (not sessionId); on() returns cleanup fn; setAudioEnabled takes boolean only

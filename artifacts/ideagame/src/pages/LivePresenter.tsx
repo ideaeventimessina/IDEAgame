@@ -6,10 +6,11 @@
 import { useEffect, useState, useRef, useCallback, type ChangeEvent } from 'react';
 import { getSocket } from '@/hooks/useEventSocket';
 import { toast } from 'sonner';
+import { QRCodeSVG } from 'qrcode.react';
 import {
-  Loader2, Camera, Upload, Trash2, CheckCircle2, Wifi, WifiOff,
-  Play, Users, ChevronLeft, Eye, Trophy, VolumeX,
-  MonitorOff, SkipForward, Pause, Power, Zap,
+  Loader2, Camera, Upload, CheckCircle2, Wifi, WifiOff,
+  Play, Users, ChevronLeft, Eye, Trophy, VolumeX, Volume2,
+  MonitorOff, SkipForward, Pause, Zap,
 } from 'lucide-react';
 
 const BASE = (import.meta.env.BASE_URL as string) ?? '/';
@@ -123,6 +124,9 @@ export default function LivePresenter() {
   const [partnerANames, setPartnerANames] = useState<string[]>(Array(10).fill(''));
   const [partnerBNames, setPartnerBNames] = useState<string[]>(Array(10).fill(''));
 
+  const [homeSession, setHomeSession] = useState<{ id: string; joinCode: string } | null>(null);
+  const [audioMuted, setAudioMuted]   = useState(false);
+
   const socketRef       = useRef(getSocket());
   const cameraInputRef  = useRef<HTMLInputElement>(null);
   const fileInputRef    = useRef<HTMLInputElement>(null);
@@ -143,6 +147,32 @@ export default function LivePresenter() {
       if (state.currentGameSlug) setSelectedGame(state.currentGameSlug);
     } catch { /* no state yet — standby */ }
   }, [code]);
+
+  const sendHomeCommand = async (command: string, payload?: unknown) => {
+    if (!session) return;
+    const key = `home:${command}`;
+    setCmdLoading(key);
+    console.log('[LivePresenterCommand]', { command, payload, liveSessionId: session.id, homeSessionId });
+    try {
+      await apiFetch(`/live-sessions/${session.id}/home-command?s=${code}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command, payload }),
+      });
+      await Promise.all([
+        apiFetch<LiveSession>(`/live-sessions/by-code/${code}`).then(s => setSession(s)).catch(() => {}),
+        loadRuntimeState(session.id),
+      ]);
+      toast.success('Comando inviato');
+      console.log('[LivePresenterCommand]', { command, result: 'ok', homeSessionId });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '';
+      toast.error('Comando fallito', { description: msg });
+      console.error('[LivePresenterCommand] error', { command, error: msg });
+    } finally {
+      setCmdLoading(null);
+    }
+  };
 
   const loadCouples = useCallback(async (sessionId: string) => {
     try {
@@ -236,16 +266,19 @@ export default function LivePresenter() {
     });
   }, [runtimeState?.currentPhase]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Fetch home session to get enabled games for this room ─────────────────
+  // ── Fetch home session for joinCode + enabled games ───────────────────────
   useEffect(() => {
     if (!homeSessionId) return;
     (async () => {
       try {
-        const data = await apiFetch<{ session: { gameConfig?: { selectedGames?: string[] } } }>(`/home/sessions/${homeSessionId}`);
+        const data = await apiFetch<{ session: { id: string; joinCode: string; gameConfig?: { selectedGames?: string[] } } }>(`/home/sessions/${homeSessionId}`);
+        if (data?.session) {
+          setHomeSession({ id: data.session.id, joinCode: data.session.joinCode });
+          console.log('[LivePresenter] homeSession loaded', { homeSessionId, joinCode: data.session.joinCode });
+        }
         const selected = data?.session?.gameConfig?.selectedGames;
         if (Array.isArray(selected) && selected.length > 0) {
           setRoomGames(selected);
-          console.log('[LivePresenter] roomGames loaded from homeSession', { homeSessionId, roomGames: selected });
         }
       } catch { /* home session fetch optional — fall back to all games */ }
     })();
@@ -355,22 +388,11 @@ export default function LivePresenter() {
     }
   };
 
-  // ── Open Coppie view + ensure game slug set ───────────────────────────────
-  const openCoppie = async () => {
+  // ── Open Coppie view — always opens, no API call required ────────────────
+  const openCoppie = () => {
+    setSelectedGame('gioco-coppie');
     setView('coppie');
-    // If no game active yet, set it to gioco-coppie
-    if (session && activeGameSlug !== 'gioco-coppie') {
-      console.log('[LivePresenterAction]', { action: 'set_current_game', gameSlug: 'gioco-coppie' });
-      try {
-        await apiFetch(`/live-sessions/${session.id}/command?s=${code}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ command: 'set_current_game', payload: { gameSlug: 'gioco-coppie' } }),
-        });
-        setSelectedGame('gioco-coppie');
-        void loadRuntimeState(session.id);
-      } catch { /* noop */ }
-    }
+    console.log('[LivePresenterAction]', { action: 'open_coppie', gameSlug: 'gioco-coppie' });
   };
 
   // ── Loading / Error ───────────────────────────────────────────────────────
@@ -626,65 +648,107 @@ export default function LivePresenter() {
   // ══════════════════════════════════════════════════════════════════════════
   const currentGame     = LIVE_GAMES.find(g => g.slug === activeGameSlug);
   const isPaused        = session?.status === 'paused';
-  const isActive        = session?.status === 'active';
   const completeCouples = couples.filter(c => c.complete).length;
-  // Show only the games configured for this room (from homeSession.gameConfig.selectedGames)
-  // Falls back to all LIVE_GAMES when no room filter is active (e.g. no homeSession linked)
   const filteredGames   = roomGames.length > 0 ? LIVE_GAMES.filter(g => roomGames.includes(g.slug)) : LIVE_GAMES;
+
+  // Short IDs for session card
+  const shortLive = session?.id.slice(0, 8) ?? '—';
+  const shortHome = homeSession?.id.slice(0, 8) ?? homeSessionId?.slice(0, 8) ?? '—';
+  const joinUrl   = homeSession?.joinCode
+    ? `${window.location.origin}${BASE}home-v4?join=${homeSession.joinCode}`.replace(/\/\//g, '/')
+    : null;
 
   return (
     <div style={{ minHeight: '100dvh', background: '#120920', fontFamily: "'Outfit','Space Grotesk',sans-serif", color: '#fff', display: 'flex', flexDirection: 'column' }}>
       <Header />
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '14px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-        {/* ── Status card ──────────────────────────────────────── */}
-        <div style={{ padding: '14px', background: 'rgba(255,255,255,0.09)', border: '1px solid rgba(255,255,255,0.18)', borderRadius: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ fontSize: '2rem' }}>{currentGame?.emoji ?? '🎮'}</div>
+        {/* ═══════════════════════════════════════════════════════════════════
+            SESSION CARD — live + home IDs, codes, QR
+        ═══════════════════════════════════════════════════════════════════ */}
+        <div style={{ borderRadius: 16, background: 'rgba(168,85,247,0.1)', border: `1.5px solid ${connected ? 'rgba(52,211,153,0.45)' : 'rgba(255,255,255,0.12)'}`, overflow: 'hidden' }}>
+          {/* Header row */}
+          <div style={{ padding: '10px 14px', background: 'rgba(168,85,247,0.15)', display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ fontWeight: 900, fontSize: '0.85rem', color: PURPLE }}>Modalità LIVE</div>
+              <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.5)', marginTop: 1 }}>
+                collegata alla stanza <span style={{ color: '#fff', fontWeight: 700 }}>{session?.title ?? '—'}</span>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              {connected
+                ? <><Wifi size={13} style={{ color: GREEN }} /><span style={{ fontSize: '0.68rem', color: GREEN, fontWeight: 700 }}>LIVE</span></>
+                : <><WifiOff size={13} style={{ color: '#6B7280' }} /><span style={{ fontSize: '0.68rem', color: '#6B7280' }}>offline</span></>}
+            </div>
+          </div>
+          {/* IDs + codes */}
+          <div style={{ padding: '10px 14px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px' }}>
+            <CodeRow label="Live ID" value={shortLive} />
+            <CodeRow label="Home ID" value={shortHome} />
+            <CodeRow label="TV code" value={session?.tvCode ?? '—'} />
+            <CodeRow label="Presenter" value={session?.presenterCode ?? '—'} />
+            {homeSession?.joinCode && <CodeRow label="Join code" value={homeSession.joinCode} highlight />}
+            {activeGameSlug && <CodeRow label="Gioco" value={currentGame?.label ?? activeGameSlug} />}
+          </div>
+          {/* QR join */}
+          {joinUrl && (
+            <div style={{ padding: '10px 14px', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ background: '#fff', padding: 5, borderRadius: 8, flexShrink: 0 }}>
+                <QRCodeSVG value={joinUrl} size={72} bgColor="#ffffff" fgColor="#03000f" level="M" />
+              </div>
+              <div>
+                <div style={{ fontSize: '0.7rem', fontWeight: 900, color: 'rgba(255,255,255,0.5)', marginBottom: 4 }}>QR GIOCATORI</div>
+                <div style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.3)', wordBreak: 'break-all' }}>{joinUrl}</div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            GIOCO ATTIVO badge
+        ═══════════════════════════════════════════════════════════════════ */}
+        <div style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ fontSize: '1.6rem' }}>{currentGame?.emoji ?? '🎮'}</div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 900, fontSize: '0.9rem', color: currentGame?.color ?? 'rgba(255,255,255,0.6)' }}>
-              {currentGame ? currentGame.label : '— seleziona un gioco —'}
+            <div style={{ fontWeight: 900, fontSize: '0.88rem', color: currentGame?.color ?? 'rgba(255,255,255,0.5)' }}>
+              {currentGame ? currentGame.label : '— nessun gioco attivo —'}
             </div>
-            <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>
-              {activePhase}
-              {homeSessionId && <span style={{ marginLeft: 8, opacity: 0.5 }}>• home session collegata</span>}
-            </div>
+            <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.35)', marginTop: 1 }}>{activePhase}</div>
           </div>
           <StatusDot status={session?.status ?? 'draft'} />
         </div>
 
-        {/* ── Game launcher ────────────────────────────────────── */}
-        <div style={{ padding: '12px 14px', background: 'rgba(168,85,247,0.13)', border: '1px solid rgba(168,85,247,0.35)', borderRadius: 14 }}>
-          <div style={{ fontSize: '0.72rem', fontWeight: 900, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.1em', marginBottom: 10 }}>🎮 LANCIA GIOCO</div>
+        {/* ═══════════════════════════════════════════════════════════════════
+            GAME LAUNCHER — filteredGames from home session config
+        ═══════════════════════════════════════════════════════════════════ */}
+        <div style={{ padding: '12px 14px', background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.3)', borderRadius: 14 }}>
+          <div style={{ fontSize: '0.68rem', fontWeight: 900, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.1em', marginBottom: 10 }}>🎮 LANCIA GIOCO → TV</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             {filteredGames.map(g => {
               const sel = selectedGame === g.slug || activeGameSlug === g.slug;
-              const isCoppieGame = g.slug === 'gioco-coppie';
+              const isCoppie = g.slug === 'gioco-coppie';
+              const key = `home:select_game`;
               return (
                 <button key={g.slug}
                   onClick={() => {
                     setSelectedGame(g.slug);
-                    if (isCoppieGame) {
-                      void openCoppie();
-                    } else {
-                      console.log('[LivePresenterAction]', { action: 'select_game', gameSlug: g.slug });
-                      void sendCommand('start_game', { gameSlug: g.slug });
-                    }
+                    if (isCoppie) { openCoppie(); }
+                    else { void sendHomeCommand('select_game', { gameSlug: g.slug }); }
                   }}
                   disabled={!!cmdLoading}
                   style={{
                     padding: '10px 8px',
                     background: sel ? `${g.color}22` : 'rgba(255,255,255,0.04)',
                     border: `1.5px solid ${sel ? g.color : 'rgba(255,255,255,0.1)'}`,
-                    borderRadius: 10,
-                    color: sel ? g.color : 'rgba(255,255,255,0.65)',
+                    borderRadius: 10, color: sel ? g.color : 'rgba(255,255,255,0.65)',
                     fontWeight: 900, fontSize: '0.73rem',
                     cursor: cmdLoading ? 'default' : 'pointer',
                     textAlign: 'center', transition: 'all 0.15s',
                     opacity: cmdLoading ? 0.6 : 1,
                     boxShadow: sel ? `0 0 14px ${g.color}44` : 'none',
                   }}>
-                  {cmdLoading === 'start_game' && sel
+                  {cmdLoading === key && sel
                     ? <Loader2 size={14} className="animate-spin" style={{ display: 'inline' }} />
                     : `${g.emoji} ${g.label}`}
                 </button>
@@ -693,51 +757,103 @@ export default function LivePresenter() {
           </div>
         </div>
 
-        {/* ── Show controls ────────────────────────────────────── */}
-        <div style={{ padding: '12px 14px', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 14 }}>
-          <div style={{ fontSize: '0.72rem', fontWeight: 900, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.1em', marginBottom: 10 }}>CONTROLLI SHOW</div>
+        {/* ═══════════════════════════════════════════════════════════════════
+            FLOW CONTROLS — target home session
+        ═══════════════════════════════════════════════════════════════════ */}
+        <div style={{ padding: '12px 14px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 14 }}>
+          <div style={{ fontSize: '0.68rem', fontWeight: 900, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.1em', marginBottom: 10 }}>FLOW → HOME SESSION</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9 }}>
-            {/* AVVIA */}
-            <ShowBtn cmd="start_game" emoji="▶" label="AVVIA" color={GREEN}
-              payload={{ gameSlug: selectedGame }}
-              loading={cmdLoading === 'start_game'} onSend={sendCommand} isActive={isActive} />
+            {/* AVANTI */}
+            <HomeBtn cmd="next_phase" emoji="→" label="AVANTI" color={PURPLE}
+              loading={cmdLoading === 'home:next_phase'} onSend={sendHomeCommand} />
+            {/* RIVELA */}
+            <HomeBtn cmd="force_reveal" emoji="👁" label="RIVELA" color="#60A5FA"
+              loading={cmdLoading === 'home:force_reveal'} onSend={sendHomeCommand} />
+            {/* CLASSIFICA */}
+            <HomeBtn cmd="force_ranking" emoji="🏆" label="CLASSIFICA" color={GOLD}
+              loading={cmdLoading === 'home:force_ranking'} onSend={sendHomeCommand} />
+            {/* FINE GIOCO */}
+            <HomeBtn cmd="end_game" emoji="⏹" label="FINE GIOCO" color="#EF4444"
+              loading={cmdLoading === 'home:end_game'} onSend={sendHomeCommand} />
+          </div>
+        </div>
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            SHOW CONTROLS — live session / overlay / audio
+        ═══════════════════════════════════════════════════════════════════ */}
+        <div style={{ padding: '12px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14 }}>
+          <div style={{ fontSize: '0.68rem', fontWeight: 900, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.1em', marginBottom: 10 }}>SHOW CONTROLS → LIVE</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9 }}>
             {/* PAUSA / RIPRENDI */}
             {isPaused
-              ? <ShowBtn cmd="resume" emoji="▶" label="RIPRENDI" color={GREEN} loading={cmdLoading === 'resume'} onSend={sendCommand} />
+              ? <ShowBtn cmd="resume" emoji="▶" label="RIPRENDI" color={GREEN}  loading={cmdLoading === 'resume'} onSend={sendCommand} />
               : <ShowBtn cmd="pause"  emoji="⏸" label="PAUSA"    color="#F59E0B" loading={cmdLoading === 'pause'} onSend={sendCommand} />}
-            {/* AVANTI */}
-            <ShowBtn cmd="next_phase" emoji="→" label="AVANTI" color={PURPLE} loading={cmdLoading === 'next_phase'} onSend={sendCommand} />
-            {/* RIVELA */}
-            <ShowBtn cmd="force_reveal" emoji="👁" label="RIVELA" color="#60A5FA" loading={cmdLoading === 'force_reveal'} onSend={sendCommand} />
-            {/* CLASSIFICA */}
-            <ShowBtn cmd="force_ranking" emoji="🏆" label="CLASSIFICA" color={GOLD} loading={cmdLoading === 'force_ranking'} onSend={sendCommand} />
-            {/* COPPIE LIVE */}
+            {/* BLACKOUT */}
+            <ShowBtn cmd="blackout" emoji="⬛" label="BLACKOUT" color="#EF4444" loading={cmdLoading === 'blackout'} onSend={sendCommand} />
+            {/* AUDIO TOGGLE — single stateful button */}
             <button
-              onClick={() => void openCoppie()}
+              onClick={async () => {
+                const nextMuted = !audioMuted;
+                setAudioMuted(nextMuted);
+                const cmdKey = `home:set_audio_muted`;
+                setCmdLoading(cmdKey);
+                try {
+                  await apiFetch(`/live-sessions/${session!.id}/home-command?s=${code}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: 'set_audio_muted', payload: { muted: nextMuted } }),
+                  });
+                  toast.success(nextMuted ? 'Audio silenziato' : 'Audio riattivato');
+                } catch (err: unknown) {
+                  setAudioMuted(!nextMuted); // rollback
+                  toast.error('Comando audio fallito', { description: err instanceof Error ? err.message : '' });
+                } finally {
+                  setCmdLoading(null);
+                }
+              }}
+              disabled={cmdLoading === 'home:set_audio_muted' || !session}
               style={{
                 padding: '16px 8px',
-                background: activeGameSlug === 'gioco-coppie' ? `${PURPLE}35` : `${PURPLE}28`,
-                border: `1.5px solid ${PURPLE}${activeGameSlug === 'gioco-coppie' ? 'AA' : '70'}`,
-                borderRadius: 12, color: PURPLE,
+                background: audioMuted ? 'rgba(239,68,68,0.18)' : 'rgba(16,185,129,0.15)',
+                border: `1.5px solid ${audioMuted ? 'rgba(239,68,68,0.5)' : 'rgba(16,185,129,0.45)'}`,
+                borderRadius: 12,
+                color: audioMuted ? '#FCA5A5' : '#6EE7B7',
                 fontWeight: 900, fontSize: '0.84rem',
                 cursor: 'pointer',
                 display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
+                gridColumn: 'span 2',
                 transition: 'all 0.15s',
-                boxShadow: activeGameSlug === 'gioco-coppie' ? `0 0 18px ${PURPLE}44` : 'none',
               }}>
-              <span style={{ fontSize: '1.3rem' }}>🃏</span>
+              {cmdLoading === 'home:set_audio_muted'
+                ? <Loader2 size={18} className="animate-spin" />
+                : audioMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
               <span style={{ fontSize: '0.7rem', letterSpacing: '0.05em' }}>
-                COPPIE LIVE {completeCouples > 0 ? `(${completeCouples}/10)` : ''}
+                {audioMuted ? 'RIATTIVA AUDIO' : 'SILENZIA AUDIO'}
               </span>
             </button>
-            {/* BLACKOUT */}
-            <ShowBtn cmd="blackout" emoji="⬛" label="BLACKOUT" color="#EF4444" loading={cmdLoading === 'blackout'} onSend={sendCommand} />
-            {/* STOP AUDIO */}
-            <ShowBtn cmd="stop_audio" emoji="🔇" label="STOP AUDIO" color="#6B7280" loading={cmdLoading === 'stop_audio'} onSend={sendCommand} />
-            {/* TOGGLE AUDIO */}
-            <ShowBtn cmd="toggle_audio" emoji="🔊" label="TOGGLE AUDIO" color="#10B981" loading={cmdLoading === 'toggle_audio'} onSend={sendCommand} />
           </div>
         </div>
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            COPPIE LIVE — always accessible
+        ═══════════════════════════════════════════════════════════════════ */}
+        <button
+          onClick={openCoppie}
+          style={{
+            width: '100%', padding: '16px',
+            background: `linear-gradient(135deg,${PURPLE}33,#7C3AED22)`,
+            border: `1.5px solid ${PURPLE}88`,
+            borderRadius: 14, color: PURPLE,
+            fontWeight: 900, fontSize: '1rem',
+            cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+            boxShadow: selectedGame === 'gioco-coppie' ? `0 0 22px ${PURPLE}44` : 'none',
+            transition: 'all 0.15s',
+          }}>
+          <span style={{ fontSize: '1.4rem' }}>🃏</span>
+          <span>COPPIE LIVE {completeCouples > 0 ? `— ${completeCouples}/10 coppie` : ''}</span>
+          <Zap size={15} style={{ marginLeft: 'auto', opacity: 0.6 }} />
+        </button>
 
         <div style={{ height: 16 }} />
       </div>
@@ -745,34 +861,61 @@ export default function LivePresenter() {
   );
 }
 
-// ── ShowBtn ───────────────────────────────────────────────────────────────
-function ShowBtn({ cmd, emoji, label, color, payload, loading, onSend, isActive }: {
+// ── HomeBtn — sends to home session via /home-command ─────────────────────────
+function HomeBtn({ cmd, emoji, label, color, loading, onSend }: {
   cmd: string; emoji: string; label: string; color: string;
-  payload?: unknown; loading: boolean;
-  onSend: (cmd: string, payload?: unknown) => void;
-  isActive?: boolean;
+  loading: boolean; onSend: (cmd: string, payload?: unknown) => void;
 }) {
   return (
-    <button
-      onClick={() => onSend(cmd, payload)}
+    <button onClick={() => onSend(cmd)}
       disabled={loading}
       style={{
         padding: '16px 8px',
-        background: `${color}28`,
-        border: `1.5px solid ${color}70`,
+        background: `${color}22`,
+        border: `1.5px solid ${color}66`,
         borderRadius: 12, color,
         fontWeight: 900, fontSize: '0.84rem',
         cursor: loading ? 'default' : 'pointer',
         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
-        opacity: loading ? 0.6 : 1,
-        transition: 'all 0.15s',
-        boxShadow: isActive && cmd === 'start_game' ? `0 0 20px ${color}55` : 'none',
+        opacity: loading ? 0.6 : 1, transition: 'all 0.15s',
       }}>
-      {loading
-        ? <Loader2 size={18} className="animate-spin" />
-        : <span style={{ fontSize: '1.3rem' }}>{emoji}</span>}
+      {loading ? <Loader2 size={18} className="animate-spin" /> : <span style={{ fontSize: '1.3rem' }}>{emoji}</span>}
       <span style={{ fontSize: '0.7rem', letterSpacing: '0.05em' }}>{label}</span>
     </button>
+  );
+}
+
+// ── ShowBtn — sends to live session ──────────────────────────────────────────
+function ShowBtn({ cmd, emoji, label, color, payload, loading, onSend }: {
+  cmd: string; emoji: string; label: string; color: string;
+  payload?: unknown; loading: boolean;
+  onSend: (cmd: string, payload?: unknown) => void;
+}) {
+  return (
+    <button onClick={() => onSend(cmd, payload)} disabled={loading}
+      style={{
+        padding: '16px 8px',
+        background: `${color}22`,
+        border: `1.5px solid ${color}66`,
+        borderRadius: 12, color,
+        fontWeight: 900, fontSize: '0.84rem',
+        cursor: loading ? 'default' : 'pointer',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
+        opacity: loading ? 0.6 : 1, transition: 'all 0.15s',
+      }}>
+      {loading ? <Loader2 size={18} className="animate-spin" /> : <span style={{ fontSize: '1.3rem' }}>{emoji}</span>}
+      <span style={{ fontSize: '0.7rem', letterSpacing: '0.05em' }}>{label}</span>
+    </button>
+  );
+}
+
+// ── CodeRow — label + value in session card ───────────────────────────────────
+function CodeRow({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+      <span style={{ fontSize: '0.58rem', color: 'rgba(255,255,255,0.35)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>{label}</span>
+      <span style={{ fontSize: '0.8rem', fontWeight: 900, color: highlight ? '#F5B642' : 'rgba(255,255,255,0.85)', fontFamily: 'monospace' }}>{value}</span>
+    </div>
   );
 }
 
@@ -793,46 +936,6 @@ function Screen({ children }: { children: React.ReactNode }) {
   return (
     <div style={{ minHeight: '100dvh', background: '#120920', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Outfit','Space Grotesk',sans-serif" }}>
       {children}
-    </div>
-  );
-}
-
-// ── PartnerRow ───────────────────────────────────────────────────────────────
-function PartnerRow({ partner, label, imgSrc, name, onNameChange, uploading, onCamera, onFile, onDelete, PURPLE }: {
-  partner: 'A' | 'B'; label: string;
-  imgSrc: string | null; name: string;
-  onNameChange: (v: string) => void;
-  uploading: boolean; onCamera: () => void; onFile: () => void; onDelete: () => void;
-  PURPLE: string;
-}) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-      {/* Thumbnail */}
-      <div style={{ width: 52, height: 52, borderRadius: 9, overflow: 'hidden', flexShrink: 0, background: 'rgba(255,255,255,0.15)', border: `1.5px solid ${imgSrc ? 'rgba(52,211,153,0.6)' : 'rgba(255,255,255,0.25)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-        {uploading
-          ? <Loader2 size={16} className="animate-spin" style={{ color: PURPLE }} />
-          : imgSrc
-            ? <img src={imgSrc} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            : <span style={{ fontSize: '1.2rem', opacity: 0.55, color: '#fff' }}>{partner}</span>}
-      </div>
-      {/* Name input */}
-      <input value={name} onChange={e => onNameChange(e.target.value)}
-        placeholder={`Nome ${label}`}
-        style={{ flex: 1, padding: '5px 9px', background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.22)', borderRadius: 7, color: '#fff', fontSize: '0.72rem', outline: 'none' }} />
-      {/* Buttons */}
-      <div style={{ display: 'flex', gap: 4 }}>
-        <ActionBtn onClick={onCamera} color={PURPLE} title="Scatta foto">
-          <Camera size={13} />
-        </ActionBtn>
-        <ActionBtn onClick={onFile} color="#60A5FA" title="Carica foto">
-          <Upload size={13} />
-        </ActionBtn>
-        {imgSrc && (
-          <ActionBtn onClick={onDelete} color="#EF4444" title="Elimina">
-            <Trash2 size={13} />
-          </ActionBtn>
-        )}
-      </div>
     </div>
   );
 }

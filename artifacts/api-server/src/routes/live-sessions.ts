@@ -317,7 +317,7 @@ router.get("/live-sessions/:id/state", async (req: Request, res: Response): Prom
 
 const VALID_COMMANDS = [
   "start_game", "pause", "resume", "next_phase", "force_reveal", "force_ranking",
-  "blackout", "standby_logo", "stop_audio", "toggle_audio", "trigger_media",
+  "blackout", "standby_logo", "stop_audio", "toggle_audio", "set_audio_muted", "trigger_media",
   "override_timer", "override_score", "toggle_voting", "toggle_ai", "force_next_round",
   "set_home_session",
 ] as const;
@@ -367,6 +367,48 @@ router.post("/live-sessions/:id/command", async (req: Request, res: Response): P
 
   logger.info({ sessionId: session.id, command }, "[LiveCommand] emitted");
   res.json({ ok: true, ...event });
+});
+
+// ── POST /live-sessions/:id/home-command ─────────────────────────────────────
+// Bridge: presenter sends a command that targets the linked Home session.
+// For game-flow commands (select_game, next_phase, end_game) the server emits
+// a home:command socket event so HomeGame (TV) calls the correct home API.
+// For audio/overlay commands the server emits live:command to the live room
+// (HomeGame joins both rooms).
+
+router.post("/live-sessions/:id/home-command", async (req: Request, res: Response): Promise<void> => {
+  const session = await resolveSession(req);
+  if (!session) { res.status(404).json({ error: "Not found or access denied" }); return; }
+
+  const { command, payload } = req.body as { command: string; payload?: unknown };
+  if (!command) { res.status(400).json({ error: "command obbligatorio" }); return; }
+
+  const state = await getState(session.id);
+  const homeSessionId = (state?.payload as Record<string, unknown> | null)?.homeSessionId as string | undefined;
+
+  if (!homeSessionId) {
+    res.status(409).json({ error: "Nessuna home session collegata a questa live session" });
+    return;
+  }
+
+  const ts = Date.now();
+  const liveEvent = { sessionId: session.id, homeSessionId, command, payload: payload ?? null, ts };
+
+  // ── Route command to appropriate channel ──────────────────────────────────
+  if (command === "set_audio_muted") {
+    // Audio: emit to both rooms so TV reacts immediately
+    emitToRoom(`live:${session.id}`, "live:command", liveEvent);
+    emitToRoom(`home:${homeSessionId}`, "home:command", liveEvent);
+  } else if (["select_game", "next_phase", "end_game", "force_reveal", "force_ranking"].includes(command)) {
+    // Game flow: emit to home room; HomeGame TV calls the appropriate home API
+    emitToRoom(`home:${homeSessionId}`, "home:command", liveEvent);
+  } else {
+    // Everything else (blackout, standby_logo, trigger_media, etc.) → live room
+    emitToRoom(`live:${session.id}`, "live:command", liveEvent);
+  }
+
+  logger.info({ sessionId: session.id, homeSessionId, command }, "[HomeCommand] bridged");
+  res.json({ ok: true, homeSessionId, command, ts });
 });
 
 // ── GET /live-sessions/:id/couples ───────────────────────────────────────────

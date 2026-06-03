@@ -641,15 +641,47 @@ export default function HomeGame() {
 
   useEffect(() => {
     return on('live:command', (evt: unknown) => {
-      const e = evt as { command: string; payload?: unknown };
+      const e = evt as { command: string; payload?: Record<string, unknown> };
       console.log('[LiveCmd] received', e.command, e.payload);
       if (e.command === 'stop_audio') {
         setAudioEnabled(false);
       } else if (e.command === 'toggle_audio') {
         setAudioEnabled(!audioEnabled);
+      } else if (e.command === 'set_audio_muted') {
+        setAudioEnabled(!(e.payload?.muted ?? true));
       }
     });
-  }, [on, setAudioEnabled]);
+  }, [on, setAudioEnabled, audioEnabled]);
+
+  // ── home:command — presenter bridges game-flow commands through /home-command ──
+  useEffect(() => {
+    const sid = session?.id;
+    if (!sid) return;
+    const BASE = (import.meta.env.BASE_URL as string) ?? '/';
+    const homePost = (path: string, body?: unknown) =>
+      fetch(`${BASE}api/home/sessions/${sid}/${path}`.replace(/\/\//g, '/'), {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+    return on('home:command', (evt: unknown) => {
+      const e = evt as { command: string; payload?: Record<string, unknown> };
+      console.log('[HomeCmd] TV received', e.command, e.payload);
+      if (e.command === 'select_game' && e.payload?.gameSlug) {
+        void homePost('select-game', { gameSlug: e.payload.gameSlug });
+      } else if (e.command === 'next_phase') {
+        void homePost('next');
+      } else if (e.command === 'end_game') {
+        void homePost('end-game');
+      } else if (e.command === 'set_audio_muted') {
+        setAudioEnabled(!(e.payload?.muted ?? true));
+      } else if (e.command === 'force_reveal') {
+        console.log('[HomeCmd] force_reveal — not yet handled locally');
+      } else if (e.command === 'force_ranking') {
+        console.log('[HomeCmd] force_ranking — not yet handled locally');
+      }
+    });
+  }, [on, session?.id, setAudioEnabled]);
   // Close Accedi portal panel on outside click
   useEffect(() => {
     if (!showAccedi) return;
