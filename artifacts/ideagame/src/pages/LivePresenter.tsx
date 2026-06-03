@@ -111,6 +111,7 @@ export default function LivePresenter() {
   const [cmdLoading, setCmdLoading]     = useState<string | null>(null);
   const [selectedGame, setSelectedGame] = useState<string>('gioco-coppie');
   const [roomGames, setRoomGames]       = useState<string[]>([]); // slugs enabled for this room
+  const [activeCoupleIdx, setActiveCoupleIdx] = useState<number | null>(null); // focused couple in editor
 
   // Coppie state
   const [couples, setCouples]           = useState<CoupleEntry[]>(EMPTY_COUPLES);
@@ -410,10 +411,128 @@ export default function LivePresenter() {
   // ══════════════════════════════════════════════════════════════════════════
   if (view === 'coppie') {
     const completeCouples = couples.filter(c => c.complete).length;
-    const missingPhotos   = couples.reduce((acc, c) => acc + (!c.photoA ? 1 : 0) + (!c.photoB ? 1 : 0), 0);
-    const canCreate  = completeCouples >= 2;
+    const canCreate   = completeCouples >= 2;
     const allComplete = completeCouples === 10;
 
+    // ── Focused couple editor ──────────────────────────────────────────────
+    if (activeCoupleIdx !== null) {
+      const cpl         = couples[activeCoupleIdx]!;
+      const imgA        = cpl.photoA?.metadata?.imageData ?? cpl.photoA?.url ?? null;
+      const imgB        = cpl.photoB?.metadata?.imageData ?? cpl.photoB?.url ?? null;
+      const loadingA    = uploading && uploadTarget?.coupleIndex === activeCoupleIdx && uploadTarget?.partner === 'A';
+      const loadingB    = uploading && uploadTarget?.coupleIndex === activeCoupleIdx && uploadTarget?.partner === 'B';
+      const bothDone    = !!imgA && !!imgB;
+
+      return (
+        <div style={{ minHeight: '100dvh', background: '#120920', fontFamily: "'Outfit','Space Grotesk',sans-serif", color: '#fff', display: 'flex', flexDirection: 'column' }}>
+          <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleFile} />
+          <input ref={fileInputRef}   type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFile} />
+
+          {/* Editor header */}
+          <div style={{ padding: '12px 16px', background: 'rgba(168,85,247,0.12)', borderBottom: '1px solid rgba(168,85,247,0.3)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+            <button onClick={() => setActiveCoupleIdx(null)}
+              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700 }}>
+              <ChevronLeft size={14} /> Coppie
+            </button>
+            <div style={{ flex: 1, fontWeight: 900, fontSize: '0.95rem', color: '#fff' }}>
+              Coppia {activeCoupleIdx + 1}
+            </div>
+            {bothDone && <span style={{ fontSize: '0.75rem', color: GREEN, fontWeight: 700 }}>✅ pronta</span>}
+          </div>
+
+          <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+            {/* Photo A slot */}
+            <div style={{ borderRadius: 16, background: imgA ? 'rgba(52,211,153,0.06)' : 'rgba(255,255,255,0.07)', border: `2px solid ${imgA ? 'rgba(52,211,153,0.45)' : 'rgba(255,255,255,0.18)'}`, overflow: 'hidden' }}>
+              <div style={{ padding: '10px 14px', background: imgA ? 'rgba(52,211,153,0.1)' : 'rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ width: 26, height: 26, borderRadius: 8, background: imgA ? GREEN : PURPLE, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '0.75rem', color: '#fff', flexShrink: 0 }}>A</div>
+                <span style={{ fontWeight: 900, fontSize: '0.85rem', color: imgA ? GREEN : 'rgba(255,255,255,0.8)' }}>
+                  {imgA ? 'Foto A ✓' : 'Foto A — primo partecipante'}
+                </span>
+              </div>
+              <div style={{ padding: '14px', display: 'flex', gap: 12, alignItems: 'center' }}>
+                {/* Thumbnail */}
+                <div style={{ width: 90, height: 90, borderRadius: 12, overflow: 'hidden', flexShrink: 0, background: 'rgba(255,255,255,0.1)', border: `1.5px solid ${imgA ? 'rgba(52,211,153,0.5)' : 'rgba(255,255,255,0.2)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {loadingA
+                    ? <Loader2 size={24} className="animate-spin" style={{ color: PURPLE }} />
+                    : imgA
+                      ? <img src={imgA} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      : <Camera size={28} style={{ color: 'rgba(255,255,255,0.25)' }} />}
+                </div>
+                {/* Action buttons */}
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <button disabled={loadingA} onClick={() => triggerUpload(activeCoupleIdx, 'A', true)}
+                    style={{ width: '100%', padding: '10px', background: `linear-gradient(135deg,${PURPLE},#7C3AED)`, border: 'none', borderRadius: 10, color: '#fff', fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                    <Camera size={15} /> {imgA ? 'Riprendi' : 'Scatta foto'}
+                  </button>
+                  <button disabled={loadingA} onClick={() => triggerUpload(activeCoupleIdx, 'A', false)}
+                    style={{ width: '100%', padding: '10px', background: 'rgba(96,165,250,0.15)', border: '1px solid rgba(96,165,250,0.35)', borderRadius: 10, color: '#60A5FA', fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                    <Upload size={15} /> {imgA ? 'Sostituisci' : 'Carica da libreria'}
+                  </button>
+                  {imgA && (
+                    <button onClick={() => deletePhoto(activeCoupleIdx, 'A')}
+                      style={{ width: '100%', padding: '7px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 10, color: '#EF4444', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}>
+                      Elimina
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Photo B slot */}
+            <div style={{ borderRadius: 16, background: imgB ? 'rgba(52,211,153,0.06)' : 'rgba(255,255,255,0.07)', border: `2px solid ${imgB ? 'rgba(52,211,153,0.45)' : imgA ? 'rgba(168,85,247,0.45)' : 'rgba(255,255,255,0.18)'}`, overflow: 'hidden', opacity: !imgA ? 0.55 : 1 }}>
+              <div style={{ padding: '10px 14px', background: imgB ? 'rgba(52,211,153,0.1)' : imgA ? 'rgba(168,85,247,0.1)' : 'rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ width: 26, height: 26, borderRadius: 8, background: imgB ? GREEN : imgA ? PURPLE : 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '0.75rem', color: '#fff', flexShrink: 0 }}>B</div>
+                <span style={{ fontWeight: 900, fontSize: '0.85rem', color: imgB ? GREEN : imgA ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.35)' }}>
+                  {imgB ? 'Foto B ✓' : imgA ? 'Foto B — secondo partecipante' : 'Foto B — prima aggiungi A'}
+                </span>
+              </div>
+              <div style={{ padding: '14px', display: 'flex', gap: 12, alignItems: 'center' }}>
+                <div style={{ width: 90, height: 90, borderRadius: 12, overflow: 'hidden', flexShrink: 0, background: 'rgba(255,255,255,0.1)', border: `1.5px solid ${imgB ? 'rgba(52,211,153,0.5)' : 'rgba(255,255,255,0.2)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {loadingB
+                    ? <Loader2 size={24} className="animate-spin" style={{ color: PURPLE }} />
+                    : imgB
+                      ? <img src={imgB} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      : <Camera size={28} style={{ color: 'rgba(255,255,255,0.25)' }} />}
+                </div>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <button disabled={!imgA || loadingB} onClick={() => triggerUpload(activeCoupleIdx, 'B', true)}
+                    style={{ width: '100%', padding: '10px', background: imgA ? `linear-gradient(135deg,${PURPLE},#7C3AED)` : 'rgba(255,255,255,0.05)', border: 'none', borderRadius: 10, color: imgA ? '#fff' : 'rgba(255,255,255,0.3)', fontWeight: 800, fontSize: '0.82rem', cursor: imgA ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                    <Camera size={15} /> {imgB ? 'Riprendi' : 'Scatta foto'}
+                  </button>
+                  <button disabled={!imgA || loadingB} onClick={() => triggerUpload(activeCoupleIdx, 'B', false)}
+                    style={{ width: '100%', padding: '10px', background: imgA ? 'rgba(96,165,250,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${imgA ? 'rgba(96,165,250,0.35)' : 'rgba(255,255,255,0.08)'}`, borderRadius: 10, color: imgA ? '#60A5FA' : 'rgba(255,255,255,0.2)', fontWeight: 800, fontSize: '0.82rem', cursor: imgA ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                    <Upload size={15} /> {imgB ? 'Sostituisci' : 'Carica da libreria'}
+                  </button>
+                  {imgB && (
+                    <button onClick={() => deletePhoto(activeCoupleIdx, 'B')}
+                      style={{ width: '100%', padding: '7px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 10, color: '#EF4444', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}>
+                      Elimina
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Confirm button */}
+            {bothDone && (
+              <button onClick={() => {
+                const next = activeCoupleIdx < 9 ? activeCoupleIdx + 1 : null;
+                setActiveCoupleIdx(next);
+              }}
+                style={{ width: '100%', padding: '16px', background: `linear-gradient(135deg,${GREEN},#059669)`, border: 'none', borderRadius: 14, color: '#fff', fontWeight: 900, fontSize: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, boxShadow: '0 0 28px rgba(52,211,153,0.4)' }}>
+                <CheckCircle2 size={20} />
+                {activeCoupleIdx < 9 ? `✅ Conferma — vai a Coppia ${activeCoupleIdx + 2}` : '✅ Conferma — tutte le coppie!'}
+              </button>
+            )}
+
+            <div style={{ paddingBottom: 24 }} />
+          </div>
+        </div>
+      );
+    }
+
+    // ── Grid view (10 couple tiles) ────────────────────────────────────────
     return (
       <div style={{ minHeight: '100dvh', background: '#120920', fontFamily: "'Outfit','Space Grotesk',sans-serif", color: '#fff', display: 'flex', flexDirection: 'column' }}>
         <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleFile} />
@@ -421,53 +540,57 @@ export default function LivePresenter() {
 
         <Header back={() => setView('dashboard')} backLabel="Dashboard" />
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: '14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '14px', display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-          {/* Header banner */}
-          <div style={{ padding: '12px 14px', background: 'rgba(168,85,247,0.12)', border: '1px solid rgba(168,85,247,0.35)', borderRadius: 14, textAlign: 'center' }}>
-            <div style={{ fontWeight: 900, fontSize: '1rem', color: PURPLE, marginBottom: 2 }}>🃏 Coppie LIVE — crea le 10 coppie</div>
-            <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)' }}>Scatta o carica le foto di ogni coppia</div>
-          </div>
-
-          {/* Progress bar */}
-          <div style={{ padding: '12px 14px', background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.22)', borderRadius: 14 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+          {/* Progress */}
+          <div style={{ padding: '12px 14px', background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.3)', borderRadius: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Users size={16} style={{ color: PURPLE }} />
-                <span style={{ fontWeight: 900, fontSize: '0.9rem', color: PURPLE }}>COPPIE COMPLETATE</span>
+                <Users size={15} style={{ color: PURPLE }} />
+                <span style={{ fontWeight: 900, fontSize: '0.82rem', color: PURPLE, letterSpacing: '0.06em' }}>🃏 COPPIE LIVE</span>
               </div>
-              <span style={{ fontWeight: 900, fontSize: '0.85rem', color: completeCouples === 10 ? GREEN : GOLD }}>{completeCouples}/10</span>
+              <span style={{ fontWeight: 900, fontSize: '0.9rem', color: completeCouples === 10 ? GREEN : GOLD }}>{completeCouples}/10</span>
             </div>
             <div style={{ width: '100%', height: 5, background: 'rgba(255,255,255,0.08)', borderRadius: 100, overflow: 'hidden' }}>
               <div style={{ height: 5, borderRadius: 100, width: `${completeCouples * 10}%`, background: completeCouples === 10 ? GREEN : `linear-gradient(90deg,${PURPLE},${GOLD})`, transition: 'width 0.4s' }} />
             </div>
-            {missingPhotos > 0 && <div style={{ marginTop: 5, fontSize: '0.68rem', color: 'rgba(255,255,255,0.3)' }}>Servono ancora {missingPhotos} foto</div>}
+            <div style={{ marginTop: 5, fontSize: '0.68rem', color: 'rgba(255,255,255,0.35)' }}>Tocca un blocco per aggiungere le foto</div>
           </div>
 
-          {/* 10 Couple cards */}
-          {couples.map((couple, idx) => {
-            const imgA = couple.photoA?.metadata?.imageData ?? couple.photoA?.url ?? null;
-            const imgB = couple.photoB?.metadata?.imageData ?? couple.photoB?.url ?? null;
-            const isUploadingA = uploading && uploadTarget?.coupleIndex === idx && uploadTarget?.partner === 'A';
-            const isUploadingB = uploading && uploadTarget?.coupleIndex === idx && uploadTarget?.partner === 'B';
-            const borderColor = couple.complete ? 'rgba(52,211,153,0.5)' : 'rgba(255,255,255,0.14)';
-            return (
-              <div key={idx} style={{ border: `1px solid ${borderColor}`, borderRadius: 13, background: couple.complete ? 'rgba(52,211,153,0.08)' : 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
-                <div style={{ padding: '9px 12px', background: couple.complete ? 'rgba(52,211,153,0.12)' : 'rgba(255,255,255,0.08)', borderBottom: `1px solid ${borderColor}`, display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ fontWeight: 900, fontSize: '0.82rem', color: couple.complete ? GREEN : 'rgba(255,255,255,0.7)', minWidth: 76 }}>
-                    Coppia {idx + 1}{couple.complete && ' ✅'}
+          {/* 10-tile grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            {couples.map((couple, idx) => {
+              const imgA = couple.photoA?.metadata?.imageData ?? couple.photoA?.url ?? null;
+              const imgB = couple.photoB?.metadata?.imageData ?? couple.photoB?.url ?? null;
+              const hasA = !!imgA, hasB = !!imgB;
+              const done = couple.complete;
+              const partial = (hasA || hasB) && !done;
+              const borderCol = done ? 'rgba(52,211,153,0.5)' : partial ? 'rgba(245,182,66,0.45)' : 'rgba(255,255,255,0.13)';
+              const bgCol     = done ? 'rgba(52,211,153,0.08)' : partial ? 'rgba(245,182,66,0.06)' : 'rgba(255,255,255,0.05)';
+              return (
+                <button key={idx} onClick={() => setActiveCoupleIdx(idx)}
+                  style={{ border: `2px solid ${borderCol}`, borderRadius: 14, background: bgCol, padding: '12px 10px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, position: 'relative', minHeight: 110 }}>
+                  {/* Status badge */}
+                  {done && <div style={{ position: 'absolute', top: 6, right: 7, fontSize: '0.65rem', background: 'rgba(52,211,153,0.2)', color: GREEN, fontWeight: 700, padding: '1px 6px', borderRadius: 20 }}>✓</div>}
+                  {partial && <div style={{ position: 'absolute', top: 6, right: 7, fontSize: '0.6rem', background: 'rgba(245,182,66,0.2)', color: GOLD, fontWeight: 700, padding: '1px 6px', borderRadius: 20 }}>1/2</div>}
+                  {/* Two photo circles */}
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {[{ img: imgA, label: 'A' }, { img: imgB, label: 'B' }].map(({ img, label }) => (
+                      <div key={label} style={{ width: 44, height: 44, borderRadius: 10, overflow: 'hidden', background: img ? 'transparent' : 'rgba(255,255,255,0.08)', border: `1.5px solid ${img ? 'rgba(52,211,153,0.5)' : 'rgba(255,255,255,0.15)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        {img
+                          ? <img src={img} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          : <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.3)', fontWeight: 700 }}>{label}</span>}
+                      </div>
+                    ))}
                   </div>
-                  <input value={coupleNames[idx] ?? ''} onChange={e => { const n = [...coupleNames]; n[idx] = e.target.value; setCoupleNames(n); }}
-                    placeholder="Nome coppia (opz.)"
-                    style={{ flex: 1, padding: '4px 9px', background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 7, color: '#fff', fontSize: '0.73rem', outline: 'none' }} />
-                </div>
-                <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <PartnerRow partner="A" label="Foto A" imgSrc={imgA} name={partnerANames[idx] ?? ''} onNameChange={v => { const n = [...partnerANames]; n[idx] = v; setPartnerANames(n); }} uploading={isUploadingA} onCamera={() => triggerUpload(idx, 'A', true)} onFile={() => triggerUpload(idx, 'A', false)} onDelete={() => deletePhoto(idx, 'A')} PURPLE={PURPLE} />
-                  <PartnerRow partner="B" label="Foto B" imgSrc={imgB} name={partnerBNames[idx] ?? ''} onNameChange={v => { const n = [...partnerBNames]; n[idx] = v; setPartnerBNames(n); }} uploading={isUploadingB} onCamera={() => triggerUpload(idx, 'B', true)} onFile={() => triggerUpload(idx, 'B', false)} onDelete={() => deletePhoto(idx, 'B')} PURPLE={PURPLE} />
-                </div>
-              </div>
-            );
-          })}
+                  {/* Label */}
+                  <div style={{ fontWeight: 900, fontSize: '0.78rem', color: done ? GREEN : partial ? GOLD : 'rgba(255,255,255,0.55)' }}>
+                    Coppia {idx + 1}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
 
           {/* Create deck button */}
           <div style={{ marginTop: 4, paddingBottom: 24 }}>
