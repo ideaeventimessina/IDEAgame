@@ -27,4 +27,5 @@ export * from "./freestyle";
 export * from "./saramusica";
 export * from "./jonny";
 export * from "./home-sessions";
+export * from "./live-sessions";
 export * from "./jonny-poses";

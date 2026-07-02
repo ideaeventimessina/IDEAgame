@@ -2,7 +2,7 @@ import { Link, useLocation } from 'wouter';
 import {
   LayoutDashboard, Gamepad2, BookOpen, Image as ImageIcon, Users2,
   Building2, CreditCard, ShieldCheck, Languages, Settings as SettingsIcon,
-  LogOut, Layers, Sparkles, Menu, X, Route, Flame, CalendarDays, Wand2, Volume2, ClipboardList, SmilePlus
+  LogOut, Layers, Sparkles, Menu, X, Route, Flame, CalendarDays, Wand2, Volume2, ClipboardList, SmilePlus, MonitorPlay
 } from 'lucide-react';
 import { useT } from '@/i18n';
 import { LocaleSwitcher } from '@/components/LocaleSwitcher';
@@ -10,7 +10,7 @@ import { ADMIN_NAV, useAuth, canSee } from '@/auth/roles';
 import { type ReactNode, useState } from 'react';
 
 const ICONS: Record<string, typeof LayoutDashboard> = {
-  dashboard: LayoutDashboard, events: CalendarDays, games: Gamepad2, 'card-sets': Layers, quizzes: BookOpen, 'quiz-packs': Sparkles,
+  dashboard: LayoutDashboard, show: MonitorPlay, events: CalendarDays, games: Gamepad2, 'card-sets': Layers, quizzes: BookOpen, 'quiz-packs': Sparkles,
   media: ImageIcon, teams: Users2, tenants: Building2, billing: CreditCard, users: ShieldCheck,
   translations: Languages, settings: SettingsIcon, 'percorso-risate': Route, 'adult-only': Flame,
   'jonny-creator': Wand2, 'jonny-poses': SmilePlus, 'audio': Volume2, audit: ClipboardList,

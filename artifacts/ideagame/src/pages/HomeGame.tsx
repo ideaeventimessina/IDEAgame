@@ -499,6 +499,12 @@ export default function HomeGame() {
   const currentModeRef = useRef<string>('');
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [audioWarning, setAudioWarning] = useState(false);
+  // Live-mode remote control (Presenter/Regia via stanza live collegata)
+  const [blackout, setBlackout] = useState(false);
+  const [showRanking, setShowRanking] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const pausedRef = useRef(false);
+  const sessionRef = useRef<HomeSession | null>(null);
   const [postGame, setPostGame] = useState<{gameSlug:string;players:HomePlayer[]}|null>(null);
   const [balloEnergies, setBalloEnergies] = useState<Record<string, number>>({});     // peak — for winner/sorting
   const [balloCurrent, setBalloCurrent]   = useState<Record<string, number>>({});     // current live — for bars
@@ -506,6 +512,7 @@ export default function HomeGame() {
   const [saraMusicaWinner, setSaraMusicaWinner] = useState<{ nickname: string; points: number; round: number } | null>(null);
   // Reset saraMusicaWinner when the round changes
   useEffect(() => { setSaraMusicaWinner(null); }, [session?.currentRound]);
+  useEffect(() => { sessionRef.current = session; }, [session]);
   const [spinning, setSpinning] = useState(false);
   const [wheelSelected, setWheelSelected] = useState<string | null>(null);
   const [postSpinModal, setPostSpinModal] = useState(false);
@@ -761,7 +768,25 @@ export default function HomeGame() {
       if (timerRef.current) clearInterval(timerRef.current);
       setJonnyMood('excited');
     });
-    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); u10?.(); u11?.(); };
+    // ── Live-mode remote commands (Presenter/Regia → stanza home:{id}) ──────────
+    const u12 = on('home:reveal', () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      setRevealed(true);
+      setJonnyMood('correct');
+    });
+    const u13 = on('home:pause', () => { pausedRef.current = true; setPaused(true); });
+    const u14 = on('home:resume', () => { pausedRef.current = false; setPaused(false); });
+    const u15 = on<{ on: boolean }>('home:blackout', (d) => setBlackout(d.on !== false));
+    const u16 = on<{ action: string }>('home:audio', (d) => {
+      AudioManager.stopLoop(true);
+      if (d.action !== 'stop') {
+        const s = sessionRef.current;
+        if (s?.status === 'playing' && s.gameSlug) void AudioManager.playLoop(s.gameSlug, 'round_loop');
+        else void AudioManager.playLoop('hub', 'lobby_loop');
+      }
+    });
+    const u17 = on<{ show: boolean }>('home:show_ranking', (d) => setShowRanking(d.show !== false));
+    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); u10?.(); u11?.(); u12?.(); u13?.(); u14?.(); u15?.(); u16?.(); u17?.(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [on]);
 
@@ -796,6 +821,7 @@ export default function HomeGame() {
     setTimeLeft(seconds);
     let t = seconds;
     timerRef.current = setInterval(() => {
+      if (pausedRef.current) return; // Live-mode pause: freeze countdown
       t -= 1;
       setTimeLeft(t);
       if (t <= 0) {
@@ -1100,6 +1126,41 @@ export default function HomeGame() {
       {import.meta.env.DEV && (
         <div className="pointer-events-none absolute bottom-1 left-2 z-50 text-[9px] font-mono opacity-40" style={{color:'#F5B642'}}>
           BUILD: {BUILD_STAMP}
+        </div>
+      )}
+
+      {/* ══ Live-mode overlays (comandati da Presenter/Regia) ══ */}
+      {blackout && <div className="fixed inset-0 z-[9999] bg-black" />}
+      {paused && !blackout && (
+        <div className="pointer-events-none fixed inset-0 z-[9000] flex items-center justify-center"
+          style={{background:'rgba(7,6,26,0.75)',backdropFilter:'blur(6px)'}}>
+          <div className="hg-blink text-6xl font-black" style={{color:'#F5B642',textShadow:'0 0 40px #F5B64288',fontFamily:"'Outfit','Arial Black',sans-serif"}}>
+            ⏸ PAUSA
+          </div>
+        </div>
+      )}
+      {showRanking && !blackout && (
+        <div className="fixed inset-0 z-[9100] flex items-center justify-center"
+          style={{background:'rgba(7,6,26,0.92)',backdropFilter:'blur(8px)'}}>
+          <div className="w-full max-w-2xl px-8">
+            <div className="mb-6 text-center text-4xl font-black" style={{color:'#F5B642',textShadow:'0 0 30px #F5B64288',fontFamily:"'Outfit','Arial Black',sans-serif"}}>
+              🏆 CLASSIFICA
+            </div>
+            <div className="flex flex-col gap-2">
+              {[...players].sort((a, b) => b.score - a.score).map((p, i) => (
+                <div key={p.id} className="flex items-center gap-4 rounded-2xl px-5 py-3"
+                  style={{background:i===0?'rgba(245,182,66,0.18)':'rgba(255,255,255,0.06)',border:`1px solid ${i===0?'rgba(245,182,66,0.55)':'rgba(255,255,255,0.12)'}`}}>
+                  <span className="w-8 text-xl font-black" style={{color:i===0?'#F5B642':'#ffffff88'}}>{i + 1}</span>
+                  <span className="h-4 w-4 shrink-0 rounded-full" style={{background:p.avatarColor}} />
+                  <span className="flex-1 truncate text-lg font-bold text-white">{p.nickname}</span>
+                  <span className="text-xl font-black" style={{color:'#F5B642'}}>{p.score}</span>
+                </div>
+              ))}
+              {players.length === 0 && (
+                <div className="text-center text-white/50">Nessun giocatore collegato</div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

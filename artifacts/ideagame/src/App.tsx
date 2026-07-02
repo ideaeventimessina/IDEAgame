@@ -69,6 +69,10 @@ import { PresenterModeProvider } from "@/contexts/PresenterModeContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import Presenter from "@/pages/Presenter";
 import PresenterLive from "@/pages/PresenterLive";
+import LiveTv from "@/pages/LiveTv";
+import LivePresenter from "@/pages/LivePresenter";
+import LiveRegia from "@/pages/LiveRegia";
+import AdminShow from "@/admin/Show";
 import ProjectorStandby from "@/pages/ProjectorStandby";
 import DevTest from "@/pages/DevTest";
 import HomeV2 from "@/pages/HomeV2";
@@ -143,6 +147,11 @@ function Router() {
       <Route path="/home/join" component={HomeJoin} />
       <Route path="/presenter-live" component={PresenterLive} />
       <Route path="/presenter" component={PresenterLive} />
+      {/* ── Modalità Live: Home runtime + Regia + Presenter ── */}
+      <Route path="/live-tv" component={LiveTv} />
+      <Route path="/live-presenter" component={LivePresenter} />
+      <Route path="/live-regia" component={LiveRegia} />
+      <Route path="/admin/show"><Guard route="/admin/show"><AdminShow /></Guard></Route>
       <Route path="/admin"><Guard route="/admin"><AdminDashboard /></Guard></Route>
       <Route path="/admin/games"><Guard route="/admin/games"><AdminGames /></Guard></Route>
       <Route path="/admin/quizzes"><Guard route="/admin/quizzes"><AdminQuizzes /></Guard></Route>

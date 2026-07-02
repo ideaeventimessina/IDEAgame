@@ -205,11 +205,17 @@ const FALLBACK_COPPIE_PAIRS: { a: string; b: string }[] = [
   { a: "Mare",      b: "Spiaggia"   }, { a: "Pasta",    b: "Sugo"         },
 ];
 
-/** 2. Gioco delle Coppie — carica carte dal DB */
-async function loadCoppieRound(roundIndex: number): Promise<CoppiePayload> {
-  const sets = await db.select().from(cardSetsTable).orderBy(desc(cardSetsTable.createdAt));
-  // Pick set by cycling through available sets
-  const set = sets[roundIndex % Math.max(sets.length, 1)] ?? sets[0];
+/** 2. Gioco delle Coppie — carica carte dal DB. cardSetId (Live) blocca il mazzo su un set preciso. */
+async function loadCoppieRound(roundIndex: number, cardSetId?: string): Promise<CoppiePayload> {
+  let set: typeof cardSetsTable.$inferSelect | undefined;
+  if (cardSetId && isUUID(cardSetId)) {
+    [set] = await db.select().from(cardSetsTable).where(eq(cardSetsTable.id, cardSetId));
+  }
+  if (!set) {
+    const sets = await db.select().from(cardSetsTable).orderBy(desc(cardSetsTable.createdAt));
+    // Pick set by cycling through available sets
+    set = sets[roundIndex % Math.max(sets.length, 1)] ?? sets[0];
+  }
   if (!set) return buildCoppiePayload(FALLBACK_COPPIE_PAIRS, roundIndex, "Coppie");
 
   const cards = await db.select().from(cardsTable)
@@ -629,10 +635,10 @@ function fallbackKaraoke(): RoundPayload[] {
 
 // ── Master game loader ─────────────────────────────────────────────────────────
 
-async function loadGameRounds(gameSlug: string): Promise<RoundPayload[]> {
+async function loadGameRounds(gameSlug: string, opts: { cardSetId?: string } = {}): Promise<RoundPayload[]> {
   switch (gameSlug) {
     case "percorso-a-risate":    return loadPercorsoRounds();
-    case "gioco-coppie":         return [(await loadCoppieRound(0)) as RoundPayload];
+    case "gioco-coppie":         return [(await loadCoppieRound(0, opts.cardSetId)) as RoundPayload];
     case "quizzone":             return loadQuizRounds();
     case "saramusica":           return loadSaraMusicaRounds();
     case "adult-only":           return loadAdultOnlyRounds();
@@ -670,15 +676,15 @@ router.get("/home/music-config", async (req, res): Promise<void> => {
   }
 });
 
-// ── POST /home/sessions ────────────────────────────────────────────────────────
-router.post("/home/sessions", async (req, res): Promise<void> => {
-  // Opportunistic cleanup of stale sessions before creating a new one
-  void cleanupExpiredHomeSessions().catch(() => {});
-
-  const hostName      = String(req.body?.hostName ?? "Casa").slice(0, 50);
+// Shared with the Live layer (routes/live.ts): a Live room creates and commands
+// a regular Home session through these exported helpers.
+export async function createHomeSessionRecord(input: {
+  hostName?: unknown; selectedGames?: unknown; matchDuration?: unknown;
+}) {
+  const hostName      = String(input.hostName ?? "Casa").slice(0, 50);
   const maxPlayers    = 50; // unlimited — players join freely via QR
-  const selectedGames = Array.isArray(req.body?.selectedGames) ? req.body.selectedGames as string[] : [];
-  const matchDuration = String(req.body?.matchDuration ?? "normal");
+  const selectedGames = Array.isArray(input.selectedGames) ? input.selectedGames as string[] : [];
+  const matchDuration = String(input.matchDuration ?? "normal");
 
   let joinCode = makeJoinCode();
   for (let i = 0; i < 5; i++) {
@@ -703,6 +709,15 @@ router.post("/home/sessions", async (req, res): Promise<void> => {
     },
   }).returning();
 
+  return session!;
+}
+
+// ── POST /home/sessions ────────────────────────────────────────────────────────
+router.post("/home/sessions", async (req, res): Promise<void> => {
+  // Opportunistic cleanup of stale sessions before creating a new one
+  void cleanupExpiredHomeSessions().catch(() => {});
+
+  const session = await createHomeSessionRecord(req.body ?? {});
   res.status(201).json(session);
 });
 
@@ -868,13 +883,10 @@ router.post("/home/sessions/:id/saramusica-answer", async (req, res): Promise<vo
   res.json({ ok: true, correct: isCorrect });
 });
 
-// ── POST /home/sessions/:id/ready — pass to game-board ─────────────────────────
-router.post("/home/sessions/:id/ready", async (req, res): Promise<void> => {
-  const id = String(req.params["id"]);
-  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
-
+// Shared with the Live layer: join → board transition callable without HTTP.
+export async function doReady(id: string): Promise<{ status: number; body: Record<string, unknown> }> {
   const session = await getSession(id);
-  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  if (!session) return { status: 404, body: { error: "Non trovata" } };
 
   const cfg = (session.gameConfig ?? {}) as Record<string, unknown>;
   const updated_cfg = { ...cfg, phase: "board" };
@@ -885,25 +897,36 @@ router.post("/home/sessions/:id/ready", async (req, res): Promise<void> => {
 
   const players = await getPlayers(id);
   emitToRoom(homeRoom(id), "home:board", { session: updated, players });
-  res.json({ session: updated, players });
-});
+  return { status: 200, body: { session: updated, players } };
+}
 
-// ── POST /home/sessions/:id/select-game — avvia un gioco, carica contenuto DB ──
-router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> => {
+// ── POST /home/sessions/:id/ready — pass to game-board ─────────────────────────
+router.post("/home/sessions/:id/ready", async (req, res): Promise<void> => {
   const id = String(req.params["id"]);
   if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
 
-  const session = await getSession(id);
-  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
-  if (session.status === "ended") { res.status(409).json({ error: "Sessione terminata" }); return; }
+  const result = await doReady(id);
+  res.status(result.status).json(result.body);
+});
 
-  const { gameSlug } = req.body as { gameSlug: string };
-  if (!gameSlug) { res.status(400).json({ error: "gameSlug obbligatorio" }); return; }
+// Shared with the Live layer: select-game logic callable without HTTP.
+// `force` allows replaying an already-played game (Live events replay freely);
+// `cardSetId` pins the Coppie deck to a presenter-created set.
+export async function doSelectGame(
+  id: string,
+  gameSlug: string,
+  opts: { cardSetId?: string; force?: boolean } = {},
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const session = await getSession(id);
+  if (!session) return { status: 404, body: { error: "Non trovata" } };
+  if (session.status === "ended") return { status: 409, body: { error: "Sessione terminata" } };
+
+  if (!gameSlug) return { status: 400, body: { error: "gameSlug obbligatorio" } };
 
   const cfg = (session.gameConfig ?? {}) as Record<string, unknown>;
   const gamesPlayed = (cfg.gamesPlayed as string[]) ?? [];
-  if (gamesPlayed.includes(gameSlug)) {
-    res.status(409).json({ error: "Gioco già completato" }); return;
+  if (!opts.force && gamesPlayed.includes(gameSlug)) {
+    return { status: 409, body: { error: "Gioco già completato" } };
   }
 
   // ── GameFlowEngine pilot — sfida-ballo enters pre-game flow ───────────────────
@@ -941,13 +964,12 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
     const flowPlayers = await getPlayers(id);
     emitToRoom(homeRoom(id), "home:game_started", { session: flowUpdated, players: flowPlayers, payload: flowPayload });
     emitToRoom(homeRoom(id), "home:state", { session: flowUpdated, players: flowPlayers });
-    res.json({ session: flowUpdated, players: flowPlayers });
-    return;
+    return { status: 200, body: { session: flowUpdated, players: flowPlayers } };
   }
   // ── END pilot ─────────────────────────────────────────────────────────────────
 
   // Load all rounds from DB for this game
-  const preloadedRounds = await loadGameRounds(gameSlug);
+  const preloadedRounds = await loadGameRounds(gameSlug, opts);
   // Stamp authoritative start time so phones can calculate remaining time on restore
   const firstRound = { ...(preloadedRounds[0] ?? {}), roundStartedAt: new Date().toISOString() };
 
@@ -971,7 +993,17 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
   const players = await getPlayers(id);
   emitToRoom(homeRoom(id), "home:game_started", { session: updated, players, payload: firstRound });
   emitToRoom(homeRoom(id), "home:round", { round: 0, payload: firstRound });
-  res.json({ session: updated, players });
+  return { status: 200, body: { session: updated, players } };
+}
+
+// ── POST /home/sessions/:id/select-game — avvia un gioco, carica contenuto DB ──
+router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+
+  const { gameSlug } = req.body as { gameSlug: string };
+  const result = await doSelectGame(id, gameSlug ?? "");
+  res.status(result.status).json(result.body);
 });
 
 // Backward compat: /start → select-game
@@ -1161,14 +1193,11 @@ router.post("/home/sessions/:id/flow/confirm", async (req, res): Promise<void> =
   }, 500);
 });
 
-// ── POST /home/sessions/:id/next ───────────────────────────────────────────────
-router.post("/home/sessions/:id/next", async (req, res): Promise<void> => {
-  const id = String(req.params["id"]);
-  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
-
+// Shared with the Live layer: advance-round logic callable without HTTP.
+export async function doNextRound(id: string): Promise<{ status: number; body: Record<string, unknown> }> {
   const session = await getSession(id);
-  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
-  if (session.status !== "playing") { res.status(409).json({ error: "Sessione non in corso" }); return; }
+  if (!session) return { status: 404, body: { error: "Non trovata" } };
+  if (session.status !== "playing") return { status: 409, body: { error: "Sessione non in corso" } };
 
   const cfg = (session.gameConfig ?? {}) as Record<string, unknown>;
   const preloadedRounds = (cfg.preloadedRounds as RoundPayload[]) ?? [];
@@ -1212,8 +1241,7 @@ router.post("/home/sessions/:id/next", async (req, res): Promise<void> => {
     }).where(eq(homeSessionsTable.id, id)).returning();
 
     emitToRoom(homeRoom(id), "home:game_ended", { session: ended, players, gameSlug: slug });
-    res.json({ gameEnded: true, session: ended, players });
-    return;
+    return { status: 200, body: { gameEnded: true, session: ended, players } };
   }
 
   // Next round within current game — stamp authoritative start time
@@ -1226,16 +1254,22 @@ router.post("/home/sessions/:id/next", async (req, res): Promise<void> => {
 
   emitToRoom(homeRoom(id), "home:round", { round: nextRound, payload: nextPayload });
   await broadcastState(id);
-  res.json({ gameEnded: false, session: updated, payload: nextPayload });
-});
+  return { status: 200, body: { gameEnded: false, session: updated, payload: nextPayload } };
+}
 
-// ── POST /home/sessions/:id/end-game — forza fine gioco corrente ───────────────
-router.post("/home/sessions/:id/end-game", async (req, res): Promise<void> => {
+// ── POST /home/sessions/:id/next ───────────────────────────────────────────────
+router.post("/home/sessions/:id/next", async (req, res): Promise<void> => {
   const id = String(req.params["id"]);
   if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
 
+  const result = await doNextRound(id);
+  res.status(result.status).json(result.body);
+});
+
+// Shared with the Live layer: end-game logic callable without HTTP.
+export async function doEndGame(id: string): Promise<{ status: number; body: Record<string, unknown> }> {
   const session = await getSession(id);
-  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  if (!session) return { status: 404, body: { error: "Non trovata" } };
 
   const cfg = (session.gameConfig ?? {}) as Record<string, unknown>;
   const gamesPlayed = (cfg.gamesPlayed as string[]) ?? [];
@@ -1267,7 +1301,16 @@ router.post("/home/sessions/:id/end-game", async (req, res): Promise<void> => {
   }).where(eq(homeSessionsTable.id, id)).returning();
 
   emitToRoom(homeRoom(id), "home:game_ended", { session: updated, players, gameSlug: slug });
-  res.json({ session: updated, players });
+  return { status: 200, body: { session: updated, players } };
+}
+
+// ── POST /home/sessions/:id/end-game — forza fine gioco corrente ───────────────
+router.post("/home/sessions/:id/end-game", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+
+  const result = await doEndGame(id);
+  res.status(result.status).json(result.body);
 });
 
 // ── POST /home/sessions/:id/score ──────────────────────────────────────────────
@@ -1440,5 +1483,8 @@ router.delete("/home/sessions/:id", async (req, res): Promise<void> => {
   await db.delete(homeSessionsTable).where(eq(homeSessionsTable.id, id));
   res.json({ ok: true });
 });
+
+// Read/broadcast helpers shared with the Live layer (routes/live.ts)
+export { getSession as getHomeSession, getPlayers as getHomePlayers, broadcastState as broadcastHomeState, homeRoom };
 
 export default router;
