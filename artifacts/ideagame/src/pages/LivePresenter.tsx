@@ -673,8 +673,9 @@ export default function LivePresenter() {
   // Short IDs for session card
   const shortLive = session?.id.slice(0, 8) ?? '—';
   const shortHome = homeSession?.id.slice(0, 8) ?? homeSessionId?.slice(0, 8) ?? '—';
+  // Stesso URL del QR sulla TV Home: /home/join?s=JOINCODE (home-v4 ignora ?join=)
   const joinUrl   = homeSession?.joinCode
-    ? `${window.location.origin}${BASE}home-v4?join=${homeSession.joinCode}`.replace(/\/\//g, '/')
+    ? `${window.location.origin}${BASE}home/join?s=${homeSession.joinCode}`.replace(/([^:])\/\//g, '$1/')
     : null;
 
   return (

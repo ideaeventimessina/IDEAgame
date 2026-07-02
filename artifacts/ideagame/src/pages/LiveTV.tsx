@@ -148,7 +148,7 @@ export default function LiveTV() {
     return (
       <div style={{ position: 'fixed', inset: 0, background: '#09050f' }}>
         <iframe
-          src={`${BASE}home?session=${homeSessionId}`}
+          src={`${BASE}home?s=${homeSessionId}&live=${code}`}
           style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
           allow="autoplay"
         />

@@ -563,6 +563,10 @@ export default function HomeGame() {
   const [loading, setLoading] = useState(false);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [revealed, setRevealed] = useState(false);
+  // Live remote: comandi da Presenter/Regia sul runtime Home (iframe TV)
+  const [paused, setPaused] = useState(false);
+  const pausedRef = useRef(false);
+  const [showRanking, setShowRanking] = useState(false);
   const [selectingGame, setSelectingGame] = useState<string | null>(null);
   const [jonnyMood, setJonnyMood] = useState<'idle' | 'excited' | 'thinking' | 'winner' | 'scoreboard' | 'correct'>('excited');
   const [jonnyMsg, setJonnyMsg] = useState('Benvenuti a JONNY\'S WORLD!');
@@ -676,9 +680,18 @@ export default function HomeGame() {
       } else if (e.command === 'set_audio_muted') {
         setAudioEnabled(!(e.payload?.muted ?? true));
       } else if (e.command === 'force_reveal') {
-        console.log('[HomeCmd] force_reveal — not yet handled locally');
+        if (timerRef.current) clearInterval(timerRef.current);
+        setRevealed(true);
+        setJonnyMood('correct');
       } else if (e.command === 'force_ranking') {
-        console.log('[HomeCmd] force_ranking — not yet handled locally');
+        // toggle esplicito se payload.show è definito, altrimenti alterna
+        setShowRanking(prev => (typeof e.payload?.show === 'boolean' ? (e.payload!.show as boolean) : !prev));
+      } else if (e.command === 'pause') {
+        pausedRef.current = true;
+        setPaused(true);
+      } else if (e.command === 'resume') {
+        pausedRef.current = false;
+        setPaused(false);
       }
     });
   }, [on, session?.id, setAudioEnabled]);
@@ -1064,6 +1077,7 @@ export default function HomeGame() {
     setTimeLeft(seconds);
     let t = seconds;
     timerRef.current = setInterval(() => {
+      if (pausedRef.current) return; // Live: pausa dal presentatore congela il countdown
       t -= 1;
       setTimeLeft(t);
       if (t <= 0) {
@@ -1384,6 +1398,40 @@ export default function HomeGame() {
       <div className="pointer-events-none absolute inset-0 z-0">
         {Array.from({length:50}).map((_,i)=>{const cs=['#fff','#F5B642','#A855F7','#22D3EE','#F472B6','#34D399'];return<div key={i} className="absolute rounded-full" style={{left:`${(i*37+11)%100}%`,top:`${(i*53+7)%100}%`,width:1.5+(i%3),height:1.5+(i%3),background:cs[i%cs.length],opacity:0.10+(i%5)*0.05}}/>;})}
       </div>
+
+      {/* ── Live remote: overlay PAUSA (comandato da Presenter/Regia) ── */}
+      {paused && (
+        <div className="pointer-events-none fixed inset-0 z-[9995] flex items-center justify-center"
+          style={{ background:'rgba(7,6,26,0.72)', backdropFilter:'blur(6px)' }}>
+          <div className="hg-blink text-6xl font-black" style={{ color:'#F5B642', textShadow:'0 0 40px #F5B64288', fontFamily:"'Outfit','Arial Black',sans-serif" }}>
+            ⏸ PAUSA
+          </div>
+        </div>
+      )}
+
+      {/* ── Live remote: overlay CLASSIFICA (comandato da Presenter/Regia) ── */}
+      {showRanking && (
+        <div className="fixed inset-0 z-[9996] flex items-center justify-center"
+          style={{ background:'rgba(7,6,26,0.94)', backdropFilter:'blur(8px)' }}>
+          <div className="w-full max-w-2xl px-8">
+            <div className="mb-6 text-center text-4xl font-black" style={{ color:'#F5B642', textShadow:'0 0 30px #F5B64288', fontFamily:"'Outfit','Arial Black',sans-serif" }}>
+              🏆 CLASSIFICA
+            </div>
+            <div className="flex flex-col gap-2">
+              {[...players].sort((a, b) => b.score - a.score).map((p, i) => (
+                <div key={p.id} className="flex items-center gap-4 rounded-2xl px-5 py-3"
+                  style={{ background:i===0?'rgba(245,182,66,0.18)':'rgba(255,255,255,0.06)', border:`1px solid ${i===0?'rgba(245,182,66,0.55)':'rgba(255,255,255,0.12)'}` }}>
+                  <span className="w-8 text-xl font-black" style={{ color:i===0?'#F5B642':'#ffffff88' }}>{i + 1}</span>
+                  <span className="h-4 w-4 shrink-0 rounded-full" style={{ background:p.avatarColor }} />
+                  <span className="flex-1 truncate text-lg font-bold text-white">{p.nickname}</span>
+                  <span className="text-xl font-black" style={{ color:'#F5B642' }}>{p.score}</span>
+                </div>
+              ))}
+              {players.length === 0 && <div className="text-center text-white/50">Nessun giocatore collegato</div>}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Messaggi Segreti: TV batch overlay ── */}
       {tvChatVisible && tvChatBatch.length > 0 && (

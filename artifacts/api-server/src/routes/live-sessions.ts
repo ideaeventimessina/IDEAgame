@@ -28,6 +28,7 @@ import {
   liveRuntimeStateTable,
   liveGameAssetsTable,
   homeSessionsTable,
+  homePlayersTable,
 } from "@workspace/db";
 import { type AuthedRequest, requireAuth } from "../middlewares/auth";
 import { emitToRoom } from "../socket";
@@ -364,6 +365,16 @@ router.post("/live-sessions/:id/command", async (req: Request, res: Response): P
 
   const event = { sessionId: session.id, command, payload: payload ?? null, ts: Date.now() };
   emitToRoom(`live:${session.id}`, "live:command", event);
+
+  // pause/resume devono raggiungere anche il runtime Home (iframe TV):
+  // HomeGame congela/riavvia il timer di round su home:command.
+  if (command === "pause" || command === "resume") {
+    const state = await getState(session.id);
+    const homeSessionId = (state?.payload as Record<string, unknown> | null)?.homeSessionId as string | undefined;
+    if (homeSessionId) {
+      emitToRoom(`home:${homeSessionId}`, "home:command", { ...event, homeSessionId });
+    }
+  }
 
   logger.info({ sessionId: session.id, command }, "[LiveCommand] emitted");
   res.json({ ok: true, ...event });
@@ -747,6 +758,15 @@ router.post("/live-sessions/:id/create-deck", async (req: Request, res: Response
     payload: { ...deckPayload, homeSessionId },
     ts: Date.now(),
   });
+
+  // Push immediato al runtime Home (iframe TV): stesso evento di select-game,
+  // così la TV passa subito al board Coppie senza attendere il polling.
+  const [homeForTv] = await db.select().from(homeSessionsTable).where(eq(homeSessionsTable.id, homeSessionId));
+  const homePlayers = await db.select().from(homePlayersTable).where(eq(homePlayersTable.sessionId, homeSessionId));
+  if (homeForTv) {
+    emitToRoom(`home:${homeSessionId}`, "home:game_started", { session: homeForTv, players: homePlayers, payload: homeRoundPayload });
+    emitToRoom(`home:${homeSessionId}`, "home:round", { round: 0, payload: homeRoundPayload });
+  }
 
   logger.info(
     { sessionId: session.id, couples: completeCouples.length, cards: cards.length, homeSessionId },
