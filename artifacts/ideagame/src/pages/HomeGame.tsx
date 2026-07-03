@@ -567,6 +567,8 @@ export default function HomeGame() {
   const [paused, setPaused] = useState(false);
   const pausedRef = useRef(false);
   const [showRanking, setShowRanking] = useState(false);
+  // Ballo: brano YouTube di sottofondo scelto dal prescelto/presentatore
+  const balloVideoRef = useRef<{ videoId: string; title: string } | null>(null);
   const [selectingGame, setSelectingGame] = useState<string | null>(null);
   const [jonnyMood, setJonnyMood] = useState<'idle' | 'excited' | 'thinking' | 'winner' | 'scoreboard' | 'correct'>('excited');
   const [jonnyMsg, setJonnyMsg] = useState('Benvenuti a JONNY\'S WORLD!');
@@ -738,6 +740,17 @@ export default function HomeGame() {
     return (cfg.phase as string) ?? 'join';
   }, [session]);
 
+  // Ballo: video di sottofondo (presente solo se il prescelto/presentatore l'ha scelto)
+  const balloVideo = useMemo<{ videoId: string; title: string } | null>(() => {
+    const cfg = session?.gameConfig ?? {};
+    return (cfg.balloVideo as { videoId: string; title: string } | null) ?? null;
+  }, [session]);
+  useEffect(() => { balloVideoRef.current = balloVideo; }, [balloVideo]);
+  const balloActive = useMemo(() => {
+    const rp = session?.roundPayload as Record<string, unknown> | undefined;
+    return String(rp?.mode ?? '') === 'home-ballo';
+  }, [session]);
+
   // ── Wheel arena ─────────────────────────────────────────────────────────────
   const wheelGames = useMemo<WheelGame[]>(() =>
     visibleGames.map(g => ({
@@ -850,7 +863,8 @@ export default function HomeGame() {
         setBalloResult(null);
         startTimer(Number(d.session.roundPayload?.timeLimit ?? 15));
         AudioManager.stopLoop(true);
-        void AudioManager.playLoop('sfida-ballo', 'round_loop');
+        const hasBalloVideo = !!((d.session.gameConfig as Record<string, unknown> | undefined)?.balloVideo);
+        if (!hasBalloVideo) void AudioManager.playLoop('sfida-ballo', 'round_loop');
       } else {
         currentModeRef.current = newMode;
         flowPhaseRef.current = newFlowPhase;
@@ -903,9 +917,15 @@ export default function HomeGame() {
       setJonnyMood('thinking');
       // Audio switch: covers both normal ballo AND flow→ballo transition
       if (roundMode === 'home-ballo') {
-        _log('[HomeAudioFlow] home:round home-ballo — switching to ballo audio');
         AudioManager.stopLoop(true);
-        void AudioManager.playLoop('sfida-ballo', 'round_loop');
+        // Se il prescelto/presentatore ha scelto un brano YouTube, il video fornisce
+        // la musica → NON avviare il loop audio del ballo.
+        if (balloVideoRef.current) {
+          _log('[HomeAudioFlow] home:round home-ballo — brano YouTube attivo, skip loop');
+        } else {
+          _log('[HomeAudioFlow] home:round home-ballo — switching to ballo audio');
+          void AudioManager.playLoop('sfida-ballo', 'round_loop');
+        }
       }
     });
     const u5 = on<{ session: HomeSession; players: HomePlayer[]; gameSlug: string }>('home:game_ended', (d) => {
@@ -1398,6 +1418,9 @@ export default function HomeGame() {
       <div className="pointer-events-none absolute inset-0 z-0">
         {Array.from({length:50}).map((_,i)=>{const cs=['#fff','#F5B642','#A855F7','#22D3EE','#F472B6','#34D399'];return<div key={i} className="absolute rounded-full" style={{left:`${(i*37+11)%100}%`,top:`${(i*53+7)%100}%`,width:1.5+(i%3),height:1.5+(i%3),background:cs[i%cs.length],opacity:0.10+(i%5)*0.05}}/>;})}
       </div>
+
+      {/* ── Ballo: video YouTube di sottofondo durante i round energia ── */}
+      {phase === 'playing' && balloActive && balloVideo && <BalloVideoBg videoId={balloVideo.videoId} />}
 
       {/* ── Live remote: overlay PAUSA (comandato da Presenter/Regia) ── */}
       {paused && (
@@ -3942,6 +3965,45 @@ const CLIP_BADGES: Record<string, { emoji: string; label: string }> = {
   stop_and_continue: { emoji: '✋', label: 'COME CONTINUA?' },
   duel_song:         { emoji: '⚔️', label: 'SFIDA CLIP' },
 };
+
+// ── Ballo: video YouTube di sottofondo (brano intero, con audio) ─────────────
+function BalloVideoBg({ videoId }: { videoId: string }) {
+  const containerId = `ballo-bg-${videoId.slice(0, 8)}`;
+  const playerRef = useRef<YTPlayerInst | null>(null);
+  const [needsTap, setNeedsTap] = useState(false);
+
+  const start = useCallback(async () => {
+    await loadYTApi();
+    if (playerRef.current) { try { playerRef.current.destroy(); } catch { /**/ } playerRef.current = null; }
+    playerRef.current = new window.YT.Player(containerId, {
+      videoId,
+      width: '100%', height: '100%',
+      playerVars: { autoplay: 1, controls: 0, rel: 0, modestbranding: 1, playsinline: 1, enablejsapi: 1, loop: 1, playlist: videoId },
+      events: {
+        onReady: (evt: { target: YTPlayerInst }) => { try { evt.target.playVideo(); } catch { setNeedsTap(true); } },
+        onError: () => { /* video non embeddabile → resta lo sfondo scuro */ },
+      },
+    });
+  }, [videoId, containerId]);
+
+  useEffect(() => {
+    void start();
+    return () => { if (playerRef.current) { try { playerRef.current.destroy(); } catch { /**/ } playerRef.current = null; } };
+  }, [start]);
+
+  return (
+    <div className="fixed inset-0 z-[2]" style={{ background: '#000' }}>
+      <div id={containerId} className="pointer-events-none absolute inset-0 h-full w-full" style={{ opacity: 0.9 }} />
+      {/* velo scuro per far risaltare barre energia sopra */}
+      <div className="pointer-events-none absolute inset-0" style={{ background: 'rgba(7,6,26,0.35)' }} />
+      {needsTap && (
+        <button onClick={() => void start()} className="absolute bottom-6 left-1/2 -translate-x-1/2 rounded-2xl px-6 py-3 font-black" style={{ background: '#F5B642', color: '#0a0820' }}>
+          ▶︎ Avvia il brano
+        </button>
+      )}
+    </div>
+  );
+}
 
 function YTClipPlayer({ clip, roundIndex, sessionId }: {
   clip: { youtubeId: string; startSecond: number; durationSeconds: number; clipType: string };

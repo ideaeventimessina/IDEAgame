@@ -2595,6 +2595,14 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
     bookedPlayers: [],
     maxPlayers: flowConfig.maxPlayers,
   };
+  // Ballo: designa un "prescelto" random che sceglierà il brano YouTube di sottofondo.
+  // In Live il presentatore può impostare il video direttamente (set-video senza prescelto).
+  if (gameSlug === "sfida-ballo") {
+    const connected = (await getPlayers(id)).filter(p => p.isConnected);
+    const chosen = connected.length > 0 ? connected[Math.floor(Math.random() * connected.length)]! : null;
+    flowPayload["prescelto"] = chosen ? { id: chosen.id, nickname: chosen.nickname } : null;
+    flowPayload["balloVideo"] = null;
+  }
   const newFlowCfg = { ...cfg, phase: "playing", gamesPlayed };
   const [flowUpdated] = await db.update(homeSessionsTable).set({
     gameSlug,
@@ -2609,6 +2617,38 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
   emitToRoom(homeRoom(id), "home:game_started", { session: flowUpdated, players: flowPlayers, payload: flowPayload });
   emitHomeState(id, flowUpdated, flowPlayers);
   res.json({ session: flowUpdated, players: flowPlayers });
+});
+
+// ── POST /home/sessions/:id/ballo/set-video ───────────────────────────────────
+// Il prescelto (Home) o il presentatore (Live) sceglie il brano YouTube di
+// sottofondo per il Ballo. Salvato in gameConfig.balloVideo così persiste nei round.
+router.post("/home/sessions/:id/ballo/set-video", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+
+  const b = req.body as { videoId?: string; title?: string; channel?: string; thumbnailUrl?: string; durationSeconds?: number };
+  if (!b.videoId) { res.status(400).json({ error: "videoId obbligatorio" }); return; }
+  const balloVideo = {
+    videoId: b.videoId,
+    title: String(b.title ?? "Brano"),
+    channel: String(b.channel ?? ""),
+    thumbnailUrl: String(b.thumbnailUrl ?? ""),
+    durationSeconds: Number(b.durationSeconds ?? 0),
+  };
+
+  const cfg = (session.gameConfig ?? {}) as Record<string, unknown>;
+  const newCfg = { ...cfg, balloVideo };
+  // Riflette il video anche nel roundPayload corrente (per feedback immediato nel flow)
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  const newRp = rp["mode"] === "home-flow" ? { ...rp, balloVideo } : rp;
+  const [updated] = await db.update(homeSessionsTable)
+    .set({ gameConfig: newCfg, roundPayload: newRp })
+    .where(eq(homeSessionsTable.id, id)).returning();
+  const players = await getPlayers(id);
+  emitHomeState(id, updated!, players);
+  res.json({ ok: true, balloVideo });
 });
 
 // Backward compat: /start → select-game
