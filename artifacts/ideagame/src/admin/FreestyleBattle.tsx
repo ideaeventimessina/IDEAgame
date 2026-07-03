@@ -82,6 +82,8 @@ export default function AdminFreestyleBattle() {
 
         <JonnyGenerateBanner gameSlug="freestyle-battle" gameLabel="Freestyle Battle" />
 
+        <FreestyleBeatsManager />
+
         {msg && (
           <div className={`rounded-xl px-4 py-2 text-sm ${msg.startsWith("✓") ? "border border-green-500/40 bg-green-500/10 text-green-400" : "border border-destructive/40 bg-destructive/10 text-destructive"}`}>
             {msg}
@@ -246,5 +248,108 @@ export default function AdminFreestyleBattle() {
         </div>
       </div>
     </AdminLayout>
+  );
+}
+
+// ── 10 basi beat (id/titolo rispecchiano FREESTYLE_BEATS lato server) ─────────
+const BEAT_SLOTS: { id: string; title: string; bpm: number }[] = [
+  { id: "beat-01", title: "Trap Roma",       bpm: 140 },
+  { id: "beat-02", title: "Boom Bap Milano", bpm:  90 },
+  { id: "beat-03", title: "Drill Napoli",    bpm: 135 },
+  { id: "beat-04", title: "Lo-fi Venezia",   bpm:  75 },
+  { id: "beat-05", title: "RnB Roma",        bpm:  85 },
+  { id: "beat-06", title: "Afrobeat Italia", bpm: 100 },
+  { id: "beat-07", title: "Latin Remix",     bpm: 110 },
+  { id: "beat-08", title: "Old School 90s",  bpm:  95 },
+  { id: "beat-09", title: "Electronic Drop", bpm: 128 },
+  { id: "beat-10", title: "Acoustic Vibes",  bpm:  70 },
+];
+
+async function uploadBeatFile(file: File): Promise<string> {
+  const base = (import.meta.env.BASE_URL as string) ?? "/";
+  const res = await fetch(`${base}api/storage/uploads/request-url`.replace(/\/\//g, "/"), {
+    method: "POST", credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type || "audio/mpeg" }),
+  });
+  if (!res.ok) throw new Error("Errore URL upload");
+  const { uploadURL, objectPath } = await res.json() as { uploadURL: string; objectPath: string };
+  const put = await fetch(uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type || "audio/mpeg" } });
+  if (!put.ok) throw new Error("Upload fallito");
+  return `/api/storage${objectPath}`;
+}
+
+function FreestyleBeatsManager() {
+  const qc = useQueryClient();
+  const { data: slots = [] } = useQuery<{ slotKey: string; value: string }[]>({
+    queryKey: ["freestyle-beats"],
+    queryFn: () => apiFetch("/game-media-slots?gameSlug=freestyle-battle"),
+  });
+  const valueByKey = new Map(slots.map((s) => [s.slotKey, s.value]));
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+
+  const save = useMutation({
+    mutationFn: (b: { id: string; title: string; url: string }) =>
+      apiFetch("/game-media-slots", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gameSlug: "freestyle-battle", slotKey: b.id, value: b.url, valueType: "audio", label: b.title }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["freestyle-beats"] }),
+  });
+
+  async function onFile(beat: { id: string; title: string }, file: File) {
+    setUploadingId(beat.id);
+    try {
+      const url = await uploadBeatFile(file);
+      await save.mutateAsync({ id: beat.id, title: beat.title, url });
+    } catch { /* noop */ } finally { setUploadingId(null); }
+  }
+
+  const filledCount = BEAT_SLOTS.filter((b) => (drafts[b.id] ?? valueByKey.get(b.id) ?? "").trim()).length;
+
+  return (
+    <div className="rounded-2xl border border-orange-500/30 bg-card p-5 space-y-3">
+      <div className="flex items-center gap-2">
+        <Music className="h-5 w-5 text-orange-400" />
+        <div className="font-black">Le 10 basi beat</div>
+        <div className="ml-auto text-xs text-muted-foreground">{filledCount}/10 pronte</div>
+      </div>
+      <p className="text-xs text-muted-foreground">Carica un file audio o incolla un URL per ogni base. Girano a caso durante le battle freestyle.</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+        {BEAT_SLOTS.map((beat) => {
+          const current = valueByKey.get(beat.id) ?? "";
+          const draft = drafts[beat.id] ?? current;
+          const filled = !!current.trim();
+          return (
+            <div key={beat.id} className="rounded-xl border border-border bg-background p-3 space-y-2">
+              <div className="flex items-center gap-2 text-sm font-bold">
+                <span>{filled ? "🎵" : "⬜"}</span> {beat.title}
+                <span className="text-xs font-normal text-muted-foreground">{beat.bpm} BPM</span>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  value={draft}
+                  onChange={(e) => setDrafts((d) => ({ ...d, [beat.id]: e.target.value }))}
+                  placeholder="URL audio…"
+                  className="flex-1 rounded-lg border border-border bg-card px-2 py-1.5 text-xs"
+                />
+                <button
+                  onClick={() => save.mutate({ id: beat.id, title: beat.title, url: draft.trim() })}
+                  disabled={save.isPending}
+                  className="rounded-lg bg-orange-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-40"
+                >Salva</button>
+                <label className="cursor-pointer rounded-lg border border-border px-3 py-1.5 text-xs font-bold hover-elevate">
+                  {uploadingId === beat.id ? "…" : "📁"}
+                  <input type="file" accept="audio/*" className="hidden"
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) void onFile(beat, f); e.target.value = ""; }} />
+                </label>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }

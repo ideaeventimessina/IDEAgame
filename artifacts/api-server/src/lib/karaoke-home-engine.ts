@@ -107,6 +107,7 @@ export interface KaraokeHomeState {
 /* ─── Factory ────────────────────────────────────────────────────────────── */
 export function createBlankKaraokeState(
   players: { id: string; nickname: string; avatarColor: string }[],
+  beats?: FreestyleBeat[],
 ): KaraokeHomeState {
   return {
     version: 3,
@@ -126,7 +127,7 @@ export function createBlankKaraokeState(
     freestyleBookings: [],
     currentBattle: null,
     freestyleResults: [],
-    beats: FREESTYLE_BEATS,
+    beats: (beats && beats.length > 0) ? beats : FREESTYLE_BEATS,
     currentBeatId: null,
     players: players.map(p => ({ ...p, score: 0 })),
   };

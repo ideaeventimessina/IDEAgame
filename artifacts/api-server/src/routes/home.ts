@@ -20,7 +20,7 @@
 import { Router, type IRouter } from "express";
 import multer from "multer";
 import OpenAI from "openai";
-import { createBlankKaraokeState } from "../lib/karaoke-home-engine.js";
+import { createBlankKaraokeState, FREESTYLE_BEATS, type FreestyleBeat } from "../lib/karaoke-home-engine.js";
 import { generateQuiz, generateQuizAsync, QUIZ_THEMES } from "../lib/quiz-generator.js";
 import { generateSaraMusicaRounds, SM_THEMES, type MusicRound } from "../lib/saramusica-generator.js";
 import { BOTTLE_LEVELS, pickFromBank, assignSpectatorPowers, pickRandomTruth, pickRandomDare, type BottleChallenge, type BottleLevel } from "../lib/adult-generator.js";
@@ -39,6 +39,8 @@ import {
   // Quiz
   quizPacksTable,
   gameContentPacksTable,
+  // Media slots (freestyle beats)
+  gameMediaSlotsTable,
   // SaraMusica
   saraMusicaSetsTable,
   saraMusicaTracksTable,
@@ -2374,8 +2376,10 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
   if (gameSlug === "karaoke-battle") {
     req.log.info({ sessionId: id }, "[FLOW_BYPASS] karaoke-battle → KaraokeLiveBoard direct, skipping GameFlowEngine");
     const kPlayers = await getPlayers(id);
+    const freestyleBeats = await loadFreestyleBeats();
     const karaokeState = createBlankKaraokeState(
-      kPlayers.map(p => ({ id: p.id, nickname: p.nickname, avatarColor: (p as Record<string,unknown>)["avatarColor"] as string ?? "#A78BFA" }))
+      kPlayers.map(p => ({ id: p.id, nickname: p.nickname, avatarColor: (p as Record<string,unknown>)["avatarColor"] as string ?? "#A78BFA" })),
+      freestyleBeats,
     );
     const karaokePayload: RoundPayload = { mode: "home-karaoke-live", gameSlug: "karaoke-battle" } as RoundPayload;
     const karaokeCfg = { ...cfg, phase: "playing", gamesPlayed, karaokeHomeState: karaokeState };
@@ -2648,6 +2652,22 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
   emitHomeState(id, flowUpdated, flowPlayers);
   res.json({ session: flowUpdated, players: flowPlayers });
 });
+
+// Carica gli URL dei 10 beat freestyle dai game_media_slots (slotKey = beat id).
+// Se un beat non ha URL in DB, resta col placeholder hardcoded (audioUrl "").
+async function loadFreestyleBeats(): Promise<FreestyleBeat[]> {
+  try {
+    const slots = await db.select().from(gameMediaSlotsTable)
+      .where(eq(gameMediaSlotsTable.gameSlug, "freestyle-battle"));
+    const urlByKey = new Map(slots.map(s => [s.slotKey, s.value]));
+    return FREESTYLE_BEATS.map(b => {
+      const url = urlByKey.get(b.id);
+      return url ? { ...b, audioUrl: url } : b;
+    });
+  } catch {
+    return FREESTYLE_BEATS;
+  }
+}
 
 // ── POST /home/sessions/:id/ballo/set-video ───────────────────────────────────
 // Il prescelto (Home) o il presentatore (Live) sceglie il brano YouTube di
@@ -2953,7 +2973,8 @@ router.post("/home/sessions/:id/flow/confirm", async (req, res): Promise<void> =
           // FIX: auto-init karaokeHomeState v3 so KaraokeLiveBoard can mount
           const karaokeInit = launchSlug === "karaoke-battle"
             ? { karaokeHomeState: createBlankKaraokeState(
-                bp.map(p => ({ id: p.id, nickname: p.nickname, avatarColor: (p as Record<string,unknown>)["avatarColor"] as string ?? "#A78BFA" }))
+                bp.map(p => ({ id: p.id, nickname: p.nickname, avatarColor: (p as Record<string,unknown>)["avatarColor"] as string ?? "#A78BFA" })),
+                await loadFreestyleBeats(),
               ) }
             : {};
           const newCfg = { ...cfg, phase: "playing", gamesPlayed, preloadedRounds: stampedRounds, ...karaokeInit };

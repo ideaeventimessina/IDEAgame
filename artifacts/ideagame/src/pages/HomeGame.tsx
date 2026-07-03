@@ -7072,6 +7072,23 @@ function FreestyleBattleBoard({ sessionId, state: s, post }: {
   const waitingBookings = ls.freestyleBookings.filter(b => b.status === 'waiting');
   const currentBeat = battle ? ls.beats.find(b => b.id === battle.beatId) : null;
 
+  // Riproduce la base beat scelta (audioUrl impostato in admin) durante la battle.
+  const beatAudioRef = useRef<HTMLAudioElement | null>(null);
+  const beatUrl = currentBeat?.audioUrl ?? '';
+  const battleActive = ls.freestylePhase === 'battling' && !!beatUrl;
+  useEffect(() => {
+    const el = beatAudioRef.current;
+    if (!el) return;
+    if (battleActive) {
+      if (el.src !== beatUrl) el.src = beatUrl;
+      el.loop = true; el.volume = 0.8;
+      el.play().catch(() => { /* autoplay bloccato: parte al primo gesto */ });
+    } else {
+      el.pause();
+    }
+  }, [battleActive, beatUrl]);
+  useEffect(() => () => { beatAudioRef.current?.pause(); }, []);
+
   // Countdown timer — auto-fires end-battle when time runs out
   useEffect(() => {
     const endsAt = battle?.battleEndsAt;
@@ -7138,6 +7155,8 @@ function FreestyleBattleBoard({ sessionId, state: s, post }: {
 
     return (
       <div className="flex flex-col h-full gap-4 p-6">
+        {/* Base beat scelta — riproduce l'audioUrl impostato in admin */}
+        <audio ref={beatAudioRef} hidden />
         {/* Header */}
         <div className="flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
