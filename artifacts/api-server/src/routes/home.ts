@@ -262,7 +262,7 @@ const THEMED_WORD_BANKS: Record<string, string[]> = {
 async function loadCoppieRound(roundIndex: number): Promise<CoppiePayload> {
   // Fetch card sets from DB to show as pre-built theme options on TV
   const sets = await db.select({ id: cardSetsTable.id, name: cardSetsTable.name })
-    .from(cardSetsTable).orderBy(desc(cardSetsTable.createdAt)).limit(9);
+    .from(cardSetsTable).orderBy(desc(cardSetsTable.createdAt)).limit(12);
   const availableSets = sets.map(s => ({ id: s.id, name: s.name, pairCount: 0 }));
   return buildEmptyCoppiePayload(roundIndex, availableSets);
 }
@@ -615,7 +615,7 @@ async function loadThemesForGame(gameSlug: string): Promise<GameFlowConfig> {
     }
     case "gioco-coppie": {
       const sets = await db.select().from(cardSetsTable)
-        .orderBy(desc(cardSetsTable.createdAt)).limit(6);
+        .orderBy(desc(cardSetsTable.createdAt)).limit(12);
       const themes = sets.length > 0
         ? sets.map(s => ({ id: s.id, name: s.name, description: s.description ?? "" }))
         : [{ id: "fallback", name: "Classici", description: "Abbina le coppie!" }];
