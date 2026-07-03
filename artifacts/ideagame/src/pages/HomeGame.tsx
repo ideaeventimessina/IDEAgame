@@ -2384,8 +2384,17 @@ function QuizzoneBoard({ payload, session, players }: {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [selectedDiff, setSelectedDiff] = useState<"easy"|"medium"|"hard">("medium");
+  // Argomenti salvati dal presentatore Live (toggle "visibile in Home")
+  const [savedTopics, setSavedTopics] = useState<{ id: string; label: string }[]>([]);
 
   const phase = String(payload.phase ?? 'setup_theme');
+  useEffect(() => {
+    if (phase !== 'setup_theme') return;
+    fetch('/api/home/quiz-topics')
+      .then(r => r.ok ? r.json() : { topics: [] })
+      .then((d: { topics?: { id: string; label: string }[] }) => setSavedTopics(d.topics ?? []))
+      .catch(() => {});
+  }, [phase]);
   const questions = (payload.questions as QzQuestion[]) ?? [];
   const currentIndex = Number(payload.currentIndex ?? -1);
   const currentQ = currentIndex >= 0 && currentIndex < questions.length ? questions[currentIndex] : null;
@@ -2481,6 +2490,25 @@ function QuizzoneBoard({ payload, session, players }: {
             </button>
           ))}
         </div>
+
+        {/* Argomenti salvati dal Live (visibili in Home) */}
+        {savedTopics.length > 0 && (
+          <div className="w-full rounded-2xl p-5" style={{ background: 'rgba(96,165,250,0.10)', border: '1px solid rgba(96,165,250,0.3)' }}>
+            <div className="text-xs font-black uppercase tracking-widest mb-3" style={{ color: '#60A5FA' }}>
+              ✨ Argomenti creati dal vivo
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {savedTopics.map(t => (
+                <button key={t.id} onClick={() => void post('/quiz/select-theme', { themeId: t.id })}
+                  disabled={busy}
+                  className="rounded-xl px-4 py-2 font-black text-sm transition-all hover:scale-105 disabled:opacity-50"
+                  style={{ background: 'rgba(96,165,250,0.2)', border: '2px solid rgba(96,165,250,0.5)', color: '#93C5FD' }}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* GENERA QUIZZONE CTA */}
         <button onClick={() => void post('/quiz/select-theme', { themeId: bestThemeId })}

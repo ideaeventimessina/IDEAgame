@@ -38,6 +38,7 @@ import {
   cardsTable,
   // Quiz
   quizPacksTable,
+  gameContentPacksTable,
   // SaraMusica
   saraMusicaSetsTable,
   saraMusicaTracksTable,
@@ -1023,6 +1024,35 @@ async function loadGameRounds(gameSlug: string): Promise<RoundPayload[]> {
     default:                     return loadQuizRounds();
   }
 }
+
+// ── GET /home/quiz-topics (PUBLIC) — argomenti Quizzone salvati e visibili in Home ──
+// Popolati dal presentatore Live col toggle "visibile in Home". Il selettore temi
+// della Home li mostra oltre ai temi fissi.
+router.get("/home/quiz-topics", async (_req, res): Promise<void> => {
+  try {
+    const rows = await db.select({ id: gameContentPacksTable.id, title: gameContentPacksTable.title, theme: gameContentPacksTable.theme })
+      .from(gameContentPacksTable)
+      .where(and(
+        eq(gameContentPacksTable.gameSlug, "quizzone"),
+        eq(gameContentPacksTable.isActive, true),
+        or(eq(gameContentPacksTable.modeAvailability, "home"), eq(gameContentPacksTable.modeAvailability, "both")),
+      ))
+      .orderBy(desc(gameContentPacksTable.createdAt)).limit(20);
+    // Dedup per titolo (topic) — usiamo il titolo come themeId free-text
+    const seen = new Set<string>();
+    const topics: { id: string; label: string }[] = [];
+    for (const r of rows) {
+      const label = String(r.theme ?? r.title ?? "").trim();
+      const k = label.toLowerCase();
+      if (!label || seen.has(k)) continue;
+      seen.add(k);
+      topics.push({ id: label, label });
+    }
+    res.json({ topics });
+  } catch {
+    res.json({ topics: [] });
+  }
+});
 
 // ── GET /home/music-config  (PUBLIC — no auth required) ───────────────────────
 // Returns only the musicPaths object from tenant.settings so unauthenticated
