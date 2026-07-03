@@ -33,6 +33,9 @@ export interface FlowPayload {
   selectedTheme: FlowTheme | null;
   bookedPlayers: FlowBookedPlayer[];
   maxPlayers: number;
+  // Ballo: prescelto che sceglie il brano YouTube + video scelto
+  prescelto?: { id: string; nickname: string } | null;
+  balloVideo?: { videoId: string; title: string } | null;
 }
 
 // ── Per-game visual config ───────────────────────────────────────────────────────

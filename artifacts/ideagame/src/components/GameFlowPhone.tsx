@@ -45,6 +45,82 @@ const GAME_ROLE_SLOTS: Record<string, PhoneRoleSlot[]> = {
   ],
 };
 
+// ── Ballo: il "prescelto" sceglie il brano YouTube da ballare ────────────────
+interface BalloSong { videoId: string; title: string; channel: string; thumbnailUrl: string; durationSeconds: number }
+function BalloPrescelto({ sessionId }: { sessionId: string }) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<BalloSong[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function search() {
+    if (!query.trim()) return;
+    setLoading(true); setErr(null); setResults([]);
+    try {
+      const r = await fetch(`/api/home/sessions/${sessionId}/ballo/search`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: query.trim() }),
+      });
+      const d = await r.json() as { ok?: boolean; results?: BalloSong[]; error?: string };
+      if (!d.ok || !d.results?.length) { setErr('Nessun risultato — riprova con artista + titolo'); return; }
+      setResults(d.results);
+    } catch { setErr('Ricerca fallita'); }
+    finally { setLoading(false); }
+  }
+
+  async function pick(song: BalloSong) {
+    setSaving(true); setErr(null);
+    try {
+      const r = await fetch(`/api/home/sessions/${sessionId}/ballo/set-video`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(song),
+      });
+      if (!r.ok) { setErr('Errore nel salvare il brano'); return; }
+      // Al successo, home:state aggiornerà il payload (balloVideo) e questo pannello sparisce.
+    } catch { setErr('Connessione fallita'); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-3 py-4">
+      <div className="text-center">
+        <div className="text-4xl">🎲</div>
+        <div className="text-display text-2xl font-black text-white">SEI IL PRESCELTO!</div>
+        <div className="text-sm" style={{ color: 'rgba(255,255,255,0.6)' }}>Scegli il brano su cui balleranno tutti</div>
+      </div>
+      <div className="flex gap-2">
+        <input value={query} onChange={e => setQuery(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') void search(); }}
+          placeholder="Artista + titolo (es. Måneskin Beggin)"
+          className="flex-1 rounded-xl bg-white/10 px-3 py-2.5 text-sm font-semibold text-white outline-none"
+          style={{ border: '1px solid rgba(255,255,255,0.2)' }} />
+        <button onClick={() => void search()} disabled={loading || !query.trim()}
+          className="rounded-xl px-4 py-2.5 font-black disabled:opacity-40" style={{ background: '#A78BFA', color: '#0a0820' }}>
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Cerca'}
+        </button>
+      </div>
+      {err && <div className="rounded-xl px-3 py-2 text-xs font-bold" style={{ background: 'rgba(248,113,113,0.15)', color: '#FCA5A5' }}>{err}</div>}
+      <div className="flex flex-col gap-2">
+        {results.map(song => (
+          <button key={song.videoId} onClick={() => void pick(song)} disabled={saving}
+            className="flex items-center gap-3 rounded-xl p-2 text-left disabled:opacity-40"
+            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)' }}>
+            <img src={song.thumbnailUrl} alt="" className="h-12 w-16 shrink-0 rounded-md object-cover" />
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-bold text-white">{song.title}</div>
+              <div className="truncate text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>{song.channel}</div>
+            </div>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin text-white" /> : <span className="text-lg">▶︎</span>}
+          </button>
+        ))}
+      </div>
+    </motion.div>
+  );
+}
+
 export function GameFlowPhone({
   session,
   player,
@@ -215,6 +291,11 @@ export function GameFlowPhone({
   }
 
   console.log('[BalloFlow] GameFlowPhone render — phase:', p.gameFlowPhase, '| mode:', p.mode, '| player:', player.id.slice(-4));
+
+  // ── BALLO: se sono il prescelto e non ho ancora scelto il brano, prendo il controllo ──
+  if (p.gameSlug === 'sfida-ballo' && p.prescelto?.id === player.id && !p.balloVideo) {
+    return <BalloPrescelto sessionId={session.id} />;
+  }
 
   // ── WAITING FOR SUBTYPE (karaoke-battle only) ─────────────────────────────────
 
