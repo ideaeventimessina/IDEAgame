@@ -146,6 +146,26 @@ function rankKaraokeResults(items: YTSearchResult[], rawInput: string): YTSearch
   return scored.map(({ _score: _s, ...rest }) => rest as YTSearchResult);
 }
 
+// Ranking OPPOSTO al karaoke: per il Ballo vogliamo il VIDEO UFFICIALE della
+// canzone (audio + video veri), NON la base karaoke/strumentale.
+function rankSongResults(items: YTSearchResult[], rawInput: string): YTSearchResult[] {
+  const words = rawInput.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+  type Scored = YTSearchResult & { _score: number };
+  const scored: Scored[] = items.map(r => {
+    const tl = r.title.toLowerCase();
+    const ch = r.channel.toLowerCase();
+    let score = 0;
+    if (/official\s*(music\s*)?video|official\s*audio|\bvevo\b/i.test(r.title) || /vevo|official/i.test(ch)) score += 60;
+    else if (/music\s*video|videoclip/i.test(tl)) score += 30;
+    // Penalizza forte le versioni karaoke/strumentali/base
+    if (/karaoke|base musicale|backing track|instrumental|strumentale|cover/i.test(tl)) score -= 60;
+    if (words.some(w => tl.includes(w) || ch.includes(w))) score += 20;
+    return { ...r, _score: score };
+  });
+  scored.sort((a, b) => b._score - a._score);
+  return scored.map(({ _score: _s, ...rest }) => rest as YTSearchResult);
+}
+
 // ── YouTube API types ────────────────────────────────────────────────────────
 type YTSearchItem = {
   id: { videoId: string };
@@ -195,21 +215,29 @@ async function rawYouTubeSearch(youtubeQuery: string): Promise<{
   };
 }
 
-async function searchYouTube(rawInput: string): Promise<SearchResult> {
-  const youtubeQuery = `${rawInput} karaoke`;
+async function searchYouTube(rawInput: string, mode: "karaoke" | "song" = "karaoke"): Promise<SearchResult> {
+  // ⚠️ Ballo: NON aggiungere "karaoke" alla query, altrimenti YouTube restituisce
+  // le basi karaoke invece del video ufficiale del brano.
+  const youtubeQuery = mode === "song" ? rawInput : `${rawInput} karaoke`;
   const apiKeyPresent = !!YOUTUBE_API_KEY;
   const apiKeyPrefix = YOUTUBE_API_KEY ? YOUTUBE_API_KEY.slice(0, 6) : "(none)";
 
   // ── Mock mode (no key) ────────────────────────────────────────────────────
   if (!apiKeyPresent) {
-    const mock: YTSearchResult[] = [
-      { videoId: "dQw4w9WgXcQ", title: `${rawInput} - Karaoke Version`,      channel: "Karaoke IT",    thumbnailUrl: "https://img.youtube.com/vi/dQw4w9WgXcQ/mqdefault.jpg", durationSeconds: 213, durationFormatted: "3:33" },
-      { videoId: "9bZkp7q19f0", title: `${rawInput} - Official Karaoke`,     channel: "Karaoke World", thumbnailUrl: "https://img.youtube.com/vi/9bZkp7q19f0/mqdefault.jpg", durationSeconds: 252, durationFormatted: "4:12" },
-      { videoId: "CevxZvSJLk8", title: `${rawInput} - Instrumental Karaoke`, channel: "Sing Along",    thumbnailUrl: "https://img.youtube.com/vi/CevxZvSJLk8/mqdefault.jpg", durationSeconds: 198, durationFormatted: "3:18" },
-      { videoId: "OPf0YbXqDm0", title: `${rawInput} karaoke HD`,              channel: "Karaoke Bar",  thumbnailUrl: "https://img.youtube.com/vi/OPf0YbXqDm0/mqdefault.jpg", durationSeconds: 225, durationFormatted: "3:45" },
-      { videoId: "pRpeEdMmmQ0", title: `${rawInput} - Versione karaoke`,      channel: "KaraokeFun IT",thumbnailUrl: "https://img.youtube.com/vi/pRpeEdMmmQ0/mqdefault.jpg", durationSeconds: 240, durationFormatted: "4:00" },
-    ];
-    logger.info({ apiKeyPresent, apiKeyPrefix, rawInput, youtubeQuery, youtubeItemsCount: mock.length, first5Titles: mock.map(m => m.title) }, "[KARAOKE_API_DEBUG] mock mode — no YOUTUBE_API_KEY");
+    const mock: YTSearchResult[] = mode === "song"
+      ? [
+        { videoId: "dQw4w9WgXcQ", title: `${rawInput} (Official Video)`,       channel: "VEVO",         thumbnailUrl: "https://img.youtube.com/vi/dQw4w9WgXcQ/mqdefault.jpg", durationSeconds: 213, durationFormatted: "3:33" },
+        { videoId: "9bZkp7q19f0", title: `${rawInput} - Official Music Video`,  channel: "Official",     thumbnailUrl: "https://img.youtube.com/vi/9bZkp7q19f0/mqdefault.jpg", durationSeconds: 252, durationFormatted: "4:12" },
+        { videoId: "OPf0YbXqDm0", title: `${rawInput} (Video Ufficiale)`,       channel: "Music",        thumbnailUrl: "https://img.youtube.com/vi/OPf0YbXqDm0/mqdefault.jpg", durationSeconds: 225, durationFormatted: "3:45" },
+      ]
+      : [
+        { videoId: "dQw4w9WgXcQ", title: `${rawInput} - Karaoke Version`,      channel: "Karaoke IT",    thumbnailUrl: "https://img.youtube.com/vi/dQw4w9WgXcQ/mqdefault.jpg", durationSeconds: 213, durationFormatted: "3:33" },
+        { videoId: "9bZkp7q19f0", title: `${rawInput} - Official Karaoke`,     channel: "Karaoke World", thumbnailUrl: "https://img.youtube.com/vi/9bZkp7q19f0/mqdefault.jpg", durationSeconds: 252, durationFormatted: "4:12" },
+        { videoId: "CevxZvSJLk8", title: `${rawInput} - Instrumental Karaoke`, channel: "Sing Along",    thumbnailUrl: "https://img.youtube.com/vi/CevxZvSJLk8/mqdefault.jpg", durationSeconds: 198, durationFormatted: "3:18" },
+        { videoId: "OPf0YbXqDm0", title: `${rawInput} karaoke HD`,              channel: "Karaoke Bar",  thumbnailUrl: "https://img.youtube.com/vi/OPf0YbXqDm0/mqdefault.jpg", durationSeconds: 225, durationFormatted: "3:45" },
+        { videoId: "pRpeEdMmmQ0", title: `${rawInput} - Versione karaoke`,      channel: "KaraokeFun IT",thumbnailUrl: "https://img.youtube.com/vi/pRpeEdMmmQ0/mqdefault.jpg", durationSeconds: 240, durationFormatted: "4:00" },
+      ];
+    logger.info({ apiKeyPresent, apiKeyPrefix, rawInput, youtubeQuery, mode, youtubeItemsCount: mock.length, first5Titles: mock.map(m => m.title) }, "[KARAOKE_API_DEBUG] mock mode — no YOUTUBE_API_KEY");
     return { ok: true, results: mock, noKaraokeFound: false, mock: true, youtubeQuery };
   }
 
@@ -283,8 +311,8 @@ async function searchYouTube(rawInput: string): Promise<SearchResult> {
       };
     });
 
-    // ── 6. Rank karaoke-first, return top 5 ──────────────────────────────────
-    const ranked = rankKaraokeResults(raw, rawInput).slice(0, 5);
+    // ── 6. Rank (karaoke-first o song/video-ufficiale-first), return top 5 ────
+    const ranked = (mode === "song" ? rankSongResults(raw, rawInput) : rankKaraokeResults(raw, rawInput)).slice(0, 5);
     const hasKaraokeTitle = ranked.some(r =>
       /karaoke|base musicale|backing track|instrumental/i.test(r.title)
     );
@@ -365,6 +393,17 @@ router.post("/home/sessions/:id/karaoke/search", async (req: Request, res: Respo
   const rawInput = query.trim();
   const result = await searchYouTube(rawInput);
   // Pass the full structured result (ok/err) straight to the client
+  res.json(result);
+});
+
+// ── Ballo: ricerca del VIDEO UFFICIALE (niente "karaoke" nella query) ─────────
+// Usata sia dal "prescelto" in Home sia dal presentatore in Live.
+router.post("/home/sessions/:id/ballo/search", async (req: Request, res: Response): Promise<void> => {
+  const { query } = req.body as { query?: string };
+  if (!query?.trim()) { res.status(400).json({ error: "query richiesta" }); return; }
+  const session = await getSession(String(req.params["id"]));
+  if (!session) { res.status(404).json({ error: "Sessione non trovata" }); return; }
+  const result = await searchYouTube(query.trim(), "song");
   res.json(result);
 });
 
