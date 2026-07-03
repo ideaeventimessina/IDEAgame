@@ -127,6 +127,9 @@ export default function LivePresenter() {
   const [homeSession, setHomeSession]   = useState<{ id: string; joinCode: string } | null>(null);
   const [audioMuted, setAudioMuted]     = useState(false);
   const [previewBusy, setPreviewBusy]   = useState(false);
+  // Ballo Live (presenter sceglie il brano) + Quizzone Live (genera argomento)
+  const [balloPickerOpen, setBalloPickerOpen] = useState(false);
+  const [quizPanelOpen, setQuizPanelOpen]     = useState(false);
 
   const socketRef       = useRef(getSocket());
   const cameraInputRef  = useRef<HTMLInputElement>(null);
@@ -754,6 +757,8 @@ export default function LivePresenter() {
                   onClick={() => {
                     setSelectedGame(g.slug);
                     if (isCoppie) { openCoppie(); }
+                    else if (g.slug === 'sfida-ballo') { void sendHomeCommand('select_game', { gameSlug: g.slug }); setBalloPickerOpen(true); }
+                    else if (g.slug === 'quizzone') { void sendHomeCommand('select_game', { gameSlug: g.slug }); setQuizPanelOpen(true); }
                     else { void sendHomeCommand('select_game', { gameSlug: g.slug }); }
                   }}
                   disabled={!!cmdLoading}
@@ -776,6 +781,10 @@ export default function LivePresenter() {
             })}
           </div>
         </div>
+
+        {/* Pannelli Live: Ballo (scegli brano) + Quizzone (genera argomento) */}
+        {balloPickerOpen && homeSessionId && <BalloLivePicker homeSessionId={homeSessionId} onClose={() => setBalloPickerOpen(false)} />}
+        {quizPanelOpen && homeSessionId && <QuizLivePanel homeSessionId={homeSessionId} onClose={() => setQuizPanelOpen(false)} />}
 
         {/* ═══════════════════════════════════════════════════════════════════
             FLOW CONTROLS — target home session
@@ -989,5 +998,160 @@ function ActionBtn({ onClick, color, title, children }: { onClick: () => void; c
       style={{ width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', background: `${color}22`, border: `1px solid ${color}55`, borderRadius: 7, color, cursor: 'pointer' }}>
       {children}
     </button>
+  );
+}
+
+// ── API helper per i pannelli Live (fetch grezzo con BASE) ───────────────────
+async function liveApi<T = unknown>(path: string, body?: unknown): Promise<T> {
+  const url = `${BASE}api${path}`.replace(/\/\//g, '/');
+  const r = await fetch(url, {
+    method: body === undefined ? 'GET' : 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error((data as { error?: string }).error ?? `HTTP ${r.status}`);
+  return data as T;
+}
+
+// ── Ballo Live: il presentatore sceglie il brano (video ufficiale) ───────────
+interface LiveSong { videoId: string; title: string; channel: string; thumbnailUrl: string; durationSeconds: number }
+function BalloLivePicker({ homeSessionId, onClose }: { homeSessionId: string; onClose: () => void }) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<LiveSong[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function search() {
+    if (!query.trim()) return;
+    setLoading(true); setErr(null); setResults([]);
+    try {
+      const d = await liveApi<{ ok?: boolean; results?: LiveSong[] }>(`/home/sessions/${homeSessionId}/ballo/search`, { query: query.trim() });
+      if (!d.ok || !d.results?.length) { setErr('Nessun risultato — prova artista + titolo'); return; }
+      setResults(d.results);
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Ricerca fallita'); }
+    finally { setLoading(false); }
+  }
+  async function pick(song: LiveSong) {
+    setSaving(true); setErr(null);
+    try { await liveApi(`/home/sessions/${homeSessionId}/ballo/set-video`, song); onClose(); }
+    catch (e) { setErr(e instanceof Error ? e.message : 'Errore'); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 400, background: 'rgba(7,6,26,0.94)', display: 'flex', flexDirection: 'column', padding: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#fff' }}>💃 Brano per il Ballo</div>
+        <button onClick={onClose} style={{ padding: '8px 14px', background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 10, color: '#fff', fontWeight: 800 }}>✕</button>
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+        <input value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void search(); }}
+          placeholder="Artista + titolo (es. Måneskin Beggin)" autoFocus
+          style={{ flex: 1, padding: '10px 12px', borderRadius: 10, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', fontWeight: 600 }} />
+        <button onClick={() => void search()} disabled={loading || !query.trim()}
+          style={{ padding: '10px 18px', borderRadius: 10, background: '#A78BFA', border: 'none', color: '#0a0820', fontWeight: 900 }}>
+          {loading ? <Loader2 size={16} className="animate-spin" /> : 'Cerca'}
+        </button>
+      </div>
+      {err && <div style={{ padding: '8px 12px', background: 'rgba(248,113,113,0.15)', color: '#FCA5A5', borderRadius: 10, fontSize: '0.8rem', fontWeight: 700, marginBottom: 10 }}>{err}</div>}
+      <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {results.map(song => (
+          <button key={song.videoId} onClick={() => void pick(song)} disabled={saving}
+            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 8, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, textAlign: 'left', cursor: 'pointer' }}>
+            <img src={song.thumbnailUrl} alt="" style={{ width: 64, height: 48, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ color: '#fff', fontWeight: 700, fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{song.title}</div>
+              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.72rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{song.channel}</div>
+            </div>
+            {saving ? <Loader2 size={16} className="animate-spin" style={{ color: '#fff' }} /> : <span style={{ fontSize: '1.1rem' }}>▶︎</span>}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Quizzone Live: scrivi argomento → genera al volo → toggle visibile in Home ──
+function QuizLivePanel({ homeSessionId, onClose }: { homeSessionId: string; onClose: () => void }) {
+  const [topic, setTopic] = useState('');
+  const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
+  const [count, setCount] = useState(10);
+  const [visibleInHome, setVisibleInHome] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  async function generateAndStart() {
+    if (!topic.trim()) return;
+    setBusy(true); setErr(null);
+    try {
+      // 1. Persisti l'argomento come content pack (così può comparire in Home)
+      if (visibleInHome) {
+        await liveApi(`/game-content-packs/generate`, { gameSlug: 'quizzone', themeName: topic.trim(), difficulty, count }).catch(() => {});
+      }
+      // 2. Avvia il quizzone sulla home session con questo argomento (generazione al volo)
+      await liveApi(`/home/sessions/${homeSessionId}/select-game`, { gameSlug: 'quizzone' }).catch(() => {});
+      await liveApi(`/home/sessions/${homeSessionId}/quiz/select-theme`, { themeId: topic.trim() });
+      await liveApi(`/home/sessions/${homeSessionId}/quiz/select-count`, { count, difficulty });
+      setDone(true);
+      setTimeout(onClose, 1200);
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Errore'); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 400, background: 'rgba(7,6,26,0.94)', display: 'flex', flexDirection: 'column', padding: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#fff' }}>⭐ Quizzone — genera argomento</div>
+        <button onClick={onClose} style={{ padding: '8px 14px', background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 10, color: '#fff', fontWeight: 800 }}>✕</button>
+      </div>
+      {done ? (
+        <div style={{ textAlign: 'center', color: '#34D399', fontWeight: 900, fontSize: '1.1rem', marginTop: 40 }}>✅ Quiz generato e avviato!</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div>
+            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'rgba(255,255,255,0.5)', marginBottom: 6 }}>ARGOMENTO</div>
+            <input value={topic} onChange={e => setTopic(e.target.value)} placeholder="Es. Musica anni '90, Storia romana, Calcio..." autoFocus
+              style={{ width: '100%', padding: '12px 14px', borderRadius: 12, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', fontWeight: 600, fontSize: '1rem' }} />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'rgba(255,255,255,0.5)', marginBottom: 6 }}>DIFFICOLTÀ</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {(['easy', 'medium', 'hard'] as const).map(d => (
+                <button key={d} onClick={() => setDifficulty(d)}
+                  style={{ flex: 1, padding: '10px', borderRadius: 10, fontWeight: 800, textTransform: 'capitalize',
+                    background: difficulty === d ? '#F5B642' : 'rgba(255,255,255,0.06)', color: difficulty === d ? '#0a0820' : '#fff',
+                    border: '1px solid rgba(255,255,255,0.12)', cursor: 'pointer' }}>
+                  {d === 'easy' ? 'Facile' : d === 'medium' ? 'Media' : 'Difficile'}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'rgba(255,255,255,0.5)', marginBottom: 6 }}>NUMERO DOMANDE</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {[5, 10, 15, 20].map(n => (
+                <button key={n} onClick={() => setCount(n)}
+                  style={{ flex: 1, padding: '10px', borderRadius: 10, fontWeight: 800,
+                    background: count === n ? '#60A5FA' : 'rgba(255,255,255,0.06)', color: count === n ? '#0a0820' : '#fff',
+                    border: '1px solid rgba(255,255,255,0.12)', cursor: 'pointer' }}>{n}</button>
+              ))}
+            </div>
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', background: 'rgba(255,255,255,0.06)', borderRadius: 12, cursor: 'pointer' }}>
+            <input type="checkbox" checked={visibleInHome} onChange={e => setVisibleInHome(e.target.checked)} style={{ width: 20, height: 20 }} />
+            <span style={{ color: '#fff', fontWeight: 700, fontSize: '0.9rem' }}>Rendi questo argomento disponibile anche in modalità Home</span>
+          </label>
+          {err && <div style={{ padding: '8px 12px', background: 'rgba(248,113,113,0.15)', color: '#FCA5A5', borderRadius: 10, fontSize: '0.8rem', fontWeight: 700 }}>{err}</div>}
+          <button onClick={() => void generateAndStart()} disabled={busy || !topic.trim()}
+            style={{ padding: '16px', borderRadius: 14, background: 'linear-gradient(135deg,#F5B642,#F59E0B)', border: 'none', color: '#0a0820', fontWeight: 900, fontSize: '1rem', opacity: busy || !topic.trim() ? 0.5 : 1 }}>
+            {busy ? 'Genero…' : '🚀 Genera e avvia'}
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
