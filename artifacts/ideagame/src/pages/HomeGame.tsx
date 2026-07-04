@@ -4180,6 +4180,7 @@ type SMRound = {
   type: string; question: string; answers: string[]; correctAnswerIndex: number;
   year?: number; clues?: string[]; points: number; timeLimit: number; explanation?: string;
   youtubeClip?: { youtubeId: string; startSecond: number; durationSeconds: number; clipType: string };
+  silhouetteUrl?: string;
 };
 
 const SM_TYPE_BADGES: Record<string, { emoji: string; label: string; color: string }> = {
@@ -4190,6 +4191,7 @@ const SM_TYPE_BADGES: Record<string, { emoji: string; label: string; color: stri
   song_vs_song:           { emoji: '⚔️', label: 'SFIDA MUSICALE',       color: '#F87171' },
   progressive_clue_music: { emoji: '🔍', label: 'INDIZI MUSICALI',      color: '#F59E0B' },
   final_tormentone:       { emoji: '🏆', label: 'TORMENTONE FINALE',    color: '#F97316' },
+  silhouette_guess:       { emoji: '👤', label: 'CHI È QUESTA SAGOMA?',  color: '#C084FC' },
 };
 const SM_ANS_COLORS = ['#60A5FA', '#A78BFA', '#34D399', '#FBBF24'];
 
@@ -4408,6 +4410,15 @@ function SaraMusicaBoard({ payload, session, players }: {
             roundIndex={currentIndex}
             sessionId={String(session.id ?? '')}
           />
+        )}
+
+        {/* Sagoma cantante (type silhouette_guess) — immagine già in silhouette */}
+        {currentQ.silhouetteUrl && (
+          <div className="flex justify-center">
+            <div className="rounded-3xl p-4" style={{ background: 'rgba(192,132,252,0.10)', border: '1px solid rgba(192,132,252,0.35)' }}>
+              <img src={currentQ.silhouetteUrl} alt="Sagoma" className="max-h-64 w-auto object-contain" />
+            </div>
+          </div>
         )}
 
         {/* Question card */}

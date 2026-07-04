@@ -127,6 +127,8 @@ export default function AdminSaraMusica() {
 
       <JonnyGenerateBanner gameSlug="saramusica" gameLabel="SaraMusica" />
 
+      <SilhouetteManager />
+
       {/* New set form */}
       {showNewSet && (
         <div className="rounded-2xl border border-border bg-card p-5 space-y-3">
@@ -268,5 +270,90 @@ export default function AdminSaraMusica() {
       )}
     </div>
     </AdminLayout>
+  );
+}
+
+// ── Sagome cantanti: 20 slot (immagine silhouette + nome cantante) ───────────
+async function uploadSilhouette(file: File): Promise<string> {
+  const res = await fetch(`${BASE}api/storage/uploads/request-url`.replace(/\/\//g, '/'), {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type || 'image/png' }),
+  });
+  if (!res.ok) throw new Error('Errore URL upload');
+  const { uploadURL, objectPath } = await res.json() as { uploadURL: string; objectPath: string };
+  const put = await fetch(uploadURL, { method: 'PUT', body: file, headers: { 'Content-Type': file.type || 'image/png' } });
+  if (!put.ok) throw new Error('Upload fallito');
+  return `/api/storage${objectPath}`;
+}
+
+function SilhouetteManager() {
+  const SLOTS = Array.from({ length: 20 }, (_, i) => `sil-${String(i + 1).padStart(2, '0')}`);
+  const [slots, setSlots] = useState<Record<string, { url: string; name: string }>>({});
+  const [uploadingKey, setUploadingKey] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    apiFetch('/game-media-slots?gameSlug=saramusica-silhouettes')
+      .then((rows: { slotKey: string; value: string; label: string }[]) => {
+        const m: Record<string, { url: string; name: string }> = {};
+        for (const r of rows) m[r.slotKey] = { url: r.value, name: r.label ?? '' };
+        setSlots(m);
+      })
+      .catch(() => {});
+  }, []);
+
+  async function save(key: string, url: string, name: string) {
+    await apiFetch('/game-media-slots', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gameSlug: 'saramusica-silhouettes', slotKey: key, value: url, valueType: 'image', label: name }),
+    });
+    setSlots(s => ({ ...s, [key]: { url, name } }));
+  }
+  async function onFile(key: string, file: File) {
+    setUploadingKey(key);
+    try {
+      const url = await uploadSilhouette(file);
+      await save(key, url, slots[key]?.name ?? '');
+    } catch { /* noop */ } finally { setUploadingKey(null); }
+  }
+
+  const filled = SLOTS.filter(k => slots[k]?.url && slots[k]?.name).length;
+
+  return (
+    <div className="rounded-2xl border border-purple-500/30 bg-card p-5 space-y-3">
+      <button onClick={() => setOpen(o => !o)} className="flex w-full items-center gap-2">
+        <span className="text-lg">👤</span>
+        <span className="font-black">Sagome cantanti (Chi è questa sagoma?)</span>
+        <span className="ml-auto text-xs text-muted-foreground">{filled}/20 pronte · {open ? 'nascondi' : 'apri'}</span>
+      </button>
+      {open && (
+        <>
+          <p className="text-xs text-muted-foreground">Carica 20 sagome (immagini in silhouette) con il nome del cantante. Il gioco le mostra a caso con risposta multipla.</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {SLOTS.map(key => {
+              const cur = slots[key];
+              return (
+                <div key={key} className="rounded-xl border border-border bg-background p-2 space-y-2">
+                  <label className="flex h-24 cursor-pointer items-center justify-center overflow-hidden rounded-lg"
+                    style={{ border: `2px dashed ${cur?.url ? '#C084FC' : 'rgba(255,255,255,0.2)'}`, background: 'rgba(0,0,0,0.3)' }}>
+                    {uploadingKey === key ? <span className="text-xs">…</span>
+                      : cur?.url ? <img src={cur.url} alt="" className="h-full w-full object-contain" />
+                      : <span className="text-xs text-muted-foreground">📁 sagoma</span>}
+                    <input type="file" accept="image/*" className="hidden"
+                      onChange={e => { const f = e.target.files?.[0]; if (f) void onFile(key, f); e.target.value = ''; }} />
+                  </label>
+                  <input
+                    defaultValue={cur?.name ?? ''}
+                    onBlur={e => { if (cur?.url) void save(key, cur.url, e.target.value.trim()); }}
+                    placeholder="Nome cantante"
+                    className="w-full rounded-lg border border-border bg-card px-2 py-1 text-xs" />
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
   );
 }

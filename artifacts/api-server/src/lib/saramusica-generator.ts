@@ -19,7 +19,8 @@ export type MusicRoundType =
   | "speed_music"
   | "song_vs_song"
   | "progressive_clue_music"
-  | "final_tormentone";
+  | "final_tormentone"
+  | "silhouette_guess";
 
 export type ClipType = 'chorus_guess' | 'missing_word' | 'artist_guess' | 'stop_and_continue' | 'duel_song';
 
@@ -46,6 +47,7 @@ export interface MusicRound {
   timeLimit: number;
   explanation?: string;
   youtubeClip?: YoutubeClip;
+  silhouetteUrl?: string; // sagoma del cantante (per type "silhouette_guess")
 }
 
 export const SM_THEMES = [
@@ -73,6 +75,7 @@ const TYPE_POINTS: Record<MusicRoundType, number> = {
   song_vs_song: 100,
   progressive_clue_music: 150,
   final_tormentone: 200,
+  silhouette_guess: 120,
 };
 
 const TYPE_TIME: Record<MusicRoundType, number> = {
@@ -83,6 +86,7 @@ const TYPE_TIME: Record<MusicRoundType, number> = {
   song_vs_song: 12,
   progressive_clue_music: 35,
   final_tormentone: 25,
+  silhouette_guess: 18,
 };
 
 // ── Compact round builder ─────────────────────────────────────────────────────

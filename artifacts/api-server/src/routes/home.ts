@@ -1708,6 +1708,13 @@ router.post("/home/sessions/:id/saramusica/select-count", async (req, res): Prom
   setTimeout(async () => {
     try {
       const rounds = await generateSaraMusicaRounds(themeId, roundCount, smDifficulty);
+      // Inietta round "sagoma → indovina il cantante" se ci sono sagome caricate.
+      const silRounds = await buildSilhouetteRounds(roundCount >= 10 ? 2 : 1);
+      if (silRounds.length > 0) {
+        // Distribuisce le sagome nel percorso invece di ammucchiarle in fondo.
+        const step = Math.max(1, Math.floor(rounds.length / (silRounds.length + 1)));
+        silRounds.forEach((sr, k) => rounds.splice(Math.min((k + 1) * step + k, rounds.length), 0, sr));
+      }
       const sess2 = await getSession(id);
       if (!sess2) return;
       const rp2 = (sess2.roundPayload ?? {}) as Record<string, unknown>;
@@ -2666,6 +2673,37 @@ async function loadFreestyleBeats(): Promise<FreestyleBeat[]> {
     });
   } catch {
     return FREESTYLE_BEATS;
+  }
+}
+
+// Costruisce round "sagoma → indovina il cantante" dai game_media_slots
+// (gameSlug=saramusica-silhouettes, value=imageUrl, label=nome cantante).
+// Randomizza sagome e risposte multiple (corretta + 3 distrattori).
+async function buildSilhouetteRounds(maxRounds: number): Promise<MusicRound[]> {
+  try {
+    const slots = await db.select().from(gameMediaSlotsTable)
+      .where(eq(gameMediaSlotsTable.gameSlug, "saramusica-silhouettes"));
+    const pool = slots.filter(s => s.value && s.label).map(s => ({ url: s.value, name: s.label! }));
+    if (pool.length < 4) return []; // servono almeno 4 nomi per la risposta multipla
+    const chosen = shuffleArr(pool).slice(0, Math.min(maxRounds, pool.length));
+    return chosen.map((sil, i) => {
+      const distractors = shuffleArr(pool.filter(p => p.name !== sil.name)).slice(0, 3).map(p => p.name);
+      const answers = shuffleArr([sil.name, ...distractors]);
+      return {
+        id: `sil-${i}`,
+        type: "silhouette_guess",
+        theme: "sagome",
+        question: "Quale cantante famoso è questa sagoma?",
+        answers,
+        correctAnswerIndex: answers.indexOf(sil.name),
+        artist: sil.name,
+        points: 120,
+        timeLimit: 18,
+        silhouetteUrl: sil.url,
+      } as MusicRound;
+    });
+  } catch {
+    return [];
   }
 }
 
