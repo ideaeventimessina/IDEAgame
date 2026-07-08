@@ -2266,14 +2266,14 @@ function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, bal
   // FIX: version=3 check MUST come before mode-based routing (mode is still 'home-karaoke' even for new system)
   const ks = _ks_probe;
   if (session.gameSlug === 'karaoke-battle' && ks?.version === 3) {
-    const karaokeShowQR = ks.karaokePhase === 'queue_open' || ks.karaokePhase === 'playing'
-      || ks.karaokePhase === 'voting' || ks.karaokePhase === 'transition';
+    // QR "saldato": sempre visibile per tutta la fase karaoke, così si può
+    // entrare e prenotare in qualsiasi momento.
     const karaokeJoinUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}${(import.meta.env.BASE_URL as string ?? '/')}home/join?s=${session.joinCode}`
       .replace(/([^:])\/\//g, '$1/');
     return (
       <>
         <KaraokeLiveBoard sessionId={session.id} state={ks} players={players} />
-        {karaokeShowQR && <KaraokeQROverlay joinUrl={karaokeJoinUrl} />}
+        <KaraokeQROverlay joinUrl={karaokeJoinUrl} />
       </>
     );
   }
@@ -7017,7 +7017,6 @@ function HomeSessionQROverlay({ joinCode }: { joinCode: string }) {
 }
 
 function KaraokeQROverlay({ joinUrl }: { joinUrl: string }) {
-  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&bgcolor=0d0600&color=FB923C&data=${encodeURIComponent(joinUrl)}`;
   return (
     <div style={{
       position: 'fixed', top: 14, right: 14, zIndex: 99999,
@@ -7027,7 +7026,9 @@ function KaraokeQROverlay({ joinUrl }: { joinUrl: string }) {
       backdropFilter: 'blur(14px)', pointerEvents: 'none',
       boxShadow: '0 4px 32px rgba(0,0,0,0.7), 0 0 0 1px rgba(251,146,60,0.2)',
     }}>
-      <img src={qrSrc} alt="" style={{ width: 96, height: 96, borderRadius: 10, imageRendering: 'pixelated', display: 'block' }} />
+      <div style={{ background: '#fff', borderRadius: 10, padding: 6, lineHeight: 0 }}>
+        <QRCodeSVG value={joinUrl} size={96} bgColor="#ffffff" fgColor="#0d0600" level="M" />
+      </div>
       <div style={{ color: 'rgba(251,146,60,0.98)', fontSize: 10, fontWeight: 900,
         textAlign: 'center', letterSpacing: '0.06em', textTransform: 'uppercase', lineHeight: 1.5 }}>
         Scansiona e<br/>prenotati ora
