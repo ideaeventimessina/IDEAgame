@@ -7,7 +7,7 @@ export const POSITIVE_REACTIONS = ["❤️", "🔥", "👏", "😍"] as const;
 export const NEGATIVE_REACTIONS = ["😂", "😬", "💀", "🙉"] as const;
 export const ALL_REACTIONS = [...POSITIVE_REACTIONS, ...NEGATIVE_REACTIONS];
 
-export const DURATION_OPTIONS = [15, 30, 45, 60, 90, 120] as const;
+export const DURATION_OPTIONS = [15, 30, 45, 60, 90, 120, 180, 240] as const;
 
 export interface KaraokePlayer {
   id: string; nickname: string; avatarColor: string; score: number;
