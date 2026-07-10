@@ -819,6 +819,17 @@ export default function LivePresenter() {
               : <ShowBtn cmd="pause"  emoji="⏸" label="PAUSA"    color="#F59E0B" loading={cmdLoading === 'pause'} onSend={sendCommand} />}
             {/* BLACKOUT */}
             <ShowBtn cmd="blackout" emoji="⬛" label="BLACKOUT" color="#EF4444" loading={cmdLoading === 'blackout'} onSend={sendCommand} />
+            {/* AGGIUNGI TEMPO — solo regia/presenter */}
+            <button onClick={() => void sendCommand('add_time', { seconds: 15 })} disabled={cmdLoading === 'add_time'}
+              style={{ padding: '16px 8px', background: 'rgba(52,211,153,0.15)', border: '1.5px solid rgba(52,211,153,0.5)', borderRadius: 12, color: '#6EE7B7', fontWeight: 900, fontSize: '0.84rem', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
+              <span style={{ fontSize: '1.2rem' }}>⏱️</span>
+              <span style={{ fontSize: '0.7rem' }}>+15 SECONDI</span>
+            </button>
+            <button onClick={() => void sendCommand('add_time', { seconds: 30 })} disabled={cmdLoading === 'add_time'}
+              style={{ padding: '16px 8px', background: 'rgba(52,211,153,0.10)', border: '1.5px solid rgba(52,211,153,0.35)', borderRadius: 12, color: '#6EE7B7', fontWeight: 900, fontSize: '0.84rem', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
+              <span style={{ fontSize: '1.2rem' }}>⏱️</span>
+              <span style={{ fontSize: '0.7rem' }}>+30 SECONDI</span>
+            </button>
             {/* AUDIO TOGGLE — single stateful button */}
             <button
               onClick={async () => {

@@ -33,6 +33,7 @@ import {
 import { type AuthedRequest, requireAuth } from "../middlewares/auth";
 import { emitToRoom } from "../socket";
 import { logger } from "../lib/logger";
+import { applyHomeAddTime } from "./home";
 
 const router: IRouter = Router();
 
@@ -320,7 +321,7 @@ const VALID_COMMANDS = [
   "start_game", "pause", "resume", "next_phase", "force_reveal", "force_ranking",
   "blackout", "standby_logo", "stop_audio", "toggle_audio", "set_audio_muted", "trigger_media",
   "override_timer", "override_score", "toggle_voting", "toggle_ai", "force_next_round",
-  "set_home_session",
+  "set_home_session", "add_time",
 ] as const;
 
 router.post("/live-sessions/:id/command", async (req: Request, res: Response): Promise<void> => {
@@ -357,6 +358,12 @@ router.post("/live-sessions/:id/command", async (req: Request, res: Response): P
     const existing = (current?.payload as Record<string, unknown>) ?? {};
     stateUpdate = { payload: { ...existing, homeSessionId: homeSessionId ?? null } };
     logger.info({ sessionId: session.id, homeSessionId }, "[LiveCommand] set_home_session");
+  } else if (command === "add_time") {
+    // Solo Regia/Presenter: aggiunge secondi al countdown della home session collegata.
+    const seconds = Number((payload as { seconds?: number })?.seconds ?? 15);
+    const st = await getState(session.id);
+    const hid = (st?.payload as Record<string, unknown> | null)?.["homeSessionId"] as string | undefined;
+    if (hid) await applyHomeAddTime(hid, seconds).catch(() => {});
   }
 
   if (Object.keys(stateUpdate).length > 0) {

@@ -1019,7 +1019,9 @@ export default function HomeGame() {
     const u17 = on<{ queue: unknown[] }>('home:chat_tv_queue_update', (d) => {
       setTvChatQueue(d.queue as TvChatMsg[]);
     });
-    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); u10?.(); u11?.(); u12?.(); u13?.(); u14?.(); u15?.(); u16?.(); u17?.(); };
+    // Secondi aggiuntivi da Regia/Presenter → estende il countdown + mostra "+Ns" verde
+    const u18 = on<{ seconds: number }>('home:add_time', (d) => addTimerSeconds(Number(d.seconds ?? 15)));
+    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); u10?.(); u11?.(); u12?.(); u13?.(); u14?.(); u15?.(); u16?.(); u17?.(); u18?.(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [on]);
 
@@ -1129,6 +1131,11 @@ export default function HomeGame() {
     }
     setAddTimeFlash({ id: Date.now(), seconds: n });
   }, []);
+  useEffect(() => {
+    if (!addTimeFlash) return;
+    const t = setTimeout(() => setAddTimeFlash(null), 1500);
+    return () => clearTimeout(t);
+  }, [addTimeFlash]);
 
   useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
 
@@ -1427,6 +1434,7 @@ export default function HomeGame() {
         @keyframes hgFloat { 0%,100%{transform:translateY(0px) rotate(-1deg)} 50%{transform:translateY(-14px) rotate(1deg)} }
         @keyframes hgBlink { 0%,100%{opacity:1} 50%{opacity:0.3} }
         @keyframes hgSlideUp { from{opacity:0;transform:translateY(30px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes hgAddTime { 0%{opacity:0;transform:translateX(-50%) translateY(10px) scale(0.8)} 20%{opacity:1;transform:translateX(-50%) translateY(0) scale(1.1)} 100%{opacity:0;transform:translateX(-50%) translateY(-70px) scale(1)} }
         .hg-pulse{animation:hgPulse 2.8s ease infinite}
         .hg-float{animation:hgFloat 4s ease-in-out infinite}
         .hg-blink{animation:hgBlink 1.4s ease infinite}
@@ -1443,6 +1451,16 @@ export default function HomeGame() {
 
       {/* ── Ballo: video YouTube di sottofondo durante i round energia ── */}
       {phase === 'playing' && balloActive && balloVideo && <BalloVideoBg videoId={balloVideo.videoId} />}
+
+      {/* ── +Ns verde (Regia/Presenter ha aggiunto tempo) — sale e sfuma ── */}
+      {addTimeFlash && (
+        <div key={addTimeFlash.id} className="pointer-events-none fixed left-1/2 top-16 z-[9997]"
+          style={{ transform: 'translateX(-50%)', animation: 'hgAddTime 1.5s ease-out forwards' }}>
+          <div className="text-6xl font-black" style={{ color: '#34D399', textShadow: '0 0 30px rgba(52,211,153,0.7)', fontFamily: "'Outfit','Arial Black',sans-serif" }}>
+            +{addTimeFlash.seconds}s
+          </div>
+        </div>
+      )}
 
       {/* ── Live remote: overlay PAUSA (comandato da Presenter/Regia) ── */}
       {paused && (

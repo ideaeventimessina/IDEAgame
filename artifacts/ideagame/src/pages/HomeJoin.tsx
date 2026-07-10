@@ -129,6 +129,7 @@ function HomeJoinInner() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
+  const [addTimeFlash, setAddTimeFlash] = useState<{ id: number; seconds: number } | null>(null);
   const [answered, setAnswered] = useState<number | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [wordbackSolved, setWordbackSolved] = useState(false);
@@ -703,10 +704,21 @@ function HomeJoinInner() {
       if (d.playerId === playerRef.current?.id) setChatDndEnabled(d.dnd);
     });
 
-    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); u10?.(); u11?.(); u12?.(); u13Phone?.(); uChat1?.(); uChat2?.(); uChat3?.(); };
+    // Regia/Presenter ha aggiunto tempo → flash "+Ns" verde (il timer si riallinea da home:state)
+    const uAddTime = on<{ seconds: number }>('home:add_time', (d) => {
+      setAddTimeFlash({ id: Date.now(), seconds: Number(d.seconds ?? 15) });
+    });
+
+    return () => { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); u6?.(); u7?.(); u8?.(); u9?.(); u10?.(); u11?.(); u12?.(); u13Phone?.(); uChat1?.(); uChat2?.(); uChat3?.(); uAddTime?.(); };
   // Only re-register when the socket `on` function changes (new connection)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [on]);
+
+  useEffect(() => {
+    if (!addTimeFlash) return;
+    const t = setTimeout(() => setAddTimeFlash(null), 1500);
+    return () => clearTimeout(t);
+  }, [addTimeFlash]);
 
   const startTimer = useCallback((seconds: number) => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -1020,9 +1032,20 @@ function HomeJoinInner() {
         @keyframes hjAurora { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
         @keyframes hjPulse { 0%,100%{box-shadow:0 0 20px var(--ac,#F5B642)} 50%{box-shadow:0 0 40px var(--ac,#F5B642)} }
         @keyframes hjFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+        @keyframes hjAddTime { 0%{opacity:0;transform:translateX(-50%) translateY(10px) scale(0.8)} 20%{opacity:1;transform:translateX(-50%) translateY(0) scale(1.1)} 100%{opacity:0;transform:translateX(-50%) translateY(-60px) scale(1)} }
         .hj-ring{animation:hjPulse 2.5s ease infinite}
         .hj-float{animation:hjFloat 3s ease-in-out infinite}
       `}</style>
+
+      {/* +Ns verde (Regia/Presenter ha aggiunto tempo) */}
+      {addTimeFlash && (
+        <div key={addTimeFlash.id} className="pointer-events-none fixed left-1/2 top-24 z-[9997]"
+          style={{ transform: 'translateX(-50%)', animation: 'hjAddTime 1.5s ease-out forwards' }}>
+          <div style={{ fontSize: '3.5rem', fontWeight: 900, color: '#34D399', textShadow: '0 0 24px rgba(52,211,153,0.7)' }}>
+            +{addTimeFlash.seconds}s
+          </div>
+        </div>
+      )}
 
 
       {/* ── Messaggi Segreti: floating ✉️ button ── */}

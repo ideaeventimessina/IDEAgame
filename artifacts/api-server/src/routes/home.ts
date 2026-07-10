@@ -2707,6 +2707,40 @@ async function buildSilhouetteRounds(maxRounds: number): Promise<MusicRound[]> {
   }
 }
 
+// Aggiunge secondi al countdown del round corrente (solo Regia/Presenter, via
+// live command add_time). Estende il timestamp autoritativo giusto per gioco e
+// riemette lo stato così TV e telefoni si risincronizzano; emette home:add_time
+// per l'animazione "+Ns".
+export async function applyHomeAddTime(sessionId: string, seconds: number): Promise<boolean> {
+  const s = await getSession(sessionId);
+  if (!s) return false;
+  const rp = { ...((s.roundPayload ?? {}) as Record<string, unknown>) };
+  const mode = String(rp["mode"] ?? "");
+  const addMs = Math.max(1, seconds) * 1000;
+
+  if ((mode === "home-quizzone" || mode === "home-saramusica") && rp["phase"] === "question" && rp["questionEndsAt"]) {
+    const newEndsMs = new Date(String(rp["questionEndsAt"])).getTime() + addMs;
+    rp["questionEndsAt"] = new Date(newEndsMs).toISOString();
+    await db.update(homeSessionsTable).set({ roundPayload: rp }).where(eq(homeSessionsTable.id, sessionId));
+    const idx = Number(rp["currentIndex"] ?? 0);
+    if (mode === "home-quizzone") scheduleQzAutoReveal(sessionId, idx, newEndsMs);
+    else scheduleSmAutoReveal(sessionId, idx, newEndsMs);
+  } else {
+    // Generico (ballo/karaoke/percorso…): estende roundEndsAt (il telefono lo legge per primo).
+    const base = rp["roundEndsAt"]
+      ? new Date(String(rp["roundEndsAt"])).getTime()
+      : rp["roundStartedAt"]
+        ? new Date(String(rp["roundStartedAt"])).getTime() + Number(rp["timeLimit"] ?? 0) * 1000
+        : Date.now() + Number(rp["timeLimit"] ?? 0) * 1000;
+    rp["roundEndsAt"] = new Date(base + addMs).toISOString();
+    await db.update(homeSessionsTable).set({ roundPayload: rp }).where(eq(homeSessionsTable.id, sessionId));
+  }
+
+  await broadcastState(sessionId);
+  emitToRoom(homeRoom(sessionId), "home:add_time", { seconds });
+  return true;
+}
+
 // ── POST /home/sessions/:id/ballo/set-video ───────────────────────────────────
 // Il prescelto (Home) o il presentatore (Live) sceglie il brano YouTube di
 // sottofondo per il Ballo. Salvato in gameConfig.balloVideo così persiste nei round.
