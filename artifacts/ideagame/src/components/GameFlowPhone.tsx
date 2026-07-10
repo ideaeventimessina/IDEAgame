@@ -253,6 +253,7 @@ export function GameFlowPhone({
           sensorReady: sensorReadyResult,
         });
       }
+      if (res.ok && action === 'book') (window as any).MC?.event?.("prenotazione"); // Mission Control: conversione
     } finally { setBooking(false); }
   }
 
