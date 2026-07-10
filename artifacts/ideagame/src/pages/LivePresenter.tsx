@@ -1083,6 +1083,32 @@ function QuizLivePanel({ homeSessionId, onClose }: { homeSessionId: string; onCl
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [suggestions, setSuggestions] = useState<{ text: string; count: number; nicks: string[] }[]>([]);
+
+  // Il quizzone è già stato avviato (select_game dalla griglia) → siamo in setup_theme.
+  // Poll dei suggerimenti tema che i giocatori mandano dal telefono.
+  useEffect(() => {
+    let stop = false;
+    const poll = () => {
+      liveApi<{ session?: { roundPayload?: { quizSuggestions?: { playerId: string; nickname: string; text: string }[] } } }>(`/home/sessions/${homeSessionId}`)
+        .then(d => {
+          if (stop) return;
+          const raw = d.session?.roundPayload?.quizSuggestions ?? [];
+          const counts: Record<string, { text: string; count: number; nicks: string[] }> = {};
+          for (const s of raw) {
+            const k = s.text.trim().toLowerCase();
+            if (!counts[k]) counts[k] = { text: s.text, count: 0, nicks: [] };
+            counts[k]!.count++;
+            if (!counts[k]!.nicks.includes(s.nickname)) counts[k]!.nicks.push(s.nickname);
+          }
+          setSuggestions(Object.values(counts).sort((a, b) => b.count - a.count).slice(0, 8));
+        })
+        .catch(() => {});
+    };
+    poll();
+    const t = setInterval(poll, 2500);
+    return () => { stop = true; clearInterval(t); };
+  }, [homeSessionId]);
 
   async function generateAndStart() {
     if (!topic.trim()) return;
@@ -1092,8 +1118,7 @@ function QuizLivePanel({ homeSessionId, onClose }: { homeSessionId: string; onCl
       if (visibleInHome) {
         await liveApi(`/game-content-packs/generate`, { gameSlug: 'quizzone', themeName: topic.trim(), difficulty, count }).catch(() => {});
       }
-      // 2. Avvia il quizzone sulla home session con questo argomento (generazione al volo)
-      await liveApi(`/home/sessions/${homeSessionId}/select-game`, { gameSlug: 'quizzone' }).catch(() => {});
+      // 2. Il quizzone è già avviato (setup_theme): imposta il tema e genera al volo.
       await liveApi(`/home/sessions/${homeSessionId}/quiz/select-theme`, { themeId: topic.trim() });
       await liveApi(`/home/sessions/${homeSessionId}/quiz/select-count`, { count, difficulty });
       setDone(true);
@@ -1116,6 +1141,27 @@ function QuizLivePanel({ homeSessionId, onClose }: { homeSessionId: string; onCl
             <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'rgba(255,255,255,0.5)', marginBottom: 6 }}>ARGOMENTO</div>
             <input value={topic} onChange={e => setTopic(e.target.value)} placeholder="Es. Musica anni '90, Storia romana, Calcio..." autoFocus
               style={{ width: '100%', padding: '12px 14px', borderRadius: 12, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', fontWeight: 600, fontSize: '1rem' }} />
+          </div>
+
+          {/* Suggerimenti dei giocatori dal telefono → clicca per riempire la barra */}
+          <div>
+            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'rgba(255,255,255,0.5)', marginBottom: 6 }}>
+              💬 PROPOSTE DEI GIOCATORI {suggestions.length > 0 ? `(${suggestions.length})` : '— in attesa dal telefono…'}
+            </div>
+            {suggestions.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {suggestions.map(s => (
+                  <button key={s.text} onClick={() => setTopic(s.text)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 999,
+                      background: topic.trim().toLowerCase() === s.text.trim().toLowerCase() ? '#60A5FA' : 'rgba(96,165,250,0.15)',
+                      color: topic.trim().toLowerCase() === s.text.trim().toLowerCase() ? '#0a0820' : '#93C5FD',
+                      border: '1px solid rgba(96,165,250,0.45)', fontWeight: 800, fontSize: '0.85rem', cursor: 'pointer' }}>
+                    {s.text}
+                    {s.count > 1 && <span style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 999, padding: '0 6px', fontSize: '0.7rem' }}>×{s.count}</span>}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <div>
             <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'rgba(255,255,255,0.5)', marginBottom: 6 }}>DIFFICOLTÀ</div>
