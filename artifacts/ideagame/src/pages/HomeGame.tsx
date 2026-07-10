@@ -569,6 +569,10 @@ export default function HomeGame() {
   const [showRanking, setShowRanking] = useState(false);
   // Ballo: brano YouTube di sottofondo scelto dal prescelto/presentatore
   const balloVideoRef = useRef<{ videoId: string; title: string } | null>(null);
+  // Timer autoritativo: chiave del round in corso + istante di fine (ms epoch)
+  const timerKeyRef = useRef<string>('');
+  const timerEndsAtRef = useRef<number>(0);
+  const [addTimeFlash, setAddTimeFlash] = useState<{ id: number; seconds: number } | null>(null);
   const [selectingGame, setSelectingGame] = useState<string | null>(null);
   const [jonnyMood, setJonnyMood] = useState<'idle' | 'excited' | 'thinking' | 'winner' | 'scoreboard' | 'correct'>('excited');
   const [jonnyMsg, setJonnyMsg] = useState('Benvenuti a JONNY\'S WORLD!');
@@ -861,7 +865,7 @@ export default function HomeGame() {
         setBalloEnergies({});
         setBalloCurrent({});
         setBalloResult(null);
-        startTimer(Number(d.session.roundPayload?.timeLimit ?? 15));
+        startTimer(Number(d.session.roundPayload?.timeLimit ?? 15), String(d.session.roundPayload?.roundStartedAt ?? 'ballo'));
         AudioManager.stopLoop(true);
         const hasBalloVideo = !!((d.session.gameConfig as Record<string, unknown> | undefined)?.balloVideo);
         if (!hasBalloVideo) void AudioManager.playLoop('sfida-ballo', 'round_loop');
@@ -897,7 +901,7 @@ export default function HomeGame() {
         _log('[HomeAudioFlow] home:game_started flow — skipping timer+audio, phase=theme_select');
         return;
       }
-      startTimer(Number(d.payload?.timeLimit ?? 30));
+      startTimer(Number(d.payload?.timeLimit ?? 30), String(d.payload?.roundStartedAt ?? `gs${d.session.currentRound}`));
       _log('[AudioTrace] home:game_started — stopLoop then playLoop', { slug: d.session.gameSlug ?? 'global', type: 'round_loop' });
       AudioManager.stopLoop(true);
       void AudioManager.playLoop(d.session.gameSlug ?? 'global', 'round_loop');
@@ -913,7 +917,7 @@ export default function HomeGame() {
       setBalloCurrent({});
       setBalloResult(null);
       setBalloVotes({});
-      startTimer(Number(d.payload?.timeLimit ?? 30));
+      startTimer(Number(d.payload?.timeLimit ?? 30), String(d.payload?.roundStartedAt ?? `r${d.round}`));
       setJonnyMood('thinking');
       // Audio switch: covers both normal ballo AND flow→ballo transition
       if (roundMode === 'home-ballo') {
@@ -1080,7 +1084,7 @@ export default function HomeGame() {
           if (d.session.status === 'playing') {
             setPhase('playing');
             setRevealed(false);
-            startTimer(Number(d.session.roundPayload?.timeLimit ?? 30));
+            startTimer(Number(d.session.roundPayload?.timeLimit ?? 30), String(d.session.roundPayload?.roundStartedAt ?? `poll${d.session.currentRound}`));
           } else if (d.session.status === 'ended') {
             setPhase('champion');
           }
@@ -1092,20 +1096,38 @@ export default function HomeGame() {
   }, [phase, session?.id]);
 
   // ── Timer ────────────────────────────────────────────────────────────────────
-  const startTimer = useCallback((seconds: number) => {
+  // Timer autoritativo basato su un istante di fine. `key` identifica il round
+  // (di solito roundStartedAt): se il timer per la STESSA key è già in corso non
+  // viene resettato → niente più countdown che rimbalzano (30→20→30) quando
+  // socket/poll riconsegnano lo stesso round.
+  const startTimer = useCallback((seconds: number, key?: string) => {
+    const k = key ?? '';
+    if (k && k === timerKeyRef.current && timerRef.current) return;
+    timerKeyRef.current = k;
     if (timerRef.current) clearInterval(timerRef.current);
+    timerEndsAtRef.current = Date.now() + seconds * 1000;
     setTimeLeft(seconds);
-    let t = seconds;
-    timerRef.current = setInterval(() => {
-      if (pausedRef.current) return; // Live: pausa dal presentatore congela il countdown
-      t -= 1;
-      setTimeLeft(t);
-      if (t <= 0) {
-        clearInterval(timerRef.current!);
+    const tick = () => {
+      if (pausedRef.current) { timerEndsAtRef.current += 250; return; } // pausa: sposta la fine
+      const rem = Math.max(0, Math.ceil((timerEndsAtRef.current - Date.now()) / 1000));
+      setTimeLeft(rem);
+      if (rem <= 0) {
+        if (timerRef.current) clearInterval(timerRef.current);
         setRevealed(true);
         setJonnyMood('correct');
       }
-    }, 1000);
+    };
+    tick();
+    timerRef.current = setInterval(tick, 250);
+  }, []);
+
+  // Aggiunge secondi al countdown in corso (solo Regia/Presenter via home:add_time).
+  const addTimerSeconds = useCallback((n: number) => {
+    if (timerEndsAtRef.current) {
+      timerEndsAtRef.current += n * 1000;
+      setTimeLeft(Math.max(0, Math.ceil((timerEndsAtRef.current - Date.now()) / 1000)));
+    }
+    setAddTimeFlash({ id: Date.now(), seconds: n });
   }, []);
 
   useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
@@ -1293,7 +1315,7 @@ export default function HomeGame() {
       } else {
         setSession(d.session);
         setRevealed(false);
-        startTimer(Number(d.payload?.timeLimit ?? 30));
+        startTimer(Number(d.payload?.timeLimit ?? 30), String(d.payload?.roundStartedAt ?? `next${d.session.currentRound}`));
         setJonnyMood('thinking');
       }
     } finally { setLoading(false); }
