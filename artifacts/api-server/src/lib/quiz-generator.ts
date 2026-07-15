@@ -407,7 +407,9 @@ export async function generateQuizAsync(
   if (!hasBank) {
     const themeText = knownTheme ? knownTheme.label : themeId;
     try {
-      const aiQuestions = await generateQuizQuestionsAI(themeText, count, difficulty);
+      // Chiedi qualche domanda in più: l'AI ne scarta alcune in validazione, così
+      // restiamo comunque vicini al numero richiesto (es. 20 e non 16).
+      const aiQuestions = await generateQuizQuestionsAI(themeText, count + 4, difficulty);
       if (aiQuestions.length >= Math.min(count, 3)) {
         return aiQuestions.slice(0, count);
       }

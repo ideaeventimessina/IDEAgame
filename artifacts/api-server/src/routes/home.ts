@@ -1444,6 +1444,10 @@ router.post("/home/sessions/:id/quiz/select-count", async (req, res): Promise<vo
           setTimeout(async () => {
             const firstQ = questions[0];
             const firstEndsAt = Date.now() + (firstQ?.timeLimit ?? 15) * 1000;
+            // Il totale deve essere il numero REALE di domande generate, non quello
+            // richiesto: se l'AI ne produce meno, il contatore resta coerente
+            // (niente più "16/20" con chiusura anticipata).
+            const realCount = questions.length;
             await qzUpdate(id, {
               phase: "question",
               currentIndex: 0,
@@ -1455,11 +1459,12 @@ router.post("/home/sessions/:id/quiz/select-count", async (req, res): Promise<vo
               answeredCount: 0,
               revealData: null,
               rankingData: null,
-              totalRounds: questionCount,
+              questionCount: realCount,
+              totalRounds: realCount,
             });
             scheduleQzAutoReveal(id, 0, firstEndsAt);
             await db.update(homeSessionsTable)
-              .set({ totalRounds: questionCount, currentRound: 0 })
+              .set({ totalRounds: realCount, currentRound: 0 })
               .where(eq(homeSessionsTable.id, id));
             logger.info({ sessionId: id, firstQ: firstQ?.type }, "[QuizzoneHome] first question ready");
           }, 1200);
@@ -1483,7 +1488,9 @@ router.post("/home/sessions/:id/quiz/answer", async (req, res): Promise<void> =>
   if (rp["mode"] !== "home-quizzone") { res.status(409).json({ error: "Non in modalità quizzone" }); return; }
   if (rp["phase"] !== "question") { res.status(409).json({ error: "Non in fase domanda" }); return; }
   const qEndsAt = rp["questionEndsAt"] as string | undefined;
-  if (qEndsAt && Date.now() > new Date(qEndsAt).getTime()) {
+  // +2s di tolleranza per la latenza di rete: una risposta inviata in tempo ma
+  // arrivata appena dopo lo scadere non deve risultare "sbagliata".
+  if (qEndsAt && Date.now() > new Date(qEndsAt).getTime() + 2000) {
     res.status(409).json({ error: "Tempo scaduto", code: "time_expired" }); return;
   }
   const currentIndex = Number(rp["currentIndex"] ?? 0);
@@ -1757,7 +1764,9 @@ router.post("/home/sessions/:id/saramusica/answer", async (req, res): Promise<vo
   if (rp["mode"] !== "home-saramusica") { res.status(409).json({ error: "Non in modalità saramusica" }); return; }
   if (rp["phase"] !== "question") { res.status(409).json({ error: "Non in fase domanda" }); return; }
   const qEndsAt = rp["questionEndsAt"] as string | undefined;
-  if (qEndsAt && Date.now() > new Date(qEndsAt).getTime()) {
+  // +2s di tolleranza per la latenza di rete: una risposta inviata in tempo ma
+  // arrivata appena dopo lo scadere non deve risultare "sbagliata".
+  if (qEndsAt && Date.now() > new Date(qEndsAt).getTime() + 2000) {
     res.status(409).json({ error: "Tempo scaduto", code: "time_expired" }); return;
   }
   const currentIndex = Number(rp["currentIndex"] ?? 0);
