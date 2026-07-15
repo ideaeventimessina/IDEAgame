@@ -379,7 +379,14 @@ export async function generateSaraMusicaRounds(themeId: string, count: number, d
   try {
     const rounds = await generateSaraMusicaRoundsAI(themeId, count, difficulty);
     if (!Array.isArray(rounds) || rounds.length === 0) throw new Error("AI returned empty");
-    logger.info({ themeId, count, difficulty, generated: rounds.length }, "[JONNY_SARAMUSICA_AI] success");
+    // SaraMusica DEVE avere clip musicali da far suonare/cantare. L'AI non produce
+    // youtubeClip affidabili → se mancano, usa il banco statico (clip reali curate).
+    const withClips = rounds.filter(r => r.youtubeClip?.youtubeId).length;
+    if (withClips < Math.ceil(rounds.length / 2)) {
+      logger.warn({ themeId, withClips, total: rounds.length }, "[JONNY_SARAMUSICA_AI] round AI senza clip → uso banco con clip reali");
+      return generateSaraMusicaFallback(themeId, count, difficulty);
+    }
+    logger.info({ themeId, count, difficulty, generated: rounds.length, withClips }, "[JONNY_SARAMUSICA_AI] success");
     return rounds;
   } catch (err) {
     logger.warn({ err, themeId, count, difficulty }, "[JONNY_SARAMUSICA_AI] fallback");

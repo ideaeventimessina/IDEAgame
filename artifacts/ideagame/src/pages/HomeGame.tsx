@@ -4073,10 +4073,11 @@ function BalloVideoBg({ videoId }: { videoId: string }) {
   );
 }
 
-function YTClipPlayer({ clip, roundIndex, sessionId }: {
+function YTClipPlayer({ clip, roundIndex, sessionId, autoStart }: {
   clip: { youtubeId: string; startSecond: number; durationSeconds: number; clipType: string };
   roundIndex: number;
   sessionId: string;
+  autoStart?: boolean;
 }) {
   const SM = '#60A5FA';
   const containerId = `yt-clip-${roundIndex}-${clip.youtubeId.slice(0, 8)}`;
@@ -4141,6 +4142,17 @@ function YTClipPlayer({ clip, roundIndex, sessionId }: {
       setStatus('error');
     }
   };
+
+  // Reveal: prova a far partire il ritornello da sola (l'audio è già sbloccato sulla TV).
+  // Se il browser blocca l'autoplay, resta il pulsante per farlo partire a mano.
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (autoStart && !autoStartedRef.current) {
+      autoStartedRef.current = true;
+      void startClip();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart]);
 
   const badge = CLIP_BADGES[clip.clipType] ?? { emoji: '🎵', label: 'CLIP MUSICALE' };
   const pct   = clip.durationSeconds > 0 ? Math.min(elapsed / clip.durationSeconds, 1) : 0;
@@ -4544,6 +4556,20 @@ function SaraMusicaBoard({ payload, session, players }: {
           <div className="text-display text-3xl font-black text-white">{currentQ.answers[correctIdx]}</div>
           {currentQ.explanation && <div className="text-white/50 text-sm mt-2 italic">{currentQ.explanation}</div>}
         </motion.div>
+
+        {/* 🎤 CANTA! — il ritornello parte da solo, tutti cantano ────────────── */}
+        {currentQ.youtubeClip?.youtubeId && (
+          <div className="rounded-3xl p-4" style={{ background: 'rgba(96,165,250,0.10)', border: '2px solid rgba(96,165,250,0.45)' }}>
+            <div className="mb-2 text-center text-lg font-black" style={{ color: SM }}>🎤 CANTATE TUTTI INSIEME!</div>
+            <YTClipPlayer
+              key={`reveal-${currentIndex}`}
+              clip={{ ...currentQ.youtubeClip, durationSeconds: Math.max(20, currentQ.youtubeClip.durationSeconds), clipType: 'chorus_guess' }}
+              roundIndex={1000 + currentIndex}
+              sessionId={String(session.id ?? '')}
+              autoStart
+            />
+          </div>
+        )}
 
         <div className={currentQ.type === 'song_vs_song' ? 'flex gap-4' : 'grid grid-cols-2 gap-3'}>
           {currentQ.answers.map((ans, i) => {
