@@ -549,6 +549,9 @@ export default function HomeGame() {
   const urlParams = new URLSearchParams(window.location.search);
   const urlSessionId = urlParams.get('s');
   const liveCode = urlParams.get('live') ?? '';
+  // Mini-schermo di controllo del presenter (?mute=1): nessun audio, così in Live
+  // non si accavalla col proiettore. L'audio esce solo dalla TV.
+  const isMuted = urlParams.get('mute') === '1';
 
   // No sessionId → redirect to home-v4 (generic entry); sessionId present → wait for load effect
   const [phase, setPhase] = useState<Phase>('board');
@@ -585,6 +588,8 @@ export default function HomeGame() {
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [audioWarning, setAudioWarning] = useState(false);
   const { audioEnabled, setAudioEnabled } = useAudioSettings();
+  // Mirror muto: silenzia l'AudioManager all'avvio (l'audio esce solo dal proiettore)
+  useEffect(() => { if (isMuted) { setAudioEnabled(false); AudioManager.stopLoop(true); } }, [isMuted, setAudioEnabled]);
   const [postGame, setPostGame] = useState<{gameSlug:string;players:HomePlayer[]}|null>(null);
   const [balloEnergies, setBalloEnergies] = useState<Record<string, number>>({});     // peak — for winner/sorting
   const [balloCurrent, setBalloCurrent]   = useState<Record<string, number>>({});     // current live — for bars
@@ -7070,21 +7075,21 @@ function HomeSessionQROverlay({ joinCode }: { joinCode: string }) {
   const joinUrl = `${window.location.origin}/home/join?s=${joinCode}`;
   return (
     <div style={{
-      position: 'fixed', top: 18, right: 18, zIndex: 99999,
-      background: 'rgba(7,6,26,0.94)', border: '2px solid rgba(245,182,66,0.6)',
-      borderRadius: 20, padding: '16px 18px',
-      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+      position: 'fixed', top: '50%', left: 16, transform: 'translateY(-50%)', zIndex: 99999,
+      background: 'rgba(7,6,26,0.9)', border: '2px solid rgba(245,182,66,0.55)',
+      borderRadius: 16, padding: '10px 12px',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
       backdropFilter: 'blur(14px)', pointerEvents: 'none',
-      boxShadow: '0 6px 40px rgba(0,0,0,0.7), 0 0 0 1px rgba(245,182,66,0.18)',
+      boxShadow: '0 6px 30px rgba(0,0,0,0.6), 0 0 0 1px rgba(245,182,66,0.15)',
     }}>
-      <div style={{ background: '#fff', borderRadius: 14, padding: 10, lineHeight: 0 }}>
-        <QRCodeSVG value={joinUrl} size={168} bgColor="#ffffff" fgColor="#07061a" level="M" />
+      <div style={{ background: '#fff', borderRadius: 10, padding: 7, lineHeight: 0 }}>
+        <QRCodeSVG value={joinUrl} size={118} bgColor="#ffffff" fgColor="#07061a" level="M" />
       </div>
-      <div style={{ color: '#F5B642', fontSize: 15, fontWeight: 900,
-        textAlign: 'center', letterSpacing: '0.06em', textTransform: 'uppercase', lineHeight: 1.3 }}>
-        Inquadra<br/>per giocare
+      <div style={{ color: '#F5B642', fontSize: 11, fontWeight: 900,
+        textAlign: 'center', letterSpacing: '0.05em', textTransform: 'uppercase', lineHeight: 1.25 }}>
+        Inquadra per giocare
       </div>
-      <div style={{ color: '#fff', fontSize: 20, textAlign: 'center', fontWeight: 900, letterSpacing: '0.14em', fontFamily: 'monospace' }}>
+      <div style={{ color: '#fff', fontSize: 15, textAlign: 'center', fontWeight: 900, letterSpacing: '0.12em', fontFamily: 'monospace' }}>
         {joinCode}
       </div>
     </div>

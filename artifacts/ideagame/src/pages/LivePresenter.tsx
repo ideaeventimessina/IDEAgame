@@ -1051,7 +1051,9 @@ interface LiveSong { videoId: string; title: string; channel: string; thumbnailU
 // rivela, scelta tema…) che già funzionano. Stessa home session della TV →
 // ogni tocco qui comanda anche il proiettore.
 function ControlMirror({ homeSessionId, onClose }: { homeSessionId: string; onClose: () => void }) {
-  const src = `${BASE}home?s=${homeSessionId}`.replace(/([^:])\/\//g, '$1/');
+  // mute=1: il mini-schermo è una superficie di comando → niente audio
+  // (l'audio esce solo dal proiettore, così non si accavalla in Live).
+  const src = `${BASE}home?s=${homeSessionId}&mute=1`.replace(/([^:])\/\//g, '$1/');
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 600, background: '#07061a', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(168,85,247,0.15)' }}>
