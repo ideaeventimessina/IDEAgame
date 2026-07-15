@@ -130,6 +130,8 @@ export default function LivePresenter() {
   // Ballo Live (presenter sceglie il brano) + Quizzone Live (genera argomento)
   const [balloPickerOpen, setBalloPickerOpen] = useState(false);
   const [quizPanelOpen, setQuizPanelOpen]     = useState(false);
+  // Mini-schermo di controllo: copia interattiva della Home runtime (tutti i tasti)
+  const [mirrorOpen, setMirrorOpen] = useState(false);
 
   const socketRef       = useRef(getSocket());
   const cameraInputRef  = useRef<HTMLInputElement>(null);
@@ -743,6 +745,15 @@ export default function LivePresenter() {
         </div>
 
         {/* ═══════════════════════════════════════════════════════════════════
+            SCHERMO DI CONTROLLO — copia interattiva della Home (tutti i tasti)
+        ═══════════════════════════════════════════════════════════════════ */}
+        <button onClick={() => setMirrorOpen(true)} disabled={!homeSessionId}
+          style={{ padding: '18px', borderRadius: 16, background: 'linear-gradient(135deg,#A855F7,#7C3AED)', border: 'none', color: '#fff', fontWeight: 900, fontSize: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, opacity: homeSessionId ? 1 : 0.4, boxShadow: '0 0 30px rgba(168,85,247,0.4)' }}>
+          🎛️ SCHERMO DI CONTROLLO
+          <span style={{ fontSize: '0.7rem', fontWeight: 700, opacity: 0.8 }}>ruota · avanti · tutti i tasti</span>
+        </button>
+
+        {/* ═══════════════════════════════════════════════════════════════════
             GAME LAUNCHER — filteredGames from home session config
         ═══════════════════════════════════════════════════════════════════ */}
         <div style={{ padding: '12px 14px', background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.3)', borderRadius: 14 }}>
@@ -785,6 +796,7 @@ export default function LivePresenter() {
         {/* Pannelli Live: Ballo (scegli brano) + Quizzone (genera argomento) */}
         {balloPickerOpen && homeSessionId && <BalloLivePicker homeSessionId={homeSessionId} onClose={() => setBalloPickerOpen(false)} />}
         {quizPanelOpen && homeSessionId && <QuizLivePanel homeSessionId={homeSessionId} onClose={() => setQuizPanelOpen(false)} />}
+        {mirrorOpen && homeSessionId && <ControlMirror homeSessionId={homeSessionId} onClose={() => setMirrorOpen(false)} />}
 
         {/* ═══════════════════════════════════════════════════════════════════
             FLOW CONTROLS — target home session
@@ -1034,6 +1046,29 @@ async function liveApi<T = unknown>(path: string, body?: unknown): Promise<T> {
 
 // ── Ballo Live: il presentatore sceglie il brano (video ufficiale) ───────────
 interface LiveSong { videoId: string; title: string; channel: string; thumbnailUrl: string; durationSeconds: number }
+// ── Schermo di controllo: copia interattiva della Home runtime ───────────────
+// Il presentatore tocca DIRETTAMENTE i controlli della Home (ruota, avanti,
+// rivela, scelta tema…) che già funzionano. Stessa home session della TV →
+// ogni tocco qui comanda anche il proiettore.
+function ControlMirror({ homeSessionId, onClose }: { homeSessionId: string; onClose: () => void }) {
+  const src = `${BASE}home?s=${homeSessionId}`.replace(/([^:])\/\//g, '$1/');
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 600, background: '#07061a', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(168,85,247,0.15)' }}>
+        <div style={{ fontSize: '0.8rem', fontWeight: 900, color: '#fff' }}>🎛️ Schermo di controllo <span style={{ fontWeight: 600, opacity: 0.7 }}>— tocca i tasti come sulla TV</span></div>
+        <button onClick={onClose} style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.12)', border: 'none', borderRadius: 10, color: '#fff', fontWeight: 800 }}>✕ Chiudi</button>
+      </div>
+      <iframe
+        key={homeSessionId}
+        src={src}
+        title="Schermo di controllo Home"
+        allow="autoplay; microphone; fullscreen"
+        style={{ flex: 1, width: '100%', border: 0 }}
+      />
+    </div>
+  );
+}
+
 function BalloLivePicker({ homeSessionId, onClose }: { homeSessionId: string; onClose: () => void }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<LiveSong[]>([]);
