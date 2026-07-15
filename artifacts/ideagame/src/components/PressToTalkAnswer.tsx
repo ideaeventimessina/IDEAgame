@@ -177,7 +177,7 @@ export default function PressToTalkAnswer({
     const srSupported    = !!getSR();
     const mediaSupported = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
 
-    const engine = b.isNonSafariIOS ? 'recordAndTranscribe'
+    const engine = b.isIOS && !srSupported ? 'recordAndTranscribe'
       : srSupported ? 'webSpeech'
       : 'textFallback';
 
@@ -409,7 +409,10 @@ export default function PressToTalkAnswer({
   useEffect(() => { onWrongRef.current = onWrong; }, [onWrong]);
   useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
   useEffect(() => { playerIdRef.current = playerId; }, [playerId]);
-  useEffect(() => { isChromeIOSRef.current = detectBrowser().isNonSafariIOS; }, []);
+  // Su TUTTO iOS (Safari incluso) attiva la registrazione + Whisper come fallback:
+  // il riconoscimento nativo di iOS è inaffidabile, così se non aggancia la parola
+  // ci pensa la trascrizione server-side. Su Safari il nativo resta il percorso veloce.
+  useEffect(() => { isChromeIOSRef.current = detectBrowser().isIOS; }, []);
 
   // ── getUserMedia permission bridge ────────────────────────────────────────
   // Must be called directly from the pointer-down gesture so the browser
