@@ -385,11 +385,11 @@ function HomeArenaClassifica({ players }:{ players: HomePlayer[] }) {
       style={{background:'rgba(12,4,32,0.82)',border:'1.5px solid rgba(255,255,255,0.11)',backdropFilter:'blur(12px)',boxShadow:'0 4px 40px rgba(0,0,0,0.6),inset 0 1px 0 rgba(255,255,255,0.08)'}}>
       <div className="px-4 py-2.5 font-black uppercase shrink-0 flex items-center gap-2"
         style={{background:'linear-gradient(135deg,rgba(245,182,66,0.3),rgba(245,182,66,0.08))',borderBottom:'1px solid rgba(245,182,66,0.25)'}}>
-        <Trophy className="h-3.5 w-3.5 text-yellow-400"/>
-        <span style={{fontSize:'0.6rem',letterSpacing:'0.22em',color:'#F5B642'}}>Classifica Live</span>
-        <motion.span className="ml-auto rounded-full px-2 py-0.5 font-black"
+        <Trophy className="h-5 w-5 text-yellow-400"/>
+        <span style={{fontSize:'1rem',letterSpacing:'0.16em',color:'#F5B642'}}>Classifica Live</span>
+        <motion.span className="ml-auto rounded-full px-2.5 py-1 font-black"
           animate={{opacity:[1,0.5,1]}} transition={{duration:1.4,repeat:Infinity}}
-          style={{background:'rgba(245,182,66,0.2)',color:'#F5B642',fontSize:'0.55rem'}}>LIVE</motion.span>
+          style={{background:'rgba(245,182,66,0.2)',color:'#F5B642',fontSize:'0.8rem'}}>LIVE</motion.span>
       </div>
       <div className="flex flex-col p-2 gap-1.5 flex-1 overflow-hidden">
         {sorted.length===0?(
@@ -404,17 +404,17 @@ function HomeArenaClassifica({ players }:{ players: HomePlayer[] }) {
               initial={{x:-30,opacity:0}} animate={{x:0,opacity:1}}
               transition={{delay:i*0.05,ease:'easeOut' as const}}
               style={{background:bgFor(i),border:`1px solid ${borderFor(i)}`,boxShadow:glowFor(i)?`0 0 18px ${glowFor(i)}`:undefined}}>
-              <span className="shrink-0 text-center" style={{fontSize:i<3?'0.9rem':'0.7rem',width:i<3?20:16,lineHeight:1}}>{rankLabel(i)}</span>
-              <div className={`${i<3?'w-10 h-10':'w-8 h-8'} rounded-full flex items-center justify-center font-black shrink-0`}
-                style={{background:`${color}2A`,border:`2.5px solid ${color}${i<3?'cc':'66'}`,color,fontSize:i<3?'0.85rem':'0.72rem',boxShadow:i<3?`0 0 14px ${color}66`:undefined}}>
+              <span className="shrink-0 text-center" style={{fontSize:i<3?'1.5rem':'1.15rem',width:i<3?30:24,lineHeight:1}}>{rankLabel(i)}</span>
+              <div className={`${i<3?'w-14 h-14':'w-11 h-11'} rounded-full flex items-center justify-center font-black shrink-0`}
+                style={{background:`${color}2A`,border:`2.5px solid ${color}${i<3?'cc':'66'}`,color,fontSize:i<3?'1.35rem':'1.1rem',boxShadow:i<3?`0 0 14px ${color}66`:undefined}}>
                 {p.nickname[0]?.toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="font-black text-white truncate" style={{fontSize:i<3?'0.85rem':'0.78rem'}}>{p.nickname}</div>
+                <div className="font-black text-white truncate" style={{fontSize:i<3?'1.5rem':'1.25rem'}}>{p.nickname}</div>
               </div>
               {p.score>0&&(
                 <div className="font-black shrink-0"
-                  style={{color:i===0?'#F5B642':i===1?'#C8C8C8':i===2?'#CD7F32':'rgba(255,255,255,0.55)',fontSize:i<3?'0.88rem':'0.78rem',textShadow:i<3?`0 0 12px ${color}`:undefined}}>
+                  style={{color:i===0?'#F5B642':i===1?'#C8C8C8':i===2?'#CD7F32':'rgba(255,255,255,0.55)',fontSize:i<3?'1.5rem':'1.2rem',textShadow:i<3?`0 0 12px ${color}`:undefined}}>
                   {p.score}pt
                 </div>
               )}
@@ -7064,52 +7064,37 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
   return null;
 }
 
+// QR unico e coerente in TUTTI i giochi: stessa posizione (alto a destra),
+// stesso colore (oro brand), grande e leggibile da lontano, generato in locale.
 function HomeSessionQROverlay({ joinCode }: { joinCode: string }) {
   const joinUrl = `${window.location.origin}/home/join?s=${joinCode}`;
-  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&bgcolor=0a0a0f&color=A78BFA&data=${encodeURIComponent(joinUrl)}`;
   return (
     <div style={{
-      position: 'fixed', bottom: 170, right: 14, zIndex: 99999,
-      background: 'rgba(10,10,20,0.95)', border: '2px solid rgba(167,139,250,0.55)',
-      borderRadius: 16, padding: '12px 14px',
-      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+      position: 'fixed', top: 18, right: 18, zIndex: 99999,
+      background: 'rgba(7,6,26,0.94)', border: '2px solid rgba(245,182,66,0.6)',
+      borderRadius: 20, padding: '16px 18px',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
       backdropFilter: 'blur(14px)', pointerEvents: 'none',
-      boxShadow: '0 4px 32px rgba(0,0,0,0.7), 0 0 0 1px rgba(167,139,250,0.15)',
+      boxShadow: '0 6px 40px rgba(0,0,0,0.7), 0 0 0 1px rgba(245,182,66,0.18)',
     }}>
-      <img src={qrSrc} alt="" style={{ width: 96, height: 96, borderRadius: 10, display: 'block' }} />
-      <div style={{ color: 'rgba(167,139,250,0.95)', fontSize: 10, fontWeight: 900,
-        textAlign: 'center', letterSpacing: '0.06em', textTransform: 'uppercase', lineHeight: 1.5 }}>
-        Scansiona<br/>per unirti
+      <div style={{ background: '#fff', borderRadius: 14, padding: 10, lineHeight: 0 }}>
+        <QRCodeSVG value={joinUrl} size={168} bgColor="#ffffff" fgColor="#07061a" level="M" />
       </div>
-      <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9, textAlign: 'center', fontWeight: 700 }}>
+      <div style={{ color: '#F5B642', fontSize: 15, fontWeight: 900,
+        textAlign: 'center', letterSpacing: '0.06em', textTransform: 'uppercase', lineHeight: 1.3 }}>
+        Inquadra<br/>per giocare
+      </div>
+      <div style={{ color: '#fff', fontSize: 20, textAlign: 'center', fontWeight: 900, letterSpacing: '0.14em', fontFamily: 'monospace' }}>
         {joinCode}
       </div>
     </div>
   );
 }
 
+// Karaoke: usa lo stesso QR unico (coerenza di colore e posizione).
 function KaraokeQROverlay({ joinUrl }: { joinUrl: string }) {
-  return (
-    <div style={{
-      position: 'fixed', top: 14, right: 14, zIndex: 99999,
-      background: 'rgba(13,6,0,0.92)', border: '2px solid rgba(251,146,60,0.65)',
-      borderRadius: 16, padding: '12px 14px',
-      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-      backdropFilter: 'blur(14px)', pointerEvents: 'none',
-      boxShadow: '0 4px 32px rgba(0,0,0,0.7), 0 0 0 1px rgba(251,146,60,0.2)',
-    }}>
-      <div style={{ background: '#fff', borderRadius: 10, padding: 6, lineHeight: 0 }}>
-        <QRCodeSVG value={joinUrl} size={96} bgColor="#ffffff" fgColor="#0d0600" level="M" />
-      </div>
-      <div style={{ color: 'rgba(251,146,60,0.98)', fontSize: 10, fontWeight: 900,
-        textAlign: 'center', letterSpacing: '0.06em', textTransform: 'uppercase', lineHeight: 1.5 }}>
-        Scansiona e<br/>prenotati ora
-      </div>
-      <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: 9, textAlign: 'center', fontWeight: 600, lineHeight: 1.4 }}>
-        Richiedi il tuo<br/>brano live
-      </div>
-    </div>
-  );
+  const code = (joinUrl.split('s=')[1] ?? '').toUpperCase();
+  return <HomeSessionQROverlay joinCode={code} />;
 }
 
 function KaraokeRankingMini({ results }: { results: KaraokePerformanceResult[] }) {
