@@ -2370,12 +2370,16 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
   if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
   if (session.status === "ended") { res.status(409).json({ error: "Sessione terminata" }); return; }
 
-  const { gameSlug } = req.body as { gameSlug: string };
+  const { gameSlug, restart } = req.body as { gameSlug: string; restart?: boolean };
   if (!gameSlug) { res.status(400).json({ error: "gameSlug obbligatorio" }); return; }
 
   const cfg = (session.gameConfig ?? {}) as Record<string, unknown>;
-  const gamesPlayed = (cfg.gamesPlayed as string[]) ?? [];
-  if (gamesPlayed.includes(gameSlug)) {
+  let gamesPlayed = (cfg.gamesPlayed as string[]) ?? [];
+  // "Riavvia manche": riporta il gioco alla prima schermata anche se già giocato.
+  if (restart) {
+    gamesPlayed = gamesPlayed.filter(g => g !== gameSlug);
+    cfg.gamesPlayed = gamesPlayed;
+  } else if (gamesPlayed.includes(gameSlug)) {
     res.status(409).json({ error: "Gioco già completato" }); return;
   }
 

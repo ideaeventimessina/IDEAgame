@@ -804,6 +804,12 @@ export default function LivePresenter() {
             {/* FINE GIOCO */}
             <HomeBtn cmd="end_game" emoji="⏹" label="FINE GIOCO" color="#EF4444"
               loading={cmdLoading === 'home:end_game'} onSend={sendHomeCommand} />
+            {/* RIAVVIA MANCHE — riporta il gioco corrente alla prima schermata */}
+            <button onClick={() => void sendHomeCommand('restart_game', { gameSlug: activeGameSlug })}
+              disabled={cmdLoading === 'home:restart_game' || !activeGameSlug}
+              style={{ gridColumn: 'span 2', padding: '14px 8px', background: 'rgba(96,165,250,0.15)', border: '1.5px solid rgba(96,165,250,0.5)', borderRadius: 12, color: '#93C5FD', fontWeight: 900, fontSize: '0.84rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: activeGameSlug ? 1 : 0.4 }}>
+              🔄 RIAVVIA MANCHE
+            </button>
           </div>
         </div>
 

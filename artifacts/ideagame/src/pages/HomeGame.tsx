@@ -679,6 +679,10 @@ export default function HomeGame() {
       console.log('[HomeCmd] TV received', e.command, e.payload);
       if (e.command === 'select_game' && e.payload?.gameSlug) {
         void homePost('select-game', { gameSlug: e.payload.gameSlug });
+      } else if (e.command === 'restart_game') {
+        // Riavvia manche: riporta il gioco corrente alla prima schermata
+        const slug = (e.payload?.gameSlug as string | undefined) ?? session?.gameSlug ?? undefined;
+        if (slug) void homePost('select-game', { gameSlug: slug, restart: true });
       } else if (e.command === 'next_phase') {
         void homePost('next');
       } else if (e.command === 'end_game') {
