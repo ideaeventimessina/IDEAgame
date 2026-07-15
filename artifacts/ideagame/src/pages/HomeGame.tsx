@@ -6248,8 +6248,10 @@ function CoppieBoard({ payload, onNext, sessionId }: { payload: Record<string,un
   );
 
   // Card width: 5 columns fixed
-  const cardW = `clamp(120px, ${Math.floor(84 / cols)}vw, 230px)`;
-  const cardH = `clamp(80px, ${Math.floor(56 / cols)}vw, 154px)`;
+  // Carte QUADRATE e grandi: non tagliano teste/facce come le vecchie rettangolari.
+  // Dimensione limitata sia per larghezza (5 colonne) sia per altezza (4 righe).
+  const cardW = `clamp(130px, min(${Math.floor(88 / cols)}vw, 20vh), 250px)`;
+  const cardH = cardW;
 
   return (
     <div className="flex w-full max-w-6xl flex-col items-center gap-4">
@@ -6297,7 +6299,7 @@ function CoppieBoard({ payload, onNext, sessionId }: { payload: Record<string,un
                   <>
                     <img src={card.imageUrl} alt={card.text}
                       className="absolute inset-0 h-full w-full object-cover"
-                      style={{borderRadius:'inherit'}}/>
+                      style={{borderRadius:'inherit', objectPosition:'center 22%'}}/>
                     {/* text label overlay for image cards when matched */}
                     {card.matched && (
                       <div className="absolute inset-x-0 bottom-0 flex items-center justify-center px-2 py-1"
