@@ -2699,7 +2699,7 @@ function QuizzoneBoard({ payload, session, players }: {
               </div>
             </div>
           ) : (
-            <div className="text-display text-2xl font-black text-white leading-snug">{currentQ.question}</div>
+            <div className="text-display text-5xl font-black text-white leading-snug">{currentQ.question}</div>
           )}
         </div>
         {/* Answers */}
@@ -2724,13 +2724,13 @@ function QuizzoneBoard({ payload, session, players }: {
         ) : (
           <div className={currentQ.type === 'true_false' ? 'flex gap-4' : 'grid grid-cols-2 gap-3'}>
             {currentQ.answers.map((ans, i) => (
-              <div key={i} className="flex items-center gap-3 rounded-2xl px-5 py-4"
+              <div key={i} className="flex items-center gap-4 rounded-2xl px-7 py-6"
                 style={{ background:`${ANS_COLORS[i] ?? QZ}18`, border:`2px solid ${ANS_COLORS[i] ?? QZ}44`, flex: currentQ.type === 'true_false' ? '1' : undefined }}>
                 {currentQ.type !== 'true_false' && (
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-black text-sm"
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl font-black text-2xl"
                     style={{ background: ANS_COLORS[i] ?? QZ, color:'#000' }}>{LETTERS[i]}</div>
                 )}
-                <div className="font-black text-base text-white text-center flex-1">{ans}</div>
+                <div className="font-black text-3xl text-white text-center flex-1">{ans}</div>
               </div>
             ))}
           </div>
@@ -4500,7 +4500,7 @@ function SaraMusicaBoard({ payload, session, players }: {
               <div className="text-base font-black" style={{color:'#F97316'}}>200 PUNTI — DOPPIO!</div>
             </div>
           ) : (
-            <div className="text-display text-2xl font-black text-white leading-snug">{currentQ.question}</div>
+            <div className="text-display text-5xl font-black text-white leading-snug">{currentQ.question}</div>
           )}
         </div>
 
