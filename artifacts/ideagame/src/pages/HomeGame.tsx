@@ -1991,15 +1991,15 @@ export default function HomeGame() {
             <div className="flex shrink-0 items-center gap-3 overflow-x-auto px-6 py-3"
               style={{background:'rgba(0,0,0,0.55)',backdropFilter:'blur(14px)',borderTop:'1px solid rgba(255,255,255,0.06)'}}>
               {[...players].sort((a,b)=>b.score-a.score).map((p,i)=>(
-                <div key={p.id} className="flex shrink-0 items-center gap-2 rounded-2xl px-4 py-2"
+                <div key={p.id} className="flex shrink-0 items-center gap-3 rounded-2xl px-5 py-3"
                   style={{background:`linear-gradient(135deg,${AVATAR_RING[i%AVATAR_RING.length]}22,transparent)`,border:`1px solid ${AVATAR_RING[i%AVATAR_RING.length]}45`}}>
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-black text-black"
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-lg font-black text-black"
                     style={{background:`linear-gradient(135deg,${AVATAR_RING[i%AVATAR_RING.length]},${AVATAR_RING[(i+1)%AVATAR_RING.length]})`}}>
                     {p.nickname.slice(0,2).toUpperCase()}
                   </div>
                   <div>
-                    <div className="text-xs font-black text-white">{p.nickname}</div>
-                    <div className="text-xs font-black" style={{color:'#F5B642'}}>{p.score}pt</div>
+                    <div className="text-2xl font-black text-white leading-tight">{p.nickname}</div>
+                    <div className="text-xl font-black leading-tight" style={{color:'#F5B642'}}>{p.score}pt</div>
                   </div>
                 </div>
               ))}
@@ -2629,6 +2629,12 @@ function QuizzoneBoard({ payload, session, players }: {
             animate={{ y:[0,-10,0] }} transition={{ repeat:Infinity, duration:0.8, delay:i*0.15 }} />
         ))}
       </div>
+      {/* Barra di caricamento indeterminata + rassicurazione tempi */}
+      <div className="mt-4 w-full max-w-xl overflow-hidden rounded-full" style={{ height: 12, background: 'rgba(255,255,255,0.08)' }}>
+        <motion.div style={{ height: '100%', width: '40%', borderRadius: 999, background: `linear-gradient(90deg,transparent,${QZ},transparent)` }}
+          animate={{ x: ['-45%', '260%'] }} transition={{ repeat: Infinity, duration: 1.5, ease: 'easeInOut' }} />
+      </div>
+      <div className="text-lg font-bold text-white/45">Preparo le domande… può richiedere fino a un minuto</div>
     </div>
   );
 
