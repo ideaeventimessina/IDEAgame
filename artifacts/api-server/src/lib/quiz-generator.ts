@@ -285,15 +285,23 @@ Struttura ogni domanda:
   "timeLimit": 15
 }
 
-Regole:
+REGOLE DI QUALITÀ (IMPORTANTISSIME — una violazione rovina la partita):
+- MAI domande la cui risposta è già nella domanda o è ovvia dal testo.
+  ✗ VIETATO: "Chi sono i personaggi dei Simpson?" → "I Simpson"
+  ✗ VIETATO: "Che animale è il protagonista de Il Re Leone?" → "Il leone"
+  ✗ VIETATO: qualsiasi domanda in cui il nome dell'opera/soggetto contiene la risposta.
+  ✓ CORRETTO: "Come si chiama il figlio di Mufasa ne Il Re Leone?" → "Simba"
+- Le 4 risposte devono essere TUTTE plausibili e della stessa categoria (stesso tipo di cosa): niente risposte assurde o palesemente sbagliate che rendono ovvia la corretta.
+- OGNI domanda deve chiedere un FATTO SPECIFICO diverso: niente due domande sullo stesso fatto o concetto (nemmeno riformulate). Varia sottotemi, personaggi, anni, dettagli.
+- Difficoltà coerente: se "media", servono domande di media difficoltà — non banalità da bambini.
 - true_false: answers deve essere ["VERO","FALSO"]
 - speed_round: 3 risposte, timeLimit = 8
-- image_vs_image: 2 risposte (etichette tipo "HARRY ◄","HERMIONE ►"), fornisci imageA e imageB se possibile
 - final_bomb: ultima domanda, points = 200, timeLimit = 20
-- progressive_clue: clues array con 3 indizi
+- progressive_clue: clues array con 3 indizi che restringono il campo.
+- image_vs_image: usane ALMENO 1 ogni 5 domande. 2 risposte con etichette (es. "HARRY","HERMIONE"). In "imageA"/"imageB" NON inventare URL: metti SOLO il nome del soggetto da mostrare (es. "Harry Potter", "Hermione Granger") — al resto pensa il server.
 - Usa sempre l'italiano.
 - L'ultima domanda DEVE essere di tipo "final_bomb".
-- Mix di tipi: almeno 1 true_false, 1 speed_round.`;
+- Mix di tipi: almeno 1 true_false, 1 speed_round, e image_vs_image ~1 ogni 5.`;
 
   const resp = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
@@ -323,7 +331,27 @@ Regole:
       });
     }
   }
+  // Immagini vere: l'AI mette il NOME del soggetto in imageA/imageB → thumbnail Wikipedia.
+  await Promise.all(valid.filter(q => q.type === 'image_vs_image').map(async q => {
+    if (q.imageA && !/^https?:/i.test(q.imageA)) q.imageA = (await wikiThumb(q.imageA)) ?? undefined;
+    if (q.imageB && !/^https?:/i.test(q.imageB)) q.imageB = (await wikiThumb(q.imageB)) ?? undefined;
+  }));
   return valid;
+}
+
+// Thumbnail di Wikipedia (IT, poi EN) dato il nome del soggetto. null se non trovato.
+async function wikiThumb(subject: string): Promise<string | null> {
+  for (const lang of ['it', 'en']) {
+    try {
+      const r = await fetch(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(subject.trim())}`,
+        { headers: { accept: 'application/json' } });
+      if (!r.ok) continue;
+      const d = await r.json() as { thumbnail?: { source?: string }; originalimage?: { source?: string } };
+      const url = d.thumbnail?.source ?? d.originalimage?.source;
+      if (url) return url;
+    } catch { /* prova la lingua successiva */ }
+  }
+  return null;
 }
 
 export function generateQuiz(themeId: string, count: number, difficulty: "easy" | "medium" | "hard" = "medium"): QuizQuestion[] {
