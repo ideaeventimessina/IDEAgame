@@ -3609,6 +3609,11 @@ function SaraMusicaController({ payload, player, session }: {
     );
   }
 
+  // ── Sfida di canto ──────────────────────────────────────────────────────────
+  if (phase === 'question' && String(currentQ?.type ?? '') === 'singing_duel') {
+    return <SaraDuelController duel={(payload.duel as SaraDuelState) ?? null} player={player} sessionId={session.id} />;
+  }
+
   // ── Question phase ──────────────────────────────────────────────────────────
   if (phase === 'question' && currentQ) {
     const qType = String(currentQ.type ?? 'guess_song');
@@ -3765,6 +3770,182 @@ function SaraMusicaController({ payload, player, session }: {
       <div className="text-white/50">Sara'Musica</div>
     </div>
   );
+}
+
+// ── SaraDuelController — sfida di canto sul telefono ─────────────────────────
+type SaraDuelState = {
+  phase: 'booking' | 'song' | 'sing' | 'vote' | 'result';
+  challengers: { id: string; nickname: string }[];
+  prescelto: { id: string; nickname: string } | null;
+  video: { videoId: string; title: string } | null;
+  votes: Record<string, 'A' | 'B'>;
+  votingEndsAt: string | null;
+  winner: number | null;
+};
+
+function SaraDuelController({ duel, player, sessionId }: {
+  duel: SaraDuelState | null;
+  player: HomePlayer;
+  sessionId: string;
+}) {
+  const SM = '#60A5FA';
+  const d: SaraDuelState = duel ?? { phase: 'booking', challengers: [], prescelto: null, video: null, votes: {}, votingEndsAt: null, winner: null };
+  const myIdx = d.challengers.findIndex(c => c.id === player.id);
+  const amChallenger = myIdx >= 0;
+  const amPrescelto = d.prescelto?.id === player.id;
+  const myVote = d.votes[player.id] ?? null;
+
+  const [busy, setBusy] = useState(false);
+  const [q, setQ] = useState('');
+  const [results, setResults] = useState<YTSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+
+  const post = async (sub: string, body?: Record<string, unknown>) => {
+    setBusy(true);
+    try { await fetch(`/api/home/sessions/${sessionId}/saramusica/${sub}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) }); }
+    finally { setBusy(false); }
+  };
+
+  const runSearch = async () => {
+    const raw = q.trim();
+    if (!raw) return;
+    setSearching(true);
+    try {
+      const r = await fetch(`/api/home/sessions/${sessionId}/ballo/search`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: raw }),
+      });
+      const dd = await r.json() as { ok?: boolean; results?: YTSearchResult[] };
+      setResults(dd.results ?? []);
+    } catch { setResults([]); } finally { setSearching(false); }
+  };
+
+  const Wrap = ({ children }: { children: React.ReactNode }) => (
+    <div className="flex flex-col items-center gap-5 py-6 text-center">{children}</div>
+  );
+
+  // ── BOOKING ─────────────────────────────────────────────────────────────────
+  if (d.phase === 'booking') {
+    if (amChallenger) {
+      return <Wrap>
+        <div className="text-6xl">🎤</div>
+        <div className="rounded-2xl p-6 w-full" style={{ background: `${SM}22`, border: `2px solid ${SM}` }}>
+          <div className="text-2xl font-black" style={{ color: SM }}>Sei lo SFIDANTE {myIdx === 0 ? 'A' : 'B'}!</div>
+          <div className="text-sm text-white/60 mt-2">Preparati a cantare. Aspetta il secondo sfidante…</div>
+        </div>
+      </Wrap>;
+    }
+    return <Wrap>
+      <div className="text-5xl">🎤</div>
+      <div className="text-xl font-black text-white">Sfida di canto!</div>
+      <div className="text-sm text-white/50">I primi due che si prenotano si sfidano a colpi di voce.</div>
+      <button disabled={busy || d.challengers.length >= 2}
+        onClick={() => void post('duel/book', { playerId: player.id, nickname: player.nickname })}
+        className="rounded-3xl px-10 py-6 text-2xl font-black text-black transition-all active:scale-95 disabled:opacity-40"
+        style={{ background: `linear-gradient(135deg,${SM},#2563eb)`, boxShadow: `0 0 30px ${SM}66` }}>
+        🎤 MI SFIDO!
+      </button>
+      <div className="text-white/40 text-sm">{d.challengers.length}/2 prenotati</div>
+    </Wrap>;
+  }
+
+  // ── SONG (prescelto sceglie il brano) ────────────────────────────────────────
+  if (d.phase === 'song') {
+    if (amPrescelto) {
+      return <div className="flex flex-col gap-3 py-4">
+        <div className="text-center">
+          <div className="text-3xl">🎲</div>
+          <div className="text-lg font-black text-white mt-1">Sei il prescelto!</div>
+          <div className="text-sm text-white/50">Scegli la canzone che dovranno cantare entrambi.</div>
+        </div>
+        <div className="flex gap-2">
+          <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void runSearch(); }}
+            placeholder="Cerca una canzone…"
+            className="flex-1 rounded-xl px-4 py-3 text-white bg-white/10 border border-white/20 outline-none" />
+          <button onClick={() => void runSearch()} disabled={searching}
+            className="rounded-xl px-5 py-3 font-black text-black" style={{ background: SM }}>
+            {searching ? '…' : '🔍'}
+          </button>
+        </div>
+        <div className="flex flex-col gap-2 max-h-[50vh] overflow-y-auto">
+          {results.map(r => (
+            <button key={r.videoId} disabled={busy}
+              onClick={() => void post('duel/set-song', { videoId: r.videoId, title: r.title })}
+              className="flex items-center gap-3 rounded-xl p-2 text-left bg-white/5 border border-white/10 active:scale-95">
+              {r.thumbnailUrl && <img src={r.thumbnailUrl} alt="" className="h-12 w-16 rounded object-cover" />}
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-bold text-white truncate">{r.title}</div>
+                <div className="text-xs text-white/40 truncate">{r.channel}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>;
+    }
+    return <Wrap>
+      <motion.div animate={{ scale: [1, 1.1, 1] }} transition={{ repeat: IS_LOW_POWER ? 0 : Infinity, duration: 1.6 }} className="text-6xl">🎲</motion.div>
+      <div className="text-xl font-black text-white">{d.prescelto?.nickname ?? 'Il prescelto'} sceglie il brano…</div>
+      {amChallenger && <div className="text-sm text-white/50">Tieniti pronto a cantare!</div>}
+    </Wrap>;
+  }
+
+  // ── SING ──────────────────────────────────────────────────────────────────────
+  if (d.phase === 'sing') {
+    if (amChallenger) {
+      return <Wrap>
+        <motion.div animate={{ scale: [1, 1.15, 1] }} transition={{ repeat: IS_LOW_POWER ? 0 : Infinity, duration: 1 }} className="text-6xl">🎤</motion.div>
+        <div className="text-2xl font-black" style={{ color: SM }}>CANTA!</div>
+        <div className="text-sm text-white/60">Segui il video sulla TV. Dai il massimo!</div>
+      </Wrap>;
+    }
+    return <Wrap>
+      <div className="text-6xl">👂</div>
+      <div className="text-xl font-black text-white">Ascolta i due sfidanti…</div>
+      <div className="text-sm text-white/50">Tra poco potrai votare chi ha cantato meglio.</div>
+    </Wrap>;
+  }
+
+  // ── VOTE ──────────────────────────────────────────────────────────────────────
+  if (d.phase === 'vote') {
+    if (amChallenger) {
+      return <Wrap>
+        <div className="text-6xl">🗳️</div>
+        <div className="text-xl font-black text-white">Il pubblico sta votando…</div>
+        <div className="text-sm text-white/50">In bocca al lupo!</div>
+      </Wrap>;
+    }
+    if (myVote) {
+      return <Wrap>
+        <div className="text-6xl">✅</div>
+        <div className="text-2xl font-black" style={{ color: SM }}>Voto inviato: {myVote}</div>
+        <div className="text-sm text-white/50">Attendi il risultato sulla TV.</div>
+      </Wrap>;
+    }
+    const A = d.challengers[0]; const B = d.challengers[1];
+    return <div className="flex flex-col gap-4 py-4">
+      <div className="text-center text-xl font-black text-white">Chi ha cantato meglio?</div>
+      <button disabled={busy} onClick={() => void post('duel/vote', { playerId: player.id, choice: 'A' })}
+        className="rounded-3xl px-4 py-8 text-white font-black active:scale-95"
+        style={{ background: 'linear-gradient(135deg,rgba(96,165,250,0.35),rgba(37,99,235,0.2))', border: '3px solid #60A5FA' }}>
+        <div className="text-3xl">A</div><div className="text-lg">{A?.nickname}</div>
+      </button>
+      <button disabled={busy} onClick={() => void post('duel/vote', { playerId: player.id, choice: 'B' })}
+        className="rounded-3xl px-4 py-8 text-white font-black active:scale-95"
+        style={{ background: 'linear-gradient(135deg,rgba(244,114,182,0.35),rgba(190,24,93,0.2))', border: '3px solid #F472B6' }}>
+        <div className="text-3xl">B</div><div className="text-lg">{B?.nickname}</div>
+      </button>
+    </div>;
+  }
+
+  // ── RESULT ──────────────────────────────────────────────────────────────────
+  const iWon = amChallenger && d.winner === myIdx;
+  return <Wrap>
+    <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring' }} className="text-7xl">
+      {iWon ? '🏆' : amChallenger ? '💪' : '🎉'}
+    </motion.div>
+    <div className="text-2xl font-black" style={{ color: iWon ? '#F5B642' : SM }}>
+      {iWon ? 'Hai vinto la sfida! +300pt' : amChallenger ? 'Bella gara! Sarà per la prossima.' : `Ha vinto ${d.winner === 0 ? d.challengers[0]?.nickname : d.challengers[1]?.nickname}!`}
+    </div>
+  </Wrap>;
 }
 
 // ── AdultController ────────────────────────────────────────────────────────────

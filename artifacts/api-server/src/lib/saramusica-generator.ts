@@ -20,7 +20,8 @@ export type MusicRoundType =
   | "song_vs_song"
   | "progressive_clue_music"
   | "final_tormentone"
-  | "silhouette_guess";
+  | "silhouette_guess"
+  | "singing_duel";
 
 export type ClipType = 'chorus_guess' | 'missing_word' | 'artist_guess' | 'stop_and_continue' | 'duel_song';
 
@@ -77,6 +78,7 @@ const TYPE_POINTS: Record<MusicRoundType, number> = {
   progressive_clue_music: 150,
   final_tormentone: 200,
   silhouette_guess: 120,
+  singing_duel: 300,
 };
 
 const TYPE_TIME: Record<MusicRoundType, number> = {
@@ -88,6 +90,7 @@ const TYPE_TIME: Record<MusicRoundType, number> = {
   progressive_clue_music: 35,
   final_tormentone: 25,
   silhouette_guess: 18,
+  singing_duel: 30,
 };
 
 // ── Compact round builder ─────────────────────────────────────────────────────

@@ -1722,6 +1722,15 @@ router.post("/home/sessions/:id/saramusica/select-count", async (req, res): Prom
         const step = Math.max(1, Math.floor(rounds.length / (silRounds.length + 1)));
         silRounds.forEach((sr, k) => rounds.splice(Math.min((k + 1) * step + k, rounds.length), 0, sr));
       }
+      // Inietta UNA sfida di canto (gara a due) a metà percorso (se ci sono ≥6 round).
+      if (rounds.length >= 6) {
+        const duelRound: MusicRound = {
+          id: "duel-0", type: "singing_duel", theme: "duello",
+          question: "🎤 SFIDA DI CANTO!", answers: [], correctAnswerIndex: -1,
+          points: 300, timeLimit: 30,
+        };
+        rounds.splice(Math.floor(rounds.length / 2), 0, duelRound);
+      }
       const sess2 = await getSession(id);
       if (!sess2) return;
       const rp2 = (sess2.roundPayload ?? {}) as Record<string, unknown>;
@@ -1854,16 +1863,156 @@ router.post("/home/sessions/:id/saramusica/next", async (req, res): Promise<void
     return;
   }
   const nextQ = (rounds[nextIndex] as MusicRound | undefined);
+  // Sfida di canto: nessun timer/auto-reveal, la guida il flusso duello (prenotazioni→voto).
+  if (nextQ?.type === "singing_duel") {
+    await smUpdate(id, {
+      phase: "question", currentIndex: nextIndex,
+      questionStartedAt: new Date().toISOString(), questionEndsAt: null,
+      currentClueIndex: 0, allAnsweredForCurrent: false, answeredCount: 0, revealData: null,
+      rankingData: rp["phase"] === "ranking" ? rankingData : rp["rankingData"],
+      duel: { phase: "booking", challengers: [], prescelto: null, video: null, votes: {}, votingEndsAt: null, winner: null },
+    });
+    await db.update(homeSessionsTable).set({ currentRound: nextIndex }).where(eq(homeSessionsTable.id, id));
+    res.json({ ok: true });
+    return;
+  }
   const nextEndsAt = Date.now() + (nextQ?.timeLimit ?? 20) * 1000;
   await smUpdate(id, {
     phase: "question", currentIndex: nextIndex,
     questionStartedAt: new Date().toISOString(), questionEndsAt: new Date(nextEndsAt).toISOString(),
     currentClueIndex: 0, allAnsweredForCurrent: false, answeredCount: 0, revealData: null,
     rankingData: rp["phase"] === "ranking" ? rankingData : rp["rankingData"],
+    duel: null,
   });
   scheduleSmAutoReveal(id, nextIndex, nextEndsAt);
   await db.update(homeSessionsTable).set({ currentRound: nextIndex }).where(eq(homeSessionsTable.id, id));
   logger.info({ sessionId: id, nextIndex }, "[SaraMusicaHome] advanced to next question");
+  res.json({ ok: true });
+});
+
+// ── SaraMusica — Sfida di canto (duello a due + voto pubblico) ────────────────
+interface SmDuel {
+  phase: "booking" | "song" | "sing" | "vote" | "result";
+  challengers: { id: string; nickname: string }[];
+  prescelto: { id: string; nickname: string } | null;
+  video: { videoId: string; title: string } | null;
+  votes: Record<string, "A" | "B">;
+  votingEndsAt: string | null;
+  winner: number | null; // indice sfidante vincitore (0/1)
+}
+
+async function smDuelUpdate(id: string, patch: Partial<SmDuel>): Promise<Record<string, unknown> | null> {
+  const sess = await getSession(id);
+  if (!sess) return null;
+  const rp = (sess.roundPayload ?? {}) as Record<string, unknown>;
+  const duel = { ...((rp["duel"] ?? {}) as Record<string, unknown>), ...patch };
+  const [updated] = await db.update(homeSessionsTable)
+    .set({ roundPayload: { ...rp, duel } }).where(eq(homeSessionsTable.id, id)).returning();
+  const players = await getPlayers(id);
+  emitHomeState(id, updated!, players);
+  return duel;
+}
+
+function getSmDuel(rp: Record<string, unknown>): SmDuel | null {
+  if (rp["mode"] !== "home-saramusica" || rp["phase"] !== "question") return null;
+  const rounds = (rp["rounds"] ?? []) as MusicRound[];
+  const cur = rounds[Number(rp["currentIndex"] ?? 0)];
+  if (cur?.type !== "singing_duel") return null;
+  return (rp["duel"] ?? null) as SmDuel | null;
+}
+
+// I due sfidanti si prenotano (i primi due). Al secondo, si sceglie un prescelto.
+router.post("/home/sessions/:id/saramusica/duel/book", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  const duel = getSmDuel(rp);
+  if (!duel || duel.phase !== "booking") { res.status(409).json({ error: "Prenotazioni chiuse" }); return; }
+  const { playerId, nickname } = req.body as { playerId: string; nickname: string };
+  if (!playerId) { res.status(400).json({ error: "playerId obbligatorio" }); return; }
+  if (duel.challengers.some(c => c.id === playerId)) { res.json({ ok: true }); return; }
+  if (duel.challengers.length >= 2) { res.status(409).json({ error: "Sfidanti al completo" }); return; }
+  const challengers = [...duel.challengers, { id: playerId, nickname: String(nickname ?? "Sfidante") }];
+  const patch: Partial<SmDuel> = { challengers };
+  if (challengers.length === 2) {
+    const players = await getPlayers(id);
+    const cands = players.filter(p => p.isConnected && !challengers.some(c => c.id === p.id));
+    const chosen = cands.length > 0 ? cands[Math.floor(Math.random() * cands.length)]! : null;
+    patch.prescelto = chosen ? { id: chosen.id, nickname: chosen.nickname } : null;
+    patch.phase = "song";
+  }
+  await smDuelUpdate(id, patch);
+  res.json({ ok: true });
+});
+
+// Il prescelto sceglie il brano (video ufficiale) per entrambi.
+router.post("/home/sessions/:id/saramusica/duel/set-song", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const duel = getSmDuel((session.roundPayload ?? {}) as Record<string, unknown>);
+  if (!duel || duel.phase !== "song") { res.status(409).json({ error: "Fase non corretta" }); return; }
+  const b = req.body as { videoId?: string; title?: string };
+  if (!b.videoId) { res.status(400).json({ error: "videoId obbligatorio" }); return; }
+  await smDuelUpdate(id, { video: { videoId: b.videoId, title: String(b.title ?? "Brano") }, phase: "sing" });
+  res.json({ ok: true });
+});
+
+// Host: apre il voto del pubblico (dopo che entrambi hanno cantato).
+router.post("/home/sessions/:id/saramusica/duel/start-vote", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const duel = getSmDuel((session.roundPayload ?? {}) as Record<string, unknown>);
+  if (!duel || (duel.phase !== "sing" && duel.phase !== "song")) { res.status(409).json({ error: "Fase non corretta" }); return; }
+  const endsAt = Date.now() + 25_000;
+  await smDuelUpdate(id, { phase: "vote", votes: {}, votingEndsAt: new Date(endsAt).toISOString() });
+  // Chiusura automatica del voto a scadenza
+  setTimeout(() => { void closeSmDuel(id).catch(() => {}); }, 25_500);
+  res.json({ ok: true });
+});
+
+// Spettatore: vota A o B.
+router.post("/home/sessions/:id/saramusica/duel/vote", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const duel = getSmDuel((session.roundPayload ?? {}) as Record<string, unknown>);
+  if (!duel || duel.phase !== "vote") { res.status(409).json({ error: "Voto chiuso" }); return; }
+  const { playerId, choice } = req.body as { playerId: string; choice: "A" | "B" };
+  if (!playerId || (choice !== "A" && choice !== "B")) { res.status(400).json({ error: "playerId e choice (A/B) obbligatori" }); return; }
+  if (duel.challengers.some(c => c.id === playerId)) { res.status(403).json({ error: "Gli sfidanti non votano" }); return; }
+  await smDuelUpdate(id, { votes: { ...duel.votes, [playerId]: choice } });
+  res.json({ ok: true });
+});
+
+// Chiude il voto, calcola il vincitore, assegna i punti.
+async function closeSmDuel(id: string): Promise<void> {
+  const session = await getSession(id);
+  if (!session) return;
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  const duel = getSmDuel(rp);
+  if (!duel || duel.phase !== "vote") return;
+  let a = 0, b = 0;
+  for (const v of Object.values(duel.votes)) { if (v === "A") a++; else if (v === "B") b++; }
+  const winner = a === b ? (Math.random() < 0.5 ? 0 : 1) : (a > b ? 0 : 1);
+  const winnerPlayer = duel.challengers[winner];
+  if (winnerPlayer) {
+    const [wp] = await db.select().from(homePlayersTable).where(and(eq(homePlayersTable.id, winnerPlayer.id), eq(homePlayersTable.sessionId, id)));
+    if (wp) await db.update(homePlayersTable).set({ score: wp.score + 300 }).where(eq(homePlayersTable.id, wp.id));
+  }
+  await smDuelUpdate(id, { phase: "result", winner, votingEndsAt: null });
+}
+
+router.post("/home/sessions/:id/saramusica/duel/close", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  await closeSmDuel(id);
   res.json({ ok: true });
 });
 

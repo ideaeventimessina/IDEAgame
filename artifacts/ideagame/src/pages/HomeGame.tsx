@@ -4263,6 +4263,149 @@ const SM_TYPE_BADGES: Record<string, { emoji: string; label: string; color: stri
 };
 const SM_ANS_COLORS = ['#60A5FA', '#A78BFA', '#34D399', '#FBBF24'];
 
+// ── Sfida di canto (duello a due + voto A/B) ─────────────────────────────────
+type SaraDuel = {
+  phase: 'booking' | 'song' | 'sing' | 'vote' | 'result';
+  challengers: { id: string; nickname: string }[];
+  prescelto: { id: string; nickname: string } | null;
+  video: { videoId: string; title: string } | null;
+  votes: Record<string, 'A' | 'B'>;
+  votingEndsAt: string | null;
+  winner: number | null;
+};
+
+function SaraDuelBoard({ duel, smPost, sessionId: _sessionId }: {
+  duel: SaraDuel | null;
+  smPost: (sub: string, body?: Record<string, unknown>) => Promise<void>;
+  sessionId: string;
+}) {
+  const SM = '#60A5FA';
+  const d = duel ?? { phase: 'booking' as const, challengers: [], prescelto: null, video: null, votes: {}, votingEndsAt: null, winner: null };
+  const A = d.challengers[0]; const B = d.challengers[1];
+  const votesA = Object.values(d.votes).filter(v => v === 'A').length;
+  const votesB = Object.values(d.votes).filter(v => v === 'B').length;
+  const [secs, setSecs] = useState<number | null>(null);
+  useEffect(() => {
+    if (d.phase !== 'vote' || !d.votingEndsAt) { setSecs(null); return; }
+    const end = new Date(d.votingEndsAt).getTime();
+    const tick = () => setSecs(Math.max(0, Math.ceil((end - Date.now()) / 1000)));
+    tick(); const t = setInterval(tick, 250);
+    return () => clearInterval(t);
+  }, [d.phase, d.votingEndsAt]);
+
+  const Fighter = ({ p, side, color }: { p?: { nickname: string }; side: string; color: string }) => (
+    <div className="flex flex-1 flex-col items-center gap-3 rounded-3xl p-6"
+      style={{ background: `${color}18`, border: `3px solid ${color}66` }}>
+      <div className="text-2xl font-black" style={{ color }}>{side}</div>
+      <div className="flex h-24 w-24 items-center justify-center rounded-full text-5xl font-black"
+        style={{ background: `${color}33`, border: `3px solid ${color}` }}>{p?.nickname?.[0]?.toUpperCase() ?? '?'}</div>
+      <div className="text-3xl font-black text-white">{p?.nickname ?? 'In attesa…'}</div>
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col items-center gap-6 w-full max-w-5xl">
+      <div className="text-display text-5xl font-black" style={{ color: SM, textShadow: `0 0 40px ${SM}88` }}>🎤 SFIDA DI CANTO</div>
+
+      {d.phase === 'booking' && (
+        <>
+          <div className="text-2xl font-bold text-white/70">Chi se la sente? Prenotatevi dal telefono! ({d.challengers.length}/2)</div>
+          <div className="flex w-full gap-6">
+            <Fighter p={A} side="SFIDANTE A" color="#60A5FA" />
+            <Fighter p={B} side="SFIDANTE B" color="#F472B6" />
+          </div>
+          <button onClick={() => void smPost('next')} className="rounded-xl px-6 py-3 font-black text-white/70" style={{ background: 'rgba(255,255,255,0.08)' }}>
+            Salta la sfida ▶️
+          </button>
+        </>
+      )}
+
+      {d.phase === 'song' && (
+        <>
+          <div className="flex w-full gap-6">
+            <Fighter p={A} side="SFIDANTE A" color="#60A5FA" />
+            <Fighter p={B} side="SFIDANTE B" color="#F472B6" />
+          </div>
+          <div className="rounded-2xl px-6 py-4 text-center text-2xl font-black" style={{ background: 'rgba(245,182,66,0.15)', color: '#F5B642' }}>
+            🎲 {d.prescelto?.nickname ?? 'Il prescelto'} sta scegliendo la canzone…
+          </div>
+        </>
+      )}
+
+      {(d.phase === 'sing' || d.phase === 'vote' || d.phase === 'result') && d.video && (
+        <div className="w-full" style={{ height: '38vh', position: 'relative', borderRadius: 20, overflow: 'hidden', border: '2px solid rgba(96,165,250,0.4)' }}>
+          <SaraDuelVideo videoId={d.video.videoId} />
+        </div>
+      )}
+
+      {d.phase === 'sing' && (
+        <>
+          <div className="flex w-full gap-6">
+            <Fighter p={A} side="SFIDANTE A" color="#60A5FA" />
+            <Fighter p={B} side="SFIDANTE B" color="#F472B6" />
+          </div>
+          <button onClick={() => void smPost('duel/start-vote')}
+            className="rounded-2xl px-10 py-5 text-2xl font-black text-black"
+            style={{ background: `linear-gradient(135deg,${SM},#2563eb)`, boxShadow: `0 0 30px ${SM}88` }}>
+            🗳️ APRI IL VOTO DEL PUBBLICO
+          </button>
+        </>
+      )}
+
+      {d.phase === 'vote' && (
+        <>
+          <div className="text-3xl font-black text-white">VOTA CHI HA CANTATO MEGLIO! {secs !== null && <span style={{ color: '#F5B642' }}>{secs}s</span>}</div>
+          <div className="flex w-full gap-6">
+            <div className="flex flex-1 flex-col items-center gap-2 rounded-3xl p-6" style={{ background: 'rgba(96,165,250,0.18)', border: '3px solid #60A5FA' }}>
+              <div className="text-2xl font-black" style={{ color: '#60A5FA' }}>A · {A?.nickname}</div>
+              <div className="text-7xl font-black text-white">{votesA}</div>
+            </div>
+            <div className="flex flex-1 flex-col items-center gap-2 rounded-3xl p-6" style={{ background: 'rgba(244,114,182,0.18)', border: '3px solid #F472B6' }}>
+              <div className="text-2xl font-black" style={{ color: '#F472B6' }}>B · {B?.nickname}</div>
+              <div className="text-7xl font-black text-white">{votesB}</div>
+            </div>
+          </div>
+          <button onClick={() => void smPost('duel/close')} className="rounded-xl px-6 py-3 font-black text-white" style={{ background: 'rgba(255,255,255,0.12)' }}>Chiudi voto ora</button>
+        </>
+      )}
+
+      {d.phase === 'result' && (
+        <>
+          <div className="text-6xl">🏆</div>
+          <div className="text-display text-5xl font-black" style={{ color: '#F5B642' }}>
+            Vince {d.winner === 0 ? A?.nickname : B?.nickname}!
+          </div>
+          <div className="text-2xl font-black text-green-400">+300 punti · {votesA} a {votesB}</div>
+          <button onClick={() => void smPost('next')}
+            className="mt-2 rounded-2xl px-10 py-5 text-2xl font-black text-black"
+            style={{ background: `linear-gradient(135deg,${SM},#2563eb)`, boxShadow: `0 0 30px ${SM}88` }}>
+            ▶️ CONTINUA IL PERCORSO
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Video intero (con audio) per la sfida di canto — riusa il player YT.
+function SaraDuelVideo({ videoId }: { videoId: string }) {
+  const containerId = `duel-${videoId.slice(0, 8)}`;
+  const playerRef = useRef<YTPlayerInst | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void loadYTApi().then(() => {
+      if (cancelled) return;
+      playerRef.current = new window.YT.Player(containerId, {
+        videoId, width: '100%', height: '100%',
+        playerVars: { autoplay: 1, controls: 1, rel: 0, modestbranding: 1, playsinline: 1, enablejsapi: 1 },
+        events: { onReady: (e: { target: YTPlayerInst }) => { try { e.target.playVideo(); } catch { /**/ } } },
+      });
+    });
+    return () => { cancelled = true; if (playerRef.current) { try { playerRef.current.destroy(); } catch { /**/ } playerRef.current = null; } };
+  }, [videoId, containerId]);
+  return <div id={containerId} className="h-full w-full" />;
+}
+
 function SaraMusicaBoard({ payload, session, players }: {
   payload: Record<string,unknown>;
   session: HomeSession;
@@ -4423,6 +4566,9 @@ function SaraMusicaBoard({ payload, session, players }: {
   );
 
   // ── question ─────────────────────────────────────────────────────────────────
+  if (phase === 'question' && currentQ?.type === 'singing_duel') {
+    return <SaraDuelBoard duel={(payload.duel as SaraDuel) ?? null} smPost={smPost} sessionId={String(session.id ?? '')} />;
+  }
   if (phase === 'question' && currentQ) {
     const badge      = SM_TYPE_BADGES[currentQ.type] ?? { emoji: '🎵', label: 'DOMANDA', color: SM };
     const tLimit     = currentQ.timeLimit > 0 ? currentQ.timeLimit : 20;
