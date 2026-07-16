@@ -4248,6 +4248,7 @@ type SMRound = {
   year?: number; clues?: string[]; points: number; timeLimit: number; explanation?: string;
   youtubeClip?: { youtubeId: string; startSecond: number; durationSeconds: number; clipType: string };
   silhouetteUrl?: string;
+  silhouetteObscure?: boolean;
 };
 
 const SM_TYPE_BADGES: Record<string, { emoji: string; label: string; color: string }> = {
@@ -4479,11 +4480,13 @@ function SaraMusicaBoard({ payload, session, players }: {
           />
         )}
 
-        {/* Sagoma cantante (type silhouette_guess) — immagine già in silhouette */}
+        {/* Sagoma cantante (type silhouette_guess). Se obscure = foto reale in ombra. */}
         {currentQ.silhouetteUrl && (
           <div className="flex justify-center">
             <div className="rounded-3xl p-4" style={{ background: 'rgba(192,132,252,0.10)', border: '1px solid rgba(192,132,252,0.35)' }}>
-              <img src={currentQ.silhouetteUrl} alt="Sagoma" className="max-h-64 w-auto object-contain" />
+              <img src={currentQ.silhouetteUrl} alt="Sagoma"
+                className="max-h-72 w-auto object-contain"
+                style={ currentQ.silhouetteObscure ? { filter: 'brightness(0.06) contrast(1.5)' } : undefined } />
             </div>
           </div>
         )}
@@ -4571,6 +4574,15 @@ function SaraMusicaBoard({ payload, session, players }: {
           <div className="text-display text-3xl font-black text-white">{currentQ.answers[correctIdx]}</div>
           {currentQ.explanation && <div className="text-white/50 text-sm mt-2 italic">{currentQ.explanation}</div>}
         </motion.div>
+
+        {/* Sagoma svelata: la foto nitida del cantante misterioso */}
+        {currentQ.silhouetteUrl && (
+          <div className="flex justify-center">
+            <img src={currentQ.silhouetteUrl} alt={currentQ.answers[correctIdx]}
+              className="max-h-64 w-auto rounded-2xl object-contain"
+              style={{ border: '2px solid rgba(52,211,153,0.5)' }} />
+          </div>
+        )}
 
         {/* 🎤 CANTA! — il ritornello parte da solo, tutti cantano ────────────── */}
         {currentQ.youtubeClip?.youtubeId && (

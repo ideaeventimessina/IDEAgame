@@ -48,6 +48,7 @@ export interface MusicRound {
   explanation?: string;
   youtubeClip?: YoutubeClip;
   silhouetteUrl?: string; // sagoma del cantante (per type "silhouette_guess")
+  silhouetteObscure?: boolean; // true = foto reale (Wikipedia) da mostrare in ombra e svelare
 }
 
 export const SM_THEMES = [

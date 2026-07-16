@@ -1716,7 +1716,7 @@ router.post("/home/sessions/:id/saramusica/select-count", async (req, res): Prom
     try {
       const rounds = await generateSaraMusicaRounds(themeId, roundCount, smDifficulty);
       // Inietta round "sagoma → indovina il cantante" se ci sono sagome caricate.
-      const silRounds = await buildSilhouetteRounds(roundCount >= 10 ? 2 : 1);
+      const silRounds = await buildSilhouetteRounds(themeId, roundCount >= 10 ? 2 : 1);
       if (silRounds.length > 0) {
         // Distribuisce le sagome nel percorso invece di ammucchiarle in fondo.
         const step = Math.max(1, Math.floor(rounds.length / (silRounds.length + 1)));
@@ -2692,32 +2692,75 @@ async function loadFreestyleBeats(): Promise<FreestyleBeat[]> {
 // Costruisce round "sagoma → indovina il cantante" dai game_media_slots
 // (gameSlug=saramusica-silhouettes, value=imageUrl, label=nome cantante).
 // Randomizza sagome e risposte multiple (corretta + 3 distrattori).
-async function buildSilhouetteRounds(maxRounds: number): Promise<MusicRound[]> {
+function buildSilhouetteRoundsFromPool(pool: { url: string; name: string }[], maxRounds: number, obscure: boolean): MusicRound[] {
+  const chosen = shuffleArr(pool).slice(0, Math.min(maxRounds, pool.length));
+  return chosen.map((sil, i) => {
+    const distractors = shuffleArr(pool.filter(p => p.name !== sil.name)).slice(0, 3).map(p => p.name);
+    const answers = shuffleArr([sil.name, ...distractors]);
+    return {
+      id: `sil-${i}`,
+      type: "silhouette_guess",
+      theme: "sagome",
+      question: obscure ? "Chi è questo cantante misterioso?" : "Quale cantante famoso è questa sagoma?",
+      answers,
+      correctAnswerIndex: answers.indexOf(sil.name),
+      artist: sil.name,
+      points: 120,
+      timeLimit: 18,
+      silhouetteUrl: sil.url,
+      silhouetteObscure: obscure,
+    } as MusicRound;
+  });
+}
+
+// Thumbnail Wikipedia (IT→EN) per un nome. null se non trovato.
+async function wikiThumbHome(subject: string): Promise<string | null> {
+  for (const lang of ["it", "en"]) {
+    try {
+      const r = await fetch(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(subject.trim())}`, { headers: { accept: "application/json" } });
+      if (!r.ok) continue;
+      const d = await r.json() as { thumbnail?: { source?: string }; originalimage?: { source?: string } };
+      const url = d.thumbnail?.source ?? d.originalimage?.source;
+      if (url) return url;
+    } catch { /* prova lingua successiva */ }
+  }
+  return null;
+}
+
+// Fonte automatica: l'AI sceglie i cantanti famosi del tema, Wikipedia dà le foto,
+// mostrate in ombra e svelate alla risposta (nessun upload manuale necessario).
+async function buildSilhouetteRoundsAuto(themeId: string, maxRounds: number): Promise<MusicRound[]> {
+  const baseURL = process.env["AI_INTEGRATIONS_OPENAI_BASE_URL"];
+  const apiKey  = process.env["AI_INTEGRATIONS_OPENAI_API_KEY"];
+  if (!baseURL || !apiKey) return [];
+  const themeName = SM_THEMES.find(t => t.id === themeId)?.label ?? themeId;
+  try {
+    const openai = new OpenAI({ baseURL, apiKey });
+    const resp = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: `Elenca 10 cantanti o artisti musicali FAMOSISSIMI e visivamente riconoscibili a tema "${themeName}". Rispondi SOLO con un array JSON di nomi completi come compaiono su Wikipedia, es. ["Michael Jackson","Madonna","Vasco Rossi"]. Nessun altro testo.` }],
+      temperature: 0.7,
+    });
+    const raw = resp.choices[0]?.message?.content ?? "[]";
+    const names = JSON.parse(raw.replace(/```json\n?|```/g, "").trim()) as string[];
+    const withPhotos = (await Promise.all(names.slice(0, 10).map(async n => ({ name: String(n), url: await wikiThumbHome(String(n)) }))))
+      .filter((x): x is { name: string; url: string } => !!x.url);
+    if (withPhotos.length < 4) return [];
+    return buildSilhouetteRoundsFromPool(withPhotos, maxRounds, true);
+  } catch {
+    return [];
+  }
+}
+
+async function buildSilhouetteRounds(themeId: string, maxRounds: number): Promise<MusicRound[]> {
   try {
     const slots = await db.select().from(gameMediaSlotsTable)
       .where(eq(gameMediaSlotsTable.gameSlug, "saramusica-silhouettes"));
     const pool = slots.filter(s => s.value && s.label).map(s => ({ url: s.value, name: s.label! }));
-    if (pool.length < 4) return []; // servono almeno 4 nomi per la risposta multipla
-    const chosen = shuffleArr(pool).slice(0, Math.min(maxRounds, pool.length));
-    return chosen.map((sil, i) => {
-      const distractors = shuffleArr(pool.filter(p => p.name !== sil.name)).slice(0, 3).map(p => p.name);
-      const answers = shuffleArr([sil.name, ...distractors]);
-      return {
-        id: `sil-${i}`,
-        type: "silhouette_guess",
-        theme: "sagome",
-        question: "Quale cantante famoso è questa sagoma?",
-        answers,
-        correctAnswerIndex: answers.indexOf(sil.name),
-        artist: sil.name,
-        points: 120,
-        timeLimit: 18,
-        silhouetteUrl: sil.url,
-      } as MusicRound;
-    });
-  } catch {
-    return [];
-  }
+    if (pool.length >= 4) return buildSilhouetteRoundsFromPool(pool, maxRounds, false); // sagome caricate a mano
+  } catch { /* passa all'auto */ }
+  // Nessuna sagoma caricata → genera da AI + Wikipedia (foto in ombra)
+  return buildSilhouetteRoundsAuto(themeId, maxRounds);
 }
 
 // Aggiunge secondi al countdown del round corrente (solo Regia/Presenter, via
