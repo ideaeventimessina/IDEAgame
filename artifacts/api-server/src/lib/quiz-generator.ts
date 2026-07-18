@@ -230,15 +230,11 @@ function validateAndRepair(raw: Record<string, unknown>, theme: string): QuizQue
   const points  = Number(raw['points']    ?? 100);
   const timeLimit = Number(raw['timeLimit'] ?? raw['time_limit'] ?? TIME_LIMITS[type as QuestionType] ?? 15);
 
-  let imageA = raw['imageA'] as string | undefined;
-  let imageB = raw['imageB'] as string | undefined;
-
-  if (type === 'image_vs_image') {
-    const labelA = answers[0] ?? 'A';
-    const labelB = answers[1] ?? 'B';
-    if (!imageA) imageA = `https://placehold.co/600x400/1a1a2e/F5B642?text=${encodeURIComponent(labelA)}`;
-    if (!imageB) imageB = `https://placehold.co/600x400/1a1a2e/F5B642?text=${encodeURIComponent(labelB)}`;
-  }
+  // Per image_vs_image l'AI mette il NOME del soggetto in imageA/imageB (o lo omette).
+  // Niente placeholder qui: se dopo la risoluzione Wikipedia non c'è una foto vera,
+  // la domanda viene scartata a monte (vedi generateQuizQuestionsAI).
+  const imageA = raw['imageA'] as string | undefined;
+  const imageB = raw['imageB'] as string | undefined;
 
   return {
     id: makeId(),
@@ -298,7 +294,12 @@ REGOLE DI QUALITÀ (IMPORTANTISSIME — una violazione rovina la partita):
 - speed_round: 3 risposte, timeLimit = 8
 - final_bomb: ultima domanda, points = 200, timeLimit = 20
 - progressive_clue: clues array con 3 indizi che restringono il campo.
-- image_vs_image: usane ALMENO 1 ogni 5 domande. 2 risposte con etichette (es. "HARRY","HERMIONE"). In "imageA"/"imageB" NON inventare URL: metti SOLO il nome del soggetto da mostrare (es. "Harry Potter", "Hermione Granger") — al resto pensa il server.
+- image_vs_image: usane ALMENO 1 ogni 5 domande. Confronta SEMPRE due soggetti REALI, famosi e visivamente riconoscibili (persone, animali, oggetti, luoghi, film) che hanno una pagina Wikipedia.
+  ✗ VIETATO domande su "quale di queste immagini/foto è stata scattata/dipinta/fatta da X" o legate a date/autori/eventi non fotografabili.
+  ✗ VIETATO risposte generiche tipo "Immagine A"/"Immagine B"/"Opzione 1".
+  ✓ Le 2 "answers" DEVONO essere ESATTAMENTE i nomi dei due soggetti (es. ["ELEFANTE","IPPOPOTAMO"], ["Harry Potter","Hermione Granger"]).
+  ✓ "imageA" = nome esatto del primo soggetto, "imageB" = nome esatto del secondo (lo stesso testo delle 2 answers, SENZA frecce/simboli). NON inventare URL: al resto pensa il server.
+  La domanda deve confrontarli (es. "Quale è più pesante?", "Chi ha vinto più Oscar?").
 - Usa sempre l'italiano.
 - L'ultima domanda DEVE essere di tipo "final_bomb".
 - Mix di tipi: almeno 1 true_false, 1 speed_round, e image_vs_image ~1 ogni 5.`;
@@ -332,11 +333,20 @@ REGOLE DI QUALITÀ (IMPORTANTISSIME — una violazione rovina la partita):
     }
   }
   // Immagini vere: l'AI mette il NOME del soggetto in imageA/imageB → thumbnail Wikipedia.
+  // Se manca, ripiega sull'etichetta della risposta (answers[0]/[1]).
   await Promise.all(valid.filter(q => q.type === 'image_vs_image').map(async q => {
-    if (q.imageA && !/^https?:/i.test(q.imageA)) q.imageA = (await wikiThumb(q.imageA)) ?? undefined;
-    if (q.imageB && !/^https?:/i.test(q.imageB)) q.imageB = (await wikiThumb(q.imageB)) ?? undefined;
+    const subjA = (q.imageA && !/^https?:/i.test(q.imageA)) ? q.imageA : (q.imageA ? null : q.answers[0]);
+    const subjB = (q.imageB && !/^https?:/i.test(q.imageB)) ? q.imageB : (q.imageB ? null : q.answers[1]);
+    if (subjA) q.imageA = (await wikiThumb(subjA)) ?? undefined;
+    if (subjB) q.imageB = (await wikiThumb(subjB)) ?? undefined;
   }));
-  return valid;
+  // Scarta le domande-immagine che non hanno DUE foto reali: mostrerebbero solo
+  // placeholder di testo ("Immagine A/B") — meglio non proporle affatto.
+  const usable = valid.filter(q => {
+    if (q.type !== 'image_vs_image') return true;
+    return /^https?:/i.test(q.imageA ?? '') && /^https?:/i.test(q.imageB ?? '');
+  });
+  return usable;
 }
 
 // Thumbnail di Wikipedia (IT, poi EN) dato il nome del soggetto. null se non trovato.
