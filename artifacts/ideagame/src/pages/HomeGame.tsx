@@ -754,9 +754,9 @@ export default function HomeGame() {
   }, [session]);
 
   // Ballo: video di sottofondo (presente solo se il prescelto/presentatore l'ha scelto)
-  const balloVideo = useMemo<{ videoId: string; title: string } | null>(() => {
+  const balloVideo = useMemo<{ videoId: string; title: string; startSeconds?: number } | null>(() => {
     const cfg = session?.gameConfig ?? {};
-    return (cfg.balloVideo as { videoId: string; title: string } | null) ?? null;
+    return (cfg.balloVideo as { videoId: string; title: string; startSeconds?: number } | null) ?? null;
   }, [session]);
   useEffect(() => { balloVideoRef.current = balloVideo; }, [balloVideo]);
   const balloActive = useMemo(() => {
@@ -1459,7 +1459,11 @@ export default function HomeGame() {
       </div>
 
       {/* ── Ballo: video YouTube di sottofondo durante i round energia ── */}
-      {phase === 'playing' && balloActive && balloVideo && <BalloVideoBg videoId={balloVideo.videoId} />}
+      {phase === 'playing' && balloActive && balloVideo && (
+        <BalloVideoBg videoId={balloVideo.videoId}
+          startSeconds={balloVideo.startSeconds ?? 0}
+          roundKey={String((session?.roundPayload as Record<string,unknown>)?.roundStartedAt ?? session?.currentRound ?? '')} />
+      )}
 
       {/* ── +Ns verde (Regia/Presenter ha aggiunto tempo) — sale e sfuma ── */}
       {addTimeFlash && (
@@ -4089,10 +4093,14 @@ const CLIP_BADGES: Record<string, { emoji: string; label: string }> = {
 };
 
 // ── Ballo: video YouTube di sottofondo (brano intero, con audio) ─────────────
-function BalloVideoBg({ videoId }: { videoId: string }) {
+// Parte dal ritornello (startSeconds, stima AI) e ci ri-salta ad ogni manche
+// (roundKey cambia → seekTo) così ogni ballerino balla sulla parte più carica.
+function BalloVideoBg({ videoId, startSeconds = 0, roundKey = '' }: { videoId: string; startSeconds?: number; roundKey?: string }) {
   const containerId = `ballo-bg-${videoId.slice(0, 8)}`;
   const playerRef = useRef<YTPlayerInst | null>(null);
+  const startRef = useRef(startSeconds);
   const [needsTap, setNeedsTap] = useState(false);
+  useEffect(() => { startRef.current = startSeconds; }, [startSeconds]);
 
   const start = useCallback(async () => {
     await loadYTApi();
@@ -4100,9 +4108,11 @@ function BalloVideoBg({ videoId }: { videoId: string }) {
     playerRef.current = new window.YT.Player(containerId, {
       videoId,
       width: '100%', height: '100%',
-      playerVars: { autoplay: 1, controls: 0, rel: 0, modestbranding: 1, playsinline: 1, enablejsapi: 1, loop: 1, playlist: videoId },
+      playerVars: { autoplay: 1, controls: 0, rel: 0, modestbranding: 1, playsinline: 1, enablejsapi: 1, loop: 1, playlist: videoId, start: Math.round(startRef.current) },
       events: {
-        onReady: (evt: { target: YTPlayerInst }) => { try { evt.target.playVideo(); } catch { setNeedsTap(true); } },
+        onReady: (evt: { target: YTPlayerInst }) => {
+          try { evt.target.seekTo(startRef.current, true); evt.target.playVideo(); } catch { setNeedsTap(true); }
+        },
         onError: () => { /* video non embeddabile → resta lo sfondo scuro */ },
       },
     });
@@ -4112,6 +4122,13 @@ function BalloVideoBg({ videoId }: { videoId: string }) {
     void start();
     return () => { if (playerRef.current) { try { playerRef.current.destroy(); } catch { /**/ } playerRef.current = null; } };
   }, [start]);
+
+  // Ogni nuova manche: ri-salta al ritornello (senza ricreare il player).
+  useEffect(() => {
+    if (!roundKey) return;
+    const p = playerRef.current;
+    if (p) { try { p.seekTo(startRef.current, true); p.playVideo(); } catch { /**/ } }
+  }, [roundKey]);
 
   return (
     <div className="fixed inset-0 z-[2]" style={{ background: '#000' }}>

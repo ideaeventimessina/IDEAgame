@@ -2946,6 +2946,32 @@ export async function applyHomeAddTime(sessionId: string, seconds: number): Prom
   return true;
 }
 
+// Stima (best-effort) del secondo in cui parte il ritornello/hook più ballabile.
+// gpt-4o-mini indovina il timestamp; se fallisce o è fuori scala, fallback a ~45s.
+async function estimateChorusStart(title: string, channel: string, durationSeconds: number): Promise<number> {
+  const hi = durationSeconds > 60 ? Math.min(80, durationSeconds - 30) : 70;
+  const clamp = (n: number) => Math.max(12, Math.min(hi, Math.round(n)));
+  const fallback = clamp(45);
+  const baseUrl = process.env["AI_INTEGRATIONS_OPENAI_BASE_URL"];
+  const apiKey  = process.env["AI_INTEGRATIONS_OPENAI_API_KEY"];
+  if (!baseUrl || !apiKey) return fallback;
+  try {
+    const prompt = `In quale secondo (dall'inizio) parte il primo ritornello/hook — la parte più energica e ballabile — della canzone "${title}"${channel ? ` di ${channel}` : ""}? Rispondi SOLO con JSON: {"seconds": N} (N intero, 0 = inizio).`;
+    const resp = await fetch(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: prompt }], temperature: 0.2, max_tokens: 60 }),
+    });
+    if (!resp.ok) return fallback;
+    const data = await resp.json() as { choices?: { message?: { content?: string } }[] };
+    const raw = (data.choices?.[0]?.message?.content ?? "").replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    const parsed = JSON.parse(raw) as { seconds?: number };
+    const secs = Number(parsed.seconds);
+    if (!Number.isFinite(secs) || secs < 0) return fallback;
+    return clamp(secs);
+  } catch { return fallback; }
+}
+
 // ── POST /home/sessions/:id/ballo/set-video ───────────────────────────────────
 // Il prescelto (Home) o il presentatore (Live) sceglie il brano YouTube di
 // sottofondo per il Ballo. Salvato in gameConfig.balloVideo così persiste nei round.
@@ -2957,12 +2983,15 @@ router.post("/home/sessions/:id/ballo/set-video", async (req, res): Promise<void
 
   const b = req.body as { videoId?: string; title?: string; channel?: string; thumbnailUrl?: string; durationSeconds?: number };
   if (!b.videoId) { res.status(400).json({ error: "videoId obbligatorio" }); return; }
+  const durationSeconds = Number(b.durationSeconds ?? 0);
+  const startSeconds = await estimateChorusStart(String(b.title ?? "Brano"), String(b.channel ?? ""), durationSeconds);
   const balloVideo = {
     videoId: b.videoId,
     title: String(b.title ?? "Brano"),
     channel: String(b.channel ?? ""),
     thumbnailUrl: String(b.thumbnailUrl ?? ""),
-    durationSeconds: Number(b.durationSeconds ?? 0),
+    durationSeconds,
+    startSeconds,
   };
 
   const cfg = (session.gameConfig ?? {}) as Record<string, unknown>;
