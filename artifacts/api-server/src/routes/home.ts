@@ -509,8 +509,8 @@ async function loadBalloRounds(): Promise<RoundPayload[]> {
     roundIndex: i,
     name: c.name,
     description: c.description,
-    duration: c.duration ?? 15,
-    timeLimit: c.duration ?? 15,
+    duration: 30,
+    timeLimit: 30,
     musicHint: c.musicHint ?? "",
     difficulty: c.difficulty ?? "medium",
     startedAt: null,
@@ -519,10 +519,10 @@ async function loadBalloRounds(): Promise<RoundPayload[]> {
 
 function fallbackBallo(): RoundPayload[] {
   return [
-    { mode: "home-ballo", roundIndex: 0, name: "Sfida Freestyle",    description: "Balla liberamente — più energia hai, meglio è!",                         duration: 15, timeLimit: 15, musicHint: "", startedAt: null },
-    { mode: "home-ballo", roundIndex: 1, name: "La Coreografia",     description: "Inventate insieme una mossa — tutti la ripetono!",                       duration: 15, timeLimit: 15, musicHint: "", startedAt: null },
-    { mode: "home-ballo", roundIndex: 2, name: "Stile Libero",       description: "Balla come vuoi, senza regole — giudica solo l'energia!",                 duration: 15, timeLimit: 15, musicHint: "", startedAt: null },
-    { mode: "home-ballo", roundIndex: 3, name: "Il Gran Finale",     description: "Ultimo round — tutto quello che hai!",                                    duration: 15, timeLimit: 15, musicHint: "", startedAt: null },
+    { mode: "home-ballo", roundIndex: 0, name: "Sfida Freestyle",    description: "Balla liberamente — più energia hai, meglio è!",                         duration: 30, timeLimit: 30, musicHint: "", startedAt: null },
+    { mode: "home-ballo", roundIndex: 1, name: "La Coreografia",     description: "Inventate insieme una mossa — tutti la ripetono!",                       duration: 30, timeLimit: 30, musicHint: "", startedAt: null },
+    { mode: "home-ballo", roundIndex: 2, name: "Stile Libero",       description: "Balla come vuoi, senza regole — giudica solo l'energia!",                 duration: 30, timeLimit: 30, musicHint: "", startedAt: null },
+    { mode: "home-ballo", roundIndex: 3, name: "Il Gran Finale",     description: "Ultimo round — tutto quello che hai!",                                    duration: 30, timeLimit: 30, musicHint: "", startedAt: null },
   ];
 }
 
@@ -547,8 +547,8 @@ async function loadBalloRoundsForTheme(
     roundIndex: i,
     name: c.name,
     description: c.description,
-    duration: c.duration ?? 15,
-    timeLimit: c.duration ?? 15,
+    duration: 30,
+    timeLimit: 30,
     musicHint: c.musicHint ?? "",
     difficulty: c.difficulty ?? "medium",
     startedAt: null,

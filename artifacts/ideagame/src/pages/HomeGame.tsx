@@ -2943,6 +2943,23 @@ function BalloBoard({ session, payload, players, balloEnergies, balloCurrent, ba
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [balloCurrent, balloResult]);
 
+  // ── Countdown manche (autoritativo: roundEndsAt, poi roundStartedAt+timeLimit) ─
+  const balloTimeLimit = Number(payload.timeLimit ?? 30);
+  const [danceSecs, setDanceSecs] = useState<number | null>(null);
+  useEffect(() => {
+    if (effectivePhase !== 'dancing') { setDanceSecs(null); return; }
+    const endIso   = payload.roundEndsAt as string | undefined;
+    const startIso = payload.roundStartedAt as string | undefined;
+    const endMs = endIso ? new Date(endIso).getTime()
+      : startIso ? new Date(startIso).getTime() + balloTimeLimit * 1000 : null;
+    if (!endMs) { setDanceSecs(null); return; }
+    const tick = () => setDanceSecs(Math.max(0, Math.ceil((endMs - Date.now()) / 1000)));
+    tick();
+    const t = setInterval(tick, 250);
+    return () => clearInterval(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectivePhase, payload.roundEndsAt, payload.roundStartedAt, balloTimeLimit]);
+
   // ── BOOKING PHASE (stages 2 & 3 only) ───────────────────────────────────────
   if (effectivePhase === 'booking') {
     const requiredPerTeam = balloStage;
@@ -3158,9 +3175,31 @@ function BalloBoard({ session, payload, players, balloEnergies, balloCurrent, ba
   });
   const isManyPlayers = activePlayers.length > 3;
 
+  const danceTotal = balloTimeLimit > 0 ? balloTimeLimit : 30;
+  const dancePct   = danceSecs !== null ? Math.max(0, Math.min(1, danceSecs / danceTotal)) : 1;
+  const danceColor = dancePct > 0.5 ? '#4ade80' : dancePct > 0.25 ? '#facc15' : '#ef4444';
+
   return (
     <motion.div key={String(payload.roundIndex)} initial={{opacity:0,y:16}} animate={{opacity:1,y:0}}
       className="flex w-full flex-col items-center gap-5">
+
+      {/* Countdown manche — grande, fisso a piè di schermo */}
+      {danceSecs !== null && (
+        <div style={{ position:'fixed', left:0, right:0, bottom:0, zIndex:60, pointerEvents:'none' }}>
+          <div style={{ height:10, width:`${dancePct*100}%`, background:danceColor,
+            boxShadow:`0 0 24px ${danceColor}`, transition:'width 0.25s linear, background 0.4s' }} />
+          <div className="flex items-end justify-center" style={{
+            background:'linear-gradient(0deg, rgba(0,0,0,0.85), rgba(0,0,0,0))', paddingBottom:24, paddingTop:40 }}>
+            <div className="text-display tabular-nums font-black leading-none" style={{
+              fontSize:'clamp(88px, 16vw, 220px)', color:danceColor,
+              textShadow:`0 0 50px ${danceColor}, 0 6px 24px rgba(0,0,0,0.9)`,
+              transform: danceSecs <= 5 ? 'scale(1.06)' : 'none', transition:'transform 0.2s' }}>
+              {danceSecs}
+            </div>
+            <div className="font-black text-white/70 mb-4 ml-3" style={{ fontSize:'clamp(20px,3vw,40px)' }}>s</div>
+          </div>
+        </div>
+      )}
 
       {/* Header */}
       <div className="flex flex-col items-center gap-2 text-center">
