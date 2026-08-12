@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 import { useState, useCallback, useEffect } from 'react';
 import { AdminLayout } from './AdminLayout';
 import { Wand2, Loader2, ChevronDown, ChevronUp, CheckCircle2, XCircle, Import, RefreshCw, Trash2, Sparkles, AlertCircle, Eye, EyeOff, Download } from 'lucide-react';

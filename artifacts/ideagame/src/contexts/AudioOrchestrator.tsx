@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 /**
  * AudioOrchestrator — global show audio state.
  * Wraps AudioManager + AudioContext settings into one place:

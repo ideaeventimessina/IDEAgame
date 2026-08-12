@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 import type {
   Tenant, User, Subscription, Plan, EventItem, Team, Player,
   Game, Question, MediaAsset, Score, GameSlug

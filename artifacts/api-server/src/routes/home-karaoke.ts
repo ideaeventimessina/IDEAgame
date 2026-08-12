@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 /* ─── Home mode — Karaoke Live + Freestyle Battle ────────────────────────────
    All endpoints are public (no requireAuth) — home sessions don't use tenant auth.
    State lives in homeSessionsTable.gameConfig.karaokeHomeState (version=3).

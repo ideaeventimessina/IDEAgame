@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 /**
  * SafariGuard — REMOVED.
  * All browsers (including Chrome iOS) are allowed to proceed.

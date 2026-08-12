@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 /* Mirror of karaoke-home-engine.ts types for use in the frontend.
    Keep in sync with artifacts/api-server/src/lib/karaoke-home-engine.ts */
 

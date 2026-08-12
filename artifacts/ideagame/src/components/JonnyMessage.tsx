@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 import { AnimatePresence, motion } from 'framer-motion';
 import { useJonny } from '@/contexts/JonnyContext';
 import { JonnyAvatar } from '@/components/JonnyAvatar';

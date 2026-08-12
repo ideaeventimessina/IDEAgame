@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 /**
  * JoinPage — /join/:code
  * Guest entra nella stanza digitando il proprio nickname.

@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 /* ─── Percorso a Risate — Missioni Improvvise v2 ────────────────────────────
    Static mission config. All gameplay logic lives on the server; this file
    is the source of truth for mission metadata used by the TV and phones.

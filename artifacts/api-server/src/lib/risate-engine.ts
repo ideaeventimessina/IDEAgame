@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 /* ─── Percorso a Risate — Missioni Improvvise v2 — Shared Engine ────────────
    Pure logic: no DB, no Express. Both home-mode and event-mode routes
    import this and only differ in WHERE they store/emit the state.

@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 export type Locale = 'it' | 'en' | 'es' | 'fr';
 
 export type Role = 'super_admin' | 'tenant_owner' | 'game_manager' | 'entertainer' | 'player';

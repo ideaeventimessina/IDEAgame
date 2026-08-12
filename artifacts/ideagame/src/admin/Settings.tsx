@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 import { useEffect, useState, useRef, useCallback, type ReactNode } from 'react';
 import { AdminLayout } from './AdminLayout';
 import { useI18n, LOCALES } from '@/i18n';

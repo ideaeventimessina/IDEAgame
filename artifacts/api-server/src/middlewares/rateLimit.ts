@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 import rateLimit from "express-rate-limit";
 
 /** 20 join attempts per IP per minute — prevents flood on public /players endpoint */

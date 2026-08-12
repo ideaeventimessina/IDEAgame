@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 import { db, auditLogTable } from "@workspace/db";
 import type { AuthedRequest } from "../middlewares/auth";
 

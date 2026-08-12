@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 /**
  * /live-tv?s=CODE — Live TV Projector View
  * No auth required — access by TV code only.

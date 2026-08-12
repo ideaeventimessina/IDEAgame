@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 /**
  * /live-join?s=CODE — Unified device role selector.
  * Anyone with a session code (tvCode or presenterCode) lands here

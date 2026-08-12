@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 import { createContext, useContext, useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
 
 export type JonnyMood =

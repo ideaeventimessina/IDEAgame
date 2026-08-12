@@ -1,4 +1,5 @@
 {
+  "_autore": "Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M",
   "name": "@workspace/mockup-sandbox",
   "version": "2.0.0",
   "type": "module",
@@ -70,5 +71,6 @@
     "vaul": "^1.1.2",
     "vite": "catalog:",
     "zod": "catalog:"
-  }
+  },
+  "author": "Andrea Gentile (C.f GNTNDR88S28F158M)"
 }

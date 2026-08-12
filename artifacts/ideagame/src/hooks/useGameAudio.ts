@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 import { useEffect, useRef, useCallback } from 'react';
 import { AudioManager, type AudioSlug, type AudioType } from '@/audio/AudioManager';
 import { useAudioOrchestrator } from '@/contexts/AudioOrchestrator';

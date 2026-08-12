@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 /**
  * Jonny's World — Soundtrack Engine
  * Singleton AudioManager. Silent fallback on any error or missing file.

@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 import { AdminLayout } from './AdminLayout';
 import { Shield, Loader2, RefreshCw } from 'lucide-react';
 import { useListAuditLog, type AuditEntry } from '@workspace/api-client-react';

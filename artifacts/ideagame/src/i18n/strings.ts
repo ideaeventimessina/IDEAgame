@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 import type { Locale } from '@/data/types';
 
 export const STRINGS: Record<Locale, Record<string, string>> = {

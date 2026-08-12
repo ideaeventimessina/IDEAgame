@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 import React, { createContext, useContext } from 'react';
 import { useGetMe, useLogin, useLogout, getGetMeQueryKey, getGetMeQueryOptions } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';

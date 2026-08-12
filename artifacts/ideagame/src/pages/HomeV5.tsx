@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 /**
  * HomeV5 — Cinematic Game Show Arena (visual experiment, zero backend)
  * Environment staging only: LED wall, side screens, 3D floor, spotlights,

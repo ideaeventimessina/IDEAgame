@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 import bcrypt from "bcryptjs";
 import { db, tenantsTable, usersTable, gamesTable, eventsTable, teamsTable, questionsTable, mediaTable } from "@workspace/db";
 import { logger } from "./lib/logger";

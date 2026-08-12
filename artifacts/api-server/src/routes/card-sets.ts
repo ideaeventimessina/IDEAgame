@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 import { Router, type IRouter, type Response } from "express";
 import { eq, or, isNull } from "drizzle-orm";
 import { db, cardSetsTable, cardsTable } from "@workspace/db";

@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 /**
  * HomeSetupPage — /home-setup
  * Crea una nuova stanza HOME MODE con configurazione reale.

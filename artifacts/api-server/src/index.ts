@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 import { createServer } from "node:http";
 import app from "./app";
 import { initSocket, initHomeSocketHandlers } from "./socket";

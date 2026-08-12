@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 import { pgTable, uuid, text, timestamp, unique } from "drizzle-orm/pg-core";
 
 export const gameMediaSlotsTable = pgTable("game_media_slots", {

@@ -1,4 +1,5 @@
 {
+  "_autore": "Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M",
   "name": "@workspace/api-spec",
   "version": "0.0.0",
   "private": true,
@@ -7,5 +8,6 @@
   },
   "devDependencies": {
     "orval": "^8.5.2"
-  }
+  },
+  "author": "Andrea Gentile (C.f GNTNDR88S28F158M)"
 }

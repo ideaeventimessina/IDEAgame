@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 import { Server as SocketServer } from "socket.io";
 import type { Server as HttpServer } from "node:http";
 import { db, playersTable, homeSessionsTable, homePlayersTable } from "@workspace/db";

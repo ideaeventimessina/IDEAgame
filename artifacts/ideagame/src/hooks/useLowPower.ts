@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 /**
  * useLowPower — detect PS4 browser / low-memory devices and return a flag.
  * Used to gate heavy animations, blur filters, and particle effects.

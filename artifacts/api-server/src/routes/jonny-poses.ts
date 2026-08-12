@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 import path from "path";
 import fs from "fs";
 import { Router, type IRouter, type Response, type Request } from "express";

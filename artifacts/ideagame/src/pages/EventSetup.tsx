@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 import { Building2, Calendar, MapPin, Users, Palette, Save, ArrowRight, Loader2 } from 'lucide-react';

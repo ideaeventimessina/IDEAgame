@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PlusCircle, Trash2, ChevronUp, ChevronDown, Edit2, Check, X, Loader2, ImageIcon, Grid, Link, Sparkles, Wand2 } from 'lucide-react';

@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 /**
  * HomeV4.1 — Game Show fullscreen 16:9 · Visual Upgrade
  * Zero backend · zero socket · zero polling.

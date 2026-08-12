@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 import { useEffect } from 'react';
 import { useLocation } from 'wouter';
 import type { SocketEventHandler } from './useEventSocket';

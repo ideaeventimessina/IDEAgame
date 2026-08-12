@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 import type { Request, Response, NextFunction } from "express";
 import { db, usersTable, type User } from "@workspace/db";
 import { eq } from "drizzle-orm";

@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 import { useI18n, LOCALES } from '@/i18n';
 
 export function LocaleSwitcher({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {

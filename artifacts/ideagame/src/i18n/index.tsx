@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 import React, { createContext, useContext, useState, useMemo } from 'react';
 import type { Locale } from '@/data/types';
 import { STRINGS } from './strings';

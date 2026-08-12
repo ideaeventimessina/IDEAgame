@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 import { useLocation } from 'wouter';
 import { Building2, Activity, Users, DollarSign, Play, Image as ImageIcon, ArrowUpRight, Loader2, Mic2, Monitor, MonitorPlay, Power } from 'lucide-react';
 import { AdminLayout } from './AdminLayout';

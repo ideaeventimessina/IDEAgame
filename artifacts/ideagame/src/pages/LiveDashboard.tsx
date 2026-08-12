@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 /**
  * /live-dashboard — Live Mode Entry Point
  * Auth required. Shows session list + "Nuova Sessione". Each card opens REGIA/TV/PRESENTER.

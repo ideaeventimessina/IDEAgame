@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 /**
  * GameFlowPhone — Phone-side universal pre-game flow controller.
  * Phases: theme_select (waiting) → booking → confirm → countdown

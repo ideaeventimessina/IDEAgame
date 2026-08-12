@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import { AudioManager, DEFAULT_AUDIO_SETTINGS, type AudioSettings } from '@/audio/AudioManager';
 
