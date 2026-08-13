@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 import OpenAI from "openai";
 import { logger } from "./logger.js";
 
@@ -248,11 +250,11 @@ export async function generateWordBackRoundsAI(
   count: number,
   difficulty: "easy" | "medium" | "hard" = "medium",
 ): Promise<WordBackRound[]> {
-  const baseURL = process.env["AI_INTEGRATIONS_OPENAI_BASE_URL"];
-  const apiKey  = process.env["AI_INTEGRATIONS_OPENAI_API_KEY"];
-  if (!baseURL || !apiKey) throw new Error("AI non configurato");
+  /* Chiave diretta OpenAI: niente baseURL, l'SDK usa api.openai.com. */
+  const apiKey  = process.env["OPENAI_API_KEY"];
+  if (!apiKey) throw new Error("OPENAI_API_KEY non impostata");
 
-  const openai = new OpenAI({ baseURL, apiKey });
+  const openai = new OpenAI({ apiKey });
 
   const diffLabel = difficulty === "easy"
     ? "Facile — parole comuni e note, taboo ovvi"

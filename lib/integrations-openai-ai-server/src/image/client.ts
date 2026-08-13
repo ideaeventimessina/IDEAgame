@@ -1,22 +1,35 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 import fs from "node:fs";
 import OpenAI, { toFile } from "openai";
 import { Buffer } from "node:buffer";
 
-if (!process.env.AI_INTEGRATIONS_OPENAI_BASE_URL) {
-  throw new Error(
-    "AI_INTEGRATIONS_OPENAI_BASE_URL must be set. Did you forget to provision the OpenAI AI integration?",
-  );
+/* Chiave diretta OpenAI: le richieste vanno a api.openai.com e le paghi a
+   OpenAI, non piu' a crediti Replit. Senza baseURL l'SDK usa l'endpoint
+   ufficiale. */
+let client: OpenAI | null = null;
+
+function real(): OpenAI {
+  if (!client) {
+    const key = (process.env.OPENAI_API_KEY ?? "").trim();
+    if (!key) {
+      throw new Error(
+        "OPENAI_API_KEY non impostata: aggiungi la tua chiave OpenAI ai Secrets dell'app.",
+      );
+    }
+    client = new OpenAI({ apiKey: key });
+  }
+  return client;
 }
 
-if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
-  throw new Error(
-    "AI_INTEGRATIONS_OPENAI_API_KEY must be set. Did you forget to provision the OpenAI AI integration?",
-  );
-}
-
-export const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+/* Costruzione pigra: il client nasce alla prima chiamata, non all'import, cosi'
+   una chiave mancante fa fallire solo le richieste AI e non l'avvio del server. */
+export const openai = new Proxy({} as OpenAI, {
+  get(_target, prop) {
+    const c = real() as unknown as Record<string | symbol, unknown>;
+    const value = c[prop];
+    return typeof value === "function" ? value.bind(c) : value;
+  },
 });
 
 export async function generateImageBuffer(

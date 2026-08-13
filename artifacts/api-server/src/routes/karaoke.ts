@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 import { Router, type IRouter } from "express";
 import { eq, asc, and, or, isNull } from "drizzle-orm";
 import { execFile } from "child_process";
@@ -209,9 +211,10 @@ router.post("/karaoke/suggest-tracks", requireAuth, async (req, res) => {
   const { theme, count = 6 } = req.body as { theme?: string; count?: number };
   if (!theme?.trim()) { res.status(400).json({ error: "theme obbligatorio" }); return; }
 
-  const baseUrl = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
-  const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
-  if (!baseUrl || !apiKey) { res.status(500).json({ error: "OpenAI non configurato" }); return; }
+  /* Endpoint ufficiale OpenAI + chiave diretta: la spesa va su OpenAI. */
+  const baseUrl = "https://api.openai.com/v1";
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) { res.status(500).json({ error: "OpenAI non configurato" }); return; }
 
   const prompt = `Sei un esperto musicale per serate karaoke italiane. Per il tema "${theme.trim()}", suggerisci esattamente ${count} brani perfetti per karaoke.
 Rispondi SOLO con un array JSON valido senza markdown, senza testo aggiuntivo prima o dopo:

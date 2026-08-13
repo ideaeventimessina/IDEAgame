@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 export type QuestionType =
   | 'multiple_choice'
   | 'true_false'
@@ -256,9 +258,10 @@ async function generateQuizQuestionsAI(
   count: number,
   difficulty: "easy" | "medium" | "hard",
 ): Promise<QuizQuestion[]> {
-  const baseUrl = process.env['AI_INTEGRATIONS_OPENAI_BASE_URL'];
-  const apiKey  = process.env['AI_INTEGRATIONS_OPENAI_API_KEY'];
-  if (!baseUrl || !apiKey) throw new Error("AI env vars not set");
+  /* Endpoint ufficiale OpenAI + chiave diretta: la spesa va su OpenAI. */
+  const baseUrl = "https://api.openai.com/v1";
+  const apiKey  = process.env['OPENAI_API_KEY'];
+  if (!apiKey) throw new Error("OPENAI_API_KEY non impostata");
 
   const timeMult = difficulty === "easy" ? 1.4 : difficulty === "hard" ? 0.7 : 1.0;
   const ptsMult  = difficulty === "easy" ? 0.8 : difficulty === "hard" ? 1.25 : 1.0;

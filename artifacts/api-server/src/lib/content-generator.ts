@@ -1,11 +1,13 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 import OpenAI from "openai";
 import { logger } from "./logger.js";
 
+/* Chiave diretta OpenAI: niente baseURL, l'SDK usa api.openai.com. */
 function makeClient(): OpenAI | null {
-  const base = process.env["AI_INTEGRATIONS_OPENAI_BASE_URL"];
-  const key  = process.env["AI_INTEGRATIONS_OPENAI_API_KEY"];
-  if (!base || !key) return null;
-  return new OpenAI({ baseURL: base, apiKey: key });
+  const key = process.env["OPENAI_API_KEY"];
+  if (!key) return null;
+  return new OpenAI({ apiKey: key });
 }
 
 export interface GeneratedItem {

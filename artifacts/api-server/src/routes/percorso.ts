@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 import { Router, type IRouter, type Response, type Request } from "express";
 import { eq, asc, and, or, isNull } from "drizzle-orm";
 import {
@@ -243,9 +245,10 @@ function buildImagePrompt(title: string, description: string, challengeType: str
 }
 
 async function callOpenAIImage(prompt: string): Promise<Buffer> {
-  const baseUrl = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
-  const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
-  if (!baseUrl || !apiKey) throw new Error("OpenAI integration not configured");
+  /* Endpoint ufficiale OpenAI + chiave diretta: la spesa va su OpenAI. */
+  const baseUrl = "https://api.openai.com/v1";
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error("OPENAI_API_KEY non impostata");
 
   const response = await fetch(`${baseUrl}/images/generations`, {
     method: "POST",

@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 import OpenAI from "openai";
 import { logger } from "./logger.js";
 
@@ -298,12 +300,12 @@ export function generateSaraMusicaFallback(themeId: string, count: number, diffi
 // ── AI generator ──────────────────────────────────────────────────────────────
 
 export async function generateSaraMusicaRoundsAI(themeId: string, count: number, difficulty: "easy" | "medium" | "hard" = "medium"): Promise<MusicRound[]> {
-  const baseURL = process.env["AI_INTEGRATIONS_OPENAI_BASE_URL"];
-  const apiKey  = process.env["AI_INTEGRATIONS_OPENAI_API_KEY"];
-  if (!baseURL || !apiKey) throw new Error("AI non configurato");
+  /* Chiave diretta OpenAI: niente baseURL, l'SDK usa api.openai.com. */
+  const apiKey  = process.env["OPENAI_API_KEY"];
+  if (!apiKey) throw new Error("OPENAI_API_KEY non impostata");
 
   const themeName = SM_THEMES.find(t => t.id === themeId)?.label ?? themeId;
-  const openai = new OpenAI({ baseURL, apiKey });
+  const openai = new OpenAI({ apiKey });
 
   const diffLabel = difficulty === "easy"
     ? "Facile — artisti famosissimi, canzoni iconiche, risposte ovvie, timeLimit generosi"

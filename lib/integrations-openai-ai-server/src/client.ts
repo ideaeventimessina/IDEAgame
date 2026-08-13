@@ -1,18 +1,41 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 import OpenAI from "openai";
 
-if (!process.env.AI_INTEGRATIONS_OPENAI_BASE_URL) {
-  throw new Error(
-    "AI_INTEGRATIONS_OPENAI_BASE_URL must be set. Did you forget to provision the OpenAI AI integration?",
-  );
+/* Chiave diretta OpenAI: le richieste vanno a api.openai.com e le paghi a
+   OpenAI. Prima passavano dal gateway AI di Replit (AI_INTEGRATIONS_OPENAI_*),
+   che le rifatturava a crediti Replit. Senza baseURL l'SDK usa l'endpoint
+   ufficiale. */
+function resolveApiKey(): string {
+  const key = (process.env.OPENAI_API_KEY ?? "").trim();
+  if (!key) {
+    throw new Error(
+      "OPENAI_API_KEY non impostata: aggiungi la tua chiave OpenAI ai Secrets dell'app.",
+    );
+  }
+  return key;
 }
 
-if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
-  throw new Error(
-    "AI_INTEGRATIONS_OPENAI_API_KEY must be set. Did you forget to provision the OpenAI AI integration?",
-  );
+let client: OpenAI | null = null;
+
+function real(): OpenAI {
+  if (!client) {
+    client = new OpenAI({ apiKey: resolveApiKey() });
+  }
+  return client;
 }
 
-export const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+/** True quando la chiave diretta e' configurata (nessuna richiesta di rete). */
+export function isOpenAiConfigured(): boolean {
+  return Boolean((process.env.OPENAI_API_KEY ?? "").trim());
+}
+
+/* Costruzione pigra: il client nasce alla prima chiamata, non all'import, cosi'
+   una chiave mancante fa fallire solo le richieste AI e non l'avvio del server. */
+export const openai = new Proxy({} as OpenAI, {
+  get(_target, prop) {
+    const c = real() as unknown as Record<string | symbol, unknown>;
+    const value = c[prop];
+    return typeof value === "function" ? value.bind(c) : value;
+  },
 });

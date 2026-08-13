@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 import { Router, type IRouter } from "express";
 import { eq, asc, or, isNull } from "drizzle-orm";
 import OpenAI from "openai";
@@ -14,9 +16,9 @@ import type { DanceState, DanceTeamInState } from "@workspace/db";
 import { type AuthedRequest, requireAuth, loadUser } from "../middlewares/auth";
 import { emitToEvent } from "../socket";
 
+/* Chiave diretta OpenAI: niente baseURL, l'SDK usa api.openai.com. */
 const openai = new OpenAI({
-  baseURL: process.env["AI_INTEGRATIONS_OPENAI_BASE_URL"],
-  apiKey: process.env["AI_INTEGRATIONS_OPENAI_API_KEY"],
+  apiKey: process.env["OPENAI_API_KEY"],
 });
 
 const router: IRouter = Router();

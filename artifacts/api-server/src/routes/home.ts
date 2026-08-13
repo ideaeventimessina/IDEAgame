@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 /**
  * HOME MODE routes — no auth required.
  * Modalità Home: una sessione, 8 giochi in sequenza, contenuto pre-caricato dal DB.
@@ -2879,12 +2881,12 @@ async function wikiThumbHome(subject: string): Promise<string | null> {
 // Fonte automatica: l'AI sceglie i cantanti famosi del tema, Wikipedia dà le foto,
 // mostrate in ombra e svelate alla risposta (nessun upload manuale necessario).
 async function buildSilhouetteRoundsAuto(themeId: string, maxRounds: number): Promise<MusicRound[]> {
-  const baseURL = process.env["AI_INTEGRATIONS_OPENAI_BASE_URL"];
-  const apiKey  = process.env["AI_INTEGRATIONS_OPENAI_API_KEY"];
-  if (!baseURL || !apiKey) return [];
+  /* Chiave diretta OpenAI: niente baseURL, l'SDK usa api.openai.com. */
+  const apiKey  = process.env["OPENAI_API_KEY"];
+  if (!apiKey) return [];
   const themeName = SM_THEMES.find(t => t.id === themeId)?.label ?? themeId;
   try {
-    const openai = new OpenAI({ baseURL, apiKey });
+    const openai = new OpenAI({ apiKey });
     const resp = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: `Elenca 10 cantanti o artisti musicali FAMOSISSIMI e visivamente riconoscibili a tema "${themeName}". Rispondi SOLO con un array JSON di nomi completi come compaiono su Wikipedia, es. ["Michael Jackson","Madonna","Vasco Rossi"]. Nessun altro testo.` }],
@@ -2952,9 +2954,10 @@ async function estimateChorusStart(title: string, channel: string, durationSecon
   const hi = durationSeconds > 60 ? Math.min(80, durationSeconds - 30) : 70;
   const clamp = (n: number) => Math.max(12, Math.min(hi, Math.round(n)));
   const fallback = clamp(45);
-  const baseUrl = process.env["AI_INTEGRATIONS_OPENAI_BASE_URL"];
-  const apiKey  = process.env["AI_INTEGRATIONS_OPENAI_API_KEY"];
-  if (!baseUrl || !apiKey) return fallback;
+  /* Endpoint ufficiale OpenAI + chiave diretta: la spesa va su OpenAI. */
+  const baseUrl = "https://api.openai.com/v1";
+  const apiKey  = process.env["OPENAI_API_KEY"];
+  if (!apiKey) return fallback;
   try {
     const prompt = `In quale secondo (dall'inizio) parte il primo ritornello/hook — la parte più energica e ballabile — della canzone "${title}"${channel ? ` di ${channel}` : ""}? Rispondi SOLO con JSON: {"seconds": N} (N intero, 0 = inizio).`;
     const resp = await fetch(`${baseUrl}/chat/completions`, {
@@ -4843,16 +4846,15 @@ router.post(
       res.status(409).json({ error: "Risposta già registrata per questo round" }); return;
     }
 
-    // Transcription — requires AI integration key
-    const baseURL = process.env["AI_INTEGRATIONS_OPENAI_BASE_URL"];
-    const apiKey  = process.env["AI_INTEGRATIONS_OPENAI_API_KEY"];
+    // Transcription — richiede la chiave diretta OpenAI
+    const apiKey  = process.env["OPENAI_API_KEY"];
     if (!apiKey) {
       res.status(503).json({ error: "Trascrizione non configurata — usa risposta scritta" }); return;
     }
 
     let transcript = "";
     try {
-      const openai   = new OpenAI({ baseURL, apiKey });
+      const openai   = new OpenAI({ apiKey });
       const mimeType = req.file.mimetype || "audio/webm";
       const ext      = mimeType.includes("mp4") ? "mp4"
                      : mimeType.includes("wav")  ? "wav"

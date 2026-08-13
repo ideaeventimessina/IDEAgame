@@ -1,3 +1,5 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
 /* ─── Home mode — Percorso a Risate: Missioni Improvvise v2 ─────────────────
    All endpoints are public (no requireAuth) because home sessions don't use
    tenant auth.  State lives in homeSessionsTable.gameConfig.risateState.
@@ -126,9 +128,9 @@ function scheduleRisateVotingAutoClose(sessionId: string, cfg: Record<string, un
 /* ── Part 5: AI phrase translation ──────────────────────────────────────── */
 async function translatePhrases(phrases: string[], targetLanguage: string): Promise<string[]> {
   const langClean = targetLanguage.replace(/\s*[\u{1F1E0}-\u{1F1FF}]{2}|🌍/gu, "").trim();
+  /* Chiave diretta OpenAI: niente baseURL, l'SDK usa api.openai.com. */
   const client = new OpenAI({
-    baseURL: process.env["AI_INTEGRATIONS_OPENAI_BASE_URL"],
-    apiKey: process.env["AI_INTEGRATIONS_OPENAI_API_KEY"] ?? "placeholder",
+    apiKey: process.env["OPENAI_API_KEY"] ?? "placeholder",
   });
   const results: string[] = [];
   for (const phrase of phrases) {
