@@ -1899,7 +1899,7 @@ export default function HomeGame() {
               </div>
 
               {/* Timer — hidden for modes with their own internal timer */}
-              {!(['home-percorso','home-coppie','home-quizzone','home-saramusica','home-adult','home-ballo','home-flow','home-wordback','home-wordback-booking','home-wordback-setup'].includes(
+              {!(['home-percorso','home-coppie','home-quizzone','home-saramusica','home-adult','home-ballo','home-flow','home-wordback','home-wordback-booking','home-wordback-setup','home-freestyle'].includes(
                   String((session.roundPayload as Record<string,unknown>)?.mode ?? '')) ||
                 (session.gameSlug === 'karaoke-battle' &&
                   ((session.gameConfig as Record<string,unknown>)?.karaokeHomeState as {version?:number}|undefined)?.version === 3)
@@ -6354,6 +6354,21 @@ function FreestyleBoard({ payload, onReveal, players, onScore }: {
   const pts = Number(payload.points ?? 200);
   const trackIdx = Number(payload.roundIndex ?? 0) % FREESTYLE_TRACKS.length;
   const trackUrl = FREESTYLE_TRACKS[trackIdx] ?? FREESTYLE_TRACKS[0];
+  // Countdown autoritativo (roundEndsAt) — prima sul TV c'era solo il timer header
+  // non-autoritativo (poteva sfasare col telefono).
+  const fsTimeLimit = Number(payload.timeLimit ?? 30);
+  const [fsSecs, setFsSecs] = useState<number | null>(null);
+  useEffect(() => {
+    const endIso = payload.roundEndsAt as string | undefined;
+    const startIso = payload.roundStartedAt as string | undefined;
+    const endMs = endIso ? new Date(endIso).getTime()
+      : startIso ? new Date(startIso).getTime() + fsTimeLimit * 1000 : null;
+    if (!endMs || payload.paused) { setFsSecs(null); return; }
+    const tick = () => setFsSecs(Math.max(0, Math.ceil((endMs - Date.now()) / 1000)));
+    tick();
+    const t = setInterval(tick, 250);
+    return () => clearInterval(t);
+  }, [payload.roundEndsAt, payload.roundStartedAt, fsTimeLimit, payload.paused]);
   return (
     <motion.div key={String(payload.roundIndex)} initial={{scale:0.9,opacity:0}} animate={{scale:1,opacity:1}}
       className="flex w-full max-w-2xl flex-col items-center gap-7 text-center">
@@ -6368,7 +6383,16 @@ function FreestyleBoard({ payload, onReveal, players, onScore }: {
           {String(payload.word??'Improvvisa!')}
         </div>
       </div>
-      <div className="text-lg text-white/55">Improvvisa un freestyle su questa parola — {Number(payload.timeLimit??30)} secondi!</div>
+      {fsSecs !== null ? (
+        <div className="tabular-nums font-black leading-none"
+          style={{ fontSize: 'clamp(48px, 8vw, 104px)',
+            color: fsSecs > fsTimeLimit * 0.5 ? '#4ade80' : fsSecs > fsTimeLimit * 0.25 ? '#facc15' : '#ef4444',
+            textShadow: '0 0 40px currentColor' }}>
+          {fsSecs}<span className="text-3xl text-white/50 ml-2">s</span>
+        </div>
+      ) : (
+        <div className="text-lg text-white/55">Improvvisa un freestyle su questa parola — {fsTimeLimit} secondi!</div>
+      )}
       <AudioPlayer src={trackUrl} label="Avvia base musicale" color="#FB923C"/>
       <div className="text-base text-white/50">Chi ha rappato meglio? Assegna i punti ({pts}pt):</div>
       <div className="flex flex-wrap justify-center gap-3">
