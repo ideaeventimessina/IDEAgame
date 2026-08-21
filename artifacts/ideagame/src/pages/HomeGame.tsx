@@ -2476,8 +2476,9 @@ function QuizzoneBoard({ payload, session, players }: {
     tick();
     timerRef.current = setInterval(tick, 250);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  // questionEndsAt nelle deps: il "+15s/+30s" (add_time) estende il deadline → il countdown si aggiorna.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, currentIndex]);
+  }, [phase, currentIndex, payload.questionEndsAt]);
 
   const post = async (path: string, body?: Record<string,unknown>) => {
     if (busy) return;
@@ -2786,23 +2787,23 @@ function QuizzoneBoard({ payload, session, players }: {
           <div className="text-sm text-white/40 mt-2">{correctCount}/{revealData.playerResults.length} hanno risposto correttamente</div>
         </div>
         {/* Per-player results */}
-        <div className="grid grid-cols-3 gap-3 max-h-40 overflow-y-auto">
+        <div className="grid grid-cols-3 gap-3 max-h-56 overflow-y-auto">
           {revealData.playerResults.map(r => (
-            <div key={r.playerId} className="flex items-center gap-2 rounded-xl px-3 py-2"
+            <div key={r.playerId} className="flex items-center gap-2 rounded-xl px-3 py-2.5"
               style={{ background: r.correct ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.10)', border:`1px solid ${r.correct ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.25)'}` }}>
-              <span>{r.correct ? '✅' : '❌'}</span>
-              <span className="text-xs font-bold text-white/80 flex-1 truncate">{r.nickname}</span>
-              {r.correct && <span className="text-xs font-black" style={{ color:'#4ade80' }}>+{r.points}</span>}
+              <span className="text-xl">{r.correct ? '✅' : '❌'}</span>
+              <span className="text-lg font-bold text-white/90 flex-1 truncate">{r.nickname}</span>
+              {r.correct && <span className="text-lg font-black" style={{ color:'#4ade80' }}>+{r.points}</span>}
             </div>
           ))}
         </div>
         {/* Scoreboard mini */}
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap justify-center">
           {[...players].sort((a,b) => b.score - a.score).slice(0,6).map((p,i) => (
-            <div key={p.id} className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.12)' }}>
-              <span className="text-xs font-black text-white/40">#{i+1}</span>
-              <span className="text-xs font-bold text-white">{p.nickname}</span>
-              <span className="text-sm font-black" style={{ color: QZ }}>{p.score}</span>
+            <div key={p.id} className="flex items-center gap-2 rounded-xl px-4 py-2.5" style={{ background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.12)' }}>
+              <span className="text-lg font-black text-white/50">#{i+1}</span>
+              <span className="text-lg font-bold text-white">{p.nickname}</span>
+              <span className="text-2xl font-black" style={{ color: QZ }}>{p.score}</span>
             </div>
           ))}
         </div>
@@ -2830,9 +2831,9 @@ function QuizzoneBoard({ payload, session, players }: {
               <div className="text-2xl font-black w-8 text-center" style={{ color: i === 0 ? '#FCD34D' : i === 1 ? '#CBD5E1' : i === 2 ? '#D97706' : 'rgba(255,255,255,0.4)' }}>
                 {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`}
               </div>
-              <div className="flex-1 text-base font-black text-white">{r.nickname}</div>
-              {r.delta > 0 && <div className="text-sm font-black" style={{ color:'#4ade80' }}>+{r.delta}</div>}
-              <div className="text-xl font-black" style={{ color: QZ }}>{r.score}</div>
+              <div className="flex-1 text-2xl font-black text-white">{r.nickname}</div>
+              {r.delta > 0 && <div className="text-lg font-black" style={{ color:'#4ade80' }}>+{r.delta}</div>}
+              <div className="text-3xl font-black" style={{ color: QZ }}>{r.score}</div>
             </motion.div>
           ))}
         </div>
@@ -3738,15 +3739,18 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
             const yogaPose = rs.publicChoice
               ? YOGA_POSES.find(p => rs.publicChoice!.includes(p.name)) : null;
             return (
-              <div className="flex flex-col items-center gap-3 rounded-3xl px-8 py-6 w-full max-w-md"
+              <div className="flex flex-col items-center gap-3 rounded-3xl px-8 py-6 w-full max-w-2xl"
                 style={{ background: 'rgba(52,211,153,0.10)', border: '2px solid rgba(52,211,153,0.4)' }}>
                 {yogaPose ? (
                   <>
                     {yogaPose.imageUrl
-                    ? <img src={yogaPose.imageUrl} alt={yogaPose.name} className="rounded-2xl object-cover" style={{ width: '6rem', height: '6rem' }} />
-                    : <span style={{ fontSize: '6rem', lineHeight: 1 }}>{yogaPose.emoji}</span>
+                    ? <img src={yogaPose.imageUrl} alt={yogaPose.name}
+                        className="rounded-2xl object-cover bg-white"
+                        style={{ width: 'min(70vw, 420px)', height: 'min(50vh, 420px)' }}
+                        onError={(e) => { const t = e.target as HTMLImageElement; t.style.display = 'none'; }} />
+                    : <span style={{ fontSize: '9rem', lineHeight: 1 }}>{yogaPose.emoji}</span>
                   }
-                    <div className="text-display text-3xl font-black" style={{ color: '#34D399' }}>
+                    <div className="text-display text-5xl font-black" style={{ color: '#34D399' }}>
                       {yogaPose.name}
                     </div>
                   </>
@@ -6372,14 +6376,18 @@ function CoppieBoard({ payload, onNext, sessionId }: { payload: Record<string,un
   const previewTimer = useRef<ReturnType<typeof setInterval>|null>(null);
 
   // Theme countdown
+  const themeAutoSelectedRef = useRef(false);
   useEffect(() => {
     if (themePhase !== 'suggestion' || !themeTimerEndsAt) { setThemeTimerLeft(null); return; }
+    themeAutoSelectedRef.current = false; // nuova fase suggerimento → riabilita l'auto-select una volta sola
     const endsAt = new Date(themeTimerEndsAt).getTime();
     const tick = () => {
       const left = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
       setThemeTimerLeft(left);
-      if (left <= 0 && sessionId) {
-        // Auto-select when timer expires: pick last proposed or random
+      // Auto-select allo scadere UNA sola volta (evita lo spam di POST ad ogni tick;
+      // esiste anche la rete server, questo è solo il fallback lato TV).
+      if (left <= 0 && sessionId && !themeAutoSelectedRef.current) {
+        themeAutoSelectedRef.current = true;
         void fetch(`/api/home/sessions/${sessionId}/coppie/select-theme`, {
           method: 'POST', credentials: 'include', headers: {'Content-Type':'application/json'},
           body: JSON.stringify({}),

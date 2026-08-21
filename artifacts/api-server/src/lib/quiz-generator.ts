@@ -1,5 +1,7 @@
 /* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
 
+import { cachedWikiImage } from "./image-cache.js";
+
 export type QuestionType =
   | 'multiple_choice'
   | 'true_false'
@@ -352,19 +354,10 @@ REGOLE DI QUALITÀ (IMPORTANTISSIME — una violazione rovina la partita):
   return usable;
 }
 
-// Thumbnail di Wikipedia (IT, poi EN) dato il nome del soggetto. null se non trovato.
+// Thumbnail di Wikipedia dato il nome del soggetto, con cache condivisa (riusa le
+// immagini già cercate — risparmia tempo/soldi). null se non trovato.
 async function wikiThumb(subject: string): Promise<string | null> {
-  for (const lang of ['it', 'en']) {
-    try {
-      const r = await fetch(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(subject.trim())}`,
-        { headers: { accept: 'application/json' } });
-      if (!r.ok) continue;
-      const d = await r.json() as { thumbnail?: { source?: string }; originalimage?: { source?: string } };
-      const url = d.thumbnail?.source ?? d.originalimage?.source;
-      if (url) return url;
-    } catch { /* prova la lingua successiva */ }
-  }
-  return null;
+  return cachedWikiImage(subject);
 }
 
 export function generateQuiz(themeId: string, count: number, difficulty: "easy" | "medium" | "hard" = "medium"): QuizQuestion[] {

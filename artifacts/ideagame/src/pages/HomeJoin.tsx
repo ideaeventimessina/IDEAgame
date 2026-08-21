@@ -1996,8 +1996,9 @@ function QuizzoneController({ payload, session, player }: {
     tick();
     timerRef.current = setInterval(tick, 250);
     return () => { if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; } };
+  // questionEndsAt nelle deps: il "+15s/+30s" estende il deadline → il countdown si aggiorna anche sul telefono.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, currentIndex]);
+  }, [phase, currentIndex, payload.questionEndsAt]);
 
   const submitAnswer = async (idx: number) => {
     if (busy || answeredIdx !== null || phase !== 'question' || timedOut) return;

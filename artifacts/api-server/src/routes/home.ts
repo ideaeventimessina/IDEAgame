@@ -25,6 +25,7 @@ import OpenAI from "openai";
 import { createBlankKaraokeState, FREESTYLE_BEATS, type FreestyleBeat } from "../lib/karaoke-home-engine.js";
 import { generateQuiz, generateQuizAsync, QUIZ_THEMES } from "../lib/quiz-generator.js";
 import { generateSaraMusicaRounds, SM_THEMES, type MusicRound } from "../lib/saramusica-generator.js";
+import { cachedWikiImage } from "../lib/image-cache.js";
 import { BOTTLE_LEVELS, pickFromBank, assignSpectatorPowers, pickRandomTruth, pickRandomDare, type BottleChallenge, type BottleLevel } from "../lib/adult-generator.js";
 import { eq, and, or, lt, asc, desc, isNull, notInArray } from "drizzle-orm";
 import {
@@ -2872,16 +2873,7 @@ function buildSilhouetteRoundsFromPool(pool: { url: string; name: string }[], ma
 
 // Thumbnail Wikipedia (IT→EN) per un nome. null se non trovato.
 async function wikiThumbHome(subject: string): Promise<string | null> {
-  for (const lang of ["it", "en"]) {
-    try {
-      const r = await fetch(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(subject.trim())}`, { headers: { accept: "application/json" } });
-      if (!r.ok) continue;
-      const d = await r.json() as { thumbnail?: { source?: string }; originalimage?: { source?: string } };
-      const url = d.thumbnail?.source ?? d.originalimage?.source;
-      if (url) return url;
-    } catch { /* prova lingua successiva */ }
-  }
-  return null;
+  return cachedWikiImage(subject); // riusa la cache immagini condivisa
 }
 
 // Fonte automatica: l'AI sceglie i cantanti famosi del tema, Wikipedia dà le foto,
