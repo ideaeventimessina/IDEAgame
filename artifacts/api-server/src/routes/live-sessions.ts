@@ -35,7 +35,7 @@ import {
 import { type AuthedRequest, requireAuth } from "../middlewares/auth";
 import { emitToRoom } from "../socket";
 import { logger } from "../lib/logger";
-import { applyHomeAddTime } from "./home";
+import { applyHomeAddTime, applyHomePause, applyHomeResume } from "./home";
 
 const router: IRouter = Router();
 
@@ -375,13 +375,15 @@ router.post("/live-sessions/:id/command", async (req: Request, res: Response): P
   const event = { sessionId: session.id, command, payload: payload ?? null, ts: Date.now() };
   emitToRoom(`live:${session.id}`, "live:command", event);
 
-  // pause/resume devono raggiungere anche il runtime Home (iframe TV):
-  // HomeGame congela/riavvia il timer di round su home:command.
+  // pause/resume devono raggiungere anche il runtime Home (iframe TV) E i telefoni:
+  // applyHomePause/Resume ferma i timer server, marca la sessione in pausa nel
+  // roundPayload, sposta le scadenze al resume e riemette lo stato + home:command.
   if (command === "pause" || command === "resume") {
     const state = await getState(session.id);
     const homeSessionId = (state?.payload as Record<string, unknown> | null)?.homeSessionId as string | undefined;
     if (homeSessionId) {
-      emitToRoom(`home:${homeSessionId}`, "home:command", { ...event, homeSessionId });
+      if (command === "pause") await applyHomePause(homeSessionId).catch(() => {});
+      else                     await applyHomeResume(homeSessionId).catch(() => {});
     }
   }
 

@@ -1706,25 +1706,43 @@ function PhoneController({
 }) {
   const p = session.roundPayload;
   const mode = String(p.mode ?? 'home-quiz');
+  const paused = !!(p as Record<string, unknown>).paused;
 
-  if (mode === 'home-flow')       return <GameFlowPhone session={session} player={player} emit={emit}/>;
-  if (mode === 'home-quiz')       return <QuizController payload={p} revealed={revealed} answered={answered} onAnswer={onAnswer}/>;
-  if (mode === 'home-quizzone')   return <QuizzoneController payload={p} session={session} player={player}/>;
-  if (mode === 'home-coppie')     return <CoppieController payload={p} onFlip={onFlip} player={player} previewUntil={coppiePreviewUntil ?? null} sessionId={session.id}/>;
-  if (mode === 'home-percorso')   return <PercorsoHomeController sessionId={session.id} player={player} payload={p} timeLeft={timeLeft}/>;
-  if (mode === 'home-saramusica') return <SaraMusicaController payload={p} player={player} session={session}/>;
-  if (mode === 'home-adult')      return <AdultController payload={p} player={player} session={session}/>;
-  if (mode === 'home-ballo')      return <BalloController payload={p} timeLeft={timeLeft} sessionId={session.id} emit={emit} playerId={player.id} round={session.currentRound} adminSensitivity={adminSensitivity ?? 1.0}/>;
-  if (mode === 'home-wordback-setup') return <WordBackSetupController payload={p} player={player} session={session}/>;
-  if (mode === 'home-wordback' || mode === 'home-wordback-booking')   return <WordBackController payload={p} timeLeft={timeLeft} player={player} sessionId={session.id} emit={emit} wordbackSolved={wordbackSolved ?? false} wordbackTimedOut={wordbackTimedOut ?? false}/>;
-  if (mode === 'home-karaoke')    return <KaraokeController payload={p} sessionId={session.id}/>;
-  if (mode === 'home-freestyle')  return <FreestyleController payload={p} timeLeft={timeLeft}/>;
-  // New Karaoke Live / Freestyle Battle v3 — detected from gameConfig
-  const ks = session.gameConfig?.karaokeHomeState as KaraokeHomeState | undefined;
-  if (session.gameSlug === 'karaoke-battle' && ks?.version === 3) {
-    return <KaraokeLiveController sessionId={session.id} playerId={player.id} nickname={player.nickname} avatarColor={player.avatarColor} initialState={ks} />;
-  }
-  return <div className="text-center text-white/40 py-8">In attesa del gioco…</div>;
+  const view = (() => {
+    if (mode === 'home-flow')       return <GameFlowPhone session={session} player={player} emit={emit}/>;
+    if (mode === 'home-quiz')       return <QuizController payload={p} revealed={revealed} answered={answered} onAnswer={onAnswer}/>;
+    if (mode === 'home-quizzone')   return <QuizzoneController payload={p} session={session} player={player}/>;
+    if (mode === 'home-coppie')     return <CoppieController payload={p} onFlip={onFlip} player={player} previewUntil={coppiePreviewUntil ?? null} sessionId={session.id}/>;
+    if (mode === 'home-percorso')   return <PercorsoHomeController sessionId={session.id} player={player} payload={p} timeLeft={timeLeft}/>;
+    if (mode === 'home-saramusica') return <SaraMusicaController payload={p} player={player} session={session}/>;
+    if (mode === 'home-adult')      return <AdultController payload={p} player={player} session={session}/>;
+    if (mode === 'home-ballo')      return <BalloController payload={p} timeLeft={timeLeft} sessionId={session.id} emit={emit} playerId={player.id} round={session.currentRound} adminSensitivity={adminSensitivity ?? 1.0}/>;
+    if (mode === 'home-wordback-setup') return <WordBackSetupController payload={p} player={player} session={session}/>;
+    if (mode === 'home-wordback' || mode === 'home-wordback-booking')   return <WordBackController payload={p} timeLeft={timeLeft} player={player} sessionId={session.id} emit={emit} wordbackSolved={wordbackSolved ?? false} wordbackTimedOut={wordbackTimedOut ?? false}/>;
+    if (mode === 'home-karaoke')    return <KaraokeController payload={p} sessionId={session.id}/>;
+    if (mode === 'home-freestyle')  return <FreestyleController payload={p} timeLeft={timeLeft}/>;
+    // New Karaoke Live / Freestyle Battle v3 — detected from gameConfig
+    const ks = session.gameConfig?.karaokeHomeState as KaraokeHomeState | undefined;
+    if (session.gameSlug === 'karaoke-battle' && ks?.version === 3) {
+      return <KaraokeLiveController sessionId={session.id} playerId={player.id} nickname={player.nickname} avatarColor={player.avatarColor} initialState={ks} />;
+    }
+    return <div className="text-center text-white/40 py-8">In attesa del gioco…</div>;
+  })();
+
+  return (
+    <>
+      {view}
+      {/* Pausa (Regia/Presenter): blocca ogni input sul telefono finché non si riprende. */}
+      {paused && (
+        <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center gap-3"
+          style={{ background: 'rgba(7,6,26,0.9)', backdropFilter: 'blur(6px)' }}>
+          <div className="text-7xl animate-pulse">⏸️</div>
+          <div className="text-3xl font-black" style={{ color: '#F5B642' }}>IN PAUSA</div>
+          <div className="text-white/60 text-sm font-bold">Lo show riprende tra un attimo…</div>
+        </div>
+      )}
+    </>
+  );
 }
 
 // ── WordBackSetupController ────────────────────────────────────────────────────

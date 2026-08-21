@@ -592,6 +592,11 @@ export default function HomeGame() {
   const { audioEnabled, setAudioEnabled } = useAudioSettings();
   // Mirror muto: silenzia l'AudioManager all'avvio (l'audio esce solo dal proiettore)
   useEffect(() => { if (isMuted) { setAudioEnabled(false); AudioManager.stopLoop(true); } }, [isMuted, setAudioEnabled]);
+  // Pausa autoritativa dal server (roundPayload.paused): copre riconnessioni e telefoni.
+  useEffect(() => {
+    const p = !!((session?.roundPayload as Record<string, unknown> | undefined)?.["paused"]);
+    setPaused(p); pausedRef.current = p;
+  }, [session]);
   const [postGame, setPostGame] = useState<{gameSlug:string;players:HomePlayer[]}|null>(null);
   const [balloEnergies, setBalloEnergies] = useState<Record<string, number>>({});     // peak — for winner/sorting
   const [balloCurrent, setBalloCurrent]   = useState<Record<string, number>>({});     // current live — for bars
@@ -3356,6 +3361,7 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
   const [rs, setRs] = useState<RisateState | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
+  const paused = !!(payload as Record<string, unknown>).paused; // pausa Regia/Presenter: non auto-avanzare
   // ── Mission countdown timer ────────────────────────────────────────────────
   const [missionTimeLeft, setMissionTimeLeft] = useState<number | null>(null);
   const autoAdvancedRef = useRef(false); // guard: advance called at most once per active phase
@@ -3400,7 +3406,7 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
 
   // ── Auto-advance when mission timer expires ────────────────────────────────
   useEffect(() => {
-    if (missionTimeLeft === 0 && rs?.phase === 'active' && !autoAdvancedRef.current && !busy) {
+    if (missionTimeLeft === 0 && rs?.phase === 'active' && !autoAdvancedRef.current && !busy && !paused) {
       autoAdvancedRef.current = true;
       void apiPost('advance');
     }
@@ -3424,7 +3430,7 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
   }, [rs?.phase, rs?.bookingStartedAt]);
 
   useEffect(() => {
-    if (bookingTimeLeft === 0 && rs?.phase === 'booking' && !autoBookFiredRef.current && !busy) {
+    if (bookingTimeLeft === 0 && rs?.phase === 'booking' && !autoBookFiredRef.current && !busy && !paused) {
       autoBookFiredRef.current = true;
       void apiPost('auto-book');
     }
@@ -3448,7 +3454,7 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
   }, [rs?.phase, rs?.publicChoiceStartedAt]);
 
   useEffect(() => {
-    if (choiceTimeLeft === 0 && rs?.phase === 'public_choice' && !autoChoiceFiredRef.current && !busy) {
+    if (choiceTimeLeft === 0 && rs?.phase === 'public_choice' && !autoChoiceFiredRef.current && !busy && !paused) {
       autoChoiceFiredRef.current = true;
       void apiPost('auto-choice');
     }
@@ -6077,6 +6083,22 @@ function WordBackBoard({ payload, players, onScore, onReveal, tabooAlarm, sessio
   // Cleanup overlay timer on unmount to avoid state-update-after-unmount warnings
   useEffect(() => () => { if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current); }, []);
 
+  // ── Countdown visibile (prima invisibile a tutti): autoritativo da roundEndsAt ──
+  const wbTimeLimit = Number(payload.timeLimit ?? 90);
+  const [wbSecs, setWbSecs] = useState<number | null>(null);
+  useEffect(() => {
+    if (String(payload.mode ?? '') !== 'home-wordback') { setWbSecs(null); return; }
+    const endIso = payload.roundEndsAt as string | undefined;
+    const startIso = payload.roundStartedAt as string | undefined;
+    const endMs = endIso ? new Date(endIso).getTime()
+      : startIso ? new Date(startIso).getTime() + wbTimeLimit * 1000 : null;
+    if (!endMs) { setWbSecs(null); return; }
+    const tick = () => setWbSecs(Math.max(0, Math.ceil((endMs - Date.now()) / 1000)));
+    tick();
+    const t = setInterval(tick, 250);
+    return () => clearInterval(t);
+  }, [payload.mode, payload.roundEndsAt, payload.roundStartedAt, wbTimeLimit]);
+
   // Booking phase dispatches to its own component (after all hooks are called)
   if (String(payload.mode ?? '') === 'home-wordback-booking') {
     return <WordBackBookingBoard payload={payload} />;
@@ -6178,17 +6200,34 @@ function WordBackBoard({ payload, players, onScore, onReveal, tabooAlarm, sessio
           {guesser && (
             <div className="flex-1 rounded-2xl px-4 py-3"
               style={{background:'rgba(167,139,250,0.15)',border:'1.5px solid rgba(167,139,250,0.4)'}}>
-              <div className="text-xs font-black uppercase tracking-widest mb-1" style={{color:'rgba(167,139,250,0.9)'}}>🙈 INDOVINATORE</div>
-              <div className="font-black text-white text-lg">{guesser.nickname}</div>
+              <div className="text-sm font-black uppercase tracking-widest mb-1" style={{color:'rgba(167,139,250,0.9)'}}>🙈 INDOVINATORE</div>
+              <div className="font-black text-white text-2xl">{guesser.nickname}</div>
             </div>
           )}
           {suggester && (
             <div className="flex-1 rounded-2xl px-4 py-3"
               style={{background:'rgba(34,211,238,0.15)',border:'1.5px solid rgba(34,211,238,0.4)'}}>
-              <div className="text-xs font-black uppercase tracking-widest mb-1" style={{color:'rgba(34,211,238,0.9)'}}>💬 SUGGERITORE</div>
-              <div className="font-black text-white text-lg">{suggester.nickname}</div>
+              <div className="text-sm font-black uppercase tracking-widest mb-1" style={{color:'rgba(34,211,238,0.9)'}}>💬 SUGGERITORE</div>
+              <div className="font-black text-white text-2xl">{suggester.nickname}</div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Countdown grande e visibile (prima non lo vedeva nessuno) */}
+      {wbSecs !== null && (
+        <div className="flex flex-col items-center w-full">
+          <div className="tabular-nums font-black leading-none"
+            style={{ fontSize: 'clamp(56px, 9vw, 120px)',
+              color: wbSecs > wbTimeLimit * 0.5 ? '#4ade80' : wbSecs > wbTimeLimit * 0.25 ? '#facc15' : '#ef4444',
+              textShadow: '0 0 40px currentColor' }}>
+            {wbSecs}<span className="text-3xl font-black text-white/50 ml-2">s</span>
+          </div>
+          <div className="h-2.5 w-full max-w-xl rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.1)' }}>
+            <div style={{ height: '100%', width: `${Math.max(0, Math.min(100, (wbSecs / (wbTimeLimit || 1)) * 100))}%`,
+              background: wbSecs > wbTimeLimit * 0.5 ? '#4ade80' : wbSecs > wbTimeLimit * 0.25 ? '#facc15' : '#ef4444',
+              transition: 'width 0.25s linear' }} />
+          </div>
         </div>
       )}
 
@@ -6214,7 +6253,7 @@ function WordBackBoard({ payload, players, onScore, onReveal, tabooAlarm, sessio
         {tabooWords.length > 0 ? (
           <div className="flex flex-col gap-1.5">
             {tabooWords.map((w, i) => (
-              <div key={i} className="text-base font-black text-white/85">{i+1}. {w}</div>
+              <div key={i} className="text-2xl font-black text-white/90">{i+1}. {w}</div>
             ))}
           </div>
         ) : (
@@ -6386,7 +6425,7 @@ function CoppieBoard({ payload, onNext, sessionId }: { payload: Record<string,un
       setThemeTimerLeft(left);
       // Auto-select allo scadere UNA sola volta (evita lo spam di POST ad ogni tick;
       // esiste anche la rete server, questo è solo il fallback lato TV).
-      if (left <= 0 && sessionId && !themeAutoSelectedRef.current) {
+      if (left <= 0 && sessionId && !themeAutoSelectedRef.current && !payload.paused) {
         themeAutoSelectedRef.current = true;
         void fetch(`/api/home/sessions/${sessionId}/coppie/select-theme`, {
           method: 'POST', credentials: 'include', headers: {'Content-Type':'application/json'},

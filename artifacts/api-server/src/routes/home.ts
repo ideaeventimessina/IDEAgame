@@ -2946,6 +2946,83 @@ export async function applyHomeAddTime(sessionId: string, seconds: number): Prom
   return true;
 }
 
+// ── PAUSA / RIPRENDI (Regia/Presenter) ────────────────────────────────────────
+// Pausa vera: ferma i timer server di auto-avanzamento, marca la sessione in pausa
+// (TV, telefoni e riconnessioni lo leggono da roundPayload.paused e bloccano input
+// e countdown). Al resume sposta TUTTE le scadenze del tempo trascorso e ri-schedula.
+const PAUSE_SHIFT_KEYS = [
+  "questionEndsAt", "questionStartedAt", "roundEndsAt", "roundStartedAt",
+  "votingEndsAt", "choiceDeadlineAt", "challengeEndsAt", "themeTimerEndsAt",
+  "spinStartedAt", "missionStartedAt", "timerStartedAt", "bookingEndsAt",
+];
+
+function clearAllSessionTimers(id: string): void {
+  for (const m of [quizzoneRevealTimers, smRevealTimers, adultVotingTimers,
+    adultChoiceTimers, adultChallengeTimers, coppieThemeTimers,
+    wordbackBookingTimers, wbJonnyTimers]) {
+    const t = m.get(id);
+    if (t) { clearTimeout(t); m.delete(id); }
+  }
+}
+
+function rescheduleAutoAdvance(id: string, rp: Record<string, unknown>): void {
+  const mode = String(rp["mode"] ?? "");
+  const phase = String(rp["phase"] ?? "");
+  const idx = Number(rp["currentIndex"] ?? 0);
+  const ms = (v: unknown): number | null => { const t = new Date(String(v)).getTime(); return Number.isFinite(t) ? t : null; };
+  if (mode === "home-quizzone" && phase === "question" && rp["questionEndsAt"]) {
+    const e = ms(rp["questionEndsAt"]); if (e) scheduleQzAutoReveal(id, idx, e);
+  } else if (mode === "home-saramusica" && phase === "question" && rp["questionEndsAt"]) {
+    const rounds = (rp["rounds"] ?? []) as MusicRound[];
+    if (rounds[idx]?.type !== "singing_duel") { const e = ms(rp["questionEndsAt"]); if (e) scheduleSmAutoReveal(id, idx, e); }
+  } else if (mode === "home-adult") {
+    if (rp["choiceDeadlineAt"])  scheduleAdultAutoChoice(id, String(rp["choiceDeadlineAt"]));
+    if (rp["votingEndsAt"])      scheduleAdultVotingAutoClose(id, String(rp["votingEndsAt"]));
+    if (rp["challengeEndsAt"])   scheduleAdultChallengeAutoExpire(id, String(rp["challengeEndsAt"]));
+  } else if (mode === "home-coppie" && rp["themeTimerEndsAt"]) {
+    scheduleCoppieThemeAutoAdvance(id, String(rp["themeTimerEndsAt"]));
+  }
+}
+
+export async function applyHomePause(sessionId: string): Promise<boolean> {
+  const s = await getSession(sessionId);
+  if (!s) return false;
+  const rp = { ...((s.roundPayload ?? {}) as Record<string, unknown>) };
+  if (rp["paused"]) return true;
+  rp["paused"] = true;
+  rp["pausedAt"] = new Date().toISOString();
+  clearAllSessionTimers(sessionId);
+  await db.update(homeSessionsTable).set({ roundPayload: rp }).where(eq(homeSessionsTable.id, sessionId));
+  await broadcastState(sessionId);
+  emitToRoom(homeRoom(sessionId), "home:command", { command: "pause" });
+  return true;
+}
+
+export async function applyHomeResume(sessionId: string): Promise<boolean> {
+  const s = await getSession(sessionId);
+  if (!s) return false;
+  const rp = { ...((s.roundPayload ?? {}) as Record<string, unknown>) };
+  if (!rp["paused"]) return true;
+  const pausedAt = rp["pausedAt"] ? new Date(String(rp["pausedAt"])).getTime() : Date.now();
+  const delta = Math.max(0, Date.now() - (Number.isFinite(pausedAt) ? pausedAt : Date.now()));
+  const shift = (v: unknown): unknown => { const t = new Date(String(v)).getTime(); return Number.isFinite(t) ? new Date(t + delta).toISOString() : v; };
+  for (const k of PAUSE_SHIFT_KEYS) if (rp[k]) rp[k] = shift(rp[k]);
+  const duel = rp["duel"] as Record<string, unknown> | undefined;
+  if (duel && duel["votingEndsAt"]) rp["duel"] = { ...duel, votingEndsAt: shift(duel["votingEndsAt"]) };
+  delete rp["paused"]; delete rp["pausedAt"];
+  await db.update(homeSessionsTable).set({ roundPayload: rp }).where(eq(homeSessionsTable.id, sessionId));
+  rescheduleAutoAdvance(sessionId, rp);
+  // Riprogramma anche la chiusura voto del duello di canto, se attivo.
+  const d2 = rp["duel"] as Record<string, unknown> | undefined;
+  if (d2 && d2["phase"] === "vote" && d2["votingEndsAt"]) {
+    const e = new Date(String(d2["votingEndsAt"])).getTime();
+    if (Number.isFinite(e)) setTimeout(() => { void closeSmDuel(sessionId).catch(() => {}); }, Math.max(0, e - Date.now()) + 500);
+  }
+  await broadcastState(sessionId);
+  emitToRoom(homeRoom(sessionId), "home:command", { command: "resume" });
+  return true;
+}
+
 // Stima (best-effort) del secondo in cui parte il ritornello/hook più ballabile.
 // gpt-4o-mini indovina il timestamp; se fallisce o è fuori scala, fallback a ~45s.
 async function estimateChorusStart(title: string, channel: string, durationSeconds: number): Promise<number> {
