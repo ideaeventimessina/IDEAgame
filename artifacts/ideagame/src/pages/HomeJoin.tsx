@@ -1716,7 +1716,7 @@ function PhoneController({
     if (mode === 'home-percorso')   return <PercorsoHomeController sessionId={session.id} player={player} payload={p} timeLeft={timeLeft}/>;
     if (mode === 'home-saramusica') return <SaraMusicaController payload={p} player={player} session={session}/>;
     if (mode === 'home-adult')      return <AdultController payload={p} player={player} session={session}/>;
-    if (mode === 'home-ballo')      return <BalloController payload={p} timeLeft={timeLeft} sessionId={session.id} emit={emit} playerId={player.id} round={session.currentRound} adminSensitivity={adminSensitivity ?? 1.0}/>;
+    if (mode === 'home-ballo')      return <BalloController payload={p} timeLeft={timeLeft} sessionId={session.id} emit={emit} playerId={player.id} nickname={player.nickname} avatarColor={player.avatarColor} round={session.currentRound} adminSensitivity={adminSensitivity ?? 1.0}/>;
     if (mode === 'home-wordback-setup') return <WordBackSetupController payload={p} player={player} session={session}/>;
     if (mode === 'home-wordback' || mode === 'home-wordback-booking')   return <WordBackController payload={p} timeLeft={timeLeft} player={player} sessionId={session.id} emit={emit} wordbackSolved={wordbackSolved ?? false} wordbackTimedOut={wordbackTimedOut ?? false}/>;
     if (mode === 'home-karaoke')    return <KaraokeController payload={p} sessionId={session.id}/>;
@@ -2293,6 +2293,7 @@ function CoppieController({ payload, onFlip, player, previewUntil, sessionId }: 
     return () => clearInterval(id);
   }, [themePhase, themeTimerEndsAt]);
 
+  const [proposedOk, setProposedOk] = useState(false);
   const proposeTheme = async () => {
     if (!themeInput.trim() || proposeBusy) return;
     setProposeBusy(true);
@@ -2302,6 +2303,8 @@ function CoppieController({ payload, onFlip, player, previewUntil, sessionId }: 
         body: JSON.stringify({ playerId: player.id, theme: themeInput.trim() }),
       });
       setThemeInput('');
+      setProposedOk(true);
+      setTimeout(() => setProposedOk(false), 2500);
     } finally { setProposeBusy(false); }
   };
 
@@ -2338,6 +2341,12 @@ function CoppieController({ payload, onFlip, player, previewUntil, sessionId }: 
             Proponi
           </button>
         </div>
+        {proposedOk && (
+          <div className="rounded-xl px-4 py-2 text-center text-sm font-black"
+            style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', color: '#4ade80' }}>
+            ✓ Proposta inviata!
+          </div>
+        )}
         {proposedThemes.length > 0 && (
           <div className="rounded-xl p-3" style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)'}}>
             <div className="text-xs text-white/40 mb-2 font-bold uppercase tracking-widest">Temi proposti</div>
@@ -2578,11 +2587,19 @@ function PercorsoHomeController({ sessionId, player, payload, timeLeft }: {
   const [msg, setMsg] = useState('');
   const [phoneBookingTL, setPhoneBookingTL] = useState<number | null>(null);
 
+  // Stato risate: fetch iniziale + polling di recupero ogni 2.5s. Il backend emette
+  // solo home:percorso_update (in gameConfig, senza version bump) quindi il polling
+  // generale non lo recupera: senza questo, un evento socket perso bloccava il
+  // telefono su una fase vecchia (es. saltava la votazione).
   useEffect(() => {
-    fetch(`${BASE}api/home/sessions/${sessionId}/risate/state`, { credentials: 'include' })
+    let alive = true;
+    const pull = () => fetch(`${BASE}api/home/sessions/${sessionId}/risate/state`, { credentials: 'include' })
       .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d && !d.error) setRs(d as RisateState); })
+      .then(d => { if (alive && d && !d.error) setRs(d as RisateState); })
       .catch(() => {});
+    pull();
+    const iv = setInterval(pull, 2500);
+    return () => { alive = false; clearInterval(iv); };
   }, [sessionId, BASE]);
 
   // Booking countdown aligned to server bookingStartedAt (Fix 8)
@@ -3111,12 +3128,14 @@ function SimpleController({ payload, color, emoji, label, timeLeft }: {
 
 const MOTION_PERM_KEY = 'ideagame:motion-permission';
 
-function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, adminSensitivity = 1.0 }: {
+function BalloController({ payload, timeLeft, sessionId, emit, playerId, nickname, avatarColor, round, adminSensitivity = 1.0 }: {
   payload: Record<string,unknown>;
   timeLeft: number | null;
   sessionId: string;
   emit: (event: string, data: unknown) => void;
   playerId: string;
+  nickname: string;
+  avatarColor: string;
   round?: number;
   adminSensitivity?: number;
 }) {
@@ -3379,7 +3398,7 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
                     await fetch(`/api/home/sessions/${sessionId}/ballo-join-team`, {
                       method: 'POST', credentials: 'include',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ playerId, nickname: 'giocatore', avatarColor: '#A78BFA', teamId: t.teamId }),
+                      body: JSON.stringify({ playerId, nickname, avatarColor, teamId: t.teamId }),
                     });
                   } finally { setJoiningTeam(null); }
                 }}
@@ -3418,7 +3437,7 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, round, 
                     await fetch(`/api/home/sessions/${sessionId}/ballo-join-team`, {
                       method: 'POST', credentials: 'include',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ playerId, nickname: 'giocatore', avatarColor: '#A78BFA', teamId: team.teamId }),
+                      body: JSON.stringify({ playerId, nickname, avatarColor, teamId: team.teamId }),
                     });
                   } finally { setJoiningTeam(null); }
                 }}
@@ -5879,7 +5898,14 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
     );
   }
 
-  return null;
+  // Fase non prevista: schermata d'attesa invece di schermo nero.
+  return (
+    <div className="flex flex-col items-center gap-4 py-10 text-center">
+      <div className="text-5xl animate-pulse">🎤</div>
+      <div className="text-lg font-black text-white">Un attimo…</div>
+      <div className="text-white/40 text-sm">In attesa del prossimo brano</div>
+    </div>
+  );
 }
 
 export default function HomeJoin() {

@@ -679,5 +679,11 @@ export function GameFlowPhone({
     );
   }
 
-  return null;
+  // Fase non prevista: attesa invece di schermo vuoto.
+  return (
+    <div className="flex flex-col items-center gap-3 py-10 text-center">
+      <div className="text-4xl animate-pulse">⏳</div>
+      <div className="text-white/50 text-sm font-bold">In attesa…</div>
+    </div>
+  );
 }
