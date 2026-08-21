@@ -3,7 +3,7 @@
 import { Link, useLocation } from 'wouter';
 import {
   LayoutDashboard, Gamepad2, Image as ImageIcon,
-  Settings as SettingsIcon, LogOut, Menu, X, Tv2, Radio
+  Settings as SettingsIcon, LogOut, Menu, X, Tv2, Radio, CreditCard
 } from 'lucide-react';
 import { LocaleSwitcher } from '@/components/LocaleSwitcher';
 import { ADMIN_NAV, useAuth, canSee } from '@/auth/roles';
@@ -16,6 +16,7 @@ const ICONS: Record<string, typeof LayoutDashboard> = {
   giochi:    Gamepad2,
   media:     ImageIcon,
   settings:  SettingsIcon,
+  billing:   CreditCard,
 };
 
 export function AdminLayout({ children, title }: { children: ReactNode; title: string }) {

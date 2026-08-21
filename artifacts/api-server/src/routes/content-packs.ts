@@ -309,7 +309,7 @@ router.post("/game-content-packs/generate", requireAuth, requireRole("game_manag
     tags:             ["ai-generated"],
   }).returning();
 
-  const result = await generateContentItems({ gameSlug, themeName, difficulty, count });
+  const result = await generateContentItems({ gameSlug, themeName, difficulty, count, tenantId, userId: me.id });
   const { items, source, error: genError } = result;
 
   if (items.length > 0) {

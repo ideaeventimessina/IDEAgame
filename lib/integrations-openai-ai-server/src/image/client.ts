@@ -3,6 +3,9 @@
 import fs from "node:fs";
 import OpenAI, { toFile } from "openai";
 import { Buffer } from "node:buffer";
+import { getAiUsageContext } from "../context";
+import { logAiUsage } from "../usage-log";
+import { imageCostUsd } from "../pricing";
 
 /* Chiave diretta OpenAI: le richieste vanno a api.openai.com e le paghi a
    OpenAI, non piu' a crediti Replit. Senza baseURL l'SDK usa l'endpoint
@@ -42,6 +45,13 @@ export async function generateImageBuffer(
     size,
   });
   const base64 = response.data?.[0]?.b64_json ?? "";
+  const { costUsd, confidence } = imageCostUsd("gpt-image-1", size, "medium", 1);
+  void logAiUsage({
+    ...getAiUsageContext(),
+    model: "gpt-image-1", endpoint: "images.generate",
+    costUsd,
+    metadata: { size, quality: "medium (assunta)", costConfidence: confidence, promptLength: prompt.length },
+  });
   return Buffer.from(base64, "base64");
 }
 
@@ -66,6 +76,14 @@ export async function editImages(
 
   const imageBase64 = response.data?.[0]?.b64_json ?? "";
   const imageBytes = Buffer.from(imageBase64, "base64");
+
+  const { costUsd, confidence } = imageCostUsd("gpt-image-1", "1024x1024", "medium", 1);
+  void logAiUsage({
+    ...getAiUsageContext(),
+    model: "gpt-image-1", endpoint: "images.edit",
+    costUsd,
+    metadata: { quality: "medium (assunta)", costConfidence: confidence, inputImages: imageFiles.length, promptLength: prompt.length },
+  });
 
   if (outputPath) {
     fs.writeFileSync(outputPath, imageBytes);

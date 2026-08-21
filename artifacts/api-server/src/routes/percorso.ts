@@ -17,6 +17,7 @@ import type { PercorsoState, PercorsoStepInState, PercorsoTeam, RisateState, Ris
 import { type AuthedRequest, requireAuth } from "../middlewares/auth";
 import { emitToEvent } from "../socket";
 import { uploadBufferToStorage } from "../lib/objectStorage";
+import { logAiUsage, imageCostUsd } from "@workspace/integrations-openai-ai-server";
 import {
   createBlankRisateState, advancePhase as advanceRisatePhase,
   applyBooking as applyRisateBooking,
@@ -244,7 +245,7 @@ function buildImagePrompt(title: string, description: string, challengeType: str
   );
 }
 
-async function callOpenAIImage(prompt: string): Promise<Buffer> {
+async function callOpenAIImage(prompt: string, attribution: { tenantId: string | null; userId: string | null }): Promise<Buffer> {
   /* Endpoint ufficiale OpenAI + chiave diretta: la spesa va su OpenAI. */
   const baseUrl = "https://api.openai.com/v1";
   const apiKey = process.env.OPENAI_API_KEY;
@@ -274,6 +275,16 @@ async function callOpenAIImage(prompt: string): Promise<Buffer> {
   const item = data.data[0];
   if (!item) throw new Error("No image returned from OpenAI");
 
+  const { costUsd, confidence } = imageCostUsd("gpt-image-1", "1024x1024", "medium", 1);
+  void logAiUsage({
+    tenantId: attribution.tenantId,
+    userId: attribution.userId,
+    model: "gpt-image-1",
+    endpoint: "images.generate",
+    costUsd,
+    metadata: { route: "percorso/steps/generate-image", size: "1024x1024", quality: "medium (assunta)", costConfidence: confidence },
+  });
+
   if (item.b64_json) return Buffer.from(item.b64_json, "base64");
 
   if (item.url) {
@@ -295,7 +306,7 @@ router.post("/percorso/steps/:id/generate-image", requireAuth, async (req: Authe
 
   try {
     const prompt = buildImagePrompt(step.title, step.description ?? "", step.challengeType);
-    const buffer = await callOpenAIImage(prompt);
+    const buffer = await callOpenAIImage(prompt, { tenantId: req.user!.tenantId ?? null, userId: req.user!.id });
     const objectPath = await uploadBufferToStorage(buffer, "image/png", "png");
     const mediaUrl = `/api/storage/objects/uploads/${objectPath.split("/").pop()}`;
 
@@ -330,7 +341,7 @@ router.post("/percorso/sets/:id/generate-images", requireAuth, async (req: Authe
   for (const step of dbSteps) {
     try {
       const prompt = buildImagePrompt(step.title, step.description ?? "", step.challengeType);
-      const buffer = await callOpenAIImage(prompt);
+      const buffer = await callOpenAIImage(prompt, { tenantId: req.user!.tenantId ?? null, userId: req.user!.id });
       const objectPath = await uploadBufferToStorage(buffer, "image/png", "png");
       const mediaUrl = `/api/storage/objects/uploads/${objectPath.split("/").pop()}`;
 

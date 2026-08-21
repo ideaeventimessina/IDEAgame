@@ -21,6 +21,7 @@ import type { KaraokeState, KaraokeBooking, KaraokeTeam } from "@workspace/db";
 import { type AuthedRequest, requireAuth, loadUser } from "../middlewares/auth";
 import { emitToEvent } from "../socket";
 import { uploadBufferToStorage } from "../lib/objectStorage";
+import { logAiUsage, textCostUsd } from "@workspace/integrations-openai-ai-server";
 
 const execFileAsync = promisify(execFile);
 const YT_DLP = "/home/runner/workspace/.pythonlibs/bin/yt-dlp";
@@ -207,7 +208,7 @@ router.delete("/karaoke/tracks/:id", requireAuth, async (req, res) => {
 
 /* ── AI: suggest tracks by theme ─────────────────────────────────────── */
 
-router.post("/karaoke/suggest-tracks", requireAuth, async (req, res) => {
+router.post("/karaoke/suggest-tracks", requireAuth, async (req: AuthedRequest, res) => {
   const { theme, count = 6 } = req.body as { theme?: string; count?: number };
   if (!theme?.trim()) { res.status(400).json({ error: "theme obbligatorio" }); return; }
 
@@ -249,8 +250,21 @@ Il campo chorusStartSeconds/chorusEndSeconds indica l'inizio e la fine del ritor
       res.status(500).json({ error: `OpenAI error ${response.status}: ${err}` }); return;
     }
 
-    const data = await response.json() as { choices: { message: { content: string } }[] };
+    const data = await response.json() as { choices: { message: { content: string } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number } };
     const text = data.choices[0]?.message?.content ?? "[]";
+
+    const usage = data.usage;
+    const { costUsd, confidence } = textCostUsd("gpt-5-mini", usage?.prompt_tokens ?? 0, usage?.completion_tokens ?? 0);
+    void logAiUsage({
+      tenantId: req.user?.role === "super_admin" ? null : (req.user?.tenantId ?? null),
+      userId: req.user?.id ?? null,
+      model: "gpt-5-mini",
+      endpoint: "chat.completions",
+      tokensInput: usage?.prompt_tokens ?? 0,
+      tokensOutput: usage?.completion_tokens ?? 0,
+      costUsd,
+      metadata: { route: "karaoke/suggest-tracks", costConfidence: confidence },
+    });
 
     const jsonMatch = text.match(/\[[\s\S]*\]/);
     const suggestions = JSON.parse(jsonMatch ? jsonMatch[0] : text) as unknown[];

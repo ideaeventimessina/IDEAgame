@@ -15,6 +15,7 @@ export * from "./game-sessions";
 export * from "./card-sets";
 export * from "./quiz-categories";
 export * from "./audit-log";
+export * from "./ai-usage-log";
 export * from "./system-settings";
 export * from "./coppie-boards";
 export * from "./quiz-packs";

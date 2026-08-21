@@ -4057,7 +4057,7 @@ declare global {
     onYouTubeIframeAPIReady?: () => void;
   }
 }
-type YTPlayerInst = { seekTo(s: number, a: boolean): void; playVideo(): void; pauseVideo(): void; destroy(): void };
+type YTPlayerInst = { seekTo(s: number, a: boolean): void; playVideo(): void; pauseVideo(): void; destroy(): void; getPlayerState?(): number; unMute?(): void; mute?(): void; setVolume?(v: number): void };
 
 let _ytLoading = false;
 let _ytReady   = false;
@@ -4101,8 +4101,27 @@ function BalloVideoBg({ videoId, startSeconds = 0, roundKey = '' }: { videoId: s
   const containerId = `ballo-bg-${videoId.slice(0, 8)}`;
   const playerRef = useRef<YTPlayerInst | null>(null);
   const startRef = useRef(startSeconds);
+  const checkRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [needsTap, setNeedsTap] = useState(false);
   useEffect(() => { startRef.current = startSeconds; }, [startSeconds]);
+
+  // Prova a suonare CON audio; se dopo ~1.5s non sta suonando davvero (autoplay
+  // con audio bloccato dal browser finché non c'è un tocco), mostra l'overlay.
+  const tryPlay = useCallback((p: YTPlayerInst | null) => {
+    if (!p) return;
+    try {
+      p.seekTo(startRef.current, true);
+      p.unMute?.();
+      p.setVolume?.(100);
+      p.playVideo();
+    } catch { setNeedsTap(true); return; }
+    if (checkRef.current) clearTimeout(checkRef.current);
+    checkRef.current = setTimeout(() => {
+      const st = p.getPlayerState?.();
+      // 1 = PLAYING. Qualsiasi altro stato → serve il tocco dell'utente.
+      setNeedsTap(st !== 1);
+    }, 1500);
+  }, []);
 
   const start = useCallback(async () => {
     await loadYTApi();
@@ -4112,37 +4131,49 @@ function BalloVideoBg({ videoId, startSeconds = 0, roundKey = '' }: { videoId: s
       width: '100%', height: '100%',
       playerVars: { autoplay: 1, controls: 0, rel: 0, modestbranding: 1, playsinline: 1, enablejsapi: 1, loop: 1, playlist: videoId, start: Math.round(startRef.current) },
       events: {
-        onReady: (evt: { target: YTPlayerInst }) => {
-          try { evt.target.seekTo(startRef.current, true); evt.target.playVideo(); } catch { setNeedsTap(true); }
-        },
+        onReady: (evt: { target: YTPlayerInst }) => tryPlay(evt.target),
+        onStateChange: (evt: { data: number }) => { if (evt.data === 1) setNeedsTap(false); },
         onError: () => { /* video non embeddabile → resta lo sfondo scuro */ },
       },
     });
-  }, [videoId, containerId]);
+  }, [videoId, containerId, tryPlay]);
 
   useEffect(() => {
     void start();
-    return () => { if (playerRef.current) { try { playerRef.current.destroy(); } catch { /**/ } playerRef.current = null; } };
+    return () => {
+      if (checkRef.current) clearTimeout(checkRef.current);
+      if (playerRef.current) { try { playerRef.current.destroy(); } catch { /**/ } playerRef.current = null; }
+    };
   }, [start]);
 
   // Ogni nuova manche: ri-salta al ritornello (senza ricreare il player).
   useEffect(() => {
     if (!roundKey) return;
-    const p = playerRef.current;
-    if (p) { try { p.seekTo(startRef.current, true); p.playVideo(); } catch { /**/ } }
-  }, [roundKey]);
+    tryPlay(playerRef.current);
+  }, [roundKey, tryPlay]);
 
   return (
-    <div className="fixed inset-0 z-[2]" style={{ background: '#000' }}>
-      <div id={containerId} className="pointer-events-none absolute inset-0 h-full w-full" style={{ opacity: 0.9 }} />
-      {/* velo scuro per far risaltare barre energia sopra */}
-      <div className="pointer-events-none absolute inset-0" style={{ background: 'rgba(7,6,26,0.35)' }} />
+    <>
+      <div className="fixed inset-0 z-[2]" style={{ background: '#000' }}>
+        <div id={containerId} className="pointer-events-none absolute inset-0 h-full w-full" style={{ opacity: 0.9 }} />
+        {/* velo scuro per far risaltare barre energia sopra */}
+        <div className="pointer-events-none absolute inset-0" style={{ background: 'rgba(7,6,26,0.35)' }} />
+      </div>
+      {/* Overlay "tocca per l'audio" — fuori dal contenitore z-[2] così sta SOPRA
+          il tabellone ed è cliccabile (il browser blocca l'audio senza un tocco). */}
       {needsTap && (
-        <button onClick={() => void start()} className="absolute bottom-6 left-1/2 -translate-x-1/2 rounded-2xl px-6 py-3 font-black" style={{ background: '#F5B642', color: '#0a0820' }}>
-          ▶︎ Avvia il brano
+        <button
+          onClick={() => tryPlay(playerRef.current)}
+          className="fixed inset-0 z-[9990] flex flex-col items-center justify-center gap-5"
+          style={{ background: 'rgba(7,6,26,0.85)' }}>
+          <div className="text-8xl animate-pulse">🔊</div>
+          <div className="rounded-3xl px-14 py-8 font-black text-4xl" style={{ background: '#F5B642', color: '#0a0820', boxShadow: '0 0 60px rgba(245,182,66,0.7)' }}>
+            ▶︎ TOCCA PER FAR PARTIRE LA MUSICA
+          </div>
+          <div className="text-white/70 text-xl font-bold">Il browser blocca l'audio finché non tocchi lo schermo</div>
         </button>
       )}
-    </div>
+    </>
   );
 }
 

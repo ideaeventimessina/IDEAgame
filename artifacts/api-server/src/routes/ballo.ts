@@ -15,6 +15,7 @@ import {
 import type { DanceState, DanceTeamInState } from "@workspace/db";
 import { type AuthedRequest, requireAuth, loadUser } from "../middlewares/auth";
 import { emitToEvent } from "../socket";
+import { logAiUsage, textCostUsd } from "@workspace/integrations-openai-ai-server";
 
 /* Chiave diretta OpenAI: niente baseURL, l'SDK usa api.openai.com. */
 const openai = new OpenAI({
@@ -171,6 +172,18 @@ Rispondi con un oggetto JSON nel formato: {"challenges": [...array delle sfide..
         messages: [{ role: "user", content: prompt }],
         response_format: { type: "json_object" },
         max_completion_tokens: 2048,
+      });
+      const usage = completion.usage;
+      const { costUsd, confidence } = textCostUsd("gpt-5-mini", usage?.prompt_tokens ?? 0, usage?.completion_tokens ?? 0);
+      void logAiUsage({
+        tenantId: req.user!.role === "super_admin" ? null : (req.user!.tenantId ?? null),
+        userId: req.user!.id,
+        model: "gpt-5-mini",
+        endpoint: "chat.completions",
+        tokensInput: usage?.prompt_tokens ?? 0,
+        tokensOutput: usage?.completion_tokens ?? 0,
+        costUsd,
+        metadata: { route: "dance-challenges/generate", costConfidence: confidence },
       });
       const raw = completion.choices[0]?.message?.content ?? "{}";
       const parsed = JSON.parse(raw) as { challenges?: unknown[] } | unknown[];

@@ -18,6 +18,7 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
+  AiUsageReport,
   AuditEntry,
   Card,
   CardSet,
@@ -44,6 +45,7 @@ import type {
   EventWithTeams,
   Game,
   GameSession,
+  GetAiUsageParams,
   HealthStatus,
   Kpis,
   ListGamesParams,
@@ -5363,6 +5365,93 @@ export function useListAuditLog<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getListAuditLogQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+export const getGetAiUsageUrl = (params?: GetAiUsageParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/ai-usage?${stringifiedParams}`
+    : `/api/ai-usage`;
+};
+
+export const getAiUsage = async (
+  params?: GetAiUsageParams,
+  options?: RequestInit,
+): Promise<AiUsageReport> => {
+  return customFetch<AiUsageReport>(getGetAiUsageUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAiUsageQueryKey = (params?: GetAiUsageParams) => {
+  return [`/api/ai-usage`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetAiUsageQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAiUsage>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetAiUsageParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAiUsage>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAiUsageQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAiUsage>>> = ({
+    signal,
+  }) => getAiUsage(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAiUsage>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAiUsageQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAiUsage>>
+>;
+export type GetAiUsageQueryError = ErrorType<unknown>;
+
+export function useGetAiUsage<
+  TData = Awaited<ReturnType<typeof getAiUsage>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetAiUsageParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAiUsage>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAiUsageQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

@@ -4,6 +4,7 @@ import { Router, type IRouter } from "express";
 import { loadUser } from "../middlewares/auth";
 import { loginLimiter } from "../middlewares/rateLimit";
 import healthRouter from "./health";
+import missionControlRouter from "./mission-control";
 import authRouter from "./auth";
 import tenantsRouter from "./tenants";
 import usersRouter from "./users";
@@ -28,6 +29,7 @@ import quizCategoriesRouter from "./quiz-categories";
 import quizzoneRouter from "./quizzone";
 import systemSettingsRouter from "./system-settings";
 import auditLogRouter from "./audit-log";
+import aiUsageRouter from "./ai-usage";
 import percorsoRouter from "./percorso";
 import eveningRouter from "./evening";
 import adultOnlyRouter from "./adult-only";
@@ -54,6 +56,9 @@ const router: IRouter = Router();
 
 // Public routes (no auth) — must come before loadUser
 router.use(networkRouter);
+// Machine-to-machine, autenticato con token condiviso (X-Mission-Token),
+// non con la sessione utente: deve restare fuori da loadUser/requireRole.
+router.use(missionControlRouter);
 
 router.use(loadUser);
 router.use(healthRouter);
@@ -84,6 +89,7 @@ router.use(quizCategoriesRouter);
 router.use(quizzoneRouter);
 router.use(systemSettingsRouter);
 router.use(auditLogRouter);
+router.use(aiUsageRouter);
 router.use(percorsoRouter);
 router.use(eveningRouter);
 router.use(adultOnlyRouter);

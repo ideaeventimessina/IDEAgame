@@ -691,6 +691,69 @@ export interface AuditEntry {
   createdAt: string;
 }
 
+export type AiUsagePeriod = (typeof AiUsagePeriod)[keyof typeof AiUsagePeriod];
+
+export const AiUsagePeriod = {
+  day: "day",
+  week: "week",
+  month: "month",
+  year: "year",
+} as const;
+
+export type GetAiUsageParams = {
+  period?: AiUsagePeriod;
+};
+
+export interface AiUsageTotals {
+  calls: number;
+  tokensInput: number;
+  tokensOutput: number;
+  /** Spesa stimata in USD (mai un saldo/credito reale — OpenAI non lo espone via API). */
+  costUsd: number;
+}
+
+export interface AiUsageProviderBreakdownAllOf {
+  provider: string;
+}
+
+export type AiUsageProviderBreakdown = AiUsageTotals & AiUsageProviderBreakdownAllOf;
+
+export interface AiUsageTenantBreakdownAllOf {
+  /** @nullable */
+  tenantId: string | null;
+  /** @nullable */
+  tenantName: string | null;
+}
+
+export type AiUsageTenantBreakdown = AiUsageTotals & AiUsageTenantBreakdownAllOf;
+
+export interface AiUsageUserBreakdownAllOf {
+  /** @nullable */
+  userId: string | null;
+  /** @nullable */
+  userName: string | null;
+  /** @nullable */
+  userEmail: string | null;
+  /** @nullable */
+  tenantId: string | null;
+}
+
+export type AiUsageUserBreakdown = AiUsageTotals & AiUsageUserBreakdownAllOf;
+
+export interface AiProviderConnection {
+  provider: string;
+  configured: boolean;
+}
+
+export interface AiUsageReport {
+  period: AiUsagePeriod;
+  totals: AiUsageTotals;
+  byProvider: AiUsageProviderBreakdown[];
+  byTenant: AiUsageTenantBreakdown[];
+  byUser: AiUsageUserBreakdown[];
+  providers: AiProviderConnection[];
+}
+
 export interface CoppieCard {
   pos: number;
   cardId: string;

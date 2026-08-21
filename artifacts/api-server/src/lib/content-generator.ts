@@ -2,6 +2,7 @@
 
 import OpenAI from "openai";
 import { logger } from "./logger.js";
+import { logAiUsage, textCostUsd } from "@workspace/integrations-openai-ai-server";
 
 /* Chiave diretta OpenAI: niente baseURL, l'SDK usa api.openai.com. */
 function makeClient(): OpenAI | null {
@@ -23,6 +24,9 @@ export interface GenerateRequest {
   difficulty: "easy" | "medium" | "hard";
   count:      number;
   extraHint?: string;
+  /** Per attribuire il costo AI a tenant/utente in ai_usage_log. */
+  tenantId?:  string | null;
+  userId?:    string | null;
 }
 
 export interface GenerateResult {
@@ -201,6 +205,20 @@ export async function generateContentItems(req: GenerateRequest): Promise<Genera
     ]);
 
     const text = completion.choices[0]?.message?.content ?? "[]";
+
+    const usage = completion.usage;
+    const { costUsd, confidence } = textCostUsd("gpt-4o-mini", usage?.prompt_tokens ?? 0, usage?.completion_tokens ?? 0);
+    void logAiUsage({
+      tenantId: req.tenantId ?? null,
+      userId: req.userId ?? null,
+      model: "gpt-4o-mini",
+      endpoint: "chat.completions",
+      tokensInput: usage?.prompt_tokens ?? 0,
+      tokensOutput: usage?.completion_tokens ?? 0,
+      costUsd,
+      metadata: { route: "game-content-packs/generate", gameSlug: req.gameSlug, costConfidence: confidence },
+    });
+
     const clean = text.trim().replace(/^```json?\s*/i, "").replace(/\s*```$/, "");
     const parsed = JSON.parse(clean) as unknown[];
     if (!Array.isArray(parsed) || parsed.length === 0) throw new Error("Risposta AI vuota");

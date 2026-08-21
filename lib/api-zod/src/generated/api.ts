@@ -960,6 +960,72 @@ export const ListAuditLogResponseItem = zod.object({
 });
 export const ListAuditLogResponse = zod.array(ListAuditLogResponseItem);
 
+export const GetAiUsageQueryParams = zod.object({
+  period: zod.enum(["day", "week", "month", "year"]).optional(),
+});
+
+export const GetAiUsageResponse = zod.object({
+  period: zod.enum(["day", "week", "month", "year"]),
+  totals: zod.object({
+    calls: zod.number(),
+    tokensInput: zod.number(),
+    tokensOutput: zod.number(),
+    costUsd: zod.number(),
+  }),
+  byProvider: zod.array(
+    zod
+      .object({
+        calls: zod.number(),
+        tokensInput: zod.number(),
+        tokensOutput: zod.number(),
+        costUsd: zod.number(),
+      })
+      .and(
+        zod.object({
+          provider: zod.string(),
+        }),
+      ),
+  ),
+  byTenant: zod.array(
+    zod
+      .object({
+        calls: zod.number(),
+        tokensInput: zod.number(),
+        tokensOutput: zod.number(),
+        costUsd: zod.number(),
+      })
+      .and(
+        zod.object({
+          tenantId: zod.string().nullable(),
+          tenantName: zod.string().nullable(),
+        }),
+      ),
+  ),
+  byUser: zod.array(
+    zod
+      .object({
+        calls: zod.number(),
+        tokensInput: zod.number(),
+        tokensOutput: zod.number(),
+        costUsd: zod.number(),
+      })
+      .and(
+        zod.object({
+          userId: zod.string().nullable(),
+          userName: zod.string().nullable(),
+          userEmail: zod.string().nullable(),
+          tenantId: zod.string().nullable(),
+        }),
+      ),
+  ),
+  providers: zod.array(
+    zod.object({
+      provider: zod.string(),
+      configured: zod.boolean(),
+    }),
+  ),
+});
+
 export const RequestUploadUrlBody = zod.object({
   name: zod.string(),
   size: zod.number(),

@@ -804,6 +804,18 @@ paths:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/AuditEntry" } }
 
+  /ai-usage:
+    get:
+      operationId: getAiUsage
+      parameters:
+        - { name: period, in: query, required: false, schema: { type: string, enum: [day, week, month, year] } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AiUsageReport" }
+
   /storage/uploads/request-url:
     post:
       operationId: requestUploadUrl
@@ -1362,6 +1374,62 @@ components:
         ip: { type: ["string", "null"] }
         userAgent: { type: ["string", "null"] }
         createdAt: { type: string, format: date-time }
+
+    AiUsageTotals:
+      type: object
+      required: [calls, tokensInput, tokensOutput, costUsd]
+      properties:
+        calls: { type: integer }
+        tokensInput: { type: integer }
+        tokensOutput: { type: integer }
+        # Spesa STIMATA in USD calcolata dai listini pubblici OpenAI — mai un saldo/credito reale.
+        costUsd: { type: number }
+
+    AiUsageProviderBreakdown:
+      allOf:
+        - { $ref: "#/components/schemas/AiUsageTotals" }
+        - type: object
+          required: [provider]
+          properties:
+            provider: { type: string }
+
+    AiUsageTenantBreakdown:
+      allOf:
+        - { $ref: "#/components/schemas/AiUsageTotals" }
+        - type: object
+          required: [tenantId, tenantName]
+          properties:
+            tenantId: { type: ["string", "null"] }
+            tenantName: { type: ["string", "null"] }
+
+    AiUsageUserBreakdown:
+      allOf:
+        - { $ref: "#/components/schemas/AiUsageTotals" }
+        - type: object
+          required: [userId, userName, userEmail, tenantId]
+          properties:
+            userId: { type: ["string", "null"] }
+            userName: { type: ["string", "null"] }
+            userEmail: { type: ["string", "null"] }
+            tenantId: { type: ["string", "null"] }
+
+    AiProviderConnection:
+      type: object
+      required: [provider, configured]
+      properties:
+        provider: { type: string }
+        configured: { type: boolean }
+
+    AiUsageReport:
+      type: object
+      required: [period, totals, byProvider, byTenant, byUser, providers]
+      properties:
+        period: { type: string, enum: [day, week, month, year] }
+        totals: { $ref: "#/components/schemas/AiUsageTotals" }
+        byProvider: { type: array, items: { $ref: "#/components/schemas/AiUsageProviderBreakdown" } }
+        byTenant: { type: array, items: { $ref: "#/components/schemas/AiUsageTenantBreakdown" } }
+        byUser: { type: array, items: { $ref: "#/components/schemas/AiUsageUserBreakdown" } }
+        providers: { type: array, items: { $ref: "#/components/schemas/AiProviderConnection" } }
 
     CoppieCard:
       type: object

@@ -7,6 +7,9 @@ import { writeFile, unlink, readFile } from "fs/promises";
 import { randomUUID } from "crypto";
 import { tmpdir } from "os";
 import { join } from "path";
+import { getAiUsageContext } from "../context";
+import { logAiUsage } from "../usage-log";
+import { audioChatCostUsd, transcriptionCostUsd } from "../pricing";
 
 /* Chiave diretta OpenAI: le richieste vanno a api.openai.com e le paghi a
    OpenAI, non piu' a crediti Replit. Senza baseURL l'SDK usa l'endpoint
@@ -143,10 +146,38 @@ export async function voiceChat(
   const message = response.choices[0]?.message as any;
   const transcript = message?.audio?.transcript || message?.content || "";
   const audioData = message?.audio?.data ?? "";
+  logAudioChatUsage("gpt-audio", "chat.completions (voiceChat)", (response as any).usage);
   return {
     transcript,
     audioResponse: Buffer.from(audioData, "base64"),
   };
+}
+
+/** Logga l'utilizzo di una chiamata chat.completions con modalities audio (non-streaming). */
+function logAudioChatUsage(model: string, endpoint: string, usage: any): void {
+  const textTokensInput = usage?.prompt_tokens_details?.text_tokens ?? usage?.prompt_tokens ?? 0;
+  const textTokensOutput = usage?.completion_tokens_details?.text_tokens ?? 0;
+  const audioTokensInput = usage?.prompt_tokens_details?.audio_tokens ?? 0;
+  const audioTokensOutput = usage?.completion_tokens_details?.audio_tokens ?? usage?.completion_tokens ?? 0;
+  const { costUsd, confidence } = audioChatCostUsd(model, { textTokensInput, textTokensOutput, audioTokensInput, audioTokensOutput });
+  void logAiUsage({
+    ...getAiUsageContext(),
+    model, endpoint,
+    tokensInput: (usage?.prompt_tokens ?? textTokensInput + audioTokensInput),
+    tokensOutput: (usage?.completion_tokens ?? textTokensOutput + audioTokensOutput),
+    costUsd,
+    metadata: { costConfidence: confidence, textTokensInput, textTokensOutput, audioTokensInput, audioTokensOutput },
+  });
+}
+
+/** Logga una chiamata in streaming di cui non conosciamo l'usage (nessun costo stimato, solo conteggio). */
+function logStreamingCallNoUsage(model: string, endpoint: string): void {
+  void logAiUsage({
+    ...getAiUsageContext(),
+    model, endpoint,
+    costUsd: 0,
+    metadata: { streaming: true, note: "usage non disponibile per risposte in streaming" },
+  });
 }
 
 /** Streaming Voice Chat for real-time audio responses. */
@@ -168,6 +199,7 @@ export async function voiceChatStream(
     }],
     stream: true,
   });
+  logStreamingCallNoUsage("gpt-audio", "chat.completions (voiceChatStream)");
 
   return (async function* () {
     for await (const chunk of stream) {
@@ -199,6 +231,7 @@ export async function textToSpeech(
     ],
   });
   const audioData = (response.choices[0]?.message as any)?.audio?.data ?? "";
+  logAudioChatUsage("gpt-audio", "chat.completions (textToSpeech)", (response as any).usage);
   return Buffer.from(audioData, "base64");
 }
 
@@ -217,6 +250,7 @@ export async function textToSpeechStream(
     ],
     stream: true,
   });
+  logStreamingCallNoUsage("gpt-audio", "chat.completions (textToSpeechStream)");
 
   return (async function* () {
     for await (const chunk of stream) {
@@ -239,6 +273,16 @@ export async function speechToText(
     file,
     model: "gpt-4o-mini-transcribe",
   });
+  const usage = (response as any).usage;
+  const { costUsd, confidence } = transcriptionCostUsd("gpt-4o-mini-transcribe", usage?.input_tokens ?? 0, usage?.output_tokens ?? 0);
+  void logAiUsage({
+    ...getAiUsageContext(),
+    model: "gpt-4o-mini-transcribe", endpoint: "audio.transcriptions",
+    tokensInput: usage?.input_tokens ?? 0,
+    tokensOutput: usage?.output_tokens ?? 0,
+    costUsd,
+    metadata: { costConfidence: confidence, usageAvailable: Boolean(usage) },
+  });
   return response.text;
 }
 
@@ -253,6 +297,7 @@ export async function speechToTextStream(
     model: "gpt-4o-mini-transcribe",
     stream: true,
   });
+  logStreamingCallNoUsage("gpt-4o-mini-transcribe", "audio.transcriptions (stream)");
 
   return (async function* () {
     for await (const event of stream) {

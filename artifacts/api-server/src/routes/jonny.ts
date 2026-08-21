@@ -14,6 +14,7 @@ import {
 } from "@workspace/db";
 import { type AuthedRequest, requireAuth } from "../middlewares/auth";
 import OpenAI from "openai";
+import { logAiUsage, textCostUsd } from "@workspace/integrations-openai-ai-server";
 
 function getOpenAI(): OpenAI {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -314,6 +315,18 @@ router.post("/jonny/generations", requireAuth, async (req: AuthedRequest, res: R
           { role: "system", content: singlePrompt },
           { role: "user", content: `Genera il contenuto per il gioco "${slug}" per la serata "${title}" con tema "${theme}". Rispondi SOLO con JSON valido.` },
         ],
+      });
+      const usage = completion.usage;
+      const { costUsd, confidence } = textCostUsd("gpt-5.1", usage?.prompt_tokens ?? 0, usage?.completion_tokens ?? 0);
+      void logAiUsage({
+        tenantId: user.tenantId ?? null,
+        userId: user.id,
+        model: "gpt-5.1",
+        endpoint: "chat.completions",
+        tokensInput: usage?.prompt_tokens ?? 0,
+        tokensOutput: usage?.completion_tokens ?? 0,
+        costUsd,
+        metadata: { route: "jonny/generations", gameSlug: slug, costConfidence: confidence },
       });
       const raw = completion.choices[0]?.message?.content ?? "{}";
       const parsed = JSON.parse(raw) as Record<string, unknown>;

@@ -46,7 +46,7 @@ export const STRINGS: Record<Locale, Record<string, string>> = {
     'admin.teams': 'Giocatori',
     'admin.audit': 'Audit Log',
     'admin.tenants': 'Tenant',
-    'admin.billing': 'Abbonamenti',
+    'admin.billing': 'Costi AI',
     'admin.users': 'Utenti',
     'admin.translations': 'Traduzioni',
     'admin.settings': 'Impostazioni',
