@@ -165,7 +165,7 @@ export function GameFlowPhone({
     return 'idle';
   });
 
-  const { num, showGo } = useFlowCountdown(p.gameFlowPhase === 'countdown');
+  const { num, showGo } = useFlowCountdown(p.gameFlowPhase === 'countdown', p.countdownStartedAt as string | undefined);
 
   async function book(action: 'book' | 'unbook', role?: 'guesser' | 'suggester') {
     if (booking) return;

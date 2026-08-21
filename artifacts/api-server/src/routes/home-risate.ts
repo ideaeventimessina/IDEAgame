@@ -103,6 +103,11 @@ function scheduleRisateVotingAutoClose(sessionId: string, cfg: Record<string, un
     try {
       const session = await getSession(sessionId);
       if (!session) return;
+      // In pausa (Regia/Presenter): non chiudere il voto, ricontrolla tra 1s.
+      if ((session.roundPayload as Record<string, unknown> | null)?.["paused"]) {
+        scheduleRisateVotingAutoClose(sessionId, cfg, new Date(Date.now() + 1000).toISOString());
+        return;
+      }
       const currentCfg = (session.gameConfig as Record<string, unknown>) ?? {};
       const s = getRisateState(currentCfg);
       if (!s || s.phase !== "voting") return;

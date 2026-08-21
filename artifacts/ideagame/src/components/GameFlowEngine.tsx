@@ -7,7 +7,7 @@
  * Supports: sfida-ballo (generic slots), parola-alle-spalle (role-labeled INDOVINO/SUGGERITORE slots).
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Users, Play, Loader2 } from 'lucide-react';
 
@@ -38,6 +38,8 @@ export interface FlowPayload {
   // Ballo: prescelto che sceglie il brano YouTube + video scelto
   prescelto?: { id: string; nickname: string } | null;
   balloVideo?: { videoId: string; title: string } | null;
+  // Countdown 3-2-1 sincronizzato (istante assoluto condiviso da server)
+  countdownStartedAt?: string;
 }
 
 // ── Per-game visual config ───────────────────────────────────────────────────────
@@ -70,19 +72,23 @@ const GAME_ROLE_SLOTS: Record<string, RoleSlot[]> = {
 
 // ── Countdown hook (shared with GameFlowPhone) ───────────────────────────────────
 
-export function useFlowCountdown(active: boolean) {
-  const [num, setNum] = useState(3);
-  const [showGo, setShowGo] = useState(false);
+// Countdown 3-2-1 sincronizzato: se il server fornisce countdownStartedAt, TV e
+// telefoni calcolano dallo stesso istante assoluto (niente sfasamenti). Fallback locale.
+export function useFlowCountdown(active: boolean, startedAt?: string | null) {
+  const [, tick] = useState(0);
+  const startRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!active) { setNum(3); setShowGo(false); return; }
-    setNum(3); setShowGo(false);
-    const t1 = setTimeout(() => setNum(2), 1000);
-    const t2 = setTimeout(() => setNum(1), 2000);
-    const t3 = setTimeout(() => setShowGo(true), 3000);
-    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
-  }, [active]);
+    if (!active) { startRef.current = null; return; }
+    startRef.current = startedAt ? new Date(startedAt).getTime() : Date.now();
+    const iv = setInterval(() => tick(x => x + 1), 200);
+    return () => clearInterval(iv);
+  }, [active, startedAt]);
 
+  if (!active || startRef.current == null) return { num: 3, showGo: false };
+  const elapsed = Date.now() - startRef.current;
+  const showGo = elapsed >= 3000;
+  const num = elapsed >= 2000 ? 1 : elapsed >= 1000 ? 2 : 3;
   return { num, showGo };
 }
 
@@ -119,7 +125,7 @@ export function GameFlowEngine({
   const [selecting, setSelecting] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
-  const { num, showGo } = useFlowCountdown(p.gameFlowPhase === 'countdown');
+  const { num, showGo } = useFlowCountdown(p.gameFlowPhase === 'countdown', p.countdownStartedAt as string | undefined);
 
   async function selectTheme(theme: FlowTheme) {
     if (selecting) return;

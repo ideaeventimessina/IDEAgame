@@ -3011,6 +3011,19 @@ export async function applyHomeResume(sessionId: string): Promise<boolean> {
   if (duel && duel["votingEndsAt"]) rp["duel"] = { ...duel, votingEndsAt: shift(duel["votingEndsAt"]) };
   delete rp["paused"]; delete rp["pausedAt"];
   await db.update(homeSessionsTable).set({ roundPayload: rp }).where(eq(homeSessionsTable.id, sessionId));
+  // Percorso a Risate: lo stato vive in gameConfig.risateState con timestamp propri.
+  if (String(rp["mode"] ?? "") === "home-percorso") {
+    const cfg = { ...((s.gameConfig ?? {}) as Record<string, unknown>) };
+    const risate = cfg["risateState"] as Record<string, unknown> | undefined;
+    if (risate) {
+      const rk = ["missionStartedAt", "bookingStartedAt", "publicChoiceStartedAt", "votingStartedAt", "votingEndsAt"];
+      const shifted = { ...risate };
+      for (const k of rk) if (shifted[k]) shifted[k] = shift(shifted[k]);
+      cfg["risateState"] = shifted;
+      await db.update(homeSessionsTable).set({ gameConfig: cfg }).where(eq(homeSessionsTable.id, sessionId));
+      emitToRoom(homeRoom(sessionId), "home:percorso_update", { state: shifted });
+    }
+  }
   rescheduleAutoAdvance(sessionId, rp);
   // Riprogramma anche la chiusura voto del duello di canto, se attivo.
   const d2 = rp["duel"] as Record<string, unknown> | undefined;
@@ -3306,7 +3319,7 @@ router.post("/home/sessions/:id/flow/confirm", async (req, res): Promise<void> =
   setTimeout(async () => {
     try {
       logger.info({ sessionId: id }, "[BalloFlow] countdown");
-      const countdownRp: RoundPayload = { ...confirmRp, gameFlowPhase: "countdown" } as RoundPayload;
+      const countdownRp: RoundPayload = { ...confirmRp, gameFlowPhase: "countdown", countdownStartedAt: new Date().toISOString() } as RoundPayload;
       const [cdUpdated] = await db.update(homeSessionsTable)
         .set({ roundPayload: countdownRp })
         .where(eq(homeSessionsTable.id, id)).returning();

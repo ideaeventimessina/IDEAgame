@@ -6895,13 +6895,19 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
     const liveIframeRef  = curLive === 'A' ? slotARef : slotBRef;
     const bkstIframeRef  = curLive === 'A' ? slotBRef : slotARef;
 
-    const ytCmd = (ref: React.RefObject<HTMLIFrameElement | null>, func: string) =>
-      ref.current?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func, args: '' }), '*');
+    const ytCmd = (ref: React.RefObject<HTMLIFrameElement | null>, func: string, args: unknown = '') =>
+      ref.current?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func, args }), '*');
+    // Alza il volume al massimo e togli il mute (YouTube ricorda l'ultimo volume basso).
+    // Ripetuto perché l'iframe può non essere pronto al primo comando.
+    const ytFullVolume = (ref: React.RefObject<HTMLIFrameElement | null>) => {
+      const boost = () => { ytCmd(ref, 'unMute'); ytCmd(ref, 'setVolume', [100]); };
+      boost(); setTimeout(boost, 300); setTimeout(boost, 1000);
+    };
 
     if (backstageVid === vid && backstageStatusRef.current === 'ready') {
       // ── INSTANT SWAP ────────────────────────────────────────────────────
       _log(`[KARAOKE_BACKSTAGE] live swap | in=${vid}`);
-      ytCmd(bkstIframeRef, 'unMute');
+      ytFullVolume(bkstIframeRef);
       ytCmd(liveIframeRef, 'mute');
       const newLive = curLive === 'A' ? 'B' : 'A';
       setLiveSlot(newLive);
@@ -6923,8 +6929,8 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
       _log(`[KARAOKE_BACKSTAGE] preload missed — loading normally | videoId=${vid}`);
       if (curLive === 'A') { setSlotAVideoId(vid); slotAVideoIdRef.current = vid; }
       else                  { setSlotBVideoId(vid); slotBVideoIdRef.current = vid; }
-      // Unmute live after brief init delay
-      setTimeout(() => ytCmd(liveIframeRef, 'unMute'), 900);
+      // Unmute + volume al massimo dopo un breve init
+      setTimeout(() => ytFullVolume(liveIframeRef), 900);
       // Preload next in backstage
       if (nextVid) {
         if (curLive === 'A') { setSlotBVideoId(nextVid); slotBVideoIdRef.current = nextVid; }
