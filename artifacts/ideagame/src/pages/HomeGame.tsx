@@ -4219,6 +4219,8 @@ function YTClipPlayer({ clip, roundIndex, sessionId, autoStart }: {
             _log('[SARAMUSICA_YT]', { event: 'player_ready', youtubeId: clip.youtubeId });
             // seekTo + playVideo in same synchronous tick — no delay
             evt.target.seekTo(clip.startSecond, true);
+            evt.target.unMute?.();
+            evt.target.setVolume?.(100);
             _log('[SARAMUSICA_YT]', { event: 'seek_to', startSecond: clip.startSecond });
             evt.target.playVideo();
             setStatus('playing');
@@ -4234,6 +4236,17 @@ function YTClipPlayer({ clip, roundIndex, sessionId, autoStart }: {
               setStatus('done');
               _log('[SARAMUSICA_YT]', { event: 'pause_at_duration', youtubeId: clip.youtubeId, durationSeconds: clip.durationSeconds });
             }, clip.durationSeconds * 1000);
+            // Autoplay con audio bloccato dal browser? Dopo 1.2s non sta suonando:
+            // torna a 'idle' così ricompare il pulsante manuale (un tap sblocca).
+            setTimeout(() => {
+              if (evt.target.getPlayerState?.() !== 1) {
+                if (tickRef.current) { clearInterval(tickRef.current); tickRef.current = null; }
+                if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+                setElapsed(0);
+                setStatus('idle');
+                _log('[SARAMUSICA_YT]', { event: 'autoplay_blocked_reverted', youtubeId: clip.youtubeId });
+              }
+            }, 1200);
           },
           onError: (e: { data: number }) => {
             _log('[SARAMUSICA_YT]', { event: 'player_error', youtubeId: clip.youtubeId, errorCode: e.data });
@@ -4374,13 +4387,20 @@ function SaraDuelBoard({ duel, smPost, sessionId: _sessionId }: {
   const votesA = Object.values(d.votes).filter(v => v === 'A').length;
   const votesB = Object.values(d.votes).filter(v => v === 'B').length;
   const [secs, setSecs] = useState<number | null>(null);
+  const autoClosedRef = useRef(false);
   useEffect(() => {
     if (d.phase !== 'vote' || !d.votingEndsAt) { setSecs(null); return; }
+    autoClosedRef.current = false;
     const end = new Date(d.votingEndsAt).getTime();
-    const tick = () => setSecs(Math.max(0, Math.ceil((end - Date.now()) / 1000)));
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((end - Date.now()) / 1000));
+      setSecs(left);
+      // Rete di sicurezza: se il timeout server è andato perso (riavvio), chiudiamo noi.
+      if (left <= 0 && !autoClosedRef.current) { autoClosedRef.current = true; void smPost('duel/close'); }
+    };
     tick(); const t = setInterval(tick, 250);
     return () => clearInterval(t);
-  }, [d.phase, d.votingEndsAt]);
+  }, [d.phase, d.votingEndsAt, smPost]);
 
   const Fighter = ({ p, side, color }: { p?: { nickname: string }; side: string; color: string }) => (
     <div className="flex flex-1 flex-col items-center gap-3 rounded-3xl p-6"
@@ -4416,8 +4436,11 @@ function SaraDuelBoard({ duel, smPost, sessionId: _sessionId }: {
             <Fighter p={B} side="SFIDANTE B" color="#F472B6" />
           </div>
           <div className="rounded-2xl px-6 py-4 text-center text-2xl font-black" style={{ background: 'rgba(245,182,66,0.15)', color: '#F5B642' }}>
-            🎲 {d.prescelto?.nickname ?? 'Il prescelto'} sta scegliendo la canzone…
+            🎲 {d.prescelto?.nickname ?? 'Gli sfidanti'} sta scegliendo la canzone…
           </div>
+          <button onClick={() => void smPost('next')} className="rounded-xl px-6 py-3 font-black text-white/70" style={{ background: 'rgba(255,255,255,0.08)' }}>
+            Salta la sfida ▶️
+          </button>
         </>
       )}
 
@@ -4480,6 +4503,16 @@ function SaraDuelBoard({ duel, smPost, sessionId: _sessionId }: {
 function SaraDuelVideo({ videoId }: { videoId: string }) {
   const containerId = `duel-${videoId.slice(0, 8)}`;
   const playerRef = useRef<YTPlayerInst | null>(null);
+  const checkRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [needsTap, setNeedsTap] = useState(false);
+
+  const tryPlay = useCallback((p: YTPlayerInst | null) => {
+    if (!p) return;
+    try { p.unMute?.(); p.setVolume?.(100); p.playVideo(); } catch { setNeedsTap(true); return; }
+    if (checkRef.current) clearTimeout(checkRef.current);
+    checkRef.current = setTimeout(() => setNeedsTap(p.getPlayerState?.() !== 1), 1500);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     void loadYTApi().then(() => {
@@ -4487,12 +4520,32 @@ function SaraDuelVideo({ videoId }: { videoId: string }) {
       playerRef.current = new window.YT.Player(containerId, {
         videoId, width: '100%', height: '100%',
         playerVars: { autoplay: 1, controls: 1, rel: 0, modestbranding: 1, playsinline: 1, enablejsapi: 1 },
-        events: { onReady: (e: { target: YTPlayerInst }) => { try { e.target.playVideo(); } catch { /**/ } } },
+        events: {
+          onReady: (e: { target: YTPlayerInst }) => tryPlay(e.target),
+          onStateChange: (e: { data: number }) => { if (e.data === 1) setNeedsTap(false); },
+        },
       });
     });
-    return () => { cancelled = true; if (playerRef.current) { try { playerRef.current.destroy(); } catch { /**/ } playerRef.current = null; } };
-  }, [videoId, containerId]);
-  return <div id={containerId} className="h-full w-full" />;
+    return () => {
+      cancelled = true;
+      if (checkRef.current) clearTimeout(checkRef.current);
+      if (playerRef.current) { try { playerRef.current.destroy(); } catch { /**/ } playerRef.current = null; }
+    };
+  }, [videoId, containerId, tryPlay]);
+
+  return (
+    <div className="relative h-full w-full">
+      <div id={containerId} className="h-full w-full" />
+      {needsTap && (
+        <button onClick={() => tryPlay(playerRef.current)}
+          className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3"
+          style={{ background: 'rgba(7,6,26,0.85)' }}>
+          <div className="text-6xl animate-pulse">🔊</div>
+          <div className="rounded-2xl px-8 py-4 font-black text-2xl" style={{ background: '#F5B642', color: '#0a0820' }}>▶︎ TOCCA PER L'AUDIO</div>
+        </button>
+      )}
+    </div>
+  );
 }
 
 function SaraMusicaBoard({ payload, session, players }: {

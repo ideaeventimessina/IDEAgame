@@ -3852,11 +3852,13 @@ function SaraDuelController({ duel, player, sessionId }: {
 
   // ── SONG (prescelto sceglie il brano) ────────────────────────────────────────
   if (d.phase === 'song') {
-    if (amPrescelto) {
+    // Se non c'è un prescelto (gruppo piccolo o disconnesso) scelgono gli sfidanti.
+    const canPickSong = amPrescelto || (!d.prescelto && amChallenger);
+    if (canPickSong) {
       return <div className="flex flex-col gap-3 py-4">
         <div className="text-center">
           <div className="text-3xl">🎲</div>
-          <div className="text-lg font-black text-white mt-1">Sei il prescelto!</div>
+          <div className="text-lg font-black text-white mt-1">{amPrescelto ? 'Sei il prescelto!' : 'Scegliete il brano!'}</div>
           <div className="text-sm text-white/50">Scegli la canzone che dovranno cantare entrambi.</div>
         </div>
         <div className="flex gap-2">

@@ -1836,10 +1836,16 @@ router.post("/home/sessions/:id/saramusica/next", async (req, res): Promise<void
   if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
   const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
   if (rp["mode"] !== "home-saramusica") { res.status(409).json({ error: "Non in modalità saramusica" }); return; }
-  if (rp["phase"] !== "reveal" && rp["phase"] !== "ranking") { res.status(409).json({ error: "Fase non corretta" }); return; }
   const currentIndex = Number(rp["currentIndex"] ?? 0);
   const rounds = (rp["rounds"] ?? []) as MusicRound[];
-  const roundCount = Number(rp["roundCount"] ?? rounds.length);
+  // La sfida di canto vive dentro phase="question" (il flusso duello è nell'oggetto
+  // `duel`), quindi "next" deve essere ammesso anche lì, altrimenti la si gioca ma
+  // non si può proseguire e l'intera modalità si blocca.
+  const isDuelNow = rp["phase"] === "question" && rounds[currentIndex]?.type === "singing_duel";
+  if (rp["phase"] !== "reveal" && rp["phase"] !== "ranking" && !isDuelNow) { res.status(409).json({ error: "Fase non corretta" }); return; }
+  // Fine percorso = fine dell'array completo (include i round iniettati: sagome + duello),
+  // non il numero scelto dall'utente, altrimenti gli ultimi round non verrebbero giocati.
+  const roundCount = rounds.length;
   const nextIndex = currentIndex + 1;
   const players = await getPlayers(id);
   const sortedPlayers = [...players].sort((a, b) => b.score - a.score);
