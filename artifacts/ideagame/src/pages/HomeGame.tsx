@@ -542,7 +542,7 @@ function isSafeToShowTvMessages(session: HomeSession | null, phase: string): boo
 
 type Phase = 'welcome' | 'join' | 'board' | 'playing' | 'champion';
 
-const BUILD_STAMP = `bfb3131 · ${new Date().toISOString().slice(0,16).replace('T',' ')} · HomeGame`;
+const BUILD_STAMP = `2026-08-22-prova1 · QA+pausa+yoga+karaokeVol · HomeGame`;
 export default function HomeGame() {
   useEffect(() => {
     _log('[BuildCheck] HomeGame BUILD=' + BUILD_STAMP);
