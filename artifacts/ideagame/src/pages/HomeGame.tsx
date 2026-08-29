@@ -151,7 +151,17 @@ interface WheelGame {
   color: string;
   glow: string;
   done: boolean;
+  kind: 'auto' | 'crowd';
 }
+
+// Giochi a PUNTEGGIO AUTOMATICO (a risposta/individuali: funzionano anche in pochi).
+// Tutti gli altri sono da fare CON TANTI OSPITI (performance + pubblico che giudica/vota).
+const AUTO_SCORE_GAMES = new Set(['quizzone', 'saramusica', 'gioco-coppie']);
+const gameKind = (slug: string): 'auto' | 'crowd' => AUTO_SCORE_GAMES.has(slug) ? 'auto' : 'crowd';
+const GAME_KIND_BADGE: Record<'auto' | 'crowd', { label: string; emoji: string; color: string }> = {
+  auto:  { label: 'Punteggio automatico', emoji: '🤖', color: '#4ADE80' },
+  crowd: { label: 'Meglio con tanti ospiti', emoji: '👥', color: '#FB923C' },
+};
 
 const WHEEL_EXTRAS: Record<string, { short: string; glow: string }> = {
   'percorso-a-risate':  { short: 'PERCORSO', glow: '#4ADE80' },
@@ -447,15 +457,24 @@ function HomeWheelGameCard({ game, onPlay, loading }:{
         initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-8}}
         transition={{duration:0.22}}>
         <div className="px-4 py-3.5">
-          <div className="font-black text-white mb-2"
+          <div className="font-black text-white mb-1.5"
             style={{fontSize:'clamp(0.9rem,1.3vw,1.1rem)',fontFamily:"'Outfit','Arial Black',sans-serif",textShadow:`0 0 20px ${game.glow}88`}}>
             {game.label}
           </div>
-          {game.done ? (
-            <div className="rounded-xl px-3 py-2 text-center font-black"
-              style={{background:'rgba(52,211,153,0.15)',border:'1px solid rgba(52,211,153,0.45)',color:'#34D399',fontSize:'0.78rem'}}>
-              ✓ Completato
+          {/* Nota grafica: tipo di gioco (punteggio automatico vs con tanti ospiti) */}
+          {(() => { const b = GAME_KIND_BADGE[game.kind]; return (
+            <div className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 mb-2 font-black"
+              style={{ background:`${b.color}22`, border:`1px solid ${b.color}66`, color:b.color, fontSize:'0.66rem', letterSpacing:'0.02em' }}>
+              <span>{b.emoji}</span>{b.label.toUpperCase()}
             </div>
+          ); })()}
+          {game.done ? (
+            <motion.button onClick={onPlay} disabled={loading}
+              className="w-full rounded-xl py-2.5 font-black flex items-center justify-center gap-2 disabled:opacity-40"
+              style={{background:'rgba(52,211,153,0.15)',border:'1px solid rgba(52,211,153,0.45)',color:'#34D399',fontSize:'0.82rem'}}
+              whileHover={{scale:loading?1:1.02}} whileTap={{scale:loading?1:0.97}}>
+              {loading?<Loader2 className="h-4 w-4 animate-spin"/>:<>✓ Rigioca</>}
+            </motion.button>
           ) : (
             <motion.button onClick={onPlay} disabled={loading}
               className="w-full rounded-xl py-2.5 font-black text-white flex items-center justify-center gap-2 disabled:opacity-40"
@@ -780,6 +799,7 @@ export default function HomeGame() {
       color: g.color,
       glow:  WHEEL_EXTRAS[g.slug]?.glow ?? g.color,
       done:  gamesPlayed.includes(g.slug),
+      kind:  gameKind(g.slug),
     }))
   , [visibleGames, gamesPlayed]);
 
@@ -787,7 +807,7 @@ export default function HomeGame() {
     const bySlug = wheelGames.find(g => g.slug === wheelSelected);
     if (bySlug) return bySlug;
     return wheelGames.find(g => !g.done) ?? wheelGames[0] ?? {
-      slug:'quizzone',label:'Quizzone',short:'QUIZZONE',color:'#F5B642',glow:'#FCD34D',done:false
+      slug:'quizzone',label:'Quizzone',short:'QUIZZONE',color:'#F5B642',glow:'#FCD34D',done:false,kind:'auto'
     };
   }, [wheelGames, wheelSelected]);
 
