@@ -1798,8 +1798,8 @@ export default function HomeGame() {
                 </motion.button>
               ) : (
                 <motion.button
-                  onClick={() => { if (!wheelSelectedGame.done) void selectGame(wheelSelectedGame.slug); }}
-                  disabled={!!selectingGame || wheelSelectedGame.done || loading}
+                  onClick={() => void selectGame(wheelSelectedGame.slug)}
+                  disabled={!!selectingGame || loading}
                   className="relative overflow-hidden font-black rounded-full flex items-center justify-center gap-3 text-white disabled:opacity-40"
                   style={{background:`linear-gradient(135deg,${wheelSelectedGame.color} 0%,${wheelSelectedGame.glow} 100%)`,border:`3px solid ${wheelSelectedGame.color}`,boxShadow:`0 0 30px ${wheelSelectedGame.color}66,0 6px 0 rgba(0,0,0,0.5)`,padding:'0 2.2vw',height:'7vh',fontSize:'clamp(0.8rem,1.4vw,1.1rem)',minWidth:'16vw'}}
                   whileHover={{scale:1.05}} whileTap={{scale:0.97,y:3}}>
@@ -1808,7 +1808,7 @@ export default function HomeGame() {
                     {selectingGame === wheelSelectedGame.slug
                       ? <Loader2 className="h-5 w-5 animate-spin"/>
                       : <Play className="h-5 w-5" style={{fill:'white'}}/>}
-                    {wheelSelectedGame.done ? '✓ COMPLETATO' : 'GIOCA ORA'}
+                    {wheelSelectedGame.done ? '✓ RIGIOCA' : 'GIOCA ORA'}
                   </span>
                 </motion.button>
               )}
@@ -2732,14 +2732,23 @@ function QuizzoneBoard({ payload, session, players }: {
               const imgSrc = i === 0 ? currentQ.imageA : currentQ.imageB;
               const label = currentQ.answers[i] ?? (i === 0 ? 'A' : 'B');
               const color = ANS_COLORS[i] ?? QZ;
-              const placeholder = `https://placehold.co/600x400/1a1a2e/F5B642?text=${encodeURIComponent(label)}`;
               return (
                 <div key={i} className="flex-1 flex flex-col items-center gap-2 rounded-2xl overflow-hidden"
                   style={{ border:`2px solid ${color}55`, background:`${color}12` }}>
-                  <img src={imgSrc ?? placeholder} alt={label}
-                    className="w-full object-cover" style={{ height:'180px' }}
-                    onError={(e) => { (e.target as HTMLImageElement).src = placeholder; }} />
-                  <div className="pb-3 px-3 text-center font-black text-base text-white leading-snug">{label}</div>
+                  {/* Fallback pulito SEMPRE dietro (nessuna dipendenza da servizi esterni):
+                      se la foto non carica, l'img si nasconde e resta la lettera + etichetta. */}
+                  <div className="relative w-full" style={{ height:'180px' }}>
+                    <div className="absolute inset-0 flex items-center justify-center"
+                      style={{ background:`linear-gradient(135deg,${color}33,${color}0d)` }}>
+                      <span className="text-5xl font-black" style={{ color }}>{i === 0 ? 'A' : 'B'}</span>
+                    </div>
+                    {imgSrc && (
+                      <img src={imgSrc} alt={label}
+                        className="absolute inset-0 w-full h-full object-cover"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    )}
+                  </div>
+                  <div className="pb-3 px-3 text-center font-black text-lg text-white leading-snug">{label}</div>
                 </div>
               );
             })}
@@ -6763,6 +6772,19 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
   const [backstageReadyVideoId, setBackstageReadyVideoId] = useState<string | null>(null);
   // YouTube player error tracking
   const [videoError, setVideoError] = useState<{ videoId: string; title: string; errorCode: number } | null>(null);
+  // Ricarica manuale del video live (per errori YouTube che non fanno scattare l'overlay).
+  const [reloadNonce, setReloadNonce] = useState(0);
+  const boostLiveVolume = useCallback(() => {
+    const ref = liveSlotRef.current === 'A' ? slotARef : slotBRef;
+    const cmd = (f: string, a: unknown = '') => ref.current?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: f, args: a }), '*');
+    const go = () => { cmd('unMute'); cmd('setVolume', [100]); cmd('playVideo'); };
+    setTimeout(go, 800); setTimeout(go, 1600);
+  }, []);
+  const retryLiveVideo = useCallback(() => {
+    setVideoError(null);
+    setReloadNonce(n => n + 1); // rimonta gli iframe → ricarica il brano
+    boostLiveVolume();
+  }, [boostLiveVolume]);
   // Refs for stable closures (avoid stale state in listeners)
   const liveStateRef = useRef<KaraokeHomeState>(state);
   const liveSlotRef = useRef<'A' | 'B'>('A');
@@ -7148,6 +7170,11 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
               )}
             </div>
             <div className="ml-auto flex gap-2">
+              <button onClick={retryLiveVideo}
+                className="rounded-xl px-4 py-2 text-sm font-black"
+                style={{ background: 'rgba(74,222,128,0.18)', border: '1px solid rgba(74,222,128,0.5)', color: '#4ade80' }}>
+                🔄 Riprova
+              </button>
               <button onClick={() => void post('/karaoke/open-voting')}
                 className="rounded-xl px-4 py-2 text-sm font-black"
                 style={{ background: `${KK}25`, border: `1px solid ${KK}55`, color: KK }}>
@@ -7166,7 +7193,7 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
             {/* Slot A */}
             {slotAUrl && (
               <iframe
-                key={`slot-a-${slotAVideoId}`}
+                key={`slot-a-${slotAVideoId}-${reloadNonce}`}
                 ref={slotARef}
                 src={slotAUrl}
                 className="absolute inset-0 w-full h-full"
@@ -7181,7 +7208,7 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
             {/* Slot B — on PS4, skip backstage iframe; only render when it's the live slot */}
             {slotBUrl && (!IS_PS4 || liveSlot === 'B') && (
               <iframe
-                key={`slot-b-${slotBVideoId}`}
+                key={`slot-b-${slotBVideoId}-${reloadNonce}`}
                 ref={slotBRef}
                 src={slotBUrl}
                 className="absolute inset-0 w-full h-full"
@@ -7205,17 +7232,22 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
                   <div className="text-sm text-white/45 px-6">"{videoError.title}"</div>
                 )}
                 <div className="flex gap-3 flex-wrap justify-center px-4">
+                  <button onClick={retryLiveVideo}
+                    className="rounded-xl px-5 py-3 text-sm font-black text-black"
+                    style={{ background: '#4ade80', boxShadow: '0 0 20px rgba(74,222,128,0.5)' }}>
+                    🔄 Riprova
+                  </button>
+                  <button onClick={() => void post('/karaoke/open-voting')}
+                    className="rounded-xl px-5 py-3 text-sm font-black"
+                    style={{ background: `${KK}20`, border: `1px solid ${KK}50`, color: KK }}>
+                    ⭐ Salta e vota
+                  </button>
                   <a href={`https://www.youtube.com/watch?v=${videoError.videoId}`}
                     target="_blank" rel="noopener noreferrer"
                     className="rounded-xl px-5 py-3 text-sm font-black text-white"
                     style={{ background: '#FF0000', border: '1px solid rgba(255,0,0,0.5)' }}>
                     ▶ Apri su YouTube
                   </a>
-                  <button onClick={() => void post('/karaoke/open-voting')}
-                    className="rounded-xl px-5 py-3 text-sm font-black"
-                    style={{ background: `${KK}20`, border: `1px solid ${KK}50`, color: KK }}>
-                    ⭐ Salta e vota
-                  </button>
                   <button onClick={() => setVideoError(null)}
                     className="rounded-xl px-5 py-3 text-sm font-black text-white/40"
                     style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)' }}>

@@ -2541,14 +2541,12 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
   if (!gameSlug) { res.status(400).json({ error: "gameSlug obbligatorio" }); return; }
 
   const cfg = (session.gameConfig ?? {}) as Record<string, unknown>;
-  let gamesPlayed = (cfg.gamesPlayed as string[]) ?? [];
-  // "Riavvia manche": riporta il gioco alla prima schermata anche se già giocato.
-  if (restart) {
-    gamesPlayed = gamesPlayed.filter(g => g !== gameSlug);
-    cfg.gamesPlayed = gamesPlayed;
-  } else if (gamesPlayed.includes(gameSlug)) {
-    res.status(409).json({ error: "Gioco già completato" }); return;
-  }
+  const gamesPlayed = (cfg.gamesPlayed as string[]) ?? [];
+  // Un gioco già fatto NON viene più bloccato: si può riaprire lo stesso flusso e
+  // rigiocarlo. La spunta (gamesPlayed) resta, così sul tabellone si vede "già fatto".
+  // `restart` è mantenuto per compatibilità (Riavvia manche) ma non serve più togliere
+  // la spunta: riselezionare il gioco basta.
+  void restart;
 
   // ── BYPASS: karaoke-battle → direct KaraokeLiveBoard (no theme_select / booking) ──
   if (gameSlug === "karaoke-battle") {
