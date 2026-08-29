@@ -1,6 +1,7 @@
 /* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
 
 import { db, aiUsageLogTable } from "@workspace/db";
+import { mcAiReport } from "./mc-ai";
 
 export interface LogAiUsageParams {
   tenantId?: string | null;
@@ -21,6 +22,13 @@ export interface LogAiUsageParams {
  * `.catch(...)` dal call site se non si vuole rallentare la risposta.
  */
 export async function logAiUsage(params: LogAiUsageParams): Promise<void> {
+  // Mission Control: segnala la chiamata AI in tempo reale (fire-and-forget).
+  mcAiReport({
+    model: params.model,
+    costUsd: params.costUsd,
+    tokensIn: params.tokensInput ?? 0,
+    tokensOut: params.tokensOutput ?? 0,
+  });
   try {
     await db.insert(aiUsageLogTable).values({
       tenantId: params.tenantId ?? null,

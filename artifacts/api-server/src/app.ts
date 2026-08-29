@@ -7,8 +7,11 @@ import connectPgSimple from "connect-pg-simple";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { missionControlLoad } from "./lib/mc-server";
 
 const app: Express = express();
+
+app.use(missionControlLoad({ project: "ideagame" }));
 
 // Trust the reverse proxy (Replit's shared proxy sets X-Forwarded-For)
 app.set("trust proxy", 1);
