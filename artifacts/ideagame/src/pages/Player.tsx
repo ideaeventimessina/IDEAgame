@@ -157,13 +157,20 @@ export default function Player() {
   const { isHostedByJonny, jonnyMode, jonnyTell, jonnyFlash } = useJonny();
   const searchParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
   const joinCodeFromUrl = searchParams.get('e')?.toUpperCase() ?? '';
+  /* IL NOME PUÒ ARRIVARE DALL'INDIRIZZO — 7/9/2026, per il ponte col
+     gestionale IDEAeventi. In showroom gli ospiti hanno già scritto il loro
+     nome per entrare in sala: richiederlo qui vorrebbe dire farlo scrivere
+     due volte a venti persone, in piedi, mentre la festa comincia. Se c'è,
+     si entra da soli. Resta modificabile: chi arriva senza `?nome` vede il
+     campo di sempre. */
+  const nomeDaUrl = (searchParams.get('nome') ?? '').trim().slice(0, 24);
 
   const [step, setStep] = useState<Step>(joinCodeFromUrl ? 'loading' : 'landing');
   const [error, setError] = useState('');
   const [event, setEvent] = useState<EventInfo | null>(null);
   const [teams, setTeams] = useState<TeamInfo[]>([]);
   const [player, setPlayer] = useState<PlayerInfo | null>(null);
-  const [nick, setNick] = useState('');
+  const [nick, setNick] = useState(nomeDaUrl);
   const [selectedTeam, setSelectedTeam] = useState('');
   const [gameState, setGameState] = useState<GameState>({ sessionId: null, currentRound: 0, totalRounds: 1, status: 'idle', gameSlug: null });
   const [prevGameSlug, setPrevGameSlug] = useState<string | null>(null);
@@ -195,6 +202,17 @@ export default function Player() {
   }, []);
 
   useEffect(() => { if (joinCodeFromUrl) fetchEvent(joinCodeFromUrl); }, [joinCodeFromUrl, fetchEvent]);
+
+  /* ENTRA DA SOLO quando il nome è arrivato dall'indirizzo e la partita è
+     stata trovata. Una volta sola: `entrataAutomatica` impedisce che un
+     ri-render riprovi a entrare mentre sta già entrando. */
+  const entrataAutomatica = useRef(false);
+  useEffect(() => {
+    if (!nomeDaUrl || entrataAutomatica.current) return;
+    if (step !== 'join' || !event) return;
+    entrataAutomatica.current = true;
+    void handleJoin();
+  }, [step, event]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Detect active session when player enters play step ──────────────────
   const fetchActiveSession = useCallback(async (eventId: string, playerId: string) => {

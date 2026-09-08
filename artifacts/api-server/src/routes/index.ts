@@ -11,6 +11,7 @@ import usersRouter from "./users";
 import gamesRouter from "./games";
 import eventsRouter from "./events";
 import eventsByCodeRouter from "./events-by-code";
+import ponteIdeaeventiRouter from "./ponte-ideaeventi";
 import teamsRouter from "./teams";
 import playersRouter from "./players";
 import scoresRouter from "./scores";
@@ -111,5 +112,9 @@ router.use(contentPacksRouter);
 router.use(gameMediaSlotsRouter);
 // live-sessions/by-code/:code must come BEFORE live-sessions/:id to avoid param collision
 router.use(liveSessionsRouter);
+
+/* IL PONTE COL GESTIONALE IDEAEVENTI — 7/9/2026. Si identifica con una
+   chiave condivisa, non con una sessione: chi chiama è un programma. */
+router.use(ponteIdeaeventiRouter);
 
 export default router;
