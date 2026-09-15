@@ -3,7 +3,7 @@
 import { useLocation } from 'wouter';
 import { motion } from 'framer-motion';
 import { useState, useEffect } from 'react';
-import { Home, Mic2, ChevronLeft, Users, Star, Zap, Building2 } from 'lucide-react';
+import { Home, Mic2, ChevronLeft, Users, Star, Zap, Building2, Dices, Spade, Trophy } from 'lucide-react';
 import { AudioManager } from '@/audio/AudioManager';
 import { useAuth, canSee } from '@/auth/roles';
 
@@ -72,6 +72,21 @@ const MODES: Mode[] = [
     route: '/',
     Icon: Mic2,
     tagIcons: [Building2, Star, Zap],
+  },
+  {
+    id: 'gestione',
+    title: 'GESTIONE GIOCHI',
+    subtitle: 'Serate di Burraco & Casinò',
+    desc: 'Tornei a coppie e gestione fish: punteggi live, QR ai tavoli, classifiche.',
+    tags: ['Burraco a coppie', 'Casinò / fish', 'Tavoli & classifiche'],
+    color: '#34D399',
+    glow: '#6EE7B7',
+    bgSolid: 'rgba(4,22,16,0.9)',
+    border: 'rgba(52,211,153,0.55)',
+    cta: 'APRI GESTIONE',
+    route: '/gestione',
+    Icon: Dices,
+    tagIcons: [Spade, Dices, Trophy],
   },
 ];
 
@@ -281,8 +296,8 @@ export default function ModeSelect() {
   const cardW     = isMobile ? '100%' : isTablet ? 220 : 260;
   const cardH     = isMobile ? 280    : isTablet ? 310  : 338;
   const cardsDir  = isMobile ? 'column' as const : 'row' as const;
-  const cardsGap  = isMobile ? 14 : 28;
-  const maxCards  = isMobile ? 420 : isTablet ? 490 : 580;
+  const cardsGap  = isMobile ? 14 : isTablet ? 20 : 24;
+  const maxCards  = isMobile ? 420 : isTablet ? 720 : 860;
 
   return (
     <div style={{
@@ -416,6 +431,8 @@ export default function ModeSelect() {
         <div style={{
           display: 'flex',
           flexDirection: cardsDir,
+          flexWrap: 'wrap',
+          justifyContent: 'center',
           gap: cardsGap,
           width: '100%',
           maxWidth: maxCards,
