@@ -28,6 +28,18 @@ const GAME_OPTIONS = [
 ];
 
 
+/* LA PROVA DALLO SHOWROOM DI IDEAEVENTI — 15/9/2026. Andrea: «su ideagame
+   fargli provare direttamente un gioco dove bloccando le funzioni ia e quindi
+   i giochi che funzionano solo con quella». Con ?prova=1 la famiglia entra
+   già con i giochi che non dipendono dall'AI scelti e il nome compilato: un
+   tocco e si gioca. Quizzone e SaraMusica, che domande e canzoni le genera
+   l'AI, in prova non compaiono; nemmeno Adult Only, in una sala con la famiglia. */
+const IN_PROVA = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('prova') === '1';
+const SOLO_CON_AI = new Set(['quizzone', 'saramusica']);
+const GIOCHI_VISIBILI = IN_PROVA
+  ? GAME_OPTIONS.filter((g) => !SOLO_CON_AI.has(g.slug) && g.slug !== 'adult-only')
+  : GAME_OPTIONS;
+
 function SceneBg() {
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none" style={{ zIndex: 0 }}>
@@ -56,8 +68,8 @@ export default function HomeSetupPage() {
   const [, navigate] = useLocation();
   const isLive = new URLSearchParams(window.location.search).get('mode') === 'live';
 
-  const [hostName, setHostName]         = useState('');
-  const [selectedGames, setSelectedGames] = useState<string[]>([]);
+  const [hostName, setHostName]         = useState(IN_PROVA ? 'Prova in showroom' : '');
+  const [selectedGames, setSelectedGames] = useState<string[]>(() => (IN_PROVA ? ['gioco-coppie', 'parola-alle-spalle', 'sfida-ballo'] : []));
   const [loading, setLoading]           = useState(false);
   const [error, setError]               = useState('');
 
@@ -242,17 +254,17 @@ export default function HomeSetupPage() {
             <div style={{ fontSize: '0.65rem', fontWeight: 900, letterSpacing: '0.2em', color: '#A855F7', textTransform: 'uppercase' }}>
               🎮 Giochi Inclusi
             </div>
-            <button onClick={() => setSelectedGames(selectedGames.length === GAME_OPTIONS.length ? [] : GAME_OPTIONS.map(g => g.slug))}
+            <button onClick={() => setSelectedGames(selectedGames.length === GIOCHI_VISIBILI.length ? [] : GIOCHI_VISIBILI.map(g => g.slug))}
               style={{
                 fontSize: '0.58rem', fontWeight: 700, letterSpacing: '0.08em',
                 color: 'rgba(255,255,255,0.35)', background: 'none', border: 'none', cursor: 'pointer',
                 textTransform: 'uppercase',
               }}>
-              {selectedGames.length === GAME_OPTIONS.length ? 'Deseleziona tutti' : 'Seleziona tutti'}
+              {selectedGames.length === GIOCHI_VISIBILI.length ? 'Deseleziona tutti' : 'Seleziona tutti'}
             </button>
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {GAME_OPTIONS.map(g => {
+            {GIOCHI_VISIBILI.map(g => {
               const active = selectedGames.includes(g.slug);
               return (
                 <button key={g.slug} onClick={() => toggleGame(g.slug)} style={{
