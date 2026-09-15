@@ -98,6 +98,12 @@ router.post("/ponte/ideaeventi/partita", async (req, res): Promise<void> => {
             expectedPlayers: Math.min(Math.max(attesi, 2), 200),
             status: "live",
             joinCode: codiceNuovo(),
+            /* SOLO I GIOCHI SENZA AI — 15/9/2026, Andrea: «fargli provare
+               direttamente un gioco … bloccando le funzioni ia e quindi i giochi
+               che funzionano solo con quella». Senza questo elenco l'Hub mostrava
+               tutti e otto, Quizzone e SaraMusica compresi, e l'Adult Only
+               davanti a una famiglia in showroom. */
+            enabledGames: ["percorso-a-risate", "gioco-delle-coppie", "sfida-di-ballo", "parola-alle-spalle", "karaoke-battle"],
           })
           .returning();
         evento = riga!;
