@@ -111,8 +111,8 @@ function BurracoMaster({ sessionId }: { sessionId: string }) {
                 <div style={{ background: '#fff', padding: 4, borderRadius: 8 }}>
                   <QRCodeSVG value={`${ORIGIN}gestione/burraco?table=${a.tableCode}`} size={64} />
                 </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 12, opacity: 0.5 }}>Tavolo {a.tableNumber} · {a.tableCode}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, opacity: 0.5 }}>Tavolo {a.tableNumber} · {a.tableCode} · <a href={`${ORIGIN}gestione/burraco?table=${a.tableCode}`} target="_blank" rel="noreferrer" style={{ color: GREEN }}>apri ↗</a></div>
                   <div style={{ fontWeight: 800 }}>{pairLabel(pairById[a.pairAId ?? ''])}</div>
                   <div style={{ fontSize: 12, opacity: 0.5 }}>vs</div>
                   <div style={{ fontWeight: 800 }}>{a.pairBId ? pairLabel(pairById[a.pairBId]) : '⏸ Riposo (bye)'}</div>
@@ -132,6 +132,7 @@ function BurracoMaster({ sessionId }: { sessionId: string }) {
             <div style={{ fontSize: 12, opacity: 0.5 }}>Schermo TV / classifica pubblica — codice</div>
             <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: '0.2em', color: GREEN }}>{state.session.joinCode}</div>
             <a href={`${ORIGIN}gestione/burraco?code=${state.session.joinCode}`} target="_blank" rel="noreferrer" style={{ color: '#9CA3AF', fontSize: 13 }}>apri schermo TV ↗</a>
+            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.6 }}>🔑 Codice regia (per rientrare): <b style={{ color: GREEN, letterSpacing: '0.15em' }}>{state.session.masterCode}</b></div>
           </div>
         </Card>
       </div>

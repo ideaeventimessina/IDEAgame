@@ -75,6 +75,9 @@ function MasterView({ sessionId }: { sessionId: string }) {
             </div>
             <div style={{ fontSize: 24, fontWeight: 900, letterSpacing: '0.2em', color: GOLD }}>{state.session.joinCode}</div>
           </div>
+          <div style={{ marginTop: 10, textAlign: 'center', fontSize: 12, opacity: 0.6 }}>
+            🔑 Codice regia (per rientrare): <b style={{ color: GOLD, letterSpacing: '0.15em' }}>{state.session.masterCode}</b><br/>salva questo link per tornare come Master
+          </div>
         </Card>
 
         <Card title={`Tavoli (${state.tables.length})`}>
@@ -84,12 +87,17 @@ function MasterView({ sessionId }: { sessionId: string }) {
               const pt = state.perTable.find(x => x.tableId === t.id);
               return (
                 <div key={t.id} style={{ display: 'flex', gap: 12, alignItems: 'center', background: '#ffffff0a', borderRadius: 12, padding: 10 }}>
-                  <div style={{ background: '#fff', padding: 4, borderRadius: 8 }}>
-                    <QRCodeSVG value={`${ORIGIN}gestione/casino?code=${t.dealerCode}`} size={56} />
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 9, opacity: 0.5, marginBottom: 2 }}>QR DEALER</div>
+                    <div style={{ background: '#fff', padding: 4, borderRadius: 8 }}>
+                      <QRCodeSVG value={`${ORIGIN}gestione/casino?code=${t.dealerCode}`} size={56} />
+                    </div>
                   </div>
-                  <div style={{ flex: 1 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 800 }}>{t.name}</div>
-                    <div style={{ fontSize: 12, opacity: 0.5 }}>Dealer: {t.dealerCode} · {pt?.players ?? 0} giocatori</div>
+                    <div style={{ fontSize: 12, opacity: 0.5 }}>codice {t.dealerCode} · {pt?.players ?? 0} giocatori</div>
+                    <a href={`${ORIGIN}gestione/casino?code=${t.dealerCode}`} target="_blank" rel="noreferrer"
+                      style={{ display: 'inline-block', marginTop: 4, color: GOLD, fontSize: 13, fontWeight: 800 }}>🎰 Apri banco dealer ↗</a>
                   </div>
                   <div style={{ fontWeight: 900, color: GOLD }}>{pt?.total ?? 0}</div>
                 </div>
