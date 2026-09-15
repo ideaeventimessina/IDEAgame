@@ -52,6 +52,8 @@ import setupRouter from "./setup";
 import contentPacksRouter from "./content-packs";
 import gameMediaSlotsRouter from "./game-media-slots";
 import liveSessionsRouter from "./live-sessions";
+import gestioneBurracoRouter from "./gestione-burraco";
+import gestioneCasinoRouter from "./gestione-casino";
 
 const router: IRouter = Router();
 
@@ -106,6 +108,8 @@ router.use(panicRouter);
 router.use(homeRouter);
 router.use(homeRisateRouter);
 router.use(homeKaraokeRouter);
+router.use(gestioneBurracoRouter);
+router.use(gestioneCasinoRouter);
 router.use(storageRouter);
 router.use(setupRouter);
 router.use(contentPacksRouter);
