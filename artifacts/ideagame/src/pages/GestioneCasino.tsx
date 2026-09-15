@@ -62,7 +62,7 @@ function MasterView({ sessionId }: { sessionId: string }) {
   if (!state) return <Center>Carico…</Center>;
   return (
     <Shell title={`🎰 ${state.session.name} — Master`}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,300px),1fr))', gap: 20 }}>
         <Card title="Cassa fish">
           <div style={{ textAlign: 'center', padding: '10px 0' }}>
             <div style={{ fontSize: 'clamp(40px,6vw,72px)', fontWeight: 900, color: GOLD }}>{state.cassaTotale.toLocaleString()}</div>

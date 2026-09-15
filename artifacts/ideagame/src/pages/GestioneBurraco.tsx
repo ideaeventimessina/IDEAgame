@@ -78,13 +78,13 @@ function BurracoMaster({ sessionId }: { sessionId: string }) {
 
   return (
     <Shell title={`🃏 ${state.session.name} — Regia`}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,300px),1fr))', gap: 20 }}>
         {/* Coppie */}
         <Card title={`Coppie iscritte (${pairs.length})`}>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-            <input value={p1} onChange={e => setP1(e.target.value)} placeholder="Giocatore 1" style={inp} />
-            <input value={p2} onChange={e => setP2(e.target.value)} placeholder="Giocatore 2" style={inp} onKeyDown={e => e.key === 'Enter' && addPair()} />
-            <button onClick={addPair} disabled={busy} style={btn(GREEN)}>+</button>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+            <input value={p1} onChange={e => setP1(e.target.value)} placeholder="Giocatore 1" style={{ ...inp, flex: '1 1 120px' }} />
+            <input value={p2} onChange={e => setP2(e.target.value)} placeholder="Giocatore 2" style={{ ...inp, flex: '1 1 120px' }} onKeyDown={e => e.key === 'Enter' && addPair()} />
+            <button onClick={addPair} disabled={busy} style={{ ...btn(GREEN), flex: '0 0 auto' }}>+</button>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 260, overflowY: 'auto' }}>
             {pairs.map((p, i) => (
