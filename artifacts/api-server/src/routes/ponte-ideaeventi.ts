@@ -31,12 +31,23 @@
 
 import { Router, type IRouter } from "express";
 import { and, eq, sql } from "drizzle-orm";
+import { timingSafeEqual } from "node:crypto";
 import { db, eventsTable, tenantsTable } from "@workspace/db";
 
 const router: IRouter = Router();
 
 const CHIAVE = (process.env["PONTE_IDEAEVENTI_KEY"] ?? "").trim();
 const TENANT_SLUG = (process.env["PONTE_IDEAEVENTI_TENANT"] ?? "").trim();
+
+/* Confronto della chiave a TEMPO COSTANTE: non fa trapelare, dai tempi di
+ * risposta, quanti caratteri iniziali combaciano. Lunghezze diverse = diverso
+ * (timingSafeEqual pretende buffer di pari lunghezza). */
+function chiaveCombacia(fornita: string): boolean {
+  const a = Buffer.from(fornita);
+  const b = Buffer.from(CHIAVE);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
 
 function codiceNuovo(): string {
   return Math.random().toString(36).slice(2, 8).toUpperCase();
@@ -47,7 +58,7 @@ router.post("/ponte/ideaeventi/partita", async (req, res): Promise<void> => {
     res.status(503).json({ error: "Ponte non configurato: manca PONTE_IDEAEVENTI_KEY." });
     return;
   }
-  if (String(req.headers["x-ponte-key"] ?? "") !== CHIAVE) {
+  if (!chiaveCombacia(String(req.headers["x-ponte-key"] ?? ""))) {
     res.status(401).json({ error: "Chiave non valida." });
     return;
   }
@@ -126,7 +137,11 @@ router.post("/ponte/ideaeventi/partita", async (req, res): Promise<void> => {
 /** Chiudere la partita quando la regia torna alla presentazione: una partita
  *  live dimenticata resta a raccogliere telefoni di gente che non gioca. */
 router.post("/ponte/ideaeventi/partita/chiudi", async (req, res): Promise<void> => {
-  if (!CHIAVE || String(req.headers["x-ponte-key"] ?? "") !== CHIAVE) {
+  if (!CHIAVE) {
+    res.status(503).json({ error: "Ponte non configurato: manca PONTE_IDEAEVENTI_KEY." });
+    return;
+  }
+  if (!chiaveCombacia(String(req.headers["x-ponte-key"] ?? ""))) {
     res.status(401).json({ error: "Chiave non valida." });
     return;
   }
