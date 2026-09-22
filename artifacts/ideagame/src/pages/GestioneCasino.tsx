@@ -8,7 +8,28 @@
    paga/preleva fish. Sync via polling 2s. ─────────────────────────────────── */
 
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { motion } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
+
+// Numero che "sale" con un tween quando cambia (cassa, saldi). Niente dipendenze.
+function AnimatedNumber({ value }: { value: number }) {
+  const [display, setDisplay] = useState(value);
+  const fromRef = useRef(value);
+  useEffect(() => {
+    const from = fromRef.current, to = value;
+    if (from === to) return;
+    const t0 = performance.now(), dur = 500;
+    let raf = 0;
+    const tick = (t: number) => {
+      const p = Math.min(1, (t - t0) / dur), eased = 1 - Math.pow(1 - p, 3);
+      setDisplay(Math.round(from + (to - from) * eased));
+      if (p < 1) raf = requestAnimationFrame(tick); else fromRef.current = to;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [value]);
+  return <>{display.toLocaleString('it-IT')}</>;
+}
 
 const API = (import.meta.env.BASE_URL as string || '/') + 'api';
 const ORIGIN = window.location.origin + (import.meta.env.BASE_URL as string || '/');
@@ -65,7 +86,7 @@ function MasterView({ sessionId }: { sessionId: string }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,300px),1fr))', gap: 20 }}>
         <Card title="Cassa fish">
           <div style={{ textAlign: 'center', padding: '10px 0' }}>
-            <div style={{ fontSize: 'clamp(40px,6vw,72px)', fontWeight: 900, color: GOLD }}>{state.cassaTotale.toLocaleString()}</div>
+            <div style={{ fontSize: 'clamp(40px,6vw,72px)', fontWeight: 900, color: GOLD, fontVariantNumeric: 'tabular-nums' }}><AnimatedNumber value={state.cassaTotale} /></div>
             <div style={{ opacity: 0.5 }}>fish in gioco · {state.players.length} giocatori</div>
           </div>
           <div style={{ marginTop: 10, textAlign: 'center', background: '#ffffff0a', borderRadius: 12, padding: 12 }}>
@@ -170,15 +191,16 @@ function DealerView({ dealerCode }: { dealerCode: string }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center', maxWidth: 460, margin: '0 auto' }}>
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: 26, fontWeight: 900 }}>{target.nickname}</div>
-            <div style={{ fontSize: 'clamp(44px,12vw,72px)', fontWeight: 900, color: GOLD }}>{target.fishBalance}</div>
+            <motion.div key={target.fishBalance} initial={{ scale: 1.15 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 300, damping: 18 }}
+              style={{ fontSize: 'clamp(44px,12vw,72px)', fontWeight: 900, color: GOLD, fontVariantNumeric: 'tabular-nums' }}><AnimatedNumber value={target.fishBalance} /></motion.div>
             <div style={{ opacity: 0.5 }}>fish</div>
           </div>
           {msg && <div style={{ color: msg.includes('✓') ? '#4ade80' : '#f87171', fontWeight: 800 }}>{msg}</div>}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, width: '100%' }}>
-            {[10, 25, 50, 100].map(n => <button key={'p' + n} onClick={() => tx(n)} style={{ ...btn('#4ade80'), padding: 18, fontSize: 18 }}>+{n}</button>)}
+            {[10, 25, 50, 100].map(n => <motion.button whileTap={{ scale: 0.94 }} key={'p' + n} onClick={() => tx(n)} style={{ ...btn('#4ade80'), padding: 18, fontSize: 18 }}>+{n}</motion.button>)}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, width: '100%' }}>
-            {[10, 25, 50, 100].map(n => <button key={'t' + n} onClick={() => tx(-n)} style={{ ...btn('#f87171'), padding: 18, fontSize: 18 }}>−{n}</button>)}
+            {[10, 25, 50, 100].map(n => <motion.button whileTap={{ scale: 0.94 }} key={'t' + n} onClick={() => tx(-n)} style={{ ...btn('#f87171'), padding: 18, fontSize: 18 }}>−{n}</motion.button>)}
           </div>
           <QuickAmount onPay={n => tx(n)} onTake={n => tx(-n)} />
           <button onClick={() => { setTarget(null); setMsg(''); }} style={{ ...btn('#ffffff22'), width: '100%', marginTop: 4 }}>← Prossimo giocatore</button>
@@ -234,7 +256,8 @@ function PlayerView({ code }: { code: string }) {
     <div style={{ minHeight: '100vh', background: 'radial-gradient(ellipse at top,#3d2a08,#0a0602 70%)', color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 20, fontFamily: "'Outfit',system-ui,sans-serif" }}>
       <div style={{ opacity: 0.6 }}>{data.sessionName}</div>
       <div style={{ fontSize: 30, fontWeight: 900 }}>{data.player.nickname}</div>
-      <div style={{ fontSize: 'clamp(64px,20vw,120px)', fontWeight: 900, color: GOLD, lineHeight: 1 }}>{data.player.fishBalance}</div>
+      <motion.div key={data.player.fishBalance} initial={{ scale: 1.18 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 300, damping: 18 }}
+        style={{ fontSize: 'clamp(64px,20vw,120px)', fontWeight: 900, color: GOLD, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}><AnimatedNumber value={data.player.fishBalance} /></motion.div>
       <div style={{ opacity: 0.5, marginTop: -8 }}>le tue fish</div>
       <div style={{ background: '#fff', padding: 14, borderRadius: 16, marginTop: 10 }}>
         <QRCodeSVG value={data.player.playerCode} size={180} />
@@ -286,11 +309,12 @@ function PlayersList({ players }: { players: Player[] }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 340, overflowY: 'auto' }}>
       {players.map((p, i) => (
-        <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 10, background: i < 3 ? `${GOLD}14` : '#ffffff08' }}>
+        <motion.div key={p.id} layout transition={{ type: 'spring', stiffness: 400, damping: 34 }}
+          style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 10, background: i < 3 ? `${GOLD}14` : '#ffffff08', boxShadow: i === 0 ? `0 0 18px ${GOLD}33` : 'none' }}>
           <span style={{ width: 26, fontWeight: 900, color: i === 0 ? '#FCD34D' : '#ffffff66' }}>{i + 1}</span>
           <span style={{ flex: 1, fontWeight: 700 }}>{p.nickname}</span>
-          <span style={{ fontWeight: 900, color: GOLD }}>{p.fishBalance}</span>
-        </div>
+          <span style={{ fontWeight: 900, color: GOLD, fontVariantNumeric: 'tabular-nums' }}><AnimatedNumber value={p.fishBalance} /></span>
+        </motion.div>
       ))}
       {players.length === 0 && <div style={{ opacity: 0.4 }}>Nessun giocatore</div>}
     </div>

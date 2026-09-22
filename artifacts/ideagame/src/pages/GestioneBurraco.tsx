@@ -6,8 +6,29 @@
    ?code=CODICE   → risolto come MASTER (regia) o TV/classifica pubblica.
    Sync via polling 2s (robusto). QR generati con qrcode.react. ─────────────── */
 
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { motion } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
+
+// Numero che "sale" con un tween quando cambia (punteggi, totali). Niente dipendenze.
+function AnimatedNumber({ value }: { value: number }) {
+  const [display, setDisplay] = useState(value);
+  const fromRef = useRef(value);
+  useEffect(() => {
+    const from = fromRef.current, to = value;
+    if (from === to) return;
+    const t0 = performance.now(), dur = 500;
+    let raf = 0;
+    const tick = (t: number) => {
+      const p = Math.min(1, (t - t0) / dur), eased = 1 - Math.pow(1 - p, 3);
+      setDisplay(Math.round(from + (to - from) * eased));
+      if (p < 1) raf = requestAnimationFrame(tick); else fromRef.current = to;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [value]);
+  return <>{display.toLocaleString('it-IT')}</>;
+}
 
 const API = (import.meta.env.BASE_URL as string || '/') + 'api';
 const ORIGIN = window.location.origin + (import.meta.env.BASE_URL as string || '/');
@@ -154,11 +175,17 @@ function BurracoTV({ sessionId }: { sessionId: string }) {
       </div>
       <div style={{ maxWidth: 900, margin: '0 auto' }}>
         {state.standings.map((p, i) => (
-          <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 20, padding: 'clamp(10px,1.6vw,20px) 24px', marginBottom: 10, borderRadius: 16, background: i < 3 ? `${GREEN}18` : '#ffffff0a', border: `2px solid ${i < 3 ? GREEN + '66' : '#ffffff12'}`, transition: 'all .4s' }}>
-            <div style={{ fontSize: 'clamp(24px,3vw,40px)', fontWeight: 900, width: 60, color: i === 0 ? '#FCD34D' : i === 1 ? '#CBD5E1' : i === 2 ? '#D97706' : '#ffffff55' }}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}`}</div>
+          <motion.div key={p.id} layout
+            initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ layout: { type: 'spring', stiffness: 380, damping: 34 }, delay: Math.min(i * 0.05, 0.5), duration: 0.4 }}
+            style={{ display: 'flex', alignItems: 'center', gap: 20, padding: 'clamp(10px,1.6vw,20px) 24px', marginBottom: 10, borderRadius: 16, background: i < 3 ? `${GREEN}18` : '#ffffff0a', border: `2px solid ${i < 3 ? GREEN + '66' : '#ffffff12'}`, boxShadow: i === 0 ? `0 0 34px ${GREEN}44` : 'none' }}>
+            <motion.div
+              animate={i === 0 ? { scale: [1, 1.12, 1] } : { scale: 1 }}
+              transition={i === 0 ? { repeat: Infinity, duration: 1.8, ease: 'easeInOut' } : { duration: 0.2 }}
+              style={{ fontSize: 'clamp(24px,3vw,40px)', fontWeight: 900, width: 60, textAlign: 'center', color: i === 0 ? '#FCD34D' : i === 1 ? '#CBD5E1' : i === 2 ? '#D97706' : '#ffffff55' }}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}`}</motion.div>
             <div style={{ flex: 1, fontSize: 'clamp(20px,2.6vw,34px)', fontWeight: 800 }}>{pairLabel(p)}</div>
-            <div style={{ fontSize: 'clamp(26px,3.4vw,46px)', fontWeight: 900, color: GREEN }}>{p.totalScore}</div>
-          </div>
+            <div style={{ fontSize: 'clamp(26px,3.4vw,46px)', fontWeight: 900, color: GREEN, fontVariantNumeric: 'tabular-nums' }}><AnimatedNumber value={p.totalScore} /></div>
+          </motion.div>
         ))}
         {state.standings.length === 0 && <Center>In attesa delle coppie…</Center>}
       </div>
@@ -200,9 +227,9 @@ function BurracoTable({ code }: { code: string }) {
       {data.pairB
         ? <ScoreInput color="#F472B6" label={pairLabel(data.pairB)} value={sb} onChange={setSb} />
         : <div style={{ opacity: 0.5 }}>Coppia in riposo</div>}
-      <button onClick={submit} disabled={busy || sa === '' || (!!data.pairB && sb === '')} style={{ ...btn(GREEN), width: '100%', maxWidth: 360, padding: 18, fontSize: 20, marginTop: 8 }}>
+      <motion.button whileTap={{ scale: 0.96 }} onClick={submit} disabled={busy || sa === '' || (!!data.pairB && sb === '')} style={{ ...btn(GREEN), width: '100%', maxWidth: 360, padding: 18, fontSize: 20, marginTop: 8 }}>
         {busy ? '…' : 'Invia punteggio'}
-      </button>
+      </motion.button>
     </div>
   );
 }
@@ -224,11 +251,12 @@ function Standings({ standings }: { standings: Pair[] }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       {standings.map((p, i) => (
-        <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 10, background: i < 3 ? `${GREEN}14` : '#ffffff08' }}>
+        <motion.div key={p.id} layout transition={{ type: 'spring', stiffness: 400, damping: 34 }}
+          style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 10, background: i < 3 ? `${GREEN}14` : '#ffffff08' }}>
           <span style={{ width: 26, fontWeight: 900, color: i === 0 ? '#FCD34D' : '#ffffff66' }}>{i + 1}</span>
           <span style={{ flex: 1, fontWeight: 700 }}>{pairLabel(p)}</span>
-          <span style={{ fontWeight: 900, color: GREEN }}>{p.totalScore}</span>
-        </div>
+          <span style={{ fontWeight: 900, color: GREEN, fontVariantNumeric: 'tabular-nums' }}><AnimatedNumber value={p.totalScore} /></span>
+        </motion.div>
       ))}
       {standings.length === 0 && <div style={{ opacity: 0.4 }}>Nessuna coppia</div>}
     </div>
