@@ -2818,16 +2818,20 @@ function QuizzoneBoard({ payload, session, players }: {
           <div className="text-display text-4xl font-black" style={{ color:'#4ade80' }}>{correctAns}</div>
           <div className="text-sm text-white/40 mt-2">{correctCount}/{revealData.playerResults.length} hanno risposto correttamente</div>
         </div>
-        {/* Per-player results */}
-        <div className="grid grid-cols-3 gap-3 max-h-56 overflow-y-auto">
-          {revealData.playerResults.map(r => (
-            <div key={r.playerId} className="flex items-center gap-2 rounded-xl px-3 py-2.5"
-              style={{ background: r.correct ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.10)', border:`1px solid ${r.correct ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.25)'}` }}>
-              <span className="text-xl">{r.correct ? '✅' : '❌'}</span>
-              <span className="text-lg font-bold text-white/90 flex-1 truncate">{r.nickname}</span>
-              {r.correct && <span className="text-lg font-black" style={{ color:'#4ade80' }}>+{r.points}</span>}
-            </div>
-          ))}
+        {/* Per-player results — nome + RISPOSTA scelta (per ridere degli sbagli) */}
+        <div className="grid grid-cols-2 gap-2.5 max-h-64 overflow-y-auto">
+          {revealData.playerResults.map(r => {
+            const picked = r.answerIndex != null ? (currentQ.answers[r.answerIndex] ?? '—') : '— nessuna';
+            return (
+              <div key={r.playerId} className="flex items-center gap-2 rounded-xl px-3 py-2.5"
+                style={{ background: r.correct ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.10)', border:`1px solid ${r.correct ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.25)'}` }}>
+                <span className="text-xl">{r.correct ? '✅' : '❌'}</span>
+                <span className="text-lg font-black text-white flex-shrink-0">{r.nickname}</span>
+                <span className="text-base font-bold flex-1 truncate text-right" style={{ color: r.correct ? '#4ade80' : '#f87171' }}>{picked}</span>
+                {r.correct && <span className="text-base font-black" style={{ color:'#4ade80' }}>+{r.points}</span>}
+              </div>
+            );
+          })}
         </div>
         {/* Scoreboard mini */}
         <div className="flex gap-2 flex-wrap justify-center">

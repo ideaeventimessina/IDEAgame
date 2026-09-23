@@ -1521,11 +1521,16 @@ router.post("/home/sessions/:id/quiz/answer", async (req, res): Promise<void> =>
   const effectiveCount = connected.length > 0 ? connected.length : players.length;
   const answeredCount = qMap.size;
   const allAnswered = effectiveCount > 0 && answeredCount >= effectiveCount;
-  // "Tutti hanno risposto" è solo un INDICATORE (flag nel payload): NON rivela e NON
-  // taglia il timer. La risposta si mostra solo allo scadere del tempo (auto-reveal
-  // già schedulato) o quando l'host clicca "Rivela" — mai in anticipo sull'ultima
-  // risposta. Così il presentatore mantiene il ritmo.
   await qzUpdate(id, { answeredCount, allAnsweredForCurrent: allAnswered });
+  // Quando risponde l'ULTIMO giocatore si rivela SUBITO (auto-reveal) mostrando i
+  // nomi e le risposte scelte da tutti — poi la fase resta "reveal" e aspetta che il
+  // presentatore clicchi "Avanti". Non si aspetta lo scadere del tempo se hanno già
+  // risposto tutti.
+  if (allAnswered) {
+    const existingTimer = quizzoneRevealTimers.get(id);
+    if (existingTimer) { clearTimeout(existingTimer); quizzoneRevealTimers.delete(id); }
+    await performQzReveal(id, currentIndex);
+  }
   res.json({ ok: true });
 });
 
@@ -1804,9 +1809,14 @@ router.post("/home/sessions/:id/saramusica/answer", async (req, res): Promise<vo
   const effectiveCount = connected.length > 0 ? connected.length : players.length;
   const answeredCount = qMap.size;
   const allAnswered = effectiveCount > 0 && answeredCount >= effectiveCount;
-  // Come Quizzone: "tutti hanno risposto" è solo indicatore, non rivela e non taglia
-  // il timer. Reveal solo a tempo scaduto o su click host.
+  // Auto-reveal quando risponde l'ultimo: si mostra subito la risposta (con nomi e
+  // scelte di tutti) e si aspetta il presentatore per avanzare.
   await smUpdate(id, { answeredCount, allAnsweredForCurrent: allAnswered });
+  if (allAnswered) {
+    const existing = smRevealTimers.get(id);
+    if (existing) { clearTimeout(existing); smRevealTimers.delete(id); }
+    await performSmReveal(id, currentIndex);
+  }
   res.json({ ok: true });
 });
 
