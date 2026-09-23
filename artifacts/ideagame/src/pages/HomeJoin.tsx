@@ -471,8 +471,12 @@ function HomeJoinInner() {
           const polledFlowPhase = String(data.session.roundPayload?.gameFlowPhase ?? '');
           const isFlow = polledMode === 'home-flow' || knownFlowModeRef.current === 'home-flow';
           const flowPhaseChanged = isFlow && polledFlowPhase !== flowPhaseRef.current;
-          // Version-driven: any server state change (even same round, same slug) triggers replace
-          const versionStale = polledVersion > 0 && polledVersion > lastSeenVersionRef.current;
+          // Version-driven: any server state change (even same round, same slug) triggers replace.
+          // Uso `!==` e non `>`: il contatore versione è in-memory e si azzera a ogni riavvio del
+          // server (redeploy Replit). Con `>` un telefono che aveva già una versione alta non
+          // rileverebbe mai il reset (server torna a 1) e resterebbe senza rete di recupero. Ogni
+          // differenza — server avanti (evento perso) o indietro (reset) — deve far riallineare.
+          const versionStale = polledVersion > 0 && polledVersion !== lastSeenVersionRef.current;
 
           if (versionStale) {
             _log('[HomeSync] polling caught stale state version', lastSeenVersionRef.current, '→', polledVersion);
@@ -522,8 +526,11 @@ function HomeJoinInner() {
   // which would cause missed events during the cleanup/setup window.
   useEffect(() => {
     const u1 = on<{ session: HomeSession; players: HomePlayer[]; stateVersion?: number }>('home:state', (d) => {
-      // Track version + timestamp for heartbeat watchdog and polling comparison
-      if (d.stateVersion !== undefined && d.stateVersion > lastSeenVersionRef.current) {
+      // Track version + timestamp for heartbeat watchdog and polling comparison.
+      // Adotto sempre la versione del server per lo stato che sto applicando adesso: con `>` il
+      // ref resterebbe bloccato in alto dopo un riavvio del server (contatore azzerato) e il
+      // polling non rileverebbe mai più il reset.
+      if (d.stateVersion !== undefined) {
         lastSeenVersionRef.current = d.stateVersion;
       }
       lastStateAtRef.current = Date.now();
