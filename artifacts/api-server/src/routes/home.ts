@@ -1169,8 +1169,20 @@ router.post("/home/sessions/:id/join", async (req, res): Promise<void> => {
   const AVATAR_COLORS = ["#F5B642","#FF69B4","#60A5FA","#A78BFA","#34D399","#F87171","#F472B6","#FB923C","#22D3EE","#4ADE80"];
   const existingPlayers = await getPlayers(id);
 
+  // Stesso nome = STESSO giocatore: chi rientra (tab chiusa, telefono bloccato,
+  // browser diverso, localStorage perso) riprende il SUO punteggio invece di
+  // creare un doppione a 0. Prima qui si tornava 409 e l'ospite era costretto a
+  // un nuovo nome — da cui punteggi "azzerati" e classifiche sballate.
   const dup = existingPlayers.find(p => p.nickname.toLowerCase() === nickname.toLowerCase());
-  if (dup) { res.status(409).json({ error: "Nickname già in uso" }); return; }
+  if (dup) {
+    const [reconnected] = await db.update(homePlayersTable)
+      .set({ isConnected: true })
+      .where(eq(homePlayersTable.id, dup.id))
+      .returning();
+    await broadcastState(id);
+    res.status(200).json(reconnected ?? dup);
+    return;
+  }
 
   const avatarColor = AVATAR_COLORS[existingPlayers.length % AVATAR_COLORS.length];
   const [player] = await db.insert(homePlayersTable).values({ sessionId: id, nickname, avatarColor }).returning();
@@ -1509,12 +1521,11 @@ router.post("/home/sessions/:id/quiz/answer", async (req, res): Promise<void> =>
   const effectiveCount = connected.length > 0 ? connected.length : players.length;
   const answeredCount = qMap.size;
   const allAnswered = effectiveCount > 0 && answeredCount >= effectiveCount;
+  // "Tutti hanno risposto" è solo un INDICATORE (flag nel payload): NON rivela e NON
+  // taglia il timer. La risposta si mostra solo allo scadere del tempo (auto-reveal
+  // già schedulato) o quando l'host clicca "Rivela" — mai in anticipo sull'ultima
+  // risposta. Così il presentatore mantiene il ritmo.
   await qzUpdate(id, { answeredCount, allAnsweredForCurrent: allAnswered });
-  if (allAnswered) {
-    const existingTimer = quizzoneRevealTimers.get(id);
-    if (existingTimer) { clearTimeout(existingTimer); quizzoneRevealTimers.delete(id); }
-    emitToRoom(homeRoom(id), "home:quiz_all_answered", { sessionId: id, round: currentIndex, correctIndex: 0 });
-  }
   res.json({ ok: true });
 });
 
@@ -1793,11 +1804,9 @@ router.post("/home/sessions/:id/saramusica/answer", async (req, res): Promise<vo
   const effectiveCount = connected.length > 0 ? connected.length : players.length;
   const answeredCount = qMap.size;
   const allAnswered = effectiveCount > 0 && answeredCount >= effectiveCount;
+  // Come Quizzone: "tutti hanno risposto" è solo indicatore, non rivela e non taglia
+  // il timer. Reveal solo a tempo scaduto o su click host.
   await smUpdate(id, { answeredCount, allAnsweredForCurrent: allAnswered });
-  if (allAnswered) {
-    const existing = smRevealTimers.get(id);
-    if (existing) { clearTimeout(existing); smRevealTimers.delete(id); }
-  }
   res.json({ ok: true });
 });
 

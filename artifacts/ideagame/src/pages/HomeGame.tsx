@@ -1009,11 +1009,9 @@ export default function HomeGame() {
     });
     const u10 = on<{ sessionId: string; round: number; correctIndex: number }>('home:quiz_all_answered', (d) => {
       _log('[QuizTrace:tv] received home:quiz_all_answered', d);
-      // All players answered — freeze timer and reveal correct answer on TV
-      if (timerRef.current) { clearInterval(timerRef.current); _log('[QuizTrace:tv] timer stopped'); }
-      setRevealed(true);
-      _log('[QuizTrace:tv] set revealed true');
-      setJonnyMood('correct');
+      // NON rivelare in anticipo: "tutti hanno risposto" è solo un indicatore.
+      // La risposta si mostra allo scadere del tempo o quando l'host clicca "Rivela".
+      setJonnyMood('excited');
     });
     const u11 = on<{ playerId: string; nickname: string; round: number; points: number }>('home:saramusica_winner', (d) => {
       _log('[SaraTrace:tv] received home:saramusica_winner', d);
