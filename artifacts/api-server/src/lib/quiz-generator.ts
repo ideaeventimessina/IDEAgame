@@ -268,9 +268,16 @@ async function generateQuizQuestionsAI(
   const timeMult = difficulty === "easy" ? 1.4 : difficulty === "hard" ? 0.7 : 1.0;
   const ptsMult  = difficulty === "easy" ? 0.8 : difficulty === "hard" ? 1.25 : 1.0;
 
+  const diffLabel = difficulty === "easy"
+    ? `FACILE (base): giocano RAGAZZI dai ~15 anni. Domande semplici, cultura popolare e nozioni comuni; niente dettagli da esperti, niente date oscure.`
+    : difficulty === "hard"
+      ? `DIFFICILE: giocano APPASSIONATI/PROFESSIONISTI. Domande specifiche e poco intuibili: dettagli, nomi e date meno noti, curiosità da veri esperti del tema. Evita le nozioni scontate.`
+      : `MEDIA: giocano FAMIGLIE. Difficoltà media: né banalità da bambini né domande da specialisti.`;
+
   const systemPrompt = `Sei Jonny, il co-host di IDEAgame, un'app di quiz per feste italiane.
 Genera esattamente ${count} domande sul tema: "${themeText}".
 TUTTE le domande DEVONO essere strettamente sul tema indicato.
+LIVELLO DI DIFFICOLTÀ RICHIESTO: ${diffLabel}
 Rispondi SOLO con un array JSON valido. Nessun testo aggiuntivo.
 
 Struttura ogni domanda:
@@ -293,8 +300,12 @@ REGOLE DI QUALITÀ (IMPORTANTISSIME — una violazione rovina la partita):
   ✗ VIETATO: qualsiasi domanda in cui il nome dell'opera/soggetto contiene la risposta.
   ✓ CORRETTO: "Come si chiama il figlio di Mufasa ne Il Re Leone?" → "Simba"
 - Le 4 risposte devono essere TUTTE plausibili e della stessa categoria (stesso tipo di cosa): niente risposte assurde o palesemente sbagliate che rendono ovvia la corretta.
-- OGNI domanda deve chiedere un FATTO SPECIFICO diverso: niente due domande sullo stesso fatto o concetto (nemmeno riformulate). Varia sottotemi, personaggi, anni, dettagli.
-- Difficoltà coerente: se "media", servono domande di media difficoltà — non banalità da bambini.
+- OGNI domanda deve chiedere un FATTO SPECIFICO diverso: niente due domande sullo stesso fatto o concetto (nemmeno riformulate né con parole diverse). Varia sottotemi, personaggi, anni, dettagli. Le ${count} domande devono essere tutte DIVERSE.
+- Rispetta ESATTAMENTE il livello di difficoltà richiesto sopra.
+- UNA SOLA risposta corretta, inequivocabile. VIETATE domande fuorvianti dove più opzioni sono ugualmente valide.
+  ✗ VIETATO: "Chi tra questi è un supereroe?" → [Superman, Spider-Man, Flash, Batman] (sono TUTTI supereroi!).
+  ✓ CORRETTO: "Qual è l'identità segreta di Batman?" → [Bruce Wayne, Clark Kent, Peter Parker, Barry Allen].
+- Se la domanda chiede un ANNO/numero/dato, NON metterlo tra le opzioni delle domande a testo (non svelare la risposta), e non ripetere nella risposta una parola già presente nella domanda.
 - true_false: answers deve essere ["VERO","FALSO"]
 - speed_round: 3 risposte, timeLimit = 8
 - final_bomb: ultima domanda, points = 200, timeLimit = 20
@@ -351,7 +362,16 @@ REGOLE DI QUALITÀ (IMPORTANTISSIME — una violazione rovina la partita):
     if (q.type !== 'image_vs_image') return true;
     return /^https?:/i.test(q.imageA ?? '') && /^https?:/i.test(q.imageB ?? '');
   });
-  return usable;
+  // Dedup di sicurezza: niente due domande uguali/riformulate (rete contro l'AI che
+  // ogni tanto ripete). Confronto sul testo normalizzato della domanda.
+  const seen = new Set<string>();
+  const deduped = usable.filter(q => {
+    const key = q.question.toLowerCase().replace(/[^a-z0-9àèéìòù]+/gi, ' ').trim();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return deduped;
 }
 
 // Thumbnail di Wikipedia dato il nome del soggetto, con cache condivisa (riusa le
