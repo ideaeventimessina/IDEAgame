@@ -109,6 +109,9 @@ const quizzoneRevealTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const adultChallengeTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const adultVotingTimers    = new Map<string, ReturnType<typeof setTimeout>>();
 const adultChoiceTimers    = new Map<string, ReturnType<typeof setTimeout>>();
+// Fallback server per lo spin (se la TV non chiama reveal-spin) e per l'escalation.
+const adultSpinTimers      = new Map<string, ReturnType<typeof setTimeout>>();
+const adultEscalationTimers = new Map<string, ReturnType<typeof setTimeout>>();
 // Coppie: theme suggestion phase auto-advance timer
 const coppieThemeTimers    = new Map<string, ReturnType<typeof setTimeout>>();
 // Ballo (nuovo, "tutti ballano ogni manche"): auto-fine manche + parametri
@@ -2178,8 +2181,13 @@ router.post("/home/sessions/:id/adult/spin", async (req, res): Promise<void> => 
   if (!["consent", "result", "escalation"].includes(String(rp["phase"] ?? ""))) { res.status(409).json({ error: "Fase non corretta" }); return; }
   const players = await getPlayers(id);
   const consentMap = (rp["consentMap"] ?? {}) as Record<string, string>;
+  // Rispetta il consenso: attivi = chi ha scelto "participate". Chi ha scelto
+  // "guarda" resta spettatore e la bottiglia NON può cadere su di lui (era il bug
+  // D-1: prima diventava attivo chiunque non fosse uscito). Fallback: se nessuno
+  // ha toccato "participate", per non bloccare la partita usa chi non è uscito.
+  const participatePlayers = players.filter(p => consentMap[p.id] === "participate").map(p => p.id);
   const activePlayers: string[] = String(rp["phase"]) === "consent"
-    ? players.filter(p => consentMap[p.id] !== "leave").map(p => p.id)
+    ? (participatePlayers.length > 0 ? participatePlayers : players.filter(p => consentMap[p.id] !== "leave").map(p => p.id))
     : (rp["activePlayers"] ?? []) as string[];
   const spectatorPlayers = players.filter(p => !activePlayers.includes(p.id)).map(p => p.id);
   if (activePlayers.length === 0) { res.status(400).json({ error: "Nessun giocatore attivo" }); return; }
@@ -2203,6 +2211,7 @@ router.post("/home/sessions/:id/adult/spin", async (req, res): Promise<void> => 
     activePower: null, spectatorPowers,
   });
   await db.update(homeSessionsTable).set({ currentRound: roundNumber }).where(eq(homeSessionsTable.id, id));
+  scheduleAdultReveal(id, spinDurationMs); // fallback se la TV non chiama reveal-spin
   req.log.info({ sessionId: id, round: roundNumber, player: players.find(p => p.id === selectedId)?.nickname, spinFinalAngle }, "[ADULT_BOTTLE_SPIN] spin → spinning");
   res.json({ ok: true });
 });
@@ -2216,12 +2225,31 @@ router.post("/home/sessions/:id/adult/reveal-spin", async (req, res): Promise<vo
   const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
   if (rp["mode"] !== "home-adult") { res.status(409).json({ error: "Non in modalità adult" }); return; }
   if (String(rp["phase"]) !== "spinning") { res.json({ ok: true }); return; } // idempotent
+  const exSpin = adultSpinTimers.get(id); if (exSpin) { clearTimeout(exSpin); adultSpinTimers.delete(id); }
   const choiceDeadlineAt = new Date(Date.now() + 8_000).toISOString();
   await adultUpdate(id, { phase: "choice", choiceDeadlineAt });
   scheduleAdultAutoChoice(id, choiceDeadlineAt);
   req.log.info({ sessionId: id }, "[ADULT_BOTTLE_SPIN] reveal-spin → choice (8s timer)");
   res.json({ ok: true });
 });
+
+// Fallback server: se la TV non chiama reveal-spin (tab in background/disconnessa),
+// dopo la durata dello spin passa comunque a "choice" — evita il blocco su "spinning" (D-3).
+async function _adultReveal(sessionId: string): Promise<void> {
+  adultSpinTimers.delete(sessionId);
+  const sess = await getSession(sessionId); if (!sess) return;
+  const rp = (sess.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-adult" || String(rp["phase"]) !== "spinning") return;
+  const choiceDeadlineAt = new Date(Date.now() + 8_000).toISOString();
+  await adultUpdate(sessionId, { phase: "choice", choiceDeadlineAt });
+  scheduleAdultAutoChoice(sessionId, choiceDeadlineAt);
+  logger.info({ sessionId }, "[ADULT_BOTTLE_SPIN] fallback server reveal → choice");
+}
+function scheduleAdultReveal(sessionId: string, spinDurationMs: number): void {
+  const ex = adultSpinTimers.get(sessionId); if (ex) clearTimeout(ex);
+  const t = setTimeout(() => void _adultReveal(sessionId), spinDurationMs + 1500);
+  adultSpinTimers.set(sessionId, t);
+}
 
 // Helper — auto-choice when player doesn't respond within deadline
 async function _adultAutoChoice(sessionId: string): Promise<void> {
@@ -2517,6 +2545,36 @@ router.post("/home/sessions/:id/adult/close-vote", async (req, res): Promise<voi
   res.json({ ok: true });
 });
 
+// Risolve l'escalation dai voti ATTUALI (chiamata quando tutti hanno votato, allo
+// scadere del timer di sicurezza, o dal pulsante host "forza esito"). Evita il
+// blocco eterno se un giocatore attivo si disconnette senza votare (D-2).
+async function _resolveAdultEscalation(sessionId: string): Promise<void> {
+  const ex = adultEscalationTimers.get(sessionId); if (ex) { clearTimeout(ex); adultEscalationTimers.delete(sessionId); }
+  const sess = await getSession(sessionId); if (!sess) return;
+  const rp = (sess.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-adult" || String(rp["phase"]) !== "escalation") return;
+  const votes = (rp["escalationVotes"] ?? {}) as Record<string, boolean>;
+  const activePlayers = (rp["activePlayers"] ?? []) as string[];
+  const approved = activePlayers.filter(pid => votes[pid] === true);
+  const declined = activePlayers.filter(pid => votes[pid] === false);
+  const targetLevel = Number(rp["escalationTarget"] ?? Number(rp["level"] ?? 1));
+  const levelObj = BOTTLE_LEVELS.find(l => l.level === targetLevel);
+  if (approved.length === 0) {
+    await adultUpdate(sessionId, { escalationVotes: votes, phase: "result", escalationTarget: null });
+  } else {
+    await adultUpdate(sessionId, {
+      escalationVotes: votes, phase: "result", escalationTarget: null,
+      level: targetLevel, levelLabel: levelObj?.label ?? `Livello ${targetLevel}`, levelColor: levelObj?.color ?? "#F87171",
+      activePlayers: approved, spectatorPlayers: [...((rp["spectatorPlayers"] ?? []) as string[]), ...declined],
+      usedChallengeIds: [],
+    });
+  }
+}
+function scheduleAdultEscalation(sessionId: string): void {
+  const ex = adultEscalationTimers.get(sessionId); if (ex) clearTimeout(ex);
+  adultEscalationTimers.set(sessionId, setTimeout(() => void _resolveAdultEscalation(sessionId), 15_000));
+}
+
 // POST /adult/propose-level — propose level escalation
 router.post("/home/sessions/:id/adult/propose-level", async (req, res): Promise<void> => {
   const id = String(req.params["id"]);
@@ -2528,6 +2586,15 @@ router.post("/home/sessions/:id/adult/propose-level", async (req, res): Promise<
   const { targetLevel } = req.body as { targetLevel: number };
   if (![1,2,3,4,5].includes(targetLevel)) { res.status(400).json({ error: "Livello non valido" }); return; }
   await adultUpdate(id, { phase: "escalation", escalationTarget: targetLevel, escalationVotes: {} });
+  scheduleAdultEscalation(id); // timer di sicurezza: risolve comunque dopo 15s
+  res.json({ ok: true });
+});
+
+// POST /adult/force-escalation — host forza l'esito dell'escalation (TV)
+router.post("/home/sessions/:id/adult/force-escalation", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  await _resolveAdultEscalation(id);
   res.json({ ok: true });
 });
 
@@ -2542,23 +2609,10 @@ router.post("/home/sessions/:id/adult/level-vote", async (req, res): Promise<voi
   const { playerId, approve } = req.body as { playerId: string; approve: boolean };
   const escalationVotes = { ...((rp["escalationVotes"] ?? {}) as Record<string, boolean>), [playerId]: approve };
   const activePlayers = (rp["activePlayers"] ?? []) as string[];
-  if (activePlayers.every(pid => escalationVotes[pid] !== undefined)) {
-    const approved = activePlayers.filter(pid => escalationVotes[pid] === true);
-    const declined = activePlayers.filter(pid => escalationVotes[pid] === false);
-    const targetLevel = Number(rp["escalationTarget"] ?? Number(rp["level"] ?? 1));
-    const levelObj = BOTTLE_LEVELS.find(l => l.level === targetLevel);
-    if (approved.length === 0) {
-      await adultUpdate(id, { escalationVotes, phase: "result", escalationTarget: null });
-    } else {
-      await adultUpdate(id, {
-        escalationVotes, phase: "result", escalationTarget: null,
-        level: targetLevel, levelLabel: levelObj?.label ?? `Livello ${targetLevel}`, levelColor: levelObj?.color ?? "#F87171",
-        activePlayers: approved, spectatorPlayers: [...((rp["spectatorPlayers"] ?? []) as string[]), ...declined],
-        usedChallengeIds: [],
-      });
-    }
-  } else {
-    await adultUpdate(id, { escalationVotes });
+  await adultUpdate(id, { escalationVotes });
+  // Tutti hanno votato → risolvi subito (il timer di sicurezza copre chi non vota).
+  if (activePlayers.length > 0 && activePlayers.every(pid => escalationVotes[pid] !== undefined)) {
+    await _resolveAdultEscalation(id);
   }
   res.json({ ok: true });
 });
@@ -3070,7 +3124,8 @@ const PAUSE_SHIFT_KEYS = [
 
 function clearAllSessionTimers(id: string): void {
   for (const m of [quizzoneRevealTimers, smRevealTimers, adultVotingTimers,
-    adultChoiceTimers, adultChallengeTimers, coppieThemeTimers,
+    adultChoiceTimers, adultChallengeTimers, adultSpinTimers, adultEscalationTimers,
+    balloMancheTimers, coppieThemeTimers,
     wordbackBookingTimers, wbJonnyTimers]) {
     const t = m.get(id);
     if (t) { clearTimeout(t); m.delete(id); }
@@ -3088,6 +3143,8 @@ function rescheduleAutoAdvance(id: string, rp: Record<string, unknown>): void {
     const rounds = (rp["rounds"] ?? []) as MusicRound[];
     if (rounds[idx]?.type !== "singing_duel") { const e = ms(rp["questionEndsAt"]); if (e) scheduleSmAutoReveal(id, idx, e); }
   } else if (mode === "home-adult") {
+    if (phase === "spinning")     scheduleAdultReveal(id, 0);
+    if (phase === "escalation")   scheduleAdultEscalation(id);
     if (rp["choiceDeadlineAt"])  scheduleAdultAutoChoice(id, String(rp["choiceDeadlineAt"]));
     if (rp["votingEndsAt"])      scheduleAdultVotingAutoClose(id, String(rp["votingEndsAt"]));
     if (rp["challengeEndsAt"])   scheduleAdultChallengeAutoExpire(id, String(rp["challengeEndsAt"]));

@@ -5364,6 +5364,13 @@ function AdultOnlyBoard({ payload, session, players }: {
           </div>
         </div>
         <div className="text-white/30 text-sm">{totalVoted} / {activePlayers.length} hanno votato</div>
+        {/* Via d'uscita per l'host: chiude l'escalation coi voti attuali (D-2) */}
+        <button onClick={() => void aoPost('force-escalation')}
+          className="rounded-2xl px-8 py-3 font-black text-white"
+          style={{ background: 'rgba(168,85,247,0.2)', border: '2px solid rgba(168,85,247,0.55)' }}>
+          ⏭️ Chiudi votazione ora
+        </button>
+        <div className="text-white/25 text-xs">Si chiude comunque da sola dopo qualche secondo</div>
       </div>
     );
   }
