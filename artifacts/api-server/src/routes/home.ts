@@ -1678,6 +1678,17 @@ async function performSmReveal(id: string, expectedIndex: number): Promise<void>
         case "progressive_clue_music": points = Math.max(50, 150 - currentClueIndex * 50); break;
         case "final_tormentone": points = 200; break;
         case "complete_lyrics": points = 120; break;
+        case "silhouette_guess": {
+          // La sagoma parte sfocata e si schiarisce col timer: prima rispondi (più è
+          // sfocata) più vale; quando diventa nitida (fine timer) vale 0. Punti = base
+          // × frazione di timer rimasta al momento della risposta.
+          const answeredAt = ans?.answeredAt ?? Date.now();
+          const endMs = rp["questionEndsAt"] ? new Date(String(rp["questionEndsAt"])).getTime() : (questionStartedAt + timeLimit * 1000);
+          const total = Math.max(1, endMs - questionStartedAt);
+          const frac = Math.max(0, Math.min(1, (endMs - answeredAt) / total));
+          points = Math.round(Number(q.points ?? 120) * frac);
+          break;
+        }
         default: points = Number(q.points ?? 100);
       }
       scoreUpdates.push(

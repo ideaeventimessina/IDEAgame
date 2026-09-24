@@ -4817,21 +4817,31 @@ function SaraMusicaBoard({ payload, session, players }: {
           />
         )}
 
-        {/* Sagoma cantante (type silhouette_guess). Se obscure = foto reale in ombra. */}
-        {currentQ.silhouetteUrl && (
-          <div className="flex justify-center">
-            <div className="rounded-3xl p-4" style={{ background: 'rgba(192,132,252,0.10)', border: '1px solid rgba(192,132,252,0.35)' }}>
-              <img src={currentQ.silhouetteUrl} alt="Sagoma"
-                className="max-h-72 w-auto object-contain"
-                style={ currentQ.silhouetteObscure
-                  // Foto reale (Wikipedia) con sfondo: brightness(0.06) la rendeva un
-                  // rettangolo nero illeggibile. Blur riconoscibile "indovina la star":
-                  // restano forma/capelli/posa, e a rivelazione mette a fuoco.
-                  ? { filter: 'blur(16px) brightness(0.78) grayscale(0.5) contrast(1.05)', transition: 'filter 0.6s ease' }
-                  : { transition: 'filter 0.6s ease' } } />
+        {/* Sagoma cantante (type silhouette_guess). Parte sfocata e si schiarisce col
+            timer: prima rispondi (più è sfocata) più vale; nitida = 0 punti. */}
+        {currentQ.silhouetteUrl && (() => {
+          // timerPct: 1 all'inizio → 0 a fine. La sfocatura e i punti seguono la stessa curva.
+          const p = currentQ.silhouetteObscure ? timerPct : 0;
+          const silFilter = `blur(${(24 * p).toFixed(1)}px) brightness(${(0.72 + 0.28 * (1 - p)).toFixed(2)}) grayscale(${(0.55 * p).toFixed(2)}) contrast(1.05)`;
+          const silPoints = Math.round((currentQ.points ?? 120) * timerPct);
+          return (
+            <div className="flex flex-col items-center gap-3">
+              {currentQ.silhouetteObscure && (
+                <div className="rounded-full px-5 py-1.5 text-lg font-black"
+                  style={{ background: silPoints > 0 ? 'rgba(192,132,252,0.18)' : 'rgba(239,68,68,0.18)',
+                           border: `1px solid ${silPoints > 0 ? 'rgba(192,132,252,0.5)' : 'rgba(239,68,68,0.5)'}`,
+                           color: silPoints > 0 ? '#E9D5FF' : '#FCA5A5' }}>
+                  {silPoints > 0 ? `⚡ VALE ${silPoints} pt` : 'ORA È NITIDA · 0 pt'}
+                </div>
+              )}
+              <div className="rounded-3xl p-4" style={{ background: 'rgba(192,132,252,0.10)', border: '1px solid rgba(192,132,252,0.35)' }}>
+                <img src={currentQ.silhouetteUrl} alt="Sagoma"
+                  className="max-h-72 w-auto object-contain"
+                  style={{ filter: currentQ.silhouetteObscure ? silFilter : undefined, transition: 'filter 0.25s linear' }} />
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Question card */}
         <div className="rounded-3xl p-6"
