@@ -26,6 +26,8 @@ import { createBlankKaraokeState, FREESTYLE_BEATS, type FreestyleBeat } from "..
 import { generateQuiz, generateQuizAsync, QUIZ_THEMES, QuizThemeUnavailableError } from "../lib/quiz-generator.js";
 import { generateSaraMusicaRounds, SM_THEMES, type MusicRound } from "../lib/saramusica-generator.js";
 import { cachedWikiImage } from "../lib/image-cache.js";
+import { pickBalloSongs } from "../lib/ballo-library.js";
+import { searchYouTube } from "./home-karaoke.js";
 import { BOTTLE_LEVELS, pickFromBank, assignSpectatorPowers, pickRandomTruth, pickRandomDare, type BottleChallenge, type BottleLevel } from "../lib/adult-generator.js";
 import { eq, and, or, lt, asc, desc, isNull, notInArray } from "drizzle-orm";
 import {
@@ -109,6 +111,10 @@ const adultVotingTimers    = new Map<string, ReturnType<typeof setTimeout>>();
 const adultChoiceTimers    = new Map<string, ReturnType<typeof setTimeout>>();
 // Coppie: theme suggestion phase auto-advance timer
 const coppieThemeTimers    = new Map<string, ReturnType<typeof setTimeout>>();
+// Ballo (nuovo, "tutti ballano ogni manche"): auto-fine manche + parametri
+const balloMancheTimers    = new Map<string, ReturnType<typeof setTimeout>>();
+const BALLO_TOTAL_MANCHE   = 3;
+const BALLO_MANCHE_SECONDS = 30;
 
 /** Fisher-Yates shuffle that tracks where the correct answer moved. */
 function shuffleWithCorrectIndex(
@@ -2646,6 +2652,41 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
     return;
   }
 
+  // ── BYPASS: sfida-ballo → Ballo "tutti ballano ogni manche" (no prenotazione/torneo) ──
+  // 3 manche = 3 video diversi dalla libreria curata; il video ufficiale resta visibile
+  // sotto (si imitano i passi); vince chi ha più energia, punteggio cumulativo.
+  if (gameSlug === "sfida-ballo") {
+    req.log.info({ sessionId: id }, "[FLOW_BYPASS] sfida-ballo → Ballo a manche, skipping GameFlowEngine");
+    const balloPayload: RoundPayload = {
+      mode: "home-ballo",
+      balloPhase: "preparing",   // sto risolvendo i 3 video
+      manche: 1,
+      totalManche: BALLO_TOTAL_MANCHE,
+      duration: BALLO_MANCHE_SECONDS,
+      videos: [],
+      currentVideo: null,
+      danceStartedAt: null,
+      danceEndsAt: null,
+      mancheResult: null,
+    } as RoundPayload;
+    const balloCfg = { ...cfg, phase: "playing", gamesPlayed };
+    const [balloUpdated] = await db.update(homeSessionsTable).set({
+      gameSlug,
+      gameConfig: balloCfg,
+      status: "playing",
+      currentRound: 0,
+      totalRounds: BALLO_TOTAL_MANCHE,
+      roundPayload: balloPayload,
+      expiresAt: new Date(Date.now() + 6 * 60 * 60 * 1000),
+    }).where(eq(homeSessionsTable.id, id)).returning();
+    const bPlayers = await getPlayers(id);
+    emitToRoom(homeRoom(id), "home:game_started", { session: balloUpdated, players: bPlayers, payload: balloPayload });
+    emitHomeState(id, balloUpdated, bPlayers);
+    res.json({ session: balloUpdated, players: bPlayers });
+    void prepareBalloVideos(id);   // risoluzione video in background → get_ready
+    return;
+  }
+
   // ── BYPASS: percorso-a-risate → direct PercorsoBoard/RisateEngine (no theme_select) ──
   if (gameSlug === "percorso-a-risate") {
     req.log.info({ sessionId: id }, "[FLOW_BYPASS] percorso-a-risate → PercorsoBoard direct, skipping GameFlowEngine");
@@ -3131,6 +3172,135 @@ router.post("/home/sessions/:id/ballo/set-video", async (req, res): Promise<void
   const players = await getPlayers(id);
   emitHomeState(id, updated!, players);
   res.json({ ok: true, balloVideo });
+});
+
+// ══ BALLO "tutti ballano ogni manche" ═══════════════════════════════════════════
+// Macchina a manche indipendente dal torneo/prenotazione. 3 manche = 3 video dalla
+// libreria; il video ufficiale resta visibile (si imitano i passi); punteggio
+// cumulativo = energia di picco per manche (+50 al migliore della manche).
+
+interface BalloVideo { videoId: string; title: string; artist?: string; channel: string; thumbnailUrl: string; durationSeconds: number; startSeconds: number; }
+
+async function prepareBalloVideos(sessionId: string): Promise<void> {
+  try {
+    const candidates = pickBalloSongs(BALLO_TOTAL_MANCHE + 3);
+    const videos: BalloVideo[] = [];
+    for (const s of candidates) {
+      if (videos.length >= BALLO_TOTAL_MANCHE) break;
+      try {
+        const r = await searchYouTube(s.query, "song") as { ok?: boolean; results?: Array<{ videoId: string; title: string; channel?: string; thumbnailUrl?: string; durationSeconds?: number }> };
+        const hit = r.ok && r.results && r.results[0] ? r.results[0] : null;
+        if (!hit?.videoId) continue;
+        const durationSeconds = Number(hit.durationSeconds ?? 0);
+        const startSeconds = await estimateChorusStart(s.title, s.artist, durationSeconds);
+        videos.push({ videoId: hit.videoId, title: s.title, artist: s.artist, channel: hit.channel ?? "", thumbnailUrl: hit.thumbnailUrl ?? "", durationSeconds, startSeconds });
+      } catch (e) { logger.warn({ e, query: s.query }, "[Ballo] risoluzione video fallita, provo il prossimo"); }
+    }
+    const session = await getSession(sessionId);
+    if (!session) return;
+    const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+    if (rp["mode"] !== "home-ballo") return;
+    const patch = { ...rp, videos, currentVideo: videos[0] ?? null, manche: 1, balloPhase: videos.length > 0 ? "get_ready" : "no_videos" };
+    const [updated] = await db.update(homeSessionsTable).set({ roundPayload: patch }).where(eq(homeSessionsTable.id, sessionId)).returning();
+    const players = await getPlayers(sessionId);
+    emitHomeState(sessionId, updated!, players);
+    logger.info({ sessionId, resolved: videos.length }, "[Ballo] video pronti → get_ready");
+  } catch (err) {
+    logger.error({ err, sessionId }, "[Ballo] prepareBalloVideos fallita");
+  }
+}
+
+async function scoreBalloManche(sessionId: string): Promise<{ winnerId: string | null; ranking: Array<{ playerId: string; nickname: string; energy: number; points: number; isWinner: boolean }> }> {
+  const energies = getBalloEnergies(sessionId);
+  clearBalloEnergies(sessionId);
+  const players = await getPlayers(sessionId);
+  let winnerId: string | null = null;
+  let maxE = -1;
+  for (const p of players) { const e = Math.round(energies[p.id] ?? 0); if (e > maxE) { maxE = e; winnerId = p.id; } }
+  if (maxE <= 0) winnerId = null; // nessuno ha ballato in questa manche
+  const updates: Promise<unknown>[] = [];
+  const ranking = players.map(p => {
+    const energy = Math.round(energies[p.id] ?? 0);
+    const isWinner = p.id === winnerId && energy > 0;
+    const points = energy + (isWinner ? 50 : 0);
+    if (points > 0) updates.push(db.update(homePlayersTable).set({ score: p.score + points }).where(eq(homePlayersTable.id, p.id)));
+    return { playerId: p.id, nickname: p.nickname, energy, points, isWinner };
+  }).sort((a, b) => b.points - a.points);
+  await Promise.all(updates);
+  logger.info({ sessionId, winnerId, dancers: ranking.filter(r => r.energy > 0).length }, "[Ballo] manche scored");
+  return { winnerId, ranking };
+}
+
+async function finishBalloManche(sessionId: string): Promise<void> {
+  const t = balloMancheTimers.get(sessionId);
+  if (t) { clearTimeout(t); balloMancheTimers.delete(sessionId); }
+  const session = await getSession(sessionId);
+  if (!session) return;
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-ballo" || rp["balloPhase"] !== "dancing") return;
+  const { winnerId, ranking } = await scoreBalloManche(sessionId);
+  const patch = { ...rp, balloPhase: "result", danceStartedAt: null, danceEndsAt: null, mancheResult: { manche: Number(rp["manche"] ?? 1), winnerId, ranking } };
+  const [updated] = await db.update(homeSessionsTable).set({ roundPayload: patch }).where(eq(homeSessionsTable.id, sessionId)).returning();
+  const players = await getPlayers(sessionId);
+  emitHomeState(sessionId, updated!, players);
+  emitToRoom(homeRoom(sessionId), "home:ballo_result", { winnerId, ranking });
+}
+
+// Host: "VIA!" → parte la manche (video + timer). Ogni telefono balla.
+router.post("/home/sessions/:id/ballo/start-manche", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-ballo") { res.status(409).json({ error: "Non in modalità ballo" }); return; }
+  if (rp["balloPhase"] !== "get_ready") { res.status(409).json({ error: "Fase non corretta" }); return; }
+  const duration = Number(rp["duration"] ?? BALLO_MANCHE_SECONDS);
+  const now = Date.now();
+  const endsAt = now + duration * 1000;
+  clearBalloEnergies(id); // manche pulita
+  const patch = { ...rp, balloPhase: "dancing", danceStartedAt: new Date(now).toISOString(), danceEndsAt: new Date(endsAt).toISOString(), mancheResult: null };
+  const [updated] = await db.update(homeSessionsTable).set({ roundPayload: patch }).where(eq(homeSessionsTable.id, id)).returning();
+  const players = await getPlayers(id);
+  emitHomeState(id, updated!, players);
+  emitToRoom(homeRoom(id), "home:command", { command: "ballo_go", manche: Number(rp["manche"] ?? 1) });
+  const existing = balloMancheTimers.get(id);
+  if (existing) clearTimeout(existing);
+  balloMancheTimers.set(id, setTimeout(() => { void finishBalloManche(id).catch(() => {}); }, Math.max(500, endsAt - Date.now()) + 500));
+  res.json({ ok: true });
+});
+
+// Fine manche manuale (o la chiama il timer): calcola punti e mostra la classifica.
+router.post("/home/sessions/:id/ballo/finish-manche", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  await finishBalloManche(id);
+  res.json({ ok: true });
+});
+
+// Host: "PROSSIMA MANCHE" → manche successiva (nuovo video) oppure fine gioco.
+router.post("/home/sessions/:id/ballo/next-manche", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-ballo") { res.status(409).json({ error: "Non in modalità ballo" }); return; }
+  if (rp["balloPhase"] !== "result") { res.status(409).json({ error: "Fase non corretta" }); return; }
+  const manche = Number(rp["manche"] ?? 1);
+  const total = Number(rp["totalManche"] ?? BALLO_TOTAL_MANCHE);
+  const videos = (rp["videos"] as BalloVideo[] | undefined) ?? [];
+  let patch: Record<string, unknown>;
+  if (manche < total) {
+    const next = manche + 1;
+    patch = { ...rp, manche: next, currentVideo: videos[next - 1] ?? videos[0] ?? null, balloPhase: "get_ready", mancheResult: null, danceStartedAt: null, danceEndsAt: null };
+  } else {
+    patch = { ...rp, balloPhase: "finished" };
+  }
+  const [updated] = await db.update(homeSessionsTable).set({ roundPayload: patch, currentRound: Math.min(manche, total - 1) }).where(eq(homeSessionsTable.id, id)).returning();
+  const players = await getPlayers(id);
+  emitHomeState(id, updated!, players);
+  res.json({ ok: true });
 });
 
 // Backward compat: /start → select-game

@@ -3146,25 +3146,28 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, nicknam
   round?: number;
   adminSensitivity?: number;
 }) {
-  // ── Tournament phase/stage from payload ───────────────────────────────────────
-  const balloPhase = String(payload.balloPhase ?? 'dancing');
-  const balloStage = Number(payload.balloStage ?? 1);
-  type TeamDef = { teamId: string; players: { id: string; nickname: string; avatarColor: string }[]; pendingRequests: { id: string; nickname: string; avatarColor: string }[] };
-  const teams = (payload.teams ?? []) as TeamDef[];
+  // Fase del Ballo: preparing → get_ready → dancing → result → (prossima) → finished
+  const balloPhase = String(payload.balloPhase ?? 'preparing');
 
-  // ── Spectator check ───────────────────────────────────────────────────────────
-  const rawBooked = (payload.bookedPlayers ?? []) as Array<{ id: string; nickname: string; avatarColor: string }>;
-  const isSpectator = rawBooked.length > 0 && !rawBooked.some(b => b.id === playerId);
-  // In booking phase (stages 2/3), determine player's relationship to teams
-  const myTeam = teams.find(t => t.players.some(p => p.id === playerId));
-  const myPendingTeam = !myTeam ? teams.find(t => t.pendingRequests.some(p => p.id === playerId)) : null;
-  const isInAnyTeam = !!myTeam;
-  const hasSentRequest = !!myPendingTeam;
-  const [joiningTeam, setJoiningTeam] = useState<string | null>(null);
-  const [acceptingPlayer, setAcceptingPlayer] = useState<string | null>(null);
-
-  // Spectator voting state — Map<dancerId, stars>
-  const [votedFor, setVotedFor] = useState<Record<string, number>>({});
+  // ── Nuovo Ballo "tutti ballano ogni manche" ──────────────────────────────────
+  const manche = Number(payload.manche ?? 1);
+  const totalManche = Number(payload.totalManche ?? 3);
+  const currentVideo = (payload.currentVideo ?? null) as { title?: string; artist?: string } | null;
+  const mancheResult = (payload.mancheResult ?? null) as { winnerId: string | null; ranking: Array<{ playerId: string; nickname: string; energy: number; points: number; isWinner: boolean }> } | null;
+  const danceEndsAt = payload.danceEndsAt as string | undefined;
+  const mancheRef = useRef(manche);
+  useEffect(() => { mancheRef.current = manche; }, [manche]);
+  const dancingRef = useRef(balloPhase === 'dancing');
+  useEffect(() => { dancingRef.current = balloPhase === 'dancing'; }, [balloPhase]);
+  const [armed, setArmed] = useState<boolean>(() => SensorBridge.getStatus().started);
+  const [danceLeft, setDanceLeft] = useState<number | null>(null);
+  useEffect(() => {
+    if (balloPhase !== 'dancing' || !danceEndsAt) { setDanceLeft(null); return; }
+    const tick = () => setDanceLeft(Math.max(0, Math.ceil((new Date(danceEndsAt).getTime() - Date.now()) / 1000)));
+    tick();
+    const iv = setInterval(tick, 500);
+    return () => clearInterval(iv);
+  }, [balloPhase, danceEndsAt]);
 
   const [energy, setEnergy] = useState(0);
   // Eagerly init from localStorage — if permission was granted during booking, sensors
@@ -3287,11 +3290,12 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, nicknam
       smoothedEnergyRef.current = smoothed;
       setEnergy(smoothed);
 
-      const tl = timeLeftRef.current;
-      if (tl === null || tl > 0) {
-        emit('home:ballo_energy', { sessionId, playerId, energy: smoothed, round: round ?? 0 });
+      // Emette energia solo mentre si balla (fase dancing), con round = manche
+      // corrente (così il server raggruppa le energie per manche).
+      if (dancingRef.current) {
+        emit('home:ballo_energy', { sessionId, playerId, energy: smoothed, round: mancheRef.current });
         SensorBridge.setLastEmit(smoothed);
-        _log('[SensorBridge] energy emit —', { smoothed, motion: s.motionEvents, orient: s.orientEvents });
+        _log('[SensorBridge] energy emit —', { smoothed, manche: mancheRef.current, motion: s.motionEvents, orient: s.orientEvents });
       }
     }, 400);
 
@@ -3323,277 +3327,119 @@ function BalloController({ payload, timeLeft, sessionId, emit, playerId, nicknam
   }, [emit, sessionId, playerId]);
 
   const energyColor = energy > 70 ? '#22c55e' : energy > 35 ? '#eab308' : '#A78BFA';
+  const songLabel = currentVideo ? `${currentVideo.title ?? 'Brano'}${currentVideo.artist ? ` · ${currentVideo.artist}` : ''}` : '';
 
-  // ── Booking phase: stages 2/3 team join/accept UI ────────────────────────────
-  if (balloStage >= 2 && balloPhase === 'booking') {
-    const prizePoints = Number(payload.prizePoints ?? 500);
-    const stageLabel = balloStage === 2 ? 'Sfida 2: Coppie' : 'Sfida Finale: Terzetti';
-    const stageIcon = balloStage === 2 ? '👫' : '🏃';
-
-    // Existing team member → show pending requests to accept
-    if (isInAnyTeam && myTeam) {
-      const pendingForMyTeam = myTeam.pendingRequests;
-      return (
-        <div className="flex flex-col items-center gap-5 py-4 text-center">
-          <div className="text-4xl">{stageIcon}</div>
-          <div className="text-xl font-black text-white">{stageLabel}</div>
-          <div className="rounded-2xl px-5 py-3 text-sm font-bold"
-            style={{background:'rgba(167,139,250,0.12)',border:'1px solid rgba(167,139,250,0.3)',color:'#A78BFA'}}>
-            Sei nella Squadra {myTeam.teamId} {myTeam.teamId==='A'?'🔵':'🔴'}
-          </div>
-          {pendingForMyTeam.length === 0 ? (
-            <div className="text-white/40 text-sm animate-pulse">In attesa di richieste di accesso…</div>
-          ) : (
-            <div className="flex flex-col gap-3 w-full">
-              <div className="text-xs font-black uppercase tracking-widest" style={{color:'rgba(255,255,255,0.35)'}}>
-                Richieste di unirsi alla tua squadra
-              </div>
-              {pendingForMyTeam.map(req => (
-                <div key={req.id} className="flex items-center gap-3 rounded-2xl px-4 py-3"
-                  style={{background:`${req.avatarColor}12`,border:`1.5px solid ${req.avatarColor}44`}}>
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-black flex-shrink-0"
-                    style={{background:req.avatarColor,color:'#0a0015'}}>{req.nickname[0]?.toUpperCase()}</div>
-                  <div className="font-black text-white flex-1 text-left">{req.nickname}</div>
-                  <button
-                    disabled={acceptingPlayer === req.id}
-                    onClick={async () => {
-                      setAcceptingPlayer(req.id);
-                      try {
-                        await fetch(`/api/home/sessions/${sessionId}/ballo-accept-player`, {
-                          method: 'POST', credentials: 'include',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ acceptingPlayerId: playerId, newPlayerId: req.id, teamId: myTeam.teamId }),
-                        });
-                      } finally { setAcceptingPlayer(null); }
-                    }}
-                    className="rounded-xl px-4 py-2 text-sm font-black text-white disabled:opacity-50"
-                    style={{background:'linear-gradient(135deg,#A78BFA,#7C3AED)',boxShadow:'0 0 20px rgba(167,139,250,0.4)'}}>
-                    {acceptingPlayer === req.id ? '…' : '✓ ACCETTA'}
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-          <div className="text-xs text-white/25">🏆 {prizePoints.toLocaleString()} punti in palio</div>
-        </div>
-      );
-    }
-
-    // Player sent a request — waiting
-    if (hasSentRequest && myPendingTeam) {
-      return (
-        <div className="flex flex-col items-center gap-5 py-4 text-center">
-          <div className="text-4xl">{stageIcon}</div>
-          <div className="text-xl font-black text-white">{stageLabel}</div>
-          <div className="rounded-2xl px-6 py-4 flex flex-col gap-2"
-            style={{background:'rgba(234,179,8,0.1)',border:'1px solid rgba(234,179,8,0.3)'}}>
-            <div className="text-2xl">⏳</div>
-            <div className="font-black text-yellow-400">Richiesta inviata!</div>
-            <div className="text-sm text-white/60">
-              Squadra {myPendingTeam.teamId} {myPendingTeam.teamId==='A'?'🔵':'🔴'} deve accettarti.
-            </div>
-          </div>
-          <div className="text-xs text-white/25">🏆 {prizePoints.toLocaleString()} punti in palio</div>
-          {/* Allow changing team */}
-          <div className="flex gap-3">
-            {teams.filter(t => t.teamId !== myPendingTeam.teamId).map(t => (
-              <button key={t.teamId}
-                disabled={joiningTeam === t.teamId}
-                onClick={async () => {
-                  setJoiningTeam(t.teamId);
-                  try {
-                    await fetch(`/api/home/sessions/${sessionId}/ballo-join-team`, {
-                      method: 'POST', credentials: 'include',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ playerId, nickname, avatarColor, teamId: t.teamId }),
-                    });
-                  } finally { setJoiningTeam(null); }
-                }}
-                className="text-xs rounded-xl px-4 py-2 font-bold disabled:opacity-40"
-                style={{background:'rgba(255,255,255,0.07)',color:'rgba(255,255,255,0.4)',border:'1px solid rgba(255,255,255,0.12)'}}>
-                Cambia → Squadra {t.teamId} {t.teamId==='A'?'🔵':'🔴'}
-              </button>
-            ))}
-          </div>
-        </div>
-      );
-    }
-
-    // New player — show team selection
+  // ══ NUOVO BALLO: tutti ballano ogni manche — render per fase ══════════════════
+  if (balloPhase === 'preparing') {
     return (
-      <div className="flex flex-col items-center gap-5 py-4 text-center">
-        <div className="text-4xl">{stageIcon}</div>
-        <div className="text-xl font-black text-white">{stageLabel}</div>
-        <div className="text-sm text-white/60 max-w-xs">
-          {balloStage === 2 ? 'Scegli la squadra in cui vuoi ballare!' : 'Scegli il terzetto in cui vuoi ballare!'}
-        </div>
-        <div className="text-sm font-black" style={{color:'#F5B642'}}>
-          🏆 {prizePoints.toLocaleString()} punti in palio
-        </div>
-        <div className="flex flex-col gap-3 w-full">
-          {teams.map(team => {
-            const isTeamFull = team.players.length >= balloStage;
-            const color = team.teamId === 'A' ? '#60A5FA' : '#F87171';
-            return (
-              <button key={team.teamId}
-                disabled={isTeamFull || joiningTeam === team.teamId}
-                onClick={async () => {
-                  if (isTeamFull) return;
-                  setJoiningTeam(team.teamId);
-                  try {
-                    await fetch(`/api/home/sessions/${sessionId}/ballo-join-team`, {
-                      method: 'POST', credentials: 'include',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ playerId, nickname, avatarColor, teamId: team.teamId }),
-                    });
-                  } finally { setJoiningTeam(null); }
-                }}
-                className="flex items-center gap-4 rounded-2xl px-5 py-4 text-left disabled:opacity-40"
-                style={{background:`${color}12`,border:`2px solid ${isTeamFull ? 'rgba(255,255,255,0.12)' : color+'66'}`,
-                  boxShadow: joiningTeam===team.teamId ? `0 0 30px ${color}50` : 'none'}}>
-                <div className="text-2xl">{team.teamId==='A'?'🔵':'🔴'}</div>
-                <div className="flex-1">
-                  <div className="font-black text-white">Squadra {team.teamId}</div>
-                  <div className="text-xs" style={{color:'rgba(255,255,255,0.5)'}}>
-                    {team.players.map(p=>p.nickname).join(' + ') || 'Nessuno ancora'}
-                    {team.pendingRequests.length>0 ? ` · ${team.pendingRequests.length} in attesa` : ''}
-                  </div>
-                </div>
-                <div className="text-sm font-black" style={{color: isTeamFull ? 'rgba(255,255,255,0.3)' : color}}>
-                  {isTeamFull ? 'COMPLETA' : joiningTeam===team.teamId ? '…' : '→'}
-                </div>
-              </button>
-            );
-          })}
-        </div>
+      <div className="flex flex-col items-center gap-5 py-10 text-center">
+        <motion.div animate={{ scale: [1, 1.15, 1] }} transition={{ repeat: IS_LOW_POWER ? 0 : Infinity, duration: 1.4 }} className="text-6xl">💿</motion.div>
+        <div className="text-xl font-black text-white">Preparo la pista…</div>
+        <div className="text-sm text-white/50">Sto scegliendo le 3 canzoni della serata.</div>
       </div>
     );
   }
-
-  // ── Result phase: show waiting message ────────────────────────────────────────
-  if (balloPhase === 'result') {
+  if (balloPhase === 'no_videos') {
     return (
-      <div className="flex flex-col items-center gap-5 py-4 text-center">
-        <div className="text-5xl">🏆</div>
-        <div className="text-xl font-black text-white">Risultato!</div>
-        <div className="text-sm text-white/50">In attesa della prossima sfida…</div>
+      <div className="flex flex-col items-center gap-4 py-10 text-center">
+        <div className="text-6xl">📵</div>
+        <div className="text-lg font-black text-white">Video non disponibili</div>
+        <div className="text-sm text-white/50">Riprova ad avviare il Ballo tra poco.</div>
       </div>
     );
   }
-
-  // ── Spectator voting UI ───────────────────────────────────────────────────────
-  if (isSpectator) {
-    const castVote = (dancerId: string, stars: number) => {
-      setVotedFor(prev => ({ ...prev, [dancerId]: stars }));
-      emit('home:ballo_vote', { sessionId, voterId: playerId, dancerId, stars, round: round ?? 0 });
-    };
+  if (balloPhase === 'get_ready') {
     return (
-      <div className="flex flex-col items-center gap-5 py-4 text-center">
-        <div className="text-5xl">👏</div>
-        <div className="text-xl font-black text-white">{String(payload.name ?? 'Sfida di Ballo')}</div>
-        <div className="rounded-2xl px-5 py-3 text-sm font-bold text-center"
-          style={{background:'rgba(167,139,250,0.12)',border:'1px solid rgba(167,139,250,0.3)',color:'rgba(167,139,250,0.85)'}}>
-          Sei spettatore — vota i ballerini!
-        </div>
-
-        {timeLeft !== null && timeLeft > 0 && (
-          <div className="flex items-center gap-2 rounded-xl px-4 py-2"
-            style={{background:'rgba(167,139,250,0.18)',border:'1px solid rgba(167,139,250,0.45)',color:'#A78BFA'}}>
-            <Timer className="h-4 w-4"/>
-            <span className="text-xl font-black tabular-nums">{timeLeft}s</span>
+      <div className="flex flex-col items-center gap-5 py-6 text-center">
+        <div className="text-xs font-black uppercase tracking-widest" style={{ color: '#A78BFA' }}>Manche {manche} di {totalManche}</div>
+        <div className="text-5xl">🕺</div>
+        <div className="text-xl font-black text-white">Preparati a ballare!</div>
+        {songLabel && (
+          <div className="rounded-xl px-4 py-2 text-sm font-black" style={{ background: 'rgba(167,139,250,0.18)', color: '#c084fc', border: '1px solid rgba(167,139,250,0.4)' }}>
+            🎵 {songLabel}
           </div>
         )}
-
-        <div className="flex flex-col gap-4 w-full">
-          {rawBooked.map(dancer => {
-            const myVote = votedFor[dancer.id];
-            return (
-              <div key={dancer.id} className="flex flex-col gap-2 rounded-2xl px-4 py-4"
-                style={{background:`${dancer.avatarColor}12`,border:`1.5px solid ${dancer.avatarColor}44`}}>
-                <div className="flex items-center gap-2">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full text-sm font-black"
-                    style={{background:dancer.avatarColor,color:'#0a0015'}}>
-                    {dancer.nickname[0]?.toUpperCase()}
-                  </div>
-                  <div className="font-black text-white">{dancer.nickname}</div>
-                  {myVote && (
-                    <div className="ml-auto text-xs font-black" style={{color:'rgba(255,255,255,0.4)'}}>
-                      ✓ {myVote}⭐
-                    </div>
-                  )}
-                </div>
-                <div className="flex justify-center gap-2">
-                  {[1,2,3,4,5].map(s => (
-                    <button key={s} onClick={() => castVote(dancer.id, s)}
-                      className="flex h-11 w-11 items-center justify-center rounded-full text-2xl transition-transform active:scale-90"
-                      style={{
-                        background: myVote && myVote >= s ? `${dancer.avatarColor}33` : 'rgba(255,255,255,0.06)',
-                        border: myVote && myVote >= s ? `1.5px solid ${dancer.avatarColor}88` : '1.5px solid rgba(255,255,255,0.12)',
-                        transform: myVote === s ? 'scale(1.15)' : 'scale(1)',
-                      }}>
-                      {myVote && myVote >= s ? '⭐' : '☆'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+        <div className="text-sm text-white/55 leading-relaxed px-3">Guarda la TV e <b className="text-white">imita i passi</b>. Il telefono misura quanto ti muovi!</div>
+        {!armed ? (
+          <button
+            onClick={async () => { try { await SensorBridge.start(); } finally { setArmed(true); } }}
+            className="rounded-3xl px-10 py-6 text-2xl font-black text-black transition-all active:scale-95"
+            style={{ background: 'linear-gradient(135deg,#A78BFA,#7C3AED)', boxShadow: '0 0 30px rgba(167,139,250,0.5)' }}>
+            📱 ATTIVA E BALLA
+          </button>
+        ) : (
+          <div className="rounded-3xl px-8 py-5 text-xl font-black" style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.5)', color: '#4ade80' }}>
+            ✓ Pronto! Aspetta il VIA 💃
+          </div>
+        )}
+      </div>
+    );
+  }
+  if (balloPhase === 'dancing') {
+    return (
+      <div className="flex flex-col items-center gap-5 py-4 text-center" style={{ userSelect: 'none', WebkitUserSelect: 'none' }}>
+        <div className="text-xs font-black uppercase tracking-widest" style={{ color: '#A78BFA' }}>Manche {manche} di {totalManche}</div>
+        {danceLeft !== null && (
+          <div className="flex items-center gap-2 rounded-xl px-5 py-2" style={{ background: 'rgba(167,139,250,0.18)', border: '1px solid rgba(167,139,250,0.45)', color: '#A78BFA' }}>
+            <Timer className="h-4 w-4" />
+            <span className="text-2xl font-black tabular-nums">{danceLeft}s</span>
+          </div>
+        )}
+        <div className="text-lg font-black text-white">👀 Guarda la TV e imita i passi!</div>
+        {songLabel && <div className="text-xs font-bold" style={{ color: '#c084fc' }}>🎵 {songLabel}</div>}
+        {sensorError && (
+          <div style={{ width: '100%', maxWidth: 340, background: 'rgba(234,179,8,0.1)', border: '1px solid rgba(234,179,8,0.3)', borderRadius: 12, padding: '9px 14px', color: '#facc15', fontSize: 12, fontWeight: 600, textAlign: 'center', lineHeight: 1.5 }}>
+            📱 Muovi il telefono per attivare i sensori
+          </div>
+        )}
+        <div className="w-full space-y-2">
+          <div className="flex items-center justify-between text-xs font-bold" style={{ color: '#A78BFA' }}>
+            <span>⚡ Energia</span><span className="tabular-nums">{energy}%</span>
+          </div>
+          <div className="relative h-10 w-full overflow-hidden rounded-full bg-white/10">
+            <motion.div className="absolute inset-y-0 left-0 rounded-full" animate={{ width: `${energy}%` }} transition={{ duration: 0.2 }}
+              style={{ background: energyColor, boxShadow: `0 0 16px ${energyColor}80` }} />
+            <div className="absolute inset-0 flex items-center justify-center text-sm font-black text-white">
+              {energy > 60 ? '🔥 FUOCO!' : energy > 30 ? '💃 Bene!' : '📱 Muoviti!'}
+            </div>
+          </div>
         </div>
+        <div className="text-2xl font-black" style={{ color: '#A78BFA' }}>BALLA! 🕺</div>
+      </div>
+    );
+  }
+  if (balloPhase === 'result') {
+    const me = mancheResult?.ranking.find(r => r.playerId === playerId);
+    return (
+      <div className="flex flex-col items-center gap-4 py-6 text-center">
+        <div className="text-5xl">{me?.isWinner ? '🏆' : '👏'}</div>
+        <div className="text-xl font-black text-white">Manche {manche} finita!</div>
+        {me ? (
+          <div className="rounded-2xl px-6 py-4 flex flex-col gap-1" style={{ background: me.isWinner ? 'rgba(245,182,66,0.14)' : 'rgba(167,139,250,0.12)', border: `1px solid ${me.isWinner ? 'rgba(245,182,66,0.5)' : 'rgba(167,139,250,0.35)'}` }}>
+            <div className="text-3xl font-black" style={{ color: me.isWinner ? '#F5B642' : '#A78BFA' }}>+{me.points} pt</div>
+            {me.isWinner && <div className="text-sm font-black text-yellow-300">Migliore della manche! 🔥</div>}
+          </div>
+        ) : (
+          <div className="text-sm text-white/50">In attesa della classifica…</div>
+        )}
+        <div className="text-sm text-white/45">Guarda la TV per la classifica completa.</div>
+      </div>
+    );
+  }
+  if (balloPhase === 'finished') {
+    return (
+      <div className="flex flex-col items-center gap-4 py-10 text-center">
+        <div className="text-6xl">🎉</div>
+        <div className="text-xl font-black text-white">Fine del Ballo!</div>
+        <div className="text-sm text-white/50">Guarda la classifica finale sulla TV.</div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col items-center gap-5 py-4 text-center" style={{userSelect:'none',WebkitUserSelect:'none'}}>
-
-      {/* Minimal sensor-unavailable warning — shown only when truly stalled */}
-      {sensorError && (
-        <div style={{
-          width: '100%', maxWidth: 340,
-          background: 'rgba(234,179,8,0.1)',
-          border: '1px solid rgba(234,179,8,0.3)',
-          borderRadius: 12, padding: '9px 14px',
-          color: '#facc15', fontSize: 12, fontWeight: 600,
-          textAlign: 'center', lineHeight: 1.5,
-        }}>
-          📱 Muovi il telefono per attivare i sensori
-        </div>
-      )}
-
-      <div className="text-6xl">💃</div>
-      <div className="text-xl font-black text-white">{String(payload.name ?? 'Sfida di Ballo')}</div>
-      <div className="text-sm text-white/55 leading-relaxed px-2">{String(payload.description ?? '')}</div>
-      {!!payload.musicHint && (
-        <div className="rounded-xl px-4 py-2 text-sm font-black" style={{background:'rgba(167,139,250,0.18)',color:'#c084fc',border:'1px solid rgba(167,139,250,0.4)'}}>
-          🎵 {String(payload.musicHint)}
-        </div>
-      )}
-
-
-      {/* ── Energy bar — always visible (SensorBridge manages permission) ── */}
-      <div className="w-full space-y-2">
-        <div className="flex items-center justify-between text-xs font-bold" style={{color:'#A78BFA'}}>
-          <span>⚡ Energia</span><span className="tabular-nums">{energy}%</span>
-        </div>
-        <div className="relative h-8 w-full overflow-hidden rounded-full bg-white/10">
-          <motion.div className="absolute inset-y-0 left-0 rounded-full"
-            animate={{ width: `${energy}%` }} transition={{ duration: 0.2 }}
-            style={{ background: energyColor, boxShadow: `0 0 12px ${energyColor}80` }} />
-          <div className="absolute inset-0 flex items-center justify-center text-xs font-black text-white">
-            {energy > 60 ? '🔥 FUOCO!' : energy > 30 ? '💃 Bene!' : '📱 Muoviti!'}
-          </div>
-        </div>
-      </div>
-
-      {timeLeft !== null && (
-        <div className="flex items-center gap-2 rounded-xl px-5 py-2"
-          style={{background:'rgba(167,139,250,0.18)',border:'1px solid rgba(167,139,250,0.45)',color:'#A78BFA'}}>
-          <Timer className="h-4 w-4"/>
-          <span className="text-2xl font-black tabular-nums">{timeLeft}s</span>
-        </div>
-      )}
-      <div className="text-2xl font-black" style={{color:'#A78BFA'}}>BALLA! 🕺</div>
-
+    <div className="flex flex-col items-center gap-3 py-10 text-center">
+      <div className="text-5xl">💃</div>
+      <div className="text-sm text-white/50">In attesa…</div>
     </div>
   );
 }

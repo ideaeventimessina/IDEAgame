@@ -217,7 +217,7 @@ async function rawYouTubeSearch(youtubeQuery: string): Promise<{
   };
 }
 
-async function searchYouTube(rawInput: string, mode: "karaoke" | "song" = "karaoke"): Promise<SearchResult> {
+export async function searchYouTube(rawInput: string, mode: "karaoke" | "song" = "karaoke"): Promise<SearchResult> {
   // ⚠️ Ballo: NON aggiungere "karaoke" alla query, altrimenti YouTube restituisce
   // le basi karaoke invece del video ufficiale del brano.
   const youtubeQuery = mode === "song" ? rawInput : `${rawInput} karaoke`;
