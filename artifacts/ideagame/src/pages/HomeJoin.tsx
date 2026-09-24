@@ -4337,21 +4337,20 @@ function WordBackBookingPhone({ payload, player, sessionId }: {
   const bookRole = useCallback(async (role: 'guesser' | 'suggester') => {
     if (booking || myRole) return;
     setBooking(true);
-    // Mic preflight for INDOVINO — request permission inside the user gesture before the round starts
+    // Mic per INDOVINO: chiedo il permesso NEL gesto ma SENZA aspettarlo — così la
+    // prenotazione non resta bloccata se il prompt è lento o l'utente tarda. Il
+    // permesso negato non impedisce di giocare (fallback a risposte scritte).
     if (role === 'guesser' && navigator.mediaDevices?.getUserMedia) {
-      _log('[WordBackMicPreflight] booking role: guesser');
-      _log('[WordBackMicPreflight] getUserMedia start');
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach(t => t.stop());
-        try { sessionStorage.setItem('ideagame:wordback-mic-ready', 'true'); } catch { /* ignore */ }
-        setMicReady(true);
-        _log('[WordBackMicPreflight] granted — micReady saved');
-      } catch {
-        try { sessionStorage.setItem('ideagame:wordback-mic-ready', 'false'); } catch { /* ignore */ }
-        setMicReady(false);
-        _log('[WordBackMicPreflight] denied');
-      }
+      navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(stream => {
+          stream.getTracks().forEach(t => t.stop());
+          try { sessionStorage.setItem('ideagame:wordback-mic-ready', 'true'); } catch { /* ignore */ }
+          setMicReady(true);
+        })
+        .catch(() => {
+          try { sessionStorage.setItem('ideagame:wordback-mic-ready', 'false'); } catch { /* ignore */ }
+          setMicReady(false);
+        });
     }
     try {
       const r = await fetch(`/api/home/sessions/${sessionId}/wordback-book-role`, {
@@ -5230,6 +5229,14 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
               <span style={{ color: '#F59E0B' }}>{liveScore} pt</span>
             </div>
           </div>
+          {/* TABOO: chiunque può segnalare → bip aspro sulla TV */}
+          <button
+            onClick={() => { try { getSocket().emit('home:freestyle_taboo', { sessionId }); } catch { /* ignore */ } }}
+            disabled={battle.battleLocked ?? false}
+            className="shrink-0 rounded-2xl px-6 py-3.5 text-lg font-black text-white disabled:opacity-40"
+            style={{ background: 'linear-gradient(135deg,#ef4444,#b91c1c)', boxShadow: '0 0 24px rgba(239,68,68,0.4)' }}>
+            🚫 TABOO!
+          </button>
         </div>
       );
     }

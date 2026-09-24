@@ -24,6 +24,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { JonnyAvatar } from '@/components/JonnyAvatar';
 import { useEventSocket, getSocket } from '@/hooks/useEventSocket';
 import { RISATE_MISSIONS, YOGA_POSES, type RisateState } from '@/data/risate-missions';
+import { FreestyleBeat, playTabooBeep } from '@/audio/FreestyleBeat';
 import {
   type KaraokeHomeState, type KaraokePerformanceResult, type KaraokeAward,
   POSITIVE_REACTIONS, NEGATIVE_REACTIONS, DURATION_OPTIONS,
@@ -7410,22 +7411,46 @@ function FreestyleBattleBoard({ sessionId, state: s, post }: {
   const waitingBookings = ls.freestyleBookings.filter(b => b.status === 'waiting');
   const currentBeat = battle ? ls.beats.find(b => b.id === battle.beatId) : null;
 
-  // Riproduce la base beat scelta (audioUrl impostato in admin) durante la battle.
+  // Riproduce la base beat durante la battle. Se c'è un file (audioUrl impostato in
+  // admin) usa quello; altrimenti sintetizza il beat lato client così PARTE SEMPRE.
   const beatAudioRef = useRef<HTMLAudioElement | null>(null);
+  const beatSynthRef = useRef<FreestyleBeat | null>(null);
   const beatUrl = currentBeat?.audioUrl ?? '';
-  const battleActive = ls.freestylePhase === 'battling' && !!beatUrl;
+  const battling = ls.freestylePhase === 'battling';
+  const beatBpm = currentBeat?.bpm ?? 90;
   useEffect(() => {
     const el = beatAudioRef.current;
-    if (!el) return;
-    if (battleActive) {
-      if (el.src !== beatUrl) el.src = beatUrl;
-      el.loop = true; el.volume = 0.8;
-      el.play().catch(() => { /* autoplay bloccato: parte al primo gesto */ });
-    } else {
-      el.pause();
+    const hasUrl = !!beatUrl;
+    // File audio disponibile → elemento <audio>
+    if (el) {
+      if (battling && hasUrl) {
+        if (el.src !== beatUrl) el.src = beatUrl;
+        el.loop = true; el.volume = 0.8;
+        el.play().catch(() => { /* autoplay bloccato: parte al primo gesto */ });
+      } else {
+        el.pause();
+      }
     }
-  }, [battleActive, beatUrl]);
-  useEffect(() => () => { beatAudioRef.current?.pause(); }, []);
+    // Nessun file → beat sintetizzato (Web Audio)
+    if (battling && !hasUrl) {
+      if (!beatSynthRef.current) beatSynthRef.current = new FreestyleBeat();
+      beatSynthRef.current.start(beatBpm);
+    } else {
+      beatSynthRef.current?.stop();
+    }
+  }, [battling, beatUrl, beatBpm]);
+  useEffect(() => () => { beatAudioRef.current?.pause(); beatSynthRef.current?.stop(); }, []);
+
+  // Bip del TABOO: uno spettatore lo segnala dal telefono → beep aspro sulla TV.
+  const [tabooFlash, setTabooFlash] = useState(false);
+  useEffect(() => {
+    const u = on<{ sessionId: string }>('home:freestyle_taboo', () => {
+      playTabooBeep();
+      setTabooFlash(true);
+      setTimeout(() => setTabooFlash(false), 1200);
+    });
+    return u;
+  }, [on]);
 
   // Countdown timer — auto-fires end-battle when time runs out
   useEffect(() => {
@@ -7493,8 +7518,15 @@ function FreestyleBattleBoard({ sessionId, state: s, post }: {
 
     return (
       <div className="flex flex-col h-full gap-4 p-6">
-        {/* Base beat scelta — riproduce l'audioUrl impostato in admin */}
+        {/* Base beat: file audio se presente, altrimenti beat sintetizzato (Web Audio) */}
         <audio ref={beatAudioRef} hidden />
+        {/* Flash TABOO — beep aspro + lampeggio rosso a schermo intero */}
+        {tabooFlash && (
+          <div className="fixed inset-0 z-[9995] flex items-center justify-center pointer-events-none"
+            style={{ background: 'rgba(239,68,68,0.35)' }}>
+            <div className="text-8xl font-black text-white animate-pulse" style={{ textShadow: '0 0 40px #ef4444' }}>🚫 TABOO!</div>
+          </div>
+        )}
         {/* Header */}
         <div className="flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">

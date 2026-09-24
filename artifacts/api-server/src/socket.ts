@@ -386,6 +386,16 @@ export function initHomeSocketHandlers(io: SocketServer): void {
       emitToRoom(`home:${sessionId}`, "home:wordback_taboo_alarm", alarm);
     });
 
+    // Freestyle: uno spettatore segnala una parola taboo → relay alla room
+    // (la TV riproduce il bip aspro sintetizzato).
+    socket.on("home:freestyle_taboo", (data: unknown) => {
+      if (!data || typeof data !== "object") return;
+      const d = data as Record<string, unknown>;
+      const sessionId = typeof d["sessionId"] === "string" ? d["sessionId"] : null;
+      if (!sessionId) return;
+      emitToRoom(`home:${sessionId}`, "home:freestyle_taboo", { sessionId, ts: Date.now() });
+    });
+
     // home:wordback_correct is now fully handled server-side via
     // POST /home/sessions/:id/wordback-correct — no socket relay needed.
 
