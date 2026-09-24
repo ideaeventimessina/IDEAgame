@@ -421,6 +421,16 @@ export function generateQuiz(themeId: string, count: number, difficulty: "easy" 
   }));
 }
 
+/** Il tema custom richiesto non ha prodotto domande a tema (AI non disponibile o
+ *  contenuto rifiutato). Il chiamante riporta l'host alla scelta del tema con un
+ *  messaggio, invece di servire in silenzio un quiz fuori tema (bug "sesso→Disney"). */
+export class QuizThemeUnavailableError extends Error {
+  constructor(public themeText: string) {
+    super(`Impossibile generare un quiz sul tema "${themeText}"`);
+    this.name = "QuizThemeUnavailableError";
+  }
+}
+
 /** Async entry point: uses AI for custom/unknown themes, bank for known themes. */
 export async function generateQuizAsync(
   themeId: string,
@@ -432,18 +442,26 @@ export async function generateQuizAsync(
 
   if (!hasBank) {
     const themeText = knownTheme ? knownTheme.label : themeId;
-    try {
-      // Chiedi qualche domanda in più: l'AI ne scarta alcune in validazione, così
-      // restiamo comunque vicini al numero richiesto (es. 20 e non 16).
-      const aiQuestions = await generateQuizQuestionsAI(themeText, count + 4, difficulty);
-      if (aiQuestions.length >= Math.min(count, 3)) {
-        return aiQuestions.slice(0, count);
+    // Retry: l'AI ogni tanto restituisce JSON malformato o va in timeout. Due tentativi
+    // prima di arrendersi. Chiedo qualche domanda in più (l'AI ne scarta in validazione).
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const aiQuestions = await generateQuizQuestionsAI(themeText, count + 4, difficulty);
+        if (aiQuestions.length >= Math.min(count, 3)) {
+          return aiQuestions.slice(0, count);
+        }
+        console.warn(`[QUIZ_GENERATE] tentativo ${attempt}: troppe poche domande (${aiQuestions.length})`);
+      } catch (err) {
+        console.error(`[QUIZ_GENERATE] AI tentativo ${attempt} fallito`, err instanceof Error ? err.message : err);
       }
-    } catch (err) {
-      console.error('[QUIZ_GENERATE] AI failed, using bank fallback', err instanceof Error ? err.message : err);
     }
-    const bankQuestions = generateQuiz('cultura_generale', count, difficulty);
-    return bankQuestions.map(q => ({ ...q, theme: themeId }));
+    // Tema NOTO (es. "Misto"): un banco misto è comunque un ripiego a tema accettabile.
+    if (knownTheme) {
+      const bankQuestions = generateQuiz('cultura_generale', count, difficulty);
+      return bankQuestions.map(q => ({ ...q, theme: themeId }));
+    }
+    // Tema CUSTOM sconosciuto: NON servire un quiz fuori tema. Errore onesto.
+    throw new QuizThemeUnavailableError(themeText);
   }
 
   return generateQuiz(themeId, count, difficulty);

@@ -2537,6 +2537,14 @@ function QuizzoneBoard({ payload, session, players }: {
           <div className="text-sm text-white/40 mt-2">I giocatori propongono il tema dal telefono</div>
         </div>
 
+        {/* Errore generazione (es. tema non generabile) — riporta qui l'host */}
+        {typeof payload.quizError === 'string' && payload.quizError && (
+          <div className="w-full rounded-2xl px-5 py-4 text-center font-bold"
+            style={{ background: 'rgba(239,68,68,0.14)', border: '1px solid rgba(239,68,68,0.5)', color: '#FCA5A5' }}>
+            ⚠️ {payload.quizError}
+          </div>
+        )}
+
         {/* Player suggestions */}
         {topSuggs.length > 0 && (
           <div className="w-full rounded-2xl p-5" style={{ background: `${QZ}12`, border: `1px solid ${QZ}33` }}>
@@ -4815,7 +4823,12 @@ function SaraMusicaBoard({ payload, session, players }: {
             <div className="rounded-3xl p-4" style={{ background: 'rgba(192,132,252,0.10)', border: '1px solid rgba(192,132,252,0.35)' }}>
               <img src={currentQ.silhouetteUrl} alt="Sagoma"
                 className="max-h-72 w-auto object-contain"
-                style={ currentQ.silhouetteObscure ? { filter: 'brightness(0.06) contrast(1.5)' } : undefined } />
+                style={ currentQ.silhouetteObscure
+                  // Foto reale (Wikipedia) con sfondo: brightness(0.06) la rendeva un
+                  // rettangolo nero illeggibile. Blur riconoscibile "indovina la star":
+                  // restano forma/capelli/posa, e a rivelazione mette a fuoco.
+                  ? { filter: 'blur(16px) brightness(0.78) grayscale(0.5) contrast(1.05)', transition: 'filter 0.6s ease' }
+                  : { transition: 'filter 0.6s ease' } } />
             </div>
           </div>
         )}

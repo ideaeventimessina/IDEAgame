@@ -83,15 +83,17 @@ const TYPE_POINTS: Record<MusicRoundType, number> = {
   singing_duel: 300,
 };
 
+// La finestra deve bastare per ASCOLTARE la clip E poi rispondere: i valori
+// precedenti erano tarati come un quiz di testo e risultavano troppo corti.
 const TYPE_TIME: Record<MusicRoundType, number> = {
-  guess_song: 20,
-  guess_artist: 15,
-  complete_lyrics: 20,
-  speed_music: 8,
-  song_vs_song: 12,
-  progressive_clue_music: 35,
-  final_tormentone: 25,
-  silhouette_guess: 18,
+  guess_song: 22,
+  guess_artist: 20,
+  complete_lyrics: 22,
+  speed_music: 12,
+  song_vs_song: 18,
+  progressive_clue_music: 38,
+  final_tormentone: 28,
+  silhouette_guess: 22,
   singing_duel: 30,
 };
 
@@ -265,16 +267,14 @@ BANK["custom"] = shuffleArr(
 
 export function generateSaraMusicaFallback(themeId: string, count: number, difficulty: "easy" | "medium" | "hard" = "medium"): MusicRound[] {
   const bank = BANK[themeId] ?? BANK["anni90"] ?? [];
-  const shuffled = shuffleArr([...bank]);
-  // If count > bank size, repeat shuffled rounds with new ids
-  const result: MusicRound[] = [];
-  while (result.length < count) {
-    for (const round of shuffled) {
-      if (result.length >= count) break;
-      const idx = result.length;
-      result.push({ ...round, id: `${themeId}_${idx}` });
-    }
-  }
+  // NIENTE RIPETIZIONI: prima le round con clip audio reale, poi le altre; poi
+  // taglio al count richiesto. Meglio poche round buone e diverse che 20 con la
+  // stessa canzone ripetuta (era il bug "clip 2/20" della serata).
+  const withClip = shuffleArr(bank.filter(rd => rd.youtubeClip?.youtubeId));
+  const noClip   = shuffleArr(bank.filter(rd => !rd.youtubeClip?.youtubeId));
+  const ordered = [...withClip, ...noClip];
+  const take = Math.min(count, ordered.length);
+  const result: MusicRound[] = ordered.slice(0, take).map((round, idx) => ({ ...round, id: `${themeId}_${idx}` }));
   // Apply difficulty multipliers
   const timeMult = difficulty === "easy" ? 1.4 : difficulty === "hard" ? 0.7 : 1.0;
   const ptsMult  = difficulty === "easy" ? 0.8 : difficulty === "hard" ? 1.25 : 1.0;

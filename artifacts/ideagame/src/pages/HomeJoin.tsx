@@ -3858,8 +3858,11 @@ function SaraDuelController({ duel, player, sessionId }: {
     if (!raw) return;
     setSearching(true);
     try {
+      // È una SFIDA DI CANTO: serve la base karaoke (testo a schermo, senza voce
+      // solista), non il video ufficiale. Aggiungo "karaoke" se non c'è già.
+      const query = /karaoke|strumentale|instrumental/i.test(raw) ? raw : `${raw} karaoke`;
       const r = await fetch(`/api/home/sessions/${sessionId}/ballo/search`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: raw }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query }),
       });
       const dd = await r.json() as { ok?: boolean; results?: YTSearchResult[] };
       setResults(dd.results ?? []);
@@ -3908,7 +3911,7 @@ function SaraDuelController({ duel, player, sessionId }: {
         </div>
         <div className="flex gap-2">
           <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void runSearch(); }}
-            placeholder="Cerca una canzone…"
+            placeholder="Cerca una canzone (karaoke)…"
             className="flex-1 rounded-xl px-4 py-3 text-white bg-white/10 border border-white/20 outline-none" />
           <button onClick={() => void runSearch()} disabled={searching}
             className="rounded-xl px-5 py-3 font-black text-black" style={{ background: SM }}>

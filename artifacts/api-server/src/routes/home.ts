@@ -23,7 +23,7 @@ import { Router, type IRouter } from "express";
 import multer from "multer";
 import OpenAI from "openai";
 import { createBlankKaraokeState, FREESTYLE_BEATS, type FreestyleBeat } from "../lib/karaoke-home-engine.js";
-import { generateQuiz, generateQuizAsync, QUIZ_THEMES } from "../lib/quiz-generator.js";
+import { generateQuiz, generateQuizAsync, QUIZ_THEMES, QuizThemeUnavailableError } from "../lib/quiz-generator.js";
 import { generateSaraMusicaRounds, SM_THEMES, type MusicRound } from "../lib/saramusica-generator.js";
 import { cachedWikiImage } from "../lib/image-cache.js";
 import { BOTTLE_LEVELS, pickFromBank, assignSpectatorPowers, pickRandomTruth, pickRandomDare, type BottleChallenge, type BottleLevel } from "../lib/adult-generator.js";
@@ -1420,7 +1420,7 @@ router.post("/home/sessions/:id/quiz/select-theme", async (req, res): Promise<vo
     }
   }
   const themeObj = QUIZ_THEMES.find(t => t.id === themeId);
-  await qzUpdate(id, { theme: themeId, themeName: themeObj?.label ?? themeId, phase: "setup_count", quizSuggestions: [] });
+  await qzUpdate(id, { theme: themeId, themeName: themeObj?.label ?? themeId, phase: "setup_count", quizSuggestions: [], quizError: null });
   res.json({ ok: true });
 });
 
@@ -1487,6 +1487,13 @@ router.post("/home/sessions/:id/quiz/select-count", async (req, res): Promise<vo
       }, 1000);
     } catch (err) {
       logger.error({ err, sessionId: id }, "[QuizzoneHome] generate failed");
+      // Tema custom non generabile: riporta l'host alla scelta del tema con un
+      // messaggio, invece di lasciare la sessione bloccata su "generating" o (peggio)
+      // servire un quiz fuori tema.
+      const msg = err instanceof QuizThemeUnavailableError
+        ? `Non riesco a creare un quiz sul tema «${err.themeText}». Prova con un altro tema.`
+        : "Generazione non riuscita. Riprova a scegliere il tema.";
+      await qzUpdate(id, { phase: "setup_theme", quizError: msg });
     }
   }, 3000);
 });
