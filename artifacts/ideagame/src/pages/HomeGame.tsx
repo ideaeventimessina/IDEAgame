@@ -3176,6 +3176,26 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
     });
   }, [on]);
 
+  // ── Musica della SFILATA: loop durante la fase attiva della missione sfilata ──
+  const sfilataAudioRef = useRef<HTMLAudioElement | null>(null);
+  useEffect(() => {
+    const missionId = rs ? RISATE_MISSIONS[rs.missionIndex]?.id : null;
+    const shouldPlay = !!rs && rs.phase === 'active' && missionId === 'sfilata' && !paused;
+    if (shouldPlay) {
+      let el = sfilataAudioRef.current;
+      if (!el) {
+        el = new Audio(`${BASE}audio/jonny-world/percorso-a-risate/round_loop.mp3`);
+        el.loop = true; el.volume = 0.6;
+        sfilataAudioRef.current = el;
+      }
+      el.play().catch(() => {/* autoplay bloccato finché non c'è un tocco */});
+    } else if (sfilataAudioRef.current) {
+      sfilataAudioRef.current.pause();
+      sfilataAudioRef.current.currentTime = 0;
+    }
+  }, [rs, paused, BASE]);
+  useEffect(() => () => { sfilataAudioRef.current?.pause(); sfilataAudioRef.current = null; }, []);
+
   // ── Client-side mission countdown ─────────────────────────────────────────
   useEffect(() => {
     if (!rs || rs.phase !== 'active' || !rs.missionStartedAt) {
@@ -3633,6 +3653,15 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
               <div className="text-2xl font-black text-white leading-relaxed text-center">
                 {rs.poliglottaTranslations?.[(rs.poliglottaPhraseIndex ?? 0)] ?? '…'}
               </div>
+              {!!rs.poliglottaPronunciations?.[(rs.poliglottaPhraseIndex ?? 0)] && (
+                <div className="flex flex-col items-center gap-1 rounded-xl px-4 py-2 w-full"
+                  style={{ background: 'rgba(52,211,153,0.12)', border: '1px solid rgba(52,211,153,0.35)' }}>
+                  <div className="text-[11px] font-black uppercase tracking-widest" style={{ color: '#34D399' }}>🗣️ Si legge così</div>
+                  <div className="text-xl font-black text-center" style={{ color: '#86efac' }}>
+                    {rs.poliglottaPronunciations[(rs.poliglottaPhraseIndex ?? 0)]}
+                  </div>
+                </div>
+              )}
               {rs.poliglottaStep === 'reveal' && (
                 <div className="text-sm text-white/45 text-center border-t border-white/10 pt-2 mt-1 w-full">
                   Originale: <span className="italic">{rs.poliglottaSubmittedPhrases?.[(rs.poliglottaPhraseIndex ?? 0)] ?? '—'}</span>

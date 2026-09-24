@@ -56,8 +56,8 @@ export const RISATE_MISSIONS: RisateMission[] = [
   {
     id: 'giornalista',
     index: 0,
-    title: 'NON DIRE "SÌ"',
-    subtitle: 'Rispondi a 10 domande in 30 sec senza dire "sì"',
+    title: 'NÉ SÌ NÉ NO',
+    subtitle: 'Rispondi a 10 domande in 30 sec senza dire "sì" né "no"',
     emoji: '🎙️',
     playerCount: 2,
     roles: ['Concorrente', 'Giornalista'],
@@ -65,17 +65,17 @@ export const RISATE_MISSIONS: RisateMission[] = [
     duration: 30,
     scoringType: 'journalist',
     activePublicAction: 'validate',
-    activePublicLabel: '🚨 HA DETTO "SÌ"!',
+    activePublicLabel: '🚨 HA DETTO "SÌ" o "NO"!',
     questions: [
       'Ti stai divertendo?',
-      'Vuoi vincere?',
+      'Ti stai annoiando?',
       'Ti piace la pizza?',
+      'Odi il gelato?',
+      'Vuoi vincere?',
+      'Hai paura di perdere?',
       'Sei pronto?',
-      'Hai mai mentito?',
-      'Hai fame adesso?',
-      'Hai Instagram?',
+      'Rinunci adesso?',
       'Sei competitivo?',
-      'Ti piace questa festa?',
       'Vuoi continuare?',
     ],
   },
@@ -388,6 +388,7 @@ export interface RisateState {
   poliglottaLanguage?: string | null;
   poliglottaSubmittedPhrases?: string[];
   poliglottaTranslations?: string[];
+  poliglottaPronunciations?: string[];
   poliglottaPhraseIndex?: number;
   // Part 6 — trova oggetto 3-target validation
   oggettoTargets?: string[];

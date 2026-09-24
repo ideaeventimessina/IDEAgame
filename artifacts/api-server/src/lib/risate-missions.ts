@@ -48,8 +48,8 @@ export const RISATE_MISSIONS: RisateMission[] = [
   {
     id: 'giornalista',
     index: 0,
-    title: 'NON DIRE "SÌ"',
-    subtitle: 'Rispondi a 10 domande in 30 sec senza dire "sì"',
+    title: 'NÉ SÌ NÉ NO',
+    subtitle: 'Rispondi a 10 domande in 30 sec senza dire "sì" né "no"',
     emoji: '🎙️',
     playerCount: 2,
     roles: ['Concorrente', 'Giornalista'],
@@ -57,17 +57,17 @@ export const RISATE_MISSIONS: RisateMission[] = [
     duration: 30,
     scoringType: 'journalist',
     activePublicAction: 'validate',
-    activePublicLabel: '🚨 HA DETTO "SÌ"!',
+    activePublicLabel: '🚨 HA DETTO "SÌ" o "NO"!',
     questions: [
       'Ti stai divertendo?',
-      'Vuoi vincere?',
+      'Ti stai annoiando?',
       'Ti piace la pizza?',
+      'Odi il gelato?',
+      'Vuoi vincere?',
+      'Hai paura di perdere?',
       'Sei pronto?',
-      'Hai mai mentito?',
-      'Hai fame adesso?',
-      'Hai Instagram?',
+      'Rinunci adesso?',
       'Sei competitivo?',
-      'Ti piace questa festa?',
       'Vuoi continuare?',
     ],
   },
@@ -318,3 +318,31 @@ export const LANGUAGE_PHRASES: Record<string, string> = {
   'Português 🇵🇹':  'Quero uma sandes de presunto com queijo e muito obrigado!',
   'العربية 🇸🇦':   'Uhibbu al-pizza wal-musiqa wa-ardaqsu kulla layla!',
 };
+
+/* ─── Frasi italiane da tradurre (fallback quando il pubblico non ne invia) ───
+   Servono per NON ripetere sempre la stessa frase: se ne pescano a caso e si
+   traducono al volo (con pronuncia). */
+export const ITALIAN_PHRASE_BANK: string[] = [
+  'Sono il re della pista da ballo e adoro la pizza!',
+  'Vorrei un gelato gigante mentre ballo sotto la pioggia!',
+  'Stasera festeggiamo tutti insieme fino al mattino!',
+  'Ho perso le chiavi ma ho trovato l\'amore della mia vita!',
+  'Balla con me come se non ci fosse un domani!',
+  'Mi sono innamorato di una patata al forno molto sexy!',
+  'Il mio cuore batte forte solo per la musica e per te!',
+  'Che meraviglia questa festa, non voglio andarmene mai!',
+  'Ti prometto che imparerò a ballare il tango entro domani!',
+  'Sono nervoso ma pronto a conquistare il palco stasera!',
+  'La vita è una festa e io sono l\'ospite d\'onore!',
+  'Datemi un microfono e vi farò ridere tutta la notte!',
+];
+
+/** Pesca n frasi italiane distinte a caso dal banco. */
+export function pickItalianPhrases(n: number): string[] {
+  const pool = [...ITALIAN_PHRASE_BANK];
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j]!, pool[i]!];
+  }
+  return pool.slice(0, Math.max(1, Math.min(n, pool.length)));
+}

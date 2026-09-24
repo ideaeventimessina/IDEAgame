@@ -180,6 +180,8 @@ export interface RisateState {
   poliglottaLanguage?: string | null;
   poliglottaSubmittedPhrases?: string[];
   poliglottaTranslations?: string[];
+  /** Pronuncia semplificata (come la legge un italiano) per ogni frase tradotta. */
+  poliglottaPronunciations?: string[];
   poliglottaPhraseIndex?: number;
   // Part 6 — trova oggetto 3-target validation
   oggettoTargets?: string[];

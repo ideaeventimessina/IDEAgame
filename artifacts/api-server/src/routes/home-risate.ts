@@ -17,6 +17,7 @@ import {
   applyAmbulanteToggle, applyOggettoTargetToggle,
   RISATE_MISSIONS, LANGUAGE_PHRASES,
 } from "../lib/risate-engine";
+import { pickItalianPhrases } from "../lib/risate-missions";
 import OpenAI from "openai";
 import { logger } from "../lib/logger";
 
@@ -131,13 +132,15 @@ function scheduleRisateVotingAutoClose(sessionId: string, cfg: Record<string, un
 }
 
 /* ── Part 5: AI phrase translation ──────────────────────────────────────── */
-async function translatePhrases(phrases: string[], targetLanguage: string): Promise<string[]> {
+/** Traduce le frasi nella lingua scelta e fornisce la PRONUNCIA semplificata
+ *  (come la leggerebbe un italiano), così il poliglotta sa come dirla. */
+async function translatePhrases(phrases: string[], targetLanguage: string): Promise<{ translated: string; pronunciation: string }[]> {
   const langClean = targetLanguage.replace(/\s*[\u{1F1E0}-\u{1F1FF}]{2}|🌍/gu, "").trim();
   /* Chiave diretta OpenAI: niente baseURL, l'SDK usa api.openai.com. */
   const client = new OpenAI({
     apiKey: process.env["OPENAI_API_KEY"] ?? "placeholder",
   });
-  const results: string[] = [];
+  const results: { translated: string; pronunciation: string }[] = [];
   for (const phrase of phrases) {
     try {
       const resp = await client.chat.completions.create({
@@ -145,16 +148,18 @@ async function translatePhrases(phrases: string[], targetLanguage: string): Prom
         messages: [
           {
             role: "system",
-            content: `Sei un traduttore. Traduci la frase italiana in ${langClean}. Rispondi SOLO con la traduzione, senza spiegazioni né virgolette.`,
+            content: `Traduci la frase italiana in ${langClean} e fornisci la pronuncia SEMPLIFICATA per un italiano (come si legge, con sillabe, senza alfabeto fonetico). Rispondi SOLO con JSON valido: {"traduzione":"...","pronuncia":"..."}`,
           },
           { role: "user", content: phrase },
         ],
-        max_tokens: 120,
+        max_tokens: 200,
         temperature: 0.3,
       });
-      results.push(resp.choices[0]?.message?.content?.trim() ?? phrase);
+      const raw = (resp.choices[0]?.message?.content ?? "").replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+      const parsed = JSON.parse(raw) as { traduzione?: string; pronuncia?: string };
+      results.push({ translated: parsed.traduzione?.trim() || phrase, pronunciation: parsed.pronuncia?.trim() || "" });
     } catch {
-      results.push(phrase); // Fallback: use original
+      results.push({ translated: phrase, pronunciation: "" }); // Fallback: usa l'originale
     }
   }
   return results;
@@ -222,23 +227,29 @@ router.post("/home/sessions/:id/risate/advance", async (req: Request, res: Respo
       const phrases = state.poliglottaSubmittedPhrases ?? [];
       const lang = state.publicChoice ?? state.poliglottaLanguage ?? "";
       let translations = state.poliglottaTranslations ?? [];
+      let pronunciations = state.poliglottaPronunciations ?? [];
 
       if (translations.length === 0) {
-        // Try AI translation; fallback to static phrase bank
-        const toTranslate = phrases.length > 0 ? phrases : [LANGUAGE_PHRASES[lang] ?? "Buonasera a tutti!"];
+        // Se il pubblico non ha inviato frasi, pescane 2 a caso dal banco italiano
+        // (così NON è sempre la stessa frase). Poi traduci con pronuncia.
+        const toTranslate = phrases.length > 0 ? phrases : pickItalianPhrases(2);
         try {
-          translations = await translatePhrases(toTranslate, lang);
+          const out = await translatePhrases(toTranslate, lang);
+          translations = out.map(o => o.translated);
+          pronunciations = out.map(o => o.pronunciation);
         } catch {
           translations = toTranslate;
+          pronunciations = toTranslate.map(() => "");
         }
-        // Ensure we have at least 2 phrases
-        if (translations.length === 0) translations = [LANGUAGE_PHRASES[lang] ?? "Buonasera a tutti!"];
-        if (translations.length === 1) translations = [translations[0]!, translations[0]!];
+        // Garantisci almeno 2 frasi
+        if (translations.length === 0) { translations = [LANGUAGE_PHRASES[lang] ?? "Buonasera a tutti!"]; pronunciations = [""]; }
+        if (translations.length === 1) { translations = [translations[0]!, translations[0]!]; pronunciations = [pronunciations[0] ?? "", pronunciations[0] ?? ""]; }
       }
 
       const stateReady: RisateState = {
         ...state,
         poliglottaTranslations: translations,
+        poliglottaPronunciations: pronunciations,
         poliglottaPhraseIndex: 0,
         poliglottaStep: "reading",
       };
@@ -400,12 +411,16 @@ router.post("/home/sessions/:id/risate/poliglotta-phrase", async (req: Request, 
     emitToRoom(homeRoom(id), "home:percorso_update", { state: newState });
 
     let translations: string[];
+    let pronunciations: string[];
     try {
-      translations = await translatePhrases(newPhrases, lang);
+      const out = await translatePhrases(newPhrases, lang);
+      translations = out.map(o => o.translated);
+      pronunciations = out.map(o => o.pronunciation);
     } catch {
       translations = newPhrases;
+      pronunciations = newPhrases.map(() => "");
     }
-    newState = { ...newState, poliglottaTranslations: translations, poliglottaStep: "phrase_input" };
+    newState = { ...newState, poliglottaTranslations: translations, poliglottaPronunciations: pronunciations, poliglottaStep: "phrase_input" };
   }
 
   await saveRisateState(id, newState, cfg);

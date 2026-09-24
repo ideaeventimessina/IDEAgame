@@ -2964,7 +2964,7 @@ function PercorsoHomeController({ sessionId, player, payload, timeLeft }: {
             disabled={busy} whileTap={{ scale: 0.92 }}
             className="rounded-2xl px-8 py-5 text-2xl font-black text-white w-full"
             style={{ background: 'linear-gradient(135deg,#ef4444,#b91c1c)', boxShadow: '0 0 50px rgba(239,68,68,0.45)' }}>
-            🚨 {mission?.activePublicLabel ?? 'HA DETTO SÌ!'}
+            🚨 {mission?.activePublicLabel ?? 'HA DETTO SÌ o NO!'}
           </motion.button>
         )}
 
@@ -3015,12 +3015,24 @@ function PercorsoHomeController({ sessionId, player, payload, timeLeft }: {
           </motion.button>
         )}
 
-        {ap === 'found' && (
+        {/* Cercatori: prompt "cerca!" — non confermano da soli */}
+        {ap === 'found' && isBooked && mission?.id === 'oggetto' && (
+          <div className="rounded-2xl px-6 py-5 w-full text-center"
+            style={{ background: 'rgba(52,211,153,0.10)', border: '2px solid rgba(52,211,153,0.4)' }}>
+            <div className="text-lg font-black" style={{ color: '#34D399' }}>🔍 CERCA E PORTA QUI!</div>
+            <div className="text-sm text-white/70 mt-1">{(rs.oggettoTargets ?? []).join(' · ')}</div>
+          </div>
+        )}
+
+        {ap === 'found' && !isBooked && (
           <div className="flex flex-col gap-2 w-full">
             {mission?.id === 'oggetto' && (rs.oggettoTargets ?? []).length > 0 ? (
-              // Part 6: 3-target separate validation
+              // Part 6: 3-target separate validation — pannello prominente per il PUBBLICO
               <>
-                <div className="text-xs text-white/50 mb-1">🔍 Convalida i bersagli trovati (2 voti = trovato):</div>
+                <div className="rounded-xl px-4 py-2 mb-1 text-center text-sm font-black"
+                  style={{ background: 'rgba(52,211,153,0.15)', border: '1px solid rgba(52,211,153,0.45)', color: '#34D399' }}>
+                  👀 PUBBLICO: quando lo portano, tocca il bersaglio! (2 conferme = trovato)
+                </div>
                 {rs.oggettoTargets!.map((target, idx) => {
                   const found = rs.oggettoFound?.[idx] ?? false;
                   return (

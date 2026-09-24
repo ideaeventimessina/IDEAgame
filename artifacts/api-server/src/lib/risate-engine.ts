@@ -541,7 +541,7 @@ export function applyPublicAction(
           publicEvents: [{ emoji: "💥", nickname: "Il pubblico", ts: Date.now() }, ...s.publicEvents.slice(0, 19)],
         };
         if (err >= 2) {
-          s.lastFlash = { text: '❌ Ha detto "sì" 2 volte! Missione fallita!', type: "event" };
+          s.lastFlash = { text: '❌ Ha detto "sì" o "no" 2 volte! Missione fallita!', type: "event" };
           return { state: s, autoAdvance: true };
         }
       }
