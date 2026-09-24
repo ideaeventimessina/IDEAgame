@@ -2343,7 +2343,7 @@ function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, bal
   if (mode === 'home-quizzone')   return <QuizzoneBoard payload={p} session={session} players={players}/>;
   if (mode === 'home-ballo')      return <BalloBoard session={session} payload={p} players={players} balloEnergies={balloEnergies ?? {}} balloCurrent={balloCurrent ?? {}} balloResult={balloResult ?? null} balloVotes={balloVotes ?? {}} onReset={onBalloReset} onStageNext={onStageNext} onEndBallo={onEndBallo} sensitivity={balloSensitivity ?? 1} onSensitivity={onSensitivity}/>;
   if (mode === 'home-percorso')   return <PercorsoBoard sessionId={session.id} payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
-  if (mode === 'home-coppie')     return <CoppieBoard payload={p} onNext={onNext} sessionId={session.id}/>;
+  if (mode === 'home-coppie')     return <CoppieBoard payload={p} onNext={onNext} sessionId={session.id} players={players}/>;
   if (mode === 'home-saramusica') return <SaraMusicaBoard payload={p} session={session} players={players}/>;
   if (mode === 'home-adult')      return <AdultOnlyBoard payload={p} session={session} players={players}/>;
   if (mode === 'home-wordback-setup') return <WordBackSetupBoard payload={p} sessionId={session.id}/>;
@@ -6232,11 +6232,13 @@ interface CoppieCard { id: string; text: string; imageUrl?: string; pairId: numb
 
 const BASE_URL_COPPIE = (import.meta.env.BASE_URL as string | undefined) ?? '/';
 
-function CoppieBoard({ payload, onNext, sessionId }: { payload: Record<string,unknown>; onNext?: () => void; sessionId?: string }) {
+function CoppieBoard({ payload, onNext, sessionId, players }: { payload: Record<string,unknown>; onNext?: () => void; sessionId?: string; players?: HomePlayer[] }) {
   const themePhase = String(payload.themePhase ?? 'playing');
   const cards = (payload.cards as CoppieCard[]) ?? [];
   const matched = Number(payload.matchedPairs ?? 0);
   const total = Number(payload.totalPairs ?? 0);
+  const currentTurn = payload.currentTurn as string | null | undefined;
+  const turnPlayer = currentTurn ? (players ?? []).find(p => p.id === currentTurn) : null;
   const proposedThemes = (payload.proposedThemes ?? []) as { id: string; text: string; proposedBy: string }[];
   const themeTimerEndsAt = payload.themeTimerEndsAt as string | null;
   const visibilityActiveUntil = Number(payload.visibilityActiveUntil ?? 0);
@@ -6455,6 +6457,16 @@ function CoppieBoard({ payload, onNext, sessionId }: { payload: Record<string,un
           style={{background:'rgba(244,114,182,0.18)',color:'#F472B6',border:'1px solid rgba(244,114,182,0.45)'}}>
           {matched}/{total} coppie
         </div>
+        {turnPlayer && (
+          <motion.div key={turnPlayer.id} initial={{ scale: 0.9, opacity: 0.6 }} animate={{ scale: 1, opacity: 1 }}
+            className="flex items-center gap-2 rounded-full px-5 py-1.5 text-base font-black"
+            style={{ background: `${turnPlayer.avatarColor}22`, border: `2px solid ${turnPlayer.avatarColor}`, color: '#fff' }}>
+            <span className="flex h-7 w-7 items-center justify-center rounded-full text-sm font-black" style={{ background: turnPlayer.avatarColor, color: '#0a0015' }}>
+              {turnPlayer.nickname[0]?.toUpperCase()}
+            </span>
+            Tocca a {turnPlayer.nickname}
+          </motion.div>
+        )}
         {!preview && matched < total && (
           <button onClick={startPreview}
             className="flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-black"

@@ -2268,8 +2268,10 @@ function CoppieController({ payload, onFlip, player, previewUntil, sessionId }: 
   const cards = (payload.cards as CoppieCard[]) ?? [];
   const matched = Number(payload.matchedPairs ?? 0);
   const total = Number(payload.totalPairs ?? 0);
-  const lastFlippedBy = payload.lastFlippedBy as string | null;
-  const isMyTurn = !lastFlippedBy || lastFlippedBy === player.id || (payload.currentFlipped as string[])?.length === 0;
+  // Turno vero dal server: è il mio turno solo se currentTurn === il mio id.
+  // (Se il server non ha ancora un turno — es. vecchie sessioni — fallback permissivo.)
+  const currentTurn = payload.currentTurn as string | null | undefined;
+  const isMyTurn = currentTurn == null ? true : currentTurn === player.id;
   const cols = Math.min(Math.ceil(Math.sqrt(cards.length)), 4) || 4;
   const proposedThemes = (payload.proposedThemes ?? []) as { id: string; text: string; proposedBy: string }[];
   const themeTimerEndsAt = payload.themeTimerEndsAt as string | null;

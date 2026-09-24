@@ -184,6 +184,10 @@ interface CoppiePayload {
   totalPairs: number;
   points: number;
   lastFlippedBy: string | null;
+  /** Turno vero: id del giocatore che può girare adesso (null = chiunque). */
+  currentTurn?: string | null;
+  /** Ordine di rotazione dei turni (id dei giocatori connessi all'avvio). */
+  turnOrder?: string[];
   timeLimit: number;
   themePhase?: 'suggestion' | 'playing';
   proposedThemes?: { id: string; text: string; proposedBy: string }[];
@@ -357,6 +361,38 @@ function buildCoppiePayload(
     visibilityUsed: {},
     visibilityActiveUntil: null,
   };
+}
+
+/** Prossimo giocatore connesso nel giro dei turni dopo `current` (wrap). */
+function nextCoppieTurn(turnOrder: string[], current: string | null | undefined, connected: Set<string>): string | null {
+  const order = turnOrder.filter(pid => connected.has(pid));
+  if (order.length === 0) return null;
+  const idx = current ? order.indexOf(current) : -1;
+  return order[(idx + 1) % order.length] ?? order[0]!;
+}
+
+/** Imposta l'ordine dei turni (giocatori connessi) e assegna il primo turno. */
+function withCoppieTurn(payload: CoppiePayload, players: { id: string; isConnected: boolean }[]): CoppiePayload {
+  const order = players.filter(p => p.isConnected).map(p => p.id);
+  return { ...payload, turnOrder: order, currentTurn: order[0] ?? null };
+}
+
+/** Popola le immagini delle carte (una foto per coppia) usando la cache condivisa.
+ *  Le carte senza immagine restano testuali (i frontend gestiscono entrambi). */
+async function enrichCoppieImages(payload: CoppiePayload): Promise<CoppiePayload> {
+  // Una immagine per pairId (le due carte della coppia condividono la stessa foto).
+  const byPair = new Map<number, string>(); // pairId → testo rappresentativo
+  for (const c of payload.cards) {
+    if (!byPair.has(c.pairId) && !c.imageUrl && c.text) byPair.set(c.pairId, c.text);
+  }
+  const entries = await Promise.all(
+    [...byPair.entries()].map(async ([pairId, text]) => [pairId, await cachedWikiImage(text).catch(() => null)] as const),
+  );
+  const imgByPair = new Map<number, string>();
+  for (const [pairId, url] of entries) if (url) imgByPair.set(pairId, url);
+  if (imgByPair.size === 0) return payload;
+  const cards = payload.cards.map(c => (!c.imageUrl && imgByPair.has(c.pairId)) ? { ...c, imageUrl: imgByPair.get(c.pairId)! } : c);
+  return { ...payload, cards };
 }
 
 /** 3. Quizzone — carica domande dal DB (quiz_packs). Answers are shuffled per round. */
@@ -4852,6 +4888,18 @@ router.post("/home/sessions/:id/flip", async (req, res): Promise<void> => {
   if (!card) { res.status(404).json({ error: "Carta non trovata" }); return; }
   if (card.flipped || card.matched) { res.status(409).json({ error: "Carta non disponibile" }); return; }
 
+  // ── Turno vero: solo il giocatore di turno può girare. Se il giocatore di turno
+  // è disconnesso (o non c'è ancora un turno), il richiedente prende il turno. ──
+  const players0 = await getPlayers(id);
+  const connected = new Set(players0.filter(p => p.isConnected).map(p => p.id));
+  const turnOrder = payload.turnOrder ?? [];
+  let activeTurn = payload.currentTurn ?? null;
+  if (activeTurn && !connected.has(activeTurn)) activeTurn = null; // turno "orfano" → si sblocca
+  if (activeTurn && playerId && activeTurn !== playerId) {
+    res.status(409).json({ error: "Non è il tuo turno" }); return;
+  }
+  const turnHolder = activeTurn ?? (playerId ?? null);
+
   const newCards = payload.cards.map(c => c.id === cardId ? { ...c, flipped: true } : c);
   const newFlipped = [...currentFlipped, cardId];
 
@@ -4889,20 +4937,25 @@ router.post("/home/sessions/:id/flip", async (req, res): Promise<void> => {
     currentFlipped: finalFlipped,
     matchedPairs: newMatchedPairs,
     lastFlippedBy: playerId ?? null,
+    // Chi ha girato tiene il turno (match → rigioca; mismatch → passa dopo l'unflip).
+    currentTurn: turnHolder,
   };
 
   await db.update(homeSessionsTable).set({ roundPayload: newPayload }).where(eq(homeSessionsTable.id, id));
 
-  const players = await getPlayers(id);
+  const players = players0;
   emitToRoom(homeRoom(id), "home:card_flip", { payload: newPayload, matched, playerId: playerId ?? null, players });
 
   if (newFlipped.length === 2 && !matched) {
+    // Coppia sbagliata: dopo 1.5s ricopri le carte E passa il turno al prossimo.
+    const nextTurn = nextCoppieTurn(turnOrder, turnHolder, connected);
     const unflipPayload: CoppiePayload = {
       ...newPayload,
       cards: newPayload.cards.map(c =>
         newFlipped.includes(c.id) && !c.matched ? { ...c, flipped: false } : c
       ),
       currentFlipped: [],
+      currentTurn: nextTurn,
     };
     setTimeout(async () => {
       try {
@@ -4983,9 +5036,11 @@ router.post("/home/sessions/:id/coppie/select-theme", async (req, res): Promise<
   // ── Path A: DB card set selected (by ID) ──────────────────────────────────
   if (setId && typeof setId === "string") {
     logger.info({ sessionId: id, setId }, "[JONNY_COPPIE_AI] DB set selected");
-    const newPayload = await loadCoppieByTheme(setId) as RoundPayload;
-    await db.update(homeSessionsTable).set({ roundPayload: newPayload }).where(eq(homeSessionsTable.id, id));
     const players = await getPlayers(id);
+    const built = await loadCoppieByTheme(setId) as CoppiePayload;
+    const withImages = await enrichCoppieImages(built);
+    const newPayload = withCoppieTurn(withImages, players) as RoundPayload;
+    await db.update(homeSessionsTable).set({ roundPayload: newPayload }).where(eq(homeSessionsTable.id, id));
     emitHomeState(id, { ...session, roundPayload: newPayload }, players);
     res.json({ ok: true, theme: (newPayload as Record<string,unknown>)["category"] ?? setId });
     return;
@@ -5003,9 +5058,11 @@ router.post("/home/sessions/:id/coppie/select-theme", async (req, res): Promise<
   );
   const words = bankKey ? THEMED_WORD_BANKS[bankKey] : FALLBACK_COPPIE_ITEMS;
   logger.info({ sessionId: id, theme: selected, bankKey }, "[JONNY_COPPIE_AI] word-bank theme selected");
-  const newPayload = buildCoppieFromWords(words!, payload.roundIndex, selected);
-  await db.update(homeSessionsTable).set({ roundPayload: newPayload }).where(eq(homeSessionsTable.id, id));
   const players = await getPlayers(id);
+  const built = buildCoppieFromWords(words!, payload.roundIndex, selected);
+  const withImages = await enrichCoppieImages(built);
+  const newPayload = withCoppieTurn(withImages, players);
+  await db.update(homeSessionsTable).set({ roundPayload: newPayload }).where(eq(homeSessionsTable.id, id));
   emitHomeState(id, { ...session, roundPayload: newPayload }, players);
   res.json({ ok: true, theme: selected });
 });
