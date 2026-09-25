@@ -299,7 +299,26 @@ export function generateSaraMusicaFallback(themeId: string, count: number, diffi
 
 // ── AI generator ──────────────────────────────────────────────────────────────
 
-export async function generateSaraMusicaRoundsAI(themeId: string, count: number, difficulty: "easy" | "medium" | "hard" = "medium"): Promise<MusicRound[]> {
+/** Risolve il titolo di una canzone in una clip YouTube reale. Iniettato da
+ *  home.ts (usa searchYouTube + estimateChorusStart). Restituisce null se non
+ *  trovata: l'AI NON sa inventare ID YouTube, per questo la risoluzione è esterna. */
+export type ClipResolver = (title: string, artist: string | undefined) => Promise<{ youtubeId: string; startSecond: number; durationSeconds: number } | null>;
+
+export interface SaraGenOpts {
+  resolveClip?: ClipResolver;
+  /** Chiavi (canzone/domanda normalizzate) già usate da questo gruppo: da NON ripetere. */
+  exclude?: string[];
+}
+
+const CLIP_TYPES: MusicRoundType[] = ["guess_song", "guess_artist", "speed_music", "complete_lyrics", "final_tormentone"];
+
+/** Chiave normalizzata per anti-ripetizione (canzone se c'è, altrimenti domanda). */
+export function smRoundKey(r: { songTitle?: string; artist?: string; question: string }): string {
+  const base = r.songTitle ? `${r.songTitle} ${r.artist ?? ""}` : r.question;
+  return base.toLowerCase().replace(/[^a-z0-9àèéìòù]+/gi, " ").trim();
+}
+
+export async function generateSaraMusicaRoundsAI(themeId: string, count: number, difficulty: "easy" | "medium" | "hard" = "medium", exclude: string[] = []): Promise<MusicRound[]> {
   /* Chiave diretta OpenAI: niente baseURL, l'SDK usa api.openai.com. */
   const apiKey  = process.env["OPENAI_API_KEY"];
   if (!apiKey) throw new Error("OPENAI_API_KEY non impostata");
@@ -313,24 +332,30 @@ export async function generateSaraMusicaRoundsAI(themeId: string, count: number,
     ? "Difficile — artisti di nicchia, canzoni meno note, clues ambigui, timeLimit ridotti"
     : "Medio — equilibrato, artisti noti ma non banali";
 
-  const systemPrompt = `Sei Jonny, l'host di un gioco musicale per feste italiane. Genera domande musicali sul tema "${themeName}" per un quiz party.
-Difficoltà richiesta: ${diffLabel}.
+  // Nonce + istruzione di varietà per NON ripetere sempre gli stessi pezzi tra una
+  // partita e l'altra (l'AI tende a ripescare le hit ovvie senza questo spintone).
+  const nonce = Math.random().toString(36).slice(2, 8);
+  const excludeNote = exclude.length > 0
+    ? `\nNON usare queste canzoni/domande GIÀ FATTE da questo gruppo (varia completamente):\n${exclude.slice(0, 60).join(" · ")}`
+    : "";
+
+  const systemPrompt = `Sei Jonny, l'host di un gioco musicale per feste italiane. Genera domande musicali sul tema "${themeName}".
+Difficoltà: ${diffLabel}.
 Rispondi SOLO con un array JSON valido, senza markdown, senza spiegazioni.`;
 
   const userPrompt = `Genera esattamente ${count} domande musicali sul tema "${themeName}" (musica italiana e internazionale).
+Semina di varietà: ${nonce}. Spazia tra artisti, epoche e sottogeneri diversi: NON limitarti alle 4-5 hit più ovvie.${excludeNote}
 Mescola questi tipi: guess_song, guess_artist, complete_lyrics, speed_music, song_vs_song, progressive_clue_music.
 L'ultima domanda DEVE essere di tipo final_tormentone con points: 200.
 
 Struttura JSON di ogni elemento:
 {
-  "id": "ai_0",
   "type": "guess_song|guess_artist|complete_lyrics|speed_music|song_vs_song|progressive_clue_music|final_tormentone",
-  "theme": "${themeId}",
   "question": "domanda in italiano",
   "answers": ["risposta A", "risposta B", "risposta C", "risposta D"],
   "correctAnswerIndex": 0,
-  "songTitle": "titolo (opzionale)",
-  "artist": "artista (opzionale)",
+  "songTitle": "titolo ESATTO della canzone (obbligatorio per guess_song/guess_artist/speed_music/complete_lyrics/final_tormentone)",
+  "artist": "nome ESATTO dell'artista (obbligatorio quando c'è songTitle)",
   "year": 2000,
   "clues": ["indizio 1", "indizio 2", "indizio 3"],
   "points": 100,
@@ -339,12 +364,10 @@ Struttura JSON di ogni elemento:
 }
 
 Regole:
-- song_vs_song ha SOLO 2 risposte
-- progressive_clue_music ha SEMPRE 3 clues e 4 risposte
-- speed_music: timeLimit 8, domanda velocissima
-- final_tormentone: points 200, timeLimit 25, domanda emozionante
-- Tutte le domande in italiano
-- Usa artisti e canzoni reali e verificabili
+- songTitle e artist devono essere REALI e verificabili (li useremo per trovare il video vero su YouTube): scrivi il titolo e l'artista esatti.
+- song_vs_song ha SOLO 2 risposte; progressive_clue_music ha SEMPRE 3 clues e 4 risposte.
+- speed_music: domanda velocissima; final_tormentone: domanda emozionante.
+- Tutte le domande in italiano. Una sola risposta corretta inequivocabile.
 - Rispetta il livello di difficoltà: ${diffLabel}`;
 
   const completion = await openai.chat.completions.create({
@@ -357,7 +380,6 @@ Regole:
   });
 
   const raw = completion.choices[0]?.message?.content ?? "";
-  // Strip possible markdown fences
   const jsonStr = raw.replace(/^```json?\n?/, "").replace(/\n?```$/, "").trim();
   const parsed = JSON.parse(jsonStr) as unknown[];
 
@@ -380,22 +402,44 @@ Regole:
 
 // ── Main export ───────────────────────────────────────────────────────────────
 
-export async function generateSaraMusicaRounds(themeId: string, count: number, difficulty: "easy" | "medium" | "hard" = "medium"): Promise<MusicRound[]> {
-  logger.info({ themeId, count, difficulty }, "[JONNY_SARAMUSICA_AI] start");
+export async function generateSaraMusicaRounds(themeId: string, count: number, difficulty: "easy" | "medium" | "hard" = "medium", opts: SaraGenOpts = {}): Promise<MusicRound[]> {
+  const { resolveClip, exclude = [] } = opts;
+  logger.info({ themeId, count, difficulty, exclude: exclude.length }, "[JONNY_SARAMUSICA_AI] start");
+  const excludeSet = new Set(exclude);
   try {
-    const rounds = await generateSaraMusicaRoundsAI(themeId, count, difficulty);
-    if (!Array.isArray(rounds) || rounds.length === 0) throw new Error("AI returned empty");
-    // SaraMusica DEVE avere clip musicali da far suonare/cantare. L'AI non produce
-    // youtubeClip affidabili → se mancano, usa il banco statico (clip reali curate).
-    const withClips = rounds.filter(r => r.youtubeClip?.youtubeId).length;
-    if (withClips < Math.ceil(rounds.length / 2)) {
-      logger.warn({ themeId, withClips, total: rounds.length }, "[JONNY_SARAMUSICA_AI] round AI senza clip → uso banco con clip reali");
-      return generateSaraMusicaFallback(themeId, count, difficulty);
+    // Chiedo qualche round in più: alcuni li scarto per doppioni/già-visti.
+    const aiRounds = await generateSaraMusicaRoundsAI(themeId, count + 4, difficulty, exclude);
+    if (!Array.isArray(aiRounds) || aiRounds.length === 0) throw new Error("AI returned empty");
+
+    // Anti-ripetizione + dedup interno.
+    const seen = new Set<string>();
+    const fresh = aiRounds.filter(r => {
+      const k = smRoundKey(r);
+      if (excludeSet.has(k) || seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    const chosen = fresh.slice(0, count);
+
+    // Risoluzione clip REALI: l'AI ha dato titolo+artista, noi troviamo il video vero.
+    if (resolveClip) {
+      await Promise.all(chosen.map(async r => {
+        if (!CLIP_TYPES.includes(r.type) || !r.songTitle) return;
+        try {
+          const clip = await resolveClip(r.songTitle, r.artist);
+          if (clip?.youtubeId) {
+            r.youtubeClip = { youtubeId: clip.youtubeId, startSecond: clip.startSecond, durationSeconds: clip.durationSeconds, clipType: r.type === "guess_artist" ? "artist_guess" : "chorus_guess" };
+          }
+        } catch { /* resta round testuale */ }
+      }));
     }
-    logger.info({ themeId, count, difficulty, generated: rounds.length, withClips }, "[JONNY_SARAMUSICA_AI] success");
-    return rounds;
+
+    const withClips = chosen.filter(r => r.youtubeClip?.youtubeId).length;
+    logger.info({ themeId, count, difficulty, generated: chosen.length, withClips }, "[JONNY_SARAMUSICA_AI] success");
+    if (chosen.length >= Math.min(count, 4)) return chosen;
+    throw new Error("Troppi pochi round unici");
   } catch (err) {
-    logger.warn({ err, themeId, count, difficulty }, "[JONNY_SARAMUSICA_AI] fallback");
-    return generateSaraMusicaFallback(themeId, count, difficulty);
+    logger.warn({ err, themeId, count, difficulty }, "[JONNY_SARAMUSICA_AI] fallback al banco");
+    return generateSaraMusicaFallback(themeId, count, difficulty).filter(r => !excludeSet.has(smRoundKey(r)));
   }
 }

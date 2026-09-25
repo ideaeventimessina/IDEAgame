@@ -255,10 +255,16 @@ function validateAndRepair(raw: Record<string, unknown>, theme: string): QuizQue
   };
 }
 
+/** Chiave normalizzata di una domanda per l'anti-ripetizione. */
+export function quizQuestionKey(q: { question: string }): string {
+  return q.question.toLowerCase().replace(/[^a-z0-9àèéìòù]+/gi, ' ').trim();
+}
+
 async function generateQuizQuestionsAI(
   themeText: string,
   count: number,
   difficulty: "easy" | "medium" | "hard",
+  exclude: string[] = [],
 ): Promise<QuizQuestion[]> {
   /* Endpoint ufficiale OpenAI + chiave diretta: la spesa va su OpenAI. */
   const baseUrl = "https://api.openai.com/v1";
@@ -274,8 +280,15 @@ async function generateQuizQuestionsAI(
       ? `DIFFICILE: giocano APPASSIONATI/PROFESSIONISTI. Domande specifiche e poco intuibili: dettagli, nomi e date meno noti, curiosità da veri esperti del tema. Evita le nozioni scontate.`
       : `MEDIA: giocano FAMIGLIE. Difficoltà media: né banalità da bambini né domande da specialisti.`;
 
+  // Varietà tra una partita e l'altra: nonce + lista di domande già fatte da NON ripetere.
+  const nonce = Math.random().toString(36).slice(2, 8);
+  const excludeNote = exclude.length > 0
+    ? `\nNON riproporre queste domande GIÀ FATTE da questo gruppo (cambia completamente sottotema/fatto):\n${exclude.slice(0, 60).join(" | ")}\n`
+    : "";
+
   const systemPrompt = `Sei Jonny, il co-host di IDEAgame, un'app di quiz per feste italiane.
 Genera esattamente ${count} domande sul tema: "${themeText}".
+Semina di varietà: ${nonce}. Spazia su sottotemi/personaggi/anni diversi, non ripetere i fatti più ovvi.${excludeNote}
 TUTTE le domande DEVONO essere strettamente sul tema indicato.
 LIVELLO DI DIFFICOLTÀ RICHIESTO: ${diffLabel}
 Rispondi SOLO con un array JSON valido. Nessun testo aggiuntivo.
@@ -362,11 +375,11 @@ REGOLE DI QUALITÀ (IMPORTANTISSIME — una violazione rovina la partita):
     if (q.type !== 'image_vs_image') return true;
     return /^https?:/i.test(q.imageA ?? '') && /^https?:/i.test(q.imageB ?? '');
   });
-  // Dedup di sicurezza: niente due domande uguali/riformulate (rete contro l'AI che
-  // ogni tanto ripete). Confronto sul testo normalizzato della domanda.
-  const seen = new Set<string>();
+  // Dedup di sicurezza + anti-ripetizione tra partite: niente domande uguali né
+  // domande già fatte da questo gruppo (exclude). Confronto sul testo normalizzato.
+  const seen = new Set<string>(exclude);
   const deduped = usable.filter(q => {
-    const key = q.question.toLowerCase().replace(/[^a-z0-9àèéìòù]+/gi, ' ').trim();
+    const key = quizQuestionKey(q);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -436,6 +449,7 @@ export async function generateQuizAsync(
   themeId: string,
   count: number,
   difficulty: "easy" | "medium" | "hard" = "medium",
+  exclude: string[] = [],
 ): Promise<QuizQuestion[]> {
   const knownTheme = QUIZ_THEMES.find(t => t.id === themeId);
   const hasBank    = knownTheme && BANK.filter(q => q.theme === themeId).length >= 5;
@@ -446,7 +460,7 @@ export async function generateQuizAsync(
     // prima di arrendersi. Chiedo qualche domanda in più (l'AI ne scarta in validazione).
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
-        const aiQuestions = await generateQuizQuestionsAI(themeText, count + 4, difficulty);
+        const aiQuestions = await generateQuizQuestionsAI(themeText, count + 4, difficulty, exclude);
         if (aiQuestions.length >= Math.min(count, 3)) {
           return aiQuestions.slice(0, count);
         }
@@ -457,12 +471,14 @@ export async function generateQuizAsync(
     }
     // Tema NOTO (es. "Misto"): un banco misto è comunque un ripiego a tema accettabile.
     if (knownTheme) {
-      const bankQuestions = generateQuiz('cultura_generale', count, difficulty);
+      const excl = new Set(exclude);
+      const bankQuestions = generateQuiz('cultura_generale', count, difficulty).filter(q => !excl.has(quizQuestionKey(q)));
       return bankQuestions.map(q => ({ ...q, theme: themeId }));
     }
     // Tema CUSTOM sconosciuto: NON servire un quiz fuori tema. Errore onesto.
     throw new QuizThemeUnavailableError(themeText);
   }
 
-  return generateQuiz(themeId, count, difficulty);
+  const excl = new Set(exclude);
+  return generateQuiz(themeId, count, difficulty).filter(q => !excl.has(quizQuestionKey(q)));
 }

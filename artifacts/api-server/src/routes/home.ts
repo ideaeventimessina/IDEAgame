@@ -23,12 +23,12 @@ import { Router, type IRouter } from "express";
 import multer from "multer";
 import OpenAI from "openai";
 import { createBlankKaraokeState, FREESTYLE_BEATS, type FreestyleBeat } from "../lib/karaoke-home-engine.js";
-import { generateQuiz, generateQuizAsync, QUIZ_THEMES, QuizThemeUnavailableError } from "../lib/quiz-generator.js";
-import { generateSaraMusicaRounds, SM_THEMES, type MusicRound } from "../lib/saramusica-generator.js";
+import { generateQuiz, generateQuizAsync, quizQuestionKey, QUIZ_THEMES, QuizThemeUnavailableError } from "../lib/quiz-generator.js";
+import { generateSaraMusicaRounds, smRoundKey, SM_THEMES, type MusicRound } from "../lib/saramusica-generator.js";
 import { cachedWikiImage } from "../lib/image-cache.js";
 import { pickBalloSongs } from "../lib/ballo-library.js";
 import { searchYouTube } from "./home-karaoke.js";
-import { BOTTLE_LEVELS, pickFromBank, assignSpectatorPowers, pickRandomTruth, pickRandomDare, type BottleChallenge, type BottleLevel } from "../lib/adult-generator.js";
+import { BOTTLE_LEVELS, pickFromBank, assignSpectatorPowers, pickRandomTruth, pickRandomDare, generateAdultChallengesAI, type BottleChallenge, type BottleLevel } from "../lib/adult-generator.js";
 import { eq, and, or, lt, asc, desc, isNull, notInArray } from "drizzle-orm";
 import {
   db,
@@ -1490,11 +1490,19 @@ router.post("/home/sessions/:id/quiz/select-count", async (req, res): Promise<vo
   // After 3s generate questions and start countdown
   setTimeout(async () => {
     try {
-      const questions = await generateQuizAsync(themeId, questionCount, difficulty);
-      logger.info({ sessionId: id, selectedTheme: themeId, requestedDifficulty: difficulty, questionCount, firstQuestionTheme: questions[0]?.theme }, "[QUIZ_GENERATE]");
+      // Anti-ripetizione: escludi le domande già viste da questo gruppo.
+      const cfgQ = (session.gameConfig ?? {}) as Record<string, unknown>;
+      const usedQ = ((cfgQ["usedContent"] ?? {}) as Record<string, string[]>)["quizzone"] ?? [];
+      const questions = await generateQuizAsync(themeId, questionCount, difficulty, usedQ);
+      logger.info({ sessionId: id, selectedTheme: themeId, requestedDifficulty: difficulty, questionCount, firstQuestionTheme: questions[0]?.theme, excluded: usedQ.length }, "[QUIZ_GENERATE]");
       const sess2 = await getSession(id);
       if (!sess2) return;
       const rp2 = (sess2.roundPayload ?? {}) as Record<string, unknown>;
+      // Registra le domande come "già viste" (anti-ripetizione tra partite). Cap 400.
+      const cfg2 = (sess2.gameConfig ?? {}) as Record<string, unknown>;
+      const mergedQ = [...usedQ, ...questions.map(q => quizQuestionKey(q))].slice(-400);
+      const usedC = { ...((cfg2["usedContent"] ?? {}) as Record<string, string[]>), quizzone: mergedQ };
+      await db.update(homeSessionsTable).set({ gameConfig: { ...cfg2, usedContent: usedC } }).where(eq(homeSessionsTable.id, id));
       // Countdown 3
       await qzUpdate(id, { ...rp2, questions, phase: "countdown", countdownValue: 3 });
       setTimeout(async () => {
@@ -1796,7 +1804,23 @@ router.post("/home/sessions/:id/saramusica/select-count", async (req, res): Prom
   res.json({ ok: true });
   setTimeout(async () => {
     try {
-      const rounds = await generateSaraMusicaRounds(themeId, roundCount, smDifficulty);
+      // Anti-ripetizione: escludi le canzoni/domande già viste da questo gruppo.
+      const cfg0 = (session.gameConfig ?? {}) as Record<string, unknown>;
+      const usedAll = (cfg0["usedContent"] ?? {}) as Record<string, string[]>;
+      const usedSM = usedAll["saramusica"] ?? [];
+      // Resolver clip REALE: l'AI dà titolo+artista, noi troviamo il video vero.
+      const resolveClip = async (title: string, artist: string | undefined) => {
+        try {
+          const q = `${title} ${artist ?? ""}`.trim();
+          const r = await searchYouTube(q, "song") as { ok?: boolean; results?: Array<{ videoId: string; durationSeconds?: number }> };
+          const hit = r.ok && r.results && r.results[0] ? r.results[0] : null;
+          if (!hit?.videoId) return null;
+          const dur = Number(hit.durationSeconds ?? 0);
+          const startSecond = await estimateChorusStart(title, artist ?? "", dur);
+          return { youtubeId: hit.videoId, startSecond, durationSeconds: 15 };
+        } catch { return null; }
+      };
+      const rounds = await generateSaraMusicaRounds(themeId, roundCount, smDifficulty, { resolveClip, exclude: usedSM });
       // Inietta round "sagoma → indovina il cantante" se ci sono sagome caricate.
       const silRounds = await buildSilhouetteRounds(themeId, roundCount >= 10 ? 2 : 1);
       if (silRounds.length > 0) {
@@ -1813,8 +1837,15 @@ router.post("/home/sessions/:id/saramusica/select-count", async (req, res): Prom
         };
         rounds.splice(Math.floor(rounds.length / 2), 0, duelRound);
       }
+      // Registra le canzoni/domande di questo giro come "già viste" (anti-ripetizione
+      // tra una partita e l'altra dello stesso gruppo). Cap a 300 per non crescere all'infinito.
+      const newKeys = rounds.filter(r => r.type !== "singing_duel").map(r => smRoundKey(r));
+      const mergedSM = [...usedSM, ...newKeys].slice(-300);
       const sess2 = await getSession(id);
       if (!sess2) return;
+      const cfg2 = (sess2.gameConfig ?? {}) as Record<string, unknown>;
+      const used2 = { ...((cfg2["usedContent"] ?? {}) as Record<string, string[]>), saramusica: mergedSM };
+      await db.update(homeSessionsTable).set({ gameConfig: { ...cfg2, usedContent: used2 } }).where(eq(homeSessionsTable.id, id));
       const rp2 = (sess2.roundPayload ?? {}) as Record<string, unknown>;
       await smUpdate(id, { ...rp2, rounds, phase: "countdown", countdownValue: 3 });
       setTimeout(async () => {
@@ -2252,14 +2283,43 @@ function scheduleAdultReveal(sessionId: string, spinDurationMs: number): void {
 }
 
 // Helper — auto-choice when player doesn't respond within deadline
+const adultKey = (t: string) => t.toLowerCase().replace(/[^a-z0-9àèéìòù]+/gi, " ").trim();
+
+/** Estrae una prova adult per (livello, tipo): pesca dal pool AI in gameConfig,
+ *  lo rigenera con l'AI se vuoto (contenuti espliciti per adulti consenzienti),
+ *  registra l'uso per non ripetere, e ripiega sul banco statico se l'AI fallisce. */
+async function drawAdultChallenge(sessionId: string, level: number, kind: "verita" | "obbligo"): Promise<string> {
+  const sess = await getSession(sessionId);
+  const cfg = (sess?.gameConfig ?? {}) as Record<string, unknown>;
+  const pool = { ...((cfg["adultPool"] ?? {}) as Record<string, string[]>) };
+  const usedContent = { ...((cfg["usedContent"] ?? {}) as Record<string, string[]>) };
+  const used = usedContent["adult"] ?? [];
+  const usedSet = new Set(used);
+  const poolKey = `${Math.min(5, Math.max(1, level))}:${kind}`;
+
+  let available = (pool[poolKey] ?? []).filter(t => !usedSet.has(adultKey(t)));
+  if (available.length === 0) {
+    try {
+      const gen = await generateAdultChallengesAI(level, kind, 12, used);
+      available = gen.filter(t => !usedSet.has(adultKey(t)));
+    } catch (err) { logger.warn({ err, level, kind }, "[ADULT_AI] generazione fallita, uso banco"); }
+  }
+  const chosen = available[0] ?? (kind === "verita" ? pickRandomTruth(level) : pickRandomDare(level));
+  const remaining = available.slice(1);
+  pool[poolKey] = remaining;
+  usedContent["adult"] = [...used, adultKey(chosen)].slice(-400);
+  await db.update(homeSessionsTable).set({ gameConfig: { ...cfg, adultPool: pool, usedContent } }).where(eq(homeSessionsTable.id, sessionId));
+  return chosen;
+}
+
 async function _adultAutoChoice(sessionId: string): Promise<void> {
   adultChoiceTimers.delete(sessionId);
   const sess = await getSession(sessionId); if (!sess) return;
   const rp = (sess.roundPayload ?? {}) as Record<string, unknown>;
   if (rp["mode"] !== "home-adult" || String(rp["phase"]) !== "choice") return;
-  const choice = Math.random() < 0.5 ? "verita" : "obbligo";
+  const choice: "verita" | "obbligo" = Math.random() < 0.5 ? "verita" : "obbligo";
   const level = Number(rp["level"] ?? 1);
-  const text = choice === "verita" ? pickRandomTruth(level) : pickRandomDare(level);
+  const text = await drawAdultChallenge(sessionId, level, choice);
   const durationSeconds = choice === "verita" ? 60 : 90;
   const challengeEndsAt = new Date(Date.now() + durationSeconds * 1000).toISOString();
   await adultUpdate(sessionId, {
@@ -2291,7 +2351,7 @@ router.post("/home/sessions/:id/adult/choose", async (req, res): Promise<void> =
   const choice = (raw === "verita" || raw === "obbligo") ? raw : (Math.random() < 0.5 ? "verita" : "obbligo");
   const level = Number(rp["level"] ?? 1);
   const ex = adultChoiceTimers.get(id); if (ex) { clearTimeout(ex); adultChoiceTimers.delete(id); }
-  const text = choice === "verita" ? pickRandomTruth(level) : pickRandomDare(level);
+  const text = await drawAdultChallenge(id, level, choice);
   const durationSeconds = choice === "verita" ? 60 : 90;
   const challengeEndsAt = new Date(Date.now() + durationSeconds * 1000).toISOString();
   await adultUpdate(id, {

@@ -255,3 +255,62 @@ export const ADULT_LEVELS: { id: AdultLevel; label: string; emoji: string; color
   { id: "after_dark", label: "After Dark",  emoji: "🌙", color: "#818CF8", desc: "Solo adulti" },
 ];
 export async function generateAdultMissions(_level: AdultLevel, _count: number): Promise<AdultMission[]> { return []; }
+
+// ── Generatore AI dei contenuti adult ───────────────────────────────────────────
+// Contesto: club per adulti consenzienti (scambisti), modalità adult con consenso.
+// Genera verità/obblighi ESPLICITI, sempre tra adulti consenzienti, con escalation
+// per livello. L'AI produce testo (nessun media), quindi centinaia di prove diverse.
+
+import OpenAI from "openai";
+import { logger } from "./logger.js";
+
+const ADULT_LEVEL_BRIEF: Record<number, string> = {
+  1: "SOCIALE — leggero: complimenti audaci, flirt, piccole provocazioni. Niente contatto spinto.",
+  2: "FLIRT — piccante: baci, sfioramenti, verità intime, osi sensuali ma non ancora sessuali espliciti.",
+  3: "HOT — contatto fisico spinto e provocazioni sessuali esplicite tra adulti consenzienti.",
+  4: "ESPLICITO — atti sessuali espliciti tra adulti consenzienti (anche tra coppie), linguaggio diretto.",
+  5: "CLUB SCAMBISTI — molto esplicito: scambio di coppia, pratiche da club per adulti, sempre consenzienti.",
+};
+
+/** Genera prove adult (verità o obblighi) per un livello. Testi in italiano, per
+ *  adulti consenzienti; escalation per livello; niente minori, coercizione o atti
+ *  illegali; ogni prova è rifiutabile ("passo"). exclude = testi già usati. */
+export async function generateAdultChallengesAI(
+  level: number,
+  kind: "verita" | "obbligo",
+  count: number,
+  exclude: string[] = [],
+): Promise<string[]> {
+  const apiKey = process.env["OPENAI_API_KEY"];
+  if (!apiKey) throw new Error("OPENAI_API_KEY non impostata");
+  const openai = new OpenAI({ apiKey });
+  const lv = Math.min(5, Math.max(1, level));
+  const brief = ADULT_LEVEL_BRIEF[lv] ?? ADULT_LEVEL_BRIEF[3]!;
+  const nonce = Math.random().toString(36).slice(2, 8);
+  const kindLabel = kind === "verita" ? "domande di VERITÀ intime/piccanti" : "prove di OBBLIGO (dare) fisiche/sensuali";
+  const excludeNote = exclude.length > 0
+    ? `\nNON ripetere queste già usate:\n${exclude.slice(0, 50).join(" · ")}`
+    : "";
+
+  const systemPrompt = `Sei l'host di un party game PER SOLI ADULTI CONSENZIENTI in un club privato per scambisti (modalità adult con consenso esplicito di tutti i presenti).
+Genera ${kindLabel} in italiano, a tema erotico, con questo livello di intensità:
+${brief}
+Regole tassative: solo adulti; tutto SEMPRE consensuale; ogni prova deve poter essere rifiutata; NIENTE minori, NIENTE coercizione, NIENTE atti illegali o che causino danni. Varietà massima (semina: ${nonce}).${excludeNote}
+Rispondi SOLO con un array JSON di stringhe (le prove), senza altro testo.`;
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: `Genera ${count} ${kindLabel} di livello ${lv}.` },
+    ],
+    temperature: 0.9,
+    max_tokens: 1500,
+  });
+  const raw = (completion.choices[0]?.message?.content ?? "").replace(/^```json?\n?/, "").replace(/\n?```$/, "").trim();
+  const parsed = JSON.parse(raw) as unknown;
+  const arr = Array.isArray(parsed) ? parsed : (parsed as { prove?: unknown[] })?.prove ?? [];
+  const out = (arr as unknown[]).map(x => String(x).trim()).filter(Boolean);
+  logger.info({ level: lv, kind, generated: out.length }, "[ADULT_AI] generate");
+  return out;
+}
