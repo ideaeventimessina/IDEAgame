@@ -370,13 +370,17 @@ Regole:
 - Tutte le domande in italiano. Una sola risposta corretta inequivocabile.
 - Rispetta il livello di difficoltà: ${diffLabel}`;
 
+  // gpt-4o-mini (come Quizzone): affidabile per JSON. gpt-5-mini è un modello
+  // "reasoning" e col budget token consumato dal ragionamento restituiva JSON
+  // vuoto/troncato → JSON.parse falliva → ripiego sempre sul banco (solo 3 clip).
   const completion = await openai.chat.completions.create({
-    model: "gpt-5-mini",
+    model: "gpt-4o-mini",
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
     ],
-    max_completion_tokens: 4000,
+    temperature: 0.9,
+    max_tokens: 4000,
   });
 
   const raw = completion.choices[0]?.message?.content ?? "";
