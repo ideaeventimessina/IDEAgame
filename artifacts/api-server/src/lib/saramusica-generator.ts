@@ -384,7 +384,10 @@ Regole:
   });
 
   const raw = completion.choices[0]?.message?.content ?? "";
-  const jsonStr = raw.replace(/^```json?\n?/, "").replace(/\n?```$/, "").trim();
+  const cleaned = raw.replace(/^```json?\n?/, "").replace(/\n?```$/, "").trim();
+  // Parsing tollerante: isola l'array [ ... ] anche se il modello aggiunge testo attorno.
+  const s = cleaned.indexOf("["); const e = cleaned.lastIndexOf("]");
+  const jsonStr = (s >= 0 && e > s) ? cleaned.slice(s, e + 1) : cleaned;
   const parsed = JSON.parse(jsonStr) as unknown[];
 
   return (parsed as MusicRound[]).map((round, i) => ({
@@ -444,6 +447,20 @@ export async function generateSaraMusicaRounds(themeId: string, count: number, d
     throw new Error("Troppi pochi round unici");
   } catch (err) {
     logger.warn({ err, themeId, count, difficulty }, "[JONNY_SARAMUSICA_AI] fallback al banco");
-    return generateSaraMusicaFallback(themeId, count, difficulty).filter(r => !excludeSet.has(smRoundKey(r)));
+    const bank = generateSaraMusicaFallback(themeId, count, difficulty);
+    const filtered = bank.filter(r => !excludeSet.has(smRoundKey(r)));
+    // Non ridurre troppo: meglio qualche ripetizione che 3-4 round soltanto.
+    const chosen = filtered.length >= Math.min(count, 5) ? filtered : bank;
+    // Risolvi clip REALI anche sul banco: i round con songTitle senza clip la ottengono.
+    if (resolveClip) {
+      await Promise.all(chosen.map(async r => {
+        if (r.youtubeClip?.youtubeId || !CLIP_TYPES.includes(r.type) || !r.songTitle) return;
+        try {
+          const clip = await resolveClip(r.songTitle, r.artist);
+          if (clip?.youtubeId) r.youtubeClip = { youtubeId: clip.youtubeId, startSecond: clip.startSecond, durationSeconds: clip.durationSeconds, clipType: r.type === "guess_artist" ? "artist_guess" : "chorus_guess" };
+        } catch { /* resta testuale */ }
+      }));
+    }
+    return chosen;
   }
 }
