@@ -28,6 +28,7 @@ import { generateSaraMusicaRounds, generateSaraMusicaFallback, smRoundKey, SM_TH
 import { cachedWikiImage } from "../lib/image-cache.js";
 import { pickBalloSongs } from "../lib/ballo-library.js";
 import { getGroupUsed, addGroupUsed } from "../lib/group-content.js";
+import { type AuthedRequest } from "../middlewares/auth.js";
 import { searchYouTube } from "./home-karaoke.js";
 import { BOTTLE_LEVELS, pickFromBank, assignSpectatorPowers, pickRandomTruth, pickRandomDare, generateAdultChallengesAI, type BottleChallenge, type BottleLevel } from "../lib/adult-generator.js";
 import { eq, and, or, lt, asc, desc, isNull, notInArray } from "drizzle-orm";
@@ -1151,8 +1152,13 @@ router.post("/home/sessions", async (req, res): Promise<void> => {
   // "già visto" è permanente per quel gruppo tra feste diverse. La passa l'host
   // o il gestionale IDEAeventi (id cliente/preventivo). Vuota = memoria di sessione.
   const groupKey      = String(req.body?.groupKey ?? "").trim().slice(0, 120);
-  // TIER: "full" solo se richiesto esplicitamente, altrimenti "demo" (vetrina).
-  const tier          = req.body?.tier === "full" ? "full" : "demo";
+  // TIER: FULL automatico se chi crea è staff/owner LOGGATO (ruolo verificato dalla
+  // sessione, password mai nel codice); altrimenti DEMO (vetrina gratis). Il FULL per
+  // i clienti arriva invece dal ponte IDEAeventi (token). Niente body.tier aperto:
+  // sarebbe un buco (chiunque avrebbe il full gratis).
+  const authedUser = (req as AuthedRequest).user;
+  const STAFF_ROLES = ["super_admin", "tenant_owner", "game_manager", "entertainer"];
+  const tier: "demo" | "full" = (authedUser && STAFF_ROLES.includes(authedUser.role)) ? "full" : "demo";
 
   let joinCode = makeJoinCode();
   for (let i = 0; i < 5; i++) {
