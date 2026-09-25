@@ -27,6 +27,7 @@ import { generateQuiz, generateQuizAsync, quizQuestionKey, QUIZ_THEMES, QuizThem
 import { generateSaraMusicaRounds, smRoundKey, SM_THEMES, type MusicRound } from "../lib/saramusica-generator.js";
 import { cachedWikiImage } from "../lib/image-cache.js";
 import { pickBalloSongs } from "../lib/ballo-library.js";
+import { getGroupUsed, addGroupUsed } from "../lib/group-content.js";
 import { searchYouTube } from "./home-karaoke.js";
 import { BOTTLE_LEVELS, pickFromBank, assignSpectatorPowers, pickRandomTruth, pickRandomDare, generateAdultChallengesAI, type BottleChallenge, type BottleLevel } from "../lib/adult-generator.js";
 import { eq, and, or, lt, asc, desc, isNull, notInArray } from "drizzle-orm";
@@ -1140,6 +1141,10 @@ router.post("/home/sessions", async (req, res): Promise<void> => {
   const maxPlayers    = 50; // unlimited — players join freely via QR
   const selectedGames = Array.isArray(req.body?.selectedGames) ? req.body.selectedGames as string[] : [];
   const matchDuration = String(req.body?.matchDuration ?? "normal");
+  // Chiave di GRUPPO (famiglia/cliente ricorrente): se presente, la memoria
+  // "già visto" è permanente per quel gruppo tra feste diverse. La passa l'host
+  // o il gestionale IDEAeventi (id cliente/preventivo). Vuota = memoria di sessione.
+  const groupKey      = String(req.body?.groupKey ?? "").trim().slice(0, 120);
 
   let joinCode = makeJoinCode();
   for (let i = 0; i < 5; i++) {
@@ -1161,6 +1166,7 @@ router.post("/home/sessions", async (req, res): Promise<void> => {
       preloadedRounds: [],
       selectedGames,
       matchDuration,
+      ...(groupKey ? { groupKey } : {}),
     },
   }).returning();
 
@@ -1490,9 +1496,10 @@ router.post("/home/sessions/:id/quiz/select-count", async (req, res): Promise<vo
   // After 3s generate questions and start countdown
   setTimeout(async () => {
     try {
-      // Anti-ripetizione: escludi le domande già viste da questo gruppo.
+      // Anti-ripetizione: sessione + memoria di GRUPPO permanente (se groupKey).
       const cfgQ = (session.gameConfig ?? {}) as Record<string, unknown>;
-      const usedQ = ((cfgQ["usedContent"] ?? {}) as Record<string, string[]>)["quizzone"] ?? [];
+      const groupKeyQ = String(cfgQ["groupKey"] ?? "");
+      const usedQ = [...new Set([...(((cfgQ["usedContent"] ?? {}) as Record<string, string[]>)["quizzone"] ?? []), ...(await getGroupUsed(groupKeyQ, "quizzone"))])];
       const questions = await generateQuizAsync(themeId, questionCount, difficulty, usedQ);
       logger.info({ sessionId: id, selectedTheme: themeId, requestedDifficulty: difficulty, questionCount, firstQuestionTheme: questions[0]?.theme, excluded: usedQ.length }, "[QUIZ_GENERATE]");
       const sess2 = await getSession(id);
@@ -1500,7 +1507,9 @@ router.post("/home/sessions/:id/quiz/select-count", async (req, res): Promise<vo
       const rp2 = (sess2.roundPayload ?? {}) as Record<string, unknown>;
       // Registra le domande come "già viste" (anti-ripetizione tra partite). Cap 400.
       const cfg2 = (sess2.gameConfig ?? {}) as Record<string, unknown>;
-      const mergedQ = [...usedQ, ...questions.map(q => quizQuestionKey(q))].slice(-400);
+      const newQKeys = questions.map(q => quizQuestionKey(q));
+      await addGroupUsed(groupKeyQ, "quizzone", newQKeys); // memoria permanente di gruppo
+      const mergedQ = [...usedQ, ...newQKeys].slice(-400);
       const usedC = { ...((cfg2["usedContent"] ?? {}) as Record<string, string[]>), quizzone: mergedQ };
       await db.update(homeSessionsTable).set({ gameConfig: { ...cfg2, usedContent: usedC } }).where(eq(homeSessionsTable.id, id));
       // Countdown 3
@@ -1804,10 +1813,12 @@ router.post("/home/sessions/:id/saramusica/select-count", async (req, res): Prom
   res.json({ ok: true });
   setTimeout(async () => {
     try {
-      // Anti-ripetizione: escludi le canzoni/domande già viste da questo gruppo.
+      // Anti-ripetizione: escludi le canzoni già viste (sessione + memoria di GRUPPO
+      // permanente se la sessione ha un groupKey → niente ripetizioni tra feste diverse).
       const cfg0 = (session.gameConfig ?? {}) as Record<string, unknown>;
+      const groupKey = String(cfg0["groupKey"] ?? "");
       const usedAll = (cfg0["usedContent"] ?? {}) as Record<string, string[]>;
-      const usedSM = usedAll["saramusica"] ?? [];
+      const usedSM = [...new Set([...(usedAll["saramusica"] ?? []), ...(await getGroupUsed(groupKey, "saramusica"))])];
       // Resolver clip REALE: l'AI dà titolo+artista, noi troviamo il video vero.
       const resolveClip = async (title: string, artist: string | undefined) => {
         try {
@@ -1840,6 +1851,7 @@ router.post("/home/sessions/:id/saramusica/select-count", async (req, res): Prom
       // Registra le canzoni/domande di questo giro come "già viste" (anti-ripetizione
       // tra una partita e l'altra dello stesso gruppo). Cap a 300 per non crescere all'infinito.
       const newKeys = rounds.filter(r => r.type !== "singing_duel").map(r => smRoundKey(r));
+      await addGroupUsed(groupKey, "saramusica", newKeys); // memoria permanente di gruppo
       const mergedSM = [...usedSM, ...newKeys].slice(-300);
       const sess2 = await getSession(id);
       if (!sess2) return;
@@ -2291,9 +2303,10 @@ const adultKey = (t: string) => t.toLowerCase().replace(/[^a-z0-9àèéìòù]+/
 async function drawAdultChallenge(sessionId: string, level: number, kind: "verita" | "obbligo"): Promise<string> {
   const sess = await getSession(sessionId);
   const cfg = (sess?.gameConfig ?? {}) as Record<string, unknown>;
+  const groupKey = String(cfg["groupKey"] ?? "");
   const pool = { ...((cfg["adultPool"] ?? {}) as Record<string, string[]>) };
   const usedContent = { ...((cfg["usedContent"] ?? {}) as Record<string, string[]>) };
-  const used = usedContent["adult"] ?? [];
+  const used = [...new Set([...(usedContent["adult"] ?? []), ...(await getGroupUsed(groupKey, "adult"))])];
   const usedSet = new Set(used);
   const poolKey = `${Math.min(5, Math.max(1, level))}:${kind}`;
 
@@ -2308,6 +2321,7 @@ async function drawAdultChallenge(sessionId: string, level: number, kind: "verit
   const remaining = available.slice(1);
   pool[poolKey] = remaining;
   usedContent["adult"] = [...used, adultKey(chosen)].slice(-400);
+  await addGroupUsed(groupKey, "adult", [adultKey(chosen)]); // memoria permanente di gruppo
   await db.update(homeSessionsTable).set({ gameConfig: { ...cfg, adultPool: pool, usedContent } }).where(eq(homeSessionsTable.id, sessionId));
   return chosen;
 }
