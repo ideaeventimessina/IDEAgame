@@ -30,9 +30,9 @@
  */
 
 import { Router, type IRouter } from "express";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, ne, desc, sql } from "drizzle-orm";
 import { timingSafeEqual } from "node:crypto";
-import { db, eventsTable, tenantsTable } from "@workspace/db";
+import { db, eventsTable, tenantsTable, homeSessionsTable } from "@workspace/db";
 
 const router: IRouter = Router();
 
@@ -134,6 +134,94 @@ router.post("/ponte/ideaeventi/partita", async (req, res): Promise<void> => {
   }
 });
 
+/**
+ * POST /ponte/ideaeventi/partita-home — crea una PARTITA HOME in modalità FULL
+ * (tutto sbloccato: IA, adult, karaoke, contenuti infiniti). A differenza di
+ * /partita (che crea un evento LIVE con tenant), questa crea una home_session:
+ * i telefoni entrano col codice come una normale sessione Home, ma senza il
+ * gate demo. groupKey = riferimento → memoria "già visto" permanente del gruppo.
+ * IDEMPOTENTE sul riferimento: se esiste già una home session non chiusa con
+ * quel groupKey, la si riusa.
+ */
+router.post("/ponte/ideaeventi/partita-home", async (req, res): Promise<void> => {
+  if (!CHIAVE) {
+    res.status(503).json({ error: "Ponte non configurato: manca PONTE_IDEAEVENTI_KEY." });
+    return;
+  }
+  if (!chiaveCombacia(String(req.headers["x-ponte-key"] ?? ""))) {
+    res.status(401).json({ error: "Chiave non valida." });
+    return;
+  }
+
+  const corpo = (req.body ?? {}) as Record<string, unknown>;
+  const festa = String(corpo["festa"] ?? "").trim();
+  const riferimento = String(corpo["riferimento"] ?? "").trim();   // "preventivo-410"
+  const attesi = Number(corpo["attesi"]) || 20;
+  if (!festa || !riferimento) {
+    res.status(400).json({ error: "Servono il nome della festa e un riferimento." });
+    return;
+  }
+
+  try {
+    /* Già aperta per questo gruppo? Si riusa (idempotenza sul groupKey, che sta
+     * dentro gameConfig). Niente due partite per la stessa festa. */
+    const [gia] = await db
+      .select()
+      .from(homeSessionsTable)
+      .where(and(
+        sql`${homeSessionsTable.gameConfig}->>'groupKey' = ${riferimento}`,
+        ne(homeSessionsTable.status, "ended"),
+      ))
+      .orderBy(desc(homeSessionsTable.createdAt))
+      .limit(1);
+    if (gia) {
+      res.json({ sessionId: gia.id, codice: gia.joinCode, festa, tier: "full", giaCera: true });
+      return;
+    }
+
+    const expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1000); // ~6h
+
+    /* Codice unico nel database: se capita collisione (join_code è unique), si
+     * ritenta. Sei giri bastano. */
+    let sessione: typeof homeSessionsTable.$inferSelect | null = null;
+    for (let giro = 0; giro < 6 && !sessione; giro++) {
+      try {
+        const [riga] = await db
+          .insert(homeSessionsTable)
+          .values({
+            joinCode: codiceNuovo(),
+            hostName: festa.slice(0, 50),
+            maxPlayers: Math.min(Math.max(attesi, 2), 200),
+            status: "lobby",
+            expiresAt,
+            gameConfig: {
+              phase: "join",
+              gamesPlayed: [],
+              preloadedRounds: [],
+              selectedGames: [],
+              matchDuration: "normal",
+              tier: "full",
+              groupKey: riferimento,
+            },
+          })
+          .returning();
+        sessione = riga!;
+      } catch (e: unknown) {
+        if ((e as { code?: string } | null)?.code !== "23505") throw e;
+      }
+    }
+    if (!sessione) {
+      res.status(500).json({ error: "Non sono riuscito ad allocare un codice." });
+      return;
+    }
+
+    res.status(201).json({ sessionId: sessione.id, codice: sessione.joinCode, festa, tier: "full", giaCera: false });
+  } catch (err) {
+    console.error("[ponte ideaeventi partita-home]", err);
+    res.status(500).json({ error: "Errore nel creare la partita." });
+  }
+});
+
 /** Manifest delle capacità di IDEAgame per Axel©/IDEAeventi (scoperta automatica).
  *  Sola lettura, protetto dalla STESSA chiave del ponte (x-ponte-key) — nessuna
  *  chiave nuova. Riflette esattamente le rotte del ponte qui sopra. */
@@ -143,7 +231,24 @@ const SKILL_MANIFEST = {
   versione: "1.0",
   baseUrl: "https://ideagame.it/api",
   auth: { tipo: "header", header: "x-ponte-key", nota: "Stessa chiave condivisa del ponte (PONTE_IDEAEVENTI_KEY)." },
+  modalita: {
+    demo: "IA spenta, contenuti fissi, no adult/karaoke — vetrina gratis",
+    full: "tutto sbloccato via token",
+  },
   azioni: [
+    {
+      id: "crea_partita_full",
+      metodo: "POST",
+      path: "/ponte/ideaeventi/partita-home",
+      descrizione: "Crea (o riusa) una partita HOME in modalità FULL: tutto sbloccato. I telefoni entrano col codice.",
+      input: {
+        festa: "string — nome della festa (es. '18° di Marta')",
+        riferimento: "string — chiave logica idempotente = groupKey del gruppo (es. 'preventivo-410')",
+        attesi: "number opzionale — giocatori attesi (default 20, min 2, max 200)",
+      },
+      output: { sessionId: "string", codice: "string", tier: "string", giaCera: "boolean" },
+      note: "partita FULL sbloccata — IA, adult, karaoke, contenuti infiniti; groupKey=riferimento = memoria permanente del gruppo",
+    },
     {
       id: "crea_partita",
       metodo: "POST",

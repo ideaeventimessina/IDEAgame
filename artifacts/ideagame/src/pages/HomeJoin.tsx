@@ -1848,6 +1848,9 @@ function QuizzoneThemeSuggestor({ session, player }: {
   const [submitted, setSubmitted] = useState('');
   const [busy, setBusy] = useState(false);
 
+  // Tier gate: in demo i temi personalizzati sono disattivati (solo banco preset).
+  const isDemo = String((session.gameConfig as Record<string, unknown> | undefined)?.tier ?? 'demo') !== 'full';
+
   const suggest = async () => {
     const trimmed = text.trim();
     if (!trimmed || busy) return;
@@ -1870,10 +1873,18 @@ function QuizzoneThemeSuggestor({ session, player }: {
         className="text-5xl">⭐</motion.div>
       <div>
         <div className="text-display text-xl font-black text-white">Che tema per il Quizzone?</div>
-        <div className="text-sm mt-1" style={{ color: QZ }}>Proponi il tuo tema preferito!</div>
+        <div className="text-sm mt-1" style={{ color: QZ }}>
+          {isDemo ? 'L\'host sceglie il tema sulla TV' : 'Proponi il tuo tema preferito!'}
+        </div>
       </div>
 
-      {submitted ? (
+      {isDemo ? (
+        <div className="rounded-2xl px-5 py-4"
+          style={{ background: 'rgba(168,85,247,0.12)', border: '1px solid rgba(168,85,247,0.35)' }}>
+          <div className="text-2xl mb-1">🔒</div>
+          <div className="text-sm font-bold text-white/70">Temi personalizzati solo in Full</div>
+        </div>
+      ) : submitted ? (
         <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
           className="rounded-2xl px-5 py-4"
           style={{ background: `${QZ}18`, border: `2px solid ${QZ}55` }}>

@@ -24,7 +24,7 @@ import multer from "multer";
 import OpenAI from "openai";
 import { createBlankKaraokeState, FREESTYLE_BEATS, type FreestyleBeat } from "../lib/karaoke-home-engine.js";
 import { generateQuiz, generateQuizAsync, quizQuestionKey, QUIZ_THEMES, QuizThemeUnavailableError } from "../lib/quiz-generator.js";
-import { generateSaraMusicaRounds, smRoundKey, SM_THEMES, type MusicRound } from "../lib/saramusica-generator.js";
+import { generateSaraMusicaRounds, generateSaraMusicaFallback, smRoundKey, SM_THEMES, type MusicRound } from "../lib/saramusica-generator.js";
 import { cachedWikiImage } from "../lib/image-cache.js";
 import { pickBalloSongs } from "../lib/ballo-library.js";
 import { getGroupUsed, addGroupUsed } from "../lib/group-content.js";
@@ -1132,6 +1132,12 @@ router.get("/home/music-config", async (req, res): Promise<void> => {
   }
 });
 
+// TIER della sessione: "demo" (vetrina gratis, IA spenta, no adult/karaoke) o
+// "full" (tutto sbloccato). Sta in gameConfig.tier; default "demo".
+export function sessionTier(session: { gameConfig?: Record<string, unknown> | null } | null | undefined): "demo" | "full" {
+  return ((session?.gameConfig ?? {}) as Record<string, unknown>)["tier"] === "full" ? "full" : "demo";
+}
+
 // ── POST /home/sessions ────────────────────────────────────────────────────────
 router.post("/home/sessions", async (req, res): Promise<void> => {
   // Opportunistic cleanup of stale sessions before creating a new one
@@ -1145,6 +1151,8 @@ router.post("/home/sessions", async (req, res): Promise<void> => {
   // "già visto" è permanente per quel gruppo tra feste diverse. La passa l'host
   // o il gestionale IDEAeventi (id cliente/preventivo). Vuota = memoria di sessione.
   const groupKey      = String(req.body?.groupKey ?? "").trim().slice(0, 120);
+  // TIER: "full" solo se richiesto esplicitamente, altrimenti "demo" (vetrina).
+  const tier          = req.body?.tier === "full" ? "full" : "demo";
 
   let joinCode = makeJoinCode();
   for (let i = 0; i < 5; i++) {
@@ -1166,6 +1174,7 @@ router.post("/home/sessions", async (req, res): Promise<void> => {
       preloadedRounds: [],
       selectedGames,
       matchDuration,
+      tier,
       ...(groupKey ? { groupKey } : {}),
     },
   }).returning();
@@ -1471,6 +1480,10 @@ router.post("/home/sessions/:id/quiz/select-theme", async (req, res): Promise<vo
     }
   }
   const themeObj = QUIZ_THEMES.find(t => t.id === themeId);
+  // DEMO: niente IA → solo temi del banco (QUIZ_THEMES). Un tema custom è Full-only.
+  if (sessionTier(session) === "demo" && !themeObj) {
+    res.status(403).json({ error: "I temi personalizzati sono solo in Full" }); return;
+  }
   await qzUpdate(id, { theme: themeId, themeName: themeObj?.label ?? themeId, phase: "setup_count", quizSuggestions: [], quizError: null });
   res.json({ ok: true });
 });
@@ -1500,7 +1513,11 @@ router.post("/home/sessions/:id/quiz/select-count", async (req, res): Promise<vo
       const cfgQ = (session.gameConfig ?? {}) as Record<string, unknown>;
       const groupKeyQ = String(cfgQ["groupKey"] ?? "");
       const usedQ = [...new Set([...(((cfgQ["usedContent"] ?? {}) as Record<string, string[]>)["quizzone"] ?? []), ...(await getGroupUsed(groupKeyQ, "quizzone"))])];
-      const questions = await generateQuizAsync(themeId, questionCount, difficulty, usedQ);
+      // DEMO: IA spenta → domande solo dal banco (generateQuiz sincrono), poi filtro
+      // anti-ripetizione sulle chiavi già viste. Full: generazione AI come prima.
+      const questions = sessionTier(session) === "demo"
+        ? generateQuiz(themeId, questionCount, difficulty).filter(q => !usedQ.includes(quizQuestionKey(q)))
+        : await generateQuizAsync(themeId, questionCount, difficulty, usedQ);
       logger.info({ sessionId: id, selectedTheme: themeId, requestedDifficulty: difficulty, questionCount, firstQuestionTheme: questions[0]?.theme, excluded: usedQ.length }, "[QUIZ_GENERATE]");
       const sess2 = await getSession(id);
       if (!sess2) return;
@@ -1831,7 +1848,10 @@ router.post("/home/sessions/:id/saramusica/select-count", async (req, res): Prom
           return { youtubeId: hit.videoId, startSecond, durationSeconds: 15 };
         } catch { return null; }
       };
-      const rounds = await generateSaraMusicaRounds(themeId, roundCount, smDifficulty, { resolveClip, exclude: usedSM });
+      // DEMO: IA spenta e nessun resolver clip → round solo dal banco. Full: come prima.
+      const rounds = sessionTier(session) === "demo"
+        ? generateSaraMusicaFallback(themeId, roundCount, smDifficulty).filter(r => !usedSM.includes(smRoundKey(r)))
+        : await generateSaraMusicaRounds(themeId, roundCount, smDifficulty, { resolveClip, exclude: usedSM });
       // Inietta round "sagoma → indovina il cantante" se ci sono sagome caricate.
       const silRounds = await buildSilhouetteRounds(themeId, roundCount >= 10 ? 2 : 1);
       if (silRounds.length > 0) {
@@ -2746,6 +2766,11 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
 
   const { gameSlug, restart } = req.body as { gameSlug: string; restart?: boolean };
   if (!gameSlug) { res.status(400).json({ error: "gameSlug obbligatorio" }); return; }
+
+  // DEMO: adult e karaoke sono solo in Full. Full = tutto permesso.
+  if (sessionTier(session) === "demo" && ["adult-only", "karaoke-battle"].includes(gameSlug)) {
+    res.status(403).json({ error: "Disponibile solo in modalità Full" }); return;
+  }
 
   const cfg = (session.gameConfig ?? {}) as Record<string, unknown>;
   const gamesPlayed = (cfg.gamesPlayed as string[]) ?? [];

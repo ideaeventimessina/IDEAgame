@@ -153,6 +153,7 @@ interface WheelGame {
   glow: string;
   done: boolean;
   kind: 'auto' | 'crowd';
+  locked?: boolean; // tier "demo": gioco visibile ma bloccato (es. Karaoke Live → solo Full)
 }
 
 // Giochi a PUNTEGGIO AUTOMATICO (a risposta/individuali: funzionano anche in pochi).
@@ -288,17 +289,21 @@ function HomeGameWheel({ selected, onSelect, spinning, games }:{
             const a1=i*sliceAng,a2=(i+1)*sliceAng;
             const isSel=g.slug===selected.slug;
             const iconPt=midPoint(cx,cy,r*0.58,a1,a2);
+            const clickable = !g.done && !g.locked;
             return (
-              <g key={g.slug} onClick={()=>!g.done&&onSelect(g)} style={{cursor:g.done?'default':'pointer',opacity:g.done?0.45:1}}>
+              <g key={g.slug} onClick={()=>clickable&&onSelect(g)} style={{cursor:clickable?'pointer':'default',opacity:g.done?0.45:g.locked?0.4:1}}>
                 <path d={sectorPath(cx,cy,r,ri,a1,a2)} fill="rgba(0,0,0,0.35)" style={{transform:'translate(2px,3px)'}}/>
                 <path d={sectorPath(cx,cy,r-(isSel?0:4),ri+(isSel?0:3),a1,a2)}
-                  fill={g.done?'rgba(52,211,153,0.38)':`url(#hw-${g.slug})`}
-                  stroke={isSel?'rgba(255,255,255,0.75)':g.done?'rgba(52,211,153,0.55)':'rgba(0,0,0,0.6)'}
+                  fill={g.done?'rgba(52,211,153,0.38)':g.locked?'rgba(120,120,140,0.32)':`url(#hw-${g.slug})`}
+                  stroke={isSel&&!g.locked?'rgba(255,255,255,0.75)':g.done?'rgba(52,211,153,0.55)':g.locked?'rgba(255,255,255,0.28)':'rgba(0,0,0,0.6)'}
                   strokeWidth={isSel?2.5:1.5}
-                  filter={isSel&&!g.done?'url(#hw-glow)':undefined}/>
+                  filter={isSel&&!g.done&&!g.locked?'url(#hw-glow)':undefined}/>
                 {g.done ? (
                   <text x={iconPt.x} y={iconPt.y} textAnchor="middle" dominantBaseline="middle"
                     fontSize="24" fill="rgba(52,211,153,0.95)" filter="url(#hw-txt)" style={{userSelect:'none'}}>✓</text>
+                ) : g.locked ? (
+                  <text x={iconPt.x} y={iconPt.y} textAnchor="middle" dominantBaseline="middle"
+                    fontSize="22" filter="url(#hw-txt)" style={{userSelect:'none'}}>🔒</text>
                 ) : (
                   <g transform={`translate(${iconPt.x},${iconPt.y}) scale(0.92)`}>
                     <WheelSectorIcon slug={g.slug}/>
@@ -360,7 +365,7 @@ function HomeGameWheel({ selected, onSelect, spinning, games }:{
           return (
             <text key={g.slug} x={lbl.x} y={lbl.y} textAnchor="middle" dominantBaseline="middle"
               fontSize={isSel?13:11} fontWeight="900" fontFamily="'Outfit','Arial Black',sans-serif"
-              fill={g.done?'rgba(52,211,153,0.85)':isSel?'#FFE066':'white'}
+              fill={g.done?'rgba(52,211,153,0.85)':g.locked?'rgba(255,255,255,0.55)':isSel?'#FFE066':'white'}
               stroke="rgba(0,0,0,0.95)" strokeWidth="3.5" paintOrder="stroke"
               filter="url(#hw-txt2)" style={{userSelect:'none',letterSpacing:'0.06em'}}>
               {g.short}
@@ -469,7 +474,13 @@ function HomeWheelGameCard({ game, onPlay, loading }:{
               <span>{b.emoji}</span>{b.label.toUpperCase()}
             </div>
           ); })()}
-          {game.done ? (
+          {game.locked ? (
+            <div className="w-full rounded-xl py-2.5 font-black flex flex-col items-center justify-center gap-0.5"
+              style={{background:'rgba(120,120,140,0.12)',border:'1px solid rgba(255,255,255,0.18)',color:'rgba(255,255,255,0.55)',fontSize:'0.82rem'}}>
+              <span>🔒 Solo in Full</span>
+              <span style={{fontSize:'0.6rem',fontWeight:700,opacity:0.7}}>Sblocca con IDEAeventi</span>
+            </div>
+          ) : game.done ? (
             <motion.button onClick={onPlay} disabled={loading}
               className="w-full rounded-xl py-2.5 font-black flex items-center justify-center gap-2 disabled:opacity-40"
               style={{background:'rgba(52,211,153,0.15)',border:'1px solid rgba(52,211,153,0.45)',color:'#34D399',fontSize:'0.82rem'}}
@@ -768,11 +779,20 @@ export default function HomeGame() {
     return (cfg.gamesPlayed as string[]) ?? [];
   }, [session]);
 
+  // ── Tier gate (demo / full) ────────────────────────────────────────────────
+  // "demo" = showroom gratuito: niente Adult, Karaoke Live bloccato, temi custom off.
+  // Default demo se il tier manca; le sessioni "full" del ponte restano complete.
+  const tier = String((session?.gameConfig as Record<string, unknown> | undefined)?.tier ?? 'demo');
+  const isDemo = tier !== 'full';
+
   const visibleGames = useMemo(() => {
     const cfg = session?.gameConfig ?? {};
+    const demo = String((cfg as Record<string, unknown>).tier ?? 'demo') !== 'full';
     const selected = (cfg.selectedGames as string[] | undefined) ?? [];
-    if (selected.length > 0) return ALL_GAMES.filter(g => selected.includes(g.slug));
-    return ALL_GAMES;
+    let list = selected.length > 0 ? ALL_GAMES.filter(g => selected.includes(g.slug)) : ALL_GAMES;
+    // In demo l'Adult è nascosto del tutto (Karaoke resta visibile ma bloccato → vedi wheelGames).
+    if (demo) list = list.filter(g => g.slug !== 'adult-only');
+    return list;
   }, [session]);
 
   const cfgPhase = useMemo(() => {
@@ -805,21 +825,24 @@ export default function HomeGame() {
       glow:  WHEEL_EXTRAS[g.slug]?.glow ?? g.color,
       done:  gamesPlayed.includes(g.slug),
       kind:  gameKind(g.slug),
+      // In demo il Karaoke Live è visibile ma bloccato (🔒 "Solo in Full").
+      locked: isDemo && g.slug === 'karaoke-battle',
     }))
-  , [visibleGames, gamesPlayed]);
+  , [visibleGames, gamesPlayed, isDemo]);
 
   const wheelSelectedGame = useMemo<WheelGame>(() => {
     const bySlug = wheelGames.find(g => g.slug === wheelSelected);
-    if (bySlug) return bySlug;
-    return wheelGames.find(g => !g.done) ?? wheelGames[0] ?? {
+    if (bySlug && !bySlug.locked) return bySlug;
+    return wheelGames.find(g => !g.done && !g.locked) ?? wheelGames.find(g => !g.locked) ?? wheelGames[0] ?? {
       slug:'quizzone',label:'Quizzone',short:'QUIZZONE',color:'#F5B642',glow:'#FCD34D',done:false,kind:'auto'
     };
   }, [wheelGames, wheelSelected]);
 
   const handleWheelSpin = useCallback(() => {
     if (spinning || wheelGames.length === 0) return;
-    const available = wheelGames.filter(g => !g.done);
-    const pool = available.length > 0 ? available : wheelGames;
+    const playable = wheelGames.filter(g => !g.locked);
+    const available = playable.filter(g => !g.done);
+    const pool = available.length > 0 ? available : (playable.length > 0 ? playable : wheelGames);
     // Single game available — skip animation, go straight to modal
     if (pool.length === 1) {
       setWheelSelected(pool[0].slug);
@@ -1296,6 +1319,8 @@ export default function HomeGame() {
 
   const selectGame = async (slug: string) => {
     if (!session || selectingGame) return;
+    // Tier gate: in demo Adult e Karaoke Live non sono avviabili (difesa lato client).
+    if (isDemo && (slug === 'adult-only' || slug === 'karaoke-battle')) return;
     setSelectingGame(slug);
     try {
       const r = await fetch(`/api/home/sessions/${session.id}/select-game`, {
@@ -1421,7 +1446,9 @@ export default function HomeGame() {
   };
 
   const joinUrl = session ? `${window.location.origin}/home/join?s=${session.joinCode}` : '';
-  const allDone = gamesPlayed.length >= visibleGames.length;
+  // I giochi bloccati (Karaoke in demo) non contano per il completamento della serata.
+  const playableGames = visibleGames.filter(g => !(isDemo && g.slug === 'karaoke-battle'));
+  const allDone = playableGames.length > 0 && playableGames.every(g => gamesPlayed.includes(g.slug));
 
   // ── Post-game overlay: 2 s (last game → champion) or 5 s (→ board) ──────────
   useEffect(() => {
@@ -1639,8 +1666,25 @@ export default function HomeGame() {
               <div>
                 <img src="/jonny-world-logo-nobg.png" alt="Jonny's World" className="h-9 w-auto object-contain"
                   style={{filter:'drop-shadow(0 0 12px rgba(245,182,66,0.65))'}}/>
-                <div className="text-[10px] font-bold tracking-widest uppercase" style={{color:'rgba(168,85,247,0.75)'}}>
-                  {gamesPlayed.length}/{visibleGames.length} completati
+                <div className="flex items-center gap-2 mt-0.5">
+                  <div className="text-[10px] font-bold tracking-widest uppercase" style={{color:'rgba(168,85,247,0.75)'}}>
+                    {gamesPlayed.length}/{playableGames.length} completati
+                  </div>
+                  {/* Tier badge: DEMO (showroom) vs FULL */}
+                  {isDemo ? (
+                    <div className="flex items-center gap-1.5 rounded-full px-2 py-0.5"
+                      style={{background:'rgba(168,85,247,0.15)',border:'1px solid rgba(168,85,247,0.4)'}}>
+                      <span className="text-[9px] font-black tracking-widest uppercase" style={{color:'#C4B5FD'}}>🔒 Demo</span>
+                      <span className="text-[8px] font-bold hidden sm:inline" style={{color:'rgba(255,255,255,0.4)'}}>
+                        Sblocca Adult, Karaoke Live e IA con IDEAeventi
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="rounded-full px-2 py-0.5"
+                      style={{background:'rgba(52,211,153,0.15)',border:'1px solid rgba(52,211,153,0.4)'}}>
+                      <span className="text-[9px] font-black tracking-widest uppercase" style={{color:'#6EE7B7'}}>✨ Full</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1825,16 +1869,20 @@ export default function HomeGame() {
               ) : (
                 <motion.button
                   onClick={() => void selectGame(wheelSelectedGame.slug)}
-                  disabled={!!selectingGame || loading}
+                  disabled={!!selectingGame || loading || !!wheelSelectedGame.locked}
                   className="relative overflow-hidden font-black rounded-full flex items-center justify-center gap-3 text-white disabled:opacity-40"
                   style={{background:`linear-gradient(135deg,${wheelSelectedGame.color} 0%,${wheelSelectedGame.glow} 100%)`,border:`3px solid ${wheelSelectedGame.color}`,boxShadow:`0 0 30px ${wheelSelectedGame.color}66,0 6px 0 rgba(0,0,0,0.5)`,padding:'0 2.2vw',height:'7vh',fontSize:'clamp(0.8rem,1.4vw,1.1rem)',minWidth:'16vw'}}
                   whileHover={{scale:1.05}} whileTap={{scale:0.97,y:3}}>
                   <div className="absolute inset-0 opacity-25 pointer-events-none rounded-full" style={{background:'radial-gradient(ellipse 80% 40% at 50% 5%,rgba(255,255,255,0.7),transparent)'}}/>
                   <span className="relative z-10 flex items-center gap-2">
-                    {selectingGame === wheelSelectedGame.slug
-                      ? <Loader2 className="h-5 w-5 animate-spin"/>
-                      : <Play className="h-5 w-5" style={{fill:'white'}}/>}
-                    {wheelSelectedGame.done ? '✓ RIGIOCA' : 'GIOCA ORA'}
+                    {wheelSelectedGame.locked
+                      ? <>🔒 SOLO IN FULL</>
+                      : <>
+                          {selectingGame === wheelSelectedGame.slug
+                            ? <Loader2 className="h-5 w-5 animate-spin"/>
+                            : <Play className="h-5 w-5" style={{fill:'white'}}/>}
+                          {wheelSelectedGame.done ? '✓ RIGIOCA' : 'GIOCA ORA'}
+                        </>}
                   </span>
                 </motion.button>
               )}
@@ -2473,6 +2521,9 @@ function QuizzoneBoard({ payload, session, players }: {
   // Argomenti salvati dal presentatore Live (toggle "visibile in Home")
   const [savedTopics, setSavedTopics] = useState<{ id: string; label: string }[]>([]);
 
+  // Tier gate: in demo solo temi preset dal banco (niente custom/free-text/Live).
+  const isDemo = String((session.gameConfig as Record<string, unknown> | undefined)?.tier ?? 'demo') !== 'full';
+
   const phase = String(payload.phase ?? 'setup_theme');
   useEffect(() => {
     if (phase !== 'setup_theme') return;
@@ -2542,7 +2593,7 @@ function QuizzoneBoard({ payload, session, players }: {
         <div className="text-center">
           <div className="text-display text-4xl font-black text-white mb-2">Che tema vuoi per il</div>
           <div className="text-display text-5xl font-black" style={{ color: QZ, textShadow: `0 0 40px ${QZ_GLOW}` }}>⭐ QUIZZONE?</div>
-          <div className="text-sm text-white/40 mt-2">I giocatori propongono il tema dal telefono</div>
+          <div className="text-sm text-white/40 mt-2">{isDemo ? 'Scegli un tema dal banco (temi personalizzati solo in Full)' : 'I giocatori propongono il tema dal telefono'}</div>
         </div>
 
         {/* Errore generazione (es. tema non generabile) — riporta qui l'host */}
@@ -2553,8 +2604,8 @@ function QuizzoneBoard({ payload, session, players }: {
           </div>
         )}
 
-        {/* Player suggestions */}
-        {topSuggs.length > 0 && (
+        {/* Player suggestions — solo in Full (in demo i temi custom sono off) */}
+        {!isDemo && topSuggs.length > 0 && (
           <div className="w-full rounded-2xl p-5" style={{ background: `${QZ}12`, border: `1px solid ${QZ}33` }}>
             <div className="text-xs font-black uppercase tracking-widest mb-3" style={{ color: QZ }}>
               💬 Proposte dei giocatori ({suggestions.length})
@@ -2573,9 +2624,9 @@ function QuizzoneBoard({ payload, session, players }: {
           </div>
         )}
 
-        {/* Theme grid */}
+        {/* Theme grid — in demo il tema "custom" è nascosto (solo banco preset) */}
         <div className="grid grid-cols-3 gap-4 w-full">
-          {QZ_THEMES_CLIENT.map(t => (
+          {QZ_THEMES_CLIENT.filter(t => !isDemo || t.id !== 'custom').map(t => (
             <button key={t.id} onClick={() => void post('/quiz/select-theme', { themeId: t.id })}
               disabled={busy}
               className="flex flex-col items-center gap-3 rounded-2xl p-6 transition-all hover:scale-105 disabled:opacity-50"
@@ -2586,8 +2637,8 @@ function QuizzoneBoard({ payload, session, players }: {
           ))}
         </div>
 
-        {/* Argomenti salvati dal Live (visibili in Home) */}
-        {savedTopics.length > 0 && (
+        {/* Argomenti salvati dal Live (visibili in Home) — custom, solo in Full */}
+        {!isDemo && savedTopics.length > 0 && (
           <div className="w-full rounded-2xl p-5" style={{ background: 'rgba(96,165,250,0.10)', border: '1px solid rgba(96,165,250,0.3)' }}>
             <div className="text-xs font-black uppercase tracking-widest mb-3" style={{ color: '#60A5FA' }}>
               ✨ Argomenti creati dal vivo
@@ -4393,6 +4444,9 @@ function SaraMusicaBoard({ payload, session, players }: {
 
   const [smSelectedDiff, setSmSelectedDiff] = useState<"easy"|"medium"|"hard">("medium");
 
+  // Tier gate: in demo solo temi preset dal banco (niente "Misto"/custom).
+  const isDemo = String((session.gameConfig as Record<string, unknown> | undefined)?.tier ?? 'demo') !== 'full';
+
   const phase         = String(payload.phase ?? '');
   const themeName     = String(payload.themeName ?? '');
   const roundCount    = Number(payload.roundCount ?? 10);
@@ -4442,7 +4496,7 @@ function SaraMusicaBoard({ payload, session, players }: {
         <div className="text-white/50 text-sm">L'host sceglie, i giocatori si preparano</div>
       </div>
       <div className="grid grid-cols-5 gap-4 w-full">
-        {SM_THEME_LIST.map(t => {
+        {SM_THEME_LIST.filter(t => !isDemo || t.id !== 'custom').map(t => {
           const c = SM_THEME_COLORS[t.id] ?? SM;
           return (
             <button key={t.id} onClick={() => void smPost('select-theme', { themeId: t.id })} disabled={busy}
