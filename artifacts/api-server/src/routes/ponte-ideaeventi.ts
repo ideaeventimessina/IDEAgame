@@ -134,6 +134,71 @@ router.post("/ponte/ideaeventi/partita", async (req, res): Promise<void> => {
   }
 });
 
+/** Manifest delle capacità di IDEAgame per Axel©/IDEAeventi (scoperta automatica).
+ *  Sola lettura, protetto dalla STESSA chiave del ponte (x-ponte-key) — nessuna
+ *  chiave nuova. Riflette esattamente le rotte del ponte qui sopra. */
+const SKILL_MANIFEST = {
+  sistema: "ideagame",
+  descrizione: "Party game interattivo (TV proiettore + telefoni) per feste ed eventi.",
+  versione: "1.0",
+  baseUrl: "https://ideagame.it/api",
+  auth: { tipo: "header", header: "x-ponte-key", nota: "Stessa chiave condivisa del ponte (PONTE_IDEAEVENTI_KEY)." },
+  azioni: [
+    {
+      id: "crea_partita",
+      metodo: "POST",
+      path: "/ponte/ideaeventi/partita",
+      descrizione: "Crea (o riusa, se già live) una partita per una festa. I telefoni entrano col codice.",
+      input: {
+        festa: "string — nome della festa (es. '18° di Marta')",
+        riferimento: "string — chiave logica idempotente (es. 'preventivo-410')",
+        attesi: "number opzionale — giocatori attesi (default 20, min 2, max 200)",
+      },
+      output: { eventoId: "string", codice: "string", festa: "string", giaCera: "boolean" },
+      note: "Idempotente sul riferimento. I telefoni atterrano su /join/<codice>?nome=<nome>. Abilita solo i giochi senza AI/adult.",
+    },
+    {
+      id: "chiudi_partita",
+      metodo: "POST",
+      path: "/ponte/ideaeventi/partita/chiudi",
+      descrizione: "Chiude la partita live di un riferimento.",
+      input: { riferimento: "string" },
+      output: { ok: "boolean" },
+    },
+    {
+      id: "scopri_capacita",
+      metodo: "GET",
+      path: "/ponte/ideaeventi/skill",
+      descrizione: "Questo manifest: elenco auto-aggiornato delle capacità di IDEAgame.",
+      input: {},
+      output: "manifest JSON",
+    },
+  ],
+  giochi: [
+    { slug: "quizzone",           nome: "Quizzone",            ai: true,  adult: false, showroom: false },
+    { slug: "saramusica",         nome: "SaraMusica",          ai: true,  adult: false, showroom: false },
+    { slug: "sfida-di-ballo",     nome: "Sfida di Ballo",      ai: false, adult: false, showroom: true },
+    { slug: "gioco-delle-coppie", nome: "Gioco delle Coppie",  ai: false, adult: false, showroom: true },
+    { slug: "percorso-a-risate",  nome: "Percorso a Risate",   ai: false, adult: false, showroom: true },
+    { slug: "parola-alle-spalle", nome: "Parola alle Spalle",  ai: false, adult: false, showroom: true },
+    { slug: "karaoke-battle",     nome: "Karaoke / Freestyle", ai: false, adult: false, showroom: true },
+    { slug: "adult-only",         nome: "Adult Only (+18)",    ai: false, adult: true,  showroom: false },
+  ],
+  nonAncoraAzionabileDaFuori: [
+    "Lettura esito/classifica di una partita per riferimento",
+    "Avvio/stop di uno specifico gioco dall'esterno",
+    "Scelta dei giochi abilitati per la partita",
+    "Webhook a fine partita",
+  ],
+} as const;
+
+// GET /ponte/ideaeventi/skill — scoperta automatica delle capacità (sola lettura).
+router.get("/ponte/ideaeventi/skill", (req, res): void => {
+  if (!CHIAVE) { res.status(503).json({ error: "Ponte non configurato: manca PONTE_IDEAEVENTI_KEY." }); return; }
+  if (!chiaveCombacia(String(req.headers["x-ponte-key"] ?? ""))) { res.status(401).json({ error: "Chiave non valida." }); return; }
+  res.json(SKILL_MANIFEST);
+});
+
 /** Chiudere la partita quando la regia torna alla presentazione: una partita
  *  live dimenticata resta a raccogliere telefoni di gente che non gioca. */
 router.post("/ponte/ideaeventi/partita/chiudi", async (req, res): Promise<void> => {
