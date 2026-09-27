@@ -129,6 +129,14 @@ const ALL_GAMES = [
     color: '#FB923C',
     description: 'Canta + Freestyle rap alternati!',
   },
+  {
+    slug: 'lockdown',
+    name: 'Lockdown BoardGame',
+    icon: <span className="text-2xl">🔒</span>,
+    emoji: '🔒',
+    color: '#818CF8',
+    description: 'Master, Lock-Euro, spia segreta: sopravvivi al lockdown!',
+  },
 ];
 
 const AVATAR_RING = ['#F5B642','#FF69B4','#60A5FA','#A78BFA','#34D399','#F87171','#F472B6','#FB923C','#22D3EE','#4ADE80'];
@@ -174,6 +182,7 @@ const WHEEL_EXTRAS: Record<string, { short: string; glow: string }> = {
   'sfida-ballo':        { short: 'BALLO',    glow: '#C4B5FD' },
   'parola-alle-spalle': { short: 'PAROLA',   glow: '#67E8F9' },
   'karaoke-battle':     { short: 'KARAOKE',  glow: '#FDB175' },
+  'lockdown':           { short: 'LOCKDOWN', glow: '#A5B4FC' },
 };
 
 function polarPt(cx:number,cy:number,r:number,deg:number){
@@ -199,6 +208,7 @@ const WHEEL_ICONS: Record<string,React.ReactNode> = {
   'sfida-ballo':        <path d="M3,-13 L-3,-1 L2,-1 L-4,13 L8,1 L2,1 Z" fill="rgba(255,255,255,0.92)"/>,
   'parola-alle-spalle': <><path d="M-11,-9 Q-11,-13 -7,-13 L7,-13 Q11,-13 11,-9 L11,1 Q11,5 7,5 L2,5 L-1,11 L-3,5 L-7,5 Q-11,5 -11,1 Z" fill="none" stroke="rgba(255,255,255,0.88)" strokeWidth="2.2"/><circle cx="-3" cy="-4" r="1.8" fill="white"/><circle cx="0" cy="-4" r="1.8" fill="white"/><circle cx="3" cy="-4" r="1.8" fill="white"/></>,
   'karaoke-battle':     <polygon points="0,-11 2.8,-3.5 11,-3.5 4.8,1.3 7.2,9 0,4.5 -7.2,9 -4.8,1.3 -11,-3.5 -2.8,-3.5" fill="rgba(255,255,255,0.92)"/>,
+  'lockdown':           <><rect x="-7" y="-1" width="14" height="11" rx="2" fill="rgba(255,255,255,0.92)"/><path d="M-4,-1 v-3 a4,4 0 0 1 8,0 v3" fill="none" stroke="rgba(255,255,255,0.92)" strokeWidth="2.2"/></>,
 };
 
 function WheelSectorIcon({ slug }:{ slug:string }) {
@@ -825,8 +835,8 @@ export default function HomeGame() {
       glow:  WHEEL_EXTRAS[g.slug]?.glow ?? g.color,
       done:  gamesPlayed.includes(g.slug),
       kind:  gameKind(g.slug),
-      // In demo il Karaoke Live è visibile ma bloccato (🔒 "Solo in Full").
-      locked: isDemo && g.slug === 'karaoke-battle',
+      // In demo Karaoke Live e Lockdown sono visibili ma bloccati (🔒 "Solo in Full").
+      locked: isDemo && (g.slug === 'karaoke-battle' || g.slug === 'lockdown'),
     }))
   , [visibleGames, gamesPlayed, isDemo]);
 
@@ -1320,7 +1330,7 @@ export default function HomeGame() {
   const selectGame = async (slug: string) => {
     if (!session || selectingGame) return;
     // Tier gate: in demo Adult e Karaoke Live non sono avviabili (difesa lato client).
-    if (isDemo && (slug === 'adult-only' || slug === 'karaoke-battle')) return;
+    if (isDemo && (slug === 'adult-only' || slug === 'karaoke-battle' || slug === 'lockdown')) return;
     setSelectingGame(slug);
     try {
       const r = await fetch(`/api/home/sessions/${session.id}/select-game`, {
@@ -1447,7 +1457,7 @@ export default function HomeGame() {
 
   const joinUrl = session ? `${window.location.origin}/home/join?s=${session.joinCode}` : '';
   // I giochi bloccati (Karaoke in demo) non contano per il completamento della serata.
-  const playableGames = visibleGames.filter(g => !(isDemo && g.slug === 'karaoke-battle'));
+  const playableGames = visibleGames.filter(g => !(isDemo && (g.slug === 'karaoke-battle' || g.slug === 'lockdown')));
   const allDone = playableGames.length > 0 && playableGames.every(g => gamesPlayed.includes(g.slug));
 
   // ── Post-game overlay: 2 s (last game → champion) or 5 s (→ board) ──────────
