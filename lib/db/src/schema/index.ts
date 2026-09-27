@@ -21,6 +21,7 @@ export * from "./coppie-boards";
 export * from "./quiz-packs";
 export * from "./quizzone-responses";
 export * from "./percorso";
+export * from "./lockdown";
 export * from "./evening";
 export * from "./adult-only";
 export * from "./ballo";

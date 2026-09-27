@@ -70,6 +70,7 @@ import {
 import { emitToRoom, getBalloEnergies, clearBalloEnergies } from "../socket";
 import { logger } from "../lib/logger";
 import { generateWordBackRounds, generateWordBackFallback, WB_PRESET_PACKS } from "../lib/wordback-generator.js";
+import { createLockdownState } from "../lib/lockdown-engine.js";
 
 const router: IRouter = Router();
 
@@ -2773,8 +2774,8 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
   const { gameSlug, restart } = req.body as { gameSlug: string; restart?: boolean };
   if (!gameSlug) { res.status(400).json({ error: "gameSlug obbligatorio" }); return; }
 
-  // DEMO: adult e karaoke sono solo in Full. Full = tutto permesso.
-  if (sessionTier(session) === "demo" && ["adult-only", "karaoke-battle"].includes(gameSlug)) {
+  // DEMO: adult, karaoke e lockdown (contenuti adulti) sono solo in Full. Full = tutto permesso.
+  if (sessionTier(session) === "demo" && ["adult-only", "karaoke-battle", "lockdown"].includes(gameSlug)) {
     res.status(403).json({ error: "Disponibile solo in modalità Full" }); return;
   }
 
@@ -2900,6 +2901,35 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
     emitToRoom(homeRoom(id), "home:game_started", { session: percorsoUpdated, players: pPlayers, payload: percorsoPayload });
     emitHomeState(id, percorsoUpdated, pPlayers);
     res.json({ session: percorsoUpdated, players: pPlayers });
+    return;
+  }
+
+  // ── BYPASS: lockdown → direct Lockdown BoardGame (Master + Lock-Euro) ─────────
+  if (gameSlug === "lockdown") {
+    req.log.info({ sessionId: id }, "[FLOW_BYPASS] lockdown → Lockdown BoardGame direct, skipping GameFlowEngine");
+    const ldPlayers = await getPlayers(id);
+    const lockdownState = createLockdownState(
+      ldPlayers.map(p => ({
+        id: p.id,
+        nickname: p.nickname,
+        avatarColor: (p as Record<string, unknown>)["avatarColor"] as string ?? "#F5B642",
+      })),
+    );
+    const lockdownPayload: RoundPayload = { mode: "home-lockdown", gameSlug: "lockdown" } as RoundPayload;
+    const lockdownCfg = { ...cfg, phase: "playing", gamesPlayed, lockdownState };
+    const [lockdownUpdated] = await db.update(homeSessionsTable).set({
+      gameSlug,
+      gameConfig: lockdownCfg,
+      status: "playing",
+      currentRound: 0,
+      totalRounds: 1,
+      roundPayload: lockdownPayload,
+      expiresAt: new Date(Date.now() + 6 * 60 * 60 * 1000),
+    }).where(eq(homeSessionsTable.id, id)).returning();
+    const ldPlayersAfter = await getPlayers(id);
+    emitToRoom(homeRoom(id), "home:game_started", { session: lockdownUpdated, players: ldPlayersAfter, payload: lockdownPayload });
+    emitHomeState(id, lockdownUpdated, ldPlayersAfter);
+    res.json({ session: lockdownUpdated, players: ldPlayersAfter });
     return;
   }
 

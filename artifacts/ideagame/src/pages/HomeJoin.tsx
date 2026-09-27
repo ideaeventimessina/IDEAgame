@@ -1721,6 +1721,7 @@ function PhoneController({
     if (mode === 'home-quizzone')   return <QuizzoneController payload={p} session={session} player={player}/>;
     if (mode === 'home-coppie')     return <CoppieController payload={p} onFlip={onFlip} player={player} previewUntil={coppiePreviewUntil ?? null} sessionId={session.id}/>;
     if (mode === 'home-percorso')   return <PercorsoHomeController sessionId={session.id} player={player} payload={p} timeLeft={timeLeft}/>;
+    if (mode === 'home-lockdown')   return <LockdownController payload={p} player={player} session={session} />;
     if (mode === 'home-saramusica') return <SaraMusicaController payload={p} player={player} session={session}/>;
     if (mode === 'home-adult')      return <AdultController payload={p} player={player} session={session}/>;
     if (mode === 'home-ballo')      return <BalloController payload={p} timeLeft={timeLeft} sessionId={session.id} emit={emit} playerId={player.id} nickname={player.nickname} avatarColor={player.avatarColor} round={session.currentRound} adminSensitivity={adminSensitivity ?? 1.0}/>;
@@ -3124,6 +3125,234 @@ function PercorsoHomeController({ sessionId, player, payload, timeLeft }: {
     <div className="flex flex-col items-center gap-3 py-6 text-center">
       <div className="text-4xl">🎭</div>
       <div className="text-sm text-white/45">Fase: {rs.phase}</div>
+    </div>
+  );
+}
+
+// ── Lockdown BoardGame v1 — types + character mirror (from @workspace/db) ─────
+// Stesso stato del board TV; qui il telefono rispecchia i campi che gli servono.
+
+type LockdownPlayer = {
+  id: string;
+  nickname: string;
+  avatarColor: string;
+  characterId: string | null;
+  lockEuro: number;
+  eliminated: boolean;
+};
+type LockdownChallenge = {
+  prompt: string;
+  options?: string[];
+  imageUrl?: string;
+  words?: string[];
+  ingredient?: string;
+  submissions?: { playerId: string; nickname?: string; text?: string; answerIndex?: number }[];
+  [key: string]: unknown;
+};
+type LockdownState = {
+  phase: string;
+  status?: string;
+  players: LockdownPlayer[];
+  masterBalance: number;
+  roomIndex: number;
+  currentRoomId: string | null;
+  currentChallenge: LockdownChallenge | null;
+  dpcm: { text: string } | null;
+  lastMulta: { id?: string; text: string; amount?: number } | null;
+  mode: string;
+  winnerId: string | null;
+  spyRevealed: boolean;
+  spyPlayerId: string | null;
+};
+
+const LOCK_GOLD = '#F5B642';
+const LOCKDOWN_CHARACTERS: Record<string, { name: string; emoji: string; power: string }> = {
+  cuoco:          { name: 'CUOCO',          emoji: '👨‍🍳', power: "In CUCINA sceglie l'ingrediente principale." },
+  figlio_di_papa: { name: 'FIGLIO DI PAPÀ', emoji: '🤑',   power: 'Parte con 1000 Lock-Euro.' },
+  master:         { name: 'MASTER',         emoji: '🎩',   power: 'Presidente di gioco.' },
+  prostituta:     { name: 'PROSTITUTA',     emoji: '💋',   power: 'Superpotere segreto.' },
+  politico:       { name: 'POLITICO',       emoji: '🗳️',   power: 'Superpotere segreto.' },
+};
+const lockdownChar = (id: string | null | undefined) =>
+  (id ? LOCKDOWN_CHARACTERS[id] : undefined)
+  ?? { name: id ? id.replace(/_/g, ' ').toUpperCase() : 'IN ATTESA', emoji: '🎭', power: 'Aspetta che il Master assegni il tuo ruolo.' };
+
+// ── LockdownController — telefono / GIOCATORE ──────────────────────────────────
+
+function LockdownController({ payload, player, session }: {
+  payload: Record<string, unknown>;
+  player: HomePlayer;
+  session: HomeSession;
+}) {
+  void payload;
+  const BASE = (import.meta.env.BASE_URL as string) ?? '/';
+  const { on } = useEventSocket(null);
+  const [ls, setLs] = useState<LockdownState | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [text, setText] = useState('');
+  const [sent, setSent] = useState(false);
+
+  // Fetch iniziale + polling di recupero (stesso pattern di PercorsoHomeController:
+  // l'update arriva via socket home:lockdown_update ma il polling salva da eventi persi).
+  useEffect(() => {
+    let alive = true;
+    const pull = () => fetch(`${BASE}api/home/sessions/${session.id}/lockdown/state`, { credentials: 'include' })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (alive && d && !d.error) setLs(d as LockdownState); })
+      .catch(() => {});
+    pull();
+    const iv = setInterval(pull, 2500);
+    return () => { alive = false; clearInterval(iv); };
+  }, [session.id, BASE]);
+
+  useEffect(() => {
+    return on<{ state: LockdownState }>('home:lockdown_update', ({ state }) => setLs(state));
+  }, [on]);
+
+  // Reset stato locale di risposta quando cambia sfida/fase
+  const chKey = ls ? `${ls.roomIndex}:${ls.phase}:${ls.currentChallenge?.prompt ?? ''}` : '';
+  useEffect(() => { setSent(false); setText(''); }, [chKey]);
+
+  const post = async (path: string, body?: Record<string, unknown>) => {
+    setBusy(true); setMsg('');
+    try {
+      const r = await fetch(`${BASE}api/home/sessions/${session.id}/lockdown/${path}`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const d = await r.json() as { state?: LockdownState; error?: string };
+      if (d.state) setLs(d.state); else if (d.error) setMsg(d.error);
+    } catch (e) { setMsg((e as Error).message); }
+    finally { setBusy(false); }
+  };
+
+  if (!ls) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-6 text-center">
+        <motion.div animate={{ rotate: 360 }} transition={{ repeat: IS_LOW_POWER ? 0 : Infinity, duration: 2, ease: 'linear' }}
+          className="text-4xl">🔒</motion.div>
+        <div className="text-sm text-white/50">In attesa del Master…</div>
+      </div>
+    );
+  }
+
+  const me = ls.players.find(p => p.id === player.id);
+  const c = lockdownChar(me?.characterId);
+  const ch = ls.currentChallenge;
+
+  // ── Ended ─────────────────────────────────────────────────────────────────────
+  if (ls.status === 'ended' || ls.phase === 'ended') {
+    const iWon = ls.winnerId === player.id;
+    const spy = ls.spyRevealed ? ls.players.find(p => p.id === ls.spyPlayerId) : null;
+    return (
+      <div className="flex flex-col items-center gap-4 py-6 text-center">
+        <div className="text-5xl">{iWon ? '👑' : '🏁'}</div>
+        <div className="text-xl font-black text-white">{iWon ? 'Hai vinto Lockdown!' : 'Fine partita'}</div>
+        <div className="text-display text-4xl font-black" style={{ color: LOCK_GOLD }}>{me?.lockEuro ?? 0} Ⱡ</div>
+        {spy && (
+          <div className="rounded-xl px-4 py-2 text-sm font-bold"
+            style={{ background: 'rgba(167,139,250,0.14)', border: '1px solid rgba(167,139,250,0.4)', color: '#A78BFA' }}>
+            🕵️ La spia era {spy.nickname}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Header sempre visibile: personaggio + potere + saldo
+  const header = (
+    <div className="flex w-full flex-col items-center gap-2">
+      <div className="text-5xl">{c.emoji}</div>
+      <div className="text-xl font-black text-white">{c.name}</div>
+      {c.power && <div className="text-xs text-white/55 leading-relaxed px-3">{c.power}</div>}
+      <div className="rounded-2xl px-6 py-2 mt-1"
+        style={{ background: `${LOCK_GOLD}18`, border: `1px solid ${LOCK_GOLD}45` }}>
+        <span className="text-[10px] uppercase tracking-widest" style={{ color: LOCK_GOLD }}>Il tuo saldo</span>
+        <div className="text-display text-3xl font-black tabular-nums" style={{ color: LOCK_GOLD }}>{me?.lockEuro ?? 0} Ⱡ</div>
+      </div>
+    </div>
+  );
+
+  // ── Eliminated ──────────────────────────────────────────────────────────────
+  if (me?.eliminated) {
+    return (
+      <div className="flex flex-col items-center gap-4 py-6 text-center">
+        {header}
+        <div className="rounded-2xl px-5 py-4 w-full text-base font-black"
+          style={{ background: 'rgba(248,113,113,0.14)', border: '2px solid rgba(248,113,113,0.45)', color: '#f87171' }}>
+          ❌ Sei stato eliminato
+        </div>
+      </div>
+    );
+  }
+
+  const inChallenge = ls.phase === 'challenge' && !!ch;
+
+  return (
+    <div className="flex flex-col items-center gap-4 py-4 text-center">
+      {header}
+
+      {ls.dpcm && (
+        <div className="w-full rounded-2xl px-4 py-3"
+          style={{ background: 'rgba(167,139,250,0.16)', border: '2px solid rgba(167,139,250,0.6)' }}>
+          <div className="text-[10px] uppercase tracking-widest" style={{ color: '#A78BFA' }}>📜 DPCM</div>
+          <div className="text-base font-black text-white mt-0.5 leading-snug">{ls.dpcm.text}</div>
+        </div>
+      )}
+
+      {!inChallenge && (
+        <div className="text-sm text-white/45 py-2">In attesa del Master…</div>
+      )}
+
+      {inChallenge && ch && (
+        <div className="flex w-full flex-col items-center gap-3">
+          <div className="text-base font-black text-white leading-snug px-2">{ch.prompt}</div>
+          {ch.ingredient && <div className="text-sm font-black" style={{ color: LOCK_GOLD }}>🧂 {ch.ingredient}</div>}
+          {ch.words && ch.words.length > 0 && (
+            <div className="flex flex-wrap justify-center gap-1.5">
+              {ch.words.map((w, i) => (
+                <span key={i} className="rounded-lg px-2.5 py-1 text-sm font-bold"
+                  style={{ background: 'rgba(167,139,250,0.18)', border: '1px solid rgba(167,139,250,0.4)', color: '#fff' }}>{w}</span>
+              ))}
+            </div>
+          )}
+
+          {sent ? (
+            <div className="rounded-2xl px-5 py-4 w-full text-base font-black"
+              style={{ background: `${LOCK_GOLD}18`, border: `2px solid ${LOCK_GOLD}55`, color: LOCK_GOLD }}>
+              ✅ Risposta inviata!
+            </div>
+          ) : ch.options && ch.options.length > 0 ? (
+            <div className="grid grid-cols-1 gap-2 w-full">
+              {ch.options.map((o, i) => (
+                <motion.button key={i} whileTap={{ scale: 0.96 }} disabled={busy}
+                  onClick={() => { void post('answer', { playerId: player.id, answerIndex: i }).then(() => setSent(true)); }}
+                  className="rounded-2xl px-4 py-4 text-lg font-black text-white text-left"
+                  style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.16)' }}>
+                  <span style={{ color: LOCK_GOLD }}>{String.fromCharCode(65 + i)}.</span> {o}
+                </motion.button>
+              ))}
+            </div>
+          ) : (
+            <div className="flex w-full flex-col gap-2">
+              <textarea value={text} onChange={e => setText(e.target.value)} rows={3}
+                placeholder="Scrivi la tua risposta…"
+                className="w-full rounded-2xl px-4 py-3 text-base text-white bg-white/5 border border-white/15 outline-none"
+                style={{ resize: 'none' }} />
+              <motion.button whileTap={{ scale: 0.96 }} disabled={busy || !text.trim()}
+                onClick={() => { void post('answer', { playerId: player.id, text: text.trim() }).then(() => setSent(true)); }}
+                className="rounded-2xl px-6 py-4 text-lg font-black text-black w-full disabled:opacity-40"
+                style={{ background: `linear-gradient(135deg,${LOCK_GOLD},#d98f1f)`, boxShadow: `0 0 30px ${LOCK_GOLD}55` }}>
+                {busy ? '⏳…' : '📨 Invia'}
+              </motion.button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {msg && <div className="text-xs text-red-400">{msg}</div>}
     </div>
   );
 }

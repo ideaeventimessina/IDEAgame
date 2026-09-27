@@ -2392,6 +2392,7 @@ function RoundBoard({ session, revealed, onReveal, onNext, players, onScore, bal
   if (mode === 'home-quizzone')   return <QuizzoneBoard payload={p} session={session} players={players}/>;
   if (mode === 'home-ballo')      return <BalloBoard session={session} payload={p} players={players} balloEnergies={balloEnergies ?? {}} balloCurrent={balloCurrent ?? {}} balloResult={balloResult ?? null} balloVotes={balloVotes ?? {}} onReset={onBalloReset} onStageNext={onStageNext} onEndBallo={onEndBallo} sensitivity={balloSensitivity ?? 1} onSensitivity={onSensitivity}/>;
   if (mode === 'home-percorso')   return <PercorsoBoard sessionId={session.id} payload={p} onReveal={onReveal} players={players} onScore={onScore}/>;
+  if (mode === 'home-lockdown')   return <LockdownBoard session={session} players={players} />;
   if (mode === 'home-coppie')     return <CoppieBoard payload={p} onNext={onNext} sessionId={session.id} players={players}/>;
   if (mode === 'home-saramusica') return <SaraMusicaBoard payload={p} session={session} players={players}/>;
   if (mode === 'home-adult')      return <AdultOnlyBoard payload={p} session={session} players={players}/>;
@@ -3876,6 +3877,362 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
           </div>
         </motion.div>
       )}
+    </div>
+  );
+}
+
+// ── Lockdown BoardGame v1 — types + content mirror (from @workspace/db) ───────
+// Lo stato vive in home_sessions.gameConfig.lockdownState; qui ne rispecchiamo i
+// campi usati dal frontend (stesso pattern di RisateState in @/data/risate-missions).
+
+type LockdownPlayer = {
+  id: string;
+  nickname: string;
+  avatarColor: string;
+  characterId: string | null;
+  lockEuro: number;
+  eliminated: boolean;
+};
+type LockdownSubmission = {
+  playerId: string;
+  nickname?: string;
+  text?: string;
+  answerIndex?: number;
+};
+type LockdownChallenge = {
+  prompt: string;
+  options?: string[];
+  imageUrl?: string;
+  words?: string[];
+  ingredient?: string;
+  submissions?: LockdownSubmission[];
+  [key: string]: unknown;
+};
+type LockdownState = {
+  phase: string;
+  status?: string;
+  players: LockdownPlayer[];
+  masterBalance: number;
+  roomIndex: number;
+  currentRoomId: string | null;
+  currentChallenge: LockdownChallenge | null;
+  dpcm: { text: string } | null;
+  lastMulta: { id?: string; text: string; amount?: number } | null;
+  mode: string;
+  winnerId: string | null;
+  spyRevealed: boolean;
+  spyPlayerId: string | null;
+};
+
+const LOCK_GOLD = '#F5B642';
+const LOCK_PURPLE = '#A78BFA';
+
+// Catalogo personaggi/stanze: mirror di lib/lockdown-content.ts con fallback
+// graceful (l'IA a contenuti infiniti può aggiungere id non noti al frontend).
+const LOCKDOWN_CHARACTERS: Record<string, { name: string; emoji: string; power: string }> = {
+  cuoco:          { name: 'CUOCO',          emoji: '👨‍🍳', power: "In CUCINA sceglie l'ingrediente principale." },
+  figlio_di_papa: { name: 'FIGLIO DI PAPÀ', emoji: '🤑',   power: 'Parte con 1000 Lock-Euro.' },
+  master:         { name: 'MASTER',         emoji: '🎩',   power: 'Presidente di gioco.' },
+  prostituta:     { name: 'PROSTITUTA',     emoji: '💋',   power: 'Superpotere segreto.' },
+  politico:       { name: 'POLITICO',       emoji: '🗳️',   power: 'Superpotere segreto.' },
+};
+const lockdownChar = (id: string | null | undefined) =>
+  (id ? LOCKDOWN_CHARACTERS[id] : undefined)
+  ?? { name: id ? id.replace(/_/g, ' ').toUpperCase() : 'IN ATTESA', emoji: '🎭', power: '' };
+
+const LOCKDOWN_ROOMS: Record<string, { name: string; emoji: string }> = {
+  cucina:     { name: 'CUCINA',     emoji: '🍳' },
+  biblioteca: { name: 'BIBLIOTECA', emoji: '📚' },
+  salone:     { name: 'SALONE',     emoji: '🎬' },
+  balcone:    { name: 'BALCONE',    emoji: '🎤' },
+  cinema:     { name: 'CINEMA',     emoji: '🎞️' },
+  studio:     { name: 'STUDIO',     emoji: '🖼️' },
+  gabinetto:  { name: 'GABINETTO',  emoji: '🚽' },
+  palestra:   { name: 'PALESTRA',   emoji: '🏋️' },
+  ufficio:    { name: 'UFFICIO',    emoji: '💼' },
+};
+const lockdownRoom = (id: string | null | undefined) =>
+  (id ? LOCKDOWN_ROOMS[id] : undefined)
+  ?? { name: id ? id.replace(/_/g, ' ').toUpperCase() : 'STANZA', emoji: '🚪' };
+
+// ── LockdownBoard — TV / MASTER console ───────────────────────────────────────
+
+function LockdownBoard({ session, players }: { session: HomeSession; players: HomePlayer[] }) {
+  const BASE = (import.meta.env.BASE_URL as string) ?? '/';
+  const { on } = useEventSocket(null);
+  const [ls, setLs] = useState<LockdownState | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  // Batch resolve: vincitori selezionati per la sfida corrente
+  const [winnerSel, setWinnerSel] = useState<Record<string, boolean>>({});
+  // Pannello accusa spia
+  const [accuseOpen, setAccuseOpen] = useState(false);
+  const [accuserId, setAccuserId] = useState<string>('');
+  const [suspectId, setSuspectId] = useState<string>('');
+
+  useEffect(() => {
+    fetch(`${BASE}api/home/sessions/${session.id}/lockdown/state`, { credentials: 'include' })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d && !d.error) setLs(d as LockdownState); })
+      .catch(() => {})
+      .finally(() => setLoaded(true));
+  }, [session.id, BASE]);
+
+  useEffect(() => {
+    return on<{ state: LockdownState }>('home:lockdown_update', ({ state }) => setLs(state));
+  }, [on]);
+
+  const apiPost = async (path: string, body?: Record<string, unknown>) => {
+    setBusy(true); setMsg('');
+    try {
+      const r = await fetch(`${BASE}api/home/sessions/${session.id}/lockdown/${path}`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const d = await r.json() as { state?: LockdownState; error?: string };
+      if (d.state) setLs(d.state); else if (d.error) setMsg(d.error);
+    } catch (e) { setMsg((e as Error).message); }
+    finally { setBusy(false); }
+  };
+
+  // ── Loading / start states ──────────────────────────────────────────────────
+  if (!loaded) {
+    return (
+      <div className="flex flex-col items-center gap-4 text-center">
+        <motion.div animate={{ rotate: 360 }} transition={{ repeat: IS_LOW_POWER ? 0 : Infinity, duration: 2, ease: 'linear' }}
+          className="text-5xl">🔒</motion.div>
+        <div className="text-2xl font-black text-white/60">Preparazione…</div>
+      </div>
+    );
+  }
+
+  const needsStart = !ls || ls.phase === 'setup' || ls.phase === 'roles' || ls.status === 'idle';
+  if (needsStart) {
+    return (
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+        className="flex flex-col items-center gap-6 text-center">
+        <div className="text-7xl">🔒</div>
+        <div className="text-display text-5xl font-black text-white"
+          style={{ textShadow: `0 0 34px ${LOCK_GOLD}55` }}>LOCKDOWN</div>
+        <div className="text-base text-white/50">Il Master sulla TV • i giocatori sul telefono • economia in Lock-Euro</div>
+        {msg && <div className="text-sm text-red-400">{msg}</div>}
+        <motion.button whileTap={{ scale: 0.94 }} onClick={() => void apiPost('init')} disabled={busy}
+          className="rounded-2xl px-10 py-4 text-2xl font-black text-black"
+          style={{ background: `linear-gradient(135deg,${LOCK_GOLD},#d98f1f)`, boxShadow: `0 0 46px ${LOCK_GOLD}66` }}>
+          {busy ? '⏳ Avvio…' : '🔒 AVVIA LOCKDOWN'}
+        </motion.button>
+      </motion.div>
+    );
+  }
+
+  const room = lockdownRoom(ls.currentRoomId);
+  const ch = ls.currentChallenge;
+  const activePlayers = ls.players;
+
+  // ── Ended: winner + spy reveal ────────────────────────────────────────────────
+  if (ls.status === 'ended' || ls.phase === 'ended') {
+    const winner = ls.players.find(p => p.id === ls.winnerId);
+    const spy = ls.spyRevealed ? ls.players.find(p => p.id === ls.spyPlayerId) : null;
+    return (
+      <motion.div initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }}
+        className="flex w-full max-w-xl flex-col items-center gap-5 text-center">
+        <div className="text-display text-5xl font-black text-white">🏁 FINE LOCKDOWN</div>
+        {winner ? (
+          <div className="flex flex-col items-center gap-2 rounded-3xl px-8 py-6 w-full"
+            style={{ background: `${LOCK_GOLD}18`, border: `2px solid ${LOCK_GOLD}55` }}>
+            <div className="text-sm uppercase tracking-widest" style={{ color: LOCK_GOLD }}>Vincitore</div>
+            <div className="text-4xl">{lockdownChar(winner.characterId).emoji}</div>
+            <div className="text-display text-4xl font-black text-white">{winner.nickname}</div>
+            <div className="text-display text-3xl font-black tabular-nums" style={{ color: LOCK_GOLD }}>{winner.lockEuro} Ⱡ</div>
+          </div>
+        ) : (
+          <div className="text-2xl font-black text-white/60">Nessun vincitore</div>
+        )}
+        <div className="flex flex-col items-center gap-2 rounded-2xl px-6 py-4 w-full"
+          style={{ background: `${LOCK_PURPLE}14`, border: `1px solid ${LOCK_PURPLE}40` }}>
+          <div className="text-sm uppercase tracking-widest" style={{ color: LOCK_PURPLE }}>🕵️ La Spia era</div>
+          <div className="text-display text-3xl font-black text-white">{spy ? spy.nickname : '???'}</div>
+        </div>
+      </motion.div>
+    );
+  }
+
+  const PRIZE = 50, PENALTY = 100, STEP = 25;
+  const btn = 'rounded-lg px-2.5 py-1 text-sm font-black transition-colors disabled:opacity-40';
+
+  return (
+    <div className="flex w-full max-w-4xl flex-col items-center gap-4">
+      {/* Header: room + CASSA */}
+      <div className="flex w-full items-stretch justify-between gap-4">
+        <div className="flex items-center gap-3 rounded-2xl px-5 py-3"
+          style={{ background: `${LOCK_PURPLE}16`, border: `1px solid ${LOCK_PURPLE}38` }}>
+          <span className="text-4xl">{room.emoji}</span>
+          <div className="text-left">
+            <div className="text-[11px] uppercase tracking-widest text-white/40">Stanza {ls.roomIndex + 1}</div>
+            <div className="text-display text-2xl font-black text-white">{room.name}</div>
+          </div>
+        </div>
+        <div className="flex flex-col items-end justify-center rounded-2xl px-6 py-3"
+          style={{ background: `${LOCK_GOLD}16`, border: `1px solid ${LOCK_GOLD}45` }}>
+          <div className="text-[11px] uppercase tracking-widest" style={{ color: LOCK_GOLD }}>💰 Cassa Master</div>
+          <div className="text-display text-3xl font-black tabular-nums" style={{ color: LOCK_GOLD }}>{ls.masterBalance} Ⱡ</div>
+        </div>
+      </div>
+
+      {/* Challenge prompt */}
+      {ch && (
+        <motion.div key={ls.roomIndex + ':' + (ch.prompt ?? '')} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+          className="flex w-full flex-col items-center gap-2 rounded-2xl px-6 py-4"
+          style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)' }}>
+          <div className="text-display text-2xl font-black text-white leading-snug">{ch.prompt}</div>
+          {ch.ingredient && <div className="text-lg font-black" style={{ color: LOCK_GOLD }}>🧂 {ch.ingredient}</div>}
+          {ch.imageUrl && (
+            <img src={ch.imageUrl} alt="" className="rounded-xl object-cover"
+              style={{ width: 'min(50vw, 320px)', height: 'min(34vh, 260px)' }}
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+          )}
+          {ch.words && ch.words.length > 0 && (
+            <div className="flex flex-wrap justify-center gap-2">
+              {ch.words.map((w, i) => (
+                <span key={i} className="rounded-lg px-3 py-1 text-base font-bold"
+                  style={{ background: `${LOCK_PURPLE}22`, border: `1px solid ${LOCK_PURPLE}44`, color: '#fff' }}>{w}</span>
+              ))}
+            </div>
+          )}
+          {ch.options && ch.options.length > 0 && (
+            <div className="flex flex-wrap justify-center gap-2 mt-1">
+              {ch.options.map((o, i) => (
+                <span key={i} className="rounded-lg px-4 py-1.5 text-base font-bold"
+                  style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.16)', color: 'rgba(255,255,255,0.85)' }}>
+                  {String.fromCharCode(65 + i)}. {o}
+                </span>
+              ))}
+            </div>
+          )}
+        </motion.div>
+      )}
+
+      {/* DPCM big */}
+      {ls.dpcm && (
+        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+          className="w-full rounded-2xl px-6 py-5 text-center"
+          style={{ background: `${LOCK_PURPLE}20`, border: `2px solid ${LOCK_PURPLE}` }}>
+          <div className="text-sm uppercase tracking-widest" style={{ color: LOCK_PURPLE }}>📜 DPCM</div>
+          <div className="text-display text-3xl font-black text-white mt-1 leading-snug">{ls.dpcm.text}</div>
+        </motion.div>
+      )}
+
+      {/* Last multa flash */}
+      {ls.lastMulta && (
+        <div className="rounded-xl px-4 py-2 text-sm font-black"
+          style={{ background: 'rgba(248,113,113,0.14)', border: '1px solid rgba(248,113,113,0.4)', color: '#f87171' }}>
+          🚨 {ls.lastMulta.text}{ls.lastMulta.amount ? ` (−${ls.lastMulta.amount} Ⱡ)` : ''}
+        </div>
+      )}
+
+      {/* Players row + per-player controls */}
+      <div className="grid w-full grid-cols-2 gap-2 md:grid-cols-3">
+        {activePlayers.map(pl => {
+          const c = lockdownChar(pl.characterId);
+          const sub = ch?.submissions?.find(s => s.playerId === pl.id);
+          const isWinner = !!winnerSel[pl.id];
+          return (
+            <div key={pl.id} className="flex flex-col gap-1.5 rounded-2xl px-3 py-2.5"
+              style={{
+                background: pl.eliminated ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.06)',
+                border: isWinner ? `2px solid ${LOCK_GOLD}` : '1px solid rgba(255,255,255,0.12)',
+                opacity: pl.eliminated ? 0.4 : 1,
+              }}>
+              <div className="flex items-center gap-2">
+                <span className="grid h-8 w-8 place-items-center rounded-full text-sm font-black text-black shrink-0"
+                  style={{ background: pl.avatarColor }}>{pl.nickname.slice(0, 2).toUpperCase()}</span>
+                <div className="min-w-0 flex-1 text-left">
+                  <div className="truncate text-sm font-black text-white">{c.emoji} {pl.nickname}</div>
+                  <div className="text-[10px] uppercase tracking-wide text-white/40 truncate">{c.name}</div>
+                </div>
+                <div className="text-display text-base font-black tabular-nums shrink-0" style={{ color: LOCK_GOLD }}>{pl.lockEuro} Ⱡ</div>
+              </div>
+              {sub && (
+                <div className="rounded-md px-2 py-1 text-[11px] text-left text-white/70 line-clamp-2"
+                  style={{ background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.28)' }}>
+                  {sub.answerIndex !== undefined ? `Risposta ${String.fromCharCode(65 + sub.answerIndex)}` : sub.text}
+                </div>
+              )}
+              {!pl.eliminated && (
+                <div className="flex flex-wrap items-center gap-1">
+                  <button className={btn} disabled={busy} onClick={() => void apiPost('award', { playerId: pl.id, amount: PRIZE })}
+                    style={{ background: `${LOCK_GOLD}22`, color: LOCK_GOLD }}>+{PRIZE}</button>
+                  <button className={btn} disabled={busy} onClick={() => void apiPost('award', { playerId: pl.id, amount: -PENALTY })}
+                    style={{ background: 'rgba(248,113,113,0.18)', color: '#f87171' }}>−{PENALTY}</button>
+                  <button className={btn} disabled={busy} onClick={() => void apiPost('award', { playerId: pl.id, amount: STEP })}
+                    style={{ background: 'rgba(255,255,255,0.08)', color: '#fff' }}>+{STEP}</button>
+                  <button className={btn} disabled={busy} onClick={() => void apiPost('award', { playerId: pl.id, amount: -STEP })}
+                    style={{ background: 'rgba(255,255,255,0.08)', color: '#fff' }}>−{STEP}</button>
+                  <button className={btn} disabled={busy} onClick={() => void apiPost('multa', { playerId: pl.id })}
+                    style={{ background: 'rgba(248,113,113,0.12)', color: '#f87171' }}>🚨</button>
+                  <button className={btn} onClick={() => setWinnerSel(s => ({ ...s, [pl.id]: !s[pl.id] }))}
+                    style={{ background: isWinner ? LOCK_GOLD : 'rgba(255,255,255,0.08)', color: isWinner ? '#000' : '#fff' }}>🏆</button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Master controls */}
+      <div className="flex w-full flex-wrap items-center justify-center gap-2">
+        <button disabled={busy} onClick={() => void apiPost('next-room')}
+          className="rounded-xl px-4 py-2.5 text-base font-black text-white"
+          style={{ background: `linear-gradient(135deg,${LOCK_PURPLE},#7C3AED)` }}>▶︎ Prossima stanza</button>
+        <button disabled={busy} onClick={() => void apiPost('start-challenge')}
+          className="rounded-xl px-4 py-2.5 text-base font-black text-black"
+          style={{ background: `linear-gradient(135deg,${LOCK_GOLD},#d98f1f)` }}>⚡ Via alla sfida</button>
+        <button disabled={busy} onClick={() => {
+            const awards = Object.keys(winnerSel).filter(id => winnerSel[id]).map(id => ({ playerId: id, amount: PRIZE }));
+            void apiPost('resolve-challenge', { awards }).then(() => setWinnerSel({}));
+          }}
+          className="rounded-xl px-4 py-2.5 text-base font-black text-white"
+          style={{ background: 'rgba(52,211,153,0.85)' }}>✅ Risolvi sfida</button>
+        <button disabled={busy} onClick={() => void apiPost('dpcm')}
+          className="rounded-xl px-4 py-2.5 text-base font-black text-white"
+          style={{ background: `${LOCK_PURPLE}30`, border: `1px solid ${LOCK_PURPLE}` }}>📜 Leggi DPCM</button>
+        <button disabled={busy} onClick={() => setAccuseOpen(o => !o)}
+          className="rounded-xl px-4 py-2.5 text-base font-black text-white"
+          style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.2)' }}>🕵️ Accusa spia</button>
+        <button disabled={busy} onClick={() => void apiPost('end')}
+          className="rounded-xl px-4 py-2.5 text-base font-black text-white"
+          style={{ background: 'rgba(248,113,113,0.2)', border: '1px solid rgba(248,113,113,0.5)' }}>🏁 Fine</button>
+      </div>
+
+      {/* Accuse panel */}
+      {accuseOpen && (
+        <div className="flex w-full flex-col gap-2 rounded-2xl px-4 py-3"
+          style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.14)' }}>
+          <div className="text-xs uppercase tracking-widest text-white/45">Accusatore</div>
+          <div className="flex flex-wrap gap-1.5">
+            {activePlayers.filter(p => !p.eliminated).map(p => (
+              <button key={p.id} onClick={() => setAccuserId(p.id)} className="rounded-lg px-3 py-1 text-sm font-bold"
+                style={accuserId === p.id ? { background: LOCK_PURPLE, color: '#000' } : { background: 'rgba(255,255,255,0.08)', color: '#fff' }}>{p.nickname}</button>
+            ))}
+          </div>
+          <div className="text-xs uppercase tracking-widest text-white/45">Sospetto</div>
+          <div className="flex flex-wrap gap-1.5">
+            {activePlayers.filter(p => !p.eliminated).map(p => (
+              <button key={p.id} onClick={() => setSuspectId(p.id)} className="rounded-lg px-3 py-1 text-sm font-bold"
+                style={suspectId === p.id ? { background: '#f87171', color: '#000' } : { background: 'rgba(255,255,255,0.08)', color: '#fff' }}>{p.nickname}</button>
+            ))}
+          </div>
+          <button disabled={busy || !accuserId || !suspectId}
+            onClick={() => { void apiPost('accuse', { accuserId, suspectId }).then(() => { setAccuseOpen(false); setAccuserId(''); setSuspectId(''); }); }}
+            className="rounded-xl px-4 py-2 text-base font-black text-white disabled:opacity-40"
+            style={{ background: `linear-gradient(135deg,${LOCK_PURPLE},#7C3AED)` }}>🕵️ Conferma accusa</button>
+        </div>
+      )}
+
+      {msg && <div className="text-xs text-red-400">{msg}</div>}
+      {players.length === 0 && <div className="text-xs text-white/30">Nessun giocatore collegato</div>}
     </div>
   );
 }
