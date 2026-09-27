@@ -3918,6 +3918,13 @@ type LockdownChallenge = {
   words?: string[];
   ingredient?: string;
   submissions?: LockdownSubmission[];
+  /** CUOCO / CANTANTE: scelta in sospeso + opzioni offerte. */
+  awaitingIngredientFrom?: string;
+  ingredientOptions?: string[];
+  awaitingWordsFrom?: string;
+  wordOptions?: string[];
+  /** DOTTORE: giocatore sedato per questa prova. */
+  sedatedPlayerId?: string;
   [key: string]: unknown;
 };
 type LockdownState = {
@@ -3947,10 +3954,16 @@ const LOCK_PURPLE = '#A78BFA';
 // graceful (l'IA a contenuti infiniti può aggiungere id non noti al frontend).
 const LOCKDOWN_CHARACTERS: Record<string, { name: string; emoji: string; power: string }> = {
   cuoco:          { name: 'CUOCO',          emoji: '👨‍🍳', power: "In CUCINA sceglie l'ingrediente principale." },
-  figlio_di_papa: { name: 'FIGLIO DI PAPÀ', emoji: '🤑',   power: 'Parte con 1000 Lock-Euro.' },
+  figlio_di_papa: { name: 'FIGLIO DI PAPÀ', emoji: '🤑',   power: 'Parte con 1000 Lock-Euro; +500 col selfie.' },
+  attore:         { name: 'ATTORE',         emoji: '🎭',   power: 'In SALONE raddoppia il premio.' },
+  cantante:       { name: 'CANTANTE',       emoji: '🎤',   power: 'In BALCONE sceglie 2 parole del mazzo.' },
+  dottore:        { name: 'DOTTORE',        emoji: '🩺',   power: 'Può sedare un giocatore per una prova.' },
   master:         { name: 'MASTER',         emoji: '🎩',   power: 'Presidente di gioco.' },
   prostituta:     { name: 'PROSTITUTA',     emoji: '💋',   power: 'Superpotere segreto.' },
   politico:       { name: 'POLITICO',       emoji: '🗳️',   power: 'Superpotere segreto.' },
+  influencer:     { name: 'INFLUENCER',     emoji: '📸',   power: 'Superpotere segreto.' },
+  maestra:        { name: 'MAESTRA',        emoji: '👩‍🏫', power: 'Superpotere segreto.' },
+  cinefilo:       { name: 'CINEFILO',       emoji: '🍿',   power: 'Superpotere segreto.' },
 };
 const lockdownChar = (id: string | null | undefined) =>
   (id ? LOCKDOWN_CHARACTERS[id] : undefined)
@@ -4084,6 +4097,11 @@ function LockdownBoard({ session, players }: { session: HomeSession; players: Ho
 
   // Sfida a GIUDIZIO (voto pubblico) vs OGGETTIVA (auto-risolta dall'app).
   const subjective = room.subjective;
+  // ATTORE: nel SALONE il premio della coppia è raddoppiato.
+  const attoreDouble = ls.currentRoomId === 'salone'
+    && activePlayers.some(p => !p.eliminated && p.characterId === 'attore');
+  // DOTTORE: giocatore sedato per questa prova.
+  const sedatedId = ch?.sedatedPlayerId ?? null;
   // Conteggio voti per giocatore votato: votes = { voterId → votedPlayerId }.
   const voteCounts: Record<string, number> = {};
   for (const votedId of Object.values(ls.votes ?? {})) {
@@ -4143,6 +4161,14 @@ function LockdownBoard({ session, players }: { session: HomeSession; players: Ho
         </motion.div>
       )}
 
+      {/* ATTORE: premio raddoppiato nel SALONE */}
+      {attoreDouble && (
+        <div className="rounded-xl px-4 py-1.5 text-sm font-black"
+          style={{ background: `${LOCK_PURPLE}22`, border: `1px solid ${LOCK_PURPLE}66`, color: '#fff' }}>
+          🎭 Attore: premio ×2
+        </div>
+      )}
+
       {/* Colpo di scena big */}
       {ls.dpcm && (
         <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
@@ -4169,6 +4195,7 @@ function LockdownBoard({ session, players }: { session: HomeSession; players: Ho
           const isWinner = !!winnerSel[pl.id];
           const broke = pl.isBroke ?? pl.lockEuro <= 0;
           const votes = voteCounts[pl.id] ?? 0;
+          const sedated = sedatedId === pl.id;
           return (
             <div key={pl.id} className="flex flex-col gap-1.5 rounded-2xl px-3 py-2.5"
               style={{
@@ -4191,6 +4218,12 @@ function LockdownBoard({ session, players }: { session: HomeSession; players: Ho
                   )}
                 </div>
               </div>
+              {sedated && (
+                <div className="flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-black text-left"
+                  style={{ background: 'rgba(167,139,250,0.16)', border: '1px solid rgba(167,139,250,0.44)', color: LOCK_PURPLE }}>
+                  😴 sedato
+                </div>
+              )}
               {sub && (
                 <div className="rounded-md px-2 py-1 text-[11px] text-left text-white/70 line-clamp-2"
                   style={{ background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.28)' }}>

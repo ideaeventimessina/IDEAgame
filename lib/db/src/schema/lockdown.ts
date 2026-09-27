@@ -77,6 +77,10 @@ export interface LockdownPlayerState {
   isBroke: boolean;         // saldo a 0: "in rosso" (ma ancora in gioco)
   accuseUsed: boolean;      // ha già accusato la spia (1 volta) — ora TUTTI possono accusare
   characterUsed: boolean;   // ha già usato il potere (per la compravendita)
+  /** DOTTORE: ha già usato la sedazione (1 sola volta a partita). */
+  dottoreUsed?: boolean;
+  /** FIGLIO DI PAPÀ: ha già incassato il bonus selfie (+500, 1 sola volta). */
+  selfieBonusUsed?: boolean;
 }
 
 export type LockdownPhase = "setup" | "roles" | "room_intro" | "challenge" | "result" | "dpcm" | "accuse" | "ended";
@@ -98,6 +102,14 @@ export interface LockdownState {
     imageUrl?: string;
     words?: string[];
     ingredient?: string;
+    /** CUOCO: id del cuoco che deve scegliere l'ingrediente (finché non ha scelto). */
+    awaitingIngredientFrom?: string;
+    ingredientOptions?: string[];
+    /** CANTANTE: id del cantante che deve scegliere 2 parole del mazzo musicale. */
+    awaitingWordsFrom?: string;
+    wordOptions?: string[];
+    /** DOTTORE: giocatore sedato per QUESTA prova (non può vincere/rispondere). */
+    sedatedPlayerId?: string;
     [key: string]: unknown;
   } | null;
   dpcm: LockdownDpcm | null;

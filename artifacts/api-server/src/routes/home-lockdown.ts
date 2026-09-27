@@ -17,6 +17,7 @@ import {
   createLockdownState, enterRoom, applyAward, applyMulta,
   drawDpcm, accuseSpy, checkWin,
   resolveObjective, castVote, resolveVotes, spySabotage,
+  chooseIngredient, chooseWords, sedatePlayer, selfieBonus,
   LOCKDOWN_CONTENT,
   type LockdownPlayerInput,
 } from "../lib/lockdown-engine";
@@ -200,6 +201,7 @@ router.post("/home/sessions/:id/lockdown/answer", async (req: Request, res: Resp
   if (!playerId) { res.status(400).json({ error: "playerId richiesto" }); return; }
   await applyAndSave(id, s => {
     if (!s.currentChallenge) return { state: s, error: "Nessuna sfida attiva" };
+    if (s.currentChallenge.sedatedPlayerId === playerId) return { state: s, error: "😴 Sei stato sedato per questa prova" };
     const submissions = { ...((s.currentChallenge["submissions"] as Record<string, unknown> | undefined) ?? {}) };
     submissions[playerId] = { answerIndex, text, ts: Date.now() };
     return { state: { ...s, currentChallenge: { ...s.currentChallenge, submissions } } };
@@ -241,6 +243,42 @@ router.post("/home/sessions/:id/lockdown/spy-sabotage", async (req: Request, res
   const { spyId } = req.body as { spyId?: string };
   if (!spyId) { res.status(400).json({ error: "spyId richiesto" }); return; }
   await applyAndSave(id, s => ({ state: spySabotage(s, spyId) }), res);
+});
+
+/* ── POST /home/sessions/:id/lockdown/choose-ingredient ────────────────────────
+   CUOCO: in CUCINA sceglie lui l'ingrediente principale (solo il cuoco atteso). */
+router.post("/home/sessions/:id/lockdown/choose-ingredient", async (req: Request, res: Response): Promise<void> => {
+  const id = String(req.params["id"]);
+  const { playerId, ingredient } = req.body as { playerId?: string; ingredient?: string };
+  if (!playerId || typeof ingredient !== "string") { res.status(400).json({ error: "playerId e ingredient richiesti" }); return; }
+  await applyAndSave(id, s => ({ state: chooseIngredient(s, playerId, ingredient) }), res);
+});
+
+/* ── POST /home/sessions/:id/lockdown/choose-words ─────────────────────────────
+   CANTANTE: in BALCONE sceglie fino a 2 parole (solo il cantante atteso). */
+router.post("/home/sessions/:id/lockdown/choose-words", async (req: Request, res: Response): Promise<void> => {
+  const id = String(req.params["id"]);
+  const { playerId, words } = req.body as { playerId?: string; words?: string[] };
+  if (!playerId || !Array.isArray(words)) { res.status(400).json({ error: "playerId e words[] richiesti" }); return; }
+  await applyAndSave(id, s => ({ state: chooseWords(s, playerId, words) }), res);
+});
+
+/* ── POST /home/sessions/:id/lockdown/sedate ───────────────────────────────────
+   DOTTORE: una sola volta a partita, seda un giocatore per la prova corrente. */
+router.post("/home/sessions/:id/lockdown/sedate", async (req: Request, res: Response): Promise<void> => {
+  const id = String(req.params["id"]);
+  const { playerId, targetId } = req.body as { playerId?: string; targetId?: string };
+  if (!playerId || !targetId) { res.status(400).json({ error: "playerId (dottore) e targetId richiesti" }); return; }
+  await applyAndSave(id, s => ({ state: sedatePlayer(s, playerId, targetId) }), res);
+});
+
+/* ── POST /home/sessions/:id/lockdown/selfie-bonus ─────────────────────────────
+   FIGLIO DI PAPÀ: incassa una sola volta il bonus selfie (+500 Lock-Euro). */
+router.post("/home/sessions/:id/lockdown/selfie-bonus", async (req: Request, res: Response): Promise<void> => {
+  const id = String(req.params["id"]);
+  const { playerId } = req.body as { playerId?: string };
+  if (!playerId) { res.status(400).json({ error: "playerId richiesto" }); return; }
+  await applyAndSave(id, s => ({ state: selfieBonus(s, playerId) }), res);
 });
 
 /* ── POST /home/sessions/:id/lockdown/end ──────────────────────────────────── */

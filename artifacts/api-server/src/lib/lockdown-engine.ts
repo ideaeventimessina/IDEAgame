@@ -20,6 +20,7 @@ export const START_LOCKEURO   = 500;
 export const START_LOCKEURO_VIP = 1000;   // startBonus (Figlio di Papà)
 export const MASTER_WIN_AT     = 1500;    // soglia vittoria Master + Spia (riequilibrata)
 export const SPY_RAID_RATE     = 0.2;     // 20% del saldo di ogni giocatore dirottato al Master
+export const SELFIE_BONUS      = 500;     // Figlio di Papà: bonus selfie (una sola volta)
 
 /* ─── Helpers ─────────────────────────────────────────────────────────────── */
 function shuffled<T>(arr: T[]): T[] { return [...arr].sort(() => Math.random() - 0.5); }
@@ -134,11 +135,33 @@ export function enterRoom(state: LockdownState): LockdownState {
     // Stanze finite → risolvi la vittoria.
     return checkWin({ ...state, phase: "result" });
   }
+  const challenge = buildChallenge(room);
+
+  // ── Poteri di personaggio che cambiano la SFIDA all'ingresso della stanza ──
+  // CUOCO: in CUCINA sceglie lui l'ingrediente → si attende la sua scelta.
+  if (room.id === "cucina") {
+    const cuoco = state.players.find(p => !p.eliminated && p.characterId === "cuoco");
+    if (cuoco) {
+      challenge.awaitingIngredientFrom = cuoco.id;
+      challenge.ingredientOptions = pickN(LOCKDOWN_CONTENT.banks.ingredienti, 4);
+      challenge.ingredient = "";
+    }
+  }
+  // CANTANTE: in BALCONE sceglie 2 delle parole del mazzo musicale.
+  if (room.id === "balcone") {
+    const cantante = state.players.find(p => !p.eliminated && p.characterId === "cantante");
+    if (cantante) {
+      challenge.awaitingWordsFrom = cantante.id;
+      challenge.wordOptions = pickN(LOCKDOWN_CONTENT.banks.paroleCanzoni, 5);
+      challenge.words = [];
+    }
+  }
+
   return {
     ...state,
     roomIndex: nextIndex,
     currentRoomId: room.id,
-    currentChallenge: buildChallenge(room),
+    currentChallenge: challenge,
     dpcm: null,
     lastMulta: null,
     phase: "room_intro",
@@ -259,9 +282,12 @@ export function resolveObjective(state: LockdownState): LockdownState {
   const rawAnswer = typeof challenge["answer"] === "string" ? (challenge["answer"] as string) : undefined;
   const answerNorm = rawAnswer?.trim().toLowerCase();
 
+  const sedatedId = typeof challenge["sedatedPlayerId"] === "string" ? (challenge["sedatedPlayerId"] as string) : null;
+
   let next = state;
   let winners = 0;
   for (const player of state.players) {
+    if (player.id === sedatedId) continue; // DOTTORE: il sedato non può vincere questa prova
     const sub = submissions[player.id];
     if (!sub) continue;
     let correct = false;
@@ -306,10 +332,19 @@ export function castVote(state: LockdownState, voterId: string, votedPlayerId: s
  *  poi svuota i voti, fase → result, checkWin. */
 export function resolveVotes(state: LockdownState): LockdownState {
   const room: LockdownRoom | undefined = LOCKDOWN_CONTENT.rooms.find(r => r.id === state.currentRoomId);
-  const prize = room?.prize ?? 0;
+  let prize = room?.prize ?? 0;
+
+  // ATTORE: nel SALONE il premio è RADDOPPIATO se un attore è tra i giocatori.
+  const attorePresent = state.players.some(p => !p.eliminated && p.characterId === "attore");
+  if (room?.id === "salone" && attorePresent) prize *= 2;
+
+  // DOTTORE: il sedato di questa prova non può vincere → i suoi voti non contano.
+  const sedatedId = typeof state.currentChallenge?.["sedatedPlayerId"] === "string"
+    ? (state.currentChallenge["sedatedPlayerId"] as string) : null;
 
   const tally: Record<string, number> = {};
   for (const votedId of Object.values(state.votes)) {
+    if (votedId === sedatedId) continue;
     if (state.players.some(p => p.id === votedId)) {
       tally[votedId] = (tally[votedId] ?? 0) + 1;
     }
@@ -369,6 +404,78 @@ export function spySabotage(state: LockdownState, spyId: string): LockdownState 
     lastFlash: { text: `🕵️ Sabotaggio della spia! ${raided} Lock-Euro dirottati al Master`, type: "spy" },
   };
   return checkWin(next);
+}
+
+/* ─── Poteri di personaggio (meccanici) ─────────────────────────────────────── */
+
+/** CUOCO: nella prova in CUCINA sceglie lui l'ingrediente principale.
+ *  No-op se non è il cuoco atteso o se non c'è una scelta in sospeso. */
+export function chooseIngredient(state: LockdownState, playerId: string, ingredient: string): LockdownState {
+  const ch = state.currentChallenge;
+  if (!ch) return state;
+  if (ch.awaitingIngredientFrom == null || ch.awaitingIngredientFrom !== playerId) return state; // solo il cuoco
+  const chosen = String(ingredient ?? "").trim();
+  if (!chosen) return state;
+  const player = state.players.find(p => p.id === playerId);
+  return {
+    ...state,
+    currentChallenge: { ...ch, ingredient: chosen, awaitingIngredientFrom: undefined },
+    lastFlash: { text: `👨‍🍳 ${player?.nickname ?? "Cuoco"} sceglie l'ingrediente: ${chosen}`, type: "cuoco" },
+  };
+}
+
+/** CANTANTE: nella prova in BALCONE sceglie fino a 2 parole del mazzo musicale.
+ *  No-op se non è il cantante atteso o se non c'è una scelta in sospeso. */
+export function chooseWords(state: LockdownState, playerId: string, words: string[]): LockdownState {
+  const ch = state.currentChallenge;
+  if (!ch) return state;
+  if (ch.awaitingWordsFrom == null || ch.awaitingWordsFrom !== playerId) return state; // solo il cantante
+  const picked = (Array.isArray(words) ? words : []).map(w => String(w).trim()).filter(Boolean).slice(0, 2);
+  if (picked.length === 0) return state;
+  const player = state.players.find(p => p.id === playerId);
+  return {
+    ...state,
+    currentChallenge: { ...ch, words: picked, awaitingWordsFrom: undefined },
+    lastFlash: { text: `🎤 ${player?.nickname ?? "Cantante"} sceglie: ${picked.join(", ")}`, type: "cantante" },
+  };
+}
+
+/** DOTTORE: una sola volta a partita, "seda" un giocatore per la prova corrente
+ *  (non potrà vincere/rispondere). No-op se non è il dottore, se l'ha già usato,
+ *  se manca la sfida o il bersaglio. */
+export function sedatePlayer(state: LockdownState, dottoreId: string, targetId: string): LockdownState {
+  const dottore = state.players.find(p => p.id === dottoreId);
+  if (!dottore || dottore.characterId !== "dottore") return state; // non è il dottore
+  if (dottore.dottoreUsed) return state; // già usato
+  const target = state.players.find(p => p.id === targetId);
+  if (!target) return state;
+  const ch = state.currentChallenge;
+  if (!ch) return state;
+  const players = state.players.map(p => p.id === dottoreId ? { ...p, dottoreUsed: true } : p);
+  return {
+    ...state,
+    players,
+    currentChallenge: { ...ch, sedatedPlayerId: targetId },
+    lastFlash: { text: `😴 ${dottore.nickname} ha sedato ${target.nickname} per questa prova`, type: "dottore" },
+  };
+}
+
+/** FIGLIO DI PAPÀ: incassa una sola volta il bonus selfie (+500 Lock-Euro).
+ *  No-op se non è il figlio di papà o se l'ha già usato. */
+export function selfieBonus(state: LockdownState, playerId: string): LockdownState {
+  const player = state.players.find(p => p.id === playerId);
+  if (!player || player.characterId !== "figlio_di_papa") return state;
+  if (player.selfieBonusUsed) return state; // già incassato
+  const players = state.players.map(p =>
+    p.id === playerId
+      ? { ...p, lockEuro: p.lockEuro + SELFIE_BONUS, isBroke: false, eliminated: false, selfieBonusUsed: true }
+      : p,
+  );
+  return {
+    ...state,
+    players,
+    lastFlash: { text: `📸 ${player.nickname} incassa il bonus selfie +${SELFIE_BONUS} Lock-Euro`, type: "selfie" },
+  };
 }
 
 /* ─── Win check ───────────────────────────────────────────────────────────── */

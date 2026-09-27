@@ -3141,6 +3141,10 @@ type LockdownPlayer = {
   eliminated: boolean;
   /** ANTI-ELIMINAZIONE: saldo a 0 → "in rosso", ma il giocatore continua a giocare e votare. */
   isBroke?: boolean;
+  /** DOTTORE: ha già sedato (1 volta a partita). */
+  dottoreUsed?: boolean;
+  /** FIGLIO DI PAPÀ: ha già incassato il bonus selfie. */
+  selfieBonusUsed?: boolean;
 };
 type LockdownChallenge = {
   prompt: string;
@@ -3149,6 +3153,13 @@ type LockdownChallenge = {
   words?: string[];
   ingredient?: string;
   submissions?: { playerId: string; nickname?: string; text?: string; answerIndex?: number }[];
+  /** CUOCO / CANTANTE: scelta in sospeso + opzioni offerte. */
+  awaitingIngredientFrom?: string;
+  ingredientOptions?: string[];
+  awaitingWordsFrom?: string;
+  wordOptions?: string[];
+  /** DOTTORE: giocatore sedato per questa prova. */
+  sedatedPlayerId?: string;
   [key: string]: unknown;
 };
 type LockdownState = {
@@ -3192,11 +3203,17 @@ const lockdownRoom = (id: string | null | undefined) =>
   (id ? LOCKDOWN_ROOMS[id] : undefined)
   ?? { name: id ? id.replace(/_/g, ' ').toUpperCase() : 'STANZA', emoji: '🚪', subjective: true };
 const LOCKDOWN_CHARACTERS: Record<string, { name: string; emoji: string; power: string }> = {
-  cuoco:          { name: 'CUOCO',          emoji: '👨‍🍳', power: "In CUCINA sceglie l'ingrediente principale." },
-  figlio_di_papa: { name: 'FIGLIO DI PAPÀ', emoji: '🤑',   power: 'Parte con 1000 Lock-Euro.' },
+  cuoco:          { name: 'CUOCO',          emoji: '👨‍🍳', power: "In CUCINA scegli tu l'ingrediente principale." },
+  figlio_di_papa: { name: 'FIGLIO DI PAPÀ', emoji: '🤑',   power: 'Parti con 1000 Lock-Euro; +500 col selfie.' },
+  attore:         { name: 'ATTORE',         emoji: '🎭',   power: 'In SALONE raddoppi il premio della coppia.' },
+  cantante:       { name: 'CANTANTE',       emoji: '🎤',   power: 'In BALCONE scegli 2 parole del mazzo musicale.' },
+  dottore:        { name: 'DOTTORE',        emoji: '🩺',   power: 'Puoi sedare un giocatore per una prova (1 volta).' },
   master:         { name: 'MASTER',         emoji: '🎩',   power: 'Presidente di gioco.' },
   prostituta:     { name: 'PROSTITUTA',     emoji: '💋',   power: 'Superpotere segreto.' },
   politico:       { name: 'POLITICO',       emoji: '🗳️',   power: 'Superpotere segreto.' },
+  influencer:     { name: 'INFLUENCER',     emoji: '📸',   power: 'Superpotere segreto.' },
+  maestra:        { name: 'MAESTRA',        emoji: '👩‍🏫', power: 'Superpotere segreto.' },
+  cinefilo:       { name: 'CINEFILO',       emoji: '🍿',   power: 'Superpotere segreto.' },
 };
 const lockdownChar = (id: string | null | undefined) =>
   (id ? LOCKDOWN_CHARACTERS[id] : undefined)
@@ -3221,6 +3238,11 @@ function LockdownController({ payload, player, session }: {
   // (home:lockdown_update) NON porta youAreSpy, quindi lo teniamo a parte così un
   // update via socket non lo azzera.
   const [youAreSpy, setYouAreSpy] = useState(false);
+  // CANTANTE: parole selezionate (max 2). DOTTORE: pannello bersaglio aperto.
+  const [wordSel, setWordSel] = useState<string[]>([]);
+  const [dottoreOpen, setDottoreOpen] = useState(false);
+  const toggleWord = (w: string) =>
+    setWordSel(prev => prev.includes(w) ? prev.filter(x => x !== w) : (prev.length >= 2 ? prev : [...prev, w]));
 
   // Fetch iniziale + polling di recupero (stesso pattern di PercorsoHomeController:
   // l'update arriva via socket home:lockdown_update ma il polling salva da eventi persi).
@@ -3247,7 +3269,7 @@ function LockdownController({ payload, player, session }: {
 
   // Reset stato locale di risposta quando cambia sfida/fase
   const chKey = ls ? `${ls.roomIndex}:${ls.phase}:${ls.currentChallenge?.prompt ?? ''}` : '';
-  useEffect(() => { setSent(false); setText(''); }, [chKey]);
+  useEffect(() => { setSent(false); setText(''); setWordSel([]); setDottoreOpen(false); }, [chKey]);
 
   const post = async (path: string, body?: Record<string, unknown>) => {
     setBusy(true); setMsg('');
@@ -3316,11 +3338,18 @@ function LockdownController({ payload, player, session }: {
   const room = lockdownRoom(ls.currentRoomId);
   const subjective = room.subjective;
   const hasChallenge = !!ch && (ls.phase === 'challenge' || ls.phase === 'result');
+  // DOTTORE: se sono sedato, per questa prova non posso rispondere né essere votato.
+  const iAmSedated = !!ch && ch.sedatedPlayerId === player.id;
   // Oggettiva: rispondo (solo in fase challenge). Giudizio: voto il migliore (challenge o result).
-  const canAnswer = !subjective && ls.phase === 'challenge' && !!ch;
+  const canAnswer = !subjective && ls.phase === 'challenge' && !!ch && !iAmSedated;
   const canVote = subjective && hasChallenge;
   const myVote = ls.votes?.[player.id] ?? null;
   const others = ls.players.filter(p => p.id !== player.id);
+  // Poteri di personaggio meccanici (attivi sul MIO telefono).
+  const iAmCuocoPicking = !!ch && ch.awaitingIngredientFrom === player.id;
+  const iAmCantantePicking = !!ch && ch.awaitingWordsFrom === player.id;
+  const iAmDottore = me?.characterId === 'dottore';
+  const iAmFiglio = me?.characterId === 'figlio_di_papa';
 
   return (
     <div className="flex flex-col items-center gap-4 py-4 text-center">
@@ -3342,6 +3371,102 @@ function LockdownController({ payload, player, session }: {
           style={{ background: `${LOCK_PURPLE}22`, border: `1px solid ${LOCK_PURPLE}66` }}>
           {ls.spyPowerUsed ? '🕵️ Sabotaggio già usato' : '🕵️ SABOTA (segreto, una volta sola)'}
         </button>
+      )}
+
+      {/* 😴 SEDATO dal DOTTORE — non puoi rispondere/vincere questa prova */}
+      {iAmSedated && (
+        <div className="w-full rounded-2xl px-4 py-3 text-base font-black"
+          style={{ background: `${LOCK_PURPLE}1e`, border: `2px solid ${LOCK_PURPLE}66`, color: '#fff' }}>
+          😴 Sei stato sedato per questa prova
+        </div>
+      )}
+
+      {/* 👨‍🍳 CUOCO — scegli l'ingrediente della CUCINA */}
+      {iAmCuocoPicking && (
+        <div className="w-full rounded-2xl px-4 py-3"
+          style={{ background: `${LOCK_GOLD}14`, border: `1px solid ${LOCK_GOLD}55` }}>
+          <div className="text-[11px] uppercase tracking-widest mb-2" style={{ color: LOCK_GOLD }}>👨‍🍳 Scegli l'ingrediente</div>
+          <div className="grid grid-cols-2 gap-2">
+            {(ch?.ingredientOptions ?? []).map((opt, i) => (
+              <motion.button key={i} whileTap={{ scale: 0.96 }} disabled={busy}
+                onClick={() => { void post('choose-ingredient', { playerId: player.id, ingredient: opt }); }}
+                className="rounded-xl px-3 py-3 text-base font-black text-black"
+                style={{ background: `linear-gradient(135deg,${LOCK_GOLD},#d98f1f)` }}>{opt}</motion.button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 🎤 CANTANTE — scegli 2 parole del mazzo musicale (BALCONE) */}
+      {iAmCantantePicking && (
+        <div className="w-full rounded-2xl px-4 py-3"
+          style={{ background: `${LOCK_PURPLE}14`, border: `1px solid ${LOCK_PURPLE}55` }}>
+          <div className="text-[11px] uppercase tracking-widest mb-2" style={{ color: LOCK_PURPLE }}>🎤 Scegli 2 parole</div>
+          <div className="grid grid-cols-2 gap-2">
+            {(ch?.wordOptions ?? []).map((opt, i) => {
+              const selected = wordSel.includes(opt);
+              return (
+                <motion.button key={i} whileTap={{ scale: 0.96 }} disabled={busy || (!selected && wordSel.length >= 2)}
+                  onClick={() => toggleWord(opt)}
+                  className="rounded-xl px-3 py-3 text-base font-black disabled:opacity-40"
+                  style={selected
+                    ? { background: LOCK_PURPLE, color: '#000' }
+                    : { background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.16)', color: '#fff' }}>
+                  {opt}
+                </motion.button>
+              );
+            })}
+          </div>
+          <motion.button whileTap={{ scale: 0.96 }} disabled={busy || wordSel.length === 0}
+            onClick={() => { void post('choose-words', { playerId: player.id, words: wordSel }); }}
+            className="mt-2 w-full rounded-xl px-4 py-3 text-base font-black text-black disabled:opacity-40"
+            style={{ background: `linear-gradient(135deg,${LOCK_PURPLE},#7C3AED)` }}>
+            🎤 Conferma ({wordSel.length}/2)
+          </motion.button>
+        </div>
+      )}
+
+      {/* 🩺 DOTTORE — seda un giocatore per la prova corrente (1 volta) */}
+      {iAmDottore && (
+        me?.dottoreUsed ? (
+          <div className="w-full rounded-2xl px-4 py-2.5 text-sm font-black text-white/50"
+            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)' }}>
+            🩺 Sedazione già usata
+          </div>
+        ) : (
+          <div className="w-full flex flex-col gap-2">
+            <motion.button whileTap={{ scale: 0.96 }} disabled={busy}
+              onClick={() => setDottoreOpen(o => !o)}
+              className="w-full rounded-2xl px-4 py-3 text-base font-black text-white"
+              style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.2)' }}>
+              😴 Seda un giocatore
+            </motion.button>
+            {dottoreOpen && (
+              <div className="grid grid-cols-1 gap-2">
+                {others.map(p => (
+                  <motion.button key={p.id} whileTap={{ scale: 0.96 }} disabled={busy}
+                    onClick={() => { void post('sedate', { playerId: player.id, targetId: p.id }); }}
+                    className="flex items-center gap-2 rounded-2xl px-4 py-3 text-base font-black text-left text-white"
+                    style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.16)' }}>
+                    <span className="grid h-7 w-7 place-items-center rounded-full text-xs font-black text-black shrink-0"
+                      style={{ background: p.avatarColor }}>{p.nickname.slice(0, 2).toUpperCase()}</span>
+                    <span className="flex-1 truncate">{p.nickname}</span>
+                  </motion.button>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      )}
+
+      {/* 📸 FIGLIO DI PAPÀ — bonus selfie +500 (una sola volta) */}
+      {iAmFiglio && !me?.selfieBonusUsed && (
+        <motion.button whileTap={{ scale: 0.96 }} disabled={busy}
+          onClick={() => { void post('selfie-bonus', { playerId: player.id }); }}
+          className="w-full rounded-2xl px-4 py-3 text-base font-black text-black"
+          style={{ background: `linear-gradient(135deg,${LOCK_GOLD},#d98f1f)`, boxShadow: `0 0 26px ${LOCK_GOLD}55` }}>
+          📸 Selfie +500 Ⱡ
+        </motion.button>
       )}
 
       {ls.dpcm && (
