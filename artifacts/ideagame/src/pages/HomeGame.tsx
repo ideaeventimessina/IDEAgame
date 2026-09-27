@@ -3902,6 +3902,8 @@ type LockdownPlayer = {
   characterId: string | null;
   lockEuro: number;
   eliminated: boolean;
+  /** ANTI-ELIMINAZIONE: saldo a 0 → "in rosso", ma il giocatore continua a giocare e votare. */
+  isBroke?: boolean;
 };
 type LockdownSubmission = {
   playerId: string;
@@ -3932,6 +3934,10 @@ type LockdownState = {
   winnerId: string | null;
   spyRevealed: boolean;
   spyPlayerId: string | null;
+  /** Voto del pubblico per la sfida a giudizio corrente: voterId → id del votato. */
+  votes?: Record<string, string>;
+  /** La spia ha già usato il suo sabotaggio segreto. */
+  spyPowerUsed?: boolean;
 };
 
 const LOCK_GOLD = '#F5B642';
@@ -3950,20 +3956,22 @@ const lockdownChar = (id: string | null | undefined) =>
   (id ? LOCKDOWN_CHARACTERS[id] : undefined)
   ?? { name: id ? id.replace(/_/g, ' ').toUpperCase() : 'IN ATTESA', emoji: '🎭', power: '' };
 
-const LOCKDOWN_ROOMS: Record<string, { name: string; emoji: string }> = {
-  cucina:     { name: 'CUCINA',     emoji: '🍳' },
-  biblioteca: { name: 'BIBLIOTECA', emoji: '📚' },
-  salone:     { name: 'SALONE',     emoji: '🎬' },
-  balcone:    { name: 'BALCONE',    emoji: '🎤' },
-  cinema:     { name: 'CINEMA',     emoji: '🎞️' },
-  studio:     { name: 'STUDIO',     emoji: '🖼️' },
-  gabinetto:  { name: 'GABINETTO',  emoji: '🚽' },
-  palestra:   { name: 'PALESTRA',   emoji: '🏋️' },
-  ufficio:    { name: 'UFFICIO',    emoji: '💼' },
+// subjective:true = sfida a GIUDIZIO (voto del pubblico); false = OGGETTIVA (auto-risolta dall'app).
+const LOCKDOWN_ROOMS: Record<string, { name: string; emoji: string; subjective: boolean }> = {
+  cucina:         { name: 'CUCINA',         emoji: '🍳', subjective: true },
+  biblioteca:     { name: 'BIBLIOTECA',     emoji: '📚', subjective: false },
+  salone:         { name: 'SALONE',         emoji: '🎬', subjective: true },
+  balcone:        { name: 'BALCONE',        emoji: '🎤', subjective: true },
+  cinema:         { name: 'CINEMA',         emoji: '🎞️', subjective: true },
+  studio:         { name: 'STUDIO',         emoji: '🖼️', subjective: false },
+  gabinetto:      { name: 'GABINETTO',      emoji: '🚽', subjective: true },
+  palestra:       { name: 'PALESTRA',       emoji: '🏋️', subjective: true },
+  ufficio:        { name: 'UFFICIO',        emoji: '💼', subjective: false },
+  dieci_sfumature:{ name: '10 SFUMATURE',   emoji: '🔥', subjective: false },
 };
 const lockdownRoom = (id: string | null | undefined) =>
   (id ? LOCKDOWN_ROOMS[id] : undefined)
-  ?? { name: id ? id.replace(/_/g, ' ').toUpperCase() : 'STANZA', emoji: '🚪' };
+  ?? { name: id ? id.replace(/_/g, ' ').toUpperCase() : 'STANZA', emoji: '🚪', subjective: true };
 
 // ── LockdownBoard — TV / MASTER console ───────────────────────────────────────
 
@@ -3984,7 +3992,9 @@ function LockdownBoard({ session, players }: { session: HomeSession; players: Ho
   useEffect(() => {
     fetch(`${BASE}api/home/sessions/${session.id}/lockdown/state`, { credentials: 'include' })
       .then(r => (r.ok ? r.json() : null))
-      .then(d => { if (d && !d.error) setLs(d as LockdownState); })
+      .then((d: { state?: LockdownState; error?: string } | null) => {
+        if (d && !d.error) setLs((d.state ?? d) as LockdownState);
+      })
       .catch(() => {})
       .finally(() => setLoaded(true));
   }, [session.id, BASE]);
@@ -4072,6 +4082,15 @@ function LockdownBoard({ session, players }: { session: HomeSession; players: Ho
   const PRIZE = 50, PENALTY = 100, STEP = 25;
   const btn = 'rounded-lg px-2.5 py-1 text-sm font-black transition-colors disabled:opacity-40';
 
+  // Sfida a GIUDIZIO (voto pubblico) vs OGGETTIVA (auto-risolta dall'app).
+  const subjective = room.subjective;
+  // Conteggio voti per giocatore votato: votes = { voterId → votedPlayerId }.
+  const voteCounts: Record<string, number> = {};
+  for (const votedId of Object.values(ls.votes ?? {})) {
+    if (votedId) voteCounts[votedId] = (voteCounts[votedId] ?? 0) + 1;
+  }
+  const totalVotes = Object.values(ls.votes ?? {}).filter(Boolean).length;
+
   return (
     <div className="flex w-full max-w-4xl flex-col items-center gap-4">
       {/* Header: room + CASSA */}
@@ -4124,17 +4143,17 @@ function LockdownBoard({ session, players }: { session: HomeSession; players: Ho
         </motion.div>
       )}
 
-      {/* DPCM big */}
+      {/* Colpo di scena big */}
       {ls.dpcm && (
         <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
           className="w-full rounded-2xl px-6 py-5 text-center"
           style={{ background: `${LOCK_PURPLE}20`, border: `2px solid ${LOCK_PURPLE}` }}>
-          <div className="text-sm uppercase tracking-widest" style={{ color: LOCK_PURPLE }}>📜 DPCM</div>
+          <div className="text-sm uppercase tracking-widest" style={{ color: LOCK_PURPLE }}>📜 Colpo di scena</div>
           <div className="text-display text-3xl font-black text-white mt-1 leading-snug">{ls.dpcm.text}</div>
         </motion.div>
       )}
 
-      {/* Last multa flash */}
+      {/* Last penalità flash */}
       {ls.lastMulta && (
         <div className="rounded-xl px-4 py-2 text-sm font-black"
           style={{ background: 'rgba(248,113,113,0.14)', border: '1px solid rgba(248,113,113,0.4)', color: '#f87171' }}>
@@ -4148,12 +4167,14 @@ function LockdownBoard({ session, players }: { session: HomeSession; players: Ho
           const c = lockdownChar(pl.characterId);
           const sub = ch?.submissions?.find(s => s.playerId === pl.id);
           const isWinner = !!winnerSel[pl.id];
+          const broke = pl.isBroke ?? pl.lockEuro <= 0;
+          const votes = voteCounts[pl.id] ?? 0;
           return (
             <div key={pl.id} className="flex flex-col gap-1.5 rounded-2xl px-3 py-2.5"
               style={{
-                background: pl.eliminated ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.06)',
-                border: isWinner ? `2px solid ${LOCK_GOLD}` : '1px solid rgba(255,255,255,0.12)',
-                opacity: pl.eliminated ? 0.4 : 1,
+                background: 'rgba(255,255,255,0.06)',
+                border: isWinner ? `2px solid ${LOCK_GOLD}`
+                  : broke ? '1px solid rgba(248,113,113,0.5)' : '1px solid rgba(255,255,255,0.12)',
               }}>
               <div className="flex items-center gap-2">
                 <span className="grid h-8 w-8 place-items-center rounded-full text-sm font-black text-black shrink-0"
@@ -4162,7 +4183,13 @@ function LockdownBoard({ session, players }: { session: HomeSession; players: Ho
                   <div className="truncate text-sm font-black text-white">{c.emoji} {pl.nickname}</div>
                   <div className="text-[10px] uppercase tracking-wide text-white/40 truncate">{c.name}</div>
                 </div>
-                <div className="text-display text-base font-black tabular-nums shrink-0" style={{ color: LOCK_GOLD }}>{pl.lockEuro} Ⱡ</div>
+                <div className="flex flex-col items-end shrink-0">
+                  <div className="text-display text-base font-black tabular-nums" style={{ color: broke ? '#f87171' : LOCK_GOLD }}>{pl.lockEuro} Ⱡ</div>
+                  {broke && (
+                    <span className="rounded-full px-1.5 text-[9px] font-black uppercase tracking-wide"
+                      style={{ background: 'rgba(248,113,113,0.2)', color: '#f87171' }}>🔴 in rosso</span>
+                  )}
+                </div>
               </div>
               {sub && (
                 <div className="rounded-md px-2 py-1 text-[11px] text-left text-white/70 line-clamp-2"
@@ -4170,22 +4197,26 @@ function LockdownBoard({ session, players }: { session: HomeSession; players: Ho
                   {sub.answerIndex !== undefined ? `Risposta ${String.fromCharCode(65 + sub.answerIndex)}` : sub.text}
                 </div>
               )}
-              {!pl.eliminated && (
-                <div className="flex flex-wrap items-center gap-1">
-                  <button className={btn} disabled={busy} onClick={() => void apiPost('award', { playerId: pl.id, amount: PRIZE })}
-                    style={{ background: `${LOCK_GOLD}22`, color: LOCK_GOLD }}>+{PRIZE}</button>
-                  <button className={btn} disabled={busy} onClick={() => void apiPost('award', { playerId: pl.id, amount: -PENALTY })}
-                    style={{ background: 'rgba(248,113,113,0.18)', color: '#f87171' }}>−{PENALTY}</button>
-                  <button className={btn} disabled={busy} onClick={() => void apiPost('award', { playerId: pl.id, amount: STEP })}
-                    style={{ background: 'rgba(255,255,255,0.08)', color: '#fff' }}>+{STEP}</button>
-                  <button className={btn} disabled={busy} onClick={() => void apiPost('award', { playerId: pl.id, amount: -STEP })}
-                    style={{ background: 'rgba(255,255,255,0.08)', color: '#fff' }}>−{STEP}</button>
-                  <button className={btn} disabled={busy} onClick={() => void apiPost('multa', { playerId: pl.id })}
-                    style={{ background: 'rgba(248,113,113,0.12)', color: '#f87171' }}>🚨</button>
-                  <button className={btn} onClick={() => setWinnerSel(s => ({ ...s, [pl.id]: !s[pl.id] }))}
-                    style={{ background: isWinner ? LOCK_GOLD : 'rgba(255,255,255,0.08)', color: isWinner ? '#000' : '#fff' }}>🏆</button>
+              {subjective && votes > 0 && (
+                <div className="flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-black text-left"
+                  style={{ background: `${LOCK_PURPLE}1c`, border: `1px solid ${LOCK_PURPLE}44`, color: LOCK_PURPLE }}>
+                  🗳️ {votes} {votes === 1 ? 'voto' : 'voti'}
                 </div>
               )}
+              <div className="flex flex-wrap items-center gap-1">
+                <button className={btn} disabled={busy} onClick={() => void apiPost('award', { playerId: pl.id, amount: PRIZE })}
+                  style={{ background: `${LOCK_GOLD}22`, color: LOCK_GOLD }}>+{PRIZE}</button>
+                <button className={btn} disabled={busy} onClick={() => void apiPost('award', { playerId: pl.id, amount: -PENALTY })}
+                  style={{ background: 'rgba(248,113,113,0.18)', color: '#f87171' }}>−{PENALTY}</button>
+                <button className={btn} disabled={busy} onClick={() => void apiPost('award', { playerId: pl.id, amount: STEP })}
+                  style={{ background: 'rgba(255,255,255,0.08)', color: '#fff' }}>+{STEP}</button>
+                <button className={btn} disabled={busy} onClick={() => void apiPost('award', { playerId: pl.id, amount: -STEP })}
+                  style={{ background: 'rgba(255,255,255,0.08)', color: '#fff' }}>−{STEP}</button>
+                <button className={btn} title="Penalità" disabled={busy} onClick={() => void apiPost('multa', { playerId: pl.id })}
+                  style={{ background: 'rgba(248,113,113,0.12)', color: '#f87171' }}>🚨</button>
+                <button className={btn} title="Vincitore sfida" onClick={() => setWinnerSel(s => ({ ...s, [pl.id]: !s[pl.id] }))}
+                  style={{ background: isWinner ? LOCK_GOLD : 'rgba(255,255,255,0.08)', color: isWinner ? '#000' : '#fff' }}>🏆</button>
+              </div>
             </div>
           );
         })}
@@ -4199,15 +4230,26 @@ function LockdownBoard({ session, players }: { session: HomeSession; players: Ho
         <button disabled={busy} onClick={() => void apiPost('start-challenge')}
           className="rounded-xl px-4 py-2.5 text-base font-black text-black"
           style={{ background: `linear-gradient(135deg,${LOCK_GOLD},#d98f1f)` }}>⚡ Via alla sfida</button>
+        {/* PRIMARIO per tipo di stanza: giudizio → assegna dai voti; oggettiva → auto-risolvi */}
+        {subjective ? (
+          <button disabled={busy || totalVotes === 0} onClick={() => void apiPost('resolve-votes')}
+            className="rounded-xl px-4 py-2.5 text-base font-black text-black disabled:opacity-40"
+            style={{ background: 'rgba(52,211,153,0.95)' }}>✅ Assegna dai voti{totalVotes > 0 ? ` (${totalVotes})` : ''}</button>
+        ) : (
+          <button disabled={busy} onClick={() => void apiPost('resolve-objective')}
+            className="rounded-xl px-4 py-2.5 text-base font-black text-black"
+            style={{ background: 'rgba(52,211,153,0.95)' }}>✅ Risolvi (automatico)</button>
+        )}
+        {/* Override manuale: assegna il premio ai 🏆 selezionati a mano */}
         <button disabled={busy} onClick={() => {
             const awards = Object.keys(winnerSel).filter(id => winnerSel[id]).map(id => ({ playerId: id, amount: PRIZE }));
             void apiPost('resolve-challenge', { awards }).then(() => setWinnerSel({}));
           }}
           className="rounded-xl px-4 py-2.5 text-base font-black text-white"
-          style={{ background: 'rgba(52,211,153,0.85)' }}>✅ Risolvi sfida</button>
+          style={{ background: 'rgba(52,211,153,0.28)', border: '1px solid rgba(52,211,153,0.6)' }}>🏆 Assegna a mano</button>
         <button disabled={busy} onClick={() => void apiPost('dpcm')}
           className="rounded-xl px-4 py-2.5 text-base font-black text-white"
-          style={{ background: `${LOCK_PURPLE}30`, border: `1px solid ${LOCK_PURPLE}` }}>📜 Leggi DPCM</button>
+          style={{ background: `${LOCK_PURPLE}30`, border: `1px solid ${LOCK_PURPLE}` }}>📜 Colpo di scena</button>
         <button disabled={busy} onClick={() => setAccuseOpen(o => !o)}
           className="rounded-xl px-4 py-2.5 text-base font-black text-white"
           style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.2)' }}>🕵️ Accusa spia</button>
@@ -4220,16 +4262,16 @@ function LockdownBoard({ session, players }: { session: HomeSession; players: Ho
       {accuseOpen && (
         <div className="flex w-full flex-col gap-2 rounded-2xl px-4 py-3"
           style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.14)' }}>
-          <div className="text-xs uppercase tracking-widest text-white/45">Accusatore</div>
+          <div className="text-xs uppercase tracking-widest text-white/45">Accusatore (chiunque)</div>
           <div className="flex flex-wrap gap-1.5">
-            {activePlayers.filter(p => !p.eliminated).map(p => (
+            {activePlayers.map(p => (
               <button key={p.id} onClick={() => setAccuserId(p.id)} className="rounded-lg px-3 py-1 text-sm font-bold"
                 style={accuserId === p.id ? { background: LOCK_PURPLE, color: '#000' } : { background: 'rgba(255,255,255,0.08)', color: '#fff' }}>{p.nickname}</button>
             ))}
           </div>
           <div className="text-xs uppercase tracking-widest text-white/45">Sospetto</div>
           <div className="flex flex-wrap gap-1.5">
-            {activePlayers.filter(p => !p.eliminated).map(p => (
+            {activePlayers.filter(p => p.id !== accuserId).map(p => (
               <button key={p.id} onClick={() => setSuspectId(p.id)} className="rounded-lg px-3 py-1 text-sm font-bold"
                 style={suspectId === p.id ? { background: '#f87171', color: '#000' } : { background: 'rgba(255,255,255,0.08)', color: '#fff' }}>{p.nickname}</button>
             ))}

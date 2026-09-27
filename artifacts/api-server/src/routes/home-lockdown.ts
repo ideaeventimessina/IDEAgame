@@ -15,7 +15,9 @@ import type { LockdownState, LockdownRoom, LockdownMulta } from "@workspace/db";
 import { emitToRoom } from "../socket";
 import {
   createLockdownState, enterRoom, applyAward, applyMulta,
-  drawDpcm, accuseSpy, checkWin, LOCKDOWN_CONTENT,
+  drawDpcm, accuseSpy, checkWin,
+  resolveObjective, castVote, resolveVotes, spySabotage,
+  LOCKDOWN_CONTENT,
   type LockdownPlayerInput,
 } from "../lib/lockdown-engine";
 import { logger } from "../lib/logger";
@@ -85,7 +87,10 @@ async function applyAndSave(
   res.json({ state: redact(result.state) });
 }
 
-/* ── GET /home/sessions/:id/lockdown/state ─────────────────────────────────── */
+/* ── GET /home/sessions/:id/lockdown/state ───────────────────────────────────
+   Accetta ?playerId= opzionale: se combacia con la spia, la risposta include
+   youAreSpy=true SENZA mai esporre spyPlayerId (resta redatto). Così il telefono
+   della spia scopre in segreto di esserlo. */
 router.get("/home/sessions/:id/lockdown/state", async (req: Request, res: Response): Promise<void> => {
   const id = String(req.params["id"]);
   const session = await getSession(id);
@@ -93,7 +98,10 @@ router.get("/home/sessions/:id/lockdown/state", async (req: Request, res: Respon
   const cfg = (session.gameConfig as Record<string, unknown>) ?? {};
   const state = getLockdownState(cfg);
   if (!state) { res.status(404).json({ error: "Stato Lockdown non inizializzato" }); return; }
-  res.json({ state: redact(state) });
+
+  const playerId = req.query["playerId"] != null ? String(req.query["playerId"]) : null;
+  const youAreSpy = playerId != null && state.spyPlayerId != null && playerId === state.spyPlayerId;
+  res.json({ state: redact(state), youAreSpy });
 });
 
 /* ── POST /home/sessions/:id/lockdown/init ─────────────────────────────────── */
@@ -204,6 +212,35 @@ router.post("/home/sessions/:id/lockdown/accuse", async (req: Request, res: Resp
   const { accuserId, suspectId } = req.body as { accuserId?: string; suspectId?: string };
   if (!accuserId || !suspectId) { res.status(400).json({ error: "accuserId e suspectId richiesti" }); return; }
   await applyAndSave(id, s => ({ state: accuseSpy(s, accuserId, suspectId) }), res);
+});
+
+/* ── POST /home/sessions/:id/lockdown/resolve-objective ─────────────────────
+   Sfide OGGETTIVE (subjective=false): l'app conosce la risposta e auto-assegna. */
+router.post("/home/sessions/:id/lockdown/resolve-objective", async (req: Request, res: Response): Promise<void> => {
+  const id = String(req.params["id"]);
+  await applyAndSave(id, s => ({ state: resolveObjective(s) }), res);
+});
+
+/* ── POST /home/sessions/:id/lockdown/vote ─────────────────────────────────── */
+router.post("/home/sessions/:id/lockdown/vote", async (req: Request, res: Response): Promise<void> => {
+  const id = String(req.params["id"]);
+  const { voterId, votedPlayerId } = req.body as { voterId?: string; votedPlayerId?: string };
+  if (!voterId || !votedPlayerId) { res.status(400).json({ error: "voterId e votedPlayerId richiesti" }); return; }
+  await applyAndSave(id, s => ({ state: castVote(s, voterId, votedPlayerId) }), res);
+});
+
+/* ── POST /home/sessions/:id/lockdown/resolve-votes ────────────────────────── */
+router.post("/home/sessions/:id/lockdown/resolve-votes", async (req: Request, res: Response): Promise<void> => {
+  const id = String(req.params["id"]);
+  await applyAndSave(id, s => ({ state: resolveVotes(s) }), res);
+});
+
+/* ── POST /home/sessions/:id/lockdown/spy-sabotage ─────────────────────────── */
+router.post("/home/sessions/:id/lockdown/spy-sabotage", async (req: Request, res: Response): Promise<void> => {
+  const id = String(req.params["id"]);
+  const { spyId } = req.body as { spyId?: string };
+  if (!spyId) { res.status(400).json({ error: "spyId richiesto" }); return; }
+  await applyAndSave(id, s => ({ state: spySabotage(s, spyId) }), res);
 });
 
 /* ── POST /home/sessions/:id/lockdown/end ──────────────────────────────────── */

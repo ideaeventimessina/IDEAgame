@@ -1,10 +1,11 @@
 /* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
 
 /* Contenuti di Lockdown BoardGame (v1): personaggi e poteri, 10 stanze/sfide, mazzo
-   DPCM (40), mazzo MULTE (20) e banchi dei mazzi reali di Andrea (ingredienti, film,
-   parole delle canzoni, crea-la-storia, bugie, oggetti studio, letteratura, 10 sfumature,
-   cultura generale). La forma segue LockdownContent (@workspace/db); i banchi sono i semi
-   reali che l'IA a contenuti infiniti estende con anti-ripetizione. */
+   "Colpi di scena" (40 carte, campo `dpcm`), mazzo "Penalità" (20 carte, campo `multe`) e
+   banchi dei mazzi reali di Andrea (ingredienti, film, parole delle canzoni, crea-la-storia,
+   bugie, oggetti studio, letteratura, 10 sfumature, cultura generale). Testi evergreen da
+   festa (nessun riferimento a pandemia). La forma segue LockdownContent (@workspace/db);
+   i banchi sono i semi reali che l'IA a contenuti infiniti estende con anti-ripetizione. */
 
 import type { LockdownContent } from "@workspace/db";
 
@@ -85,11 +86,12 @@ export const LOCKDOWN_CONTENT: LockdownContent = {
       "emoji": "🍳",
       "type": "recipes",
       "team": false,
-      "prize": 50,
-      "penalty": 100,
+      "prize": 40,
+      "penalty": 80,
       "timeLimit": 40,
-      "description": "Scrivi più ricette possibili con l'ingrediente principale scelto. 50 Lock-Euro per ricetta valida; sotto le 4 ricette paghi 100 al Master.",
-      "deckKey": "ingredienti"
+      "description": "Scrivi più ricette possibili con l'ingrediente principale scelto. 40 Lock-Euro per ricetta valida; sotto le 4 ricette paghi 80 al Master.",
+      "deckKey": "ingredienti",
+      "subjective": true
     },
     {
       "id": "dieci_sfumature",
@@ -97,11 +99,12 @@ export const LOCKDOWN_CONTENT: LockdownContent = {
       "emoji": "🔥",
       "type": "adult_quiz",
       "team": true,
-      "prize": 50,
-      "penalty": 400,
+      "prize": 200,
+      "penalty": 100,
       "timeLimit": 60,
-      "description": "Gara di coppia (vietato ai minori): 50 Lock-Euro per ogni risposta giusta finché la coppia risponde. La coppia più povera paga 400 al Master o simula la posizione pescata.",
-      "deckKey": "sesso"
+      "description": "Gara di coppia (vietato ai minori): la coppia che risponde giusto incassa il premio della stanza. La coppia più povera paga la penalità al Master o simula la posizione pescata.",
+      "deckKey": "sesso",
+      "subjective": false
     },
     {
       "id": "biblioteca",
@@ -109,11 +112,12 @@ export const LOCKDOWN_CONTENT: LockdownContent = {
       "emoji": "📚",
       "type": "quiz",
       "team": true,
-      "prize": 1000,
-      "penalty": 200,
+      "prize": 200,
+      "penalty": 100,
       "timeLimit": 30,
-      "description": "Quiz di letteratura a coppie con 4 risposte. Prima squadra a 5 risposte esatte vince 1000 Lock-Euro; chi ne indovina meno di 3 paga 200.",
-      "deckKey": "letteratura"
+      "description": "Quiz di letteratura a coppie con 4 risposte. Prima squadra a 5 risposte esatte vince 200 Lock-Euro; chi ne indovina meno di 3 paga 100.",
+      "deckKey": "letteratura",
+      "subjective": false
     },
     {
       "id": "palestra",
@@ -124,7 +128,8 @@ export const LOCKDOWN_CONTENT: LockdownContent = {
       "prize": 0,
       "penalty": 0,
       "timeLimit": 20,
-      "description": "Scommetti pari o dispari sul lancio dei dadi: il Master copre col doppio. Se esce pari incassi puntata più copertura, se dispari va tutto alla cassa. 3 lanci."
+      "description": "Scommetti pari o dispari sul lancio dei dadi: il Master copre col doppio. Se esce pari incassi puntata più copertura, se dispari va tutto alla cassa. 3 lanci.",
+      "subjective": true
     },
     {
       "id": "studio",
@@ -132,11 +137,12 @@ export const LOCKDOWN_CONTENT: LockdownContent = {
       "emoji": "🩻",
       "type": "objects",
       "team": true,
-      "prize": 2000,
-      "penalty": 300,
+      "prize": 300,
+      "penalty": 150,
       "timeLimit": 30,
-      "description": "Indovina l'oggetto mostrato aiutandoti con la lista. Prima squadra a 5 oggetti vince 2000 Lock-Euro; chi ne indovina meno di 3 paga 300.",
-      "deckKey": "oggettiStudio"
+      "description": "Indovina l'oggetto mostrato aiutandoti con la lista. Prima squadra a 5 oggetti vince 300 Lock-Euro; chi ne indovina meno di 3 paga 150.",
+      "deckKey": "oggettiStudio",
+      "subjective": false
     },
     {
       "id": "cinema",
@@ -144,11 +150,12 @@ export const LOCKDOWN_CONTENT: LockdownContent = {
       "emoji": "🎬",
       "type": "story",
       "team": true,
-      "prize": 800,
-      "penalty": 400,
+      "prize": 300,
+      "penalty": 150,
       "timeLimit": 300,
-      "description": "In 5 minuti inventa una storia credibile con titolo usando almeno 10 delle 20 parole. Il Master premia la storia migliore con 800 Lock-Euro; chi usa meno parole paga 400.",
-      "deckKey": "creaStoria"
+      "description": "In 5 minuti inventa una storia credibile con titolo usando almeno 10 delle 20 parole. Il Master premia la storia migliore con 300 Lock-Euro; chi usa meno parole paga 150.",
+      "deckKey": "creaStoria",
+      "subjective": true
     },
     {
       "id": "balcone",
@@ -156,11 +163,12 @@ export const LOCKDOWN_CONTENT: LockdownContent = {
       "emoji": "🎶",
       "type": "song_word",
       "team": false,
-      "prize": 500,
+      "prize": 200,
       "penalty": 100,
       "timeLimit": 10,
-      "description": "Canticchia in 5 secondi una canzone che contenga almeno 1 delle 5 parole estratte. L'ultimo rimasto vince 500 Lock-Euro; chi esce al primo giro paga 100.",
-      "deckKey": "paroleCanzoni"
+      "description": "Canticchia in 5 secondi una canzone che contenga almeno 1 delle 5 parole estratte. L'ultimo rimasto vince 200 Lock-Euro; chi esce al primo giro paga 100.",
+      "deckKey": "paroleCanzoni",
+      "subjective": true
     },
     {
       "id": "salone",
@@ -169,10 +177,11 @@ export const LOCKDOWN_CONTENT: LockdownContent = {
       "type": "charades",
       "team": true,
       "prize": 200,
-      "penalty": 200,
+      "penalty": 100,
       "timeLimit": 60,
-      "description": "Mima al tuo compagno il titolo del film in 1 minuto, senza suoni. 200 Lock-Euro per titolo indovinato (400 con l'Attore); passando il turno si danno 200 al Master.",
-      "deckKey": "film"
+      "description": "Mima al tuo compagno il titolo del film in 1 minuto, senza suoni. 200 Lock-Euro per titolo indovinato (400 con l'Attore); passando il turno si danno 100 al Master.",
+      "deckKey": "film",
+      "subjective": true
     },
     {
       "id": "gabinetto",
@@ -180,11 +189,12 @@ export const LOCKDOWN_CONTENT: LockdownContent = {
       "emoji": "🚽",
       "type": "lies",
       "team": true,
-      "prize": 400,
+      "prize": 200,
       "penalty": 100,
       "timeLimit": 60,
-      "description": "Domande serrate a cui rispondere solo con bugie: ogni errore è un punto. Vince chi ha meno punti la puntata da 400; chi sbaglia più di 2 volte paga 100 al Master.",
-      "deckKey": "bugie"
+      "description": "Domande serrate a cui rispondere solo con bugie: ogni errore è un punto. Vince chi ha meno punti la puntata da 200; chi sbaglia più di 2 volte paga 100 al Master.",
+      "deckKey": "bugie",
+      "subjective": true
     },
     {
       "id": "ufficio",
@@ -192,11 +202,12 @@ export const LOCKDOWN_CONTENT: LockdownContent = {
       "emoji": "💼",
       "type": "quiz",
       "team": true,
-      "prize": 3000,
-      "penalty": 1000,
+      "prize": 300,
+      "penalty": 150,
       "timeLimit": 30,
-      "description": "Due squadre in catena con un solo telefono: la risposta di gruppo più veloce e giusta segna. Prima squadra a 3 risposte esatte porta in cassa 3000 Lock-Euro; chi perde paga 1000.",
-      "deckKey": "culturaGenerale"
+      "description": "Due squadre in catena con un solo telefono: la risposta di gruppo più veloce e giusta segna. Prima squadra a 3 risposte esatte porta in cassa 300 Lock-Euro; chi perde paga 150.",
+      "deckKey": "culturaGenerale",
+      "subjective": false
     }
   ],
   "dpcm": [
@@ -222,7 +233,7 @@ export const LOCKDOWN_CONTENT: LockdownContent = {
     },
     {
       "id": "dpcm_6",
-      "text": "tutti gli uomini dovranno scegliere una partner per fare il baciamano, mi raccomando la mascherina"
+      "text": "tutti gli uomini dovranno scegliere una partner per fare il baciamano, con inchino teatrale"
     },
     {
       "id": "dpcm_7",
@@ -302,11 +313,11 @@ export const LOCKDOWN_CONTENT: LockdownContent = {
     },
     {
       "id": "dpcm_26",
-      "text": "siamo in piena emergenza e servono nuove idee... pausa sigaretta"
+      "text": "pausa scenica: tutti fanno una posa da statua e restano immobili per 10 secondi"
     },
     {
       "id": "dpcm_27",
-      "text": "è tempo di aprire i confini, per il prossimo turno sarà possibile parlare qualsiasi lingua, anche il mimo tranne l'italiano"
+      "text": "turno poliglotta: per il prossimo turno si parla solo a gesti o in un'altra lingua, mai in italiano"
     },
     {
       "id": "dpcm_28",
@@ -386,7 +397,7 @@ export const LOCKDOWN_CONTENT: LockdownContent = {
     },
     {
       "id": "multa_6",
-      "text": "RESTERAI SENZA CELLULARE FINO ALLA FINE DELLA PARTITA"
+      "text": "RESTERAI SENZA CELLULARE PER IL PROSSIMO TURNO"
     },
     {
       "id": "multa_7",

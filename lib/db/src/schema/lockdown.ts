@@ -33,10 +33,13 @@ export interface LockdownRoom {
   type: LockdownRoomType;
   team: boolean;         // gara di coppia/squadra?
   prize: number;         // Lock-Euro in palio (o per risposta, vedi engine)
-  penalty: number;       // multa al Master per gli sconfitti
+  penalty: number;       // penalità al Master per gli sconfitti
   timeLimit: number;     // secondi
   description: string;
   deckKey?: string;      // quale banco contenuti usare (es. "letteratura", "sesso")
+  /** true = sfida a GIUDIZIO (Master + voto del pubblico): mimo, storia, canto, ricette,
+   *  bugie, oggetti. false = OGGETTIVA (l'app conosce la risposta → auto-assegna). */
+  subjective: boolean;
 }
 
 export interface LockdownDpcm { id: string; text: string; }
@@ -68,8 +71,11 @@ export interface LockdownPlayerState {
   avatarColor: string;
   characterId: string | null;
   lockEuro: number;
+  /** ANTI-ELIMINAZIONE: nessuno esce mai. A 0 il giocatore è "in rosso" ma continua a
+   *  giocare, votare e può risalire. eliminated resta per compatibilità, sempre false. */
   eliminated: boolean;
-  accuseUsed: boolean;      // ha già accusato la spia (1 volta)
+  isBroke: boolean;         // saldo a 0: "in rosso" (ma ancora in gioco)
+  accuseUsed: boolean;      // ha già accusato la spia (1 volta) — ora TUTTI possono accusare
   characterUsed: boolean;   // ha già usato il potere (per la compravendita)
 }
 
@@ -99,7 +105,11 @@ export interface LockdownState {
   lastFlash: { text: string; type: string } | null;
   mode: "normal" | "timed";
   endsAt: string | null;      // per la modalità a tempo
-  masterWinAt: number;        // soglia vittoria Master+Spia (default 3000)
+  masterWinAt: number;        // soglia vittoria Master+Spia (riequilibrata, default 1500)
   winnerId: string | null;
   spyRevealed: boolean;
+  /** Voto del pubblico per la sfida a giudizio corrente: voterId → id del giocatore votato. */
+  votes: Record<string, string>;
+  /** La spia ha già usato il suo sabotaggio segreto (dirotta parte di un premio al Master). */
+  spyPowerUsed: boolean;
 }

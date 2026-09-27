@@ -3139,6 +3139,8 @@ type LockdownPlayer = {
   characterId: string | null;
   lockEuro: number;
   eliminated: boolean;
+  /** ANTI-ELIMINAZIONE: saldo a 0 → "in rosso", ma il giocatore continua a giocare e votare. */
+  isBroke?: boolean;
 };
 type LockdownChallenge = {
   prompt: string;
@@ -3163,9 +3165,32 @@ type LockdownState = {
   winnerId: string | null;
   spyRevealed: boolean;
   spyPlayerId: string | null;
+  /** Voto del pubblico per la sfida a giudizio corrente: voterId → id del votato. */
+  votes?: Record<string, string>;
+  /** La spia ha già usato il suo sabotaggio segreto. */
+  spyPowerUsed?: boolean;
+  /** Svelato SOLO al telefono della spia (GET .../state?playerId=<id>); mai spyPlayerId. */
+  youAreSpy?: boolean;
 };
 
 const LOCK_GOLD = '#F5B642';
+const LOCK_PURPLE = '#A78BFA';
+// subjective:true = sfida a GIUDIZIO (voto del pubblico); false = OGGETTIVA (l'app conosce la risposta).
+const LOCKDOWN_ROOMS: Record<string, { name: string; emoji: string; subjective: boolean }> = {
+  cucina:         { name: 'CUCINA',       emoji: '🍳', subjective: true },
+  biblioteca:     { name: 'BIBLIOTECA',   emoji: '📚', subjective: false },
+  salone:         { name: 'SALONE',       emoji: '🎬', subjective: true },
+  balcone:        { name: 'BALCONE',      emoji: '🎤', subjective: true },
+  cinema:         { name: 'CINEMA',       emoji: '🎞️', subjective: true },
+  studio:         { name: 'STUDIO',       emoji: '🖼️', subjective: false },
+  gabinetto:      { name: 'GABINETTO',    emoji: '🚽', subjective: true },
+  palestra:       { name: 'PALESTRA',     emoji: '🏋️', subjective: true },
+  ufficio:        { name: 'UFFICIO',      emoji: '💼', subjective: false },
+  dieci_sfumature:{ name: '10 SFUMATURE', emoji: '🔥', subjective: false },
+};
+const lockdownRoom = (id: string | null | undefined) =>
+  (id ? LOCKDOWN_ROOMS[id] : undefined)
+  ?? { name: id ? id.replace(/_/g, ' ').toUpperCase() : 'STANZA', emoji: '🚪', subjective: true };
 const LOCKDOWN_CHARACTERS: Record<string, { name: string; emoji: string; power: string }> = {
   cuoco:          { name: 'CUOCO',          emoji: '👨‍🍳', power: "In CUCINA sceglie l'ingrediente principale." },
   figlio_di_papa: { name: 'FIGLIO DI PAPÀ', emoji: '🤑',   power: 'Parte con 1000 Lock-Euro.' },
@@ -3192,19 +3217,29 @@ function LockdownController({ payload, player, session }: {
   const [msg, setMsg] = useState('');
   const [text, setText] = useState('');
   const [sent, setSent] = useState(false);
+  // La spia è svelata SOLO al suo telefono, via GET .../state?playerId. Il socket
+  // (home:lockdown_update) NON porta youAreSpy, quindi lo teniamo a parte così un
+  // update via socket non lo azzera.
+  const [youAreSpy, setYouAreSpy] = useState(false);
 
   // Fetch iniziale + polling di recupero (stesso pattern di PercorsoHomeController:
   // l'update arriva via socket home:lockdown_update ma il polling salva da eventi persi).
   useEffect(() => {
     let alive = true;
-    const pull = () => fetch(`${BASE}api/home/sessions/${session.id}/lockdown/state`, { credentials: 'include' })
+    const pull = () => fetch(`${BASE}api/home/sessions/${session.id}/lockdown/state?playerId=${encodeURIComponent(player.id)}`, { credentials: 'include' })
       .then(r => (r.ok ? r.json() : null))
-      .then(d => { if (alive && d && !d.error) setLs(d as LockdownState); })
+      .then((d: (LockdownState & { state?: LockdownState; error?: string; youAreSpy?: boolean }) | null) => {
+        if (!alive || !d || d.error) return;
+        const st = (d.state ?? d) as LockdownState;
+        setLs(st);
+        // youAreSpy può arrivare come fratello di state o dentro state: supportiamo entrambi.
+        setYouAreSpy(Boolean(d.youAreSpy ?? d.state?.youAreSpy ?? (st as { youAreSpy?: boolean }).youAreSpy));
+      })
       .catch(() => {});
     pull();
     const iv = setInterval(pull, 2500);
     return () => { alive = false; clearInterval(iv); };
-  }, [session.id, BASE]);
+  }, [session.id, BASE, player.id]);
 
   useEffect(() => {
     return on<{ state: LockdownState }>('home:lockdown_update', ({ state }) => setLs(state));
@@ -3275,38 +3310,93 @@ function LockdownController({ payload, player, session }: {
     </div>
   );
 
-  // ── Eliminated ──────────────────────────────────────────────────────────────
-  if (me?.eliminated) {
-    return (
-      <div className="flex flex-col items-center gap-4 py-6 text-center">
-        {header}
-        <div className="rounded-2xl px-5 py-4 w-full text-base font-black"
-          style={{ background: 'rgba(248,113,113,0.14)', border: '2px solid rgba(248,113,113,0.45)', color: '#f87171' }}>
-          ❌ Sei stato eliminato
-        </div>
-      </div>
-    );
-  }
+  // ── ANTI-ELIMINAZIONE: nessuno esce. A 0 sei "in rosso" ma continui a giocare e votare. ──
+  const broke = me ? (me.isBroke ?? me.lockEuro <= 0) : false;
 
-  const inChallenge = ls.phase === 'challenge' && !!ch;
+  const room = lockdownRoom(ls.currentRoomId);
+  const subjective = room.subjective;
+  const hasChallenge = !!ch && (ls.phase === 'challenge' || ls.phase === 'result');
+  // Oggettiva: rispondo (solo in fase challenge). Giudizio: voto il migliore (challenge o result).
+  const canAnswer = !subjective && ls.phase === 'challenge' && !!ch;
+  const canVote = subjective && hasChallenge;
+  const myVote = ls.votes?.[player.id] ?? null;
+  const others = ls.players.filter(p => p.id !== player.id);
 
   return (
     <div className="flex flex-col items-center gap-4 py-4 text-center">
       {header}
 
+      {/* 🔴 IN ROSSO — saldo a 0 ma sei ancora in gioco */}
+      {broke && (
+        <div className="w-full rounded-2xl px-4 py-3 text-base font-black"
+          style={{ background: 'rgba(248,113,113,0.14)', border: '2px solid rgba(248,113,113,0.45)', color: '#f87171' }}>
+          🔴 SEI IN ROSSO — continui a giocare e votare, puoi risalire!
+        </div>
+      )}
+
+      {/* 🕵️ Potere segreto della SPIA — visibile SOLO su questo telefono */}
+      {youAreSpy && (
+        <button disabled={busy || !!ls.spyPowerUsed}
+          onClick={() => { void post('spy-sabotage', { spyId: player.id }); }}
+          className="w-full rounded-2xl px-4 py-3 text-base font-black text-white disabled:opacity-45"
+          style={{ background: `${LOCK_PURPLE}22`, border: `1px solid ${LOCK_PURPLE}66` }}>
+          {ls.spyPowerUsed ? '🕵️ Sabotaggio già usato' : '🕵️ SABOTA (segreto, una volta sola)'}
+        </button>
+      )}
+
       {ls.dpcm && (
         <div className="w-full rounded-2xl px-4 py-3"
           style={{ background: 'rgba(167,139,250,0.16)', border: '2px solid rgba(167,139,250,0.6)' }}>
-          <div className="text-[10px] uppercase tracking-widest" style={{ color: '#A78BFA' }}>📜 DPCM</div>
+          <div className="text-[10px] uppercase tracking-widest" style={{ color: '#A78BFA' }}>📜 Colpo di scena</div>
           <div className="text-base font-black text-white mt-0.5 leading-snug">{ls.dpcm.text}</div>
         </div>
       )}
 
-      {!inChallenge && (
+      {!canAnswer && !canVote && (
         <div className="text-sm text-white/45 py-2">In attesa del Master…</div>
       )}
 
-      {inChallenge && ch && (
+      {/* ── SFIDA A GIUDIZIO: vota il migliore (puoi cambiare voto) ── */}
+      {canVote && ch && (
+        <div className="flex w-full flex-col items-center gap-3">
+          <div className="text-base font-black text-white leading-snug px-2">{ch.prompt}</div>
+          {ch.ingredient && <div className="text-sm font-black" style={{ color: LOCK_GOLD }}>🧂 {ch.ingredient}</div>}
+          {ch.words && ch.words.length > 0 && (
+            <div className="flex flex-wrap justify-center gap-1.5">
+              {ch.words.map((w, i) => (
+                <span key={i} className="rounded-lg px-2.5 py-1 text-sm font-bold"
+                  style={{ background: 'rgba(167,139,250,0.18)', border: '1px solid rgba(167,139,250,0.4)', color: '#fff' }}>{w}</span>
+              ))}
+            </div>
+          )}
+          <div className="w-full rounded-2xl px-4 py-3"
+            style={{ background: `${LOCK_PURPLE}14`, border: `1px solid ${LOCK_PURPLE}44` }}>
+            <div className="text-[11px] uppercase tracking-widest mb-2" style={{ color: LOCK_PURPLE }}>🗳️ Vota il migliore</div>
+            <div className="grid grid-cols-1 gap-2 w-full">
+              {others.map(p => {
+                const voted = myVote === p.id;
+                return (
+                  <motion.button key={p.id} whileTap={{ scale: 0.96 }} disabled={busy}
+                    onClick={() => { void post('vote', { voterId: player.id, votedPlayerId: p.id }); }}
+                    className="flex items-center gap-2 rounded-2xl px-4 py-3 text-base font-black text-left"
+                    style={voted
+                      ? { background: LOCK_PURPLE, color: '#000' }
+                      : { background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.16)', color: '#fff' }}>
+                    <span className="grid h-7 w-7 place-items-center rounded-full text-xs font-black text-black shrink-0"
+                      style={{ background: p.avatarColor }}>{p.nickname.slice(0, 2).toUpperCase()}</span>
+                    <span className="flex-1 truncate">{p.nickname}</span>
+                    {voted && <span>✓</span>}
+                  </motion.button>
+                );
+              })}
+            </div>
+            {myVote && <div className="text-[11px] text-white/45 mt-2">Puoi cambiare voto finché il Master non assegna.</div>}
+          </div>
+        </div>
+      )}
+
+      {/* ── SFIDA OGGETTIVA: rispondi (opzioni o testo) ── */}
+      {canAnswer && ch && (
         <div className="flex w-full flex-col items-center gap-3">
           <div className="text-base font-black text-white leading-snug px-2">{ch.prompt}</div>
           {ch.ingredient && <div className="text-sm font-black" style={{ color: LOCK_GOLD }}>🧂 {ch.ingredient}</div>}
