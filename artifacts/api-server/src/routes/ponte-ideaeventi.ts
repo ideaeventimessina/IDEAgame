@@ -72,62 +72,63 @@ router.post("/ponte/ideaeventi/partita", async (req, res): Promise<void> => {
     return;
   }
 
+  /* UN SOLO MOTORE (2026-09-29). Il vecchio motore Live (events/game_sessions)
+   * è stato ritirato: /partita ora crea una PARTITA HOME in modalità FULL — la
+   * stessa cosa di /partita-home — così anche il Live gira sul motore buono
+   * (silhouette, video, contenuti infiniti, voce di Jonny, musica, Lockdown).
+   * Manteniamo i nomi dei campi che Axel già legge (eventoId, codice, festa,
+   * giaCera) per non rompere l'integrazione: `eventoId` è l'id della home session
+   * e `codice` è il join code Home. Idempotente sul riferimento (groupKey). */
   try {
-    /* Già aperta per questa festa? Si riusa. Il riferimento sta nel campo
-     * `venue`, che è testo libero e non serve ad altro in questo caso: non
-     * aggiungo una colonna a un database vivo per un legame che è una riga. */
     const [gia] = await db
       .select()
-      .from(eventsTable)
-      .where(and(eq(eventsTable.venue, riferimento), eq(eventsTable.status, "live")))
+      .from(homeSessionsTable)
+      .where(and(
+        sql`${homeSessionsTable.gameConfig}->>'groupKey' = ${riferimento}`,
+        ne(homeSessionsTable.status, "ended"),
+      ))
+      .orderBy(desc(homeSessionsTable.createdAt))
       .limit(1);
     if (gia) {
-      res.json({ eventoId: gia.id, codice: gia.joinCode, festa: gia.name, giaCera: true });
+      res.json({ eventoId: gia.id, sessionId: gia.id, codice: gia.joinCode, festa, tier: "full", giaCera: true });
       return;
     }
 
-    const [tenant] = TENANT_SLUG
-      ? await db.select().from(tenantsTable).where(eq(tenantsTable.slug, TENANT_SLUG)).limit(1)
-      : await db.select().from(tenantsTable).where(eq(tenantsTable.status, "active")).limit(1);
-    if (!tenant) {
-      res.status(503).json({ error: "Nessun tenant a cui intestare la partita." });
-      return;
-    }
+    const expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1000); // ~6h
 
-    /* Il codice è unico nel database: se per caso capita uguale, si ritenta.
-     * Sei giri bastano: la probabilità di sbagliarne sei di fila è nulla. */
-    let evento: typeof eventsTable.$inferSelect | null = null;
-    for (let giro = 0; giro < 6 && !evento; giro++) {
+    let sessione: typeof homeSessionsTable.$inferSelect | null = null;
+    for (let giro = 0; giro < 6 && !sessione; giro++) {
       try {
         const [riga] = await db
-          .insert(eventsTable)
+          .insert(homeSessionsTable)
           .values({
-            tenantId: tenant.id,
-            name: festa.slice(0, 120),
-            venue: riferimento.slice(0, 120),
-            startsAt: new Date(),
-            expectedPlayers: Math.min(Math.max(attesi, 2), 200),
-            status: "live",
             joinCode: codiceNuovo(),
-            /* SOLO I GIOCHI SENZA AI — 15/9/2026, Andrea: «fargli provare
-               direttamente un gioco … bloccando le funzioni ia e quindi i giochi
-               che funzionano solo con quella». Senza questo elenco l'Hub mostrava
-               tutti e otto, Quizzone e SaraMusica compresi, e l'Adult Only
-               davanti a una famiglia in showroom. */
-            enabledGames: ["percorso-a-risate", "gioco-delle-coppie", "sfida-di-ballo", "parola-alle-spalle", "karaoke-battle"],
+            hostName: festa.slice(0, 50),
+            maxPlayers: Math.min(Math.max(attesi, 2), 200),
+            status: "lobby",
+            expiresAt,
+            gameConfig: {
+              phase: "join",
+              gamesPlayed: [],
+              preloadedRounds: [],
+              selectedGames: [],
+              matchDuration: "normal",
+              tier: "full",
+              groupKey: riferimento,
+            },
           })
           .returning();
-        evento = riga!;
+        sessione = riga!;
       } catch (e: unknown) {
         if ((e as { code?: string } | null)?.code !== "23505") throw e;
       }
     }
-    if (!evento) {
+    if (!sessione) {
       res.status(500).json({ error: "Non sono riuscito ad allocare un codice." });
       return;
     }
 
-    res.status(201).json({ eventoId: evento.id, codice: evento.joinCode, festa: evento.name, giaCera: false });
+    res.status(201).json({ eventoId: sessione.id, sessionId: sessione.id, codice: sessione.joinCode, festa, tier: "full", giaCera: false });
   } catch (err) {
     console.error("[ponte ideaeventi]", err);
     res.status(500).json({ error: "Errore nel creare la partita." });

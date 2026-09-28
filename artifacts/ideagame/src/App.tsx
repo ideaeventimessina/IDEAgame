@@ -138,6 +138,12 @@ function RootRoute() {
   return null;
 }
 
+/** Reindirizza le vecchie porte del motore Live ritirato al flusso Live-su-Home. */
+function ToLive() {
+  if (typeof window !== 'undefined') window.location.replace('/home-setup?mode=live');
+  return null;
+}
+
 function Router() {
   return (
     <Suspense fallback={<PageFallback />}>
@@ -147,29 +153,33 @@ function Router() {
         <Route path="/home-v4" component={HomeV4} />
         <Route path="/dev-test" component={DevTest} />
         <Route path="/mode-select" component={ModeSelect} />
-        <Route path="/cockpit" component={Cockpit} />
+        {/* MOTORE UNICO (2026-09-29): il vecchio motore Live è ritirato. Tutte le
+            sue vecchie porte reindirizzano al flusso Live-su-Home (/home-setup?mode=live).
+            Le pagine vecchie (Cockpit, LiveControl, Game*, PresenterLive…) restano nel
+            repo "da parte" ma non sono più raggiungibili. */}
+        <Route path="/cockpit" component={ToLive} />
         <Route path="/splash" component={Splash} />
         <Route path="/language" component={LanguageSelect} />
         <Route path="/tenant" component={TenantSelect} />
         <Route path="/login" component={LoginPage} />
-        <Route path="/event-setup" component={EventSetup} />
-        <Route path="/control" component={LiveControl} />
+        <Route path="/event-setup" component={ToLive} />
+        <Route path="/control" component={ToLive} />
         <Route path="/demo" component={Demo} />
-        <Route path="/coppie" component={GameCoppie} />
-        <Route path="/quizzone" component={GameQuizzone} />
-        <Route path="/percorso-risate" component={GamePercorso} />
-        <Route path="/serata-completa" component={SerataCompleta} />
-        <Route path="/adult-only" component={GameAdultOnly} />
-        <Route path="/sfida-ballo" component={GameBallo} />
-        <Route path="/parola-alle-spalle" component={GameWordBack} />
-        <Route path="/karaoke-battle" component={GameKaraoke} />
-        <Route path="/freestyle-battle" component={GameFreestyle} />
-        <Route path="/saramusica" component={GameSaraMusica} />
-        <Route path="/game/:slug" component={GameStage} />
-        <Route path="/lobby" component={Lobby} />
-        <Route path="/scoreboard" component={Scoreboard} />
-        <Route path="/play" component={Player} />
+        <Route path="/coppie" component={ToLive} />
+        <Route path="/quizzone" component={ToLive} />
+        <Route path="/percorso-risate" component={ToLive} />
+        <Route path="/serata-completa" component={ToLive} />
+        <Route path="/adult-only" component={ToLive} />
+        <Route path="/sfida-ballo" component={ToLive} />
+        <Route path="/parola-alle-spalle" component={ToLive} />
+        <Route path="/karaoke-battle" component={ToLive} />
+        <Route path="/freestyle-battle" component={ToLive} />
+        <Route path="/saramusica" component={ToLive} />
+        <Route path="/game/:slug" component={ToLive} />
+        <Route path="/lobby" component={ToLive} />
+        <Route path="/scoreboard" component={ToLive} />
         <Route path="/play/permissions" component={Permissions} />
+        <Route path="/play" component={ToLive} />
         <Route path="/home-setup" component={HomeSetupPage} />
         <Route path="/home-lobby/:code" component={HomeLobbyPage} />
         <Route path="/join/:code" component={JoinPage} />
@@ -180,12 +190,12 @@ function Router() {
         <Route path="/gestione/casino" component={GestioneCasino} />
         <Route path="/live-dashboard">{() => { window.location.replace('/admin/show'); return null; }}</Route>
         <Route path="/admin/live">{() => { window.location.replace('/admin/show'); return null; }}</Route>
-        <Route path="/live-join" component={LiveJoin} />
-        <Route path="/live-control" component={LiveRoom} />
-        <Route path="/live-tv" component={LiveTV} />
+        <Route path="/live-join" component={ToLive} />
+        <Route path="/live-control" component={ToLive} />
+        <Route path="/live-tv" component={ToLive} />
         <Route path="/live-presenter" component={LivePresenter} />
-        <Route path="/presenter-live" component={PresenterLive} />
-        <Route path="/presenter" component={Presenter} />
+        <Route path="/presenter-live" component={ToLive} />
+        <Route path="/presenter" component={ToLive} />
         <Route path="/admin">{() => { window.location.replace('/admin/dashboard'); return null; }}</Route>
         <Route path="/admin/show">{() => { window.location.replace('/home-setup?mode=live'); return null; }}</Route>
         <Route path="/admin/dashboard"><Guard route="/admin/dashboard"><AdminDashboard /></Guard></Route>
