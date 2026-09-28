@@ -2,12 +2,15 @@
 
 import type { JonnyMood } from '@/contexts/JonnyContext';
 import { motion } from 'framer-motion';
+import { useJonnySpeaking } from '@/hooks/useJonnyVoice';
 
 interface JonnyAvatarProps {
   mood?: JonnyMood;
   size?: number;
   className?: string;
   background?: 'none' | 'white' | 'dark' | 'gold';
+  /** false = disattiva il micro-movimento continuo (raro; default ON). */
+  alive?: boolean;
 }
 
 const MOOD_FILTER: Record<JonnyMood, { filter?: string; scale?: number; rotate?: number }> = {
@@ -43,10 +46,33 @@ export function JonnyAvatar({
   size = 100,
   className = '',
   background = 'none',
+  alive = true,
 }: JonnyAvatarProps) {
   const moodStyle = MOOD_FILTER[mood] ?? {};
   const isCelebrating = mood === 'winner' || mood === 'correct' || mood === 'round_done' || mood === 'points';
   const isWrong = mood === 'wrong';
+  const { speaking, level } = useJonnySpeaking();
+
+  // ── Micro-vita continua: Jonny non è MAI fermo ──────────────────────────────
+  // Respira (scaleY), ondeggia (y) e si dondola appena (rotate). Quando PARLA,
+  // il movimento diventa più marcato e sincronizzato con l'ampiezza della voce
+  // (level 0..1) → sembra che muova la bocca / la testa mentre spiega.
+  const talkPunch = speaking ? 1 + level * 0.06 : 1;      // "bocca": squash/stretch
+  const idleAnim = speaking
+    ? {
+        // Parla: bob più rapido + accento sull'ampiezza
+        y: [0, -3, 0],
+        scaleY: [1, 1.015, 1],
+        rotate: [-1.2, 1.2, -1.2],
+        transition: { duration: 0.5, repeat: Infinity, ease: 'easeInOut' as const },
+      }
+    : {
+        // Idle: respiro lento e ondeggio morbido
+        y: [0, -4, 0],
+        scaleY: [1, 1.02, 1],
+        rotate: [-1, 1.4, -1],
+        transition: { duration: 3.4, repeat: Infinity, ease: 'easeInOut' as const },
+      };
 
   return (
     <div
@@ -59,36 +85,42 @@ export function JonnyAvatar({
         ...BG_STYLE[background],
       }}
     >
-      {isCelebrating && (
+      {(isCelebrating || speaking) && (
         <div style={{
           position: 'absolute', inset: -8, borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(245,182,66,0.45) 0%, transparent 70%)',
+          background: speaking
+            ? `radial-gradient(circle, rgba(96,165,250,${0.30 + level * 0.35}) 0%, transparent 70%)`
+            : 'radial-gradient(circle, rgba(245,182,66,0.45) 0%, transparent 70%)',
           animation: 'pulse 1s ease-in-out infinite',
           pointerEvents: 'none',
         }} />
       )}
 
-      <motion.img
-        src="/jonny-master.jpg"
-        alt={`Jonny — ${mood}`}
-        draggable={false}
-        key={mood}
-        initial={{ scale: 0.9, opacity: 0.7 }}
-        animate={{
-          scale: moodStyle.scale ?? 1,
-          rotate: moodStyle.rotate ?? 0,
-          opacity: 1,
-        }}
-        transition={{ type: 'spring', stiffness: 400, damping: 22 }}
-        style={{
-          width: '100%',
-          height: '100%',
-          objectFit: 'contain',
-          objectPosition: 'center bottom',
-          filter: moodStyle.filter,
-          userSelect: 'none',
-        }}
-      />
+      <motion.div
+        animate={alive ? idleAnim : undefined}
+        style={{ width: '100%', height: '100%', transformOrigin: 'center bottom' }}
+      >
+        <motion.img
+          src="/jonny-master.jpg"
+          alt={`Jonny — ${mood}`}
+          draggable={false}
+          initial={{ scale: 0.9, opacity: 0.7 }}
+          animate={{
+            scale: (moodStyle.scale ?? 1) * talkPunch,
+            rotate: moodStyle.rotate ?? 0,
+            opacity: 1,
+          }}
+          transition={{ type: 'spring', stiffness: 500, damping: 18 }}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'contain',
+            objectPosition: 'center bottom',
+            filter: moodStyle.filter,
+            userSelect: 'none',
+          }}
+        />
+      </motion.div>
 
       {isCelebrating && (
         <svg viewBox="0 0 100 100"

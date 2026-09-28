@@ -32,6 +32,7 @@ import {
 } from '@/data/karaoke-home';
 import { GameFlowEngine } from '@/components/GameFlowEngine';
 import { AudioManager } from '@/audio/AudioManager';
+import { jonnySpeak } from '@/hooks/useJonnyVoice';
 import { useAudioSettings } from '@/contexts/AudioContext';
 import { IS_LOW_POWER, IS_PS4 } from '@/hooks/useLowPower';
 
@@ -979,6 +980,8 @@ export default function HomeGame() {
       _log('[AudioTrace] home:game_started — stopLoop then playLoop', { slug: d.session.gameSlug ?? 'global', type: 'round_loop' });
       AudioManager.stopLoop(true);
       void AudioManager.playLoop(d.session.gameSlug ?? 'global', 'round_loop');
+      // Jonny presenta il gioco con la sua voce (abbassa la musica mentre parla).
+      if (d.session.gameSlug) jonnySpeak(d.session.gameSlug);
     });
     const u4 = on<{ round: number; payload: Record<string, unknown> }>('home:round', (d) => {
       const roundMode = String(d.payload?.mode ?? '');
