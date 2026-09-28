@@ -334,9 +334,16 @@ export async function generateAdultChallengesAI(
   count: number,
   exclude: string[] = [],
 ): Promise<string[]> {
-  const apiKey = process.env["OPENAI_API_KEY"];
-  if (!apiKey) throw new Error("OPENAI_API_KEY non impostata");
-  const openai = new OpenAI({ apiKey });
+  // Provider adult: se c'è ADULT_LLM_API_KEY (OpenRouter, policy permissiva) la si usa
+  // per generare l'esplicito senza rifiuti; altrimenti OpenAI (ok per liv. 1-3, rifiuta
+  // l'esplicito → il chiamante ripiega sul banco curato).
+  const adultKey = process.env["ADULT_LLM_API_KEY"];
+  const openai = adultKey
+    ? new OpenAI({ apiKey: adultKey, baseURL: process.env["ADULT_LLM_BASEURL"] ?? "https://openrouter.ai/api/v1" })
+    : new OpenAI({ apiKey: process.env["OPENAI_API_KEY"] ?? (() => { throw new Error("Nessuna chiave AI (ADULT_LLM_API_KEY/OPENAI_API_KEY)"); })() });
+  const model = adultKey
+    ? (process.env["ADULT_LLM_MODEL"] ?? "cognitivecomputations/dolphin-mixtral-8x22b")
+    : "gpt-4o-mini";
   const lv = Math.min(5, Math.max(1, level));
   const brief = ADULT_LEVEL_BRIEF[lv] ?? ADULT_LEVEL_BRIEF[3]!;
   const nonce = Math.random().toString(36).slice(2, 8);
@@ -352,7 +359,7 @@ Regole tassative: solo adulti; tutto SEMPRE consensuale; ogni prova deve poter e
 Rispondi SOLO con un array JSON di stringhe (le prove), senza altro testo.`;
 
   const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
+    model,
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: `Genera ${count} ${kindLabel} di livello ${lv}.` },

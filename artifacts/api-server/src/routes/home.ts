@@ -2338,10 +2338,13 @@ async function drawAdultChallenge(sessionId: string, level: number, kind: "verit
   const poolKey = `${Math.min(5, Math.max(1, level))}:${kind}`;
 
   const lvl = Math.min(5, Math.max(1, level)) as 1 | 2 | 3 | 4 | 5;
-  const explicit = lvl >= 4; // liv. 4/5 "esclusive": OpenAI rifiuta → banco curato esplicito
+  // Liv. 4/5 "esclusive": OpenAI rifiuta l'esplicito → banco curato. MA se c'è la chiave
+  // OpenRouter (ADULT_LLM_API_KEY, policy permissiva) l'AI genera l'esplicito a runtime.
+  const hasAdultLLM = !!process.env["ADULT_LLM_API_KEY"];
+  const useAI = lvl <= 3 || hasAdultLLM;
   let available = (pool[poolKey] ?? []).filter(t => !usedSet.has(adultKey(t)));
-  if (available.length === 0 && !explicit) {
-    // Liv. 1-3: l'AI OpenAI va bene → genera un pool vario.
+  if (available.length === 0 && useAI) {
+    // genera un pool vario (OpenRouter per l'esplicito, altrimenti OpenAI per soft/medio).
     try {
       const gen = await generateAdultChallengesAI(level, kind, 12, used);
       available = gen.filter(t => !usedSet.has(adultKey(t)));
