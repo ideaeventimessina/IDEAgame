@@ -30,7 +30,7 @@ import { pickBalloSongs } from "../lib/ballo-library.js";
 import { getGroupUsed, addGroupUsed } from "../lib/group-content.js";
 import { type AuthedRequest } from "../middlewares/auth.js";
 import { searchYouTube } from "./home-karaoke.js";
-import { BOTTLE_LEVELS, pickFromBank, assignSpectatorPowers, pickRandomTruth, pickRandomDare, generateAdultChallengesAI, type BottleChallenge, type BottleLevel } from "../lib/adult-generator.js";
+import { BOTTLE_LEVELS, pickFromBank, assignSpectatorPowers, pickRandomTruth, pickRandomDare, generateAdultChallengesAI, ADULT_TRUTH_BANK, ADULT_DARE_BANK, type BottleChallenge, type BottleLevel } from "../lib/adult-generator.js";
 import { eq, and, or, lt, asc, desc, isNull, notInArray } from "drizzle-orm";
 import {
   db,
@@ -2337,12 +2337,21 @@ async function drawAdultChallenge(sessionId: string, level: number, kind: "verit
   const usedSet = new Set(used);
   const poolKey = `${Math.min(5, Math.max(1, level))}:${kind}`;
 
+  const lvl = Math.min(5, Math.max(1, level)) as 1 | 2 | 3 | 4 | 5;
+  const explicit = lvl >= 4; // liv. 4/5 "esclusive": OpenAI rifiuta → banco curato esplicito
   let available = (pool[poolKey] ?? []).filter(t => !usedSet.has(adultKey(t)));
-  if (available.length === 0) {
+  if (available.length === 0 && !explicit) {
+    // Liv. 1-3: l'AI OpenAI va bene → genera un pool vario.
     try {
       const gen = await generateAdultChallengesAI(level, kind, 12, used);
       available = gen.filter(t => !usedSet.has(adultKey(t)));
     } catch (err) { logger.warn({ err, level, kind }, "[ADULT_AI] generazione fallita, uso banco"); }
+  }
+  if (available.length === 0) {
+    // Banco curato (esplicito per liv. 4/5), filtrato per anti-ripetizione; se esaurito riparte.
+    const bank = kind === "verita" ? ADULT_TRUTH_BANK[lvl] : ADULT_DARE_BANK[lvl];
+    const fresh = shuffleArr([...bank]).filter(t => !usedSet.has(adultKey(t)));
+    available = fresh.length > 0 ? fresh : shuffleArr([...bank]);
   }
   const chosen = available[0] ?? (kind === "verita" ? pickRandomTruth(level) : pickRandomDare(level));
   const remaining = available.slice(1);

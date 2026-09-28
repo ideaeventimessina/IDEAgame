@@ -123,7 +123,7 @@ export function pickFromBank(level: BottleLevel, usedIds: string[]): BottleChall
 
 // ── Truth / Dare banks (Obbligo o Verità) ────────────────────────────────────
 
-export const ADULT_TRUTH_BANK: Record<1 | 2 | 3, string[]> = {
+export const ADULT_TRUTH_BANK: Record<1 | 2 | 3 | 4 | 5, string[]> = {
   1: [
     "Qual è stata la tua figuraccia più grande in pubblico?",
     "Qual è la cosa più strana che hai fatto da solo/a a casa?",
@@ -175,9 +175,35 @@ export const ADULT_TRUTH_BANK: Record<1 | 2 | 3, string[]> = {
     "Qual è la cosa più coraggiosa che hai fatto in una notte?",
     "Qual è la cosa che ami delle relazioni fisiche e non dici mai ad alta voce?",
   ],
+  // LIVELLO 4 — ESCLUSIVE, molto esplicite (club per adulti consenzienti).
+  4: [
+    "Preferisci fare o ricevere sesso orale? Racconta perché.",
+    "Qual è la posizione sessuale che ti fa impazzire di più?",
+    "Descrivi la cosa più eccitante che ti abbiano mai fatto a letto.",
+    "Ti è mai piaciuto il sesso in un luogo pubblico o rischioso? Dove?",
+    "Qual è la tua fantasia sessuale che non hai mai realizzato?",
+    "Preferisci il sesso lento e sensuale o passionale e selvaggio?",
+    "Qual è la parte del corpo del partner che ti eccita di più?",
+    "Hai mai avuto un'esperienza a tre? Ti piacerebbe (ri)provarci?",
+    "Qual è il gioco erotico (ghiaccio, bende, ecc.) che ti accende di più?",
+    "Descrivi l'orgasmo più intenso che ricordi.",
+    "Qual è la cosa più trasgressiva che hai sempre voluto provare stanotte?",
+    "Cosa ti fa perdere completamente il controllo a letto?",
+  ],
+  // LIVELLO 5 — CLUB SCAMBISTI, il più spinto (sempre tra adulti consenzienti).
+  5: [
+    "Chi tra i presenti porteresti in camera stanotte, se tutti fossero d'accordo?",
+    "Scambio di coppia: con quale coppia della stanza ti piacerebbe giocare?",
+    "Qual è il limite che stanotte saresti disposto/a a superare per la prima volta?",
+    "Descrivi come sedurresti la persona che desideri di più in questa stanza.",
+    "Cosa ti eccita di più nel guardare o essere guardato/a?",
+    "Qual è la fantasia di gruppo che vorresti realizzare qui?",
+    "A chi affideresti il comando totale del tuo corpo per un'ora?",
+    "Qual è la cosa più audace che faresti stanotte se restasse tra noi?",
+  ],
 };
 
-export const ADULT_DARE_BANK: Record<1 | 2 | 3, string[]> = {
+export const ADULT_DARE_BANK: Record<1 | 2 | 3 | 4 | 5, string[]> = {
   1: [
     "Imita qualcuno nel gruppo per 30 secondi. Il gruppo indovina chi è.",
     "Balla 20 secondi senza musica con la massima serietà.",
@@ -229,16 +255,43 @@ export const ADULT_DARE_BANK: Record<1 | 2 | 3, string[]> = {
     "Il gruppo sceglie due persone che devono dirsi 3 cose vere che si attraggono.",
     "Descrive la persona a destra come se fosse il protagonista di un romanzo romantico.",
   ],
+  // LIVELLO 4 — ESCLUSIVE, prove sessuali esplicite tra adulti consenzienti.
+  // Ogni prova è tra persone consenzienti scelte; chi non vuole passa liberamente.
+  4: [
+    "Pratica un cunnilingus al partner consenziente scelto per 30 secondi.",
+    "Pratica una fellatio al partner consenziente scelto per 30 secondi.",
+    "Con la coppia scelta, mettetevi in posizione 69 per un minuto.",
+    "Passa un cubetto di ghiaccio con la bocca sui capezzoli del partner scelto.",
+    "Bacia e mordicchia il collo del partner scelto per 30 secondi.",
+    "Fai un massaggio sensuale a mani nude sulla schiena nuda del partner scelto.",
+    "Lecca della panna/cioccolato dal corpo del partner consenziente.",
+    "Spogliati di un capo a scelta del gruppo e continua a giocare così.",
+    "Simula con il partner scelto la tua posizione preferita, vestiti, per 20 secondi.",
+    "Benda il partner scelto e fagli indovinare 3 punti del corpo che baci.",
+    "Sussurra all'orecchio del partner scelto la cosa più spinta che gli faresti.",
+    "Lap dance di 30 secondi per la persona scelta dal gruppo.",
+  ],
+  // LIVELLO 5 — CLUB SCAMBISTI, il più esplicito (sempre tra adulti consenzienti).
+  5: [
+    "Scambio di coppia per il prossimo gioco: scegliete la coppia con cui giocare.",
+    "Con la coppia consenziente scelta, cunnilingus/fellatio incrociati per 30 secondi.",
+    "Il gruppo forma un terzetto consenziente per una prova a luci rosse di 1 minuto.",
+    "Bacio profondo a tre con i partner consenzienti scelti.",
+    "Gioco con il ghiaccio: fallo scorrere con la bocca dal collo all'ombelico del partner.",
+    "La persona scelta guida le mani del partner dove desidera, per 30 secondi.",
+    "Spogliarello di coppia coordinato per il gruppo (fino al livello con cui siete a vostro agio).",
+    "Con la coppia scelta, scambiatevi il partner per un massaggio sensuale di 1 minuto.",
+  ],
 };
 
 export function pickRandomTruth(level: number): string {
-  const l = Math.min(3, Math.max(1, level)) as 1 | 2 | 3;
+  const l = Math.min(5, Math.max(1, level)) as 1 | 2 | 3 | 4 | 5;
   const bank = ADULT_TRUTH_BANK[l];
   return bank[Math.floor(Math.random() * bank.length)]!;
 }
 
 export function pickRandomDare(level: number): string {
-  const l = Math.min(3, Math.max(1, level)) as 1 | 2 | 3;
+  const l = Math.min(5, Math.max(1, level)) as 1 | 2 | 3 | 4 | 5;
   const bank = ADULT_DARE_BANK[l];
   return bank[Math.floor(Math.random() * bank.length)]!;
 }
@@ -268,8 +321,8 @@ const ADULT_LEVEL_BRIEF: Record<number, string> = {
   1: "SOCIALE — leggero: complimenti audaci, flirt, piccole provocazioni. Niente contatto spinto.",
   2: "FLIRT — piccante: baci, sfioramenti, verità intime, osi sensuali ma non ancora sessuali espliciti.",
   3: "HOT — contatto fisico spinto e provocazioni sessuali esplicite tra adulti consenzienti.",
-  4: "ESPLICITO — atti sessuali espliciti tra adulti consenzienti (anche tra coppie), linguaggio diretto.",
-  5: "CLUB SCAMBISTI — molto esplicito: scambio di coppia, pratiche da club per adulti, sempre consenzienti.",
+  4: "ESCLUSIVE — molto esplicito: atti sessuali diretti (cunnilingus, fellatio, 69, ghiaccio sui capezzoli…) tra adulti consenzienti.",
+  5: "CLUB SCAMBISTI — il più esplicito: scambio di coppia, terzetti, pratiche da club per adulti, sempre consenzienti.",
 };
 
 /** Genera prove adult (verità o obblighi) per un livello. Testi in italiano, per
