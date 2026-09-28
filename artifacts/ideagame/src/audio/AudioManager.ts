@@ -5,8 +5,11 @@
  * Singleton AudioManager. Silent fallback on any error or missing file.
  *
  * All audio is MP3-only. If a file doesn't exist for the given slug/type,
- * it silently falls back to global/ then stays silent — no procedural music.
+ * it falls back to global/. For LOOPS, when no uploaded/Suno track exists, a
+ * themed Web Audio bed (ProceduralMusic) plays so there is ALWAYS music.
  */
+
+import { ProceduralMusic } from './ProceduralMusic';
 
 export type AudioSlug =
   | 'global' | 'hub'
@@ -102,6 +105,12 @@ class _AudioManager {
   private activeStingers = new Set<HTMLAudioElement>();
   /** Tenant-uploaded music overrides: `slug/type` → full URL. Checked before static assets. */
   private loopOverrides = new Map<string, string>();
+  /** true when the currently-audible loop is the procedural bed (no file). */
+  private proceduralActive = false;
+  /** Ref-count of ducking sources (videos, karaoke). >0 → background music is dipped. */
+  private duckCount = 0;
+  /** Volume multiplier applied to the HTML loop while ducked. */
+  private static DUCK_LEVEL = 0.12;
 
   /**
    * Register a tenant-uploaded track URL for a specific slot.
@@ -136,6 +145,51 @@ class _AudioManager {
     );
     a.volume = 0;
     void a.play().catch(() => {});
+    // Prime the Web Audio context for the procedural bed in the SAME gesture.
+    ProceduralMusic.resume();
+  }
+
+  /** Effective HTML-loop volume, honoring the current ducking state. */
+  private effLoopVol(): number {
+    return this.loopVol() * (this.duckCount > 0 ? _AudioManager.DUCK_LEVEL : 1);
+  }
+
+  /**
+   * Duck background music (HTML loop + procedural bed) under a video / karaoke.
+   * Ref-counted: every duck() must be matched by an unduck(). Idempotent-safe.
+   */
+  duck(): void {
+    this.duckCount++;
+    if (this.duckCount === 1) this.applyDuck();
+  }
+
+  unduck(): void {
+    if (this.duckCount === 0) return;
+    this.duckCount--;
+    if (this.duckCount === 0) this.applyDuck();
+  }
+
+  /** Reset ducking to zero (e.g. when leaving a screen abruptly). */
+  clearDuck(): void {
+    if (this.duckCount === 0) return;
+    this.duckCount = 0;
+    this.applyDuck();
+  }
+
+  private applyDuck(): void {
+    const target = this.effLoopVol();
+    if (this.currentLoop) {
+      // Smooth ramp so the dip/return is a dissolve, not a jump.
+      const from = this.currentLoop.volume;
+      const el = this.currentLoop;
+      let step = 0;
+      const iv = setInterval(() => {
+        step++;
+        el.volume = Math.max(0, Math.min(1, from + (target - from) * (step / FADE_STEPS)));
+        if (step >= FADE_STEPS || el !== this.currentLoop) clearInterval(iv);
+      }, 400 / FADE_STEPS);
+    }
+    ProceduralMusic.setDuck(this.duckCount > 0 ? _AudioManager.DUCK_LEVEL : 1);
   }
 
   /**
@@ -162,7 +216,15 @@ class _AudioManager {
     const wasEffectivelyMuted = this.settings.muted || !this.settings.musicEnabled;
     this.settings = { ...s };
     const nowEffectivelyMuted = s.muted || !s.musicEnabled;
-    const targetVol = this.loopVol();
+    const targetVol = this.effLoopVol();
+
+    // Keep the procedural bed's volume in sync with settings + ducking.
+    if (!s.musicEnabled) {
+      ProceduralMusic.stop();
+      this.proceduralActive = false;
+    } else {
+      ProceduralMusic.setBaseVolume(this.loopVol());
+    }
 
     if (this.currentLoop) {
       this.currentLoop.volume = targetVol;
@@ -304,16 +366,24 @@ class _AudioManager {
     const src = await this.resolveUrl(slug, type);
 
     if (!src) {
-      // No file — fade-out already running, just record missing state.
-      console.log('[AudioTrace] no file — staying silent', { slug, type });
+      // No uploaded/Suno track. For LOOPS we no longer stay silent: a themed
+      // procedural bed plays so there is ALWAYS music. Stingers/SFX stay silent.
       this.currentLoopSrc = null;
       if (LOOP_TYPES.has(String(type))) {
-        this.missingLoop = { slug: String(slug), type: String(type) };
+        console.log('[AudioTrace] no file — starting procedural bed', { slug, type });
+        ProceduralMusic.start(String(slug), this.loopVol());
+        this.proceduralActive = true;
+        // Not a "missing" state anymore — music is covered by the bed.
+        this.missingLoop = null;
+        return true;
       }
-      return false; // silent — no file uploaded
+      console.log('[AudioTrace] no file — staying silent', { slug, type });
+      return false;
     }
 
     this.missingLoop = null;
+    // A real track wins over the procedural bed.
+    if (this.proceduralActive) { ProceduralMusic.stop(); this.proceduralActive = false; }
 
     // ── New track: create element and attempt play ─────────────────────────
     const audio = new Audio(src);
@@ -347,7 +417,7 @@ class _AudioManager {
     }
 
     // ── Fade in new track — only when not muted ────────────────────────────
-    const targetVol = this.loopVol(); // 0 when muted; real vol otherwise
+    const targetVol = this.effLoopVol(); // 0 when muted; dipped when ducked
     if (targetVol > 0) {
       let fadeInStep = 0;
       const fadeInInterval = setInterval(() => {
@@ -387,6 +457,7 @@ class _AudioManager {
     console.log('[AudioTrace] stopLoop called', { immediate, hadLoop: !!this.currentLoop, currentSlug: this.currentLoopSlug });
     this.currentLoopSlug = null;
     this.currentLoopType = null;
+    if (this.proceduralActive) { ProceduralMusic.stop(); this.proceduralActive = false; }
     this._stopMp3Loop(immediate);
   }
 
@@ -420,6 +491,8 @@ class _AudioManager {
   stopAll() {
     this.currentLoopSlug = null;
     this.currentLoopType = null;
+    this.duckCount = 0;
+    if (this.proceduralActive) { ProceduralMusic.stop(); this.proceduralActive = false; }
     this._stopMp3Loop(true);
     this.activeStingers.forEach(a => { a.pause(); a.src = ''; });
     this.activeStingers.clear();

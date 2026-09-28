@@ -159,6 +159,9 @@ export function AudioOrchestratorProvider({ children }: { children: ReactNode })
   }, []);
 
   const unlockAudio = useCallback(() => {
+    // Must run synchronously in the click gesture so the browser unlocks both
+    // HTMLAudio autoplay AND the Web Audio context used by the procedural bed.
+    AudioManager.resumeContext();
     setAudioUnlocked(true);
     const { slug, type } = pendingLoopRef.current;
     void AudioManager.playLoop(slug, type);

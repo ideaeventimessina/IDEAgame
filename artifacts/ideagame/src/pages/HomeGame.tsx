@@ -1283,6 +1283,13 @@ export default function HomeGame() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [introVideo?.url]);
 
+  // Dissolvi la musica di fondo mentre parte il video introduttivo (ha audio suo).
+  useEffect(() => {
+    if (!introVideo) return;
+    AudioManager.duck();
+    return () => AudioManager.unduck();
+  }, [introVideo?.url]);
+
   // ── Board phase audio catchall — covers all paths to board (session load,
   //    socket, post-game, goToBoard) with a single reactive trigger ──────────────
   useEffect(() => {
@@ -4480,6 +4487,12 @@ function BalloVideoBg({ videoId, startSeconds = 0, roundKey = '' }: { videoId: s
     tryPlay(playerRef.current);
   }, [roundKey, tryPlay]);
 
+  // Dissolvi la musica di fondo (bed/loop) per tutta la durata del video ballo.
+  useEffect(() => {
+    AudioManager.duck();
+    return () => AudioManager.unduck();
+  }, []);
+
   return (
     <>
       <div className="fixed inset-0 z-[2]" style={{ background: '#000' }}>
@@ -4526,6 +4539,13 @@ function YTClipPlayer({ clip, roundIndex, sessionId, autoStart }: {
       if (playerRef.current) { try { playerRef.current.destroy(); } catch { /**/ } playerRef.current = null; }
     };
   }, [clip.youtubeId, roundIndex]);
+
+  // Dissolvi la musica di fondo mentre la clip YouTube suona; torna a fine clip.
+  useEffect(() => {
+    if (status !== 'playing') return;
+    AudioManager.duck();
+    return () => AudioManager.unduck();
+  }, [status]);
 
   // ── startClip: called from button click (satisfies browser gesture requirement) ──
   const startClip = async () => {
@@ -7096,6 +7116,8 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
   players: HomePlayer[];
 }) {
   const { on } = useEventSocket(null);
+  // Karaoke ha i suoi video/basi: dissolvi la musica di fondo per tutta la fase.
+  useEffect(() => { AudioManager.duck(); return () => AudioManager.unduck(); }, []);
   const [liveState, setLiveState] = useState<KaraokeHomeState>(state);
   const [floatingEmojis, setFloatingEmojis] = useState<{ id: number; emoji: string; x: number }[]>([]);
   const emojiCtr = useRef(0);
