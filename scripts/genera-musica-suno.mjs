@@ -83,7 +83,9 @@ async function generateOne(scene) {
     customMode: true,
     instrumental: true,
     model: MODEL,
-    callBackUrl: '',
+    // sunoapi.org ESIGE un callBackUrl anche se poi facciamo polling (record-info).
+    // Placeholder valido: non deve ricevere nulla, ci basta il polling.
+    callBackUrl: process.env.SUNO_CALLBACK || 'https://ideagame.it/api/suno-callback',
   };
   const r = await fetch(`${BASE}/api/v1/generate`, { method: 'POST', headers: H(), body: JSON.stringify(body) });
   const j = await r.json().catch(() => ({}));
