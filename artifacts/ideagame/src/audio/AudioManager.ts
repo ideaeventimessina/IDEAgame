@@ -284,12 +284,15 @@ class _AudioManager {
     const isLoop = LOOP_TYPES.has(String(type));
 
     if (isLoop) {
-      // Loops: no static fallback — tenant upload or silence.
+      // Loops priority: tenant upload (override, handled above) → API file →
+      // static bundled MP3 (es. tracce generate con Suno in public/audio/) →
+      // se nulla esiste, il chiamante (playLoop) avvia il bed procedurale.
       const url = await resolveFirst([
         apiAudioUrl(slug, type),
-        ...(slug !== 'global' ? [apiAudioUrl('global', type)] : []),
+        staticAudioUrl(slug, type),
+        ...(slug !== 'global' ? [apiAudioUrl('global', type), staticAudioUrl('global', type)] : []),
       ], this.knownFiles);
-      console.log('[AudioTrace] resolved url', { slug, type, url: url ?? 'null — no file uploaded (loop requires tenant upload)' });
+      console.log('[AudioTrace] resolved url', { slug, type, url: url ?? 'null — nessun file: parte il bed procedurale' });
       return url;
     }
 
