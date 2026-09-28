@@ -3,7 +3,7 @@
 import { useLocation } from 'wouter';
 import { motion } from 'framer-motion';
 import { useState, useEffect } from 'react';
-import { Home, Mic2, ChevronLeft, Users, Star, Zap, Building2, Dices, Spade, Trophy } from 'lucide-react';
+import { Home, Mic2, ChevronLeft, Users, Star, Zap, Building2, Dices, Spade, Trophy, Lock, Eye } from 'lucide-react';
 import { AudioManager } from '@/audio/AudioManager';
 import { useAuth, canSee } from '@/auth/roles';
 
@@ -87,6 +87,21 @@ const MODES: Mode[] = [
     route: '/gestione',
     Icon: Dices,
     tagIcons: [Spade, Dices, Trophy],
+  },
+  {
+    id: 'lockdown',
+    title: 'LOCKDOWN',
+    subtitle: 'Il gioco da tavolo di Jonny',
+    desc: 'Master, Lock-Euro e una spia segreta tra voi: prove, economia, sopravvivenza.',
+    tags: ['Ruoli & poteri', 'Spia segreta', 'Master + Lock-Euro'],
+    color: '#818CF8',
+    glow: '#A5B4FC',
+    bgSolid: 'rgba(10,10,34,0.9)',
+    border: 'rgba(129,140,248,0.55)',
+    cta: 'ENTRA NEL LOCKDOWN',
+    route: '/home-setup?mode=lockdown',
+    Icon: Lock,
+    tagIcons: [Users, Eye, Lock],
   },
 ];
 

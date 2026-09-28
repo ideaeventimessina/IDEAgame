@@ -796,11 +796,22 @@ export default function HomeGame() {
   const tier = String((session?.gameConfig as Record<string, unknown> | undefined)?.tier ?? 'demo');
   const isDemo = tier !== 'full';
 
+  // Lockdown NON è un gioco della ruota: è una MODALITÀ a sé (accanto a Home/Live/
+  // Burraco). Una "stanza Lockdown" è una sessione con selectedGames === ['lockdown']:
+  // lì si avvia Lockdown diretto, senza ruota. In tutte le altre stanze Lockdown è
+  // escluso dalla ruota dei party game.
+  const lockdownRoom = useMemo(() => {
+    const sel = (session?.gameConfig?.selectedGames as string[] | undefined) ?? [];
+    return sel.length === 1 && sel[0] === 'lockdown';
+  }, [session]);
+
   const visibleGames = useMemo(() => {
     const cfg = session?.gameConfig ?? {};
     const demo = String((cfg as Record<string, unknown>).tier ?? 'demo') !== 'full';
     const selected = (cfg.selectedGames as string[] | undefined) ?? [];
     let list = selected.length > 0 ? ALL_GAMES.filter(g => selected.includes(g.slug)) : ALL_GAMES;
+    // Lockdown fuori dalla ruota (è una modalità a sé).
+    list = list.filter(g => g.slug !== 'lockdown');
     // In demo l'Adult è nascosto del tutto (Karaoke resta visibile ma bloccato → vedi wheelGames).
     if (demo) list = list.filter(g => g.slug !== 'adult-only');
     return list;
@@ -1340,7 +1351,9 @@ export default function HomeGame() {
   const selectGame = async (slug: string) => {
     if (!session || selectingGame) return;
     // Tier gate: in demo Adult e Karaoke Live non sono avviabili (difesa lato client).
-    if (isDemo && (slug === 'adult-only' || slug === 'karaoke-battle' || slug === 'lockdown')) return;
+    // Lockdown è la sua modalità dedicata: nella stanza Lockdown si avvia sempre.
+    if (isDemo && (slug === 'adult-only' || slug === 'karaoke-battle')) return;
+    if (isDemo && slug === 'lockdown' && !lockdownRoom) return;
     setSelectingGame(slug);
     try {
       const r = await fetch(`/api/home/sessions/${session.id}/select-game`, {
@@ -1382,6 +1395,19 @@ export default function HomeGame() {
       }
     } finally { setSelectingGame(null); }
   };
+
+  // Stanza Lockdown: appena si arriva al tabellone, avvia Lockdown diretto (niente
+  // ruota). Una volta sola per sessione (finché non è già in lockdown).
+  const lockdownAutostarted = useRef(false);
+  useEffect(() => {
+    if (!lockdownRoom) return;
+    if (phase !== 'board') return;
+    if (session?.gameSlug === 'lockdown') { lockdownAutostarted.current = true; return; }
+    if (lockdownAutostarted.current || selectingGame) return;
+    lockdownAutostarted.current = true;
+    void selectGame('lockdown');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lockdownRoom, phase, session?.gameSlug]);
 
   const nextRound = async () => {
     if (!session) return;

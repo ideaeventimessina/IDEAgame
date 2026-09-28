@@ -66,10 +66,13 @@ function SceneBg() {
 
 export default function HomeSetupPage() {
   const [, navigate] = useLocation();
-  const isLive = new URLSearchParams(window.location.search).get('mode') === 'live';
+  const mode = new URLSearchParams(window.location.search).get('mode');
+  const isLive = mode === 'live';
+  const isLockdown = mode === 'lockdown';
 
   const [hostName, setHostName]         = useState(IN_PROVA ? 'Prova in showroom' : '');
-  const [selectedGames, setSelectedGames] = useState<string[]>(() => (IN_PROVA ? ['gioco-coppie', 'parola-alle-spalle', 'sfida-ballo'] : []));
+  const [selectedGames, setSelectedGames] = useState<string[]>(() =>
+    isLockdown ? ['lockdown'] : (IN_PROVA ? ['gioco-coppie', 'parola-alle-spalle', 'sfida-ballo'] : []));
   const [loading, setLoading]           = useState(false);
   const [error, setError]               = useState('');
 
@@ -191,9 +194,9 @@ export default function HomeSetupPage() {
         }}>CREA LA TUA STANZA</div>
         <div style={{
           fontSize: '0.65rem', letterSpacing: '0.22em',
-          color: isLive ? 'rgba(245,182,66,0.7)' : 'rgba(255,255,255,0.35)',
+          color: isLive ? 'rgba(245,182,66,0.7)' : isLockdown ? 'rgba(165,180,252,0.85)' : 'rgba(255,255,255,0.35)',
           fontWeight: 600, textTransform: 'uppercase', marginTop: 2,
-        }}>{isLive ? '🔴 Modalità Live · Show Professionale' : 'Modalità Home · Partita Privata'}</div>
+        }}>{isLive ? '🔴 Modalità Live · Show Professionale' : isLockdown ? '🔒 Lockdown · Il gioco da tavolo di Jonny' : 'Modalità Home · Partita Privata'}</div>
       </motion.div>
 
       {/* form card */}
@@ -242,7 +245,22 @@ export default function HomeSetupPage() {
 
         </div>
 
+        {/* Lockdown: nessuna selezione giochi, è la modalità dedicata */}
+        {isLockdown && (
+          <div style={{
+            background: 'rgba(129,140,248,0.1)',
+            border: '1.5px solid rgba(129,140,248,0.4)',
+            borderRadius: 20, padding: 'clamp(14px,2vh,20px)',
+            backdropFilter: 'blur(14px)',
+            fontSize: '0.8rem', fontWeight: 600, color: 'rgba(226,232,255,0.85)', lineHeight: 1.5,
+          }}>
+            🔒 Stanza <b>Lockdown</b>: Master, Lock-Euro e una spia segreta. Crea la stanza,
+            i giocatori entrano col codice e il gioco parte da solo sul tabellone.
+          </div>
+        )}
+
         {/* game selector */}
+        {!isLockdown && (
         <div style={{
           background: 'rgba(255,255,255,0.04)',
           border: '1.5px solid rgba(255,255,255,0.1)',
@@ -283,6 +301,7 @@ export default function HomeSetupPage() {
             })}
           </div>
         </div>
+        )}
 
         {/* error */}
         {error && (
