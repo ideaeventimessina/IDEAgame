@@ -5459,6 +5459,13 @@ function AdultOnlyBoard({ payload, session, players }: {
   const spinFinalAngle    = Number(payload.spinFinalAngle ?? 1440);
   const spinDurationMs    = Number(payload.spinDurationMs ?? 4000);
   const spinStartedAt     = payload.spinStartedAt as string | null;
+
+  // Musica adult DIVERSA per livello: più sale il livello, più la traccia è intensa.
+  // File attesi: adult-only/round_loop_l1..l5.mp3 (se mancano → bed procedurale adult).
+  useEffect(() => {
+    const lvl = Math.min(5, Math.max(1, level));
+    void AudioManager.playLoop('adult-only', `round_loop_l${lvl}`);
+  }, [level]);
   const votingEndsAt      = payload.votingEndsAt as string | null;
   const chosenType        = payload.chosenType as string | null;
   const choiceDeadlineAt  = payload.choiceDeadlineAt as string | null;

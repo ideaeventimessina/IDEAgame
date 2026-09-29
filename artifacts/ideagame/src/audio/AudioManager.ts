@@ -59,6 +59,18 @@ const LOOP_TYPES = new Set([
   'podium_theme', 'suspense', 'karaoke_bed',
 ]);
 
+/**
+ * È un loop di musica di sottofondo? Oltre ai tipi base, riconosce le varianti
+ * con suffisso (es. `round_loop_l4` = traccia adult del livello 4) così restano
+ * loop a tutti gli effetti (fallback statico + bed procedurale, niente stinger).
+ */
+function isLoopType(type: string): boolean {
+  return LOOP_TYPES.has(type)
+    || type.startsWith('round_loop')
+    || type.startsWith('lobby_loop')
+    || type.startsWith('tension_loop');
+}
+
 function apiAudioUrl(slug: string, type: string): string {
   const base = (import.meta.env.BASE_URL as string | undefined) ?? '/';
   return `${base}api/audio/files/${slug}/${type}`.replace(/([^:])\/\//g, '$1/');
@@ -288,7 +300,7 @@ class _AudioManager {
     const override = this.loopOverrides.get(`${slug}/${type}`);
     if (override) return override;
 
-    const isLoop = LOOP_TYPES.has(String(type));
+    const isLoop = isLoopType(String(type));
 
     if (isLoop) {
       // Loops priority: tenant upload (override, handled above) → API file →
@@ -387,7 +399,7 @@ class _AudioManager {
       // No uploaded/Suno track. For LOOPS we no longer stay silent: a themed
       // procedural bed plays so there is ALWAYS music. Stingers/SFX stay silent.
       this.currentLoopSrc = null;
-      if (LOOP_TYPES.has(String(type))) {
+      if (isLoopType(String(type))) {
         console.log('[AudioTrace] no file — starting procedural bed', { slug, type });
         ProceduralMusic.start(String(slug), this.loopVol());
         this.proceduralActive = true;

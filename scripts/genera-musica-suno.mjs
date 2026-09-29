@@ -56,6 +56,16 @@ const SCENES = [
   { slug: 'freestyle-battle',   type: 'lobby_loop', title: 'Freestyle Battle',           style: 'boom-bap hip hop instrumental, fat 808 bass, vinyl crackle, headnod groove, loopable, no vocals' },
 ];
 
+/** Adult: una traccia PER LIVELLO, dal sensuale-soft all'esplicito-intenso.
+ *  File: adult-only/round_loop_l1..l5.mp3 (li sceglie AudioManager per livello). */
+const ADULT_LEVELS = [
+  { slug: 'adult-only', type: 'round_loop_l1', title: 'Adult L1', style: 'soft romantic lounge, warm rhodes, slow gentle groove, intimate candlelight, tasteful, loopable, no vocals' },
+  { slug: 'adult-only', type: 'round_loop_l2', title: 'Adult L2', style: 'smooth sensual r&b, mellow bass, brushed drums, flirty warm mood, loopable, no vocals' },
+  { slug: 'adult-only', type: 'round_loop_l3', title: 'Adult L3', style: 'sultry after-dark groove, deep bass, smoky sax pad, seductive, loopable, no vocals' },
+  { slug: 'adult-only', type: 'round_loop_l4', title: 'Adult L4', style: 'hot pulsing dark disco, throbbing bassline, breathy synths, steamy intense, loopable, no vocals' },
+  { slug: 'adult-only', type: 'round_loop_l5', title: 'Adult L5', style: 'intense driving dark electro, heavy pounding bass, hypnotic, raw explicit club energy, loopable, no vocals' },
+];
+
 const H = () => ({ Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -120,6 +130,22 @@ async function download(url, dest) {
 async function main() {
   const args = process.argv.slice(2);
   if (args.includes('--probe')) { await probe(); return; }
+
+  // --adult = genera le 5 tracce adult per livello
+  if (args.includes('--adult')) {
+    console.log(`🎼 Genero ${ADULT_LEVELS.length} tracce adult per livello su ${BASE}\n`);
+    for (const s of ADULT_LEVELS) {
+      console.log(`▶︎ ${s.slug}/${s.type} — "${s.title}"`);
+      try {
+        const url = await generateOne(s);
+        const dest = join(OUT_ROOT, s.slug, `${s.type}.mp3`);
+        const bytes = await download(url, dest);
+        console.log(`\n   ✅ ${dest} (${(bytes / 1024 / 1024).toFixed(1)} MB)\n`);
+      } catch (e) { console.log(`\n   ❌ ${s.type}: ${e.message}\n`); }
+    }
+    console.log('=== FATTO adult per livello ===');
+    return;
+  }
 
   const only = args.filter((a) => !a.startsWith('--'));
   const todo = only.length ? SCENES.filter((s) => only.includes(s.slug)) : SCENES;
