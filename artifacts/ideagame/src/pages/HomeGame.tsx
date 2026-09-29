@@ -32,6 +32,7 @@ import {
 } from '@/data/karaoke-home';
 import { GameFlowEngine } from '@/components/GameFlowEngine';
 import { AudioManager } from '@/audio/AudioManager';
+import { JonnyVoice } from '@/audio/JonnyVoice';
 import { jonnySpeak } from '@/hooks/useJonnyVoice';
 import { useAudioSettings } from '@/contexts/AudioContext';
 import { IS_LOW_POWER, IS_PS4 } from '@/hooks/useLowPower';
@@ -1298,8 +1299,10 @@ export default function HomeGame() {
   }, [introVideo?.url]);
 
   // Dissolvi la musica di fondo mentre parte il video introduttivo (ha audio suo).
+  // Jonny smette di parlare: la sua voce non deve sovrapporsi all'audio del video.
   useEffect(() => {
     if (!introVideo) return;
+    JonnyVoice.stop();
     AudioManager.duck();
     return () => AudioManager.unduck();
   }, [introVideo?.url]);
@@ -4517,7 +4520,9 @@ function BalloVideoBg({ videoId, startSeconds = 0, roundKey = '' }: { videoId: s
   }, [roundKey, tryPlay]);
 
   // Dissolvi la musica di fondo (bed/loop) per tutta la durata del video ballo.
+  // Se Jonny sta parlando, tace: il video ballo ha la sua musica.
   useEffect(() => {
+    JonnyVoice.stop();
     AudioManager.duck();
     return () => AudioManager.unduck();
   }, []);
@@ -4570,8 +4575,10 @@ function YTClipPlayer({ clip, roundIndex, sessionId, autoStart }: {
   }, [clip.youtubeId, roundIndex]);
 
   // Dissolvi la musica di fondo mentre la clip YouTube suona; torna a fine clip.
+  // Jonny tace: la clip ha il suo audio.
   useEffect(() => {
     if (status !== 'playing') return;
+    JonnyVoice.stop();
     AudioManager.duck();
     return () => AudioManager.unduck();
   }, [status]);
@@ -7145,8 +7152,9 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
   players: HomePlayer[];
 }) {
   const { on } = useEventSocket(null);
-  // Karaoke ha i suoi video/basi: dissolvi la musica di fondo per tutta la fase.
-  useEffect(() => { AudioManager.duck(); return () => AudioManager.unduck(); }, []);
+  // Karaoke ha i suoi video/basi: dissolvi la musica di fondo per tutta la fase
+  // e ferma la voce di Jonny (non deve sovrapporsi al karaoke).
+  useEffect(() => { JonnyVoice.stop(); AudioManager.duck(); return () => AudioManager.unduck(); }, []);
   const [liveState, setLiveState] = useState<KaraokeHomeState>(state);
   const [floatingEmojis, setFloatingEmojis] = useState<{ id: number; emoji: string; x: number }[]>([]);
   const emojiCtr = useRef(0);

@@ -110,7 +110,14 @@ class _AudioManager {
   /** Ref-count of ducking sources (videos, karaoke). >0 → background music is dipped. */
   private duckCount = 0;
   /** Volume multiplier applied to the HTML loop while ducked. */
-  private static DUCK_LEVEL = 0.12;
+  private static DUCK_LEVEL = 0.07;
+  /**
+   * Monotonic token. Every playLoop/stop bumps it; an in-flight playLoop whose
+   * token is stale after its async resolveUrl() aborts instead of creating a
+   * second (orphan) audio element. Kills the "loops that sum up" bug when many
+   * socket events fire playLoop concurrently.
+   */
+  private loopEpoch = 0;
 
   /**
    * Register a tenant-uploaded track URL for a specific slot.
@@ -347,6 +354,7 @@ class _AudioManager {
     this.currentLoopType = type;
     this.currentLoop     = null;
     this.currentLoopSrc  = null;
+    const myEpoch = ++this.loopEpoch;
 
     // ── Fade-out the old loop NOW — don't wait for URL resolution ──────────
     // We track the interval so we can cancel it if autoplay is later blocked.
@@ -367,6 +375,13 @@ class _AudioManager {
 
     // ── Resolve the new URL concurrently with the fade-out ─────────────────
     const src = await this.resolveUrl(slug, type);
+
+    // A newer playLoop() (or a stop) started while we were resolving the URL:
+    // abort so we don't create a second, orphaned element that plays forever.
+    if (myEpoch !== this.loopEpoch) {
+      console.log('[AudioTrace] playLoop superseded — abort', { slug, type });
+      return false;
+    }
 
     if (!src) {
       // No uploaded/Suno track. For LOOPS we no longer stay silent: a themed
@@ -460,6 +475,7 @@ class _AudioManager {
     console.log('[AudioTrace] stopLoop called', { immediate, hadLoop: !!this.currentLoop, currentSlug: this.currentLoopSlug });
     this.currentLoopSlug = null;
     this.currentLoopType = null;
+    this.loopEpoch++;
     if (this.proceduralActive) { ProceduralMusic.stop(); this.proceduralActive = false; }
     this._stopMp3Loop(immediate);
   }
@@ -494,6 +510,7 @@ class _AudioManager {
   stopAll() {
     this.currentLoopSlug = null;
     this.currentLoopType = null;
+    this.loopEpoch++;
     this.duckCount = 0;
     if (this.proceduralActive) { ProceduralMusic.stop(); this.proceduralActive = false; }
     this._stopMp3Loop(true);
