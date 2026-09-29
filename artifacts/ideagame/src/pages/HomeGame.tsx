@@ -7996,6 +7996,15 @@ function FreestyleBattleBoard({ sessionId, state: s, post }: {
   }, [battling, beatUrl, beatBpm]);
   useEffect(() => () => { beatAudioRef.current?.pause(); beatSynthRef.current?.stop(); }, []);
 
+  // Durante il rap il BEAT è la musica: dissolvi il loop di fondo (altrimenti si
+  // sommano) e ferma la voce di Jonny.
+  useEffect(() => {
+    if (!battling) return;
+    JonnyVoice.stop();
+    AudioManager.duck();
+    return () => AudioManager.unduck();
+  }, [battling]);
+
   // Bip del TABOO: uno spettatore lo segnala dal telefono → beep aspro sulla TV.
   const [tabooFlash, setTabooFlash] = useState(false);
   useEffect(() => {
