@@ -15,7 +15,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Loader2, Check, ChevronRight, Star, Music,
   Laugh, Zap, ShieldAlert, MessageSquare, Mic, Timer,
-  Mail, Bell, BellOff, X, Send, ArrowLeft,
+  Mail, Bell, BellOff, X, Send, ArrowLeft, Camera,
 } from 'lucide-react';
 import { useEventSocket, getSocket } from '@/hooks/useEventSocket';
 import { RISATE_MISSIONS, YOGA_POSES, REACTION_EMOJIS, type RisateState } from '@/data/risate-missions';
@@ -26,6 +26,7 @@ import {
   canQueueAnyMore, waitEstimateLabel, computeAwards,
 } from '@/data/karaoke-home';
 import { GameFlowPhone } from '@/components/GameFlowPhone';
+import { PlayerAvatar, fileToAvatarDataUrl } from '@/components/PlayerAvatar';
 import PressToTalkAnswer, { type AnswerResult } from '@/components/PressToTalkAnswer';
 import { IS_LOW_POWER } from '@/hooks/useLowPower';
 
@@ -49,6 +50,7 @@ interface HomePlayer {
   id: string;
   nickname: string;
   avatarColor: string;
+  avatarUrl?: string | null;
   score: number;
   isConnected: boolean;
 }
@@ -125,6 +127,7 @@ function HomeJoinInner() {
   const [phase, _setPhase] = useState<'code' | 'nickname' | 'lobby' | 'playing' | 'ended'>(urlCode ? 'nickname' : 'code');
   const [code, setCode] = useState(urlCode ?? '');
   const [nickname, setNickname] = useState('');
+  const [selfie, setSelfie] = useState<string | null>(null); // dataURL del selfie scelto al login
   const [session, setSession] = useState<HomeSession | null>(null);
   const [player, _setPlayer] = useState<HomePlayer | null>(null);
   const [players, setPlayers] = useState<HomePlayer[]>([]);
@@ -806,6 +809,16 @@ function HomeJoinInner() {
       const p: HomePlayer = await r.json();
       setPlayer(p);
       saveJoin(session.id, session.joinCode, p.id, nickname.trim());
+      // Carica il selfie (se scelto) → avatar in cerchio in tutti i giochi.
+      if (selfie) {
+        try {
+          const ar = await fetch(`/api/home/sessions/${session.id}/players/${p.id}/avatar`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dataUrl: selfie }),
+          });
+          if (ar.ok) { const { url } = await ar.json() as { url: string }; setPlayer(prev => prev ? { ...prev, avatarUrl: url } : prev); }
+        } catch { /* il selfie è opzionale: si continua comunque */ }
+      }
       // iOS Shake to Undo mitigation: clear nickname immediately so the input
       // value (and its undo stack) is gone before phase transition unmounts it.
       setNickname('');
@@ -1222,6 +1235,19 @@ function HomeJoinInner() {
                 autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
                 className="w-full max-w-sm rounded-2xl px-6 py-5 text-center text-xl font-black focus:outline-none"
                 style={{background:'rgba(255,255,255,0.07)',border:'2px solid rgba(168,85,247,0.55)',color:'#fff',caretColor:'#A855F7'}}/>
+
+              {/* Selfie facoltativo — diventa il tuo avatar in cerchio in ogni gioco */}
+              <label className="flex cursor-pointer flex-col items-center gap-2">
+                <div style={{ position:'relative' }}>
+                  <PlayerAvatar nickname={nickname||'?'} avatarColor="#A855F7" avatarUrl={selfie} size={92} ring="rgba(168,85,247,0.7)" />
+                  <div style={{ position:'absolute', right:-2, bottom:-2, width:30, height:30, borderRadius:'50%', background:'#A855F7', display:'flex', alignItems:'center', justifyContent:'center', border:'2px solid #07061a' }}>
+                    <Camera className="h-4 w-4 text-white"/>
+                  </div>
+                </div>
+                <span className="text-xs font-bold" style={{ color:'rgba(255,255,255,0.5)' }}>{selfie ? 'Tocca per cambiare selfie' : 'Aggiungi un selfie (facoltativo)'}</span>
+                <input type="file" accept="image/*" capture="user" className="hidden"
+                  onChange={async e => { const f = e.target.files?.[0]; if (f) { try { setSelfie(await fileToAvatarDataUrl(f)); } catch { /* ignore */ } } if (e.currentTarget) e.currentTarget.value=''; }} />
+              </label>
 
               {error && (
                 <div className="w-full max-w-sm rounded-2xl px-4 py-3 text-sm font-bold"

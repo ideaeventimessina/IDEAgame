@@ -29,6 +29,7 @@ import { cachedWikiImage } from "../lib/image-cache.js";
 import { pickBalloSongs } from "../lib/ballo-library.js";
 import { getGroupUsed, addGroupUsed } from "../lib/group-content.js";
 import { type AuthedRequest } from "../middlewares/auth.js";
+import { uploadBufferToStorage } from "../lib/objectStorage.js";
 import { searchYouTube } from "./home-karaoke.js";
 import { BOTTLE_LEVELS, pickFromBank, assignSpectatorPowers, pickRandomTruth, pickRandomDare, generateAdultChallengesAI, ADULT_TRUTH_BANK, ADULT_DARE_BANK, type BottleChallenge, type BottleLevel } from "../lib/adult-generator.js";
 import { eq, and, or, lt, asc, desc, isNull, notInArray } from "drizzle-orm";
@@ -1256,6 +1257,33 @@ router.post("/home/sessions/:id/join", async (req, res): Promise<void> => {
 
   await broadcastState(id);
   res.status(201).json(player);
+});
+
+// ── POST /home/sessions/:id/players/:pid/avatar — selfie del giocatore ─────────
+// Il telefono manda un dataURL (immagine ridotta lato client); qui la salviamo su
+// object storage e mettiamo l'URL su home_players.avatarUrl → avatar in cerchio
+// accanto al nome in tutti i giochi.
+router.post("/home/sessions/:id/players/:pid/avatar", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  const pid = String(req.params["pid"]);
+  if (!isUUID(id) || !isUUID(pid)) { res.status(400).json({ error: "id non valido" }); return; }
+  const dataUrl = String((req.body as Record<string, unknown>)?.["dataUrl"] ?? "");
+  const m = /^data:(image\/(png|jpeg|jpg|webp));base64,(.+)$/.exec(dataUrl);
+  if (!m) { res.status(400).json({ error: "Immagine non valida" }); return; }
+  const buf = Buffer.from(m[3]!, "base64");
+  if (buf.length > 1_200_000) { res.status(413).json({ error: "Immagine troppo grande" }); return; }
+  const ext = m[2] === "jpg" ? "jpeg" : m[2]!;
+  try {
+    const objectPath = await uploadBufferToStorage(buf, m[1]!, ext);
+    const url = `/api/storage/objects/uploads/${objectPath.split("/").pop()}`;
+    await db.update(homePlayersTable).set({ avatarUrl: url })
+      .where(and(eq(homePlayersTable.id, pid), eq(homePlayersTable.sessionId, id)));
+    await broadcastState(id);
+    res.json({ ok: true, url });
+  } catch (err) {
+    req.log.error({ err }, "[HOME_AVATAR] upload fallito");
+    res.status(500).json({ error: "Salvataggio selfie fallito" });
+  }
 });
 
 // ── POST /home/sessions/:id/answer — phone reports a quiz answer ────────────────

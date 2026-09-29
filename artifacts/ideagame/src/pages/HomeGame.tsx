@@ -34,6 +34,7 @@ import { GameFlowEngine } from '@/components/GameFlowEngine';
 import { AudioManager } from '@/audio/AudioManager';
 import { JonnyVoice } from '@/audio/JonnyVoice';
 import { jonnySpeak } from '@/hooks/useJonnyVoice';
+import { PlayerAvatar } from '@/components/PlayerAvatar';
 import { useAudioSettings } from '@/contexts/AudioContext';
 import { IS_LOW_POWER, IS_PS4 } from '@/hooks/useLowPower';
 
@@ -58,6 +59,7 @@ interface HomePlayer {
   id: string;
   nickname: string;
   avatarColor: string;
+  avatarUrl?: string | null;
   score: number;
   isConnected: boolean;
 }
@@ -5576,15 +5578,19 @@ function AdultOnlyBoard({ payload, session, players }: {
 
   const MiniRanking = ({ max = 5 }: { max?: number }) => (
     <div className="flex flex-col gap-1.5 w-full">
-      {rankingData.slice(0, max).map((p, i) => (
+      {rankingData.slice(0, max).map((p, i) => {
+        const pl = players.find(x => x.id === p.playerId);
+        return (
         <div key={p.playerId} className="flex items-center gap-3 rounded-xl px-4 py-2"
           style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
           <div className="text-white/30 text-sm w-5 text-center">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</div>
+          <PlayerAvatar nickname={p.nickname} avatarColor={pl?.avatarColor} avatarUrl={pl?.avatarUrl} size={28} />
           <div className="flex-1 text-white font-bold text-sm">{p.nickname}</div>
           {p.delta > 0 && <div className="text-xs font-bold" style={{ color: AC }}>+{p.delta}</div>}
           <div className="font-black text-sm" style={{ color: AC }}>{p.score}pt</div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 
@@ -5628,8 +5634,9 @@ function AdultOnlyBoard({ payload, session, players }: {
             return (
               <div key={pl.id} className="rounded-xl px-3 py-2 flex items-center gap-2"
                 style={{ background: 'rgba(255,255,255,0.05)', border: `1px solid ${cColor}44` }}>
-                <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: cColor }}/>
+                <PlayerAvatar nickname={pl.nickname} avatarColor={pl.avatarColor} avatarUrl={pl.avatarUrl} size={30} ring={`${cColor}88`} />
                 <div className="font-bold text-sm text-white truncate">{pl.nickname}</div>
+                {adults18Map[pl.id] && <span title="18+ confermato" className="text-xs">🔞</span>}
                 <div className="text-xs ml-auto flex-shrink-0" style={{ color: cColor }}>{cLabel}</div>
               </div>
             );
