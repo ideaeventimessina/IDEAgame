@@ -5517,9 +5517,24 @@ function AdultOnlyBoard({ payload, session, players }: {
     setBusy(true);
     try {
       _log('[ADULT_ONLY_PHASE] aoPost', sub, { phase, roundNumber, challengeId: String((challenge as Record<string,unknown> | null)?.text ?? '').slice(0, 30) });
-      await fetch(`/api/home/sessions/${session.id}/adult/${sub}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) });
+      const r = await fetch(`/api/home/sessions/${session.id}/adult/${sub}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({})) as { code?: string; error?: string };
+        if (err.code === 'NEED_ALL_18') alert('🔒 Livelli 4 e 5 bloccati: tutti i presenti devono confermare 18 anni dal telefono.');
+      }
     }
     finally { setBusy(false); }
+  };
+
+  // Stato 18+: L4/L5 aperti solo se TUTTI hanno confermato (basta un minorenne per bloccare).
+  const adults18Map = (payload.adults18 ?? {}) as Record<string, boolean>;
+  const count18 = players.filter(p => adults18Map[p.id]).length;
+  const all18 = players.length > 0 && count18 === players.length;
+  const changeLevel = (delta: number) => {
+    const next = Math.min(5, Math.max(1, level + delta));
+    if (next === level) return;
+    if (next >= 4 && !all18) { alert('🔒 Per salire al livello 4/5 tutti i presenti devono confermare 18 anni dal telefono.'); return; }
+    void aoPost('set-level', { level: next });
   };
 
   // Auto-complete when challenge timer reaches 0
@@ -5584,18 +5599,24 @@ function AdultOnlyBoard({ payload, session, players }: {
           <div className="text-white/40 text-sm">{players.length} giocatori · {consentedCount} pronti a giocare</div>
         </div>
 
-        {/* Level selector */}
+        {/* Level selector — L4/L5 bloccati finché TUTTI non confermano 18+ */}
         <div className="grid grid-cols-5 gap-3 w-full">
-          {AO_BOARD_LEVELS.map(lv => (
-            <button key={lv.level} disabled={busy}
-              onClick={() => void aoPost('set-level', { level: lv.level })}
-              className="flex flex-col items-center gap-2 rounded-2xl p-4 transition-all hover:scale-105 disabled:opacity-50"
-              style={{ background: lv.level === level ? `${lv.color}30` : `${lv.color}10`, border: `2px solid ${lv.level === level ? lv.color : lv.color + '30'}` }}>
-              <div className="text-3xl">{lv.emoji}</div>
-              <div className="text-xs font-black text-white">{lv.label}</div>
-              <div className="text-xs text-white/30 leading-tight">{lv.desc}</div>
-            </button>
-          ))}
+          {AO_BOARD_LEVELS.map(lv => {
+            const locked = lv.level >= 4 && !all18;
+            return (
+              <button key={lv.level} disabled={busy}
+                onClick={() => { if (locked) { alert('🔒 Livelli 4 e 5: servono TUTTI i presenti maggiorenni. Ognuno conferma 18 anni dal telefono.'); return; } void aoPost('set-level', { level: lv.level }); }}
+                className="relative flex flex-col items-center gap-2 rounded-2xl p-4 transition-all hover:scale-105 disabled:opacity-50"
+                style={{ background: lv.level === level ? `${lv.color}30` : `${lv.color}10`, border: `2px solid ${lv.level === level ? lv.color : lv.color + '30'}`, opacity: locked ? 0.55 : 1 }}>
+                <div className="text-3xl">{locked ? '🔒' : lv.emoji}</div>
+                <div className="text-xs font-black text-white">{lv.label}</div>
+                <div className="text-xs text-white/30 leading-tight">{locked ? 'Solo 18+ (tutti)' : lv.desc}</div>
+              </button>
+            );
+          })}
+        </div>
+        <div className="text-xs font-bold" style={{ color: all18 ? '#4ADE80' : '#FCA5A5' }}>
+          {all18 ? '✅ Tutti maggiorenni: livelli 4 e 5 sbloccati' : `🔞 18+ confermati ${count18}/${players.length} — L4/L5 bloccati finché non confermano tutti`}
         </div>
 
         {/* Player consent grid */}
@@ -5992,6 +6013,20 @@ function AdultOnlyBoard({ payload, session, players }: {
             style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
             Fine serata
           </button>
+          {/* Frecce UPGRADE livello durante la partita (↑ sale, ↓ scende). L4/L5 solo se tutti 18+. */}
+          <div className="flex items-center gap-2 rounded-2xl px-3 py-2" style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${levelObj.color}55` }}>
+            <button onClick={() => changeLevel(-1)} disabled={busy || level <= 1}
+              className="w-9 h-9 rounded-full text-lg font-black text-white disabled:opacity-30"
+              style={{ background: 'rgba(255,255,255,0.08)' }}>▼</button>
+            <div className="flex flex-col items-center min-w-[76px]">
+              <div className="text-xl leading-none">{levelObj.emoji}</div>
+              <div className="text-[11px] font-black text-white">{levelObj.label}</div>
+              <div className="text-[10px]" style={{ color: all18 ? '#4ADE80' : '#FCA5A5' }}>{all18 ? 'L4/L5 ok' : `18+ ${count18}/${players.length}`}</div>
+            </div>
+            <button onClick={() => changeLevel(1)} disabled={busy || level >= 5}
+              className="w-9 h-9 rounded-full text-lg font-black text-white disabled:opacity-30"
+              style={{ background: `${levelObj.color}44` }}>▲</button>
+          </div>
           <button onClick={() => void aoPost('spin')} disabled={busy}
             className="rounded-2xl px-10 py-4 text-base font-black text-white disabled:opacity-50"
             style={{ background: `linear-gradient(135deg,${AC},${AC}88)`, boxShadow: `0 0 40px ${AC_GLOW}` }}>

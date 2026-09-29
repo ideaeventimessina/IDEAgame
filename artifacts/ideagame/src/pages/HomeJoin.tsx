@@ -4366,6 +4366,8 @@ function AdultController({ payload, player, session }: {
   const isSelected  = player.id === selectedId;
   const myPower     = spectatorPowers[player.id] ?? null;
   const myConsent   = consentMap[player.id];
+  const adults18Map = (payload.adults18 ?? {}) as Record<string, boolean>;
+  const my18        = !!adults18Map[player.id];
 
   type AoStarVotePhone = { intensity: number; courage: number; show: number; performance: number };
   const votesTyped = (payload.votes ?? {}) as Record<string, AoStarVotePhone>;
@@ -4406,6 +4408,15 @@ function AdultController({ payload, player, session }: {
           style={{ background: `${AC}22`, border: `1px solid ${AC}44`, color: AC }}>
           {levelObj.emoji} {levelLabel}
         </div>
+
+        {/* Conferma 18+ — sblocca i livelli 4 e 5 (club). Basta un minorenne per bloccarli. */}
+        <button disabled={busy} onClick={() => void aoPost('confirm-18', { playerId: player.id, is18: !my18 })}
+          className="w-full rounded-2xl py-3 text-sm font-black transition-all"
+          style={{ background: my18 ? 'rgba(74,222,128,0.15)' : 'rgba(252,165,165,0.12)', border: `1.5px solid ${my18 ? '#4ADE80' : '#FCA5A5'}`, color: my18 ? '#4ADE80' : '#FCA5A5' }}>
+          {my18 ? '✅ Ho confermato: ho 18 anni' : '🔞 Tocca per confermare che hai 18 anni'}
+        </button>
+        <div className="text-[11px] text-white/30 -mt-2">Serve per sbloccare i livelli 4 e 5. Senza, resti ai livelli 1-3.</div>
+
         {myConsent ? (
           <div className="flex flex-col items-center gap-3 w-full">
             <div className="rounded-2xl p-4 w-full"
