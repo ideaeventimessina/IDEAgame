@@ -271,16 +271,18 @@ export const ADULT_DARE_BANK: Record<1 | 2 | 3 | 4 | 5, string[]> = {
     "Sussurra all'orecchio del partner scelto la cosa più spinta che gli faresti.",
     "Lap dance di 30 secondi per la persona scelta dal gruppo.",
   ],
-  // LIVELLO 5 — CLUB SCAMBISTI, il più esplicito (sempre tra adulti consenzienti).
+  // LIVELLO 5 — CLUB SCAMBISTI, il più esplicito, parole dirette (adulti consenzienti).
   5: [
-    "Scambio di coppia per il prossimo gioco: scegliete la coppia con cui giocare.",
-    "Con la coppia consenziente scelta, cunnilingus/fellatio incrociati per 30 secondi.",
-    "Il gruppo forma un terzetto consenziente per una prova a luci rosse di 1 minuto.",
-    "Bacio profondo a tre con i partner consenzienti scelti.",
-    "Gioco con il ghiaccio: fallo scorrere con la bocca dal collo all'ombelico del partner.",
-    "La persona scelta guida le mani del partner dove desidera, per 30 secondi.",
-    "Spogliarello di coppia coordinato per il gruppo (fino al livello con cui siete a vostro agio).",
-    "Con la coppia scelta, scambiatevi il partner per un massaggio sensuale di 1 minuto.",
+    "Scambio di coppia: scegli la coppia con cui giocare e leccate la figa/il cazzo dei partner scelti per 30 secondi.",
+    "Con la coppia scelta, fellatio e cunnilingus incrociati: ognuno alla bocca dell'altro per 30 secondi.",
+    "Terzetto consenziente: una lingua sul cazzo, una sulla figa, a turno per 1 minuto.",
+    "Fai scorrere la lingua dal collo fino a tette e ombelico del partner scelto, senza fermarti.",
+    "Succhia i capezzoli del partner consenziente mentre le mani gli stringono il culo, 30 secondi.",
+    "Il partner scelto ti guida la bocca dove vuole (figa, cazzo, tette) per 30 secondi.",
+    "Spogliatevi a vicenda con la coppia scelta e leccatevi dove indica il gruppo, 1 minuto.",
+    "Lap dance nuda/o sul partner scelto strofinando culo e bacino, 30 secondi.",
+    "Scambiatevi i partner e fatevi un pompino/una leccata reciproci per 30 secondi.",
+    "Dita e lingua sulla figa/sul cazzo del partner consenziente finché non dice basta (max 45s).",
   ],
 };
 
@@ -322,7 +324,7 @@ const ADULT_LEVEL_BRIEF: Record<number, string> = {
   2: "FLIRT — piccante: baci, sfioramenti, verità intime, osi sensuali ma non ancora sessuali espliciti.",
   3: "HOT — contatto fisico spinto e provocazioni sessuali esplicite tra adulti consenzienti.",
   4: "ESCLUSIVE — molto esplicito: atti sessuali diretti (cunnilingus, fellatio, 69, ghiaccio sui capezzoli…) tra adulti consenzienti.",
-  5: "CLUB SCAMBISTI — il più esplicito: scambio di coppia, terzetti, pratiche da club per adulti, sempre consenzienti.",
+  5: "CLUB SCAMBISTI — il PIÙ esplicito e diretto: scambio di coppia, terzetti, sesso tra i partecipanti consenzienti. USA parole crude e dirette (culo, tette, cazzo, figa, lingua, leccare, scopare…), descrivendo AZIONI concrete da fare ORA tra i partner consenzienti scelti. Niente giri di parole.",
 };
 
 /** Genera prove adult (verità o obblighi) per un livello. Testi in italiano, per
@@ -347,14 +349,21 @@ export async function generateAdultChallengesAI(
   const lv = Math.min(5, Math.max(1, level));
   const brief = ADULT_LEVEL_BRIEF[lv] ?? ADULT_LEVEL_BRIEF[3]!;
   const nonce = Math.random().toString(36).slice(2, 8);
-  const kindLabel = kind === "verita" ? "domande di VERITÀ intime/piccanti" : "prove di OBBLIGO (dare) fisiche/sensuali";
+  const kindLabel = kind === "verita" ? "domande di VERITÀ intime/piccanti" : "prove di OBBLIGO (azioni da FARE)";
   const excludeNote = exclude.length > 0
     ? `\nNON ripetere queste già usate:\n${exclude.slice(0, 50).join(" · ")}`
     : "";
 
+  // L'OBBLIGO è un'AZIONE da eseguire ora, non una confessione: è il punto su cui
+  // il gioco sbagliava (dava frasi tipo "confessa/racconta" anche negli obblighi).
+  const kindRule = kind === "obbligo"
+    ? `REGOLA FERREA OBBLIGO: ogni riga è un'AZIONE FISICA da eseguire SUBITO, all'imperativo (es. "Fai…", "Tocca…", "Bacia…", "Lecca…", "Spogliati…", "Siediti su…"). VIETATO usare "confessa", "racconta", "descrivi", "di'", "qual è", "hai mai" o qualsiasi domanda: quelle sono verità, non obblighi. Nessuna prova che consista solo nel PARLARE.`
+    : `REGOLA VERITÀ: ogni riga è una domanda intima a cui rispondere a voce.`;
+
   const systemPrompt = `Sei l'host di un party game PER SOLI ADULTI CONSENZIENTI in un club privato per scambisti (modalità adult con consenso esplicito di tutti i presenti).
 Genera ${kindLabel} in italiano, a tema erotico, con questo livello di intensità:
 ${brief}
+${kindRule}
 Regole tassative: solo adulti; tutto SEMPRE consensuale; ogni prova deve poter essere rifiutata; NIENTE minori, NIENTE coercizione, NIENTE atti illegali o che causino danni. Varietà massima (semina: ${nonce}).${excludeNote}
 Rispondi SOLO con un array JSON di stringhe (le prove), senza altro testo.`;
 

@@ -2217,9 +2217,40 @@ router.post("/home/sessions/:id/adult/set-level", async (req, res): Promise<void
   if (rp["mode"] !== "home-adult") { res.status(409).json({ error: "Non in modalità adult" }); return; }
   const { level } = req.body as { level: number };
   if (![1,2,3,4,5].includes(level)) { res.status(400).json({ error: "Livello non valido" }); return; }
+  // GATE 18+: i livelli 4 e 5 si aprono solo se TUTTI i presenti hanno confermato
+  // 18 anni. Basta un minorenne (o chi non ha confermato) per tenerli chiusi.
+  if (level >= 4 && !allAdults18(rp, await getPlayers(id))) {
+    res.status(403).json({ error: "Livelli 4 e 5 bloccati: tutti i presenti devono confermare 18+.", code: "NEED_ALL_18" });
+    return;
+  }
   const levelObj = BOTTLE_LEVELS.find(l => l.level === level);
   await adultUpdate(id, { level, levelLabel: levelObj?.label ?? `Livello ${level}`, levelColor: levelObj?.color ?? "#34D399" });
   res.json({ ok: true });
+});
+
+/** L4/L5 aperti solo se OGNI giocatore presente ha confermato 18+ (adults18). */
+function allAdults18(rp: Record<string, unknown>, players: { id: string }[]): boolean {
+  const adults18 = (rp["adults18"] ?? {}) as Record<string, boolean>;
+  return players.length > 0 && players.every(p => adults18[p.id] === true);
+}
+
+// POST /adult/confirm-18 — il giocatore conferma (o revoca) di avere 18+.
+// Serve a sbloccare i livelli 4-5: basta un minorenne (o un non-confermato) per
+// tenerli chiusi. Funziona in qualunque fase dell'adult.
+router.post("/home/sessions/:id/adult/confirm-18", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-adult") { res.status(409).json({ error: "Non in modalità adult" }); return; }
+  const { playerId, is18 } = req.body as { playerId: string; is18: boolean };
+  if (!playerId) { res.status(400).json({ error: "playerId mancante" }); return; }
+  const adults18 = { ...((rp["adults18"] ?? {}) as Record<string, boolean>) };
+  if (is18) adults18[playerId] = true; else delete adults18[playerId];
+  const players = await getPlayers(id);
+  await adultUpdate(id, { adults18, all18: allAdults18({ ...rp, adults18 }, players) });
+  res.json({ ok: true, all18: allAdults18({ ...rp, adults18 }, players) });
 });
 
 // POST /adult/consent — player records participation preference
@@ -2370,8 +2401,9 @@ async function _adultAutoChoice(sessionId: string): Promise<void> {
   const sess = await getSession(sessionId); if (!sess) return;
   const rp = (sess.roundPayload ?? {}) as Record<string, unknown>;
   if (rp["mode"] !== "home-adult" || String(rp["phase"]) !== "choice") return;
-  const choice: "verita" | "obbligo" = Math.random() < 0.5 ? "verita" : "obbligo";
   const level = Number(rp["level"] ?? 1);
+  // Club (livello 4-5): SEMPRE obbligo (azioni da fare), mai verità/confessioni.
+  const choice: "verita" | "obbligo" = level >= 4 ? "obbligo" : (Math.random() < 0.5 ? "verita" : "obbligo");
   const text = await drawAdultChallenge(sessionId, level, choice);
   const durationSeconds = choice === "verita" ? 60 : 90;
   const challengeEndsAt = new Date(Date.now() + durationSeconds * 1000).toISOString();
@@ -2401,8 +2433,11 @@ router.post("/home/sessions/:id/adult/choose", async (req, res): Promise<void> =
   if (rp["mode"] !== "home-adult") { res.status(409).json({ error: "Non in modalità adult" }); return; }
   if (String(rp["phase"]) !== "choice") { res.json({ ok: true }); return; } // idempotent
   const raw = String((req.body as Record<string,unknown>)?.choice ?? "");
-  const choice = (raw === "verita" || raw === "obbligo") ? raw : (Math.random() < 0.5 ? "verita" : "obbligo");
   const level = Number(rp["level"] ?? 1);
+  // Club (livello 4-5): forza obbligo anche se il telefono chiede verità.
+  const choice: "verita" | "obbligo" = level >= 4
+    ? "obbligo"
+    : ((raw === "verita" || raw === "obbligo") ? raw : (Math.random() < 0.5 ? "verita" : "obbligo"));
   const ex = adultChoiceTimers.get(id); if (ex) { clearTimeout(ex); adultChoiceTimers.delete(id); }
   const text = await drawAdultChallenge(id, level, choice);
   const durationSeconds = choice === "verita" ? 60 : 90;
@@ -2698,6 +2733,11 @@ router.post("/home/sessions/:id/adult/propose-level", async (req, res): Promise<
   if (rp["mode"] !== "home-adult") { res.status(409).json({ error: "Non in modalità adult" }); return; }
   const { targetLevel } = req.body as { targetLevel: number };
   if (![1,2,3,4,5].includes(targetLevel)) { res.status(400).json({ error: "Livello non valido" }); return; }
+  // Gate 18+: non si può nemmeno PROPORRE di salire a 4-5 se c'è un minorenne.
+  if (targetLevel >= 4 && !allAdults18(rp, await getPlayers(id))) {
+    res.status(403).json({ error: "Livelli 4 e 5 bloccati: tutti i presenti devono confermare 18+.", code: "NEED_ALL_18" });
+    return;
+  }
   await adultUpdate(id, { phase: "escalation", escalationTarget: targetLevel, escalationVotes: {} });
   scheduleAdultEscalation(id); // timer di sicurezza: risolve comunque dopo 15s
   res.json({ ok: true });
