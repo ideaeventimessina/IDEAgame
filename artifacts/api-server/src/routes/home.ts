@@ -98,10 +98,28 @@ const quizAnswerMap = new Map<string, Map<number, Map<string, number>>>();
 // (phones recover via socket reconnect + auto-resync).
 const homeStateVersions = new Map<string, number>();
 
+/**
+ * Toglie i campi SEGRETI dalla sessione prima di mandarla ai client. Oggi:
+ * `roundPayload.favorites` = i preferiti dell'adult, che devono restare noti solo
+ * al server (li usa per pesare la bottiglia) e MAI visibili agli altri giocatori.
+ * La sessione resta intatta sul DB; qui si redige solo la copia inviata.
+ */
+function redactHomeSession<T>(session: T): T {
+  if (!session || typeof session !== "object") return session;
+  const s = session as Record<string, unknown>;
+  const rp = s["roundPayload"];
+  if (rp && typeof rp === "object" && "favorites" in (rp as Record<string, unknown>)) {
+    const rpCopy = { ...(rp as Record<string, unknown>) };
+    delete rpCopy["favorites"];
+    return { ...s, roundPayload: rpCopy } as T;
+  }
+  return session;
+}
+
 function emitHomeState(sessionId: string, session: unknown, players: unknown): void {
   const v = (homeStateVersions.get(sessionId) ?? 0) + 1;
   homeStateVersions.set(sessionId, v);
-  emitToRoom(homeRoom(sessionId), "home:state", { session, players, stateVersion: v });
+  emitToRoom(homeRoom(sessionId), "home:state", { session: redactHomeSession(session), players, stateVersion: v });
 }
 // sessionId → round → winnerId (first correct player per round)
 const saraMusicaWinnerMap = new Map<string, Map<number, string>>();
@@ -1216,7 +1234,7 @@ router.get("/home/sessions/:id", async (req, res): Promise<void> => {
 
   const players = await getPlayers(session.id);
   const stateVersion = homeStateVersions.get(session.id) ?? 0;
-  res.json({ session, players, stateVersion });
+  res.json({ session: redactHomeSession(session), players, stateVersion });
 });
 
 // ── POST /home/sessions/:id/join ───────────────────────────────────────────────
@@ -2218,6 +2236,15 @@ async function adultUpdate(id: string, patch: Record<string, unknown>): Promise<
   emitHomeState(id, updated[0], players);
 }
 
+/** Estrae un elemento con probabilità proporzionale ai pesi (>0). */
+function weightedPick<T>(items: T[], weights: number[]): T | null {
+  const total = weights.reduce((a, b) => a + Math.max(0, b), 0);
+  if (items.length === 0 || total <= 0) return items[Math.floor(Math.random() * items.length)] ?? null;
+  let r = Math.random() * total;
+  for (let i = 0; i < items.length; i++) { r -= Math.max(0, weights[i] ?? 0); if (r <= 0) return items[i]!; }
+  return items[items.length - 1]!;
+}
+
 type AoPlayer = Awaited<ReturnType<typeof getPlayers>>[number];
 function aoRanking(players: AoPlayer[], deltas: Record<string, number> = {}): { playerId: string; nickname: string; score: number; delta: number }[] {
   return [...players].sort((a, b) => b.score - a.score).map(p => ({ playerId: p.id, nickname: p.nickname, score: p.score, delta: deltas[p.id] ?? 0 }));
@@ -2281,6 +2308,27 @@ router.post("/home/sessions/:id/adult/confirm-18", async (req, res): Promise<voi
   res.json({ ok: true, all18: allAdults18({ ...rp, adults18 }, players) });
 });
 
+// POST /adult/favorite — SEGRETO: il giocatore segna/toglie un preferito.
+// La mappa favorites vive nel roundPayload ma è redatta prima di ogni invio ai
+// client (vedi redactHomeSession): nessuno vede i preferiti degli altri. Il server
+// li usa solo per pesare la bottiglia. La risposta contiene SOLO i propri.
+router.post("/home/sessions/:id/adult/favorite", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (rp["mode"] !== "home-adult") { res.status(409).json({ error: "Non in modalità adult" }); return; }
+  const { voterId, targetId, on } = req.body as { voterId: string; targetId: string; on: boolean };
+  if (!voterId || !targetId || voterId === targetId) { res.status(400).json({ error: "Dati non validi" }); return; }
+  const favorites = { ...((rp["favorites"] ?? {}) as Record<string, string[]>) };
+  const set = new Set(favorites[voterId] ?? []);
+  if (on) set.add(targetId); else set.delete(targetId);
+  favorites[voterId] = [...set];
+  await adultUpdate(id, { favorites });
+  res.json({ ok: true, mine: favorites[voterId] }); // SOLO i propri preferiti
+});
+
 // POST /adult/consent — player records participation preference
 router.post("/home/sessions/:id/adult/consent", async (req, res): Promise<void> => {
   const id = String(req.params["id"]);
@@ -2323,7 +2371,26 @@ router.post("/home/sessions/:id/adult/spin", async (req, res): Promise<void> => 
   const level = Number(rp["level"] ?? 1);
   const usedIds = (rp["usedChallengeIds"] ?? []) as string[];
   const roundNumber = Number(rp["roundNumber"] ?? 0) + 1;
-  const selectedId = activePlayers[Math.floor(Math.random() * activePlayers.length)]!;
+  // Preferiti SEGRETI: pesano la bottiglia. Chi è più desiderato (favorito da più
+  // attivi) esce un po' di più; nessuno vede i preferiti, solo l'esito.
+  const favorites = (rp["favorites"] ?? {}) as Record<string, string[]>;
+  const wantedCount = (pid: string) => activePlayers.filter(v => (favorites[v] ?? []).includes(pid)).length;
+  const selectedId = weightedPick(activePlayers, activePlayers.map(pid => 1 + wantedCount(pid))) ?? activePlayers[0]!;
+  // Partner per i livelli di contatto (≥3): scelto tra gli altri attivi, pesato
+  // sull'affinità dei preferiti (reciproco > a senso unico > nessuno).
+  let selectedPartnerId: string | null = null;
+  if (level >= 3 && activePlayers.length >= 2) {
+    const others = activePlayers.filter(p => p !== selectedId);
+    const selFav = new Set(favorites[selectedId] ?? []);
+    const affinity = (pid: string) => {
+      const heLikesSel = (favorites[pid] ?? []).includes(selectedId);
+      const selLikesHim = selFav.has(pid);
+      if (heLikesSel && selLikesHim) return 8;
+      if (selLikesHim || heLikesSel) return 4;
+      return 1;
+    };
+    selectedPartnerId = weightedPick(others, others.map(affinity));
+  }
   const spectatorPowers = assignSpectatorPowers(spectatorPlayers, (rp["spectatorPowers"] ?? {}) as Record<string, string | null>);
   const selIdx = activePlayers.indexOf(selectedId);
   const spinFinalAngle = activePlayers.length > 0
@@ -2333,6 +2400,8 @@ router.post("/home/sessions/:id/adult/spin", async (req, res): Promise<void> => 
   await adultUpdate(id, {
     phase: "spinning", roundNumber, activePlayers, spectatorPlayers,
     selectedPlayerId: selectedId, selectedPlayerNickname: players.find(p => p.id === selectedId)?.nickname ?? "?",
+    selectedPartnerId,
+    selectedPartnerNickname: selectedPartnerId ? (players.find(p => p.id === selectedPartnerId)?.nickname ?? null) : null,
     currentChallenge: null, chosenType: null,
     spinFinalAngle, spinDurationMs, spinStartedAt: new Date().toISOString(),
     votes: {}, votingEndsAt: null, lastValidated: null, lastPoints: 0,

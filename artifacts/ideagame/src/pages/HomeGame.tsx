@@ -5445,6 +5445,7 @@ function AdultOnlyBoard({ payload, session, players }: {
   const activePlayers     = (payload.activePlayers ?? []) as string[];
   const spectatorPlayers  = (payload.spectatorPlayers ?? []) as string[];
   const selectedNickname  = payload.selectedPlayerNickname as string | null;
+  const selectedPartnerNickname = payload.selectedPartnerNickname as string | null;
   const challenge         = payload.currentChallenge as { text: string; category: string; durationSeconds: number; allowPublicVote: boolean } | null;
   const challengeEndsAt   = payload.challengeEndsAt as string | null;
   type AoStarVote = { intensity: number; courage: number; show: number; performance: number };
@@ -5799,6 +5800,9 @@ function AdultOnlyBoard({ payload, session, players }: {
           <div>
             <div className="text-xs font-black uppercase tracking-widest text-white/40 mb-1">LA BOTTIGLIA PUNTA SU</div>
             <div className="text-display text-3xl font-black" style={{ color: AC }}>{selectedNickname ?? '?'}</div>
+            {selectedPartnerNickname && (
+              <div className="text-lg font-black mt-1" style={{ color: '#FB7185' }}>💞 con {selectedPartnerNickname}</div>
+            )}
           </div>
           <div className="ml-auto flex flex-col gap-1 text-right">
             {activePlayers.length > 0 && <div className="text-xs text-white/30">{activePlayers.length} attivi</div>}

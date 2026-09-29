@@ -1749,7 +1749,7 @@ function PhoneController({
     if (mode === 'home-percorso')   return <PercorsoHomeController sessionId={session.id} player={player} payload={p} timeLeft={timeLeft}/>;
     if (mode === 'home-lockdown')   return <LockdownController payload={p} player={player} session={session} />;
     if (mode === 'home-saramusica') return <SaraMusicaController payload={p} player={player} session={session}/>;
-    if (mode === 'home-adult')      return <AdultController payload={p} player={player} session={session}/>;
+    if (mode === 'home-adult')      return <AdultController payload={p} player={player} session={session} players={players}/>;
     if (mode === 'home-ballo')      return <BalloController payload={p} timeLeft={timeLeft} sessionId={session.id} emit={emit} playerId={player.id} nickname={player.nickname} avatarColor={player.avatarColor} round={session.currentRound} adminSensitivity={adminSensitivity ?? 1.0}/>;
     if (mode === 'home-wordback-setup') return <WordBackSetupController payload={p} player={player} session={session}/>;
     if (mode === 'home-wordback' || mode === 'home-wordback-booking')   return <WordBackController payload={p} timeLeft={timeLeft} player={player} sessionId={session.id} emit={emit} wordbackSolved={wordbackSolved ?? false} wordbackTimedOut={wordbackTimedOut ?? false}/>;
@@ -4360,10 +4360,11 @@ const AO_PHONE_POWERS: Record<string, { label: string; emoji: string }> = {
   public_vote:   { label: 'Voto totale', emoji: '👥' },
 };
 
-function AdultController({ payload, player, session }: {
+function AdultController({ payload, player, session, players }: {
   payload: Record<string,unknown>;
   player: HomePlayer;
   session: HomeSession;
+  players: HomePlayer[];
 }) {
   const phase             = String(payload.phase ?? 'consent');
   const level             = Number(payload.level ?? 1);
@@ -4394,6 +4395,25 @@ function AdultController({ payload, player, session }: {
   const myConsent   = consentMap[player.id];
   const adults18Map = (payload.adults18 ?? {}) as Record<string, boolean>;
   const my18        = !!adults18Map[player.id];
+
+  // Preferiti SEGRETI: solo io li vedo (il server non li rimanda). Stato locale,
+  // aggiornato dalla risposta del toggle. Nessun altro sa chi ho scelto.
+  const [myFavs, setMyFavs] = useState<Set<string>>(new Set());
+  const [favBusy, setFavBusy] = useState<string | null>(null);
+  const toggleFav = async (targetId: string) => {
+    const on = !myFavs.has(targetId);
+    setFavBusy(targetId);
+    // optimistic
+    setMyFavs(prev => { const n = new Set(prev); if (on) n.add(targetId); else n.delete(targetId); return n; });
+    try {
+      const r = await fetch(`/api/home/sessions/${session.id}/adult/favorite`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ voterId: player.id, targetId, on }),
+      });
+      if (r.ok) { const d = await r.json() as { mine?: string[] }; if (Array.isArray(d.mine)) setMyFavs(new Set(d.mine)); }
+    } catch { /* resta lo stato ottimistico */ }
+    finally { setFavBusy(null); }
+  };
 
   type AoStarVotePhone = { intensity: number; courage: number; show: number; performance: number };
   const votesTyped = (payload.votes ?? {}) as Record<string, AoStarVotePhone>;
@@ -4442,6 +4462,30 @@ function AdultController({ payload, player, session }: {
           {my18 ? '✅ Ho confermato: ho 18 anni' : '🔞 Tocca per confermare che hai 18 anni'}
         </button>
         <div className="text-[11px] text-white/30 -mt-2">Serve per sbloccare i livelli 4 e 5. Senza, resti ai livelli 1-3.</div>
+
+        {/* Preferiti SEGRETI — tocca chi ti piace: nessuno lo vede, ma la bottiglia
+            userà i preferiti per creare le coppie. */}
+        {players.filter(p => p.id !== player.id).length > 0 && (
+          <div className="w-full rounded-2xl p-3" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)' }}>
+            <div className="text-xs font-black mb-2" style={{ color: AC }}>💘 I tuoi preferiti (segreti)</div>
+            <div className="flex flex-wrap gap-3 justify-center">
+              {players.filter(p => p.id !== player.id).map(p => {
+                const fav = myFavs.has(p.id);
+                return (
+                  <button key={p.id} disabled={favBusy === p.id} onClick={() => void toggleFav(p.id)}
+                    className="flex flex-col items-center gap-1" style={{ width: 62, opacity: favBusy === p.id ? 0.5 : 1 }}>
+                    <div style={{ position: 'relative' }}>
+                      <PlayerAvatar nickname={p.nickname} avatarColor={p.avatarColor} avatarUrl={p.avatarUrl} size={52} ring={fav ? '#FB7185' : 'rgba(255,255,255,0.2)'} />
+                      <div style={{ position: 'absolute', right: -4, bottom: -4, fontSize: 18, filter: fav ? 'none' : 'grayscale(1) opacity(0.5)' }}>{fav ? '❤️' : '🤍'}</div>
+                    </div>
+                    <span className="text-[10px] font-bold text-white/70 truncate" style={{ maxWidth: 60 }}>{p.nickname}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="text-[10px] text-white/30 mt-2 text-center">Solo tu li vedi. La bottiglia tende a formare le coppie che piacciono a entrambi.</div>
+          </div>
+        )}
 
         {myConsent ? (
           <div className="flex flex-col items-center gap-3 w-full">
