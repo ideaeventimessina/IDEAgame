@@ -10,17 +10,20 @@ export const POSITIVE_REACTIONS = ["❤️", "🔥", "👏", "😍"] as const;
 export const NEGATIVE_REACTIONS = ["😂", "😬", "💀", "🙉"] as const;
 export const ALL_REACTIONS = [...POSITIVE_REACTIONS, ...NEGATIVE_REACTIONS];
 
+// audioUrl → beat VERI (generati con Suno) in public/audio/jonny-world/freestyle-battle/.
+// I 3 file reali (beat_1..3) sono assegnati a rotazione: ogni battle ha una base vera.
+const FB = "/audio/jonny-world/freestyle-battle";
 export const FREESTYLE_BEATS: FreestyleBeat[] = [
-  { id: "beat-01", title: "Trap Roma",        audioUrl: "", bpm: 140, durationSeconds: 60 },
-  { id: "beat-02", title: "Boom Bap Milano",  audioUrl: "", bpm:  90, durationSeconds: 60 },
-  { id: "beat-03", title: "Drill Napoli",     audioUrl: "", bpm: 135, durationSeconds: 60 },
-  { id: "beat-04", title: "Lo-fi Venezia",    audioUrl: "", bpm:  75, durationSeconds: 60 },
-  { id: "beat-05", title: "RnB Roma",         audioUrl: "", bpm:  85, durationSeconds: 60 },
-  { id: "beat-06", title: "Afrobeat Italia",  audioUrl: "", bpm: 100, durationSeconds: 60 },
-  { id: "beat-07", title: "Latin Remix",      audioUrl: "", bpm: 110, durationSeconds: 60 },
-  { id: "beat-08", title: "Old School 90s",   audioUrl: "", bpm:  95, durationSeconds: 60 },
-  { id: "beat-09", title: "Electronic Drop",  audioUrl: "", bpm: 128, durationSeconds: 60 },
-  { id: "beat-10", title: "Acoustic Vibes",   audioUrl: "", bpm:  70, durationSeconds: 60 },
+  { id: "beat-01", title: "Boom Bap",       audioUrl: `${FB}/beat_1.mp3`, bpm:  90, durationSeconds: 60 },
+  { id: "beat-02", title: "Trap 808",       audioUrl: `${FB}/beat_2.mp3`, bpm: 140, durationSeconds: 60 },
+  { id: "beat-03", title: "Funk Rap",       audioUrl: `${FB}/beat_3.mp3`, bpm:  95, durationSeconds: 60 },
+  { id: "beat-04", title: "Boom Bap 2",     audioUrl: `${FB}/beat_1.mp3`, bpm:  90, durationSeconds: 60 },
+  { id: "beat-05", title: "Trap Dark",      audioUrl: `${FB}/beat_2.mp3`, bpm: 140, durationSeconds: 60 },
+  { id: "beat-06", title: "Funk Groove",    audioUrl: `${FB}/beat_3.mp3`, bpm:  95, durationSeconds: 60 },
+  { id: "beat-07", title: "Old School",     audioUrl: `${FB}/beat_1.mp3`, bpm:  90, durationSeconds: 60 },
+  { id: "beat-08", title: "Trap Hype",      audioUrl: `${FB}/beat_2.mp3`, bpm: 140, durationSeconds: 60 },
+  { id: "beat-09", title: "Soul Rap",       audioUrl: `${FB}/beat_3.mp3`, bpm:  95, durationSeconds: 60 },
+  { id: "beat-10", title: "Boom Bap 3",     audioUrl: `${FB}/beat_1.mp3`, bpm:  90, durationSeconds: 60 },
 ];
 
 export const FREESTYLE_WORD_BANK = [

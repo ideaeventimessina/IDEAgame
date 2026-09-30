@@ -66,6 +66,14 @@ const ADULT_LEVELS = [
   { slug: 'adult-only', type: 'round_loop_l5', title: 'Adult L5', style: 'sultry slow-burn downtempo trip-hop, breathy warm pads, deep soft sub bass, candlelit sensual, tender and intense, NO techno, NO rave, NO club electro, loopable, no vocals' },
 ];
 
+/** Beat VERI per il Freestyle rap (al posto del sintetico). File:
+ *  freestyle-battle/beat_1..3.mp3 (loop). Boom-bap/trap puliti, spazio per rappare. */
+const FREESTYLE_BEATS = [
+  { slug: 'freestyle-battle', type: 'beat_1', title: 'Freestyle Beat 1', style: 'classic boom bap hip hop instrumental, punchy drums, warm vinyl, deep bass, head-nod groove, space for rapping, loopable, no vocals' },
+  { slug: 'freestyle-battle', type: 'beat_2', title: 'Freestyle Beat 2', style: 'modern trap instrumental, hard 808 bass, crisp hi-hats, dark melodic, hype, space for rapping, loopable, no vocals' },
+  { slug: 'freestyle-battle', type: 'beat_3', title: 'Freestyle Beat 3', style: 'old school funk rap beat, groovy bassline, soul sample vibe, boom bap drums, playful, space for rapping, loopable, no vocals' },
+];
+
 const H = () => ({ Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -130,6 +138,22 @@ async function download(url, dest) {
 async function main() {
   const args = process.argv.slice(2);
   if (args.includes('--probe')) { await probe(); return; }
+
+  // --beats = genera i beat veri del freestyle
+  if (args.includes('--beats')) {
+    console.log(`🎤 Genero ${FREESTYLE_BEATS.length} beat freestyle su ${BASE}\n`);
+    for (const s of FREESTYLE_BEATS) {
+      console.log(`▶︎ ${s.type} — "${s.title}"`);
+      try {
+        const url = await generateOne(s);
+        const dest = join(OUT_ROOT, s.slug, `${s.type}.mp3`);
+        const bytes = await download(url, dest);
+        console.log(`\n   ✅ ${dest} (${(bytes / 1024 / 1024).toFixed(1)} MB)\n`);
+      } catch (e) { console.log(`\n   ❌ ${s.type}: ${e.message}\n`); }
+    }
+    console.log('=== FATTO beat freestyle ===');
+    return;
+  }
 
   // --adult [n n...] = genera le tracce adult per livello (tutte, o solo i livelli indicati)
   if (args.includes('--adult')) {

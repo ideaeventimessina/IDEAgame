@@ -5547,6 +5547,13 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
     setVoted(false);
     setMyBallot({ intonazione: 0, presenza: 0, emozione: 0, originalita: 0 });
   }, [state.currentQueueItemId]);
+  // Sto eseguendo io ora? (per vibrare quando mi buzzano)
+  const performingRef = useRef(false);
+  useEffect(() => {
+    const item = state.queue.find(q => q.id === state.currentQueueItemId);
+    performingRef.current = !!item && item.playerId === playerId;
+  }, [state, playerId]);
+
   useEffect(() => {
     const u1 = on<{ state: KaraokeHomeState }>('home:karaoke_state', ({ state: s }) => {
       setState(s);
@@ -5556,7 +5563,11 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
       if (status === 'ready') setBackstageReadyVideoId(nextVideoId);
       else setBackstageReadyVideoId(null);
     });
-    return () => { u1(); u2(); };
+    // BUZZ: se stai eseguendo e qualcuno ti buzza, il telefono VIBRA.
+    const u3 = on<{ sessionId: string }>('home:freestyle_taboo', () => {
+      if (performingRef.current) { try { navigator.vibrate?.([140, 70, 140]); } catch { /* no vibrate */ } }
+    });
+    return () => { u1(); u2(); u3(); };
   }, [on]);
 
   useEffect(() => {
