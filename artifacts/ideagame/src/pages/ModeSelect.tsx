@@ -46,14 +46,14 @@ const MODES: Mode[] = [
   {
     id: 'home',
     title: 'MODALITÀ HOME',
-    subtitle: 'Gioca ovunque con i tuoi amici',
-    desc: 'Divano, pizzeria, gita. Ovunque ci sia un telefono e voglia di ridere.',
-    tags: ['2–20 giocatori', 'Casual & fun', 'Senza allestimento'],
+    subtitle: 'Gratis e sempre aperta',
+    desc: 'I giochi di festa con musica e la voce di Jonny che presenta. Versione libera: contenuti fissi, niente IA e niente Karaoke Live.',
+    tags: ['Sempre gratis', 'Musica + voce di Jonny', 'Senza IA · no Karaoke Live'],
     color: '#F5B642',
     glow: '#FFD040',
     bgSolid: 'rgba(24,10,2,0.88)',
     border: 'rgba(245,182,66,0.55)',
-    cta: "ENTRA NELL'ARENA",
+    cta: 'GIOCA GRATIS',
     route: '/home-setup',
     Icon: Home,
     tagIcons: [Users, Star, Zap],
@@ -61,14 +61,14 @@ const MODES: Mode[] = [
   {
     id: 'live',
     title: 'MODALITÀ LIVE',
-    subtitle: 'Eventi, matrimoni, aziende e feste',
-    desc: "Palco, proiettore, pubblico. Lo show professionale firmato Jonny's World.",
-    tags: ['20–200 ospiti', 'Show professionale', 'Con presentatore'],
+    subtitle: 'Tutto sbloccato — eventi e club',
+    desc: 'Lo stesso motore, ma completo: contenuti infiniti con l\'IA, Adult per il club, Karaoke Live, musica e Jonny che presenta. Si entra con login o token.',
+    tags: ['Tutto sbloccato', 'IA · Adult · Karaoke Live', 'Con login / token'],
     color: '#A855F7',
     glow: '#C084FC',
     bgSolid: 'rgba(14,4,34,0.88)',
     border: 'rgba(168,85,247,0.55)',
-    cta: 'INIZIA LO SHOW',
+    cta: 'ENTRA IN LIVE',
     route: '/',
     Icon: Mic2,
     tagIcons: [Building2, Star, Zap],
@@ -438,7 +438,7 @@ export default function ModeSelect() {
             textTransform: 'uppercase',
             textShadow: '0 1px 12px rgba(0,0,0,0.95)',
           }}>
-            Due esperienze. Un solo show.
+            Quattro modi di giocare. Un solo Jonny.
           </div>
         </motion.div>
 

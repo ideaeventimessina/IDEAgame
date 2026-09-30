@@ -2923,9 +2923,19 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
   const { gameSlug, restart } = req.body as { gameSlug: string; restart?: boolean };
   if (!gameSlug) { res.status(400).json({ error: "gameSlug obbligatorio" }); return; }
 
-  // DEMO: adult, karaoke e lockdown (contenuti adulti) sono solo in Full. Full = tutto permesso.
-  if (sessionTier(session) === "demo" && ["adult-only", "karaoke-battle", "lockdown"].includes(gameSlug)) {
-    res.status(403).json({ error: "Disponibile solo in modalità Full" }); return;
+  // DEMO: adult e karaoke sono solo in Full. Lockdown invece è la SUA modalità
+  // dedicata (accanto a Home/Live/Burraco): in una "stanza Lockdown"
+  // (selectedGames===['lockdown']) si avvia comunque, anche senza Full — altrimenti
+  // resterebbe appeso (era il bug del caricamento perenne).
+  {
+    const cfg0 = (session.gameConfig ?? {}) as Record<string, unknown>;
+    const sel0 = (cfg0["selectedGames"] as string[] | undefined) ?? [];
+    const isLockdownRoom = sel0.length === 1 && sel0[0] === "lockdown";
+    const blocked = ["adult-only", "karaoke-battle", "lockdown"].includes(gameSlug)
+      && !(gameSlug === "lockdown" && isLockdownRoom);
+    if (sessionTier(session) === "demo" && blocked) {
+      res.status(403).json({ error: "Disponibile solo in modalità Full" }); return;
+    }
   }
 
   const cfg = (session.gameConfig ?? {}) as Record<string, unknown>;

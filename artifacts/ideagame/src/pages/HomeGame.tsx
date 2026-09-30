@@ -1406,8 +1406,10 @@ export default function HomeGame() {
   const lockdownAutostarted = useRef(false);
   useEffect(() => {
     if (!lockdownRoom) return;
-    if (phase !== 'board') return;
     if (session?.gameSlug === 'lockdown') { lockdownAutostarted.current = true; return; }
+    // Avvia appena il board è attivo (board O playing senza gioco): NON dipende più
+    // solo dalla fase 'board' (era la causa del caricamento perenno di Lockdown).
+    if (phase !== 'board' && phase !== 'playing') return;
     if (lockdownAutostarted.current || selectingGame) return;
     lockdownAutostarted.current = true;
     void selectGame('lockdown');
