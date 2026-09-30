@@ -1210,18 +1210,24 @@ router.post("/home/sessions", async (req, res): Promise<void> => {
 
 // ── GET /home/sessions/by-code/:code ──────────────────────────────────────────
 router.get("/home/sessions/by-code/:code", async (req, res): Promise<void> => {
-  void cleanupExpiredHomeSessions().catch(() => {});
+  try {
+    void cleanupExpiredHomeSessions().catch(() => {});
 
-  const code = String(req.params["code"]).toUpperCase().trim();
-  const [session] = await db.select().from(homeSessionsTable)
-    .where(eq(homeSessionsTable.joinCode, code));
+    const code = String(req.params["code"]).toUpperCase().trim();
+    const [session] = await db.select().from(homeSessionsTable)
+      .where(eq(homeSessionsTable.joinCode, code));
 
-  if (!session) { res.status(404).json({ error: "Sessione non trovata" }); return; }
-  if (session.status === "ended") { res.status(409).json({ error: "Sessione terminata" }); return; }
-  if (new Date() > session.expiresAt) { res.status(410).json({ error: "Sessione scaduta o abbandonata" }); return; }
+    if (!session) { res.status(404).json({ error: "Sessione non trovata" }); return; }
+    if (session.status === "ended") { res.status(409).json({ error: "Sessione terminata" }); return; }
+    if (new Date() > session.expiresAt) { res.status(410).json({ error: "Sessione scaduta o abbandonata" }); return; }
 
-  const players = await getPlayers(session.id);
-  res.json({ session, players });
+    const players = await getPlayers(session.id);
+    res.json({ session: redactHomeSession(session), players });
+  } catch (err) {
+    // Un intoppo DB non deve diventare un 500 grezzo: log dell'errore VERO + risposta pulita.
+    req.log.error({ err, code: req.params["code"] }, "[HOME_GET_BY_CODE] errore");
+    res.status(503).json({ error: "Servizio momentaneamente non disponibile" });
+  }
 });
 
 // ── GET /home/sessions/:id ─────────────────────────────────────────────────────
@@ -1229,12 +1235,17 @@ router.get("/home/sessions/:id", async (req, res): Promise<void> => {
   const id = String(req.params["id"]);
   if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
 
-  const session = await getSession(id);
-  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  try {
+    const session = await getSession(id);
+    if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
 
-  const players = await getPlayers(session.id);
-  const stateVersion = homeStateVersions.get(session.id) ?? 0;
-  res.json({ session: redactHomeSession(session), players, stateVersion });
+    const players = await getPlayers(session.id);
+    const stateVersion = homeStateVersions.get(session.id) ?? 0;
+    res.json({ session: redactHomeSession(session), players, stateVersion });
+  } catch (err) {
+    req.log.error({ err, id }, "[HOME_GET_BY_ID] errore");
+    res.status(503).json({ error: "Servizio momentaneamente non disponibile" });
+  }
 });
 
 // ── POST /home/sessions/:id/join ───────────────────────────────────────────────
