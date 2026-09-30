@@ -6,11 +6,15 @@
  * È GUARDATO: se mancano STRIPE_SECRET_KEY o il prezzo, risponde { configured:false }
  * e il frontend mostra "presto disponibile" — nessuna cassa finta, niente crash.
  *
+ * Il LISTINO è nostro (gestito internamente), NON su Stripe: passiamo l'importo al
+ * volo con price_data, così non serve creare un "Price" nella dashboard Stripe.
+ *
  * ENV richieste per attivarlo:
- *   STRIPE_SECRET_KEY   = sk_test_… / sk_live_…
- *   STRIPE_PRICE_LIVE   = price_…  (il prezzo/piano creato su Stripe)
- *   STRIPE_MODE         = payment | subscription   (default: payment)
- *   PUBLIC_BASE_URL     = https://ideagame.it       (per success/cancel, opzionale)
+ *   STRIPE_SECRET_KEY   = sk_test_… / sk_live_…                (obbligatoria)
+ *   STRIPE_LIVE_AMOUNT  = importo in CENTESIMI (es. 2000 = 20,00 €)   (obbligatoria)
+ *   STRIPE_CURRENCY     = eur (default)                        (opzionale)
+ *   STRIPE_LIVE_LABEL   = "IDEAgame — Modalità Live" (default) (opzionale)
+ *   PUBLIC_BASE_URL     = https://ideagame.it (default)        (opzionale)
  *
  * NOTA: sbloccare davvero Live dopo il pagamento (entitlement) richiede il webhook
  * Stripe + un account cliente — vedi il TODO in fondo. Questo file avvia il checkout.
@@ -22,8 +26,10 @@ const router: IRouter = Router();
 
 router.post("/billing/checkout", async (req: Request, res: Response): Promise<void> => {
   const key = process.env["STRIPE_SECRET_KEY"];
-  const price = process.env["STRIPE_PRICE_LIVE"];
-  if (!key || !price) { res.json({ configured: false }); return; }
+  const amount = Number(process.env["STRIPE_LIVE_AMOUNT"]);   // centesimi, listino NOSTRO
+  if (!key || !Number.isFinite(amount) || amount <= 0) { res.json({ configured: false }); return; }
+  const currency = (process.env["STRIPE_CURRENCY"] || "eur").toLowerCase();
+  const label = process.env["STRIPE_LIVE_LABEL"] || "IDEAgame — Modalità Live";
 
   try {
     // Specifier non letterale: la dipendenza 'stripe' viene caricata a runtime solo
@@ -34,10 +40,16 @@ router.post("/billing/checkout", async (req: Request, res: Response): Promise<vo
     };
     const stripe = new StripeLib(key);
     const origin = String(req.headers["origin"] ?? process.env["PUBLIC_BASE_URL"] ?? "https://ideagame.it");
-    const mode = (process.env["STRIPE_MODE"] === "subscription" ? "subscription" : "payment");
     const session = await stripe.checkout.sessions.create({
-      mode,
-      line_items: [{ price, quantity: 1 }],
+      mode: "payment",
+      line_items: [{
+        quantity: 1,
+        price_data: {
+          currency,
+          unit_amount: Math.round(amount),          // importo deciso da NOI
+          product_data: { name: label },
+        },
+      }],
       success_url: `${origin}/home-setup?mode=live&paid=1`,
       cancel_url: `${origin}/passa-a-live`,
       allow_promotion_codes: true,
