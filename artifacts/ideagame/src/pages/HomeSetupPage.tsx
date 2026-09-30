@@ -69,7 +69,9 @@ export default function HomeSetupPage() {
   const mode = new URLSearchParams(window.location.search).get('mode');
   const isLive = mode === 'live';
   const isLockdown = mode === 'lockdown';
+  const urlCode = new URLSearchParams(window.location.search).get('code') ?? '';
 
+  const [liveCode, setLiveCode]         = useState(urlCode);
   const [hostName, setHostName]         = useState(IN_PROVA ? 'Prova in showroom' : '');
   const [selectedGames, setSelectedGames] = useState<string[]>(() =>
     isLockdown ? ['lockdown'] : (IN_PROVA ? ['gioco-coppie', 'parola-alle-spalle', 'sfida-ballo'] : []));
@@ -91,9 +93,11 @@ export default function HomeSetupPage() {
       // 1. Create Home session (same for both Home and Live modes)
       const homeRes = await fetch('/api/home/sessions', {
         method: 'POST',
+        credentials: 'include', // staff loggato → full; altrimenti conta il codice
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hostName: hostName.trim(), selectedGames }),
+        body: JSON.stringify({ hostName: hostName.trim(), selectedGames, ...(liveCode.trim() ? { liveCode: liveCode.trim() } : {}) }),
       });
+      if (homeRes.status === 402) { setError('Codice serata non valido, già usato o scaduto.'); setLoading(false); return; }
       if (!homeRes.ok) throw new Error('Errore nella creazione della stanza.');
       const homeSession = await homeRes.json() as { id: string; joinCode: string };
 
@@ -244,6 +248,34 @@ export default function HomeSetupPage() {
           </div>
 
         </div>
+
+        {/* Live: codice serata (dal pagamento). Vuoto = demo; valido = full. */}
+        {isLive && (
+          <div style={{
+            background: liveCode.trim() ? 'rgba(52,211,153,0.1)' : 'rgba(255,255,255,0.04)',
+            border: `1.5px solid ${liveCode.trim() ? 'rgba(52,211,153,0.5)' : 'rgba(255,255,255,0.1)'}`,
+            borderRadius: 20, padding: 'clamp(14px,2vh,20px)', backdropFilter: 'blur(14px)',
+            display: 'flex', flexDirection: 'column', gap: 8,
+          }}>
+            <div style={{ fontSize: '0.65rem', fontWeight: 900, letterSpacing: '0.2em', color: '#34D399', textTransform: 'uppercase' }}>
+              🎟️ Codice serata Live
+            </div>
+            <input
+              value={liveCode}
+              onChange={e => setLiveCode(e.target.value.toUpperCase())}
+              placeholder="LIVE-XXXX-XXXX"
+              style={{
+                background: 'rgba(255,255,255,0.06)', border: '1.5px solid rgba(255,255,255,0.15)',
+                borderRadius: 10, padding: '0.6rem 1rem', color: '#fff', fontFamily: "'Outfit',sans-serif",
+                fontSize: '0.95rem', fontWeight: 700, letterSpacing: '0.08em', outline: 'none', width: '100%',
+              }}
+            />
+            <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)' }}>
+              Hai un codice dal pagamento? Incollalo qui per sbloccare la serata. Se sei staff e hai fatto login, è già tutto sbloccato.
+              {' '}Non hai un codice? <span onClick={() => navigate('/passa-a-live')} style={{ color: '#C084FC', cursor: 'pointer', textDecoration: 'underline' }}>Passa a Live</span>.
+            </div>
+          </div>
+        )}
 
         {/* Lockdown: nessuna selezione giochi, è la modalità dedicata */}
         {isLockdown && (

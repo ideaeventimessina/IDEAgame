@@ -21,8 +21,18 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
+import { issueLiveCodeForCheckout } from "../lib/live-codes.js";
 
 const router: IRouter = Router();
+
+/** Carica il client Stripe a runtime (specifier non letterale → build senza il pacchetto). */
+async function getStripe(): Promise<{ checkout: { sessions: { create: (o: Record<string, unknown>) => Promise<{ url: string | null }>; retrieve: (id: string) => Promise<{ payment_status?: string; status?: string }> } } } | null> {
+  const key = process.env["STRIPE_SECRET_KEY"];
+  if (!key) return null;
+  const mod = "stripe";
+  const StripeLib = (await import(mod)).default as unknown as new (k: string) => never;
+  return new StripeLib(key) as never;
+}
 
 router.post("/billing/checkout", async (req: Request, res: Response): Promise<void> => {
   const key = process.env["STRIPE_SECRET_KEY"];
@@ -32,13 +42,8 @@ router.post("/billing/checkout", async (req: Request, res: Response): Promise<vo
   const label = process.env["STRIPE_LIVE_LABEL"] || "IDEAgame — Modalità Live";
 
   try {
-    // Specifier non letterale: la dipendenza 'stripe' viene caricata a runtime solo
-    // quando è configurata, così build e typecheck non richiedono il pacchetto.
-    const mod = "stripe";
-    const StripeLib = (await import(mod)).default as unknown as new (k: string) => {
-      checkout: { sessions: { create: (o: Record<string, unknown>) => Promise<{ url: string | null }> } };
-    };
-    const stripe = new StripeLib(key);
+    const stripe = await getStripe();
+    if (!stripe) { res.json({ configured: false }); return; }
     const origin = String(req.headers["origin"] ?? process.env["PUBLIC_BASE_URL"] ?? "https://ideagame.it");
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
@@ -50,7 +55,8 @@ router.post("/billing/checkout", async (req: Request, res: Response): Promise<vo
           product_data: { name: label },
         },
       }],
-      success_url: `${origin}/home-setup?mode=live&paid=1`,
+      // La success page riceve l'id del checkout → da lì emettiamo il codice serata.
+      success_url: `${origin}/passa-a-live?paid=1&cs={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/passa-a-live`,
       allow_promotion_codes: true,
     });
@@ -59,6 +65,29 @@ router.post("/billing/checkout", async (req: Request, res: Response): Promise<vo
   } catch (err) {
     console.error("[billing] checkout", err);
     res.status(500).json({ error: "Checkout non disponibile" });
+  }
+});
+
+/**
+ * POST /billing/code-after-pay { cs } — dopo il ritorno dalla cassa: verifica che
+ * il checkout Stripe sia PAGATO e restituisce il CODICE serata (idempotente).
+ * È così che il cliente riceve il codice a schermo (l'email arriverà quando
+ * collegheremo un provider). Nessun codice se il pagamento non risulta completato.
+ */
+router.post("/billing/code-after-pay", async (req: Request, res: Response): Promise<void> => {
+  const cs = String((req.body as Record<string, unknown>)?.["cs"] ?? "").trim();
+  if (!cs.startsWith("cs_")) { res.status(400).json({ error: "checkout non valido" }); return; }
+  try {
+    const stripe = await getStripe();
+    if (!stripe) { res.json({ configured: false }); return; }
+    const session = await stripe.checkout.sessions.retrieve(cs);
+    const paid = session.payment_status === "paid" || session.status === "complete";
+    if (!paid) { res.status(402).json({ error: "Pagamento non risultato completato", paid: false }); return; }
+    const code = await issueLiveCodeForCheckout(cs);
+    res.json({ ok: true, code });
+  } catch (err) {
+    console.error("[billing] code-after-pay", err);
+    res.status(500).json({ error: "Impossibile emettere il codice" });
   }
 });
 

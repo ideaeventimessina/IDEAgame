@@ -7,12 +7,13 @@
  * Stripe non è configurato (chiavi + prezzo), il bottone mostra "presto disponibile"
  * e rimanda al login/registrazione. Nessuna cassa finta: se non è configurato, si dice.
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { motion } from 'framer-motion';
 import { ChevronLeft, Sparkles, Mic2, Lock, Bot, Music, Check } from 'lucide-react';
 
 const BASE = (import.meta.env.BASE_URL as string) ?? '/';
+const api = (p: string) => `${BASE}${p}`.replace(/([^:])\/\//g, '$1/');
 
 const UNLOCKS = [
   { Icon: Bot,   t: 'Intelligenza Artificiale', d: 'Domande, canzoni e sfide infinite generate al momento: partite sempre diverse.' },
@@ -25,11 +26,31 @@ export default function UpgradeLive() {
   const [, navigate] = useLocation();
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState('');
+  const [code, setCode] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
+
+  // Ritorno dalla cassa Stripe: ?paid=1&cs=cs_... → recupera il CODICE serata.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const cs = q.get('cs');
+    if (q.get('paid') !== '1' || !cs) return;
+    setChecking(true);
+    fetch(api('api/billing/code-after-pay'), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cs }),
+    })
+      .then(r => r.json())
+      .then((d: { code?: string; error?: string }) => {
+        if (d.code) setCode(d.code);
+        else setMsg(d.error ?? 'Pagamento ricevuto: recupero il codice non riuscito, contattaci.');
+      })
+      .catch(() => setMsg('Pagamento ricevuto ma non riesco a recuperare il codice. Contattaci.'))
+      .finally(() => setChecking(false));
+  }, []);
 
   const startCheckout = async () => {
     setLoading(true); setMsg('');
     try {
-      const r = await fetch(`${BASE}api/billing/checkout`.replace(/([^:])\/\//g, '$1/'), {
+      const r = await fetch(api('api/billing/checkout'), {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
         body: JSON.stringify({ plan: 'live' }),
       });
@@ -64,6 +85,29 @@ export default function UpgradeLive() {
             il gioco diventa infinito e pronto per eventi, feste e club.
           </p>
         </motion.div>
+
+        {/* Ritorno dal pagamento: codice serata */}
+        {(checking || code) && (
+          <div style={{ marginTop: 22, borderRadius: 18, padding: 18, textAlign: 'center',
+            background: 'rgba(74,222,128,0.12)', border: '1.5px solid rgba(74,222,128,0.5)' }}>
+            {checking && <div style={{ color: '#86EFAC', fontWeight: 700 }}>Pagamento ricevuto, genero il codice…</div>}
+            {code && (
+              <>
+                <div style={{ color: '#86EFAC', fontWeight: 800, fontSize: '0.9rem' }}>✅ Pagamento riuscito! Il tuo codice serata:</div>
+                <div style={{ margin: '12px 0', fontSize: '1.7rem', fontWeight: 900, letterSpacing: '0.12em', color: '#fff',
+                  background: 'rgba(0,0,0,0.25)', borderRadius: 12, padding: '10px 14px', userSelect: 'all' }}>{code}</div>
+                <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem', marginBottom: 12 }}>
+                  Vale per una serata (48h), monouso. Segnalo (a breve arriverà anche via email).
+                </div>
+                <button onClick={() => navigate(`/home-setup?mode=live&code=${encodeURIComponent(code)}`)}
+                  style={{ width: '100%', padding: '0.9rem', borderRadius: 100, border: 'none', cursor: 'pointer',
+                    background: 'linear-gradient(135deg,#34D399,#059669)', color: '#062', fontWeight: 900, fontSize: '1rem' }}>
+                  🎉 Crea la serata Live
+                </button>
+              </>
+            )}
+          </div>
+        )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 26 }}>
           {UNLOCKS.map(({ Icon, t, d }) => (

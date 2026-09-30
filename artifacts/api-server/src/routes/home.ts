@@ -30,6 +30,7 @@ import { pickBalloSongs } from "../lib/ballo-library.js";
 import { getGroupUsed, addGroupUsed } from "../lib/group-content.js";
 import { type AuthedRequest } from "../middlewares/auth.js";
 import { uploadBufferToStorage } from "../lib/objectStorage.js";
+import { consumeLiveCode } from "../lib/live-codes.js";
 import { searchYouTube } from "./home-karaoke.js";
 import { BOTTLE_LEVELS, pickFromBank, assignSpectatorPowers, pickRandomTruth, pickRandomDare, generateAdultChallengesAI, ADULT_TRUTH_BANK, ADULT_DARE_BANK, type BottleChallenge, type BottleLevel } from "../lib/adult-generator.js";
 import { eq, and, or, lt, asc, desc, isNull, notInArray } from "drizzle-orm";
@@ -1178,7 +1179,14 @@ router.post("/home/sessions", async (req, res): Promise<void> => {
   // sarebbe un buco (chiunque avrebbe il full gratis).
   const authedUser = (req as AuthedRequest).user;
   const STAFF_ROLES = ["super_admin", "tenant_owner", "game_manager", "entertainer"];
-  const tier: "demo" | "full" = (authedUser && STAFF_ROLES.includes(authedUser.role)) ? "full" : "demo";
+  let tier: "demo" | "full" = (authedUser && STAFF_ROLES.includes(authedUser.role)) ? "full" : "demo";
+  // FULL anche con un CODICE serata pagato (Stripe): monouso, lo consumiamo qui.
+  const liveCode = String(req.body?.liveCode ?? "").trim();
+  if (tier === "demo" && liveCode) {
+    const ok = await consumeLiveCode(liveCode);
+    if (ok) tier = "full";
+    else { res.status(402).json({ error: "Codice serata non valido, già usato o scaduto." }); return; }
+  }
 
   let joinCode = makeJoinCode();
   for (let i = 0; i < 5; i++) {
