@@ -1575,7 +1575,7 @@ export default function HomeGame() {
 
       {/* ── Ballo: video YouTube VISIBILE a tutto schermo (si imitano i passi) ── */}
       {phase === 'playing' && balloActive && balloVideo &&
-        ['get_ready', 'dancing'].includes(String((session?.roundPayload as Record<string,unknown>)?.balloPhase ?? '')) && (
+        String((session?.roundPayload as Record<string,unknown>)?.balloPhase ?? '') === 'dancing' && (
         <BalloVideoBg videoId={balloVideo.videoId}
           startSeconds={balloVideo.startSeconds ?? 0}
           roundKey={String((session?.roundPayload as Record<string,unknown>)?.manche ?? '')} />

@@ -3597,7 +3597,11 @@ async function prepareBalloVideos(sessionId: string): Promise<void> {
     for (const s of candidates) {
       if (videos.length >= BALLO_TOTAL_MANCHE) break;
       try {
-        const r = await searchYouTube(s.query, "song") as { ok?: boolean; results?: Array<{ videoId: string; title: string; channel?: string; thumbnailUrl?: string; durationSeconds?: number }> };
+        // Cerchiamo video di COREOGRAFIA/BALLO (mostrano le mosse da imitare), non
+        // solo il videoclip ufficiale (spesso senza ballo). Fallback alla query base.
+        type YtRes = { ok?: boolean; results?: Array<{ videoId: string; title: string; channel?: string; thumbnailUrl?: string; durationSeconds?: number }> };
+        let r = await searchYouTube(`${s.query} coreografia ballo`, "song") as YtRes;
+        if (!(r.ok && r.results && r.results[0])) r = await searchYouTube(s.query, "song") as YtRes;
         const hit = r.ok && r.results && r.results[0] ? r.results[0] : null;
         if (!hit?.videoId) continue;
         const durationSeconds = Number(hit.durationSeconds ?? 0);
