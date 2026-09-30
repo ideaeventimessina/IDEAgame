@@ -27,6 +27,7 @@ export default function UpgradeLive() {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState('');
   const [code, setCode] = useState<string | null>(null);
+  const [emailedTo, setEmailedTo] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
 
   // Ritorno dalla cassa Stripe: ?paid=1&cs=cs_... → recupera il CODICE serata.
@@ -39,8 +40,8 @@ export default function UpgradeLive() {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cs }),
     })
       .then(r => r.json())
-      .then((d: { code?: string; error?: string }) => {
-        if (d.code) setCode(d.code);
+      .then((d: { code?: string; error?: string; emailed?: boolean; email?: string }) => {
+        if (d.code) { setCode(d.code); if (d.emailed && d.email) setEmailedTo(d.email); }
         else setMsg(d.error ?? 'Pagamento ricevuto: recupero il codice non riuscito, contattaci.');
       })
       .catch(() => setMsg('Pagamento ricevuto ma non riesco a recuperare il codice. Contattaci.'))
@@ -97,7 +98,7 @@ export default function UpgradeLive() {
                 <div style={{ margin: '12px 0', fontSize: '1.7rem', fontWeight: 900, letterSpacing: '0.12em', color: '#fff',
                   background: 'rgba(0,0,0,0.25)', borderRadius: 12, padding: '10px 14px', userSelect: 'all' }}>{code}</div>
                 <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem', marginBottom: 12 }}>
-                  Vale per una serata (48h), monouso. Segnalo (a breve arriverà anche via email).
+                  Vale per una serata (48h), monouso. {emailedTo ? `Te l'abbiamo mandato anche via email a ${emailedTo}.` : 'Salvalo.'}
                 </div>
                 <button onClick={() => navigate(`/home-setup?mode=live&code=${encodeURIComponent(code)}`)}
                   style={{ width: '100%', padding: '0.9rem', borderRadius: 100, border: 'none', cursor: 'pointer',

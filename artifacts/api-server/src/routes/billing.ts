@@ -22,11 +22,14 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { issueLiveCodeForCheckout } from "../lib/live-codes.js";
+import { sendLiveCodeEmail } from "../lib/email.js";
 
 const router: IRouter = Router();
 
+type StripeSession = { payment_status?: string; status?: string; customer_email?: string | null; customer_details?: { email?: string | null } | null };
+
 /** Carica il client Stripe a runtime (specifier non letterale → build senza il pacchetto). */
-async function getStripe(): Promise<{ checkout: { sessions: { create: (o: Record<string, unknown>) => Promise<{ url: string | null }>; retrieve: (id: string) => Promise<{ payment_status?: string; status?: string }> } } } | null> {
+async function getStripe(): Promise<{ checkout: { sessions: { create: (o: Record<string, unknown>) => Promise<{ url: string | null }>; retrieve: (id: string) => Promise<StripeSession> } } } | null> {
   const key = process.env["STRIPE_SECRET_KEY"];
   if (!key) return null;
   const mod = "stripe";
@@ -84,7 +87,11 @@ router.post("/billing/code-after-pay", async (req: Request, res: Response): Prom
     const paid = session.payment_status === "paid" || session.status === "complete";
     if (!paid) { res.status(402).json({ error: "Pagamento non risultato completato", paid: false }); return; }
     const code = await issueLiveCodeForCheckout(cs);
-    res.json({ ok: true, code });
+    // Manda il codice anche via email (se Resend è configurato + Stripe ha l'email).
+    const email = session.customer_details?.email || session.customer_email || "";
+    let emailed = false;
+    if (email) emailed = await sendLiveCodeEmail(email, code);
+    res.json({ ok: true, code, emailed, ...(email ? { email } : {}) });
   } catch (err) {
     console.error("[billing] code-after-pay", err);
     res.status(500).json({ error: "Impossibile emettere il codice" });
