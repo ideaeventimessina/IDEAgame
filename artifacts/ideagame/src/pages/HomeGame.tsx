@@ -3499,22 +3499,22 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
   })();
 
   return (
-    <div className="flex w-full max-w-2xl flex-col items-center gap-5 text-center">
-      {/* Phase badge + progress */}
-      <div className="flex items-center gap-3">
-        <div className="rounded-xl px-4 py-1.5 text-xs font-black uppercase tracking-widest"
-          style={{ background: `${PERCORSO_ACCENT}18`, border: `1px solid ${PERCORSO_ACCENT}35`, color: PERCORSO_ACCENT }}>
+    <div className="flex w-full max-w-6xl flex-col items-center gap-8 text-center">
+      {/* Phase badge + progress — MAXI-schermo: leggibile da lontano */}
+      <div className="flex items-center gap-5 flex-wrap justify-center">
+        <div className="rounded-2xl px-7 py-3 text-xl font-black uppercase tracking-widest"
+          style={{ background: `${PERCORSO_ACCENT}22`, border: `2px solid ${PERCORSO_ACCENT}55`, color: PERCORSO_ACCENT }}>
           {phaseLabel}
         </div>
-        <div className="text-xs text-white/35">
+        <div className="text-2xl font-black text-white/50">
           Missione {rs.missionIndex + 1}/10
         </div>
         {/* progress dots */}
-        <div className="flex gap-1">
+        <div className="flex gap-1.5">
           {Array.from({ length: 10 }, (_, i) => (
             <div key={i} className="rounded-full"
               style={{
-                width: i === rs.missionIndex ? 16 : 6, height: 6,
+                width: i === rs.missionIndex ? 28 : 10, height: 10,
                 background: i < rs.missionIndex ? PERCORSO_ACCENT : i === rs.missionIndex ? PERCORSO_ACCENT : 'rgba(255,255,255,0.15)',
                 transition: 'all 0.3s',
               }} />
@@ -3522,16 +3522,30 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
         </div>
       </div>
 
-      {/* Mission card */}
+      {/* Mission card — titolo e spiegazione GRANDI, si usa lo spazio dello schermo */}
       {mission && (
         <motion.div key={rs.missionIndex} initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-          className="flex flex-col items-center gap-3 w-full">
-          <div className="text-7xl">{mission.emoji}</div>
-          <div className="text-display text-4xl font-black text-white"
-            style={{ textShadow: `0 0 30px ${PERCORSO_ACCENT}44` }}>
+          className="flex flex-col items-center gap-5 w-full">
+          <div style={{ fontSize: 'clamp(90px,11vw,180px)', lineHeight: 1 }}>{mission.emoji}</div>
+          <div className="text-display font-black text-white"
+            style={{ fontSize: 'clamp(42px,6vw,96px)', lineHeight: 1.02, textShadow: `0 0 40px ${PERCORSO_ACCENT}55` }}>
             {mission.title}
           </div>
-          <div className="text-base text-white/55 leading-relaxed max-w-lg">{mission.subtitle}</div>
+          <div className="text-white/70 leading-snug max-w-4xl" style={{ fontSize: 'clamp(20px,2.6vw,40px)' }}>{mission.subtitle}</div>
+          {/* Info + trucco: giocatori, durata, e un suggerimento */}
+          <div className="flex items-center justify-center gap-4 flex-wrap mt-1">
+            <span className="rounded-full px-5 py-2 text-xl font-black text-white/80" style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.14)' }}>
+              👥 {mission.playerCount} {mission.playerCount === 1 ? 'giocatore' : 'giocatori'}
+            </span>
+            <span className="rounded-full px-5 py-2 text-xl font-black text-white/80" style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.14)' }}>
+              ⏱️ {mission.duration}s
+            </span>
+            {rs.phase === 'mission_intro' && (
+              <span className="rounded-full px-5 py-2 text-xl font-black" style={{ background: `${PERCORSO_ACCENT}1e`, border: `1px solid ${PERCORSO_ACCENT}44`, color: PERCORSO_ACCENT }}>
+                💡 Chi se la sente si prenota dal telefono!
+              </span>
+            )}
+          </div>
 
           {/* public_choice options */}
           {rs.phase === 'public_choice' && rs.publicChoiceOptions.length > 0 && (() => {
@@ -3904,10 +3918,10 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
 
       {msg && <div className="text-xs text-red-400">{msg}</div>}
 
-      {/* Advance button */}
+      {/* Advance button — grande, il comando principale della TV */}
       <button onClick={() => void advance()} disabled={busy}
-        className="rounded-2xl px-8 py-3 text-base font-black text-black transition-all"
-        style={{ background: `linear-gradient(135deg,${PERCORSO_ACCENT},#059669)`, boxShadow: `0 0 30px ${PERCORSO_ACCENT}44`, opacity: busy ? 0.6 : 1 }}>
+        className="rounded-3xl px-14 py-6 font-black text-black transition-all"
+        style={{ fontSize: 'clamp(24px,2.8vw,40px)', background: `linear-gradient(135deg,${PERCORSO_ACCENT},#059669)`, boxShadow: `0 0 44px ${PERCORSO_ACCENT}66`, opacity: busy ? 0.6 : 1 }}>
         {busy ? '⏳…' : advanceLabel}
       </button>
 
