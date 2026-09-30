@@ -4094,20 +4094,59 @@ function LockdownBoard({ session, players }: { session: HomeSession; players: Ho
     );
   }
 
-  const needsStart = !ls || ls.phase === 'setup' || ls.phase === 'roles' || ls.status === 'idle';
-  if (needsStart) {
+  // Stato non ancora creato → schermata di avvio (init).
+  if (!ls || ls.status === 'idle') {
     return (
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-        className="flex flex-col items-center gap-6 text-center">
-        <div className="text-7xl">🔒</div>
-        <div className="text-display text-5xl font-black text-white"
+        className="flex flex-col items-center gap-8 text-center">
+        <div className="text-8xl">🔒</div>
+        <div className="text-display text-7xl font-black text-white"
           style={{ textShadow: `0 0 34px ${LOCK_GOLD}55` }}>LOCKDOWN</div>
-        <div className="text-base text-white/50">Il Master sulla TV • i giocatori sul telefono • economia in Lock-Euro</div>
-        {msg && <div className="text-sm text-red-400">{msg}</div>}
+        <div className="text-2xl text-white/60">Il Master sulla TV • i giocatori sul telefono • economia in Lock-Euro</div>
+        {msg && <div className="text-lg text-red-400">{msg}</div>}
         <motion.button whileTap={{ scale: 0.94 }} onClick={() => void apiPost('init')} disabled={busy}
-          className="rounded-2xl px-10 py-4 text-2xl font-black text-black"
+          className="rounded-2xl px-14 py-6 text-4xl font-black text-black"
           style={{ background: `linear-gradient(135deg,${LOCK_GOLD},#d98f1f)`, boxShadow: `0 0 46px ${LOCK_GOLD}66` }}>
           {busy ? '⏳ Avvio…' : '🔒 AVVIA LOCKDOWN'}
+        </motion.button>
+      </motion.div>
+    );
+  }
+
+  // Ruoli assegnati (fase 'setup'/'roles') → mostra i ruoli e AVVIA la prima stanza.
+  if (ls.phase === 'setup' || ls.phase === 'roles') {
+    return (
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+        className="flex w-full max-w-4xl flex-col items-center gap-6 text-center">
+        <div className="text-6xl">🔒</div>
+        <div className="text-display text-6xl font-black text-white" style={{ textShadow: `0 0 34px ${LOCK_GOLD}55` }}>
+          I RUOLI SONO ASSEGNATI
+        </div>
+        <div className="text-xl text-white/50">Ogni giocatore vede il suo ruolo sul telefono. La spia è segreta 🤫</div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 w-full">
+          {ls.players.map(p => {
+            const c = lockdownChar(p.characterId);
+            return (
+              <div key={p.id} className="flex items-center gap-3 rounded-2xl px-4 py-3"
+                style={{ background: 'rgba(255,255,255,0.05)', border: `1px solid ${LOCK_GOLD}33` }}>
+                <div className="text-3xl">{c.emoji}</div>
+                <div className="text-left min-w-0">
+                  <div className="text-lg font-black text-white truncate">{p.nickname}</div>
+                  <div className="text-sm font-bold" style={{ color: LOCK_GOLD }}>{c.name}</div>
+                </div>
+                <div className="ml-auto text-sm font-black text-white/70">{p.lockEuro}£</div>
+              </div>
+            );
+          })}
+        </div>
+        {ls.players.length === 0 && (
+          <div className="text-lg text-amber-300">In attesa che i giocatori entrino col QR…</div>
+        )}
+        {msg && <div className="text-lg text-red-400">{msg}</div>}
+        <motion.button whileTap={{ scale: 0.94 }} onClick={() => void apiPost('next-room')} disabled={busy || ls.players.length === 0}
+          className="rounded-2xl px-14 py-6 text-3xl font-black text-black disabled:opacity-40"
+          style={{ background: `linear-gradient(135deg,${LOCK_GOLD},#d98f1f)`, boxShadow: `0 0 46px ${LOCK_GOLD}66` }}>
+          {busy ? '⏳…' : '➡️ VAI ALLA PRIMA STANZA'}
         </motion.button>
       </motion.div>
     );
