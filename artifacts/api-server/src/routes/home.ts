@@ -2364,8 +2364,9 @@ router.post("/home/sessions/:id/adult/consent", async (req, res): Promise<void> 
   if (!["participate", "watch", "leave"].includes(response)) { res.status(400).json({ error: "Risposta non valida" }); return; }
   const players = await getPlayers(id);
   const consentMap = { ...((rp["consentMap"] ?? {}) as Record<string, string>), [playerId]: response };
-  const activePlayers = players.filter(p => consentMap[p.id] === "participate").map(p => p.id);
-  const spectatorPlayers = players.filter(p => !consentMap[p.id] || consentMap[p.id] === "watch").map(p => p.id);
+  // OPT-OUT: attivi = tutti tranne chi ha scelto Guardo/Esco (default = dentro).
+  const activePlayers = players.filter(p => consentMap[p.id] !== "watch" && consentMap[p.id] !== "leave").map(p => p.id);
+  const spectatorPlayers = players.filter(p => consentMap[p.id] === "watch" || consentMap[p.id] === "leave").map(p => p.id);
   await adultUpdate(id, { consentMap, activePlayers, spectatorPlayers });
   res.json({ ok: true });
 });
@@ -2383,12 +2384,10 @@ router.post("/home/sessions/:id/adult/spin", async (req, res): Promise<void> => 
   const consentMap = (rp["consentMap"] ?? {}) as Record<string, string>;
   // Rispetta il consenso: attivi = chi ha scelto "participate". Chi ha scelto
   // "guarda" resta spettatore e la bottiglia NON può cadere su di lui (era il bug
-  // D-1: prima diventava attivo chiunque non fosse uscito). Fallback: se nessuno
-  // ha toccato "participate", per non bloccare la partita usa chi non è uscito.
-  const participatePlayers = players.filter(p => consentMap[p.id] === "participate").map(p => p.id);
-  const activePlayers: string[] = String(rp["phase"]) === "consent"
-    ? (participatePlayers.length > 0 ? participatePlayers : players.filter(p => consentMap[p.id] !== "leave").map(p => p.id))
-    : (rp["activePlayers"] ?? []) as string[];
+  // OPT-OUT (Andrea): nella bottiglia compaiono TUTTI i presenti, tranne chi ha
+  // scelto esplicitamente "Guardo" o "Esco". Ricalcolato a OGNI giro → chi si
+  // aggiunge dopo entra subito nella ruota (prima restava fuori).
+  const activePlayers = players.filter(p => consentMap[p.id] !== "watch" && consentMap[p.id] !== "leave").map(p => p.id);
   const spectatorPlayers = players.filter(p => !activePlayers.includes(p.id)).map(p => p.id);
   if (activePlayers.length === 0) { res.status(400).json({ error: "Nessun giocatore attivo" }); return; }
   const level = Number(rp["level"] ?? 1);
@@ -2522,8 +2521,9 @@ async function _adultAutoChoice(sessionId: string): Promise<void> {
   const rp = (sess.roundPayload ?? {}) as Record<string, unknown>;
   if (rp["mode"] !== "home-adult" || String(rp["phase"]) !== "choice") return;
   const level = Number(rp["level"] ?? 1);
-  // Club (livello 4-5): SEMPRE obbligo (azioni da fare), mai verità/confessioni.
-  const choice: "verita" | "obbligo" = level >= 4 ? "obbligo" : (Math.random() < 0.5 ? "verita" : "obbligo");
+  // Auto-scelta (timeout, nessuno ha scelto): random. La scelta esplicita del
+  // giocatore è rispettata in /adult/choose (verità=verità, obbligo=obbligo).
+  const choice: "verita" | "obbligo" = Math.random() < 0.5 ? "verita" : "obbligo";
   const text = await drawAdultChallenge(sessionId, level, choice);
   const durationSeconds = choice === "verita" ? 60 : 90;
   const challengeEndsAt = new Date(Date.now() + durationSeconds * 1000).toISOString();
@@ -2554,10 +2554,9 @@ router.post("/home/sessions/:id/adult/choose", async (req, res): Promise<void> =
   if (String(rp["phase"]) !== "choice") { res.json({ ok: true }); return; } // idempotent
   const raw = String((req.body as Record<string,unknown>)?.choice ?? "");
   const level = Number(rp["level"] ?? 1);
-  // Club (livello 4-5): forza obbligo anche se il telefono chiede verità.
-  const choice: "verita" | "obbligo" = level >= 4
-    ? "obbligo"
-    : ((raw === "verita" || raw === "obbligo") ? raw : (Math.random() < 0.5 ? "verita" : "obbligo"));
+  // Si RISPETTA la scelta del giocatore: verità=verità, obbligo=obbligo. (Gli obblighi
+  // sono azioni da fare grazie al brief, non serve più forzarli.)
+  const choice: "verita" | "obbligo" = (raw === "verita" || raw === "obbligo") ? raw : (Math.random() < 0.5 ? "verita" : "obbligo");
   const ex = adultChoiceTimers.get(id); if (ex) { clearTimeout(ex); adultChoiceTimers.delete(id); }
   const text = await drawAdultChallenge(id, level, choice);
   const durationSeconds = choice === "verita" ? 60 : 90;

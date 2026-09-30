@@ -62,8 +62,8 @@ const ADULT_LEVELS = [
   { slug: 'adult-only', type: 'round_loop_l1', title: 'Adult L1', style: 'soft romantic lounge, warm rhodes, slow gentle groove, intimate candlelight, tasteful, loopable, no vocals' },
   { slug: 'adult-only', type: 'round_loop_l2', title: 'Adult L2', style: 'smooth sensual r&b, mellow bass, brushed drums, flirty warm mood, loopable, no vocals' },
   { slug: 'adult-only', type: 'round_loop_l3', title: 'Adult L3', style: 'sultry after-dark groove, deep bass, smoky sax pad, seductive, loopable, no vocals' },
-  { slug: 'adult-only', type: 'round_loop_l4', title: 'Adult L4', style: 'hot pulsing dark disco, throbbing bassline, breathy synths, steamy intense, loopable, no vocals' },
-  { slug: 'adult-only', type: 'round_loop_l5', title: 'Adult L5', style: 'intense driving dark electro, heavy pounding bass, hypnotic, raw explicit club energy, loopable, no vocals' },
+  { slug: 'adult-only', type: 'round_loop_l4', title: 'Adult L4', style: 'slow sensual soul groove, warm saxophone, deep smooth bassline, intimate bedroom vibe, steamy and seductive, NO techno, NO rave, downtempo, loopable, no vocals' },
+  { slug: 'adult-only', type: 'round_loop_l5', title: 'Adult L5', style: 'sultry slow-burn downtempo trip-hop, breathy warm pads, deep soft sub bass, candlelit sensual, tender and intense, NO techno, NO rave, NO club electro, loopable, no vocals' },
 ];
 
 const H = () => ({ Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' });
@@ -131,10 +131,12 @@ async function main() {
   const args = process.argv.slice(2);
   if (args.includes('--probe')) { await probe(); return; }
 
-  // --adult = genera le 5 tracce adult per livello
+  // --adult [n n...] = genera le tracce adult per livello (tutte, o solo i livelli indicati)
   if (args.includes('--adult')) {
-    console.log(`🎼 Genero ${ADULT_LEVELS.length} tracce adult per livello su ${BASE}\n`);
-    for (const s of ADULT_LEVELS) {
+    const lvls = args.filter(a => /^[1-5]$/.test(a)).map(Number);
+    const todoA = lvls.length ? ADULT_LEVELS.filter(s => lvls.includes(Number(s.type.slice(-1)))) : ADULT_LEVELS;
+    console.log(`🎼 Genero ${todoA.length} tracce adult su ${BASE}\n`);
+    for (const s of todoA) {
       console.log(`▶︎ ${s.slug}/${s.type} — "${s.title}"`);
       try {
         const url = await generateOne(s);
