@@ -5541,6 +5541,8 @@ function AdultOnlyBoard({ payload, session, players }: {
     finally { setBusy(false); }
   };
 
+  // Selfie/avatar: mappa in gameConfig (niente colonna DB).
+  const playerAvatars = ((session.gameConfig as Record<string, unknown> | undefined)?.playerAvatars ?? {}) as Record<string, string>;
   // Stato 18+: L4/L5 aperti solo se TUTTI hanno confermato (basta un minorenne per bloccare).
   const adults18Map = (payload.adults18 ?? {}) as Record<string, boolean>;
   const count18 = players.filter(p => adults18Map[p.id]).length;
@@ -5597,7 +5599,7 @@ function AdultOnlyBoard({ payload, session, players }: {
         <div key={p.playerId} className="flex items-center gap-3 rounded-xl px-4 py-2"
           style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
           <div className="text-white/30 text-sm w-5 text-center">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</div>
-          <PlayerAvatar nickname={p.nickname} avatarColor={pl?.avatarColor} avatarUrl={pl?.avatarUrl} size={28} />
+          <PlayerAvatar nickname={p.nickname} avatarColor={pl?.avatarColor} avatarUrl={playerAvatars[p.playerId]} size={28} />
           <div className="flex-1 text-white font-bold text-sm">{p.nickname}</div>
           {p.delta > 0 && <div className="text-xs font-bold" style={{ color: AC }}>+{p.delta}</div>}
           <div className="font-black text-sm" style={{ color: AC }}>{p.score}pt</div>
@@ -5647,7 +5649,7 @@ function AdultOnlyBoard({ payload, session, players }: {
             return (
               <div key={pl.id} className="rounded-xl px-3 py-2 flex items-center gap-2"
                 style={{ background: 'rgba(255,255,255,0.05)', border: `1px solid ${cColor}44` }}>
-                <PlayerAvatar nickname={pl.nickname} avatarColor={pl.avatarColor} avatarUrl={pl.avatarUrl} size={30} ring={`${cColor}88`} />
+                <PlayerAvatar nickname={pl.nickname} avatarColor={pl.avatarColor} avatarUrl={playerAvatars[pl.id]} size={30} ring={`${cColor}88`} />
                 <div className="font-bold text-sm text-white truncate">{pl.nickname}</div>
                 {adults18Map[pl.id] && <span title="18+ confermato" className="text-xs">🔞</span>}
                 <div className="text-xs ml-auto flex-shrink-0" style={{ color: cColor }}>{cLabel}</div>

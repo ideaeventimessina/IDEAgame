@@ -32,9 +32,6 @@ export const homePlayersTable = pgTable("home_players", {
   sessionId: uuid("session_id").notNull().references(() => homeSessionsTable.id, { onDelete: "cascade" }),
   nickname: text("nickname").notNull(),
   avatarColor: text("avatar_color").notNull().default("#F5B642"),
-  // Selfie del giocatore (URL object storage) scattato al login — avatar in cerchio
-  // accanto al nome in tutti i giochi. Null = si usa l'iniziale su avatarColor.
-  avatarUrl: text("avatar_url"),
   score: integer("score").notNull().default(0),
   isConnected: boolean("is_connected").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

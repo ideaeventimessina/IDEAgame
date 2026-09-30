@@ -4395,6 +4395,7 @@ function AdultController({ payload, player, session, players }: {
   const myConsent   = consentMap[player.id];
   const adults18Map = (payload.adults18 ?? {}) as Record<string, boolean>;
   const my18        = !!adults18Map[player.id];
+  const playerAvatars = ((session.gameConfig as Record<string, unknown> | undefined)?.playerAvatars ?? {}) as Record<string, string>;
 
   // Preferiti SEGRETI: solo io li vedo (il server non li rimanda). Stato locale,
   // aggiornato dalla risposta del toggle. Nessun altro sa chi ho scelto.
@@ -4475,7 +4476,7 @@ function AdultController({ payload, player, session, players }: {
                   <button key={p.id} disabled={favBusy === p.id} onClick={() => void toggleFav(p.id)}
                     className="flex flex-col items-center gap-1" style={{ width: 62, opacity: favBusy === p.id ? 0.5 : 1 }}>
                     <div style={{ position: 'relative' }}>
-                      <PlayerAvatar nickname={p.nickname} avatarColor={p.avatarColor} avatarUrl={p.avatarUrl} size={52} ring={fav ? '#FB7185' : 'rgba(255,255,255,0.2)'} />
+                      <PlayerAvatar nickname={p.nickname} avatarColor={p.avatarColor} avatarUrl={playerAvatars[p.id]} size={52} ring={fav ? '#FB7185' : 'rgba(255,255,255,0.2)'} />
                       <div style={{ position: 'absolute', right: -4, bottom: -4, fontSize: 18, filter: fav ? 'none' : 'grayscale(1) opacity(0.5)' }}>{fav ? '❤️' : '🤍'}</div>
                     </div>
                     <span className="text-[10px] font-bold text-white/70 truncate" style={{ maxWidth: 60 }}>{p.nickname}</span>

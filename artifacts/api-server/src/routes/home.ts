@@ -1292,10 +1292,14 @@ router.post("/home/sessions/:id/players/:pid/avatar", async (req, res): Promise<
   if (buf.length > 1_200_000) { res.status(413).json({ error: "Immagine troppo grande" }); return; }
   const ext = m[2] === "jpg" ? "jpeg" : m[2]!;
   try {
+    const session = await getSession(id);
+    if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
     const objectPath = await uploadBufferToStorage(buf, m[1]!, ext);
     const url = `/api/storage/objects/uploads/${objectPath.split("/").pop()}`;
-    await db.update(homePlayersTable).set({ avatarUrl: url })
-      .where(and(eq(homePlayersTable.id, pid), eq(homePlayersTable.sessionId, id)));
+    // Selfie in gameConfig.playerAvatars (NIENTE colonna DB → nessuna migrazione).
+    const cfg = (session.gameConfig ?? {}) as Record<string, unknown>;
+    const playerAvatars = { ...((cfg["playerAvatars"] ?? {}) as Record<string, string>), [pid]: url };
+    await db.update(homeSessionsTable).set({ gameConfig: { ...cfg, playerAvatars } }).where(eq(homeSessionsTable.id, id));
     await broadcastState(id);
     res.json({ ok: true, url });
   } catch (err) {
