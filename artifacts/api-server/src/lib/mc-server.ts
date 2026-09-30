@@ -5,7 +5,49 @@
 // tutto il traffico (utenti, API, bot, stress test), non solo i browser con JS.
 // Fire-and-forget: non blocca né rompe mai l'app.
 
-import type { Request, Response, NextFunction, RequestHandler } from "express";
+import type { Request, Response, NextFunction, RequestHandler, ErrorRequestHandler } from "express";
+
+const MC_ENDPOINT = (process.env["MISSION_CONTROL_ENDPOINT"] || "https://lastanza.replit.app").replace(/\/+$/, "");
+
+/**
+ * Segnala UN errore applicativo alla control room (stesso endpoint/token della
+ * telemetria già attiva). Fire-and-forget: non blocca né rompe mai l'app. Il token
+ * si legge dal Secret MISSION_CONTROL_TOKEN, mai in chiaro; senza token non invia.
+ */
+export function reportAppError(message: string, context: string, user?: string): void {
+  const token = process.env["MISSION_CONTROL_TOKEN"] || "";
+  const f = (globalThis as { fetch?: typeof fetch }).fetch;
+  if (!token || !f) return;
+  try {
+    void f(MC_ENDPOINT + "/api/app-error", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Mission-Token": token },
+      body: JSON.stringify({
+        p: "ideagame",
+        message: String(message).slice(0, 1800),
+        context: String(context).slice(0, 200),
+        ...(user ? { user: String(user).slice(0, 120) } : {}),
+      }),
+    }).catch(() => { /* il monitoraggio non deve mai rompere l'app */ });
+  } catch { /* ignore */ }
+}
+
+/**
+ * Error handler globale: manda l'eccezione VERA alla control room (così l'avviso ad
+ * Andrea dice COSA si è rotto) e risponde con un 500 JSON pulito. Va montato PER ULTIMO.
+ */
+export function missionControlErrorReporter(): ErrorRequestHandler {
+  return (err: unknown, req: Request, res: Response, next: NextFunction): void => {
+    try {
+      const e = err as { stack?: string; message?: string } | null;
+      const msg = e?.stack || e?.message || String(err);
+      const user = (req as { user?: { email?: string } }).user?.email;
+      reportAppError(msg, `${req.method} ${req.path}`, user);
+    } catch { /* ignore */ }
+    if (res.headersSent) { next(err); return; }
+    res.status(500).json({ error: "Errore interno" });
+  };
+}
 
 interface Hit {
   path: string;

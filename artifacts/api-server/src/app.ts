@@ -7,7 +7,7 @@ import connectPgSimple from "connect-pg-simple";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
-import { missionControlLoad } from "./lib/mc-server";
+import { missionControlLoad, missionControlErrorReporter } from "./lib/mc-server";
 
 const app: Express = express();
 
@@ -59,5 +59,9 @@ app.use(
 );
 
 app.use("/api", router);
+
+// Error handler globale — PER ULTIMO: manda l'eccezione vera alla control room
+// (Mission Control, stesso token della telemetria già attiva) e risponde 500 pulito.
+app.use(missionControlErrorReporter());
 
 export default app;
