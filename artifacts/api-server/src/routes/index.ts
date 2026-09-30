@@ -41,6 +41,7 @@ import freestyleRouter from "./freestyle";
 import saraMusicaRouter from "./saramusica";
 import audioRouter from "./audio";
 import voiceRouter from "./voice";
+import billingRouter from "./billing";
 import jonnyRouter from "./jonny";
 import jonnyPosesRouter from "./jonny-poses";
 import panicRouter from "./panic";
@@ -64,6 +65,7 @@ router.use(networkRouter);
 // Machine-to-machine, autenticato con token condiviso (X-Mission-Token),
 // non con la sessione utente: deve restare fuori da loadUser/requireRole.
 router.use(missionControlRouter);
+router.use(billingRouter); // pubblico: il checkout parte anche senza login
 
 router.use(loadUser);
 router.use(healthRouter);

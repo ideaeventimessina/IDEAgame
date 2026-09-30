@@ -39,6 +39,7 @@ import ProjectorStandby from "@/pages/ProjectorStandby";
 // Home Mode (the PS4 critical path)
 const HomeGame       = lazy(() => import("@/pages/HomeGame"));
 const HomeJoin       = lazy(() => import("@/pages/HomeJoin"));
+const UpgradeLive    = lazy(() => import("@/pages/UpgradeLive"));
 const HomeSetupPage  = lazy(() => import("@/pages/HomeSetupPage"));
 const HomeLobbyPage  = lazy(() => import("@/pages/HomeLobbyPage"));
 const GestioneHome    = lazy(() => import("@/pages/GestioneHome"));
@@ -153,6 +154,7 @@ function Router() {
         <Route path="/home-v4" component={HomeV4} />
         <Route path="/dev-test" component={DevTest} />
         <Route path="/mode-select" component={ModeSelect} />
+        <Route path="/passa-a-live" component={UpgradeLive} />
         {/* MOTORE UNICO (2026-09-29): il vecchio motore Live è ritirato. Tutte le
             sue vecchie porte reindirizzano al flusso Live-su-Home (/home-setup?mode=live).
             Le pagine vecchie (Cockpit, LiveControl, Game*, PresenterLive…) restano nel

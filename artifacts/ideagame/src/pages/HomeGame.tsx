@@ -1357,8 +1357,9 @@ export default function HomeGame() {
     if (!session || selectingGame) return;
     // Tier gate: in demo Adult e Karaoke Live non sono avviabili (difesa lato client).
     // Lockdown è la sua modalità dedicata: nella stanza Lockdown si avvia sempre.
-    if (isDemo && (slug === 'adult-only' || slug === 'karaoke-battle')) return;
-    if (isDemo && slug === 'lockdown' && !lockdownRoom) return;
+    // Giochi bloccati in demo → invece di un lucchetto muto, invito a passare a Live.
+    if (isDemo && (slug === 'adult-only' || slug === 'karaoke-battle')) { navigate('/passa-a-live'); return; }
+    if (isDemo && slug === 'lockdown' && !lockdownRoom) { navigate('/passa-a-live'); return; }
     setSelectingGame(slug);
     try {
       const r = await fetch(`/api/home/sessions/${session.id}/select-game`, {
@@ -1725,13 +1726,14 @@ export default function HomeGame() {
                   </div>
                   {/* Tier badge: DEMO (showroom) vs FULL */}
                   {isDemo ? (
-                    <div className="flex items-center gap-1.5 rounded-full px-2 py-0.5"
-                      style={{background:'rgba(168,85,247,0.15)',border:'1px solid rgba(168,85,247,0.4)'}}>
-                      <span className="text-[9px] font-black tracking-widest uppercase" style={{color:'#C4B5FD'}}>🔒 Demo</span>
-                      <span className="text-[8px] font-bold hidden sm:inline" style={{color:'rgba(255,255,255,0.4)'}}>
-                        Sblocca Adult, Karaoke Live e IA con IDEAeventi
+                    <button onClick={() => navigate('/passa-a-live')}
+                      className="flex items-center gap-1.5 rounded-full px-3 py-1 transition-all hover:scale-105"
+                      style={{background:'linear-gradient(135deg,rgba(168,85,247,0.35),rgba(124,58,237,0.25))',border:'1px solid rgba(168,85,247,0.6)',cursor:'pointer'}}>
+                      <span className="text-[9px] font-black tracking-widest uppercase" style={{color:'#E9D5FF'}}>🔒 Demo</span>
+                      <span className="text-[9px] font-black" style={{color:'#fff'}}>
+                        ✨ Sblocca tutto con Live →
                       </span>
-                    </div>
+                    </button>
                   ) : (
                     <div className="rounded-full px-2 py-0.5"
                       style={{background:'rgba(52,211,153,0.15)',border:'1px solid rgba(52,211,153,0.4)'}}>
@@ -2202,13 +2204,21 @@ export default function HomeGame() {
               ))}
             </div>
 
-            <div className="flex gap-4">
+            <div className="flex gap-4 flex-wrap justify-center">
               <motion.button whileHover={{scale:1.05}} whileTap={{scale:0.96}}
                 onClick={() => navigate('/home-setup')}
                 className="flex items-center gap-3 rounded-2xl px-8 py-4 font-black text-black"
                 style={{background:'linear-gradient(135deg,#F5B642,#FF8C00)',boxShadow:'0 0 45px #F5B64255'}}>
                 <Sparkles className="h-5 w-5"/> Nuova Serata
               </motion.button>
+              {isDemo && (
+                <motion.button whileHover={{scale:1.05}} whileTap={{scale:0.96}}
+                  onClick={() => navigate('/passa-a-live')}
+                  className="flex items-center gap-3 rounded-2xl px-8 py-4 font-black text-white"
+                  style={{background:'linear-gradient(135deg,#A855F7,#7c3aed)',boxShadow:'0 0 45px rgba(168,85,247,0.4)'}}>
+                  ✨ Ti è piaciuto? Sblocca tutto con Live
+                </motion.button>
+              )}
             </div>
           </motion.div>
         )}
