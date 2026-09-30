@@ -798,6 +798,8 @@ export default function HomeGame() {
   // Default demo se il tier manca; le sessioni "full" del ponte restano complete.
   const tier = String((session?.gameConfig as Record<string, unknown> | undefined)?.tier ?? 'demo');
   const isDemo = tier !== 'full';
+  // Selfie/avatar dei giocatori (mappa in gameConfig): usati nelle pill/classifiche.
+  const playerAvatars = ((session?.gameConfig as Record<string, unknown> | undefined)?.playerAvatars ?? {}) as Record<string, string>;
 
   // Lockdown NON è un gioco della ruota: è una MODALITÀ a sé (accanto a Home/Live/
   // Burraco). Una "stanza Lockdown" è una sessione con selectedGames === ['lockdown']:
@@ -2133,10 +2135,7 @@ export default function HomeGame() {
               {[...players].sort((a,b)=>b.score-a.score).map((p,i)=>(
                 <div key={p.id} className="flex shrink-0 items-center gap-3 rounded-2xl px-5 py-3"
                   style={{background:`linear-gradient(135deg,${AVATAR_RING[i%AVATAR_RING.length]}22,transparent)`,border:`1px solid ${AVATAR_RING[i%AVATAR_RING.length]}45`}}>
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-lg font-black text-black"
-                    style={{background:`linear-gradient(135deg,${AVATAR_RING[i%AVATAR_RING.length]},${AVATAR_RING[(i+1)%AVATAR_RING.length]})`}}>
-                    {p.nickname.slice(0,2).toUpperCase()}
-                  </div>
+                  <PlayerAvatar nickname={p.nickname} avatarColor={AVATAR_RING[i%AVATAR_RING.length]} avatarUrl={playerAvatars[p.id]} size={52} ring={`${AVATAR_RING[i%AVATAR_RING.length]}`} />
                   <div>
                     <div className="text-2xl font-black text-white leading-tight">{p.nickname}</div>
                     <div className="text-xl font-black leading-tight" style={{color:'#F5B642'}}>{p.score}pt</div>
@@ -2178,10 +2177,7 @@ export default function HomeGame() {
                     className="flex items-center gap-4 rounded-2xl px-5 py-4"
                     style={i<3?{background:BG[i],boxShadow:`0 0 40px ${GLOW[i]}`}:{background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.1)'}}>
                     <div className="text-4xl w-12 text-center">{MEDALS[i]??`#${i+1}`}</div>
-                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl text-lg font-black"
-                      style={i<3?{background:'rgba(0,0,0,0.25)',color:'#fff'}:{background:AVATAR_RING[i%AVATAR_RING.length],color:'#000'}}>
-                      {p.nickname.slice(0,2).toUpperCase()}
-                    </div>
+                    <PlayerAvatar nickname={p.nickname} avatarColor={AVATAR_RING[i%AVATAR_RING.length]} avatarUrl={playerAvatars[p.id]} size={56} />
                     <div className="flex-1 text-left">
                       <div className={`text-xl font-black ${i===0?'text-black':'text-white'}`}>{p.nickname}</div>
                     </div>
@@ -2339,10 +2335,7 @@ export default function HomeGame() {
                     <div className="w-8 text-center text-2xl font-black">
                       {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : <span className="text-base text-white/30">{i+1}</span>}
                     </div>
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-black text-black"
-                      style={{background:`linear-gradient(135deg,${AVATAR_RING[i%AVATAR_RING.length]},${AVATAR_RING[(i+1)%AVATAR_RING.length]})`}}>
-                      {p.nickname.slice(0,2).toUpperCase()}
-                    </div>
+                    <PlayerAvatar nickname={p.nickname} avatarColor={AVATAR_RING[i%AVATAR_RING.length]} avatarUrl={playerAvatars[p.id]} size={38} />
                     <div className="flex-1 text-left">
                       <div className="font-black text-white">{p.nickname}</div>
                     </div>
@@ -4043,6 +4036,7 @@ const lockdownRoom = (id: string | null | undefined) =>
 
 function LockdownBoard({ session, players }: { session: HomeSession; players: HomePlayer[] }) {
   const BASE = (import.meta.env.BASE_URL as string) ?? '/';
+  const ldAvatars = ((session.gameConfig as Record<string, unknown> | undefined)?.playerAvatars ?? {}) as Record<string, string>;
   const { on } = useEventSocket(null);
   const [ls, setLs] = useState<LockdownState | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -4296,8 +4290,8 @@ function LockdownBoard({ session, players }: { session: HomeSession; players: Ho
                   : broke ? '1px solid rgba(248,113,113,0.5)' : '1px solid rgba(255,255,255,0.12)',
               }}>
               <div className="flex items-center gap-2">
-                <span className="grid h-8 w-8 place-items-center rounded-full text-sm font-black text-black shrink-0"
-                  style={{ background: pl.avatarColor }}>{pl.nickname.slice(0, 2).toUpperCase()}</span>
+                <PlayerAvatar nickname={pl.nickname} avatarColor={pl.avatarColor} avatarUrl={ldAvatars[pl.id]} size={34} />
+
                 <div className="min-w-0 flex-1 text-left">
                   <div className="truncate text-sm font-black text-white">{c.emoji} {pl.nickname}</div>
                   <div className="text-[10px] uppercase tracking-wide text-white/40 truncate">{c.name}</div>
