@@ -800,6 +800,8 @@ export default function HomeGame() {
   const isDemo = tier !== 'full';
   // Selfie/avatar dei giocatori (mappa in gameConfig): usati nelle pill/classifiche.
   const playerAvatars = ((session?.gameConfig as Record<string, unknown> | undefined)?.playerAvatars ?? {}) as Record<string, string>;
+  // Giocatori arricchiti con l'avatar, da passare ai board (così usano pl.avatarUrl).
+  const playersWithAvatars = useMemo(() => players.map(p => ({ ...p, avatarUrl: playerAvatars[p.id] ?? p.avatarUrl })), [players, playerAvatars]);
 
   // Lockdown NON è un gioco della ruota: è una MODALITÀ a sé (accanto a Home/Live/
   // Burraco). Una "stanza Lockdown" è una sessione con selectedGames === ['lockdown']:
@@ -2090,7 +2092,7 @@ export default function HomeGame() {
                 roundPayload={(session.roundPayload as Record<string,unknown>) ?? {}}>
               <RoundBoard key={session.currentRound} session={session} revealed={revealed}
                 onReveal={() => { setRevealed(true); if(timerRef.current) clearInterval(timerRef.current); setJonnyMood('correct'); }}
-                onNext={nextRound} players={players} balloEnergies={balloEnergies} balloCurrent={balloCurrent} balloResult={balloResult}
+                onNext={nextRound} players={playersWithAvatars} balloEnergies={balloEnergies} balloCurrent={balloCurrent} balloResult={balloResult}
                 balloVotes={balloVotes}
                 onBalloReset={async () => {
                   if (!session?.id) return;
@@ -3522,6 +3524,35 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
         </div>
       </div>
 
+      {/* Presentazione (nessuna missione ancora): intro grande che riempie lo schermo */}
+      {!mission && (
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+          className="flex flex-col items-center gap-6 w-full">
+          <div style={{ fontSize: 'clamp(90px,11vw,170px)', lineHeight: 1 }}>🎭</div>
+          <div className="text-display font-black text-white" style={{ fontSize: 'clamp(46px,7vw,110px)', lineHeight: 1, textShadow: `0 0 40px ${PERCORSO_ACCENT}55` }}>
+            Percorso a Risate
+          </div>
+          <div className="text-white/70 max-w-5xl leading-snug" style={{ fontSize: 'clamp(22px,2.8vw,42px)' }}>
+            10 missioni improvvise: mimo, sfide, scioglilingua, dichiarazioni assurde.
+            Chi se la sente si <b style={{ color: PERCORSO_ACCENT }}>prenota dal telefono</b>, si esibisce, il pubblico vota.
+          </div>
+          <div className="flex items-center justify-center gap-4 flex-wrap">
+            <span className="rounded-full px-6 py-3 font-black text-white/80" style={{ fontSize: 'clamp(16px,1.8vw,26px)', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.14)' }}>🎯 10 missioni</span>
+            <span className="rounded-full px-6 py-3 font-black" style={{ fontSize: 'clamp(16px,1.8vw,26px)', background: `${PERCORSO_ACCENT}1e`, border: `1px solid ${PERCORSO_ACCENT}44`, color: PERCORSO_ACCENT }}>💡 Più sei sfacciato, più punti fai!</span>
+          </div>
+          {players.length > 0 && (
+            <div className="flex items-center justify-center gap-3 flex-wrap mt-2">
+              {players.map(pl => (
+                <div key={pl.id} className="flex items-center gap-2 rounded-2xl px-4 py-2" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)' }}>
+                  <PlayerAvatar nickname={pl.nickname} avatarColor={pl.avatarColor} avatarUrl={pl.avatarUrl} size={40} />
+                  <span className="font-black text-white" style={{ fontSize: 'clamp(16px,1.6vw,24px)' }}>{pl.nickname}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </motion.div>
+      )}
+
       {/* Mission card — titolo e spiegazione GRANDI, si usa lo spazio dello schermo */}
       {mission && (
         <motion.div key={rs.missionIndex} initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
@@ -3918,10 +3949,10 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
 
       {msg && <div className="text-xs text-red-400">{msg}</div>}
 
-      {/* Advance button — grande, il comando principale della TV */}
+      {/* Advance button — grande ma mai oltre lo schermo */}
       <button onClick={() => void advance()} disabled={busy}
-        className="rounded-3xl px-14 py-6 font-black text-black transition-all"
-        style={{ fontSize: 'clamp(24px,2.8vw,40px)', background: `linear-gradient(135deg,${PERCORSO_ACCENT},#059669)`, boxShadow: `0 0 44px ${PERCORSO_ACCENT}66`, opacity: busy ? 0.6 : 1 }}>
+        className="rounded-3xl px-10 py-5 font-black text-black transition-all text-center max-w-[92vw]"
+        style={{ fontSize: 'clamp(22px,2.4vw,36px)', background: `linear-gradient(135deg,${PERCORSO_ACCENT},#059669)`, boxShadow: `0 0 44px ${PERCORSO_ACCENT}66`, opacity: busy ? 0.6 : 1 }}>
         {busy ? '⏳…' : advanceLabel}
       </button>
 
