@@ -679,6 +679,31 @@ router.post("/home/sessions/:id/freestyle/word-tap", async (req: Request, res: R
   res.json({ state: result.state });
 });
 
+/* ── Freestyle: POST word-mic (il MIC del rapper valida una parola) ───────────
+   Il rapper dice la parola DENTRO una frase → il suo telefono la rileva e la
+   convalida direttamente (senza aspettare il pubblico). La regola "dentro le frasi,
+   non elencate" è applicata lato telefono (SpeechRecognition); qui segniamo e basta. */
+router.post("/home/sessions/:id/freestyle/word-mic", async (req: Request, res: Response): Promise<void> => {
+  const id = String(req.params["id"]);
+  const { playerId, wordId } = req.body as { playerId?: string; wordId?: string };
+  if (!playerId || !wordId) { res.status(400).json({ error: "playerId e wordId richiesti" }); return; }
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Sessione non trovata" }); return; }
+  const cfg = (session.gameConfig as Record<string, unknown>) ?? {};
+  const state = getKaraokeState(cfg);
+  if (!state) { res.status(404).json({ error: "Karaoke non inizializzato" }); return; }
+  const battle = state.currentBattle;
+  if (!battle || battle.playerId !== playerId) { res.status(409).json({ error: "Non sei il rapper del turno" }); return; }
+  if (battle.battleLocked) { res.status(409).json({ error: "battle_locked" }); return; }
+  const w = battle.words.find(x => x.id === wordId);
+  if (!w || w.validated) { res.json({ state }); return; } // già validata o inesistente
+  const newWords = battle.words.map(x => x.id === wordId ? { ...x, validated: true, validatedBy: [...new Set([...x.validatedBy, "__mic__"])] } : x);
+  const newState = { ...state, currentBattle: { ...battle, words: newWords } };
+  await saveState(id, newState, cfg);
+  emit(id, newState);
+  res.json({ state: newState });
+});
+
 /* ── Freestyle: POST end-battle ──────────────────────────────────────────── */
 router.post("/home/sessions/:id/freestyle/end-battle", async (req: Request, res: Response): Promise<void> => {
   const id = String(req.params["id"]);

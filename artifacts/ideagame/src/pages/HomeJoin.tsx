@@ -5586,6 +5586,54 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
     }
   }, [sessionId]);
 
+  // ── Freestyle: il MIC del rapper valida le parole dette DENTRO le frasi ───────
+  // Regola (Andrea): se le parole le dici una dietro l'altra (elencate) NON valgono
+  // → errore a schermo + vibrazione. Dentro una frase (con altre parole intorno) → valida.
+  const [micError, setMicError] = useState('');
+  const battleRef = useRef(state.currentBattle);
+  useEffect(() => { battleRef.current = state.currentBattle; }, [state.currentBattle]);
+  const amRapperBattling = state.freestylePhase === 'battling'
+    && state.currentBattle?.playerId === playerId
+    && !(state.currentBattle?.battleLocked ?? false);
+  const battleId = `${state.currentBattle?.playerId ?? ''}:${state.currentBattle?.startedAt ?? ''}`;
+  useEffect(() => {
+    if (!amRapperBattling) return;
+    const SR = (window as unknown as Record<string, unknown>).SpeechRecognition
+      ?? (window as unknown as Record<string, unknown>).webkitSpeechRecognition;
+    if (!SR) return; // niente riconoscimento vocale → resta la validazione del pubblico
+    const norm = (w: string) => w.toLowerCase().normalize('NFD').replace(/[^\p{L}\p{N}]/gu, '');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rec = new (SR as any)();
+    rec.lang = 'it-IT'; rec.continuous = true; rec.interimResults = true;
+    let stopped = false;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    rec.onresult = (e: any) => {
+      const battle = battleRef.current; if (!battle) return;
+      const text = Array.from(e.results).map((r: { [k: number]: { transcript?: string } }) => r[0]?.transcript ?? '').join(' ');
+      const tokens = text.toLowerCase().normalize('NFD').replace(/[^\p{L}\p{N}\s]/gu, '').split(/\s+/).filter(Boolean);
+      const byNorm = new Map(battle.words.map(w => [norm(w.word), w]));
+      const isTargetTok = (t: string) => byNorm.has(t);
+      let listed = false;
+      for (let i = 0; i < tokens.length; i++) {
+        const w = byNorm.get(tokens[i]!);
+        if (!w || w.validated) continue;
+        const prevT = i > 0 && isTargetTok(tokens[i - 1]!);
+        const nextT = i < tokens.length - 1 && isTargetTok(tokens[i + 1]!);
+        if (prevT || nextT) { listed = true; continue; } // elencata → non vale
+        void post('/freestyle/word-mic', { playerId, wordId: w.id }); // dentro la frase → valida
+      }
+      if (listed) {
+        setMicError('🚫 Dì le parole DENTRO le frasi, non una dietro l\'altra!');
+        try { navigator.vibrate?.([200, 80, 200]); } catch { /* no vibrate */ }
+        setTimeout(() => setMicError(''), 2500);
+      }
+    };
+    rec.onend = () => { if (!stopped) { try { rec.start(); } catch { /* ignore */ } } };
+    try { rec.start(); } catch { /* ignore */ }
+    return () => { stopped = true; try { rec.onend = null; rec.stop(); } catch { /* ignore */ } };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [amRapperBattling, battleId, playerId, post]);
+
   const doSearch = useCallback(async () => {
     const rawInput = searchQuery.trim();
     if (!rawInput) return;
@@ -5713,8 +5761,14 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
           <div className="flex flex-col h-full gap-4 px-4 py-5">
             <div className="text-center shrink-0">
               <div className="text-xs font-black uppercase tracking-widest text-amber-400 mb-1">🎙️ Sei sul palco!</div>
-              <div className="text-xs text-white/40">Il pubblico convalida le parole che pronunci</div>
+              <div className="text-xs text-white/40">Rappa le parole <b className="text-white/70">dentro le frasi</b> — il mic le spunta da solo</div>
             </div>
+            {micError && (
+              <div className="shrink-0 rounded-xl px-3 py-2 text-center text-sm font-black"
+                style={{ background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.5)', color: '#fca5a5' }}>
+                {micError}
+              </div>
+            )}
             <div className="flex-1 grid grid-cols-3 gap-2 content-center">
               {battle.words.map(w => (
                 <div key={w.id}
