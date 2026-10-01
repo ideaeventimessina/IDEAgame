@@ -657,6 +657,15 @@ export default function HomeGame() {
   // Reset wordback overlays when round changes
   useEffect(() => { setWordbackTimeoutOverlay(null); setWordbackWrongOverlay(null); }, [session?.currentRound]);
   const [spinning, setSpinning] = useState(false);
+  // Zoom responsivo per il MAXI-SCHERMO: su TV grandi i tabelloni si ingrandiscono
+  // così si usa lo spazio (prima testi sperduti). 1.0 su laptop → fino a ~1.5 su TV.
+  const [vw, setVw] = useState(() => (typeof window !== 'undefined' ? window.innerWidth : 1280));
+  useEffect(() => {
+    const h = () => setVw(window.innerWidth);
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
+  const tvZoom = Math.min(1.5, Math.max(1, vw / 1180));
   const [wheelSelected, setWheelSelected] = useState<string | null>(null);
   const [postSpinModal, setPostSpinModal] = useState(false);
   const [postGameCountdown, setPostGameCountdown] = useState<number>(5);
@@ -2083,8 +2092,9 @@ export default function HomeGame() {
               </div>
             </div>
 
-            {/* Content */}
-            <div className="flex flex-1 items-center justify-center overflow-auto px-6 py-3">
+            {/* Content — zoom responsivo: i tabelloni riempiono il maxi-schermo */}
+            <div className="flex flex-1 items-center justify-center overflow-auto px-6 py-3"
+              style={{ zoom: tvZoom } as unknown as React.CSSProperties}>
               <GameBoardErrorBoundary
                 key={session.currentRound}
                 gameSlug={session.gameSlug ?? ''}
@@ -3528,17 +3538,17 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
       {!mission && (
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
           className="flex flex-col items-center gap-6 w-full">
-          <div style={{ fontSize: 'clamp(90px,11vw,170px)', lineHeight: 1 }}>🎭</div>
-          <div className="text-display font-black text-white" style={{ fontSize: 'clamp(46px,7vw,110px)', lineHeight: 1, textShadow: `0 0 40px ${PERCORSO_ACCENT}55` }}>
+          <div style={{ fontSize: 104, lineHeight: 1 }}>🎭</div>
+          <div className="text-display font-black text-white" style={{ fontSize: 60, lineHeight: 1.02, textShadow: `0 0 40px ${PERCORSO_ACCENT}55` }}>
             Percorso a Risate
           </div>
-          <div className="text-white/70 max-w-5xl leading-snug" style={{ fontSize: 'clamp(22px,2.8vw,42px)' }}>
+          <div className="text-white/70 max-w-4xl leading-snug" style={{ fontSize: 26 }}>
             10 missioni improvvise: mimo, sfide, scioglilingua, dichiarazioni assurde.
             Chi se la sente si <b style={{ color: PERCORSO_ACCENT }}>prenota dal telefono</b>, si esibisce, il pubblico vota.
           </div>
           <div className="flex items-center justify-center gap-4 flex-wrap">
-            <span className="rounded-full px-6 py-3 font-black text-white/80" style={{ fontSize: 'clamp(16px,1.8vw,26px)', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.14)' }}>🎯 10 missioni</span>
-            <span className="rounded-full px-6 py-3 font-black" style={{ fontSize: 'clamp(16px,1.8vw,26px)', background: `${PERCORSO_ACCENT}1e`, border: `1px solid ${PERCORSO_ACCENT}44`, color: PERCORSO_ACCENT }}>💡 Più sei sfacciato, più punti fai!</span>
+            <span className="rounded-full px-6 py-3 font-black text-white/80" style={{ fontSize: 20, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.14)' }}>🎯 10 missioni</span>
+            <span className="rounded-full px-6 py-3 font-black" style={{ fontSize: 20, background: `${PERCORSO_ACCENT}1e`, border: `1px solid ${PERCORSO_ACCENT}44`, color: PERCORSO_ACCENT }}>💡 Più sei sfacciato, più punti fai!</span>
           </div>
           {players.length > 0 && (
             <div className="flex items-center justify-center gap-3 flex-wrap mt-2">
@@ -3557,12 +3567,12 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
       {mission && (
         <motion.div key={rs.missionIndex} initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
           className="flex flex-col items-center gap-5 w-full">
-          <div style={{ fontSize: 'clamp(90px,11vw,180px)', lineHeight: 1 }}>{mission.emoji}</div>
+          <div style={{ fontSize: 112, lineHeight: 1 }}>{mission.emoji}</div>
           <div className="text-display font-black text-white"
-            style={{ fontSize: 'clamp(42px,6vw,96px)', lineHeight: 1.02, textShadow: `0 0 40px ${PERCORSO_ACCENT}55` }}>
+            style={{ fontSize: 58, lineHeight: 1.02, textShadow: `0 0 40px ${PERCORSO_ACCENT}55` }}>
             {mission.title}
           </div>
-          <div className="text-white/70 leading-snug max-w-4xl" style={{ fontSize: 'clamp(20px,2.6vw,40px)' }}>{mission.subtitle}</div>
+          <div className="text-white/70 leading-snug max-w-4xl" style={{ fontSize: 26 }}>{mission.subtitle}</div>
           {/* Info + trucco: giocatori, durata, e un suggerimento */}
           <div className="flex items-center justify-center gap-4 flex-wrap mt-1">
             <span className="rounded-full px-5 py-2 text-xl font-black text-white/80" style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.14)' }}>
@@ -3952,7 +3962,7 @@ function PercorsoBoard({ sessionId, payload, onReveal, players, onScore }: {
       {/* Advance button — grande ma mai oltre lo schermo */}
       <button onClick={() => void advance()} disabled={busy}
         className="rounded-3xl px-10 py-5 font-black text-black transition-all text-center max-w-[92vw]"
-        style={{ fontSize: 'clamp(22px,2.4vw,36px)', background: `linear-gradient(135deg,${PERCORSO_ACCENT},#059669)`, boxShadow: `0 0 44px ${PERCORSO_ACCENT}66`, opacity: busy ? 0.6 : 1 }}>
+        style={{ fontSize: 30, background: `linear-gradient(135deg,${PERCORSO_ACCENT},#059669)`, boxShadow: `0 0 44px ${PERCORSO_ACCENT}66`, opacity: busy ? 0.6 : 1 }}>
         {busy ? '⏳…' : advanceLabel}
       </button>
 
