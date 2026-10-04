@@ -1,0 +1,25 @@
+{
+  "nome": "IDEAgame",
+  "repo": "https://github.com/ideaeventimessina/IDEAgame.git",
+  "indirizzo": "https://ideagame.it",
+  "linguaggi": [
+    "tsx",
+    "ts",
+    "txt"
+  ],
+  "ultimo_commit": "2026-10-01",
+  "commit": 624,
+  "file_di_collaudo": 7,
+  "dipende_da": [],
+  "manda_dati_a": [
+    {
+      "progetto": "LaStanza",
+      "indirizzo": "https://lastanza.replit.app",
+      "file": 3
+    }
+  ],
+  "sorveglia": [],
+  "a_chi_serve": "",
+  "se_va_giu": "",
+  "stato": ""
+}
