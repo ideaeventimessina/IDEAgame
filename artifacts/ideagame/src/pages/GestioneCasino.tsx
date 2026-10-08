@@ -11,7 +11,7 @@
    Sync via polling 2s. ─────────────────────────────────────────────────────── */
 
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useMotionValue, animate } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
 import { PlayerAvatar, fileToAvatarDataUrl } from '../components/PlayerAvatar';
 
@@ -76,6 +76,8 @@ const FELT_ROWS = [
   [2, 5, 8, 11, 14, 17, 20, 23, 26, 29, 32, 35],
   [1, 4, 7, 10, 13, 16, 19, 22, 25, 28, 31, 34],
 ];
+// Ordine reale della ruota europea (zero singolo): la pallina cade sul numero giusto.
+const EURO_ORDER = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
 type SeatInfo = { code: string; playerId: string | null; nickname?: string | null; avatarUrl?: string | null; balance?: number | null };
 type GameTableState = {
   table: { id: string; name: string; displayCode: string; phase: 'betting' | 'spinning' | 'result'; round: number; seats: Record<string, SeatInfo>; bets: { id: string; seatNo: number; playerId: string; kind: string; numbers: number[]; amount: number }[]; result: { number: number; at: string } | null; history: number[] };
@@ -663,13 +665,13 @@ function RouletteFelt({ betsBySpot, onPlace, s = 46, result }: { betsBySpot: Rec
       </button>
     );
   };
-  const outside: React.CSSProperties = { background: '#0a2a1e', fontSize: s * 0.3 };
+  const outside: React.CSSProperties = { background: '#0b5e32', fontSize: s * 0.34 };
   return (
-    <div style={{ display: 'inline-grid', gridTemplateColumns: `${s * 1.05}px repeat(12, ${s}px) ${s * 1.25}px`, gridAutoRows: 'min-content', background: '#07372a', padding: s * 0.18, borderRadius: s * 0.3, border: `${Math.max(2, s * 0.08)}px solid ${GOLD}`, boxShadow: '0 20px 60px #000a' }}>
+    <div style={{ display: 'inline-grid', gridTemplateColumns: `${s * 1.15}px repeat(12, ${s}px) ${s * 1.3}px`, gridAutoRows: 'min-content', background: 'radial-gradient(ellipse at 50% 35%, #1f9150, #0a4f2a 75%)', padding: s * 0.2, borderRadius: s * 0.28, border: `${Math.max(3, s * 0.1)}px solid ${GOLD}`, boxShadow: `0 24px 70px #000b, inset 0 0 ${s}px #0006` }}>
       {/* 0 */}
-      {cell('straight', [0], <span style={{ fontSize: s * 0.42 }}>0</span>, { gridColumn: '1', gridRow: '1 / span 3', background: numColor(0), fontSize: s * 0.42 }, 'z0')}
+      {cell('straight', [0], <span style={{ fontSize: s * 0.56 }}>0</span>, { gridColumn: '1', gridRow: '1 / span 3', background: numColor(0) }, 'z0')}
       {/* numeri */}
-      {FELT_ROWS.map((rowArr, r) => rowArr.map((n, c) => cell('straight', [n], <span style={{ fontSize: s * 0.4 }}>{n}</span>, { gridColumn: String(c + 2), gridRow: String(r + 1), background: numColor(n), height: s }, `n${n}`)))}
+      {FELT_ROWS.map((rowArr, r) => rowArr.map((n, c) => cell('straight', [n], <span style={{ fontSize: s * 0.52 }}>{n}</span>, { gridColumn: String(c + 2), gridRow: String(r + 1), background: numColor(n), height: s }, `n${n}`)))}
       {/* colonne 2:1 */}
       {['col3', 'col2', 'col1'].map((k, r) => cell(k, [], <span style={{ fontSize: s * 0.26 }}>2:1</span>, { gridColumn: '14', gridRow: String(r + 1), ...outside }, k))}
       {/* dozzine */}
@@ -704,34 +706,97 @@ function spotWinsOutside(kind: string, r: number): boolean {
   }
 }
 
-// Ruota dall'alto: gira a ogni nuovo risultato, poi rivela il numero al centro.
-function RouletteWheel({ result, size = 300 }: { result: number | null; size?: number }) {
-  const [angle, setAngle] = useState(0);
+/* Ruota vettoriale incastonata: numeri grandi in ordine europeo, pallina che
+   cade sul numero uscito (che si illumina) e GIRO TRASCINANDO il dito attorno. */
+function RouletteWheelPro({ result, phase, onSpin, size = 460 }: { result: number | null; phase: string; onSpin: () => void; size?: number }) {
+  const rotate = useMotionValue(0);
+  const ballRot = useMotionValue(0);
   const prev = useRef<number | null>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ on: boolean; last: number; acc: number }>({ on: false, last: 0, acc: 0 });
+  const [landed, setLanded] = useState(false);
+  const STEP = 360 / 37;
+
+  // All'arrivo del risultato: anima la ruota così la casella giusta finisce in alto
+  // (sotto la pallina) + qualche giro di spettacolo.
   useEffect(() => {
-    if (result != null && result !== prev.current) {
-      prev.current = result;
-      setAngle(a => a + 360 * 5 + Math.floor(Math.random() * 360));
-    }
-  }, [result]);
-  const ring = `conic-gradient(${Array.from({ length: 37 }, (_, i) => {
-    const col = i === 0 ? '#1f8a4c' : i % 2 ? '#c0392b' : '#1a1a1a';
-    const a0 = (i * 360 / 37).toFixed(2), a1 = ((i + 1) * 360 / 37).toFixed(2);
-    return `${col} ${a0}deg ${a1}deg`;
-  }).join(',')})`;
+    if (result == null || result === prev.current || phase === 'betting') return;
+    prev.current = result;
+    setLanded(false);
+    const i = EURO_ORDER.indexOf(result);
+    const cur = rotate.get();
+    const base = Math.ceil(cur / 360) * 360;
+    const target = base + 360 * 6 - i * STEP;
+    animate(rotate, target, { duration: 4.4, ease: [0.16, 0.73, 0.12, 1], onComplete: () => setLanded(true) });
+    animate(ballRot, ballRot.get() - 360 * 9, { duration: 4.4, ease: [0.2, 0.7, 0.2, 1] });
+  }, [result, phase, rotate, ballRot, STEP]);
+
+  const angleAt = (cx: number, cy: number) => {
+    const r = boxRef.current!.getBoundingClientRect();
+    return Math.atan2(cy - (r.top + r.height / 2), cx - (r.left + r.width / 2)) * 180 / Math.PI;
+  };
+  const onDown = (e: React.PointerEvent) => { if (phase !== 'betting') return; drag.current = { on: true, last: angleAt(e.clientX, e.clientY), acc: 0 }; (e.target as Element).setPointerCapture?.(e.pointerId); };
+  const onMove = (e: React.PointerEvent) => {
+    if (!drag.current.on) return;
+    const a = angleAt(e.clientX, e.clientY);
+    let d = a - drag.current.last; if (d > 180) d -= 360; if (d < -180) d += 360;
+    drag.current.last = a; drag.current.acc += d;
+    rotate.set(rotate.get() + d); ballRot.set(ballRot.get() - d * 1.4);
+  };
+  const onUp = () => { if (drag.current.on && Math.abs(drag.current.acc) > 35 && phase === 'betting') onSpin(); drag.current.on = false; };
+
+  const R = 200, rimW = 18, pocketOut = R - rimW, pocketIn = pocketOut - 46, rLabel = (pocketOut + pocketIn) / 2 + 2;
+  const pockets = EURO_ORDER.map((n, i) => {
+    const a0 = (i - 0.5) * STEP - 90, a1 = (i + 0.5) * STEP - 90; // 0 in alto
+    const rad = (d: number) => d * Math.PI / 180;
+    const p = (r: number, a: number) => `${R + r * Math.cos(rad(a))},${R + r * Math.sin(rad(a))}`;
+    const d = `M ${p(pocketIn, a0)} L ${p(pocketOut, a0)} A ${pocketOut} ${pocketOut} 0 0 1 ${p(pocketOut, a1)} L ${p(pocketIn, a1)} A ${pocketIn} ${pocketIn} 0 0 0 ${p(pocketIn, a0)} Z`;
+    const mid = i * STEP - 90;
+    const lx = R + rLabel * Math.cos(rad(mid)), ly = R + rLabel * Math.sin(rad(mid));
+    const win = landed && result === n;
+    return { n, d, lx, ly, mid, fill: numColor(n), win };
+  });
+
   return (
-    <div style={{ position: 'relative', width: size, height: size, margin: '0 auto' }}>
-      <motion.div animate={{ rotate: angle }} transition={{ duration: 3.2, ease: [0.17, 0.67, 0.2, 1] }}
-        style={{ width: '100%', height: '100%', borderRadius: '50%', background: ring, border: `${size * 0.03}px solid ${GOLD}`, boxShadow: `0 0 ${size * 0.12}px ${GOLD}55, inset 0 0 ${size * 0.1}px #000` }} />
-      <div style={{ position: 'absolute', top: -size * 0.02, left: '50%', transform: 'translateX(-50%)', color: GOLD, fontSize: size * 0.12, lineHeight: 1 }}>▼</div>
-      <div style={{ position: 'absolute', inset: '26%', borderRadius: '50%', background: 'radial-gradient(circle,#2a1c06,#0a0602)', border: `${size * 0.012}px solid ${GOLD}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-        {result != null ? (
-          <motion.div key={result} initial={{ scale: 0.3, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 2.9, type: 'spring', stiffness: 260, damping: 16 }}
-            style={{ width: size * 0.3, height: size * 0.3, borderRadius: '50%', background: numColor(result), display: 'flex', alignItems: 'center', justifyContent: 'center', border: '3px solid #fff', boxShadow: `0 0 ${size * 0.08}px ${GOLD}` }}>
-            <span style={{ fontSize: size * 0.16, fontWeight: 900, color: '#fff' }}>{result}</span>
-          </motion.div>
-        ) : <span style={{ fontSize: size * 0.09, fontWeight: 900, color: GOLD, opacity: 0.8 }}>🎡</span>}
-      </div>
+    <div ref={boxRef} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={onUp}
+      style={{ position: 'relative', width: size, height: size, margin: '0 auto', touchAction: 'none', cursor: phase === 'betting' ? 'grab' : 'default', userSelect: 'none' }}>
+      {/* pallina fissa in alto */}
+      <div style={{ position: 'absolute', top: size * 0.012, left: '50%', transform: 'translateX(-50%)', zIndex: 5, width: size * 0.045, height: size * 0.045, borderRadius: '50%', background: 'radial-gradient(circle at 35% 30%, #fff, #c9c9c9)', boxShadow: '0 2px 6px #000a' }} />
+      <svg viewBox="0 0 400 400" width={size} height={size} style={{ display: 'block' }}>
+        <defs>
+          <radialGradient id="rimg" cx="50%" cy="40%" r="60%"><stop offset="0%" stopColor="#5a3c12" /><stop offset="55%" stopColor="#caa23f" /><stop offset="100%" stopColor="#7a5a1a" /></radialGradient>
+          <radialGradient id="woodg" cx="50%" cy="42%" r="62%"><stop offset="0%" stopColor="#7a4e22" /><stop offset="60%" stopColor="#4a2e13" /><stop offset="100%" stopColor="#2a1708" /></radialGradient>
+          <radialGradient id="hubg" cx="50%" cy="40%" r="60%"><stop offset="0%" stopColor="#f6d682" /><stop offset="100%" stopColor="#9c7420" /></radialGradient>
+        </defs>
+        {/* cornice oro */}
+        <circle cx="200" cy="200" r={R} fill="url(#rimg)" stroke="#3a2708" strokeWidth="2" />
+        <circle cx="200" cy="200" r={R - 6} fill="#120a03" />
+        <motion.g style={{ rotate, originX: '200px', originY: '200px' }}>
+          {/* legno tra le caselle e il mozzo */}
+          <circle cx="200" cy="200" r={pocketIn} fill="#3b2410" />
+          {pockets.map((p, i) => (
+            <g key={i}>
+              <path d={p.d} fill={p.fill} stroke={p.win ? '#fff' : '#00000055'} strokeWidth={p.win ? 3 : 0.6} />
+              {p.win && <path d={p.d} fill="#F5B64288" />}
+              <text x={p.lx} y={p.ly} fill="#fff" fontSize={21} fontWeight={900} textAnchor="middle" dominantBaseline="central"
+                transform={`rotate(${p.mid + 90} ${p.lx} ${p.ly})`} style={{ fontFamily: 'Outfit, sans-serif', paintOrder: 'stroke', stroke: '#000', strokeWidth: 1 }}>{p.n}</text>
+            </g>
+          ))}
+          {/* mozzo in legno + stella oro */}
+          <circle cx="200" cy="200" r={pocketIn - 4} fill="url(#woodg)" stroke="#8a5a22" strokeWidth="2" />
+          {[0, 90, 180, 270].map(a => <line key={a} x1="200" y1="200" x2={200 + (pocketIn - 10) * Math.cos(a * Math.PI / 180)} y2={200 + (pocketIn - 10) * Math.sin(a * Math.PI / 180)} stroke="url(#hubg)" strokeWidth="8" strokeLinecap="round" />)}
+          <circle cx="200" cy="200" r="22" fill="url(#hubg)" stroke="#5a3c12" strokeWidth="2" />
+          <circle cx="200" cy="200" r="8" fill="#3a2708" />
+        </motion.g>
+        {/* pallina che corre nel canale (controrotante) */}
+        <motion.g style={{ rotate: ballRot, originX: '200px', originY: '200px' }}>
+          {phase !== 'betting' && !landed && <circle cx="200" cy={200 - (pocketOut + 6)} r="6" fill="#fff" stroke="#aaa" strokeWidth="0.5" />}
+        </motion.g>
+      </svg>
+      {phase === 'betting' && (
+        <motion.div animate={{ opacity: [0.5, 1, 0.5] }} transition={{ duration: 2, repeat: Infinity }}
+          style={{ position: 'absolute', bottom: -size * 0.02, left: '50%', transform: 'translateX(-50%)', color: GOLD, fontWeight: 800, fontSize: size * 0.045, whiteSpace: 'nowrap', pointerEvents: 'none' }}>↻ gira la ruota col dito</motion.div>
+      )}
     </div>
   );
 }
@@ -762,57 +827,94 @@ function SeatBadge({ no, seat, bet, vw }: { no: number; seat: SeatInfo; bet: num
   );
 }
 
-// ── Display 80": la roulette vista dall'alto, girabile ──────────────────────────
+// Logo IDEA EVENTI CASINÒ (alto a destra, come il mockup).
+function CasinoBrandMark({ h = 80 }: { h?: number }) {
+  const [ok, setOk] = useState(true);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', lineHeight: 1 }}>
+      {ok
+        ? <img src={`${import.meta.env.BASE_URL || '/'}ideaeventi-logo.png`} alt="IDEA EVENTI" onError={() => setOk(false)} style={{ height: h, objectFit: 'contain' }} />
+        : <span style={{ fontWeight: 900, fontSize: h * 0.42, color: '#fff' }}>IDEA <span style={{ color: GOLD }}>EVENTI</span></span>}
+      <span style={{ fontWeight: 900, fontSize: h * 0.42, color: GOLD, letterSpacing: '0.08em', textShadow: `0 2px 10px ${GOLD}55`, marginTop: -h * 0.06 }}>CASINÒ</span>
+    </div>
+  );
+}
+// Banner "FAI LA TUA PUNTATA" ornamentale.
+function FeltBanner({ text, big }: { text: string; big: number }) {
+  return (
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: big * 0.4, padding: `${big * 0.25}px ${big * 1.1}px`, border: `${Math.max(2, big * 0.06)}px solid ${GOLD}`, borderRadius: 999, background: 'linear-gradient(#0a4f2a,#07371e)', boxShadow: `0 0 ${big}px ${GOLD}33, inset 0 0 ${big * 0.6}px #0006` }}>
+      <span style={{ color: GOLD, fontSize: big * 0.7, opacity: 0.8 }}>❧</span>
+      <span style={{ color: GOLD, fontWeight: 900, fontSize: big, letterSpacing: '0.06em', textShadow: '0 2px 6px #000', whiteSpace: 'nowrap' }}>{text}</span>
+      <span style={{ color: GOLD, fontSize: big * 0.7, opacity: 0.8, transform: 'scaleX(-1)' }}>❧</span>
+    </div>
+  );
+}
+
+// ── Display 80": la roulette incastonata nel tavolo, girabile col dito ───────────
 function RouletteTableView({ displayCode }: { displayCode: string }) {
   const [st, setSt] = useState<GameTableState | null>(null);
   const [vw, setVw] = useState(typeof window !== 'undefined' ? window.innerWidth : 1280);
-  const [busy, setBusy] = useState(false);
-  useEffect(() => { const r = () => setVw(window.innerWidth); window.addEventListener('resize', r); return () => window.removeEventListener('resize', r); }, []);
+  const [vh, setVh] = useState(typeof window !== 'undefined' ? window.innerHeight : 800);
+  const spinning = useRef(false);
+  useEffect(() => { const r = () => { setVw(window.innerWidth); setVh(window.innerHeight); }; window.addEventListener('resize', r); return () => window.removeEventListener('resize', r); }, []);
   useEffect(() => {
     let alive = true;
     const pull = () => fetch(`${API}/gestione/casino/table/${displayCode}`).then(r => r.ok ? r.json() : null).then(d => { if (alive && d) setSt(d); }).catch(() => {});
     pull(); const t = setInterval(pull, 900); return () => { alive = false; clearInterval(t); };
   }, [displayCode]);
+  const phase = st?.table.phase;
+  // Dopo il risultato, torna automaticamente alle puntate (niente tasti sul tavolo).
+  useEffect(() => {
+    if (phase !== 'result') return;
+    const t = setTimeout(() => { api(`/gestione/casino/table/next`, { displayCode }); }, 8000);
+    return () => clearTimeout(t);
+  }, [phase, displayCode]);
+
   if (!st) return <Center>Carico il tavolo…</Center>;
   const t = st.table;
   const betsBySpot: Record<string, { seatNo: number; amount: number }[]> = {};
   for (const b of t.bets) { const k = spotOf(b.kind, b.numbers); (betsBySpot[k] ??= []).push({ seatNo: b.seatNo, amount: b.amount }); }
   const seatNos = Object.keys(t.seats).map(Number).sort((a, b) => a - b);
-  // Il tappeto occupa ~14.3 celle in larghezza: lo dimensiono sulla colonna
-  // disponibile (schermo − colonna ruota − margini) così non viene mai tagliato.
-  const feltS = Math.min(90, Math.max(26, Math.floor((vw - 540) / 15)));
-  const spin = async () => { setBusy(true); try { await api(`/gestione/casino/table/spin`, { displayCode }); } finally { setBusy(false); } };
-  const next = async () => { setBusy(true); try { await api(`/gestione/casino/table/next`, { displayCode }); } finally { setBusy(false); } };
+  const half = Math.ceil(seatNos.length / 2);
+  const topSeats = seatNos.slice(0, half), bottomSeats = seatNos.slice(half);
+  const resultN = t.phase !== 'betting' ? t.result?.number ?? null : null;
+  const wheelSize = Math.round(Math.min(560, Math.max(260, Math.min(vw * 0.32, vh * 0.52))));
+  const feltS = Math.min(84, Math.max(24, Math.floor((vw - wheelSize - 140) / 15)));
+  const spin = async () => { if (spinning.current || t.phase !== 'betting') return; spinning.current = true; try { await api(`/gestione/casino/table/spin`, { displayCode }); } finally { setTimeout(() => (spinning.current = false), 1200); } };
+
+  const seatRow = (nos: number[]) => (
+    <div style={{ display: 'flex', gap: 'clamp(10px,1.4vw,26px)', justifyContent: 'center', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+      {nos.map(no => <SeatBadge key={no} no={no} seat={t.seats[String(no)]!} bet={st.betsBySeat[String(no)] ?? 0} vw={vw} />)}
+    </div>
+  );
+
   return (
-    <div style={{ minHeight: '100vh', background: BG, color: '#fff', fontFamily: "'Outfit',system-ui,sans-serif", padding: 'clamp(14px,1.6vw,28px)', display: 'flex', flexDirection: 'column', gap: 'clamp(10px,1.4vw,22px)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20 }}>
-        <div><CasinoWordmark size={Math.min(52, Math.max(28, vw / 26))} /><div style={{ opacity: 0.6, marginTop: 4, fontWeight: 700, fontSize: 'clamp(13px,1.3vw,20px)' }}>🎡 {t.name} · Giro #{t.round}</div></div>
-        <BrandBar h={Math.min(28, Math.max(18, vw / 60))} presented />
-      </div>
+    <div style={{ minHeight: '100vh', background: 'radial-gradient(ellipse at 30% 35%, #1f8a4c, #083d22 80%)', color: '#fff', fontFamily: "'Outfit',system-ui,sans-serif", padding: 'clamp(8px,1vw,20px)', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: 1, border: `clamp(4px,0.5vw,9px) solid ${GOLD}`, borderRadius: 'clamp(16px,1.6vw,28px)', boxShadow: `inset 0 0 120px #0007, 0 0 40px ${GOLD}22`, padding: 'clamp(10px,1.3vw,24px)', display: 'flex', flexDirection: 'column', gap: 'clamp(8px,1vw,16px)', minHeight: 0 }}>
+        {/* Header: banner + logo */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 16 }}>
+          <div />
+          <FeltBanner text={t.phase === 'betting' ? 'FAI LA TUA PUNTATA' : `NUMERO VINCENTE · ${resultN}`} big={Math.min(34, Math.max(17, vw / 46))} />
+          <div style={{ justifySelf: 'end' }}><CasinoBrandMark h={Math.min(92, Math.max(44, vw / 17))} /></div>
+        </div>
 
-      {/* Sedie */}
-      <div style={{ display: 'flex', gap: 'clamp(8px,1vw,18px)', justifyContent: 'center', flexWrap: 'wrap' }}>
-        {seatNos.map(no => <SeatBadge key={no} no={no} seat={t.seats[String(no)]!} bet={st.betsBySeat[String(no)] ?? 0} vw={vw} />)}
-      </div>
+        {/* Lato lungo superiore */}
+        {seatRow(topSeats)}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(340px,460px) 1fr', gap: 'clamp(14px,2vw,32px)', alignItems: 'center', flex: 1, minHeight: 0 }}>
-        {/* Ruota + controlli */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
-          <RouletteWheel result={t.phase !== 'betting' ? t.result?.number ?? null : null} size={Math.min(420, Math.max(220, vw / 3.4))} />
-          {t.phase === 'betting'
-            ? <motion.button whileTap={{ scale: 0.96 }} onClick={spin} disabled={busy || t.bets.length === 0} style={{ ...btn(GOLD), padding: '18px 40px', fontSize: 24, opacity: t.bets.length === 0 ? 0.5 : 1 }}>🎲 GIRA</motion.button>
-            : <motion.button whileTap={{ scale: 0.96 }} onClick={next} disabled={busy} style={{ ...btn(GOLD), padding: '18px 40px', fontSize: 24 }}>↻ NUOVO GIRO</motion.button>}
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center', maxWidth: 360 }}>
-            {t.history.slice(0, 12).map((h, i) => (
-              <span key={i} style={{ width: 30, height: 30, borderRadius: '50%', background: numColor(h), border: `2px solid ${i === 0 ? GOLD : '#ffffff22'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 13 }}>{h}</span>
-            ))}
+        {/* Centro: ruota incastonata + tappeto */}
+        <div style={{ display: 'grid', gridTemplateColumns: `${wheelSize + 44}px 1fr`, gap: 'clamp(14px,2vw,34px)', alignItems: 'center', flex: 1, minHeight: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <div style={{ padding: wheelSize * 0.05, borderRadius: '50%', background: 'radial-gradient(circle,#083d22,#041e10)', boxShadow: `inset 0 0 ${wheelSize * 0.12}px #000, 0 10px 40px #000a`, border: `${Math.max(3, wheelSize * 0.015)}px solid ${GOLD}` }}>
+              <RouletteWheelPro result={resultN} phase={t.phase} onSpin={spin} size={wheelSize} />
+            </div>
           </div>
-          <div style={{ opacity: 0.55, fontSize: 13, fontWeight: 700 }}>{t.phase === 'betting' ? `Puntate aperte · ${t.bets.length} sul tappeto` : 'È uscito il numero — nuovo giro per ripartire'}</div>
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
+            <RouletteFelt betsBySpot={betsBySpot} s={feltS} result={resultN} />
+          </div>
         </div>
-        {/* Tappeto */}
-        <div style={{ display: 'flex', justifyContent: 'center', overflowX: 'auto' }}>
-          <RouletteFelt betsBySpot={betsBySpot} s={feltS} result={t.phase !== 'betting' ? t.result?.number ?? null : null} />
-        </div>
+
+        {/* Lato lungo inferiore */}
+        {seatRow(bottomSeats)}
       </div>
     </div>
   );
