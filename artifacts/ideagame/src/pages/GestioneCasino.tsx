@@ -56,10 +56,33 @@ const api = (path: string, body?: unknown, method = 'POST') =>
 export default function GestioneCasino() {
   const params = new URLSearchParams(window.location.search);
   const playerCode = params.get('player');
+  const tableCode = params.get('table');
+  const seatCode = params.get('seat');
   const code = (params.get('code') ?? '').toUpperCase();
+  if (tableCode) return <RouletteTableView displayCode={tableCode.toUpperCase()} />;
+  if (seatCode) return <SeatController seatCode={seatCode.toUpperCase()} />;
   if (playerCode) return <PlayerView code={playerCode.toUpperCase()} />;
   return <CasinoResolver code={code} />;
 }
+
+// Colori fissi per postazione (sedia 1..8) — li usano tappeto, fiche e sedie.
+const SEAT_COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#eab308', '#a855f7', '#ec4899', '#14b8a6', '#f97316'];
+const seatColor = (n: number) => SEAT_COLORS[(n - 1) % SEAT_COLORS.length];
+const RED_NUMS = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
+const numColor = (n: number) => n === 0 ? '#1f8a4c' : RED_NUMS.has(n) ? '#c0392b' : '#1a1a1a';
+// Tappeto europeo: 3 righe × 12 colonne (alto 3,6,9…; medio 2,5,8…; basso 1,4,7…).
+const FELT_ROWS = [
+  [3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36],
+  [2, 5, 8, 11, 14, 17, 20, 23, 26, 29, 32, 35],
+  [1, 4, 7, 10, 13, 16, 19, 22, 25, 28, 31, 34],
+];
+type SeatInfo = { code: string; playerId: string | null; nickname?: string | null; avatarUrl?: string | null; balance?: number | null };
+type GameTableState = {
+  table: { id: string; name: string; displayCode: string; phase: 'betting' | 'spinning' | 'result'; round: number; seats: Record<string, SeatInfo>; bets: { id: string; seatNo: number; playerId: string; kind: string; numbers: number[]; amount: number }[]; result: { number: number; at: string } | null; history: number[] };
+  betsBySeat: Record<string, number>;
+  sessionId?: string; seatNo?: string | null;
+};
+const spotOf = (kind: string, numbers: number[]) => kind === 'straight' ? `n:${numbers[0]}` : kind;
 
 function CasinoResolver({ code }: { code: string }) {
   const [res, setRes] = useState<{ role: string; sessionId: string; tableId?: string } | null>(null);
@@ -294,11 +317,42 @@ function MasterView({ sessionId }: { sessionId: string }) {
           </div>
         </Card>
 
+        <GameTablesCard sessionId={sessionId} />
+
         <Card title="Classifica serata">
           <PlayersList players={state.standings} />
         </Card>
       </div>
     </Shell>
+  );
+}
+
+// Banco "Tavoli": crea tavoli da gioco interattivi (roulette) per l'80".
+function GameTablesCard({ sessionId }: { sessionId: string }) {
+  const [tables, setTables] = useState<GameTableState['table'][]>([]);
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(() => fetch(`${API}/gestione/casino/sessions/${sessionId}/game-tables`).then(r => r.ok ? r.json() : null).then(d => { if (d) setTables(d.tables); }).catch(() => {}), [sessionId]);
+  useEffect(() => { load(); const t = setInterval(load, 3000); return () => clearInterval(t); }, [load]);
+  const create = async () => { setBusy(true); try { await api(`/gestione/casino/sessions/${sessionId}/game-tables`, { type: 'roulette', seats: 8 }); await load(); } finally { setBusy(false); } };
+  return (
+    <Card title="🎲 Tavoli da gioco (80″)">
+      <button onClick={create} disabled={busy} style={{ ...btn(GOLD), width: '100%', marginBottom: 12 }}>+ Nuovo tavolo Roulette</button>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {tables.map(t => (
+          <div key={t.id} style={{ display: 'flex', gap: 12, alignItems: 'center', background: '#ffffff0a', borderRadius: 12, padding: 10 }}>
+            <div style={{ background: '#fff', padding: 4, borderRadius: 8 }}>
+              <QRCodeSVG value={`${ORIGIN}gestione/casino?table=${t.displayCode}`} size={56} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 800 }}>🎡 {t.name}</div>
+              <div style={{ fontSize: 12, opacity: 0.5 }}>{Object.keys(t.seats).length} postazioni · codice {t.displayCode}</div>
+              <a href={`${ORIGIN}gestione/casino?table=${t.displayCode}`} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 4, color: GOLD, fontSize: 13, fontWeight: 800 }}>🖥️ Apri sul maxi-schermo ↗</a>
+            </div>
+          </div>
+        ))}
+        {tables.length === 0 && <div style={{ opacity: 0.4 }}>Nessun tavolo. Crea una roulette e aprila sullo schermo 80″.</div>}
+      </div>
+    </Card>
   );
 }
 
@@ -521,6 +575,8 @@ function PlayerView({ code }: { code: string }) {
 
   const pull = useCallback(() => fetch(`${API}/gestione/casino/player/${code}`).then(r => r.ok ? r.json() : Promise.reject()).then(setData).catch(() => setErr('Giocatore non trovato')), [code]);
   useEffect(() => { pull(); const t = setInterval(pull, 2000); return () => clearInterval(t); }, [pull]);
+  // Memorizza il codice così, scansionando il QR di una sedia, il controller sa chi sei.
+  useEffect(() => { try { localStorage.setItem('casino_player', code); } catch { /* */ } }, [code]);
 
   const placeBet = async (amount: number) => {
     setSending(true);
@@ -571,6 +627,302 @@ function PlayerView({ code }: { code: string }) {
       </div>
       <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: '0.25em', color: GOLD }}>{p.playerCode}</div>
       <div style={{ opacity: 0.5, fontSize: 13, textAlign: 'center', maxWidth: 300 }}>Mostra questo QR al dealer per puntare, ricevere o consegnare le fiche</div>
+    </div>
+  );
+}
+
+// ══════════════════ ROULETTE — tappeto condiviso ══════════════════
+// Fiche impilate su una casella: un pallino per postazione, colore della sedia.
+function ChipStack({ bets, s }: { bets: { seatNo: number; amount: number }[]; s: number }) {
+  if (!bets.length) return null;
+  const total = bets.reduce((a, b) => a + b.amount, 0);
+  const show = bets.slice(0, 4);
+  return (
+    <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+      <div style={{ position: 'relative', width: s * 0.72, height: s * 0.72 }}>
+        {show.map((b, i) => (
+          <div key={i} style={{ position: 'absolute', left: i * 3, top: -i * 3, width: s * 0.5, height: s * 0.5, borderRadius: '50%', background: seatColor(b.seatNo), border: '2px solid #fff', boxShadow: '0 2px 4px #0008' }} />
+        ))}
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ fontSize: Math.max(10, s * 0.26), fontWeight: 900, color: '#fff', textShadow: '0 1px 3px #000', zIndex: 2 }}>{total}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RouletteFelt({ betsBySpot, onPlace, s = 46, result }: { betsBySpot: Record<string, { seatNo: number; amount: number }[]>; onPlace?: (kind: string, numbers: number[]) => void; s?: number; result?: number | null }) {
+  const cell = (kind: string, numbers: number[], label: React.ReactNode, style: React.CSSProperties, key: string) => {
+    const spot = spotOf(kind, numbers);
+    const hit = result != null && (numbers.length ? numbers.includes(result) : spotWinsOutside(kind, result));
+    return (
+      <button key={key} onClick={onPlace ? () => onPlace(kind, numbers) : undefined}
+        style={{ position: 'relative', border: '1px solid #ffffff2e', color: '#fff', fontWeight: 800, fontFamily: 'inherit', cursor: onPlace ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', outline: hit ? `3px solid ${GOLD}` : 'none', outlineOffset: -2, boxShadow: hit ? `0 0 ${s * 0.4}px ${GOLD}` : 'none', ...style }}>
+        {label}
+        <ChipStack bets={betsBySpot[spot] ?? []} s={s} />
+      </button>
+    );
+  };
+  const outside: React.CSSProperties = { background: '#0a2a1e', fontSize: s * 0.3 };
+  return (
+    <div style={{ display: 'inline-grid', gridTemplateColumns: `${s * 1.05}px repeat(12, ${s}px) ${s * 1.25}px`, gridAutoRows: 'min-content', background: '#07372a', padding: s * 0.18, borderRadius: s * 0.3, border: `${Math.max(2, s * 0.08)}px solid ${GOLD}`, boxShadow: '0 20px 60px #000a' }}>
+      {/* 0 */}
+      {cell('straight', [0], <span style={{ fontSize: s * 0.42 }}>0</span>, { gridColumn: '1', gridRow: '1 / span 3', background: numColor(0), fontSize: s * 0.42 }, 'z0')}
+      {/* numeri */}
+      {FELT_ROWS.map((rowArr, r) => rowArr.map((n, c) => cell('straight', [n], <span style={{ fontSize: s * 0.4 }}>{n}</span>, { gridColumn: String(c + 2), gridRow: String(r + 1), background: numColor(n), height: s }, `n${n}`)))}
+      {/* colonne 2:1 */}
+      {['col3', 'col2', 'col1'].map((k, r) => cell(k, [], <span style={{ fontSize: s * 0.26 }}>2:1</span>, { gridColumn: '14', gridRow: String(r + 1), ...outside }, k))}
+      {/* dozzine */}
+      {cell('dozen1', [], '1ª 12', { gridColumn: '2 / span 4', gridRow: '4', height: s * 0.8, ...outside }, 'd1')}
+      {cell('dozen2', [], '2ª 12', { gridColumn: '6 / span 4', gridRow: '4', height: s * 0.8, ...outside }, 'd2')}
+      {cell('dozen3', [], '3ª 12', { gridColumn: '10 / span 4', gridRow: '4', height: s * 0.8, ...outside }, 'd3')}
+      {/* esterne basse */}
+      {cell('low', [], '1-18', { gridColumn: '2 / span 2', gridRow: '5', height: s * 0.9, ...outside }, 'low')}
+      {cell('even', [], 'PARI', { gridColumn: '4 / span 2', gridRow: '5', height: s * 0.9, ...outside }, 'even')}
+      {cell('red', [], '◆', { gridColumn: '6 / span 2', gridRow: '5', height: s * 0.9, ...outside, background: '#c0392b', fontSize: s * 0.42 }, 'red')}
+      {cell('black', [], '◆', { gridColumn: '8 / span 2', gridRow: '5', height: s * 0.9, ...outside, background: '#1a1a1a', fontSize: s * 0.42 }, 'black')}
+      {cell('odd', [], 'DISPARI', { gridColumn: '10 / span 2', gridRow: '5', height: s * 0.9, ...outside, fontSize: s * 0.24 }, 'odd')}
+      {cell('high', [], '19-36', { gridColumn: '12 / span 2', gridRow: '5', height: s * 0.9, ...outside }, 'high')}
+    </div>
+  );
+}
+function spotWinsOutside(kind: string, r: number): boolean {
+  switch (kind) {
+    case 'red': return RED_NUMS.has(r);
+    case 'black': return r !== 0 && !RED_NUMS.has(r);
+    case 'even': return r !== 0 && r % 2 === 0;
+    case 'odd': return r % 2 === 1;
+    case 'low': return r >= 1 && r <= 18;
+    case 'high': return r >= 19 && r <= 36;
+    case 'dozen1': return r >= 1 && r <= 12;
+    case 'dozen2': return r >= 13 && r <= 24;
+    case 'dozen3': return r >= 25 && r <= 36;
+    case 'col1': return r !== 0 && r % 3 === 1;
+    case 'col2': return r !== 0 && r % 3 === 2;
+    case 'col3': return r !== 0 && r % 3 === 0;
+    default: return false;
+  }
+}
+
+// Ruota dall'alto: gira a ogni nuovo risultato, poi rivela il numero al centro.
+function RouletteWheel({ result, size = 300 }: { result: number | null; size?: number }) {
+  const [angle, setAngle] = useState(0);
+  const prev = useRef<number | null>(null);
+  useEffect(() => {
+    if (result != null && result !== prev.current) {
+      prev.current = result;
+      setAngle(a => a + 360 * 5 + Math.floor(Math.random() * 360));
+    }
+  }, [result]);
+  const ring = `conic-gradient(${Array.from({ length: 37 }, (_, i) => {
+    const col = i === 0 ? '#1f8a4c' : i % 2 ? '#c0392b' : '#1a1a1a';
+    const a0 = (i * 360 / 37).toFixed(2), a1 = ((i + 1) * 360 / 37).toFixed(2);
+    return `${col} ${a0}deg ${a1}deg`;
+  }).join(',')})`;
+  return (
+    <div style={{ position: 'relative', width: size, height: size, margin: '0 auto' }}>
+      <motion.div animate={{ rotate: angle }} transition={{ duration: 3.2, ease: [0.17, 0.67, 0.2, 1] }}
+        style={{ width: '100%', height: '100%', borderRadius: '50%', background: ring, border: `${size * 0.03}px solid ${GOLD}`, boxShadow: `0 0 ${size * 0.12}px ${GOLD}55, inset 0 0 ${size * 0.1}px #000` }} />
+      <div style={{ position: 'absolute', top: -size * 0.02, left: '50%', transform: 'translateX(-50%)', color: GOLD, fontSize: size * 0.12, lineHeight: 1 }}>▼</div>
+      <div style={{ position: 'absolute', inset: '26%', borderRadius: '50%', background: 'radial-gradient(circle,#2a1c06,#0a0602)', border: `${size * 0.012}px solid ${GOLD}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+        {result != null ? (
+          <motion.div key={result} initial={{ scale: 0.3, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 2.9, type: 'spring', stiffness: 260, damping: 16 }}
+            style={{ width: size * 0.3, height: size * 0.3, borderRadius: '50%', background: numColor(result), display: 'flex', alignItems: 'center', justifyContent: 'center', border: '3px solid #fff', boxShadow: `0 0 ${size * 0.08}px ${GOLD}` }}>
+            <span style={{ fontSize: size * 0.16, fontWeight: 900, color: '#fff' }}>{result}</span>
+          </motion.div>
+        ) : <span style={{ fontSize: size * 0.09, fontWeight: 900, color: GOLD, opacity: 0.8 }}>🎡</span>}
+      </div>
+    </div>
+  );
+}
+
+function SeatBadge({ no, seat, bet, vw }: { no: number; seat: SeatInfo; bet: number; vw: number }) {
+  const sz = Math.min(100, Math.max(60, vw / 16));
+  if (seat.playerId) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, minWidth: sz + 20 }}>
+        <div style={{ position: 'relative' }}>
+          <PlayerAvatar nickname={seat.nickname ?? '?'} avatarUrl={seat.avatarUrl} size={sz} ring={seatColor(no)} />
+          <span style={{ position: 'absolute', bottom: -4, left: '50%', transform: 'translateX(-50%)', background: seatColor(no), color: '#fff', fontWeight: 900, fontSize: sz * 0.2, padding: '1px 8px', borderRadius: 10, border: '2px solid #0a0602' }}>{no}</span>
+        </div>
+        <div style={{ fontWeight: 800, fontSize: sz * 0.2, maxWidth: sz + 16, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{seat.nickname}</div>
+        <div style={{ fontSize: sz * 0.18, opacity: 0.6 }}>💰 {seat.balance ?? 0}</div>
+        {bet > 0 && <div style={{ fontWeight: 900, color: GOLD, fontSize: sz * 0.22 }}>punta {bet}</div>}
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, minWidth: sz + 20, opacity: 0.9 }}>
+      <div style={{ background: '#fff', padding: 5, borderRadius: 10, border: `2px solid ${seatColor(no)}` }}>
+        <QRCodeSVG value={`${ORIGIN}gestione/casino?seat=${seat.code}`} size={sz} />
+      </div>
+      <div style={{ fontSize: sz * 0.2, fontWeight: 800, opacity: 0.7 }}>Posto {no}</div>
+      <div style={{ fontSize: sz * 0.16, opacity: 0.45 }}>scansiona per sederti</div>
+    </div>
+  );
+}
+
+// ── Display 80": la roulette vista dall'alto, girabile ──────────────────────────
+function RouletteTableView({ displayCode }: { displayCode: string }) {
+  const [st, setSt] = useState<GameTableState | null>(null);
+  const [vw, setVw] = useState(typeof window !== 'undefined' ? window.innerWidth : 1280);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { const r = () => setVw(window.innerWidth); window.addEventListener('resize', r); return () => window.removeEventListener('resize', r); }, []);
+  useEffect(() => {
+    let alive = true;
+    const pull = () => fetch(`${API}/gestione/casino/table/${displayCode}`).then(r => r.ok ? r.json() : null).then(d => { if (alive && d) setSt(d); }).catch(() => {});
+    pull(); const t = setInterval(pull, 900); return () => { alive = false; clearInterval(t); };
+  }, [displayCode]);
+  if (!st) return <Center>Carico il tavolo…</Center>;
+  const t = st.table;
+  const betsBySpot: Record<string, { seatNo: number; amount: number }[]> = {};
+  for (const b of t.bets) { const k = spotOf(b.kind, b.numbers); (betsBySpot[k] ??= []).push({ seatNo: b.seatNo, amount: b.amount }); }
+  const seatNos = Object.keys(t.seats).map(Number).sort((a, b) => a - b);
+  // Il tappeto occupa ~14.3 celle in larghezza: lo dimensiono sulla colonna
+  // disponibile (schermo − colonna ruota − margini) così non viene mai tagliato.
+  const feltS = Math.min(90, Math.max(26, Math.floor((vw - 540) / 15)));
+  const spin = async () => { setBusy(true); try { await api(`/gestione/casino/table/spin`, { displayCode }); } finally { setBusy(false); } };
+  const next = async () => { setBusy(true); try { await api(`/gestione/casino/table/next`, { displayCode }); } finally { setBusy(false); } };
+  return (
+    <div style={{ minHeight: '100vh', background: BG, color: '#fff', fontFamily: "'Outfit',system-ui,sans-serif", padding: 'clamp(14px,1.6vw,28px)', display: 'flex', flexDirection: 'column', gap: 'clamp(10px,1.4vw,22px)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20 }}>
+        <div><CasinoWordmark size={Math.min(52, Math.max(28, vw / 26))} /><div style={{ opacity: 0.6, marginTop: 4, fontWeight: 700, fontSize: 'clamp(13px,1.3vw,20px)' }}>🎡 {t.name} · Giro #{t.round}</div></div>
+        <BrandBar h={Math.min(28, Math.max(18, vw / 60))} presented />
+      </div>
+
+      {/* Sedie */}
+      <div style={{ display: 'flex', gap: 'clamp(8px,1vw,18px)', justifyContent: 'center', flexWrap: 'wrap' }}>
+        {seatNos.map(no => <SeatBadge key={no} no={no} seat={t.seats[String(no)]!} bet={st.betsBySeat[String(no)] ?? 0} vw={vw} />)}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(340px,460px) 1fr', gap: 'clamp(14px,2vw,32px)', alignItems: 'center', flex: 1, minHeight: 0 }}>
+        {/* Ruota + controlli */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+          <RouletteWheel result={t.phase !== 'betting' ? t.result?.number ?? null : null} size={Math.min(420, Math.max(220, vw / 3.4))} />
+          {t.phase === 'betting'
+            ? <motion.button whileTap={{ scale: 0.96 }} onClick={spin} disabled={busy || t.bets.length === 0} style={{ ...btn(GOLD), padding: '18px 40px', fontSize: 24, opacity: t.bets.length === 0 ? 0.5 : 1 }}>🎲 GIRA</motion.button>
+            : <motion.button whileTap={{ scale: 0.96 }} onClick={next} disabled={busy} style={{ ...btn(GOLD), padding: '18px 40px', fontSize: 24 }}>↻ NUOVO GIRO</motion.button>}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center', maxWidth: 360 }}>
+            {t.history.slice(0, 12).map((h, i) => (
+              <span key={i} style={{ width: 30, height: 30, borderRadius: '50%', background: numColor(h), border: `2px solid ${i === 0 ? GOLD : '#ffffff22'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 13 }}>{h}</span>
+            ))}
+          </div>
+          <div style={{ opacity: 0.55, fontSize: 13, fontWeight: 700 }}>{t.phase === 'betting' ? `Puntate aperte · ${t.bets.length} sul tappeto` : 'È uscito il numero — nuovo giro per ripartire'}</div>
+        </div>
+        {/* Tappeto */}
+        <div style={{ display: 'flex', justifyContent: 'center', overflowX: 'auto' }}>
+          <RouletteFelt betsBySpot={betsBySpot} s={feltS} result={t.phase !== 'betting' ? t.result?.number ?? null : null} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Controller sedia (telefono): punta dal tuo saldo sul tappeto ────────────────
+function SeatController({ seatCode }: { seatCode: string }) {
+  const [st, setSt] = useState<GameTableState | null>(null);
+  const [me, setMe] = useState<{ seatNo: string; nickname: string; fishBalance: number } | null>(null);
+  const [err, setErr] = useState('');
+  const [chip, setChip] = useState(25);
+  const [msg, setMsg] = useState('');
+  const playerCode = useMemo(() => { try { return localStorage.getItem('casino_player') ?? ''; } catch { return ''; } }, []);
+
+  const claim = useCallback(async () => {
+    if (!playerCode) { setErr('no-player'); return; }
+    const r = await api(`/gestione/casino/table/seat`, { seatCode, playerCode });
+    if (r.ok) setMe({ seatNo: r.seatNo, nickname: r.player.nickname, fishBalance: r.player.fishBalance });
+    else setErr(r.error || 'Errore');
+  }, [seatCode, playerCode]);
+  useEffect(() => { claim(); }, [claim]);
+
+  useEffect(() => {
+    let alive = true;
+    const pull = () => fetch(`${API}/gestione/casino/table/${seatCode}`).then(r => r.ok ? r.json() : null).then(d => { if (alive && d) setSt(d); }).catch(() => {});
+    pull(); const t = setInterval(pull, 900); return () => { alive = false; clearInterval(t); };
+  }, [seatCode]);
+
+  const myBalance = useMemo(() => {
+    if (!st || !me) return me?.fishBalance ?? 0;
+    const s = st.table.seats[me.seatNo];
+    return s?.balance ?? me.fishBalance;
+  }, [st, me]);
+  const myBets = useMemo(() => st && me ? st.table.bets.filter(b => String(b.seatNo) === me.seatNo) : [], [st, me]);
+  const myTotal = myBets.reduce((a, b) => a + b.amount, 0);
+
+  const place = async (kind: string, numbers: number[]) => {
+    if (!me) return;
+    if (chip > myBalance) { setMsg('Fiche insufficienti'); return; }
+    const r = await api(`/gestione/casino/table/bet`, { seatCode, kind, numbers, amount: chip });
+    if (!r.ok) setMsg(r.error || 'Errore'); else setMsg('');
+  };
+  const undo = async () => { await api(`/gestione/casino/table/undo`, { seatCode }); };
+
+  if (err === 'no-player') return (
+    <Center><div style={{ maxWidth: 340 }}>
+      <div style={{ fontSize: 40 }}>🪑</div>
+      <div style={{ fontSize: 20, fontWeight: 900, margin: '10px 0' }}>Prima accedi come giocatore</div>
+      <div style={{ opacity: 0.6, fontSize: 14 }}>Inquadra il QR “Entra &amp; gioca” sulla TV per ricevere le fiche, poi riscansiona il QR di questa postazione.</div>
+    </div></Center>
+  );
+  if (err) return <Center>{err}</Center>;
+  if (!st || !me) return <Center>Mi siedo al tavolo…</Center>;
+  const t = st.table;
+  const feltS = Math.max(22, Math.min(30, (typeof window !== 'undefined' ? window.innerWidth : 360) / 14));
+
+  return (
+    <div style={{ minHeight: '100vh', background: BG, color: '#fff', fontFamily: "'Outfit',system-ui,sans-serif", padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ width: 26, height: 26, borderRadius: '50%', background: seatColor(Number(me.seatNo)), display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 14 }}>{me.seatNo}</span>
+          <div><div style={{ fontWeight: 900 }}>{me.nickname}</div><div style={{ opacity: 0.5, fontSize: 12 }}>{t.name} · Giro #{t.round}</div></div>
+        </div>
+        <div style={{ textAlign: 'right' }}><div style={{ fontSize: 11, opacity: 0.5 }}>fiche</div><div style={{ fontSize: 22, fontWeight: 900, color: GOLD }}><AnimatedNumber value={myBalance} /></div></div>
+      </div>
+
+      {t.phase === 'betting' ? (
+        <>
+          <div style={{ fontSize: 12, opacity: 0.6, textAlign: 'center' }}>Scegli la fiche, poi tocca il tappeto per piazzarla</div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+            {[5, 25, 100, 500].map(c => (
+              <motion.button whileTap={{ scale: 0.9 }} key={c} onClick={() => setChip(c)} disabled={c > myBalance}
+                style={{ width: 54, height: 54, borderRadius: '50%', border: chip === c ? '3px solid #fff' : '2px solid #ffffff33', background: seatColor(Number(me.seatNo)), color: '#fff', fontWeight: 900, fontSize: 14, cursor: 'pointer', opacity: c > myBalance ? 0.3 : 1, boxShadow: chip === c ? `0 0 14px ${GOLD}` : 'none' }}>{c}</motion.button>
+            ))}
+          </div>
+          {msg && <div style={{ color: '#f87171', textAlign: 'center', fontWeight: 700 }}>{msg}</div>}
+          <div style={{ overflowX: 'auto', display: 'flex', justifyContent: 'center', paddingBottom: 4 }}>
+            <RouletteFelt betsBySpot={Object.fromEntries(Object.entries(groupBets(t.bets)).map(([k, v]) => [k, v]))} onPlace={place} s={feltS} />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#ffffff0a', borderRadius: 12, padding: '10px 14px' }}>
+            <div>Sul tappeto: <b style={{ color: GOLD }}>{myTotal}</b> fiche <span style={{ opacity: 0.5 }}>({myBets.length})</span></div>
+            <button onClick={undo} disabled={myBets.length === 0} style={{ ...btn('#ffffff22'), opacity: myBets.length === 0 ? 0.4 : 1 }}>↶ Annulla</button>
+          </div>
+        </>
+      ) : (
+        <ResultPanel t={t} myBets={myBets} myBalance={myBalance} />
+      )}
+    </div>
+  );
+}
+function groupBets(bets: GameTableState['table']['bets']): Record<string, { seatNo: number; amount: number }[]> {
+  const m: Record<string, { seatNo: number; amount: number }[]> = {};
+  for (const b of bets) { const k = spotOf(b.kind, b.numbers); (m[k] ??= []).push({ seatNo: b.seatNo, amount: b.amount }); }
+  return m;
+}
+function ResultPanel({ t, myBets, myBalance }: { t: GameTableState['table']; myBets: GameTableState['table']['bets']; myBalance: number }) {
+  const r = t.result?.number ?? null;
+  const won = r == null ? 0 : myBets.reduce((a, b) => a + (spotWinsOutside(b.kind, r) || b.numbers.includes(r) ? b.amount * ((({ straight: 35, split: 17, red: 1, black: 1, even: 1, odd: 1, low: 1, high: 1, dozen1: 2, dozen2: 2, dozen3: 2, col1: 2, col2: 2, col3: 2 } as Record<string, number>)[b.kind] ?? 0) + 1) : 0), 0);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, marginTop: 20 }}>
+      <div style={{ opacity: 0.6 }}>È uscito</div>
+      <motion.div initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 240, damping: 15 }}
+        style={{ width: 120, height: 120, borderRadius: '50%', background: r != null ? numColor(r) : '#333', border: `4px solid ${GOLD}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 52, fontWeight: 900, boxShadow: `0 0 30px ${GOLD}66` }}>{r}</motion.div>
+      {myBets.length > 0 && (
+        won > 0
+          ? <div style={{ color: '#4ade80', fontWeight: 900, fontSize: 24, textAlign: 'center' }}>🎉 Hai vinto {won} fiche!</div>
+          : <div style={{ color: '#f87171', fontWeight: 900, fontSize: 20, textAlign: 'center' }}>Niente stavolta</div>
+      )}
+      <div style={{ opacity: 0.5 }}>fiche ora: <b style={{ color: GOLD }}>{myBalance}</b></div>
+      <div style={{ opacity: 0.45, fontSize: 13, textAlign: 'center', marginTop: 10 }}>Aspetta il <b>nuovo giro</b> dal tavolo per puntare di nuovo</div>
     </div>
   );
 }

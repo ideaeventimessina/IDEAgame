@@ -22,11 +22,25 @@ const DEFAULT_START_FISH = 500;
 
 /* Config della serata (jsonb, niente migrazioni):
    { startFish, tvCode, playerAvatars:{playerId:url}, pendingBets:{playerId:{amount,tableId,at}} } */
+/* Tavoli da gioco interattivi (80" touch). Vista dall'alto. Pilota: roulette.
+   Ogni postazione ha un codice (QR) che il giocatore scansiona per sedersi e
+   puntare dal telefono sul tappeto condiviso, scalando dal suo saldo fiche. */
+type RouletteBet = { id: string; seatNo: number; playerId: string; kind: string; numbers: number[]; amount: number };
+type GameSeat = { code: string; playerId: string | null };
+type GameTable = {
+  id: string; type: "roulette"; name: string; displayCode: string;
+  phase: "betting" | "spinning" | "result"; round: number;
+  seats: Record<string, GameSeat>;      // seatNo → { code, playerId }
+  bets: RouletteBet[];
+  result: { number: number; at: string } | null;
+  history: number[];
+};
 type CasinoConfig = {
   startFish?: number;
   tvCode?: string;
   playerAvatars?: Record<string, string>;
   pendingBets?: Record<string, { amount: number; tableId: string | null; at: string }>;
+  gameTables?: Record<string, GameTable>;
 };
 const cfgOf = (session: { config?: unknown }): CasinoConfig => (session?.config ?? {}) as CasinoConfig;
 async function patchConfig(id: string, patch: Partial<CasinoConfig>): Promise<void> {
@@ -271,6 +285,210 @@ router.post("/gestione/casino/sessions/:id/end", async (req, res): Promise<void>
   const id = String(req.params["id"]);
   await db.update(casinoSessionsTable).set({ status: "ended", updatedAt: new Date() }).where(eq(casinoSessionsTable.id, id));
   await broadcast(id);
+  res.json({ ok: true });
+});
+
+// ══════════════════ TAVOLI INTERATTIVI — ROULETTE ══════════════════════════════
+const RED = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
+// Payout = PROFITTO per 1 fiche (il totale accreditato al vincitore è amount*(mult+1)).
+const PAYOUT: Record<string, number> = { straight: 35, split: 17, red: 1, black: 1, even: 1, odd: 1, low: 1, high: 1, dozen1: 2, dozen2: 2, dozen3: 2, col1: 2, col2: 2, col3: 2 };
+function betWins(kind: string, numbers: number[], r: number): boolean {
+  switch (kind) {
+    case "straight": case "split": return numbers.includes(r);
+    case "red": return RED.has(r);
+    case "black": return r !== 0 && !RED.has(r);
+    case "even": return r !== 0 && r % 2 === 0;
+    case "odd": return r % 2 === 1;
+    case "low": return r >= 1 && r <= 18;
+    case "high": return r >= 19 && r <= 36;
+    case "dozen1": return r >= 1 && r <= 12;
+    case "dozen2": return r >= 13 && r <= 24;
+    case "dozen3": return r >= 25 && r <= 36;
+    case "col1": return r !== 0 && r % 3 === 1;
+    case "col2": return r !== 0 && r % 3 === 2;
+    case "col3": return r !== 0 && r % 3 === 0;
+    default: return false;
+  }
+}
+// Trova il tavolo (e la sessione) a partire dal codice display o dal codice di una sedia.
+async function findGameTable(code: string): Promise<{ sessionId: string; table: GameTable; seatNo?: string } | null> {
+  const c = code.toUpperCase().trim();
+  const sessions = await db.select({ id: casinoSessionsTable.id, config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.status, "active"));
+  for (const s of sessions) {
+    const tables = ((s.config ?? {}) as CasinoConfig).gameTables ?? {};
+    for (const t of Object.values(tables)) {
+      if (t.displayCode === c) return { sessionId: s.id, table: t };
+      const seatNo = Object.keys(t.seats).find(n => t.seats[n]!.code === c);
+      if (seatNo) return { sessionId: s.id, table: t, seatNo };
+    }
+  }
+  return null;
+}
+async function saveGameTable(sessionId: string, table: GameTable): Promise<void> {
+  const [s] = await db.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, sessionId));
+  const cur = (s?.config ?? {}) as CasinoConfig;
+  await db.update(casinoSessionsTable).set({ config: { ...cur, gameTables: { ...(cur.gameTables ?? {}), [table.id]: table } } }).where(eq(casinoSessionsTable.id, sessionId));
+}
+// Stato arricchito del tavolo per display e controller (nomi/foto/saldi delle sedie).
+async function tableState(sessionId: string, table: GameTable) {
+  const players = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.sessionId, sessionId));
+  const cfg = cfgOf({ config: (await db.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, sessionId)))[0]?.config });
+  const avatars = cfg.playerAvatars ?? {};
+  const seats = Object.fromEntries(Object.entries(table.seats).map(([no, s]) => {
+    const p = s.playerId ? players.find(x => x.id === s.playerId) : null;
+    return [no, { ...s, nickname: p?.nickname ?? null, avatarUrl: p ? (avatars[p.id] ?? null) : null, balance: p?.fishBalance ?? null }];
+  }));
+  const betsBySeat: Record<string, number> = {};
+  for (const b of table.bets) betsBySeat[b.seatNo] = (betsBySeat[b.seatNo] ?? 0) + b.amount;
+  return { table: { ...table, seats }, betsBySeat };
+}
+function tableRoom(code: string) { return `casino:table:${code}`; }
+async function broadcastTable(sessionId: string, table: GameTable) {
+  const st = await tableState(sessionId, table);
+  emitToRoom(tableRoom(table.displayCode), "casino:table", st);
+  return st;
+}
+
+// ── Crea un tavolo roulette (Master) ────────────────────────────────────────────
+router.post("/gestione/casino/sessions/:id/game-tables", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const seatsN = Math.min(8, Math.max(1, Math.round(Number(req.body?.seats ?? 8)) || 8));
+  const name = String(req.body?.name ?? "Roulette").slice(0, 40);
+  const tableId = makeCode(8);
+  const seats: Record<string, GameSeat> = {};
+  for (let i = 1; i <= seatsN; i++) seats[String(i)] = { code: makeCode(6), playerId: null };
+  const table: GameTable = { id: tableId, type: "roulette", name, displayCode: makeCode(6), phase: "betting", round: 1, seats, bets: [], result: null, history: [] };
+  await saveGameTable(id, table);
+  await broadcastTable(id, table);
+  res.status(201).json({ table });
+});
+
+// ── Lista tavoli di gioco della serata (Master) ─────────────────────────────────
+router.get("/gestione/casino/sessions/:id/game-tables", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  const [s] = await db.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, id));
+  const tables = Object.values(((s?.config ?? {}) as CasinoConfig).gameTables ?? {});
+  res.json({ tables });
+});
+
+// ── Stato tavolo (display 80" + controller sedia) ───────────────────────────────
+router.get("/gestione/casino/table/:code", async (req, res): Promise<void> => {
+  const found = await findGameTable(String(req.params["code"]));
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const st = await tableState(found.sessionId, found.table);
+  res.json({ ...st, sessionId: found.sessionId, seatNo: found.seatNo ?? null });
+});
+
+// ── Il giocatore si siede a una postazione (scan QR sedia) ──────────────────────
+router.post("/gestione/casino/table/seat", async (req, res): Promise<void> => {
+  const seatCode = String(req.body?.seatCode ?? "").toUpperCase().trim();
+  const playerCode = String(req.body?.playerCode ?? "").toUpperCase().trim();
+  const found = await findGameTable(seatCode);
+  if (!found || !found.seatNo) { res.status(404).json({ error: "Postazione non trovata" }); return; }
+  const [player] = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.playerCode, playerCode));
+  if (!player || player.sessionId !== found.sessionId) { res.status(404).json({ error: "Accedi prima come giocatore della serata" }); return; }
+  const table = found.table;
+  // Se il giocatore era già su un'altra sedia di questo tavolo, liberala.
+  for (const k of Object.keys(table.seats)) if (table.seats[k]!.playerId === player.id) table.seats[k]!.playerId = null;
+  if (table.seats[found.seatNo]!.playerId && table.seats[found.seatNo]!.playerId !== player.id) { res.status(409).json({ error: "Postazione occupata" }); return; }
+  table.seats[found.seatNo]!.playerId = player.id;
+  await saveGameTable(found.sessionId, table);
+  await broadcastTable(found.sessionId, table);
+  res.json({ ok: true, seatNo: found.seatNo, tableDisplayCode: table.displayCode, player: { id: player.id, nickname: player.nickname, fishBalance: player.fishBalance } });
+});
+
+// ── Piazza una puntata (dal telefono, scalata dal saldo) ────────────────────────
+router.post("/gestione/casino/table/bet", async (req, res): Promise<void> => {
+  const seatCode = String(req.body?.seatCode ?? "").toUpperCase().trim();
+  const kind = String(req.body?.kind ?? "");
+  const amount = Math.round(Number(req.body?.amount));
+  const numbers = Array.isArray(req.body?.numbers) ? (req.body.numbers as unknown[]).map(n => Math.round(Number(n))).filter(n => Number.isFinite(n) && n >= 0 && n <= 36) : [];
+  if (!(kind in PAYOUT)) { res.status(400).json({ error: "Tipo puntata non valido" }); return; }
+  if (!Number.isFinite(amount) || amount <= 0) { res.status(400).json({ error: "Importo non valido" }); return; }
+  if ((kind === "straight" || kind === "split") && numbers.length === 0) { res.status(400).json({ error: "Scegli il numero" }); return; }
+  const found = await findGameTable(seatCode);
+  if (!found || !found.seatNo) { res.status(404).json({ error: "Postazione non trovata" }); return; }
+  const table = found.table;
+  if (table.phase !== "betting") { res.status(409).json({ error: "Puntate chiuse" }); return; }
+  const seat = table.seats[found.seatNo]!;
+  if (!seat.playerId) { res.status(409).json({ error: "Siediti prima alla postazione" }); return; }
+  const [player] = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.id, seat.playerId));
+  if (!player) { res.status(404).json({ error: "Giocatore non trovato" }); return; }
+  if (player.fishBalance < amount) { res.status(409).json({ error: "Fiche insufficienti", balance: player.fishBalance }); return; }
+  // Escrow: scala subito le fiche (sono "sul tappeto").
+  const newBal = player.fishBalance - amount;
+  await db.update(casinoPlayersTable).set({ fishBalance: newBal }).where(eq(casinoPlayersTable.id, player.id));
+  await db.insert(casinoTransactionsTable).values({ sessionId: found.sessionId, tableId: null, dealerCode: "", playerId: player.id, delta: -amount, kind: "roulette_bet", balanceAfter: newBal });
+  table.bets.push({ id: makeCode(8), seatNo: Number(found.seatNo), playerId: player.id, kind, numbers, amount });
+  await saveGameTable(found.sessionId, table);
+  await broadcastTable(found.sessionId, table);
+  await broadcast(found.sessionId);
+  res.json({ ok: true, balance: newBal });
+});
+
+// ── Annulla l'ultima puntata della sedia (rimborso) ─────────────────────────────
+router.post("/gestione/casino/table/undo", async (req, res): Promise<void> => {
+  const seatCode = String(req.body?.seatCode ?? "").toUpperCase().trim();
+  const found = await findGameTable(seatCode);
+  if (!found || !found.seatNo) { res.status(404).json({ error: "Postazione non trovata" }); return; }
+  const table = found.table;
+  if (table.phase !== "betting") { res.status(409).json({ error: "Puntate chiuse" }); return; }
+  const seatNo = Number(found.seatNo);
+  const idx = [...table.bets].reverse().findIndex(b => b.seatNo === seatNo);
+  if (idx === -1) { res.status(404).json({ error: "Nessuna puntata da annullare" }); return; }
+  const realIdx = table.bets.length - 1 - idx;
+  const [bet] = table.bets.splice(realIdx, 1);
+  const [player] = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.id, bet!.playerId));
+  if (player) {
+    const nb = player.fishBalance + bet!.amount;
+    await db.update(casinoPlayersTable).set({ fishBalance: nb }).where(eq(casinoPlayersTable.id, player.id));
+    await db.insert(casinoTransactionsTable).values({ sessionId: found.sessionId, tableId: null, dealerCode: "", playerId: player.id, delta: bet!.amount, kind: "roulette_undo", balanceAfter: nb });
+  }
+  await saveGameTable(found.sessionId, table);
+  await broadcastTable(found.sessionId, table);
+  await broadcast(found.sessionId);
+  res.json({ ok: true });
+});
+
+// ── Gira la ruota: estrae il numero, paga i vincitori ───────────────────────────
+router.post("/gestione/casino/table/spin", async (req, res): Promise<void> => {
+  const code = String(req.body?.displayCode ?? req.body?.seatCode ?? "").toUpperCase().trim();
+  const found = await findGameTable(code);
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const table = found.table;
+  if (table.phase !== "betting") { res.status(409).json({ error: "Giro già in corso" }); return; }
+  const r = Math.floor(Math.random() * 37); // 0–36, zero singolo europeo
+  table.phase = "result";
+  table.result = { number: r, at: new Date().toISOString() };
+  table.history = [r, ...table.history].slice(0, 20);
+  // Paga i vincitori (lo stake era già scalato all'ingresso della puntata).
+  for (const b of table.bets) {
+    if (betWins(b.kind, b.numbers, r)) {
+      const payout = b.amount * (PAYOUT[b.kind]! + 1);
+      const [p] = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.id, b.playerId));
+      if (p) {
+        const nb = p.fishBalance + payout;
+        await db.update(casinoPlayersTable).set({ fishBalance: nb }).where(eq(casinoPlayersTable.id, p.id));
+        await db.insert(casinoTransactionsTable).values({ sessionId: found.sessionId, tableId: null, dealerCode: "", playerId: p.id, delta: payout, kind: "roulette_win", balanceAfter: nb });
+      }
+    }
+  }
+  await saveGameTable(found.sessionId, table);
+  await broadcastTable(found.sessionId, table);
+  await broadcast(found.sessionId);
+  res.json({ ok: true, number: r });
+});
+
+// ── Nuovo giro: pulisce le puntate, tiene le sedie ──────────────────────────────
+router.post("/gestione/casino/table/next", async (req, res): Promise<void> => {
+  const code = String(req.body?.displayCode ?? req.body?.seatCode ?? "").toUpperCase().trim();
+  const found = await findGameTable(code);
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const table = found.table;
+  table.phase = "betting"; table.bets = []; table.result = null; table.round += 1;
+  await saveGameTable(found.sessionId, table);
+  await broadcastTable(found.sessionId, table);
   res.json({ ok: true });
 });
 
