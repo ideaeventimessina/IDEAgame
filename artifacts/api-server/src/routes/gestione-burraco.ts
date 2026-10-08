@@ -144,7 +144,8 @@ router.post("/gestione/burraco/sessions/:id/generate-round", async (req, res): P
   }));
   if (bye) rows.push({ sessionId: id, roundNumber: nextRound, tableNumber: rows.length + 1, tableCode: makeCode(6), pairAId: bye.id, pairBId: null as unknown as string });
   if (rows.length) await db.insert(burracoAssignmentsTable).values(rows);
-  await db.update(burracoSessionsTable).set({ status: "playing", currentRound: nextRound, updatedAt: new Date() }).where(eq(burracoSessionsTable.id, id));
+  const cfg = (session.config ?? {}) as Record<string, unknown>;
+  await db.update(burracoSessionsTable).set({ status: "playing", currentRound: nextRound, config: { ...cfg, roundStartedAt: new Date().toISOString(), paused: false }, updatedAt: new Date() }).where(eq(burracoSessionsTable.id, id));
   const state = await broadcast(id);
   res.status(201).json({ ok: true, round: nextRound, tables: rows.length, byePair: bye?.id ?? null, state });
 });
@@ -170,6 +171,19 @@ async function addToPair(pairId: string, delta: number): Promise<void> {
   const [p] = await db.select().from(burracoPairsTable).where(eq(burracoPairsTable.id, pairId));
   if (p) await db.update(burracoPairsTable).set({ totalScore: p.totalScore + delta }).where(eq(burracoPairsTable.id, pairId));
 }
+
+// ── Impostazioni serata (turni totali, premi, pausa) — merge nel config jsonb ───
+router.post("/gestione/burraco/sessions/:id/config", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const [session] = await db.select().from(burracoSessionsTable).where(eq(burracoSessionsTable.id, id));
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  const cur = (session.config ?? {}) as Record<string, unknown>;
+  const patch = (req.body?.config ?? req.body ?? {}) as Record<string, unknown>;
+  await db.update(burracoSessionsTable).set({ config: { ...cur, ...patch }, updatedAt: new Date() }).where(eq(burracoSessionsTable.id, id));
+  const state = await broadcast(id);
+  res.json({ ok: true, state });
+});
 
 // ── Fine serata ─────────────────────────────────────────────────────────────────
 router.post("/gestione/burraco/sessions/:id/end", async (req, res): Promise<void> => {
