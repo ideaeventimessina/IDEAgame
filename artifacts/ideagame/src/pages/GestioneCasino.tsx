@@ -90,34 +90,35 @@ function useCasinoState(sessionId: string, ms = 2000) {
 // ══════════════════ CO-BRANDING (IDEAGAME × IDEAEVENTI) ══════════════════
 // IDEAgame = logo.png presente nel repo. IDEAeventi = /ideaeventi-logo.png se
 // l'utente lo aggiunge; finché non c'è, fallback tipografico elegante.
-function EventiMark({ h = 26, framed = false }: { h?: number; framed?: boolean }) {
+// IDEAeventi: logo oro-su-nero (asset del cliente). Fallback tipografico se manca.
+function EventiMark({ h = 26 }: { h?: number }) {
   const [ok, setOk] = useState(true);
   if (ok) return <img src={`${import.meta.env.BASE_URL || '/'}ideaeventi-logo.png`} alt="IDEAeventi" onError={() => setOk(false)} style={{ height: h, objectFit: 'contain', display: 'block' }} />;
-  // Fallback tipografico finché l'utente non carica /ideaeventi-logo.png.
   return (
-    <span style={{ fontWeight: 900, fontSize: h * 0.62, letterSpacing: '0.02em', lineHeight: 1 }}>
-      <span style={{ color: framed ? '#150c02' : '#fff' }}>IDEA</span><span style={{ color: framed ? '#C98A10' : GOLD }}>eventi</span>
+    <span style={{ fontWeight: 900, fontSize: h * 0.5, letterSpacing: '0.02em', lineHeight: 1 }}>
+      <span style={{ color: '#fff' }}>IDEA</span><span style={{ color: GOLD }}>eventi</span>
     </span>
   );
 }
-function BrandBar({ h = 26, dim = 1, framed = false }: { h?: number; dim?: number; framed?: boolean }) {
-  const inner = (
-    <div style={{ display: 'flex', alignItems: 'center', gap: h * 0.6, opacity: dim }}>
-      <img src={`${import.meta.env.BASE_URL || '/'}logo.png`} alt="IDEAgame" style={{ height: h, objectFit: 'contain', display: 'block' }} />
-      <span style={{ color: framed ? '#00000033' : '#ffffff33', fontWeight: 300, fontSize: h * 0.9 }}>×</span>
-      <EventiMark h={h} framed={framed} />
+/* Co-branding: i due loghi hanno fondi opposti (IDEAgame nero/arancio su chiaro,
+   IDEAeventi oro su scuro) → ciascuno nel suo chip, così sono sempre nitidi. */
+function BrandBar({ h = 26, dim = 1, presented = false }: { h?: number; dim?: number; presented?: boolean }) {
+  const pad = Math.round(h * 0.34);
+  const bar = (
+    <div style={{ display: 'inline-flex', alignItems: 'stretch', gap: h * 0.4, opacity: dim }}>
+      <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(255,255,255,0.94)', borderRadius: 12, padding: `${pad}px ${pad * 1.4}px` }}>
+        <img src={`${import.meta.env.BASE_URL || '/'}logo.png`} alt="IDEAgame" style={{ height: h, objectFit: 'contain', display: 'block' }} />
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', background: '#0a0602', border: `1px solid ${GOLD}55`, borderRadius: 12, padding: `${Math.round(pad * 0.5)}px ${pad}px` }}>
+        <EventiMark h={h * 1.55} />
+      </div>
     </div>
   );
-  if (!framed) return inner;
-  // Su maxi-schermo: "presented by" su pill chiara, così i loghi staccano sul fondo scuro.
+  if (!presented) return bar;
   return (
     <div style={{ textAlign: 'right' }}>
-      <div style={{ fontSize: h * 0.42, letterSpacing: '0.18em', textTransform: 'uppercase', opacity: 0.4, marginBottom: h * 0.18 }}>presented by</div>
-      <div style={{ display: 'inline-flex', alignItems: 'center', gap: h * 0.6, background: 'rgba(255,255,255,0.92)', borderRadius: 999, padding: `${h * 0.32}px ${h * 0.7}px` }}>
-        <img src={`${import.meta.env.BASE_URL || '/'}logo.png`} alt="IDEAgame" style={{ height: h, objectFit: 'contain', display: 'block' }} />
-        <span style={{ color: '#00000026', fontWeight: 300, fontSize: h * 0.9 }}>×</span>
-        <EventiMark h={h} framed />
-      </div>
+      <div style={{ fontSize: h * 0.42, letterSpacing: '0.18em', textTransform: 'uppercase', opacity: 0.4, marginBottom: h * 0.22 }}>presented by</div>
+      {bar}
     </div>
   );
 }
@@ -151,7 +152,7 @@ function TvView({ sessionId }: { sessionId: string }) {
           <CasinoWordmark size={Math.min(72, Math.max(34, vw / 20))} />
           <div style={{ opacity: 0.6, marginTop: 6, fontSize: 'clamp(14px,1.5vw,22px)', fontWeight: 700 }}>{state.session.name}</div>
         </div>
-        <BrandBar h={Math.min(34, Math.max(20, vw / 50))} framed />
+        <BrandBar h={Math.min(30, Math.max(18, vw / 58))} presented />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px,0.9fr) 2fr', gap: 'clamp(16px,2vw,34px)', marginTop: 'clamp(14px,2vw,28px)', flex: 1, minHeight: 0 }}>
