@@ -353,7 +353,7 @@ async function broadcastTable(sessionId: string, table: GameTable) {
 router.post("/gestione/casino/sessions/:id/game-tables", async (req, res): Promise<void> => {
   const id = String(req.params["id"]);
   if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
-  const seatsN = Math.min(8, Math.max(1, Math.round(Number(req.body?.seats ?? 8)) || 8));
+  const seatsN = Math.min(12, Math.max(1, Math.round(Number(req.body?.seats ?? 10)) || 10));
   const name = String(req.body?.name ?? "Roulette").slice(0, 40);
   const tableId = makeCode(8);
   const seats: Record<string, GameSeat> = {};

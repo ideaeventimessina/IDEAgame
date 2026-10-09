@@ -333,7 +333,7 @@ function GameTablesCard({ sessionId }: { sessionId: string }) {
   const [busy, setBusy] = useState(false);
   const load = useCallback(() => fetch(`${API}/gestione/casino/sessions/${sessionId}/game-tables`).then(r => r.ok ? r.json() : null).then(d => { if (d) setTables(d.tables); }).catch(() => {}), [sessionId]);
   useEffect(() => { load(); const t = setInterval(load, 3000); return () => clearInterval(t); }, [load]);
-  const create = async () => { setBusy(true); try { await api(`/gestione/casino/sessions/${sessionId}/game-tables`, { type: 'roulette', seats: 8 }); await load(); } finally { setBusy(false); } };
+  const create = async () => { setBusy(true); try { await api(`/gestione/casino/sessions/${sessionId}/game-tables`, { type: 'roulette', seats: 10 }); await load(); } finally { setBusy(false); } };
   return (
     <Card title="🎲 Tavoli da gioco (80″)">
       <button onClick={create} disabled={busy} style={{ ...btn(GOLD), width: '100%', marginBottom: 12 }}>+ Nuovo tavolo Roulette</button>
@@ -774,30 +774,52 @@ function RouletteWheelPro({ result, phase, onSpin, size = 460 }: { result: numbe
   );
 }
 
-function SeatBadge({ no, seat, bet, sz = 72 }: { no: number; seat: SeatInfo; bet: number; sz?: number }) {
+// Card giocatore in basso (foto + nome + CREDITO), stile del mockup; vuoto = QR.
+function PlayerChip({ no, seat, bet, h }: { no: number; seat: SeatInfo; bet: number; h: number }) {
+  const av = Math.round(h * 0.42);
   if (seat.playerId) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, minWidth: sz + 20 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, background: 'linear-gradient(#141210,#0a0906)', border: `1.5px solid ${GOLD}77`, borderRadius: 12, padding: `${h * 0.08}px ${h * 0.1}px`, minWidth: h * 1.15, boxShadow: '0 4px 14px #0007' }}>
         <div style={{ position: 'relative' }}>
-          <PlayerAvatar nickname={seat.nickname ?? '?'} avatarUrl={seat.avatarUrl} size={sz} ring={seatColor(no)} />
-          <span style={{ position: 'absolute', bottom: -4, left: '50%', transform: 'translateX(-50%)', background: seatColor(no), color: '#fff', fontWeight: 900, fontSize: sz * 0.2, padding: '1px 8px', borderRadius: 10, border: '2px solid #0a0602' }}>{no}</span>
+          <PlayerAvatar nickname={seat.nickname ?? '?'} avatarUrl={seat.avatarUrl} size={av} ring={GOLD} />
+          {bet > 0 && <span style={{ position: 'absolute', top: -4, right: -8, background: GOLD, color: '#1a1205', fontWeight: 900, fontSize: av * 0.3, padding: '1px 6px', borderRadius: 9, border: '2px solid #0a0906' }}>{bet}</span>}
         </div>
-        <div style={{ fontWeight: 800, fontSize: sz * 0.2, maxWidth: sz + 16, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{seat.nickname}</div>
-        <div style={{ fontSize: sz * 0.18, opacity: 0.6 }}>💰 {seat.balance ?? 0}</div>
-        {bet > 0 && <div style={{ fontWeight: 900, color: GOLD, fontSize: sz * 0.22 }}>punta {bet}</div>}
+        <div style={{ fontWeight: 800, fontSize: h * 0.17, maxWidth: h * 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{seat.nickname}</div>
+        <div style={{ fontSize: h * 0.1, letterSpacing: '0.12em', color: GOLD, opacity: 0.85, textTransform: 'uppercase' }}>Credito</div>
+        <div style={{ fontWeight: 900, fontSize: h * 0.2, fontVariantNumeric: 'tabular-nums' }}>{(seat.balance ?? 0).toLocaleString('it-IT')}</div>
       </div>
     );
   }
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, minWidth: sz + 20, opacity: 0.9 }}>
-      <div style={{ background: '#fff', padding: 5, borderRadius: 10, border: `2px solid ${seatColor(no)}` }}>
-        <QRCodeSVG value={`${ORIGIN}gestione/casino?seat=${seat.code}`} size={sz} />
-      </div>
-      <div style={{ fontSize: sz * 0.2, fontWeight: 800, opacity: 0.7 }}>Posto {no}</div>
-      <div style={{ fontSize: sz * 0.16, opacity: 0.45 }}>scansiona per sederti</div>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, background: 'linear-gradient(#141210,#0a0906)', border: `1.5px solid ${GOLD}44`, borderRadius: 12, padding: `${h * 0.08}px ${h * 0.1}px`, minWidth: h * 1.15 }}>
+      <div style={{ background: '#fff', padding: 4, borderRadius: 8 }}><QRCodeSVG value={`${ORIGIN}gestione/casino?seat=${seat.code}`} size={av} /></div>
+      <div style={{ fontSize: h * 0.14, fontWeight: 800, opacity: 0.7 }}>Posto {no}</div>
+      <div style={{ fontSize: h * 0.1, opacity: 0.45 }}>scansiona</div>
     </div>
   );
 }
+// Banner "FAI LA TUA PUNTATA" ornamentale.
+function Banner({ text, big }: { text: string; big: number }) {
+  return (
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: big * 0.45, padding: `${big * 0.28}px ${big * 1.2}px`, border: `${Math.max(2, big * 0.07)}px solid ${GOLD}`, borderRadius: 999, background: 'linear-gradient(#0a4f2a,#06331c)', boxShadow: `0 0 ${big}px ${GOLD}33, inset 0 0 ${big * 0.6}px #0006` }}>
+      <span style={{ color: GOLD, fontSize: big * 0.7, opacity: 0.8 }}>❧</span>
+      <span style={{ color: GOLD, fontWeight: 900, fontSize: big, letterSpacing: '0.07em', textShadow: '0 2px 6px #000', whiteSpace: 'nowrap' }}>{text}</span>
+      <span style={{ color: GOLD, fontSize: big * 0.7, opacity: 0.8, transform: 'scaleX(-1)' }}>❧</span>
+    </div>
+  );
+}
+// Striscia dei numeri usciti (sotto la ruota).
+function HistoryStrip({ history, d }: { history: number[]; d: number }) {
+  return (
+    <div style={{ display: 'flex', gap: d * 0.28, justifyContent: 'center', flexWrap: 'wrap', background: '#0a0906cc', border: `1px solid ${GOLD}55`, borderRadius: 999, padding: `${d * 0.22}px ${d * 0.4}px` }}>
+      {history.slice(0, 10).map((n, i) => (
+        <span key={i} style={{ width: d, height: d, borderRadius: '50%', background: numColor(n), border: `1.5px solid ${i === 0 ? GOLD : '#ffffff22'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: d * 0.46, color: '#fff' }}>{n}</span>
+      ))}
+      {history.length === 0 && <span style={{ color: MUTED_C, fontSize: d * 0.5, padding: '0 8px' }}>nessun numero ancora</span>}
+    </div>
+  );
+}
+const MUTED_C = 'rgba(255,255,255,0.5)';
 
 // Logo IDEA EVENTI CASINÒ (alto a destra, come il mockup).
 function CasinoBrandMark({ h = 80 }: { h?: number }) {
@@ -836,50 +858,45 @@ function RouletteTableView({ displayCode }: { displayCode: string }) {
   const betsBySpot: Record<string, { seatNo: number; amount: number }[]> = {};
   for (const b of t.bets) { const k = spotOf(b.kind, b.numbers); (betsBySpot[k] ??= []).push({ seatNo: b.seatNo, amount: b.amount }); }
   const seatNos = Object.keys(t.seats).map(Number).sort((a, b) => a - b);
-  const half = Math.ceil(seatNos.length / 2);
-  const topSeats = seatNos.slice(0, half), bottomSeats = seatNos.slice(half);
   const resultN = t.phase !== 'betting' ? t.result?.number ?? null : null;
-  // Budget verticale: due file di sedie + header, poi ruota e tappeto si adattano
-  // all'altezza che resta (così niente più sovrapposizioni su 16:9).
-  const seatSz = Math.round(Math.min(74, Math.max(46, vw / 22)));
-  const seatRowH = seatSz + 54;
-  const availH = Math.max(220, vh - seatRowH * 2 - 160);
-  const wheelSize = Math.round(Math.min(500, Math.max(220, Math.min(vw * 0.30, availH * 0.96))));
-  const feltS = Math.min(74, Math.max(20, Math.floor(Math.min((vw - wheelSize - 170) / 15, availH / 5.4))));
+  // Budget verticale: header + giocatori in basso, poi ruota e tappeto riempiono.
+  const playerH = Math.round(Math.min(150, Math.max(92, vh * 0.17)));
+  const availH = Math.max(260, vh - playerH - 150);
+  const wheelSize = Math.round(Math.min(600, Math.max(260, Math.min(vw * 0.36, availH))));
+  const feltS = Math.min(78, Math.max(22, Math.floor(Math.min((vw - wheelSize - 120) / 15, availH / 5.2))));
+  const histD = Math.round(Math.min(40, Math.max(26, wheelSize * 0.07)));
   const spin = async () => { if (spinning.current || t.phase !== 'betting') return; spinning.current = true; try { await api(`/gestione/casino/table/spin`, { displayCode }); } finally { setTimeout(() => (spinning.current = false), 1200); } };
 
-  const seatRow = (nos: number[]) => (
-    <div style={{ display: 'flex', gap: 'clamp(10px,1.4vw,26px)', justifyContent: 'center', alignItems: 'flex-start', flexShrink: 0, height: seatRowH, overflow: 'hidden' }}>
-      {nos.map(no => <SeatBadge key={no} no={no} seat={t.seats[String(no)]!} bet={st.betsBySeat[String(no)] ?? 0} sz={seatSz} />)}
-    </div>
-  );
-
   return (
-    <div style={{ minHeight: '100vh', background: 'radial-gradient(ellipse at 30% 35%, #1f8a4c, #083d22 80%)', color: '#fff', fontFamily: "'Outfit',system-ui,sans-serif", padding: 'clamp(8px,1vw,20px)', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ flex: 1, border: `clamp(4px,0.5vw,9px) solid ${GOLD}`, borderRadius: 'clamp(16px,1.6vw,28px)', boxShadow: `inset 0 0 120px #0007, 0 0 40px ${GOLD}22`, padding: 'clamp(10px,1.3vw,24px)', display: 'flex', flexDirection: 'column', gap: 'clamp(8px,1vw,16px)', minHeight: 0 }}>
-        {/* Header: solo logo (lo spazio del banner va ai giocatori) */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'flex-start' }}>
-          <CasinoBrandMark h={Math.min(84, Math.max(44, vw / 18))} />
-        </div>
-
-        {/* Lato lungo superiore */}
-        {seatRow(topSeats)}
-
-        {/* Centro: ruota incastonata + tappeto */}
-        <div style={{ display: 'grid', gridTemplateColumns: `${wheelSize + 44}px 1fr`, gap: 'clamp(14px,2vw,34px)', alignItems: 'center', flex: 1, minHeight: 0, overflow: 'hidden' }}>
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
-            {/* incasso leggero: la ruota ha già la sua scodella dorata */}
-            <div style={{ borderRadius: '50%', boxShadow: `0 16px 50px #000b, 0 0 ${wheelSize * 0.1}px ${GOLD}22` }}>
+    <div style={{ minHeight: '100vh', background: 'radial-gradient(ellipse at 30% 35%, #1f8a4c, #083d22 80%)', color: '#fff', fontFamily: "'Outfit',system-ui,sans-serif", padding: 'clamp(8px,1vw,18px)', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: 1, border: `clamp(4px,0.5vw,9px) solid ${GOLD}`, borderRadius: 'clamp(16px,1.6vw,28px)', boxShadow: `inset 0 0 120px #0007, 0 0 40px ${GOLD}22`, padding: 'clamp(10px,1.2vw,22px)', display: 'flex', flexDirection: 'column', gap: 'clamp(8px,1vw,14px)', minHeight: 0 }}>
+        {/* Alto: ruota (sx, grande) + [banner + logo, poi tappeto] (dx) */}
+        <div style={{ display: 'grid', gridTemplateColumns: `${wheelSize}px 1fr`, gap: 'clamp(10px,1.2vw,20px)', flex: 1, minHeight: 0 }}>
+          {/* Sinistra: ruota grande + storico numeri */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 'clamp(8px,1vw,16px)', minWidth: 0 }}>
+            <div style={{ borderRadius: '50%', boxShadow: `0 16px 50px #000b` }}>
               <RouletteWheelPro result={resultN} phase={t.phase} onSpin={spin} size={wheelSize} />
             </div>
+            <HistoryStrip history={t.history} d={histD} />
           </div>
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
-            <RouletteFelt betsBySpot={betsBySpot} s={feltS} result={resultN} />
+          {/* Destra: header (banner + logo) + tappeto attaccato alla ruota */}
+          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, gap: 'clamp(8px,1vw,14px)' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+              <div style={{ flex: 1, display: 'flex', justifyContent: 'center', paddingTop: 4 }}>
+                <Banner text={t.phase === 'betting' ? 'FAI LA TUA PUNTATA' : `È USCITO IL ${resultN}`} big={Math.min(30, Math.max(16, vw / 52))} />
+              </div>
+              <CasinoBrandMark h={Math.min(100, Math.max(50, vw / 15))} />
+            </div>
+            <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-start', alignItems: 'center', minHeight: 0, overflow: 'hidden' }}>
+              <RouletteFelt betsBySpot={betsBySpot} s={feltS} result={resultN} />
+            </div>
           </div>
         </div>
 
-        {/* Lato lungo inferiore */}
-        {seatRow(bottomSeats)}
+        {/* Basso: giocatori (foto + credito) */}
+        <div style={{ display: 'flex', gap: 'clamp(6px,0.7vw,12px)', justifyContent: 'center', alignItems: 'stretch', flexShrink: 0, height: playerH, overflowX: 'auto' }}>
+          {seatNos.map(no => <PlayerChip key={no} no={no} seat={t.seats[String(no)]!} bet={st.betsBySeat[String(no)] ?? 0} h={playerH} />)}
+        </div>
       </div>
     </div>
   );
