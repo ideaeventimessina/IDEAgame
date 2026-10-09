@@ -69,15 +69,13 @@ export default function GestioneCasino() {
 const SEAT_COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#eab308', '#a855f7', '#ec4899', '#14b8a6', '#f97316'];
 const seatColor = (n: number) => SEAT_COLORS[(n - 1) % SEAT_COLORS.length];
 const RED_NUMS = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
-const numColor = (n: number) => n === 0 ? '#1f8a4c' : RED_NUMS.has(n) ? '#c0392b' : '#1a1a1a';
+const numColor = (n: number) => n === 0 ? '#1f8a4c' : RED_NUMS.has(n) ? '#cc1f2d' : '#1a1a1a';
 // Tappeto europeo: 3 righe × 12 colonne (alto 3,6,9…; medio 2,5,8…; basso 1,4,7…).
 const FELT_ROWS = [
   [3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36],
   [2, 5, 8, 11, 14, 17, 20, 23, 26, 29, 32, 35],
   [1, 4, 7, 10, 13, 16, 19, 22, 25, 28, 31, 34],
 ];
-// Ordine reale della ruota europea (zero singolo): la pallina cade sul numero giusto.
-const EURO_ORDER = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
 type SeatInfo = { code: string; playerId: string | null; nickname?: string | null; avatarUrl?: string | null; balance?: number | null };
 type GameTableState = {
   table: { id: string; name: string; displayCode: string; phase: 'betting' | 'spinning' | 'result'; round: number; seats: Record<string, SeatInfo>; bets: { id: string; seatNo: number; playerId: string; kind: string; numbers: number[]; amount: number }[]; result: { number: number; at: string } | null; history: number[] };
@@ -675,9 +673,9 @@ function RouletteFelt({ betsBySpot, onPlace, s = 46, result }: { betsBySpot: Rec
       {/* colonne 2:1 */}
       {['col3', 'col2', 'col1'].map((k, r) => cell(k, [], <span style={{ fontSize: s * 0.26 }}>2:1</span>, { gridColumn: '14', gridRow: String(r + 1), ...outside }, k))}
       {/* dozzine */}
-      {cell('dozen1', [], '1ª 12', { gridColumn: '2 / span 4', gridRow: '4', height: s * 0.8, ...outside }, 'd1')}
-      {cell('dozen2', [], '2ª 12', { gridColumn: '6 / span 4', gridRow: '4', height: s * 0.8, ...outside }, 'd2')}
-      {cell('dozen3', [], '3ª 12', { gridColumn: '10 / span 4', gridRow: '4', height: s * 0.8, ...outside }, 'd3')}
+      {cell('dozen1', [], '1 – 12', { gridColumn: '2 / span 4', gridRow: '4', height: s * 0.8, ...outside }, 'd1')}
+      {cell('dozen2', [], '13 – 24', { gridColumn: '6 / span 4', gridRow: '4', height: s * 0.8, ...outside }, 'd2')}
+      {cell('dozen3', [], '25 – 36', { gridColumn: '10 / span 4', gridRow: '4', height: s * 0.8, ...outside }, 'd3')}
       {/* esterne basse */}
       {cell('low', [], '1-18', { gridColumn: '2 / span 2', gridRow: '5', height: s * 0.9, ...outside }, 'low')}
       {cell('even', [], 'PARI', { gridColumn: '4 / span 2', gridRow: '5', height: s * 0.9, ...outside }, 'even')}
@@ -714,22 +712,20 @@ function RouletteWheelPro({ result, phase, onSpin, size = 460 }: { result: numbe
   const prev = useRef<number | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const drag = useRef<{ on: boolean; last: number; acc: number }>({ on: false, last: 0, acc: 0 });
-  const [landed, setLanded] = useState(false);
-  const STEP = 360 / 37;
+  const [showResult, setShowResult] = useState(false);
 
-  // All'arrivo del risultato: anima la ruota così la casella giusta finisce in alto
-  // (sotto la pallina) + qualche giro di spettacolo.
+  // Ruota scenografica (immagine del mockup): gira tanti giri e si ferma a caso.
+  // Il NUMERO autentico (RNG lato server) è mostrato al centro + illuminato sul tappeto.
   useEffect(() => {
-    if (result == null || result === prev.current || phase === 'betting') return;
+    if (phase === 'betting') { setShowResult(false); return; }
+    if (result == null || result === prev.current) return;
     prev.current = result;
-    setLanded(false);
-    const i = EURO_ORDER.indexOf(result);
+    setShowResult(false);
     const cur = rotate.get();
-    const base = Math.ceil(cur / 360) * 360;
-    const target = base + 360 * 6 - i * STEP;
-    animate(rotate, target, { duration: 4.4, ease: [0.16, 0.73, 0.12, 1], onComplete: () => setLanded(true) });
-    animate(ballRot, ballRot.get() - 360 * 9, { duration: 4.4, ease: [0.2, 0.7, 0.2, 1] });
-  }, [result, phase, rotate, ballRot, STEP]);
+    const target = cur + 360 * 6 + Math.floor(Math.random() * 360);
+    animate(rotate, target, { duration: 4.2, ease: [0.16, 0.73, 0.12, 1], onComplete: () => setShowResult(true) });
+    animate(ballRot, ballRot.get() - (360 * 9 + Math.random() * 300), { duration: 4.2, ease: [0.2, 0.7, 0.2, 1] });
+  }, [result, phase, rotate, ballRot]);
 
   const angleAt = (cx: number, cy: number) => {
     const r = boxRef.current!.getBoundingClientRect();
@@ -741,63 +737,37 @@ function RouletteWheelPro({ result, phase, onSpin, size = 460 }: { result: numbe
     const a = angleAt(e.clientX, e.clientY);
     let d = a - drag.current.last; if (d > 180) d -= 360; if (d < -180) d += 360;
     drag.current.last = a; drag.current.acc += d;
-    rotate.set(rotate.get() + d); ballRot.set(ballRot.get() - d * 1.4);
+    rotate.set(rotate.get() + d);
   };
   const onUp = () => { if (drag.current.on && Math.abs(drag.current.acc) > 35 && phase === 'betting') onSpin(); drag.current.on = false; };
 
-  const R = 200, rimW = 18, pocketOut = R - rimW, pocketIn = pocketOut - 46, rLabel = (pocketOut + pocketIn) / 2 + 2;
-  const pockets = EURO_ORDER.map((n, i) => {
-    const a0 = (i - 0.5) * STEP - 90, a1 = (i + 0.5) * STEP - 90; // 0 in alto
-    const rad = (d: number) => d * Math.PI / 180;
-    const p = (r: number, a: number) => `${R + r * Math.cos(rad(a))},${R + r * Math.sin(rad(a))}`;
-    const d = `M ${p(pocketIn, a0)} L ${p(pocketOut, a0)} A ${pocketOut} ${pocketOut} 0 0 1 ${p(pocketOut, a1)} L ${p(pocketIn, a1)} A ${pocketIn} ${pocketIn} 0 0 0 ${p(pocketIn, a0)} Z`;
-    const mid = i * STEP - 90;
-    const lx = R + rLabel * Math.cos(rad(mid)), ly = R + rLabel * Math.sin(rad(mid));
-    const win = landed && result === n;
-    return { n, d, lx, ly, mid, fill: numColor(n), win };
-  });
-
-  const svgStyle: React.CSSProperties = { position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block' };
+  const disc = size * 0.26;
   return (
     <div ref={boxRef} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={onUp}
       style={{ position: 'relative', width: size, height: size, margin: '0 auto', touchAction: 'none', cursor: phase === 'betting' ? 'grab' : 'default', userSelect: 'none' }}>
-      {/* Scodella FISSA: cornice oro + anello scuro (non ruota) */}
-      <svg viewBox="0 0 400 400" style={svgStyle}>
-        <defs>
-          <radialGradient id="rimg" cx="50%" cy="40%" r="60%"><stop offset="0%" stopColor="#5a3c12" /><stop offset="55%" stopColor="#caa23f" /><stop offset="100%" stopColor="#7a5a1a" /></radialGradient>
-          <radialGradient id="woodg" cx="50%" cy="42%" r="62%"><stop offset="0%" stopColor="#7a4e22" /><stop offset="60%" stopColor="#4a2e13" /><stop offset="100%" stopColor="#2a1708" /></radialGradient>
-          <radialGradient id="hubg" cx="50%" cy="40%" r="60%"><stop offset="0%" stopColor="#f6d682" /><stop offset="100%" stopColor="#9c7420" /></radialGradient>
-        </defs>
-        <circle cx="200" cy="200" r={R} fill="url(#rimg)" stroke="#3a2708" strokeWidth="2" />
-        <circle cx="200" cy="200" r={R - 6} fill="#120a03" />
-      </svg>
-      {/* Testa della ruota ROTANTE — rotazione su DIV (origine = centro, affidabile) */}
-      <motion.div style={{ rotate, position: 'absolute', inset: 0, transformOrigin: '50% 50%' }}>
-        <svg viewBox="0 0 400 400" style={svgStyle}>
-          <circle cx="200" cy="200" r={pocketIn} fill="#3b2410" />
-          {pockets.map((p, i) => (
-            <g key={i}>
-              <path d={p.d} fill={p.fill} stroke={p.win ? '#fff' : '#00000055'} strokeWidth={p.win ? 3 : 0.6} />
-              {p.win && <path d={p.d} fill="#F5B64288" />}
-              <text x={p.lx} y={p.ly} fill="#fff" fontSize={21} fontWeight={900} textAnchor="middle" dominantBaseline="central"
-                transform={`rotate(${p.mid + 90} ${p.lx} ${p.ly})`} style={{ fontFamily: 'Outfit, sans-serif', paintOrder: 'stroke', stroke: '#000', strokeWidth: 1 }}>{p.n}</text>
-            </g>
-          ))}
-          <circle cx="200" cy="200" r={pocketIn - 4} fill="url(#woodg)" stroke="#8a5a22" strokeWidth="2" />
-          {[0, 90, 180, 270].map(a => <line key={a} x1="200" y1="200" x2={200 + (pocketIn - 10) * Math.cos(a * Math.PI / 180)} y2={200 + (pocketIn - 10) * Math.sin(a * Math.PI / 180)} stroke="url(#hubg)" strokeWidth="8" strokeLinecap="round" />)}
-          <circle cx="200" cy="200" r="22" fill="url(#hubg)" stroke="#5a3c12" strokeWidth="2" />
-          <circle cx="200" cy="200" r="8" fill="#3a2708" />
-        </svg>
+      {/* Ruota fotorealistica (immagine) che ruota su div — origine centro affidabile.
+          Clip a cerchio: il ritaglio ha gli angoli verdi, così resta solo la ruota. */}
+      <motion.div style={{ rotate, position: 'absolute', inset: 0, transformOrigin: '50% 50%', borderRadius: '50%', overflow: 'hidden' }}>
+        <img src={`${import.meta.env.BASE_URL || '/'}roulette-wheel.png`} alt="roulette" draggable={false} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
       </motion.div>
-      {/* Pallina che orbita (DIV controrotante) */}
+      {/* Pallina che corre nel canale */}
       <motion.div style={{ rotate: ballRot, position: 'absolute', inset: 0, transformOrigin: '50% 50%', pointerEvents: 'none' }}>
-        {phase !== 'betting' && (
-          <div style={{ position: 'absolute', top: `${(rimW + 4) / 4}%`, left: '50%', transform: 'translateX(-50%)', width: size * 0.04, height: size * 0.04, borderRadius: '50%', background: 'radial-gradient(circle at 35% 30%, #fff, #bdbdbd)', boxShadow: '0 2px 6px #000a' }} />
+        {phase !== 'betting' && !showResult && (
+          <div style={{ position: 'absolute', top: '4.5%', left: '50%', transform: 'translateX(-50%)', width: size * 0.038, height: size * 0.038, borderRadius: '50%', background: 'radial-gradient(circle at 35% 30%, #fff, #c4c4c4)', boxShadow: '0 2px 6px #000b' }} />
         )}
       </motion.div>
+      {/* Numero uscito (autentico) al centro della ruota */}
+      <AnimatePresence>
+        {showResult && result != null && (
+          <motion.div initial={{ scale: 0.3, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ opacity: 0 }} transition={{ type: 'spring', stiffness: 260, damping: 16 }}
+            style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: disc, height: disc, borderRadius: '50%', background: numColor(result), border: `${Math.max(3, size * 0.012)}px solid #fff`, boxShadow: `0 0 ${size * 0.1}px ${GOLD}, 0 6px 20px #000a`, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+            <span style={{ fontSize: disc * 0.5, fontWeight: 900, color: '#fff', textShadow: '0 2px 6px #000' }}>{result}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {phase === 'betting' && (
         <motion.div animate={{ opacity: [0.5, 1, 0.5] }} transition={{ duration: 2, repeat: Infinity }}
-          style={{ position: 'absolute', bottom: -size * 0.02, left: '50%', transform: 'translateX(-50%)', color: GOLD, fontWeight: 800, fontSize: size * 0.045, whiteSpace: 'nowrap', pointerEvents: 'none' }}>↻ gira la ruota col dito</motion.div>
+          style={{ position: 'absolute', bottom: -size * 0.04, left: '50%', transform: 'translateX(-50%)', color: GOLD, fontWeight: 800, fontSize: size * 0.045, whiteSpace: 'nowrap', pointerEvents: 'none' }}>↻ gira la ruota col dito</motion.div>
       )}
     </div>
   );
@@ -840,17 +810,6 @@ function CasinoBrandMark({ h = 80 }: { h?: number }) {
     </div>
   );
 }
-// Banner "FAI LA TUA PUNTATA" ornamentale.
-function FeltBanner({ text, big }: { text: string; big: number }) {
-  return (
-    <div style={{ display: 'inline-flex', alignItems: 'center', gap: big * 0.4, padding: `${big * 0.25}px ${big * 1.1}px`, border: `${Math.max(2, big * 0.06)}px solid ${GOLD}`, borderRadius: 999, background: 'linear-gradient(#0a4f2a,#07371e)', boxShadow: `0 0 ${big}px ${GOLD}33, inset 0 0 ${big * 0.6}px #0006` }}>
-      <span style={{ color: GOLD, fontSize: big * 0.7, opacity: 0.8 }}>❧</span>
-      <span style={{ color: GOLD, fontWeight: 900, fontSize: big, letterSpacing: '0.06em', textShadow: '0 2px 6px #000', whiteSpace: 'nowrap' }}>{text}</span>
-      <span style={{ color: GOLD, fontSize: big * 0.7, opacity: 0.8, transform: 'scaleX(-1)' }}>❧</span>
-    </div>
-  );
-}
-
 // ── Display 80": la roulette incastonata nel tavolo, girabile col dito ───────────
 function RouletteTableView({ displayCode }: { displayCode: string }) {
   const [st, setSt] = useState<GameTableState | null>(null);
@@ -897,11 +856,9 @@ function RouletteTableView({ displayCode }: { displayCode: string }) {
   return (
     <div style={{ minHeight: '100vh', background: 'radial-gradient(ellipse at 30% 35%, #1f8a4c, #083d22 80%)', color: '#fff', fontFamily: "'Outfit',system-ui,sans-serif", padding: 'clamp(8px,1vw,20px)', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
       <div style={{ flex: 1, border: `clamp(4px,0.5vw,9px) solid ${GOLD}`, borderRadius: 'clamp(16px,1.6vw,28px)', boxShadow: `inset 0 0 120px #0007, 0 0 40px ${GOLD}22`, padding: 'clamp(10px,1.3vw,24px)', display: 'flex', flexDirection: 'column', gap: 'clamp(8px,1vw,16px)', minHeight: 0 }}>
-        {/* Header: banner + logo */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 16 }}>
-          <div />
-          <FeltBanner text={t.phase === 'betting' ? 'FAI LA TUA PUNTATA' : `NUMERO VINCENTE · ${resultN}`} big={Math.min(34, Math.max(17, vw / 46))} />
-          <div style={{ justifySelf: 'end' }}><CasinoBrandMark h={Math.min(92, Math.max(44, vw / 17))} /></div>
+        {/* Header: solo logo (lo spazio del banner va ai giocatori) */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'flex-start' }}>
+          <CasinoBrandMark h={Math.min(84, Math.max(44, vw / 18))} />
         </div>
 
         {/* Lato lungo superiore */}
@@ -910,7 +867,8 @@ function RouletteTableView({ displayCode }: { displayCode: string }) {
         {/* Centro: ruota incastonata + tappeto */}
         <div style={{ display: 'grid', gridTemplateColumns: `${wheelSize + 44}px 1fr`, gap: 'clamp(14px,2vw,34px)', alignItems: 'center', flex: 1, minHeight: 0, overflow: 'hidden' }}>
           <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <div style={{ padding: wheelSize * 0.05, borderRadius: '50%', background: 'radial-gradient(circle,#083d22,#041e10)', boxShadow: `inset 0 0 ${wheelSize * 0.12}px #000, 0 10px 40px #000a`, border: `${Math.max(3, wheelSize * 0.015)}px solid ${GOLD}` }}>
+            {/* incasso leggero: la ruota ha già la sua scodella dorata */}
+            <div style={{ borderRadius: '50%', boxShadow: `0 16px 50px #000b, 0 0 ${wheelSize * 0.1}px ${GOLD}22` }}>
               <RouletteWheelPro result={resultN} phase={t.phase} onSpin={spin} size={wheelSize} />
             </div>
           </div>
