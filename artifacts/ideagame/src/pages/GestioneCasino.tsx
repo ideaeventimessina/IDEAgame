@@ -10,7 +10,7 @@
    - Giocatore: login con selfie (+500 fiche), QR, e puntata che va sul suo tavolo.
    Sync via polling 2s. ─────────────────────────────────────────────────────── */
 
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence, useMotionValue, animate } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
 import { PlayerAvatar, fileToAvatarDataUrl } from '../components/PlayerAvatar';
@@ -836,75 +836,77 @@ function CasinoBrandMark({ h = 80, serif = false }: { h?: number; serif?: boolea
 }
 // Font serif classico del mockup (iniettato una volta).
 const SERIF = "'Cinzel', Georgia, 'Times New Roman', serif";
-function useCinzel() {
-  useEffect(() => {
-    if (document.getElementById('cinzel-font')) return;
-    const l = document.createElement('link'); l.id = 'cinzel-font'; l.rel = 'stylesheet';
-    l.href = 'https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&display=swap';
-    document.head.appendChild(l);
-  }, []);
-}
 
-// ── TAPPETO a coordinate fisse (fedele al mockup): 0 inclinato + griglia + esterne ──
-const FELT_W = 1002, FELT_H = 466;
-const F_PADL = 78, F_NUMW = (1002 - 78 - 78) / 12, F_NUMH = 92, F_ROWTOP = 10;
-const F_2X = F_PADL + 12 * F_NUMW, F_2W = 1002 - F_2X - 0;
-const F_DY = F_ROWTOP + F_NUMH * 3 + 2, F_DH = 80, F_DW = (12 * F_NUMW) / 3;
-const F_EY = F_DY + F_DH + 2, F_EH = 86, F_EW = (1002 - F_PADL - 8) / 6;
-function feltRect(spot: string): { l: number; t: number; w: number; h: number } | null {
-  if (spot === 'n:0') return { l: 0, t: F_ROWTOP, w: F_PADL, h: F_NUMH * 3 };
-  if (spot.startsWith('n:')) {
-    const n = Number(spot.slice(2));
-    for (let r = 0; r < 3; r++) { const c = FELT_ROWS[r]!.indexOf(n); if (c >= 0) return { l: F_PADL + c * F_NUMW, t: F_ROWTOP + r * F_NUMH, w: F_NUMW, h: F_NUMH }; }
-    return null;
-  }
-  const dz: Record<string, number> = { dozen1: 0, dozen2: 1, dozen3: 2 };
-  if (spot in dz) return { l: F_PADL + dz[spot]! * F_DW, t: F_DY, w: F_DW, h: F_DH };
-  const ex: Record<string, number> = { low: 0, even: 1, red: 2, black: 3, odd: 4, high: 5 };
-  if (spot in ex) return { l: F_PADL + ex[spot]! * F_EW, t: F_EY, w: F_EW, h: F_EH };
-  const co: Record<string, number> = { col3: 0, col2: 1, col1: 2 };
-  if (spot in co) return { l: F_2X, t: F_ROWTOP + co[spot]! * F_NUMH, w: F_2W, h: F_NUMH };
-  return null;
-}
-function FixedFelt({ betsBySpot, resultN }: { betsBySpot: Record<string, { seatNo: number; amount: number }[]>; resultN: number | null }) {
-  const cellBase: React.CSSProperties = { position: 'absolute', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, border: `1.5px solid ${GOLD}55`, overflow: 'visible' };
-  const hitOf = (spot: string, nums: number[]) => resultN != null && (nums.length ? nums.includes(resultN) : spotWinsOutside(spot, resultN));
-  const glow = (on: boolean): React.CSSProperties => on ? { outline: `3px solid ${GOLD}`, outlineOffset: -3, boxShadow: `0 0 26px ${GOLD}, inset 0 0 20px ${GOLD}66`, zIndex: 3 } : {};
-  const chipAt = (spot: string) => {
-    const bets = betsBySpot[spot]; if (!bets || !bets.length) return null; const r = feltRect(spot); if (!r) return null;
-    return <div key={'c' + spot} style={{ position: 'absolute', left: r.l, top: r.t, width: r.w, height: r.h, pointerEvents: 'none', zIndex: 4 }}><ChipStack bets={bets} s={Math.min(r.w, r.h)} /></div>;
-  };
-  return (
-    <div style={{ position: 'relative', width: FELT_W, height: FELT_H, border: `7px solid ${GOLD}`, borderRadius: 14, background: 'radial-gradient(ellipse at 50% 35%, #05581d, #023e14 92%)', boxShadow: '0 20px 60px #000a, inset 0 0 40px #0006' }}>
-      {/* 0 inclinato */}
-      <div style={{ ...cellBase, left: 0, top: F_ROWTOP, width: F_PADL, height: F_NUMH * 3, background: numColor(0), clipPath: 'polygon(28% 0,100% 0,100% 100%,28% 100%,0 50%)', borderRadius: '8px 0 0 8px', fontSize: 46, ...glow(hitOf('n:0', [0])) }}>0</div>
-      {/* numeri */}
-      {FELT_ROWS.map((row, r) => row.map((n, c) => (
-        <div key={n} style={{ ...cellBase, left: F_PADL + c * F_NUMW, top: F_ROWTOP + r * F_NUMH, width: F_NUMW, height: F_NUMH, background: numColor(n), fontSize: 40, ...glow(hitOf('n:' + n, [n])) }}>{n}</div>
-      )))}
-      {/* 2:1 */}
-      {['col3', 'col2', 'col1'].map((k, r) => <div key={k} style={{ ...cellBase, left: F_2X, top: F_ROWTOP + r * F_NUMH, width: F_2W, height: F_NUMH, background: 'transparent', fontSize: 24 }}>2:1</div>)}
-      {/* dozzine */}
-      {(['dozen1', 'dozen2', 'dozen3'] as const).map((k, i) => <div key={k} style={{ ...cellBase, left: F_PADL + i * F_DW, top: F_DY, width: F_DW, height: F_DH, background: 'transparent', fontSize: 30, ...glow(hitOf(k, [])) }}>{['1 – 12', '13 – 24', '25 – 36'][i]}</div>)}
-      {/* esterne */}
-      {(['low', 'even', 'red', 'black', 'odd', 'high'] as const).map((k, i) => {
-        const lbl: Record<string, React.ReactNode> = { low: '1 – 18', even: 'PARI', red: <span style={{ color: '#e23a3a', fontSize: 40 }}>◆</span>, black: <span style={{ color: '#000', fontSize: 40 }}>◆</span>, odd: 'DISPARI', high: '19 – 36' };
-        return <div key={k} style={{ ...cellBase, left: F_PADL + i * F_EW, top: F_EY, width: F_EW, height: F_EH, background: 'transparent', fontSize: 28, ...glow(hitOf(k, [])) }}>{lbl[k]}</div>;
-      })}
-      {/* fiche */}
-      {Object.keys(betsBySpot).map(chipAt)}
-    </div>
-  );
-}
+// ══════════════════ ROULETTE TABLE — port fedele del design del cliente ══════════
+// Palco fisso 1672×941 scalato a pieno schermo. Ruota: cornice dipinta (jpg) +
+// rotore SVG coi numeri in ordine europeo reale → la pallina atterra sul numero.
+const A_ = (import.meta.env.BASE_URL as string) || '/';
+const WHEEL_SEQ = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
+const classOf = (n: number) => n === 0 ? 'g' : RED_NUMS.has(n) ? 'r' : 'b';
+const HIST_CHIP_X = [73, 132, 191, 249, 307, 366, 424, 481, 539, 596];
+const CARD_X = [13, 174, 339, 506, 672, 838, 1004, 1170, 1336, 1503];
+const CARD_W = [155, 160, 161, 161, 161, 161, 161, 161, 162, 156];
+const itFmt = new Intl.NumberFormat('it-IT');
 
-// ── Display 80": canvas fisso 1672×941 scalato a pieno schermo (fedele al mockup) ──
+const RT_CSS = `
+@font-face{font-family:"Baskerville Casino";font-weight:400;src:url(${A_}casino/libre-baskerville-latin-400-normal.woff2) format("woff2");font-display:block;}
+@font-face{font-family:"Baskerville Casino";font-weight:700;src:url(${A_}casino/libre-baskerville-latin-700-normal.woff2) format("woff2");font-display:block;}
+.rt-root{position:fixed;inset:0;background:#080706;display:grid;place-items:center;overflow:hidden;color:#fff;
+  --serif:"Baskerville Casino",Georgia,serif;--black:#080706;--felt-hi:#075c22;--felt:#034a19;--felt-lo:#01300e;--zero:#017422;--cell-green:#003c14;--red:#d20910;--red-lo:#b30309;--blk:#1b1b1a;--blk-lo:#0b0b0a;--gold:#f1c96c;--gold-hi:#ffefb5;--gold-lo:#c8893a;--gold-muted:#a8954f;--cream:#f4ead3;--line:2px;font-family:var(--serif);}
+.rt-root *{box-sizing:border-box;margin:0;padding:0;}
+.rt-root .stage{position:relative;width:1672px;height:941px;flex:none;transform-origin:center center;background:var(--black);overflow:hidden;}
+.rt-root .abs{position:absolute;}
+.rt-root .felt{left:-20px;top:13px;width:1682px;height:739px;border-top:3px solid var(--gold);border-right:3px solid var(--gold);border-bottom:3px solid var(--gold-muted);border-top-right-radius:70px;background:linear-gradient(90deg,#0b0906 0,#0b0906 300px,rgba(11,9,6,0) 470px),radial-gradient(ellipse 980px 640px at 1040px 230px,var(--felt-hi) 0%,var(--felt) 45%,var(--felt-lo) 82%,#012a0c 100%);box-shadow:inset 0 0 0 1px rgba(255,239,181,.08);}
+.rt-root .felt-line2{left:0;top:750px;width:1672px;height:1px;background:#bcb54b;opacity:.8;}
+.rt-root .wheel-frame{left:0;top:0;width:660px;height:705px;background:url(${A_}casino/wheel-frame.jpg) 0 0 / 660px 705px no-repeat;-webkit-mask:radial-gradient(circle at 298px 338px,#000 352px,transparent 370px);mask:radial-gradient(circle at 298px 338px,#000 352px,transparent 370px);}
+.rt-root .rotor{left:55px;top:95px;width:486px;height:486px;}
+.rt-root .rotor g.spin{transform-origin:0 0;transition:transform 6s cubic-bezier(.12,.7,.18,1);}
+.rt-root .rotor text{font:700 25px var(--serif);fill:#fff;text-anchor:middle;dominant-baseline:central;}
+.rt-root .title{left:605px;top:46px;width:657px;height:78px;border-radius:40px;border:4px solid #f6cf72;background:radial-gradient(ellipse 70% 120% at 50% 50%,#000d04 0%,#00140a 60%,#052e17 100%);box-shadow:0 0 0 1px #6b4a17,0 0 18px rgba(255,210,120,.35),inset 0 0 0 2px rgba(0,0,0,.6),inset 0 0 14px rgba(255,220,140,.25);display:flex;align-items:center;justify-content:center;gap:22px;}
+.rt-root .title h1{font:700 47px/1 var(--serif);letter-spacing:-.012em;white-space:nowrap;transform:scaleX(.84);background:linear-gradient(180deg,#fff6c8 0%,#ffe08a 40%,#e9b24f 72%,#ffe594 100%);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 2px 1px rgba(0,0,0,.8));margin:0 -44px;}
+.rt-root .title img{width:60px;height:26px;flex:none;}
+.rt-root .logo{left:1285px;top:8px;width:360px;height:230px;object-fit:contain;-webkit-mask:linear-gradient(90deg,transparent,#000 14%,#000 88%,transparent),linear-gradient(transparent,#000 10%,#000 86%,transparent);-webkit-mask-composite:source-in;mask-composite:intersect;mask:linear-gradient(90deg,transparent,#000 14%,#000 88%,transparent),linear-gradient(transparent,#000 10%,#000 86%,transparent);}
+.rt-root .zero{left:650px;top:248px;width:73px;height:281px;overflow:visible;}
+.rt-root .zero text{font:700 54px var(--serif);fill:#fff;text-anchor:middle;dominant-baseline:central;}
+.rt-root .grid{left:720px;top:248px;width:922px;height:281px;display:grid;grid-template-columns:repeat(12,1fr) 77px;grid-template-rows:repeat(3,1fr);gap:var(--line);padding:var(--line) var(--line) 0 0;background:var(--gold);border-top-right-radius:8px;}
+.rt-root .cell{position:relative;display:grid;place-items:center;font:700 36px/1 var(--serif);color:#fff;text-shadow:0 1px 1px rgba(0,0,0,.6);user-select:none;}
+.rt-root .cell.r{background:radial-gradient(ellipse at 50% 35%,var(--red) 0%,#c5050c 60%,var(--red-lo) 100%);}
+.rt-root .cell.b{background:radial-gradient(ellipse at 50% 35%,var(--blk) 0%,#131312 60%,var(--blk-lo) 100%);}
+.rt-root .cell.g{background:var(--cell-green);font-size:34px;}
+.rt-root .grid .cell:nth-child(13){border-top-right-radius:6px;}
+.rt-root .cell.win{outline:3px solid var(--gold-hi);outline-offset:-3px;box-shadow:0 0 22px var(--gold),inset 0 0 16px rgba(241,201,108,.5);z-index:3;}
+.rt-root .outside{left:674px;top:527px;width:968px;height:197px;background:var(--gold);border:var(--line) solid var(--gold);border-top:0;padding-top:var(--line);border-radius:0 0 12px 12px;overflow:hidden;display:grid;gap:var(--line);grid-template-rows:90px 1fr;grid-template-columns:159px 159px 146px 147px 177px 1fr;}
+.rt-root .outside .cell{background:radial-gradient(ellipse at 50% 40%,#024a18 0%,var(--cell-green) 70%,#00320f 100%);font-size:38px;}
+.rt-root .outside .d1{grid-column:1 / 3;font-size:42px;}
+.rt-root .outside .d2{grid-column:3 / 5;font-size:42px;}
+.rt-root .outside .d3{grid-column:5 / 7;font-size:42px;}
+.rt-root .outside .word{font-size:31px;letter-spacing:-.01em;transform:scaleX(.92);}
+.rt-root .diamond{width:86px;height:62px;}
+.rt-root .history{left:32px;top:673px;width:606px;height:67px;border-radius:34px;border:2px solid var(--gold);background:linear-gradient(180deg,#0d0a05,#030302);box-shadow:0 0 0 1px #4a3310,inset 0 0 0 1px rgba(0,0,0,.7),0 0 14px rgba(255,200,110,.18);}
+.rt-root .hchip{position:absolute;top:11px;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font:700 25px/1 var(--serif);color:#fff;border:3px solid var(--gold);box-shadow:0 0 0 1px #3c2a0c,inset 0 2px 3px rgba(255,255,255,.25);}
+.rt-root .hchip.r{background:radial-gradient(circle at 40% 30%,#ea2a2c,#b8060c 70%);}
+.rt-root .hchip.b{background:radial-gradient(circle at 40% 30%,#2c2c2b,#0b0b0a 70%);}
+.rt-root .hchip.g{background:radial-gradient(circle at 40% 30%,#1f9a42,#08662a 70%);}
+.rt-root .players{left:0;top:752px;width:1672px;height:189px;background:#060502;}
+.rt-root .player{position:absolute;top:8px;height:171px;border-radius:8px;background:linear-gradient(180deg,#0e0d0b 0%,#070706 100%);border:1.5px solid #b48a44;box-shadow:inset 0 0 0 1px rgba(0,0,0,.6),inset 0 0 18px rgba(255,200,120,.05);text-align:center;}
+.rt-root .player .av{position:absolute;left:50%;top:2px;width:96px;height:96px;margin-left:-48px;border-radius:50%;padding:4px;background:linear-gradient(160deg,var(--gold-hi),var(--gold) 40%,var(--gold-lo) 75%,var(--gold));box-shadow:0 2px 6px rgba(0,0,0,.7);}
+.rt-root .player .av img,.rt-root .player .av .ini{width:88px;height:88px;border-radius:50%;display:grid;place-items:center;object-fit:cover;background:#2a2118;color:#f4ead3;font:700 40px var(--serif);}
+.rt-root .player .name{position:absolute;left:0;right:0;top:99px;font:700 21px/1 var(--serif);color:var(--cream);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 6px;}
+.rt-root .player .lbl{position:absolute;left:0;right:0;top:125px;font:700 13px/1 var(--serif);color:#e2b65c;letter-spacing:.02em;}
+.rt-root .player .cr{position:absolute;left:0;right:0;top:140px;font:700 27px/1 var(--serif);color:var(--cream);}
+.rt-root .player .qr{position:absolute;left:50%;top:10px;transform:translateX(-50%);background:#fff;padding:4px;border-radius:8px;}
+.rt-root .betchip{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);min-width:30px;height:30px;padding:0 6px;border-radius:15px;display:grid;place-items:center;font:700 16px/1 var(--serif);color:#1a1205;background:linear-gradient(#ffe08a,#e0a83a);border:2px solid #fff6;box-shadow:0 2px 5px #0008;z-index:4;}
+`;
+
 function RouletteTableView({ displayCode }: { displayCode: string }) {
-  useCinzel();
   const [st, setSt] = useState<GameTableState | null>(null);
-  const [vw, setVw] = useState(typeof window !== 'undefined' ? window.innerWidth : 1280);
-  const [vh, setVh] = useState(typeof window !== 'undefined' ? window.innerHeight : 800);
+  const [dim, setDim] = useState({ w: typeof window !== 'undefined' ? window.innerWidth : 1280, h: typeof window !== 'undefined' ? window.innerHeight : 800 });
   const spinning = useRef(false);
-  useEffect(() => { const r = () => { setVw(window.innerWidth); setVh(window.innerHeight); }; window.addEventListener('resize', r); return () => window.removeEventListener('resize', r); }, []);
+  const spinG = useRef<SVGGElement | null>(null);
+  const turns = useRef(0);
+  const prevRes = useRef<number | null>(null);
+
+  useEffect(() => { const r = () => setDim({ w: window.innerWidth, h: window.innerHeight }); window.addEventListener('resize', r); return () => window.removeEventListener('resize', r); }, []);
   useEffect(() => {
     let alive = true;
     const pull = () => fetch(`${API}/gestione/casino/table/${displayCode}`).then(r => r.ok ? r.json() : null).then(d => { if (alive && d) setSt(d); }).catch(() => {});
@@ -917,50 +919,133 @@ function RouletteTableView({ displayCode }: { displayCode: string }) {
     return () => clearTimeout(t);
   }, [phase, displayCode]);
 
+  // Disegna il rotore una volta (settori + numeri in ordine europeo + mozzo).
+  useEffect(() => {
+    const g = spinG.current; if (!g) return;
+    const SEG = 360 / WHEEL_SEQ.length;
+    const polar = (r: number, deg: number) => { const a = (deg - 90) * Math.PI / 180; return [r * Math.cos(a), r * Math.sin(a)]; };
+    const sector = (r0: number, r1: number, a0: number, a1: number) => {
+      const [x0, y0] = polar(r1, a0), [x1, y1] = polar(r1, a1), [x2, y2] = polar(r0, a1), [x3, y3] = polar(r0, a0);
+      return `M${x0} ${y0} A${r1} ${r1} 0 0 1 ${x1} ${y1} L${x2} ${y2} A${r0} ${r0} 0 0 0 ${x3} ${y3}Z`;
+    };
+    const FILL: Record<string, string> = { r: '#d30a12', b: '#151514', g: '#16a043' };
+    const FILLP: Record<string, string> = { r: '#cf0a12', b: '#141413', g: '#139a3e' };
+    let svg = `<circle r="243" fill="url(#goldBand)"/><circle r="236" fill="#1a0f06"/>`;
+    WHEEL_SEQ.forEach((n, i) => { const a0 = i * SEG - SEG / 2, c = classOf(n); svg += `<path d="${sector(194, 236, a0, a0 + SEG)}" fill="${FILL[c]}" stroke="#d9a94e" stroke-width="1.2"/>`; });
+    svg += `<circle r="194" fill="none" stroke="url(#goldBand)" stroke-width="8"/>`;
+    WHEEL_SEQ.forEach((n, i) => { const a0 = i * SEG - SEG / 2, c = classOf(n); svg += `<path d="${sector(143, 189, a0, a0 + SEG)}" fill="${FILLP[c]}" stroke="#c9963f" stroke-width="1.6"/>`; });
+    svg += `<circle r="189" fill="url(#pocketShade)"/>`;
+    WHEEL_SEQ.forEach((n, i) => { const [x, y] = polar(215, i * SEG); svg += `<text x="${x}" y="${y}" transform="rotate(${i * SEG} ${x} ${y})">${n}</text>`; });
+    svg += `<circle r="143" fill="none" stroke="url(#goldBand)" stroke-width="4"/><image href="${A_}casino/wheel-hub.png" x="-143" y="-143" width="286" height="286"/>`;
+    g.innerHTML = svg;
+  }, []);
+
+  // Gira la ruota sul numero uscito (sequenza reale → la pallina cade sul numero).
+  const resultN = st && st.table.phase !== 'betting' ? st.table.result?.number ?? null : null;
+  useEffect(() => {
+    if (resultN == null || resultN === prevRes.current) return;
+    prevRes.current = resultN;
+    const g = spinG.current; if (!g) return;
+    const i = WHEEL_SEQ.indexOf(resultN); if (i < 0) return;
+    turns.current += 6;
+    const SEG = 360 / WHEEL_SEQ.length;
+    g.style.transform = `rotate(${-(turns.current * 360 + i * SEG)}deg)`;
+  }, [resultN]);
+
   if (!st) return <Center>Carico il tavolo…</Center>;
   const t = st.table;
   const betsBySpot: Record<string, { seatNo: number; amount: number }[]> = {};
   for (const b of t.bets) { const k = spotOf(b.kind, b.numbers); (betsBySpot[k] ??= []).push({ seatNo: b.seatNo, amount: b.amount }); }
-  const seatNos = Object.keys(t.seats).map(Number).sort((a, b) => a - b);
-  const resultN = t.phase !== 'betting' ? t.result?.number ?? null : null;
-  const scale = Math.min(vw / 1672, vh / 941);
+  const totalOf = (spot: string) => (betsBySpot[spot] ?? []).reduce((a, x) => a + x.amount, 0);
+  const chipFor = (spot: string) => { const tot = totalOf(spot); return tot > 0 ? <span className="betchip">{tot}</span> : null; };
+  const winNum = (n: number) => resultN != null && resultN === n;
+  const winOut = (kind: string) => resultN != null && spotWinsOutside(kind, resultN);
+  const seats = t.seats;
+  const scale = Math.min(dim.w / 1672, dim.h / 941);
   const spin = async () => { if (spinning.current || t.phase !== 'betting') return; spinning.current = true; try { await api(`/gestione/casino/table/spin`, { displayCode }); } finally { setTimeout(() => (spinning.current = false), 1200); } };
-  const histN = t.history.slice(0, 10);
+  const hist = t.history.slice(0, 10);
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: '#021208', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', fontFamily: "'Outfit',system-ui,sans-serif" }}>
-      <div style={{ width: 1672, height: 941, transform: `scale(${scale})`, transformOrigin: 'center', position: 'relative', color: '#fff', background: 'radial-gradient(ellipse at 55% 40%, #06491a, #023e14 55%, #012208 100%)', overflow: 'hidden' }}>
-        {/* RUOTA */}
-        <div style={{ position: 'absolute', left: 2, top: 22, width: 600, height: 600 }}>
-          <RouletteWheelPro result={resultN} phase={t.phase} onSpin={spin} size={600} />
+    <div className="rt-root">
+      <style>{RT_CSS}</style>
+      <main className="stage" style={{ transform: `scale(${scale})` }}>
+        <div className="abs felt" />
+        <div className="abs felt-line2" />
+
+        {/* ruota: cornice dipinta + rotore (clic = gira) */}
+        <div className="abs wheel-frame" />
+        <svg className="abs rotor" viewBox="-243 -243 486 486" onClick={spin} style={{ cursor: t.phase === 'betting' ? 'pointer' : 'default' }}>
+          <defs>
+            <radialGradient id="pocketShade" r="1"><stop offset="0.80" stopColor="#000" stopOpacity=".18" /><stop offset="0.96" stopColor="#000" stopOpacity="0" /></radialGradient>
+            <linearGradient id="goldBand" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#ffefb5" /><stop offset=".35" stopColor="#e2b057" /><stop offset=".6" stopColor="#a86c22" /><stop offset="1" stopColor="#f1c96c" /></linearGradient>
+          </defs>
+          <g className="spin" ref={spinG} />
+        </svg>
+
+        <div className="abs title"><img src={`${A_}casino/flourish-l.png`} alt="" /><h1>{t.phase === 'betting' ? 'FAI LA TUA PUNTATA' : `È USCITO IL ${resultN}`}</h1><img src={`${A_}casino/flourish-r.png`} alt="" /></div>
+        <img className="abs logo" src={`${A_}casino/logo-placeholder.jpg`} alt="IDEAeventi Casinò" />
+
+        {/* tavolo */}
+        <svg className="abs zero" viewBox="0 0 73 281" style={winNum(0) ? { filter: 'drop-shadow(0 0 16px #f1c96c)' } : undefined}>
+          <path d="M22 2 H72 V279 H22 L2 256 V26 Z" fill="#017422" stroke="#f1c96c" strokeWidth="3" strokeLinejoin="round" />
+          <text x="38" y="140">0</text>
+        </svg>
+        {totalOf('n:0') > 0 && <span className="betchip" style={{ left: 686, top: 388 }}>{totalOf('n:0')}</span>}
+        <div className="abs grid">
+          {[0, 1, 2].map(row => (
+            <Fragment key={row}>
+              {Array.from({ length: 12 }).map((_, col) => { const n = col * 3 + (3 - row); return <div key={n} className={`cell ${classOf(n)}${winNum(n) ? ' win' : ''}`}>{n}{chipFor('n:' + n)}</div>; })}
+              <div className={`cell g${winOut('col' + (3 - row)) ? ' win' : ''}`}>2:1{chipFor('col' + (3 - row))}</div>
+            </Fragment>
+          ))}
         </div>
-        {/* STORICO */}
-        <div style={{ position: 'absolute', left: 24, top: 662, width: 612, height: 52, display: 'flex', gap: 9, alignItems: 'center', justifyContent: 'center', background: '#0a0906cc', border: `2px solid ${GOLD}66`, borderRadius: 30 }}>
-          {histN.map((n, i) => <span key={i} style={{ width: 36, height: 36, borderRadius: '50%', background: numColor(n), border: `2px solid ${i === 0 ? GOLD : '#ffffff22'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 16 }}>{n}</span>)}
-          {histN.length === 0 && <span style={{ opacity: 0.5, fontSize: 16 }}>in attesa del primo giro</span>}
+        <div className="abs outside">
+          <div className={`cell d1${winOut('dozen1') ? ' win' : ''}`}>1 – 12{chipFor('dozen1')}</div>
+          <div className={`cell d2${winOut('dozen2') ? ' win' : ''}`}>13 – 24{chipFor('dozen2')}</div>
+          <div className={`cell d3${winOut('dozen3') ? ' win' : ''}`}>25 – 36{chipFor('dozen3')}</div>
+          <div className={`cell${winOut('low') ? ' win' : ''}`}>1 – 18{chipFor('low')}</div>
+          <div className={`cell word${winOut('even') ? ' win' : ''}`}>PARI{chipFor('even')}</div>
+          <div className={`cell${winOut('red') ? ' win' : ''}`}><svg className="diamond" viewBox="0 0 86 62"><defs><linearGradient id="dr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#e3141a" /><stop offset="1" stopColor="#9c0208" /></linearGradient></defs><path d="M43 2 84 31 43 60 2 31Z" fill="url(#dr)" stroke="#f1c96c" strokeWidth="2.5" /></svg>{chipFor('red')}</div>
+          <div className={`cell${winOut('black') ? ' win' : ''}`}><svg className="diamond" viewBox="0 0 86 62"><defs><linearGradient id="db" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#2a2a29" /><stop offset="1" stopColor="#050505" /></linearGradient></defs><path d="M43 2 84 31 43 60 2 31Z" fill="url(#db)" stroke="#f1c96c" strokeWidth="2.5" /></svg>{chipFor('black')}</div>
+          <div className={`cell word${winOut('odd') ? ' win' : ''}`}>DISPARI{chipFor('odd')}</div>
+          <div className={`cell${winOut('high') ? ' win' : ''}`}>19 – 36{chipFor('high')}</div>
         </div>
-        {/* BANNER */}
-        <div style={{ position: 'absolute', left: 612, top: 50, width: 648, height: 74, border: `3px solid ${GOLD}`, borderRadius: 40, background: 'linear-gradient(#0a4f2a,#06331c)', boxShadow: `0 0 34px ${GOLD}33, inset 0 0 22px #0007`, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
-          <span style={{ color: GOLD, fontSize: 26 }}>❧</span>
-          <span style={{ fontFamily: SERIF, fontWeight: 900, fontSize: 40, letterSpacing: '0.04em', color: GOLD, textShadow: '0 2px 6px #000', whiteSpace: 'nowrap' }}>{t.phase === 'betting' ? 'FAI LA TUA PUNTATA' : `È USCITO IL ${resultN}`}</span>
-          <span style={{ color: GOLD, fontSize: 26, transform: 'scaleX(-1)' }}>❧</span>
+
+        {/* storico */}
+        <div className="abs history">
+          {hist.map((n, i) => <div key={i} className={`hchip ${classOf(n)}`} style={{ left: HIST_CHIP_X[i]! - 32 - 22 - 2 }}>{n}</div>)}
         </div>
-        {/* LOGO */}
-        <div style={{ position: 'absolute', right: 18, top: 26, width: 360, height: 210, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center', lineHeight: 1 }}>
-          <CasinoBrandMark h={150} serif />
-        </div>
-        {/* TAPPETO */}
-        <div style={{ position: 'absolute', left: 636, top: 236 }}>
-          <FixedFelt betsBySpot={betsBySpot} resultN={resultN} />
-        </div>
-        {/* GIOCATORI */}
-        <div style={{ position: 'absolute', left: 0, top: 763, width: 1672, height: 178, background: 'linear-gradient(#0b0906,#070503)', borderTop: `2px solid ${GOLD}55`, display: 'flex', gap: 6, padding: '10px 10px' }}>
-          {seatNos.map(no => <div key={no} style={{ flex: '1 1 0', minWidth: 0, display: 'flex' }}><PlayerChip no={no} seat={t.seats[String(no)]!} bet={st.betsBySeat[String(no)] ?? 0} h={158} serif /></div>)}
-        </div>
-      </div>
+
+        {/* giocatori */}
+        <section className="abs players">
+          {Array.from({ length: 10 }).map((_, i) => {
+            const no = String(i + 1); const seat = seats[no];
+            const left = CARD_X[i]!, width = CARD_W[i]!;
+            if (seat && seat.playerId) {
+              const bet = st.betsBySeat[no] ?? 0;
+              return (
+                <article key={no} className="player" style={{ left, width }}>
+                  <div className="av">{seat.avatarUrl ? <img src={seat.avatarUrl} alt="" /> : <div className="ini">{(seat.nickname ?? '?').charAt(0).toUpperCase()}</div>}</div>
+                  <div className="name">{seat.nickname}</div>
+                  <div className="lbl">{bet > 0 ? `PUNTA ${bet}` : 'CREDITO'}</div>
+                  <div className="cr">{itFmt.format(seat.balance ?? 0)}</div>
+                </article>
+              );
+            }
+            return (
+              <article key={no} className="player" style={{ left, width }}>
+                <div className="qr"><QRCodeSVG value={`${ORIGIN}gestione/casino?seat=${seat?.code ?? ''}`} size={74} /></div>
+                <div className="name" style={{ top: 92 }}>Posto {no}</div>
+                <div className="lbl" style={{ top: 118 }}>SCANSIONA</div>
+              </article>
+            );
+          })}
+        </section>
+      </main>
     </div>
   );
 }
+
 
 // ── Controller sedia (telefono): punta dal tuo saldo sul tappeto ────────────────
 function SeatController({ seatCode }: { seatCode: string }) {
