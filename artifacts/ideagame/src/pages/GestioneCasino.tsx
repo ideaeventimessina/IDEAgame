@@ -663,27 +663,28 @@ function RouletteFelt({ betsBySpot, onPlace, s = 46, result }: { betsBySpot: Rec
       </button>
     );
   };
-  // Le caselle esterne hanno lo stesso verde del tappeto (come nel mockup).
-  const outside: React.CSSProperties = { background: 'transparent', fontSize: s * 0.34 };
+  // Celle numero più alte che larghe (come un vero tappeto). Esterne sullo stesso verde.
+  const nH = s * 1.3;
+  const outside: React.CSSProperties = { background: 'transparent', fontSize: s * 0.4 };
   return (
-    <div style={{ display: 'inline-grid', gridTemplateColumns: `${s * 1.15}px repeat(12, ${s}px) ${s * 1.3}px`, gridAutoRows: 'min-content', background: 'radial-gradient(ellipse at 50% 40%, #0a7a26, #005417 92%)', padding: s * 0.22, borderRadius: s * 0.26, border: `${Math.max(3, s * 0.11)}px solid ${GOLD}`, boxShadow: `0 24px 70px #000b, inset 0 0 ${s * 0.8}px #0005` }}>
+    <div style={{ display: 'inline-grid', gridTemplateColumns: `${s * 1.25}px repeat(12, ${s}px) ${s * 1.35}px`, gridAutoRows: 'min-content', background: 'radial-gradient(ellipse at 50% 40%, #0a7a26, #005417 92%)', padding: s * 0.22, borderRadius: s * 0.22, border: `${Math.max(3, s * 0.12)}px solid ${GOLD}`, boxShadow: `0 24px 70px #000b, inset 0 0 ${s * 0.8}px #0005` }}>
       {/* 0 */}
-      {cell('straight', [0], <span style={{ fontSize: s * 0.56 }}>0</span>, { gridColumn: '1', gridRow: '1 / span 3', background: numColor(0) }, 'z0')}
+      {cell('straight', [0], <span style={{ fontSize: s * 0.72 }}>0</span>, { gridColumn: '1', gridRow: '1 / span 3', background: numColor(0) }, 'z0')}
       {/* numeri */}
-      {FELT_ROWS.map((rowArr, r) => rowArr.map((n, c) => cell('straight', [n], <span style={{ fontSize: s * 0.52 }}>{n}</span>, { gridColumn: String(c + 2), gridRow: String(r + 1), background: numColor(n), height: s }, `n${n}`)))}
+      {FELT_ROWS.map((rowArr, r) => rowArr.map((n, c) => cell('straight', [n], <span style={{ fontSize: s * 0.64 }}>{n}</span>, { gridColumn: String(c + 2), gridRow: String(r + 1), background: numColor(n), height: nH }, `n${n}`)))}
       {/* colonne 2:1 */}
-      {['col3', 'col2', 'col1'].map((k, r) => cell(k, [], <span style={{ fontSize: s * 0.26 }}>2:1</span>, { gridColumn: '14', gridRow: String(r + 1), ...outside }, k))}
+      {['col3', 'col2', 'col1'].map((k, r) => cell(k, [], <span style={{ fontSize: s * 0.3 }}>2:1</span>, { gridColumn: '14', gridRow: String(r + 1), ...outside }, k))}
       {/* dozzine */}
-      {cell('dozen1', [], '1 – 12', { gridColumn: '2 / span 4', gridRow: '4', height: s * 0.8, ...outside }, 'd1')}
-      {cell('dozen2', [], '13 – 24', { gridColumn: '6 / span 4', gridRow: '4', height: s * 0.8, ...outside }, 'd2')}
-      {cell('dozen3', [], '25 – 36', { gridColumn: '10 / span 4', gridRow: '4', height: s * 0.8, ...outside }, 'd3')}
+      {cell('dozen1', [], '1 – 12', { gridColumn: '2 / span 4', gridRow: '4', height: s * 1.0, ...outside }, 'd1')}
+      {cell('dozen2', [], '13 – 24', { gridColumn: '6 / span 4', gridRow: '4', height: s * 1.0, ...outside }, 'd2')}
+      {cell('dozen3', [], '25 – 36', { gridColumn: '10 / span 4', gridRow: '4', height: s * 1.0, ...outside }, 'd3')}
       {/* esterne basse */}
-      {cell('low', [], '1-18', { gridColumn: '2 / span 2', gridRow: '5', height: s * 0.9, ...outside }, 'low')}
-      {cell('even', [], 'PARI', { gridColumn: '4 / span 2', gridRow: '5', height: s * 0.9, ...outside }, 'even')}
-      {cell('red', [], '◆', { gridColumn: '6 / span 2', gridRow: '5', height: s * 0.9, ...outside, background: '#c0392b', fontSize: s * 0.42 }, 'red')}
-      {cell('black', [], '◆', { gridColumn: '8 / span 2', gridRow: '5', height: s * 0.9, ...outside, background: '#1a1a1a', fontSize: s * 0.42 }, 'black')}
-      {cell('odd', [], 'DISPARI', { gridColumn: '10 / span 2', gridRow: '5', height: s * 0.9, ...outside, fontSize: s * 0.24 }, 'odd')}
-      {cell('high', [], '19-36', { gridColumn: '12 / span 2', gridRow: '5', height: s * 0.9, ...outside }, 'high')}
+      {cell('low', [], '1 – 18', { gridColumn: '2 / span 2', gridRow: '5', height: s * 1.1, ...outside }, 'low')}
+      {cell('even', [], 'PARI', { gridColumn: '4 / span 2', gridRow: '5', height: s * 1.1, ...outside }, 'even')}
+      {cell('red', [], '◆', { gridColumn: '6 / span 2', gridRow: '5', height: s * 1.1, ...outside, color: '#e23a3a', fontSize: s * 0.6 }, 'red')}
+      {cell('black', [], '◆', { gridColumn: '8 / span 2', gridRow: '5', height: s * 1.1, ...outside, color: '#000', fontSize: s * 0.6 }, 'black')}
+      {cell('odd', [], 'DISPARI', { gridColumn: '10 / span 2', gridRow: '5', height: s * 1.1, ...outside, fontSize: s * 0.3 }, 'odd')}
+      {cell('high', [], '19 – 36', { gridColumn: '12 / span 2', gridRow: '5', height: s * 1.1, ...outside }, 'high')}
     </div>
   );
 }
@@ -776,22 +777,22 @@ function RouletteWheelPro({ result, phase, onSpin, size = 460 }: { result: numbe
 
 // Card giocatore in basso (foto + nome + CREDITO), stile del mockup; vuoto = QR.
 function PlayerChip({ no, seat, bet, h }: { no: number; seat: SeatInfo; bet: number; h: number }) {
-  const av = Math.round(h * 0.42);
+  const av = Math.round(h * 0.36);
   if (seat.playerId) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, background: 'linear-gradient(#141210,#0a0906)', border: `1.5px solid ${GOLD}77`, borderRadius: 12, padding: `${h * 0.08}px ${h * 0.1}px`, minWidth: h * 1.15, boxShadow: '0 4px 14px #0007' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: h * 0.02, background: 'linear-gradient(#141210,#0a0906)', border: `1.5px solid ${GOLD}77`, borderRadius: 12, padding: `${h * 0.06}px ${h * 0.05}px`, width: '100%', overflow: 'hidden', boxShadow: '0 4px 14px #0007' }}>
         <div style={{ position: 'relative' }}>
           <PlayerAvatar nickname={seat.nickname ?? '?'} avatarUrl={seat.avatarUrl} size={av} ring={GOLD} />
           {bet > 0 && <span style={{ position: 'absolute', top: -4, right: -8, background: GOLD, color: '#1a1205', fontWeight: 900, fontSize: av * 0.3, padding: '1px 6px', borderRadius: 9, border: '2px solid #0a0906' }}>{bet}</span>}
         </div>
-        <div style={{ fontWeight: 800, fontSize: h * 0.17, maxWidth: h * 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{seat.nickname}</div>
-        <div style={{ fontSize: h * 0.1, letterSpacing: '0.12em', color: GOLD, opacity: 0.85, textTransform: 'uppercase' }}>Credito</div>
+        <div style={{ fontWeight: 800, fontSize: h * 0.155, width: '100%', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{seat.nickname}</div>
+        <div style={{ fontSize: h * 0.092, letterSpacing: '0.1em', color: GOLD, opacity: 0.85, textTransform: 'uppercase' }}>Credito</div>
         <div style={{ fontWeight: 900, fontSize: h * 0.2, fontVariantNumeric: 'tabular-nums' }}>{(seat.balance ?? 0).toLocaleString('it-IT')}</div>
       </div>
     );
   }
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, background: 'linear-gradient(#141210,#0a0906)', border: `1.5px solid ${GOLD}44`, borderRadius: 12, padding: `${h * 0.08}px ${h * 0.1}px`, minWidth: h * 1.15 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, background: 'linear-gradient(#141210,#0a0906)', border: `1.5px solid ${GOLD}44`, borderRadius: 12, padding: `${h * 0.08}px ${h * 0.06}px`, width: '100%' }}>
       <div style={{ background: '#fff', padding: 4, borderRadius: 8 }}><QRCodeSVG value={`${ORIGIN}gestione/casino?seat=${seat.code}`} size={av} /></div>
       <div style={{ fontSize: h * 0.14, fontWeight: 800, opacity: 0.7 }}>Posto {no}</div>
       <div style={{ fontSize: h * 0.1, opacity: 0.45 }}>scansiona</div>
@@ -859,11 +860,15 @@ function RouletteTableView({ displayCode }: { displayCode: string }) {
   for (const b of t.bets) { const k = spotOf(b.kind, b.numbers); (betsBySpot[k] ??= []).push({ seatNo: b.seatNo, amount: b.amount }); }
   const seatNos = Object.keys(t.seats).map(Number).sort((a, b) => a - b);
   const resultN = t.phase !== 'betting' ? t.result?.number ?? null : null;
-  // Budget verticale: header + giocatori in basso, poi ruota e tappeto riempiono.
-  const playerH = Math.round(Math.min(150, Math.max(92, vh * 0.17)));
-  const availH = Math.max(260, vh - playerH - 150);
-  const wheelSize = Math.round(Math.min(600, Math.max(260, Math.min(vw * 0.36, availH))));
-  const feltS = Math.min(78, Math.max(22, Math.floor(Math.min((vw - wheelSize - 120) / 15, availH / 5.2))));
+  // Budget: giocatori in basso + header; la ruota e il TAPPETO GRANDE riempiono.
+  const playerH = Math.round(Math.min(172, Math.max(104, vh * 0.19)));
+  const availH = Math.max(280, vh - playerH - 110);
+  const logoH = Math.round(Math.min(116, Math.max(54, vw / 14)));
+  const wheelSize = Math.round(Math.min(560, Math.max(260, Math.min(vw * 0.33, availH))));
+  const feltAreaW = vw - wheelSize - 70;       // larghezza disponibile per il tappeto
+  const feltAreaH = availH - logoH - 10;       // altezza sotto banner/logo
+  // 14.6 colonne in larghezza, ~6.3 righe in altezza
+  const feltS = Math.min(84, Math.max(24, Math.floor(Math.min(feltAreaW / 15.2, feltAreaH / 6.3))));
   const histD = Math.round(Math.min(40, Math.max(26, wheelSize * 0.07)));
   const spin = async () => { if (spinning.current || t.phase !== 'betting') return; spinning.current = true; try { await api(`/gestione/casino/table/spin`, { displayCode }); } finally { setTimeout(() => (spinning.current = false), 1200); } };
 
@@ -881,11 +886,11 @@ function RouletteTableView({ displayCode }: { displayCode: string }) {
           </div>
           {/* Destra: header (banner + logo) + tappeto attaccato alla ruota */}
           <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, gap: 'clamp(8px,1vw,14px)' }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, height: logoH }}>
               <div style={{ flex: 1, display: 'flex', justifyContent: 'center', paddingTop: 4 }}>
-                <Banner text={t.phase === 'betting' ? 'FAI LA TUA PUNTATA' : `È USCITO IL ${resultN}`} big={Math.min(30, Math.max(16, vw / 52))} />
+                <Banner text={t.phase === 'betting' ? 'FAI LA TUA PUNTATA' : `È USCITO IL ${resultN}`} big={Math.min(34, Math.max(18, vw / 44))} />
               </div>
-              <CasinoBrandMark h={Math.min(100, Math.max(50, vw / 15))} />
+              <CasinoBrandMark h={logoH} />
             </div>
             <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-start', alignItems: 'center', minHeight: 0, overflow: 'hidden' }}>
               <RouletteFelt betsBySpot={betsBySpot} s={feltS} result={resultN} />
@@ -893,9 +898,9 @@ function RouletteTableView({ displayCode }: { displayCode: string }) {
           </div>
         </div>
 
-        {/* Basso: giocatori (foto + credito) */}
-        <div style={{ display: 'flex', gap: 'clamp(6px,0.7vw,12px)', justifyContent: 'center', alignItems: 'stretch', flexShrink: 0, height: playerH, overflowX: 'auto' }}>
-          {seatNos.map(no => <PlayerChip key={no} no={no} seat={t.seats[String(no)]!} bet={st.betsBySeat[String(no)] ?? 0} h={playerH} />)}
+        {/* Basso: giocatori (foto + credito) a tutta larghezza */}
+        <div style={{ display: 'flex', gap: 'clamp(5px,0.6vw,10px)', justifyContent: 'stretch', alignItems: 'stretch', flexShrink: 0, height: playerH }}>
+          {seatNos.map(no => <div key={no} style={{ flex: '1 1 0', minWidth: 0, display: 'flex' }}><PlayerChip no={no} seat={t.seats[String(no)]!} bet={st.betsBySeat[String(no)] ?? 0} h={playerH} /></div>)}
         </div>
       </div>
     </div>
