@@ -247,85 +247,202 @@ function BigRow({ p, i, vw }: { p: Player; i: number; vw: number }) {
 }
 
 // ══════════════════ MASTER ══════════════════
+// ══════════════════ MASTER — REGIA (canvas fisso 1672×941, fedele al mockup) ══════
+const REGIA_CSS = `
+.regia-root{position:fixed;inset:0;background:#03140a;display:grid;place-items:center;overflow:hidden;color:#fff;
+  --serif:"Baskerville Casino",Georgia,serif;--gold:#f3c95f;--g1:#fff2bf;--g2:#f3c95f;--g3:#c88a2c;--g4:#7a4d12;--cream:#f4ead3;}
+.regia-root *{box-sizing:border-box;margin:0;}
+.regia-root .stage{position:relative;width:1672px;height:941px;transform-origin:center center;font-family:var(--serif);
+  background:radial-gradient(ellipse 1200px 760px at 836px 300px,#0a5a25 0%,#043f17 44%,#022a0e 78%,#01210a 100%);}
+.regia-root .abs{position:absolute;}
+.regia-root .corner{position:absolute;pointer-events:none;}
+/* header */
+.regia-root .logo{left:42px;top:14px;height:104px;}
+.regia-root .vline{left:498px;top:30px;width:3px;height:74px;background:linear-gradient(#f3c95f,#8a5c18);opacity:.8;}
+.regia-root .rtitle{left:525px;top:24px;font:700 58px/1 var(--serif);letter-spacing:.01em;
+  background:linear-gradient(180deg,#fff6c8,#ffe08a 42%,#e9b24f 72%,#ffe594);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 2px 1px #000a);}
+.regia-root .rsub{left:528px;top:92px;font:400 22px/1 var(--serif);color:#e8c879;}
+.regia-root .live{right:40px;top:50px;display:flex;align-items:center;gap:14px;padding:12px 34px;border:2px solid #f3c95f;border-radius:30px;
+  background:radial-gradient(ellipse at 50% 50%,#06220f,#041a0b);box-shadow:0 0 16px rgba(243,201,95,.3),inset 0 0 12px #0008;}
+.regia-root .live b{font:700 24px/1 var(--serif);color:#ffe9a6;}
+.regia-root .dot{width:15px;height:15px;border-radius:50%;background:#2bd24a;box-shadow:0 0 12px #2bd24a;}
+/* pannelli */
+.regia-root .panel{position:absolute;top:135px;height:703px;border-radius:14px;
+  background:linear-gradient(160deg,#141209 0%,#0a0a07 55%,#07070a 100%);
+  border:2px solid #b98b38;box-shadow:0 0 0 2px #3a2708,0 0 22px rgba(243,201,95,.12),inset 0 0 0 1px rgba(255,235,160,.14),inset 0 10px 40px #0008;}
+.regia-root .panel::before{content:"";position:absolute;inset:6px;border:1px solid rgba(243,201,95,.35);border-radius:9px;pointer-events:none;}
+.regia-root .phead{position:absolute;left:0;right:0;top:18px;display:flex;flex-direction:column;align-items:center;gap:5px;}
+.regia-root .phead .ht{display:flex;align-items:center;justify-content:center;gap:12px;font:700 23px/1 var(--serif);letter-spacing:.02em;color:#ffe9a6;text-shadow:0 1px 2px #000;white-space:nowrap;}
+.regia-root .phead small{font:400 15px/1 var(--serif);color:#c8a862;letter-spacing:0;}
+.regia-root .orn{color:#c89a40;font-size:20px;opacity:.9;}
+.regia-root .pbody{position:absolute;left:18px;right:18px;top:72px;bottom:18px;display:flex;flex-direction:column;}
+.regia-root .gbtn{display:flex;align-items:center;justify-content:center;gap:10px;padding:16px;border-radius:11px;border:1px solid #f3dea0;
+  background:linear-gradient(180deg,#ffe694 0%,#f0c357 48%,#d59a34 52%,#eab74a 100%);color:#231503;font:700 20px/1 var(--serif);cursor:pointer;
+  box-shadow:0 3px 0 #7a4d12,0 6px 14px #0008,inset 0 1px 0 #fff8;text-decoration:none;white-space:nowrap;}
+.regia-root .gbtn.sm{font-size:16px;padding:16px 14px;}
+.regia-root .ghost{display:flex;align-items:center;justify-content:center;gap:9px;padding:16px 14px;border-radius:11px;border:1px solid #b98b38;
+  background:linear-gradient(#141209,#0b0b08);color:#ffe9a6;font:700 16px/1 var(--serif);cursor:pointer;}
+.regia-root .tile{position:relative;display:flex;align-items:center;gap:14px;padding:14px;border-radius:12px;margin-top:14px;
+  background:linear-gradient(#17130b,#0c0c08);border:1px solid #6e5320;}
+.regia-root .tile .thumb{width:84px;height:84px;border-radius:10px;object-fit:cover;flex:none;border:1px solid #6e5320;}
+.regia-root .tile .nm{font:700 24px/1 var(--serif);color:#f4ead3;}
+.regia-root .tile .cd{font:400 15px/1 var(--serif);color:#b9a06a;margin-top:6px;}
+.regia-root .tile .lnk{display:inline-flex;align-items:center;gap:6px;margin-top:10px;color:#f3c95f;font:700 16px/1 var(--serif);text-decoration:none;}
+.regia-root .tile .big{position:absolute;right:16px;top:50%;transform:translateY(-50%);font:700 30px/1 var(--serif);color:#ffe9a6;}
+.regia-root .coins{width:104px;height:99px;object-fit:contain;margin:10px auto 0;display:block;}
+.regia-root .fiches{text-align:center;font:700 86px/1 var(--serif);color:#ffe49a;filter:drop-shadow(0 2px 2px #000a);}
+.regia-root .fiches-l{text-align:center;font:700 26px/1 var(--serif);color:#f4ead3;margin-top:6px;}
+.regia-root .fiches-s{text-align:center;font:400 16px/1 var(--serif);color:#9c8a5e;margin-top:6px;}
+.regia-root .divorn{display:flex;align-items:center;justify-content:center;gap:12px;color:#8a6a2a;margin:16px 0 8px;}
+.regia-root .divorn::before,.regia-root .divorn::after{content:"";height:1px;width:64px;background:linear-gradient(90deg,transparent,#8a6a2a);}
+.regia-root .qrlbl{text-align:center;font:400 16px/1 var(--serif);color:#c8a862;}
+.regia-root .qrbox{background:#fff;padding:10px;border-radius:12px;box-shadow:0 0 0 2px #f3c95f,0 0 16px rgba(243,201,95,.4);}
+.regia-root .code{text-align:center;font:700 30px/1 var(--serif);letter-spacing:.22em;color:#ffe9a6;margin-top:12px;}
+.regia-root .regcode{text-align:center;font:400 15px/1 var(--serif);color:#b9a06a;margin-top:12px;}
+.regia-root .regcode b{color:#f3c95f;letter-spacing:.14em;}
+.regia-root .trophy{width:184px;display:block;margin:34px auto 0;}
+.regia-root .empty1{text-align:center;font:700 44px/1 var(--serif);color:#f4ead3;margin-top:24px;}
+.regia-root .empty2{text-align:center;font:400 20px/1.4 var(--serif);color:#9c8a5e;margin-top:20px;}
+.regia-root .footer{position:absolute;left:0;right:0;bottom:16px;text-align:center;font:700 20px/1 var(--serif);color:#c8a862;letter-spacing:.03em;}
+.regia-root .srow{display:flex;flex-direction:column;gap:5px;overflow-y:auto;margin-top:8px;}
+.regia-root .srank{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:9px;background:#ffffff08;}
+.regia-root .srank .n{width:26px;font:700 17px/1 var(--serif);color:#f3c95f;}
+.regia-root .srank .nm{flex:1;font:700 18px/1 var(--serif);color:#f4ead3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.regia-root .srank .v{font:700 19px/1 var(--serif);color:#ffe9a6;}
+`;
+
 function MasterView({ sessionId }: { sessionId: string }) {
   const state = useCasinoState(sessionId);
   const [busy, setBusy] = useState(false);
   const [showDealerQr, setShowDealerQr] = useState(false);
-  const addTable = async () => { setBusy(true); try { await api(`/gestione/casino/sessions/${sessionId}/tables`, {}); } finally { setBusy(false); } };
-  if (!state) return <Center>Carico…</Center>;
+  const [gts, setGts] = useState<GameTableState['table'][]>([]);
+  const [dim, setDim] = useState({ w: typeof window !== 'undefined' ? window.innerWidth : 1280, h: typeof window !== 'undefined' ? window.innerHeight : 800 });
+  useEffect(() => { const r = () => setDim({ w: window.innerWidth, h: window.innerHeight }); window.addEventListener('resize', r); return () => window.removeEventListener('resize', r); }, []);
+  const loadGts = useCallback(() => fetch(`${API}/gestione/casino/sessions/${sessionId}/game-tables`).then(r => r.ok ? r.json() : null).then(d => { if (d) setGts(d.tables); }).catch(() => {}), [sessionId]);
+  useEffect(() => { loadGts(); const t = setInterval(loadGts, 3000); return () => clearInterval(t); }, [loadGts]);
 
-  // Primo ingresso: nessun tavolo ⇒ wizard "quanti dealer + fiche iniziali".
+  const AB = (import.meta.env.BASE_URL as string) || '/';
+  const addTable = async () => { setBusy(true); try { await api(`/gestione/casino/sessions/${sessionId}/tables`, {}); } finally { setBusy(false); } };
+  const addRoulette = async () => { setBusy(true); try { await api(`/gestione/casino/sessions/${sessionId}/game-tables`, { type: 'roulette', seats: 10 }); await loadGts(); } finally { setBusy(false); } };
+
+  if (!state) return <Center>Carico…</Center>;
   if (state.tables.length === 0) return <SetupWizard sessionId={sessionId} />;
 
-  const tvUrl = state.tvCode ? `${ORIGIN}gestione/casino?code=${state.tvCode}` : '';
+  const scale = Math.min(dim.w / 1672, dim.h / 941);
+  const tvUrl = state.tvCode ? `${ORIGIN}gestione/casino?code=${state.tvCode}` : `${ORIGIN}gestione/casino?code=${state.session.joinCode}`;
+  const H = (t: string) => <div className="phead"><div className="ht"><span className="orn">❧</span>{t}<span className="orn" style={{ transform: 'scaleX(-1)' }}>❧</span></div></div>;
+
   return (
-    <Shell>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
-        <div><CasinoWordmark size={34} /><div style={{ opacity: 0.55, fontSize: 14, marginTop: 4 }}>{state.session.name} · Regia Master</div></div>
-        <BrandBar h={24} />
-      </div>
+    <div className="regia-root">
+      <style>{REGIA_CSS}</style>
+      <main className="stage" style={{ transform: `scale(${scale})` }}>
+        {/* decori angoli */}
+        <img className="corner" src={`${AB}casino/regia/corner-tr.png`} style={{ right: 0, top: 0, width: 186 }} alt="" />
+        <img className="corner" src={`${AB}casino/regia/corner-bl.png`} style={{ left: 0, bottom: 0, width: 208 }} alt="" />
+        <img className="corner" src={`${AB}casino/regia/corner-br.png`} style={{ right: 0, bottom: 0, width: 210 }} alt="" />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,320px),1fr))', gap: 20 }}>
-        <Card title="Cassa & accessi">
-          <div style={{ textAlign: 'center', padding: '6px 0' }}>
-            <div style={{ fontSize: 'clamp(40px,6vw,72px)', fontWeight: 900, color: GOLD, fontVariantNumeric: 'tabular-nums' }}><AnimatedNumber value={state.cassaTotale} /></div>
-            <div style={{ opacity: 0.5 }}>fiche in gioco · {state.players.length} giocatori · start {state.startFish}</div>
+        {/* header */}
+        <img className="abs logo" src={`${AB}casino/logo-placeholder.jpg`} alt="IDEA EVENTI CASINÒ" />
+        <div className="abs vline" />
+        <div className="abs rtitle">REGIA MASTER</div>
+        <div className="abs rsub">Gestione della serata</div>
+        <div className="abs live"><span className="dot" /><b>Serata attiva</b></div>
+
+        {/* P1 CASSA & ACCESSI */}
+        <div className="panel" style={{ left: 20, width: 392 }}>
+          {H('CASSA & ACCESSI')}
+          <div className="pbody">
+            <img className="coins" src={`${AB}casino/regia/coins.png`} alt="" />
+            <div className="fiches"><AnimatedNumber value={state.cassaTotale} /></div>
+            <div className="fiches-l">Fiches in gioco</div>
+            <div className="fiches-s">{state.players.length} giocatori · Credito iniziale {state.startFish}</div>
+            <a className="gbtn" href={tvUrl} target="_blank" rel="noreferrer" style={{ marginTop: 18 }}>🖥️ Apri TV e classifica ↗</a>
+            <div className="divorn" />
+            <div className="qrlbl">QR iscrizione giocatori</div>
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}><div className="qrbox"><QRCodeSVG value={`${ORIGIN}gestione/casino?code=${state.session.joinCode}`} size={132} /></div></div>
+            <div className="code">{state.session.joinCode}</div>
+            <div className="regcode">🔑 Codice regia (per rientrare): <b>{state.session.masterCode}</b></div>
           </div>
-          {tvUrl && (
-            <a href={tvUrl} target="_blank" rel="noreferrer" style={{ ...btn(GOLD), display: 'block', textAlign: 'center', textDecoration: 'none', marginTop: 12 }}>📺 Apri la TV (QR + classifica) ↗</a>
-          )}
-          <div style={{ marginTop: 10, textAlign: 'center', background: '#ffffff0a', borderRadius: 12, padding: 12 }}>
-            <div style={{ fontSize: 12, opacity: 0.5 }}>QR iscrizione giocatori</div>
-            <div style={{ background: '#fff', display: 'inline-block', padding: 8, borderRadius: 10, margin: '8px 0' }}>
-              <QRCodeSVG value={`${ORIGIN}gestione/casino?code=${state.session.joinCode}`} size={120} />
+        </div>
+
+        {/* P2 TAVOLI & DEALER */}
+        <div className="panel" style={{ left: 430, width: 438 }}>
+          {H(`TAVOLI & DEALER (${state.tables.length})`)}
+          <div className="pbody">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <button className="gbtn sm" onClick={addTable} disabled={busy}>＋ Aggiungi tavolo</button>
+              <button className="ghost" onClick={() => setShowDealerQr(s => !s)}>▦ {showDealerQr ? 'Nascondi QR' : 'Mostra QR dealer'}</button>
             </div>
-            <div style={{ fontSize: 24, fontWeight: 900, letterSpacing: '0.2em', color: GOLD }}>{state.session.joinCode}</div>
-          </div>
-          <div style={{ marginTop: 10, textAlign: 'center', fontSize: 12, opacity: 0.6 }}>
-            🔑 Codice regia (per rientrare): <b style={{ color: GOLD, letterSpacing: '0.15em' }}>{state.session.masterCode}</b>
-          </div>
-        </Card>
-
-        <Card title={`Tavoli & dealer (${state.tables.length})`}>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-            <button onClick={addTable} disabled={busy} style={{ ...btn(GOLD), flex: 1 }}>+ Aggiungi tavolo</button>
-            <button onClick={() => setShowDealerQr(s => !s)} style={{ ...btn('#ffffff22') }}>{showDealerQr ? 'Nascondi QR' : '📷 Mostra QR dealer'}</button>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {state.tables.map(t => {
-              const pt = state.perTable.find(x => x.tableId === t.id);
-              return (
-                <div key={t.id} style={{ display: 'flex', gap: 12, alignItems: 'center', background: '#ffffff0a', borderRadius: 12, padding: 10 }}>
-                  {showDealerQr && (
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: 9, opacity: 0.5, marginBottom: 2 }}>QR DEALER</div>
-                      <div style={{ background: '#fff', padding: 4, borderRadius: 8 }}>
-                        <QRCodeSVG value={`${ORIGIN}gestione/casino?code=${t.dealerCode}`} size={56} />
-                      </div>
-                    </div>
-                  )}
+            <div style={{ overflowY: 'auto', marginTop: 2 }}>
+              {state.tables.map(t => { const pt = state.perTable.find(x => x.tableId === t.id); return (
+                <div className="tile" key={t.id}>
+                  {showDealerQr
+                    ? <div style={{ background: '#fff', padding: 5, borderRadius: 8, flex: 'none' }}><QRCodeSVG value={`${ORIGIN}gestione/casino?code=${t.dealerCode}`} size={74} /></div>
+                    : <img className="thumb" src={`${AB}casino/regia/table.png`} alt="" />}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 800 }}>{t.name}</div>
-                    <div style={{ fontSize: 12, opacity: 0.5 }}>codice {t.dealerCode} · {pt?.players ?? 0} giocatori</div>
-                    <a href={`${ORIGIN}gestione/casino?code=${t.dealerCode}`} target="_blank" rel="noreferrer"
-                      style={{ display: 'inline-block', marginTop: 4, color: GOLD, fontSize: 13, fontWeight: 800 }}>🎰 Apri banco dealer ↗</a>
+                    <div className="nm">{t.name}</div>
+                    <div className="cd">Codice {t.dealerCode} · {pt?.players ?? 0} giocatori</div>
+                    <a className="lnk" href={`${ORIGIN}gestione/casino?code=${t.dealerCode}`} target="_blank" rel="noreferrer">🎰 Apri banco dealer ↗</a>
                   </div>
-                  <div style={{ fontWeight: 900, color: GOLD }}>{pt?.total ?? 0}</div>
+                  <div className="big">{pt?.total ?? 0}</div>
                 </div>
-              );
-            })}
+              ); })}
+            </div>
           </div>
-        </Card>
+        </div>
 
-        <GameTablesCard sessionId={sessionId} />
+        {/* P3 TAVOLI DA GIOCO */}
+        <div className="panel" style={{ left: 878, width: 392 }}>
+          <div className="phead"><div className="ht"><span className="orn">❧</span>TAVOLI DA GIOCO<span className="orn" style={{ transform: 'scaleX(-1)' }}>❧</span></div><small>Schermi 80 pollici</small></div>
+          <div className="pbody" style={{ top: 78 }}>
+            <button className="gbtn" onClick={addRoulette} disabled={busy}>＋ Nuovo tavolo Roulette</button>
+            <div style={{ overflowY: 'auto', marginTop: 2 }}>
+              {gts.map(g => (
+                <div className="tile" key={g.id}>
+                  <img className="thumb" src={`${AB}casino/regia/roulette.png`} alt="" />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="nm">{g.name}</div>
+                    <div className="cd">{Object.keys(g.seats).length} postazioni · Codice {g.displayCode}</div>
+                    <a className="lnk" href={`${ORIGIN}gestione/casino?table=${g.displayCode}`} target="_blank" rel="noreferrer">🖥️ Apri sul maxi-schermo ↗</a>
+                  </div>
+                </div>
+              ))}
+              {gts.length === 0 && <div style={{ color: '#9c8a5e', textAlign: 'center', marginTop: 40, font: '400 18px var(--serif)' }}>Crea una roulette e aprila sull'80″.</div>}
+            </div>
+          </div>
+        </div>
 
-        <Card title="Classifica serata">
-          <PlayersList players={state.standings} />
-        </Card>
-      </div>
-    </Shell>
+        {/* P4 CLASSIFICA SERATA */}
+        <div className="panel" style={{ left: 1282, width: 370 }}>
+          {H('CLASSIFICA SERATA')}
+          <div className="pbody">
+            {state.standings.length === 0 ? (
+              <>
+                <img className="trophy" src={`${AB}casino/regia/trophy.png`} alt="" />
+                <div className="empty1">Nessun giocatore</div>
+                <div className="divorn" />
+                <div className="empty2">La classifica apparirà<br />con i primi iscritti</div>
+              </>
+            ) : (
+              <div className="srow">
+                {state.standings.map((p, i) => (
+                  <div className="srank" key={p.id}>
+                    <span className="n">{i + 1}</span>
+                    <span className="nm">{p.nickname}</span>
+                    <span className="v">{p.fishBalance.toLocaleString('it-IT')}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="footer">❧&nbsp;&nbsp;IDEA EVENTI CASINÒ · Pannello di controllo&nbsp;&nbsp;❧</div>
+      </main>
+    </div>
   );
 }
+
 
 // Banco "Tavoli": crea tavoli da gioco interattivi (roulette) per l'80".
 function GameTablesCard({ sessionId }: { sessionId: string }) {
@@ -860,7 +977,8 @@ const RT_CSS = `
 .rt-root .felt-line2{left:0;top:750px;width:1672px;height:1px;background:#bcb54b;opacity:.8;}
 .rt-root .wheel-frame{left:0;top:0;width:660px;height:705px;background:url(${A_}casino/wheel-frame.jpg) 0 0 / 660px 705px no-repeat;-webkit-mask:radial-gradient(circle at 298px 338px,#000 352px,transparent 370px);mask:radial-gradient(circle at 298px 338px,#000 352px,transparent 370px);}
 .rt-root .rotor{left:55px;top:95px;width:486px;height:486px;}
-.rt-root .rotor g.spin{transform-origin:0 0;transition:transform 6s cubic-bezier(.12,.7,.18,1);}
+.rt-root .rotor g.spin{transform-box:view-box;transform-origin:0 0;transition:transform 6s cubic-bezier(.12,.7,.18,1);}
+.rt-root .rotor g.ball{transform-box:view-box;transform-origin:0 0;transition:transform 6s cubic-bezier(.1,.6,.2,1);filter:drop-shadow(0 1px 2px #000a);}
 .rt-root .rotor text{font:700 25px var(--serif);fill:#fff;text-anchor:middle;dominant-baseline:central;}
 .rt-root .title{left:605px;top:46px;width:657px;height:78px;border-radius:40px;border:4px solid #f6cf72;background:radial-gradient(ellipse 70% 120% at 50% 50%,#000d04 0%,#00140a 60%,#052e17 100%);box-shadow:0 0 0 1px #6b4a17,0 0 18px rgba(255,210,120,.35),inset 0 0 0 2px rgba(0,0,0,.6),inset 0 0 14px rgba(255,220,140,.25);display:flex;align-items:center;justify-content:center;gap:22px;}
 .rt-root .title h1{font:700 47px/1 var(--serif);letter-spacing:-.012em;white-space:nowrap;transform:scaleX(.84);background:linear-gradient(180deg,#fff6c8 0%,#ffe08a 40%,#e9b24f 72%,#ffe594 100%);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 2px 1px rgba(0,0,0,.8));margin:0 -44px;}
@@ -903,6 +1021,7 @@ function RouletteTableView({ displayCode }: { displayCode: string }) {
   const [dim, setDim] = useState({ w: typeof window !== 'undefined' ? window.innerWidth : 1280, h: typeof window !== 'undefined' ? window.innerHeight : 800 });
   const spinning = useRef(false);
   const spinG = useRef<SVGGElement | null>(null);
+  const ballG = useRef<SVGGElement | null>(null);
   const turns = useRef(0);
   const prevRes = useRef<number | null>(null);
 
@@ -940,17 +1059,18 @@ function RouletteTableView({ displayCode }: { displayCode: string }) {
     g.innerHTML = svg;
   }, []);
 
-  // Gira la ruota sul numero uscito (sequenza reale → la pallina cade sul numero).
-  const resultN = st && st.table.phase !== 'betting' ? st.table.result?.number ?? null : null;
-  useEffect(() => {
-    if (resultN == null || resultN === prevRes.current) return;
-    prevRes.current = resultN;
-    const g = spinG.current; if (!g) return;
-    const i = WHEEL_SEQ.indexOf(resultN); if (i < 0) return;
+  // Gira ruota + pallina e ferma sul numero uscito (sequenza europea reale).
+  const spinWheel = useCallback((n: number) => {
+    const i = WHEEL_SEQ.indexOf(n); if (i < 0) return;
+    prevRes.current = n;
     turns.current += 6;
     const SEG = 360 / WHEEL_SEQ.length;
-    g.style.transform = `rotate(${-(turns.current * 360 + i * SEG)}deg)`;
-  }, [resultN]);
+    if (spinG.current) spinG.current.style.transform = `rotate(${-(turns.current * 360 + i * SEG)}deg)`;
+    if (ballG.current) ballG.current.style.transform = `rotate(${turns.current * 360 * 2}deg)`; // orbita opposta, si ferma in alto (sul numero)
+  }, []);
+  // Sync fra schermi: se il risultato arriva dal poll (altro display), gira comunque.
+  const resultN = st && st.table.phase !== 'betting' ? st.table.result?.number ?? null : null;
+  useEffect(() => { if (resultN != null && resultN !== prevRes.current) spinWheel(resultN); }, [resultN, spinWheel]);
 
   if (!st) return <Center>Carico il tavolo…</Center>;
   const t = st.table;
@@ -962,7 +1082,14 @@ function RouletteTableView({ displayCode }: { displayCode: string }) {
   const winOut = (kind: string) => resultN != null && spotWinsOutside(kind, resultN);
   const seats = t.seats;
   const scale = Math.min(dim.w / 1672, dim.h / 941);
-  const spin = async () => { if (spinning.current || t.phase !== 'betting') return; spinning.current = true; try { await api(`/gestione/casino/table/spin`, { displayCode }); } finally { setTimeout(() => (spinning.current = false), 1200); } };
+  const spin = async () => {
+    if (spinning.current || t.phase !== 'betting') return;
+    spinning.current = true;
+    try {
+      const r = await api(`/gestione/casino/table/spin`, { displayCode });
+      if (r && r.ok && typeof r.number === 'number') spinWheel(r.number); // gira SUBITO sul numero del server
+    } finally { setTimeout(() => (spinning.current = false), 6500); }
+  };
   const hist = t.history.slice(0, 10);
 
   return (
@@ -980,6 +1107,7 @@ function RouletteTableView({ displayCode }: { displayCode: string }) {
             <linearGradient id="goldBand" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#ffefb5" /><stop offset=".35" stopColor="#e2b057" /><stop offset=".6" stopColor="#a86c22" /><stop offset="1" stopColor="#f1c96c" /></linearGradient>
           </defs>
           <g className="spin" ref={spinG} />
+          <g className="ball" ref={ballG}><circle cx="0" cy="-223" r="9" fill="#fff" stroke="#9a9a9a" strokeWidth="1" /><circle cx="-3" cy="-226" r="3" fill="#fff" opacity="0.85" /></g>
         </svg>
 
         <div className="abs title"><img src={`${A_}casino/flourish-l.png`} alt="" /><h1>{t.phase === 'betting' ? 'FAI LA TUA PUNTATA' : `È USCITO IL ${resultN}`}</h1><img src={`${A_}casino/flourish-r.png`} alt="" /></div>
