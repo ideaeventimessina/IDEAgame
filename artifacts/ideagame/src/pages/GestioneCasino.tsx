@@ -69,10 +69,7 @@ export default function GestioneCasino() {
 const SEAT_COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#eab308', '#a855f7', '#ec4899', '#14b8a6', '#f97316'];
 const seatColor = (n: number) => SEAT_COLORS[(n - 1) % SEAT_COLORS.length];
 const RED_NUMS = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
-// Ordine reale della ruota (immagine Blender): 0 in alto, senso orario. Serve per
-// far cadere la pallina sul numero sorteggiato.
-const WHEEL_ORDER = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
-const numColor = (n: number) => n === 0 ? '#1f8a4c' : RED_NUMS.has(n) ? '#cc1f2d' : '#1a1a1a';
+const numColor = (n: number) => n === 0 ? '#00711e' : RED_NUMS.has(n) ? '#c70209' : '#121212';
 // Tappeto europeo: 3 righe × 12 colonne (alto 3,6,9…; medio 2,5,8…; basso 1,4,7…).
 const FELT_ROWS = [
   [3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36],
@@ -660,15 +657,16 @@ function RouletteFelt({ betsBySpot, onPlace, s = 46, result }: { betsBySpot: Rec
     const hit = result != null && (numbers.length ? numbers.includes(result) : spotWinsOutside(kind, result));
     return (
       <button key={key} onClick={onPlace ? () => onPlace(kind, numbers) : undefined}
-        style={{ position: 'relative', border: '1px solid #ffffff2e', color: '#fff', fontWeight: 800, fontFamily: 'inherit', cursor: onPlace ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', outline: hit ? `3px solid ${GOLD}` : 'none', outlineOffset: -2, boxShadow: hit ? `0 0 ${s * 0.4}px ${GOLD}` : 'none', ...style }}>
+        style={{ position: 'relative', border: `1px solid ${GOLD}66`, color: '#fff', fontWeight: 800, fontFamily: 'inherit', cursor: onPlace ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', outline: hit ? `3px solid ${GOLD}` : 'none', outlineOffset: -2, boxShadow: hit ? `0 0 ${s * 0.4}px ${GOLD}` : 'none', ...style }}>
         {label}
         <ChipStack bets={betsBySpot[spot] ?? []} s={s} />
       </button>
     );
   };
-  const outside: React.CSSProperties = { background: '#0b5e32', fontSize: s * 0.34 };
+  // Le caselle esterne hanno lo stesso verde del tappeto (come nel mockup).
+  const outside: React.CSSProperties = { background: 'transparent', fontSize: s * 0.34 };
   return (
-    <div style={{ display: 'inline-grid', gridTemplateColumns: `${s * 1.15}px repeat(12, ${s}px) ${s * 1.3}px`, gridAutoRows: 'min-content', background: 'radial-gradient(ellipse at 50% 35%, #1f9150, #0a4f2a 75%)', padding: s * 0.2, borderRadius: s * 0.28, border: `${Math.max(3, s * 0.1)}px solid ${GOLD}`, boxShadow: `0 24px 70px #000b, inset 0 0 ${s}px #0006` }}>
+    <div style={{ display: 'inline-grid', gridTemplateColumns: `${s * 1.15}px repeat(12, ${s}px) ${s * 1.3}px`, gridAutoRows: 'min-content', background: 'radial-gradient(ellipse at 50% 40%, #0a7a26, #005417 92%)', padding: s * 0.22, borderRadius: s * 0.26, border: `${Math.max(3, s * 0.11)}px solid ${GOLD}`, boxShadow: `0 24px 70px #000b, inset 0 0 ${s * 0.8}px #0005` }}>
       {/* 0 */}
       {cell('straight', [0], <span style={{ fontSize: s * 0.56 }}>0</span>, { gridColumn: '1', gridRow: '1 / span 3', background: numColor(0) }, 'z0')}
       {/* numeri */}
@@ -717,20 +715,18 @@ function RouletteWheelPro({ result, phase, onSpin, size = 460 }: { result: numbe
   const drag = useRef<{ on: boolean; last: number; acc: number }>({ on: false, last: 0, acc: 0 });
   const [showResult, setShowResult] = useState(false);
 
-  // Ruota Blender con numeri in ordine reale: giro + atterraggio PRECISO sul numero
-  // sorteggiato (0 in alto, senso orario) → la pallina cade sulla casella giusta.
-  const STEP = 360 / 37;
+  // Ruota = immagine del mockup (look identico). Gira tanti giri e si ferma; il
+  // NUMERO autentico (RNG server) è mostrato al centro e illuminato sul tappeto.
   useEffect(() => {
     if (phase === 'betting') { setShowResult(false); return; }
     if (result == null || result === prev.current) return;
     prev.current = result;
     setShowResult(false);
-    const i = WHEEL_ORDER.indexOf(result);
     const cur = rotate.get();
-    const target = (Math.floor(cur / 360) + 6) * 360 - i * STEP; // 6 giri, poi casella in cima
+    const target = cur + 360 * 6 + Math.floor(Math.random() * 360);
     animate(rotate, target, { duration: 4.6, ease: [0.16, 0.73, 0.12, 1], onComplete: () => setShowResult(true) });
-    animate(ballRot, ballRot.get() - 360 * 9, { duration: 4.6, ease: [0.2, 0.7, 0.2, 1] }); // la pallina torna in cima
-  }, [result, phase, rotate, ballRot, STEP]);
+    animate(ballRot, ballRot.get() - (360 * 9 + Math.random() * 280), { duration: 4.6, ease: [0.2, 0.7, 0.2, 1] });
+  }, [result, phase, rotate, ballRot]);
 
   const angleAt = (cx: number, cy: number) => {
     const r = boxRef.current!.getBoundingClientRect();
