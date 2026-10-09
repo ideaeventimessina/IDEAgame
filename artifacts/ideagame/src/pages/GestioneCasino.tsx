@@ -877,10 +877,10 @@ function FixedFelt({ betsBySpot, resultN }: { betsBySpot: Record<string, { seatN
   return (
     <div style={{ position: 'relative', width: FELT_W, height: FELT_H, border: `7px solid ${GOLD}`, borderRadius: 14, background: 'radial-gradient(ellipse at 50% 35%, #05581d, #023e14 92%)', boxShadow: '0 20px 60px #000a, inset 0 0 40px #0006' }}>
       {/* 0 inclinato */}
-      <div style={{ ...cellBase, left: 0, top: F_ROWTOP, width: F_PADL, height: F_NUMH * 3, background: numColor(0), clipPath: 'polygon(28% 0,100% 0,100% 100%,28% 100%,0 50%)', borderRadius: '8px 0 0 8px', fontSize: 52, ...glow(hitOf('n:0', [0])) }}>0</div>
+      <div style={{ ...cellBase, left: 0, top: F_ROWTOP, width: F_PADL, height: F_NUMH * 3, background: numColor(0), clipPath: 'polygon(28% 0,100% 0,100% 100%,28% 100%,0 50%)', borderRadius: '8px 0 0 8px', fontSize: 46, ...glow(hitOf('n:0', [0])) }}>0</div>
       {/* numeri */}
       {FELT_ROWS.map((row, r) => row.map((n, c) => (
-        <div key={n} style={{ ...cellBase, left: F_PADL + c * F_NUMW, top: F_ROWTOP + r * F_NUMH, width: F_NUMW, height: F_NUMH, background: numColor(n), fontSize: 46, ...glow(hitOf('n:' + n, [n])) }}>{n}</div>
+        <div key={n} style={{ ...cellBase, left: F_PADL + c * F_NUMW, top: F_ROWTOP + r * F_NUMH, width: F_NUMW, height: F_NUMH, background: numColor(n), fontSize: 40, ...glow(hitOf('n:' + n, [n])) }}>{n}</div>
       )))}
       {/* 2:1 */}
       {['col3', 'col2', 'col1'].map((k, r) => <div key={k} style={{ ...cellBase, left: F_2X, top: F_ROWTOP + r * F_NUMH, width: F_2W, height: F_NUMH, background: 'transparent', fontSize: 24 }}>2:1</div>)}
@@ -950,7 +950,7 @@ function RouletteTableView({ displayCode }: { displayCode: string }) {
           <CasinoBrandMark h={150} serif />
         </div>
         {/* TAPPETO */}
-        <div style={{ position: 'absolute', left: 655, top: 250 }}>
+        <div style={{ position: 'absolute', left: 636, top: 236 }}>
           <FixedFelt betsBySpot={betsBySpot} resultN={resultN} />
         </div>
         {/* GIOCATORI */}
