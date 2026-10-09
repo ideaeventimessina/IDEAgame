@@ -69,6 +69,9 @@ export default function GestioneCasino() {
 const SEAT_COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#eab308', '#a855f7', '#ec4899', '#14b8a6', '#f97316'];
 const seatColor = (n: number) => SEAT_COLORS[(n - 1) % SEAT_COLORS.length];
 const RED_NUMS = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
+// Ordine reale della ruota (immagine Blender): 0 in alto, senso orario. Serve per
+// far cadere la pallina sul numero sorteggiato.
+const WHEEL_ORDER = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
 const numColor = (n: number) => n === 0 ? '#1f8a4c' : RED_NUMS.has(n) ? '#cc1f2d' : '#1a1a1a';
 // Tappeto europeo: 3 righe × 12 colonne (alto 3,6,9…; medio 2,5,8…; basso 1,4,7…).
 const FELT_ROWS = [
@@ -714,18 +717,20 @@ function RouletteWheelPro({ result, phase, onSpin, size = 460 }: { result: numbe
   const drag = useRef<{ on: boolean; last: number; acc: number }>({ on: false, last: 0, acc: 0 });
   const [showResult, setShowResult] = useState(false);
 
-  // Ruota scenografica (immagine del mockup): gira tanti giri e si ferma a caso.
-  // Il NUMERO autentico (RNG lato server) è mostrato al centro + illuminato sul tappeto.
+  // Ruota Blender con numeri in ordine reale: giro + atterraggio PRECISO sul numero
+  // sorteggiato (0 in alto, senso orario) → la pallina cade sulla casella giusta.
+  const STEP = 360 / 37;
   useEffect(() => {
     if (phase === 'betting') { setShowResult(false); return; }
     if (result == null || result === prev.current) return;
     prev.current = result;
     setShowResult(false);
+    const i = WHEEL_ORDER.indexOf(result);
     const cur = rotate.get();
-    const target = cur + 360 * 6 + Math.floor(Math.random() * 360);
-    animate(rotate, target, { duration: 4.2, ease: [0.16, 0.73, 0.12, 1], onComplete: () => setShowResult(true) });
-    animate(ballRot, ballRot.get() - (360 * 9 + Math.random() * 300), { duration: 4.2, ease: [0.2, 0.7, 0.2, 1] });
-  }, [result, phase, rotate, ballRot]);
+    const target = (Math.floor(cur / 360) + 6) * 360 - i * STEP; // 6 giri, poi casella in cima
+    animate(rotate, target, { duration: 4.6, ease: [0.16, 0.73, 0.12, 1], onComplete: () => setShowResult(true) });
+    animate(ballRot, ballRot.get() - 360 * 9, { duration: 4.6, ease: [0.2, 0.7, 0.2, 1] }); // la pallina torna in cima
+  }, [result, phase, rotate, ballRot, STEP]);
 
   const angleAt = (cx: number, cy: number) => {
     const r = boxRef.current!.getBoundingClientRect();
