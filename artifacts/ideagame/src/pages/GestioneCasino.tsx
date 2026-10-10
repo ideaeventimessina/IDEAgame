@@ -976,6 +976,52 @@ const SERIF = "'Cinzel', Georgia, 'Times New Roman', serif";
 const A_ = (import.meta.env.BASE_URL as string) || '/';
 const WHEEL_SEQ = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
 const classOf = (n: number) => n === 0 ? 'g' : RED_NUMS.has(n) ? 'r' : 'b';
+
+// Suono della pallina che gira: ticchettio (pallina sui separatori) che rallenta +
+// rotolio di fondo, sintetizzato con Web Audio — nessun file audio esterno.
+let _actx: AudioContext | null = null;
+function playBallSpin(dur = 6) {
+  try {
+    const AC = (window as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext });
+    const Ctor = AC.AudioContext || AC.webkitAudioContext;
+    if (!Ctor) return;
+    _actx = _actx || new Ctor();
+    const ctx = _actx;
+    if (ctx.state === 'suspended') ctx.resume();
+    const t0 = ctx.currentTime;
+    // rotolio: rumore filtrato in banda, entra ed esce dolcemente
+    const bufLen = Math.ceil(ctx.sampleRate * dur);
+    const noise = ctx.createBuffer(1, bufLen, ctx.sampleRate);
+    const data = noise.getChannelData(0);
+    for (let i = 0; i < bufLen; i++) data[i] = Math.random() * 2 - 1;
+    const src = ctx.createBufferSource(); src.buffer = noise;
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1100; bp.Q.value = 0.7;
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0, t0);
+    ng.gain.linearRampToValueAtTime(0.05, t0 + 0.25);
+    ng.gain.setValueAtTime(0.05, t0 + dur * 0.6);
+    ng.gain.linearRampToValueAtTime(0, t0 + dur);
+    src.connect(bp); bp.connect(ng); ng.connect(ctx.destination);
+    src.start(t0); src.stop(t0 + dur);
+    // ticchettii deceleranti (la pallina passa i separatori sempre più lenta)
+    const master = ctx.createGain(); master.gain.value = 0.9; master.connect(ctx.destination);
+    let t = t0;
+    for (let k = 0; k < 90; k++) {
+      const p = k / 90;
+      t += 0.03 + 0.52 * Math.pow(p, 2.3); // intervallo crescente = rallentamento
+      if (t > t0 + dur) break;
+      const vol = 0.42 * (1 - p) + 0.06;
+      const o = ctx.createOscillator(); o.type = 'square';
+      o.frequency.value = 2600 - 900 * p + (Math.random() * 200 - 100);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(vol, t + 0.001);
+      g.gain.exponentialRampToValueAtTime(0.0007, t + 0.045);
+      o.connect(g); g.connect(master);
+      o.start(t); o.stop(t + 0.05);
+    }
+  } catch { /* audio non disponibile: silenzio */ }
+}
 const HIST_CHIP_X = [73, 132, 191, 249, 307, 366, 424, 481, 539, 596];
 const CARD_X = [13, 174, 339, 506, 672, 838, 1004, 1170, 1336, 1503];
 const CARD_W = [155, 160, 161, 161, 161, 161, 161, 161, 162, 156];
@@ -991,8 +1037,8 @@ const RT_CSS = `
 .rt-root .abs{position:absolute;}
 .rt-root .felt{left:-20px;top:13px;width:1682px;height:739px;border-top:3px solid var(--gold);border-right:3px solid var(--gold);border-bottom:3px solid var(--gold-muted);border-top-right-radius:70px;background:linear-gradient(90deg,#0b0906 0,#0b0906 300px,rgba(11,9,6,0) 470px),radial-gradient(ellipse 980px 640px at 1040px 230px,var(--felt-hi) 0%,var(--felt) 45%,var(--felt-lo) 82%,#012a0c 100%);box-shadow:inset 0 0 0 1px rgba(255,239,181,.08);}
 .rt-root .felt-line2{left:0;top:750px;width:1672px;height:1px;background:#bcb54b;opacity:.8;}
-.rt-root .wheel-frame{left:0;top:0;width:660px;height:705px;background:url(${A_}casino/wheel-frame.jpg) 0 0 / 660px 705px no-repeat;-webkit-mask:radial-gradient(circle at 298px 338px,#000 352px,transparent 370px);mask:radial-gradient(circle at 298px 338px,#000 352px,transparent 370px);}
-.rt-root .rotor{left:55px;top:95px;width:486px;height:486px;}
+.rt-root .wheel-frame{left:0;top:0;width:660px;height:705px;background:url(${A_}casino/wheel-frame.jpg) 0 0 / 660px 705px no-repeat;-webkit-mask:radial-gradient(circle at 298px 338px,transparent 258px,#000 272px);mask:radial-gradient(circle at 298px 338px,transparent 258px,#000 272px);}
+.rt-root .rotor{left:36px;top:76px;width:524px;height:524px;}
 .rt-root .rotor g.spin{transform-box:view-box;transform-origin:0 0;transition:transform 6s cubic-bezier(.12,.7,.18,1);}
 .rt-root .rotor g.ball{transform-box:view-box;transform-origin:0 0;transition:transform 6s cubic-bezier(.1,.6,.2,1);filter:drop-shadow(0 1px 2px #000a);}
 .rt-root .rotor text{font:700 25px var(--serif);fill:#fff;text-anchor:middle;dominant-baseline:central;}
@@ -1077,12 +1123,14 @@ function RouletteTableView({ displayCode }: { displayCode: string }) {
 
   // Gira ruota + pallina e ferma sul numero uscito (sequenza europea reale).
   const spinWheel = useCallback((n: number) => {
-    const i = WHEEL_SEQ.indexOf(n); if (i < 0) return;
-    prevRes.current = n;
+    const num = Math.round(Number(n));
+    const i = WHEEL_SEQ.indexOf(num); if (i < 0) return;
+    prevRes.current = num;
     turns.current += 6;
     const SEG = 360 / WHEEL_SEQ.length;
     if (spinG.current) spinG.current.style.transform = `rotate(${-(turns.current * 360 + i * SEG)}deg)`;
     if (ballG.current) ballG.current.style.transform = `rotate(${turns.current * 360 * 2}deg)`; // orbita opposta, si ferma in alto (sul numero)
+    playBallSpin(6); // suono pallina che gira e rallenta
   }, []);
   // Sync fra schermi: se il risultato arriva dal poll (altro display), gira comunque.
   const resultN = st && st.table.phase !== 'betting' ? st.table.result?.number ?? null : null;
