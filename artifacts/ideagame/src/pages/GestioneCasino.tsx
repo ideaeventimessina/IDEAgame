@@ -473,40 +473,56 @@ function GameTablesCard({ sessionId }: { sessionId: string }) {
   );
 }
 
+const SETUP_CSS = `
+.setup-root{position:fixed;inset:0;overflow:auto;display:grid;place-items:center;padding:32px 18px;color:#fff;
+  --serif:"Baskerville Casino",Georgia,serif;font-family:var(--serif);
+  background:radial-gradient(ellipse 1100px 760px at 50% 18%,#0a5a25 0%,#043f17 42%,#02240c 78%,#011607 100%);}
+.setup-root .wrap{width:100%;max-width:520px;text-align:center;}
+.setup-root .logo{height:120px;object-fit:contain;margin:0 auto 6px;display:block;filter:drop-shadow(0 2px 10px #000a);}
+.setup-root .sub{color:#e8c879;font:400 20px/1 var(--serif);margin-bottom:26px;}
+.setup-root .panel{position:relative;text-align:left;border-radius:16px;padding:26px 24px;
+  background:linear-gradient(160deg,#141209 0%,#0a0a07 55%,#07070a 100%);
+  border:2px solid #b98b38;box-shadow:0 0 0 2px #3a2708,0 0 24px rgba(243,201,95,.14),inset 0 0 0 1px rgba(255,235,160,.14),inset 0 10px 40px #0008;}
+.setup-root .panel::before{content:"";position:absolute;inset:6px;border:1px solid rgba(243,201,95,.3);border-radius:10px;pointer-events:none;}
+.setup-root .lbl{font:700 20px/1 var(--serif);color:#ffe9a6;letter-spacing:.01em;}
+.setup-root .hint{font:400 14px/1.3 var(--serif);color:#9c8a5e;margin-top:10px;}
+.setup-root .row{display:flex;gap:10px;margin-top:14px;}
+.setup-root .opt{flex:1;padding:16px 0;border-radius:12px;border:2px solid #6e5320;background:linear-gradient(#17130b,#0c0c08);
+  color:#f4ead3;font:700 24px/1 var(--serif);cursor:pointer;transition:all .12s;}
+.setup-root .opt.sel{border-color:#f3c95f;background:radial-gradient(ellipse at 50% 30%,#3a2a08,#1a1305);color:#ffe9a6;box-shadow:0 0 16px rgba(243,201,95,.35),inset 0 0 0 1px #f3c95f;}
+.setup-root .opt.sm{font-size:20px;padding:14px 0;}
+.setup-root .gbtn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;margin-top:22px;padding:18px;border-radius:12px;border:1px solid #f3dea0;
+  background:linear-gradient(180deg,#ffe694 0%,#f0c357 48%,#d59a34 52%,#eab74a 100%);color:#231503;font:700 22px/1 var(--serif);cursor:pointer;
+  box-shadow:0 3px 0 #7a4d12,0 6px 14px #0008,inset 0 1px 0 #fff8;}
+.setup-root .gbtn:disabled{opacity:.6;}
+`;
 function SetupWizard({ sessionId }: { sessionId: string }) {
   const [dealers, setDealers] = useState(3);
   const [startFish, setStartFish] = useState(500);
   const [busy, setBusy] = useState(false);
+  const AB = (import.meta.env.BASE_URL as string) || '/';
   const go = async () => { setBusy(true); try { await api(`/gestione/casino/sessions/${sessionId}/setup`, { dealers, startFish }); } finally { setBusy(false); } };
   return (
-    <Center>
-      <div style={{ maxWidth: 440, width: '100%', textAlign: 'center' }}>
-        <CasinoWordmark size={38} />
-        <div style={{ opacity: 0.6, margin: '8px 0 26px', fontSize: 15 }}>Prepariamo la serata</div>
-
-        <div style={{ background: '#ffffff08', border: '1px solid #ffffff14', borderRadius: 20, padding: 22, textAlign: 'left' }}>
-          <label style={{ fontWeight: 800, fontSize: 14, opacity: 0.85 }}>Quanti dealer (tavoli)?</label>
-          <div style={{ display: 'flex', gap: 8, margin: '10px 0 6px' }}>
-            {[1, 2, 3, 4, 5, 6].map(n => (
-              <motion.button whileTap={{ scale: 0.92 }} key={n} onClick={() => setDealers(n)}
-                style={{ flex: 1, padding: '14px 0', borderRadius: 12, border: `2px solid ${dealers === n ? GOLD : '#ffffff22'}`, background: dealers === n ? `${GOLD}22` : 'transparent', color: dealers === n ? GOLD : '#fff', fontWeight: 900, fontSize: 20, cursor: 'pointer', fontFamily: 'inherit' }}>{n}</motion.button>
-            ))}
+    <div className="setup-root">
+      <style>{`@font-face{font-family:"Baskerville Casino";font-weight:400;src:url(${AB}casino/libre-baskerville-latin-400-normal.woff2) format("woff2");font-display:block;}@font-face{font-family:"Baskerville Casino";font-weight:700;src:url(${AB}casino/libre-baskerville-latin-700-normal.woff2) format("woff2");font-display:block;}` + SETUP_CSS}</style>
+      <div className="wrap">
+        <img className="logo" src={`${AB}casino/logo-placeholder.jpg`} alt="IDEA EVENTI CASINÒ" />
+        <div className="sub">Prepariamo la serata</div>
+        <div className="panel">
+          <div className="lbl">Quanti dealer (tavoli)?</div>
+          <div className="row">
+            {[1, 2, 3, 4, 5, 6].map(n => <button key={n} className={`opt${dealers === n ? ' sel' : ''}`} onClick={() => setDealers(n)}>{n}</button>)}
           </div>
-          <div style={{ fontSize: 12, opacity: 0.45, marginBottom: 20 }}>Ognuno riceve un QR dealer per aprire il proprio banco.</div>
-
-          <label style={{ fontWeight: 800, fontSize: 14, opacity: 0.85 }}>Fiche iniziali per giocatore</label>
-          <div style={{ display: 'flex', gap: 8, margin: '10px 0 6px' }}>
-            {[300, 500, 1000, 2000].map(n => (
-              <motion.button whileTap={{ scale: 0.92 }} key={n} onClick={() => setStartFish(n)}
-                style={{ flex: 1, padding: '12px 0', borderRadius: 12, border: `2px solid ${startFish === n ? GOLD : '#ffffff22'}`, background: startFish === n ? `${GOLD}22` : 'transparent', color: startFish === n ? GOLD : '#fff', fontWeight: 900, fontSize: 16, cursor: 'pointer', fontFamily: 'inherit' }}>{n}</motion.button>
-            ))}
+          <div className="hint">Ognuno riceve un QR dealer per aprire il proprio banco.</div>
+          <div className="lbl" style={{ marginTop: 24 }}>Fiche iniziali per giocatore</div>
+          <div className="row">
+            {[300, 500, 1000, 2000].map(n => <button key={n} className={`opt sm${startFish === n ? ' sel' : ''}`} onClick={() => setStartFish(n)}>{n}</button>)}
           </div>
-          <div style={{ fontSize: 12, opacity: 0.45 }}>Ogni ospite parte con queste fiche appena fa il login.</div>
+          <div className="hint">Ogni ospite parte con queste fiche appena fa il login.</div>
         </div>
-
-        <motion.button whileTap={{ scale: 0.97 }} onClick={go} disabled={busy} style={{ ...btn(GOLD), width: '100%', padding: 18, fontSize: 18, marginTop: 20 }}>{busy ? '…' : `Apri ${dealers} ${dealers === 1 ? 'tavolo' : 'tavoli'} 🎰`}</motion.button>
+        <button className="gbtn" onClick={go} disabled={busy}>{busy ? '…' : `Apri ${dealers} ${dealers === 1 ? 'tavolo' : 'tavoli'}`}</button>
       </div>
-    </Center>
+    </div>
   );
 }
 
