@@ -1086,6 +1086,8 @@ function RouletteTableView({ displayCode }: { displayCode: string }) {
   const ballG = useRef<SVGGElement | null>(null);
   const turns = useRef(0);
   const prevRes = useRef<number | null>(null);
+  const [revealN, setRevealN] = useState<number | null>(null); // numero svelato SOLO quando la pallina si ferma
+  const revealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => { const r = () => setDim({ w: window.innerWidth, h: window.innerHeight }); window.addEventListener('resize', r); return () => window.removeEventListener('resize', r); }, []);
   useEffect(() => {
@@ -1100,9 +1102,10 @@ function RouletteTableView({ displayCode }: { displayCode: string }) {
     return () => clearTimeout(t);
   }, [phase, displayCode]);
 
-  // Disegna il rotore una volta (settori + numeri in ordine europeo + mozzo).
+  // Disegna il rotore quando l'SVG è nel DOM (dopo il caricamento di `st`).
+  // Guardia: se ha già figli non ridisegna (evita reset ad ogni poll).
   useEffect(() => {
-    const g = spinG.current; if (!g) return;
+    const g = spinG.current; if (!g || g.childNodes.length) return;
     const SEG = 360 / WHEEL_SEQ.length;
     const polar = (r: number, deg: number) => { const a = (deg - 90) * Math.PI / 180; return [r * Math.cos(a), r * Math.sin(a)]; };
     const sector = (r0: number, r1: number, a0: number, a1: number) => {
@@ -1119,7 +1122,7 @@ function RouletteTableView({ displayCode }: { displayCode: string }) {
     WHEEL_SEQ.forEach((n, i) => { const [x, y] = polar(215, i * SEG); svg += `<text x="${x}" y="${y}" transform="rotate(${i * SEG} ${x} ${y})">${n}</text>`; });
     svg += `<circle r="143" fill="none" stroke="url(#goldBand)" stroke-width="4"/><image href="${A_}casino/wheel-hub.png" x="-143" y="-143" width="286" height="286"/>`;
     g.innerHTML = svg;
-  }, []);
+  }, [st]);
 
   // Gira ruota + pallina e ferma sul numero uscito (sequenza europea reale).
   const spinWheel = useCallback((n: number) => {
@@ -1131,10 +1134,18 @@ function RouletteTableView({ displayCode }: { displayCode: string }) {
     if (spinG.current) spinG.current.style.transform = `rotate(${-(turns.current * 360 + i * SEG)}deg)`;
     if (ballG.current) ballG.current.style.transform = `rotate(${turns.current * 360 * 2}deg)`; // orbita opposta, si ferma in alto (sul numero)
     playBallSpin(6); // suono pallina che gira e rallenta
+    // Svela il numero SOLO quando la pallina si è fermata (fine animazione 6s).
+    setRevealN(null);
+    if (revealTimer.current) clearTimeout(revealTimer.current);
+    revealTimer.current = setTimeout(() => setRevealN(num), 6200);
   }, []);
   // Sync fra schermi: se il risultato arriva dal poll (altro display), gira comunque.
   const resultN = st && st.table.phase !== 'betting' ? st.table.result?.number ?? null : null;
   useEffect(() => { if (resultN != null && resultN !== prevRes.current) spinWheel(resultN); }, [resultN, spinWheel]);
+  // Nuova mano (torna a "betting"): azzera il numero svelato.
+  const phaseNow = st?.table.phase;
+  useEffect(() => { if (phaseNow === 'betting') { setRevealN(null); if (revealTimer.current) clearTimeout(revealTimer.current); } }, [phaseNow]);
+  useEffect(() => () => { if (revealTimer.current) clearTimeout(revealTimer.current); }, []);
 
   if (!st) return <Center>Carico il tavolo…</Center>;
   const t = st.table;
@@ -1142,8 +1153,8 @@ function RouletteTableView({ displayCode }: { displayCode: string }) {
   for (const b of t.bets) { const k = spotOf(b.kind, b.numbers); (betsBySpot[k] ??= []).push({ seatNo: b.seatNo, amount: b.amount }); }
   const totalOf = (spot: string) => (betsBySpot[spot] ?? []).reduce((a, x) => a + x.amount, 0);
   const chipFor = (spot: string) => { const tot = totalOf(spot); return tot > 0 ? <span className="betchip">{tot}</span> : null; };
-  const winNum = (n: number) => resultN != null && resultN === n;
-  const winOut = (kind: string) => resultN != null && spotWinsOutside(kind, resultN);
+  const winNum = (n: number) => revealN != null && revealN === n;
+  const winOut = (kind: string) => revealN != null && spotWinsOutside(kind, revealN);
   const seats = t.seats;
   const scale = Math.min(dim.w / 1672, dim.h / 941);
   const spin = async () => {
@@ -1174,7 +1185,7 @@ function RouletteTableView({ displayCode }: { displayCode: string }) {
           <g className="ball" ref={ballG}><circle cx="0" cy="-223" r="9" fill="#fff" stroke="#9a9a9a" strokeWidth="1" /><circle cx="-3" cy="-226" r="3" fill="#fff" opacity="0.85" /></g>
         </svg>
 
-        <div className="abs title"><img src={`${A_}casino/flourish-l.png`} alt="" /><h1>{t.phase === 'betting' ? 'FAI LA TUA PUNTATA' : `È USCITO IL ${resultN}`}</h1><img src={`${A_}casino/flourish-r.png`} alt="" /></div>
+        <div className="abs title"><img src={`${A_}casino/flourish-l.png`} alt="" /><h1>{t.phase === 'betting' ? 'FAI LA TUA PUNTATA' : revealN == null ? 'LA PALLINA GIRA…' : `È USCITO IL ${revealN}`}</h1><img src={`${A_}casino/flourish-r.png`} alt="" /></div>
         <img className="abs logo" src={`${A_}casino/logo-placeholder.jpg`} alt="IDEAeventi Casinò" />
 
         {/* tavolo */}
