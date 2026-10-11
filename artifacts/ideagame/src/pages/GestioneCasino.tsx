@@ -1054,7 +1054,9 @@ const RT_CSS = `
 .rt-root .cell.b{background:radial-gradient(ellipse at 50% 35%,var(--blk) 0%,#131312 60%,var(--blk-lo) 100%);}
 .rt-root .cell.g{background:var(--cell-green);font-size:34px;}
 .rt-root .grid .cell:nth-child(13){border-top-right-radius:6px;}
-.rt-root .cell.win{outline:3px solid var(--gold-hi);outline-offset:-3px;box-shadow:0 0 22px var(--gold),inset 0 0 16px rgba(241,201,108,.5);z-index:3;}
+.rt-root .cell.win{background:radial-gradient(ellipse at 50% 38%,#fff6cf 0%,#f6d873 42%,#e0ab3e 100%) !important;color:#2a1a04 !important;text-shadow:0 1px 0 rgba(255,255,255,.55);box-shadow:inset 0 0 0 2px #fff6d0,inset 0 0 20px rgba(150,95,12,.55);z-index:3;animation:winpulse .85s ease-in-out infinite alternate;}
+.rt-root .cell.win .diamond path{filter:drop-shadow(0 0 4px rgba(0,0,0,.4));}
+@keyframes winpulse{from{filter:brightness(1)}to{filter:brightness(1.2)}}
 .rt-root .outside{left:674px;top:527px;width:968px;height:197px;background:var(--gold);border:var(--line) solid var(--gold);border-top:0;padding-top:var(--line);border-radius:0 0 12px 12px;overflow:hidden;display:grid;gap:var(--line);grid-template-rows:90px 1fr;grid-template-columns:159px 159px 146px 147px 177px 1fr;}
 .rt-root .outside .cell{background:radial-gradient(ellipse at 50% 40%,#024a18 0%,var(--cell-green) 70%,#00320f 100%);font-size:38px;}
 .rt-root .outside .d1{grid-column:1 / 3;font-size:42px;}
@@ -1084,7 +1086,8 @@ function RouletteTableView({ displayCode }: { displayCode: string }) {
   const spinning = useRef(false);
   const spinG = useRef<SVGGElement | null>(null);
   const ballG = useRef<SVGGElement | null>(null);
-  const turns = useRef(0);
+  const wheelAngle = useRef(0); // rotazione cumulata ruota (gradi, orario)
+  const ballAngle = useRef(0);  // rotazione cumulata pallina (gradi, antiorario)
   const prevRes = useRef<number | null>(null);
   const [revealN, setRevealN] = useState<number | null>(null); // numero svelato SOLO quando la pallina si ferma
   const revealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1129,10 +1132,18 @@ function RouletteTableView({ displayCode }: { displayCode: string }) {
     const num = Math.round(Number(n));
     const i = WHEEL_SEQ.indexOf(num); if (i < 0) return;
     prevRes.current = num;
-    turns.current += 6;
     const SEG = 360 / WHEEL_SEQ.length;
-    if (spinG.current) spinG.current.style.transform = `rotate(${-(turns.current * 360 + i * SEG)}deg)`;
-    if (ballG.current) ballG.current.style.transform = `rotate(${turns.current * 360 * 2}deg)`; // orbita opposta, si ferma in alto (sul numero)
+    // Fisica reale: ruota e pallina girano in VERSI OPPOSTI. La ruota si ferma
+    // dove capita (orientamento casuale); la pallina si siede nella casella del
+    // numero vincente, ovunque essa sia (non sempre in alto).
+    wheelAngle.current += 360 * 5 + Math.random() * 360;          // ruota: orario, 5+ giri
+    const wheelMod = ((wheelAngle.current % 360) + 360) % 360;
+    const pocketAbs = (((i * SEG + wheelMod) % 360) + 360) % 360; // angolo finale della casella
+    const ballMod = ((ballAngle.current % 360) + 360) % 360;
+    const delta = (((ballMod - pocketAbs) % 360) + 360) % 360;
+    ballAngle.current -= (delta + 360 * 8);                        // pallina: antiorario, 8 giri, atterra sulla casella
+    if (spinG.current) spinG.current.style.transform = `rotate(${wheelAngle.current}deg)`;
+    if (ballG.current) ballG.current.style.transform = `rotate(${ballAngle.current}deg)`;
     playBallSpin(6); // suono pallina che gira e rallenta
     // Svela il numero SOLO quando la pallina si è fermata (fine animazione 6s).
     setRevealN(null);
@@ -1189,9 +1200,9 @@ function RouletteTableView({ displayCode }: { displayCode: string }) {
         <img className="abs logo" src={`${A_}casino/logo-placeholder.jpg`} alt="IDEAeventi Casinò" />
 
         {/* tavolo */}
-        <svg className="abs zero" viewBox="0 0 73 281" style={winNum(0) ? { filter: 'drop-shadow(0 0 16px #f1c96c)' } : undefined}>
-          <path d="M22 2 H72 V279 H22 L2 256 V26 Z" fill="#017422" stroke="#f1c96c" strokeWidth="3" strokeLinejoin="round" />
-          <text x="38" y="140">0</text>
+        <svg className="abs zero" viewBox="0 0 73 281" style={winNum(0) ? { animation: 'winpulse .85s ease-in-out infinite alternate' } : undefined}>
+          <path d="M22 2 H72 V279 H22 L2 256 V26 Z" fill={winNum(0) ? '#f6d873' : '#017422'} stroke="#f1c96c" strokeWidth="3" strokeLinejoin="round" />
+          <text x="38" y="140" fill={winNum(0) ? '#2a1a04' : '#fff'}>0</text>
         </svg>
         {totalOf('n:0') > 0 && <span className="betchip" style={{ left: 686, top: 388 }}>{totalOf('n:0')}</span>}
         <div className="abs grid">
