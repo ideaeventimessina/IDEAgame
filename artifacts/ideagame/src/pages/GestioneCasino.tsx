@@ -1227,7 +1227,10 @@ function RouletteTableView({ displayCode }: { displayCode: string }) {
 
         {/* storico */}
         <div className="abs history">
-          {hist.map((n, i) => <div key={i} className={`hchip ${classOf(n)}`} style={{ left: HIST_CHIP_X[i]! - 32 - 22 - 2 }}>{n}</div>)}
+          {hist.map((n, i) => {
+            const hide = i === 0 && t.phase !== 'betting' && revealN == null; // l'ultimo numero compare solo a pallina ferma
+            return <div key={i} className={`hchip ${hide ? 'g' : classOf(n)}`} style={{ left: HIST_CHIP_X[i]! - 32 - 22 - 2 }}>{hide ? '?' : n}</div>;
+          })}
         </div>
 
         {/* giocatori */}
