@@ -14,6 +14,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, useCallback } from 'rea
 import { motion, AnimatePresence, useMotionValue, animate } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
 import { PlayerAvatar, fileToAvatarDataUrl } from '../components/PlayerAvatar';
+import { BlackjackPhone, BlackjackMonitor, BlackjackRegia, BlackjackTablesView } from './GestioneBlackjack';
 
 // Numero che "sale" con un tween quando cambia (cassa, saldi). Niente dipendenze.
 function AnimatedNumber({ value }: { value: number }) {
@@ -59,6 +60,14 @@ export default function GestioneCasino() {
   const tableCode = params.get('table');
   const seatCode = params.get('seat');
   const code = (params.get('code') ?? '').toUpperCase();
+  const bj = params.get('bj');            // monitor 80" blackjack
+  const bjPlay = params.get('bjplay');    // telefono giocatore blackjack
+  const bjRegia = params.get('bjregia');  // regia di un tavolo blackjack
+  const bjTables = params.get('bjtables'); // hub elenco/crea tavoli blackjack
+  if (bj) return <BlackjackMonitor displayCode={bj.toUpperCase()} />;
+  if (bjPlay) return <BlackjackPhone displayCode={bjPlay.toUpperCase()} />;
+  if (bjRegia) return <BlackjackRegia displayCode={bjRegia.toUpperCase()} />;
+  if (bjTables) return <BlackjackTablesView sessionId={bjTables} />;
   if (tableCode) return <RouletteTableView displayCode={tableCode.toUpperCase()} />;
   if (seatCode) return <SeatController seatCode={seatCode.toUpperCase()} />;
   if (playerCode) return <PlayerView code={playerCode.toUpperCase()} />;
@@ -396,6 +405,7 @@ function MasterView({ sessionId }: { sessionId: string }) {
           <div className="phead"><div className="ht"><span className="orn">❧</span>TAVOLI DA GIOCO<span className="orn" style={{ transform: 'scaleX(-1)' }}>❧</span></div><small>Schermi 80 pollici</small></div>
           <div className="pbody" style={{ top: 78 }}>
             <button className="gbtn" onClick={addRoulette} disabled={busy}>＋ Nuovo tavolo Roulette</button>
+            <button className="gbtn" style={{ marginTop: 8 }} onClick={() => window.open(`${ORIGIN}gestione/casino?bjtables=${sessionId}`, '_blank')}>🂡 Tavoli Blackjack ↗</button>
             <div style={{ overflowY: 'auto', marginTop: 2 }}>
               {gts.map(g => (
                 <div className="tile" key={g.id}>
