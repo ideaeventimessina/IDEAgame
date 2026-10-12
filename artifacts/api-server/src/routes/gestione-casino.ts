@@ -7,7 +7,8 @@
 ──────────────────────────────────────────────────────────────────────────── */
 
 import { Router } from "express";
-import { and, eq, desc, asc, sql } from "drizzle-orm";
+import { randomInt } from "node:crypto";
+import { and, eq, desc, asc, sql, inArray } from "drizzle-orm";
 import {
   db,
   casinoSessionsTable,
@@ -41,6 +42,7 @@ type CasinoConfig = {
   playerAvatars?: Record<string, string>;
   pendingBets?: Record<string, { amount: number; tableId: string | null; at: string }>;
   gameTables?: Record<string, GameTable>;
+  bjTables?: Record<string, BjTable>;
 };
 const cfgOf = (session: { config?: unknown }): CasinoConfig => (session?.config ?? {}) as CasinoConfig;
 async function patchConfig(id: string, patch: Partial<CasinoConfig>): Promise<void> {
@@ -490,6 +492,369 @@ router.post("/gestione/casino/table/next", async (req, res): Promise<void> => {
   await saveGameTable(found.sessionId, table);
   await broadcastTable(found.sessionId, table);
   res.json({ ok: true });
+});
+
+/* ═══ BLACKJACK ───────────────────────────────────────────────────────────────
+   Tavolo interattivo 80" (sola lettura) + gioco dal telefono di ogni giocatore.
+   Motore server-autorevole: 6 mazzi mescolati con RNG sicuro, banco pesca ≤16 e
+   sta sul 17 (soft17 configurabile), BJ naturale 3:2, vincita 1:1, pareggio
+   restituisce. Matematica intera (puntate multiple di 10 → payout sempre interi).
+   La carta coperta del banco NON viene mai inviata al client prima della
+   rivelazione. Saldo = casinoPlayersTable.fishBalance; stato in config.bjTables. */
+
+type Card = { r: string; s: string }; // r: 2..10,J,Q,K,A ; s: s(picche) h(cuori) d(quadri) c(fiori)
+type BjStatus = "empty" | "joined" | "bet" | "playing" | "stand" | "bust" | "blackjack" | "done";
+type BjSeat = { code: string; playerId: string | null; bet: number; cards: Card[]; status: BjStatus; outcome: string | null; profit: number; doubled: boolean };
+type BjResultRow = { seatNo: number; nickname: string; bet: number; total: number; outcome: string; profit: number };
+type BjHistory = { hand: number; at: string; dealerTotal: number; dealerCards: Card[]; results: BjResultRow[] };
+type BjTable = {
+  id: string; type: "blackjack"; name: string; displayCode: string;
+  phase: "waiting" | "betting" | "playing" | "dealer" | "result";
+  round: number;
+  seats: Record<string, BjSeat>;
+  dealer: Card[]; hole: Card | null; shoe: Card[];
+  activeSeat: number | null; turnEndsAt: string | null;
+  betEndsAt: string | null;
+  minBet: number; maxBet: number; step: number; timeout: number; betSeconds: number; soft17Hit: boolean;
+  suspended: boolean;
+  history: BjHistory[];
+};
+
+const BJ_RANKS = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
+const BJ_SUITS = ["s", "h", "d", "c"];
+function freshShoe(): Card[] {
+  const cards: Card[] = [];
+  for (let d = 0; d < 6; d++) for (const s of BJ_SUITS) for (const r of BJ_RANKS) cards.push({ r, s });
+  for (let i = cards.length - 1; i > 0; i--) { const j = randomInt(i + 1); const t = cards[i]!; cards[i] = cards[j]!; cards[j] = t; }
+  return cards;
+}
+function cardVal(r: string): number { return r === "A" ? 11 : (r === "K" || r === "Q" || r === "J" || r === "10") ? 10 : parseInt(r, 10); }
+function handValue(cards: Card[]): { total: number; soft: boolean } {
+  let total = 0, aces = 0;
+  for (const c of cards) { total += cardVal(c.r); if (c.r === "A") aces++; }
+  while (total > 21 && aces > 0) { total -= 10; aces--; }
+  return { total, soft: aces > 0 && total <= 21 };
+}
+const isNaturalBJ = (cards: Card[]) => cards.length === 2 && handValue(cards).total === 21;
+function drawCard(t: BjTable): Card { if (t.shoe.length === 0) t.shoe = freshShoe(); return t.shoe.shift()!; }
+function creditFor(outcome: string, bet: number): number {
+  if (outcome === "win") return bet * 2;             // puntata + profitto 1:1
+  if (outcome === "blackjack") return bet + (bet * 3) / 2; // puntata + profitto 3:2 (bet multiplo di 10 → intero)
+  if (outcome === "push") return bet;                 // restituzione
+  return 0;                                           // lose | bust
+}
+
+async function findBjTable(code: string): Promise<{ sessionId: string; table: BjTable; seatNo?: number } | null> {
+  const sessions = await db.select().from(casinoSessionsTable).where(eq(casinoSessionsTable.status, "active"));
+  for (const s of sessions) {
+    const cfg = (s.config ?? {}) as CasinoConfig;
+    for (const t of Object.values(cfg.bjTables ?? {})) {
+      if (t.displayCode === code) return { sessionId: s.id, table: t };
+      for (const [no, seat] of Object.entries(t.seats)) if (seat.code === code) return { sessionId: s.id, table: t, seatNo: Number(no) };
+    }
+  }
+  return null;
+}
+async function saveBjTable(sessionId: string, table: BjTable): Promise<void> {
+  const [s] = await db.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, sessionId));
+  const cur = (s?.config ?? {}) as CasinoConfig;
+  await db.update(casinoSessionsTable).set({ config: { ...cur, bjTables: { ...(cur.bjTables ?? {}), [table.id]: table } } }).where(eq(casinoSessionsTable.id, sessionId));
+}
+// Stato ripulito per il client: niente shoe, carta coperta nascosta finché non rivelata.
+async function bjState(sessionId: string, table: BjTable) {
+  const ids = Object.values(table.seats).map(s => s.playerId).filter((x): x is string => !!x);
+  const players = ids.length ? await db.select().from(casinoPlayersTable).where(inArray(casinoPlayersTable.id, ids)) : [];
+  const [sess] = await db.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, sessionId));
+  const avatars = ((sess?.config ?? {}) as CasinoConfig).playerAvatars ?? {};
+  const pMap = new Map(players.map(p => [p.id, p]));
+  const seats: Record<string, unknown> = {};
+  for (const [no, s] of Object.entries(table.seats)) {
+    const p = s.playerId ? pMap.get(s.playerId) : null;
+    const hv = handValue(s.cards);
+    seats[no] = { code: s.code, playerId: s.playerId, nickname: p?.nickname ?? null, avatarUrl: p ? (avatars[p.id] ?? null) : null,
+      balance: p?.fishBalance ?? null, bet: s.bet, cards: s.cards, total: s.cards.length ? hv.total : null, soft: hv.soft,
+      status: s.status, outcome: s.outcome, profit: s.profit, doubled: s.doubled };
+  }
+  const dhv = handValue(table.dealer);
+  return {
+    table: {
+      id: table.id, name: table.name, displayCode: table.displayCode, type: "blackjack",
+      phase: table.phase, round: table.round, seats,
+      dealer: { cards: table.dealer, total: table.dealer.length ? dhv.total : null, hidden: table.hole != null },
+      activeSeat: table.activeSeat, turnEndsAt: table.turnEndsAt, betEndsAt: table.betEndsAt,
+      minBet: table.minBet, maxBet: table.maxBet, step: table.step, timeout: table.timeout, betSeconds: table.betSeconds,
+      soft17Hit: table.soft17Hit, suspended: table.suspended,
+      history: table.history.slice(0, 20),
+    },
+    sessionId,
+  };
+}
+
+// Prossima postazione che deve ancora giocare (in ordine di posto).
+function nextBjActive(table: BjTable): number | null {
+  for (const no of Object.keys(table.seats).map(Number).sort((a, b) => a - b)) {
+    const s = table.seats[String(no)]!;
+    if (s.bet > 0 && s.status === "playing") return no;
+  }
+  return null;
+}
+// Chiude i turni: scopre la coperta, banco pesca, salda, accredita, storicizza.
+async function finishBjHand(sessionId: string, table: BjTable): Promise<void> {
+  if (table.hole) { table.dealer.push(table.hole); table.hole = null; }
+  const anyStand = Object.values(table.seats).some(s => s.bet > 0 && s.status === "stand");
+  if (anyStand) {
+    // banco pesca fino a 16, sta sul 17 (soft17 opzionale)
+    for (let guard = 0; guard < 20; guard++) {
+      const hv = handValue(table.dealer);
+      if (hv.total < 17) { table.dealer.push(drawCard(table)); continue; }
+      if (hv.total === 17 && hv.soft && table.soft17Hit) { table.dealer.push(drawCard(table)); continue; }
+      break;
+    }
+  }
+  const dhv = handValue(table.dealer);
+  const dealerBJ = isNaturalBJ(table.dealer);
+  const ids = Object.values(table.seats).map(s => s.playerId).filter((x): x is string => !!x);
+  const players = ids.length ? await db.select().from(casinoPlayersTable).where(inArray(casinoPlayersTable.id, ids)) : [];
+  const pMap = new Map(players.map(p => [p.id, p]));
+  const results: BjResultRow[] = [];
+  for (const [no, s] of Object.entries(table.seats)) {
+    if (s.bet <= 0 || !s.playerId) continue;
+    const hv = handValue(s.cards);
+    let outcome: string;
+    if (s.status === "bust") outcome = "bust";
+    else if (s.status === "blackjack") outcome = dealerBJ ? "push" : "blackjack";
+    else if (dealerBJ) outcome = "lose";
+    else if (dhv.total > 21) outcome = "win";
+    else if (hv.total > dhv.total) outcome = "win";
+    else if (hv.total < dhv.total) outcome = "lose";
+    else outcome = "push";
+    const credit = creditFor(outcome, s.bet);
+    s.outcome = outcome; s.profit = credit - s.bet; s.status = "done";
+    const p = pMap.get(s.playerId);
+    if (credit > 0 && p) {
+      const nb = p.fishBalance + credit;
+      await db.update(casinoPlayersTable).set({ fishBalance: nb }).where(eq(casinoPlayersTable.id, p.id));
+      await db.insert(casinoTransactionsTable).values({ sessionId, tableId: null, dealerCode: "", playerId: p.id, delta: credit, kind: outcome === "push" ? "blackjack_push" : "blackjack_win", balanceAfter: nb });
+      p.fishBalance = nb;
+    }
+    results.push({ seatNo: Number(no), nickname: p?.nickname ?? "—", bet: s.bet, total: hv.total, outcome, profit: s.profit });
+  }
+  table.history.unshift({ hand: table.round, at: new Date().toISOString(), dealerTotal: dhv.total, dealerCards: [...table.dealer], results });
+  table.history = table.history.slice(0, 50);
+  table.activeSeat = null; table.turnEndsAt = null; table.phase = "result";
+}
+// Dopo un'azione: passa al prossimo giocatore o chiude la mano. Ritorna se ha chiuso.
+async function advanceBj(sessionId: string, table: BjTable): Promise<void> {
+  const nxt = nextBjActive(table);
+  if (nxt != null) { table.activeSeat = nxt; table.turnEndsAt = new Date(Date.now() + table.timeout * 1000).toISOString(); table.phase = "playing"; return; }
+  await finishBjHand(sessionId, table);
+}
+
+/* ── Creazione / elenco (regia) ── */
+router.post("/gestione/casino/sessions/:id/bj-tables", async (req, res): Promise<void> => {
+  const { id } = req.params;
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const b = req.body as { name?: string; seats?: number; minBet?: number; maxBet?: number; step?: number; timeout?: number; betSeconds?: number };
+  const seatsN = Math.min(7, Math.max(1, Math.round(Number(b.seats) || 7)));
+  const seats: Record<string, BjSeat> = {};
+  for (let i = 1; i <= seatsN; i++) seats[String(i)] = { code: makeCode(6), playerId: null, bet: 0, cards: [], status: "empty", outcome: null, profit: 0, doubled: false };
+  const table: BjTable = {
+    id: makeCode(8), type: "blackjack", name: (b.name || "Tavolo Blackjack").slice(0, 40), displayCode: makeCode(6),
+    phase: "waiting", round: 1, seats, dealer: [], hole: null, shoe: freshShoe(), activeSeat: null, turnEndsAt: null, betEndsAt: null,
+    minBet: Math.max(1, Math.round(Number(b.minBet) || 10)), maxBet: Math.max(1, Math.round(Number(b.maxBet) || 500)),
+    step: Math.max(1, Math.round(Number(b.step) || 10)), timeout: Math.max(10, Math.round(Number(b.timeout) || 30)),
+    betSeconds: Math.max(10, Math.round(Number(b.betSeconds) || 30)), soft17Hit: false, suspended: false, history: [],
+  };
+  await saveBjTable(id, table);
+  res.json(await bjState(id, table));
+});
+router.get("/gestione/casino/sessions/:id/bj-tables", async (req, res): Promise<void> => {
+  const { id } = req.params;
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const [s] = await db.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, id));
+  const tables = Object.values(((s?.config ?? {}) as CasinoConfig).bjTables ?? {}).map(t => ({
+    id: t.id, name: t.name, displayCode: t.displayCode, phase: t.phase, round: t.round, suspended: t.suspended,
+    seatsN: Object.keys(t.seats).length, occupied: Object.values(t.seats).filter(x => x.playerId).length,
+    minBet: t.minBet, maxBet: t.maxBet, timeout: t.timeout,
+  }));
+  res.json({ tables });
+});
+
+/* ── Stato tavolo (monitor 80" + telefono) ── */
+router.get("/gestione/casino/bj/:code", async (req, res): Promise<void> => {
+  const found = await findBjTable((req.params.code || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  // timeout turno gestito lato server: se scaduto, forza STAI e avanza
+  if (found.table.phase === "playing" && found.table.turnEndsAt && Date.now() > Date.parse(found.table.turnEndsAt) + 1500) {
+    const no = found.table.activeSeat;
+    if (no != null) { const s = found.table.seats[String(no)]; if (s && s.status === "playing") { s.status = "stand"; await advanceBj(found.sessionId, found.table); await saveBjTable(found.sessionId, found.table); } }
+  }
+  const st = await bjState(found.sessionId, found.table);
+  res.json({ ...st, seatNo: found.seatNo ?? null });
+});
+
+/* ── Regia: apri puntate / distribuisci / impostazioni / sospendi ── */
+router.post("/gestione/casino/bj/open", async (req, res): Promise<void> => {
+  const found = await findBjTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const t = found.table;
+  if (t.suspended) { res.status(409).json({ error: "Tavolo sospeso" }); return; }
+  if (t.phase === "result") t.round += 1;
+  if (t.shoe.length < 78) t.shoe = freshShoe(); // rimescola sotto il 25%
+  for (const s of Object.values(t.seats)) { s.bet = 0; s.cards = []; s.outcome = null; s.profit = 0; s.doubled = false; s.status = s.playerId ? "joined" : "empty"; }
+  t.dealer = []; t.hole = null; t.activeSeat = null; t.turnEndsAt = null;
+  t.phase = "betting"; t.betEndsAt = new Date(Date.now() + t.betSeconds * 1000).toISOString();
+  await saveBjTable(found.sessionId, t);
+  res.json({ ok: true });
+});
+router.post("/gestione/casino/bj/deal", async (req, res): Promise<void> => {
+  const found = await findBjTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const t = found.table;
+  if (t.phase !== "betting") { res.status(409).json({ error: "Non in fase puntate" }); return; }
+  const participants = Object.entries(t.seats).filter(([, s]) => s.bet > 0 && s.playerId);
+  if (participants.length === 0) { res.status(409).json({ error: "Nessuna puntata confermata" }); return; }
+  t.betEndsAt = null;
+  for (const [, s] of participants) s.cards = [];
+  t.dealer = [];
+  for (const [, s] of participants) s.cards.push(drawCard(t));
+  t.dealer.push(drawCard(t));                 // carta visibile del banco
+  for (const [, s] of participants) s.cards.push(drawCard(t));
+  t.hole = drawCard(t);                        // carta coperta (segreta)
+  for (const [, s] of participants) s.status = isNaturalBJ(s.cards) ? "blackjack" : "playing";
+  const up = t.dealer[0]!;
+  const dealerPeek = (up.r === "A" || cardVal(up.r) === 10) && isNaturalBJ([up, t.hole]);
+  if (dealerPeek) { await finishBjHand(found.sessionId, t); }
+  else { t.phase = "playing"; await advanceBj(found.sessionId, t); }
+  await saveBjTable(found.sessionId, t);
+  res.json({ ok: true });
+});
+router.post("/gestione/casino/bj/settings", async (req, res): Promise<void> => {
+  const found = await findBjTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const t = found.table;
+  if (t.phase === "playing" || t.phase === "dealer") { res.status(409).json({ error: "Mano in corso" }); return; }
+  const b = req.body as { minBet?: number; maxBet?: number; step?: number; timeout?: number; betSeconds?: number; soft17Hit?: boolean };
+  if (b.minBet != null) t.minBet = Math.max(1, Math.round(b.minBet));
+  if (b.maxBet != null) t.maxBet = Math.max(t.minBet, Math.round(b.maxBet));
+  if (b.step != null) t.step = Math.max(1, Math.round(b.step));
+  if (b.timeout != null) t.timeout = Math.max(10, Math.round(b.timeout));
+  if (b.betSeconds != null) t.betSeconds = Math.max(10, Math.round(b.betSeconds));
+  if (b.soft17Hit != null) t.soft17Hit = !!b.soft17Hit;
+  await saveBjTable(found.sessionId, t);
+  res.json({ ok: true });
+});
+router.post("/gestione/casino/bj/suspend", async (req, res): Promise<void> => {
+  const found = await findBjTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  found.table.suspended = !!req.body?.suspended;
+  await saveBjTable(found.sessionId, found.table);
+  res.json({ ok: true, suspended: found.table.suspended });
+});
+
+/* ── Telefono: scelta posto, puntata, azioni ── */
+router.post("/gestione/casino/bj/join", async (req, res): Promise<void> => {
+  const { displayCode, seatNo, playerCode, playerId } = req.body as { displayCode?: string; seatNo?: number; playerCode?: string; playerId?: string };
+  const found = await findBjTable((displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const t = found.table;
+  if (t.suspended) { res.status(409).json({ error: "Tavolo sospeso" }); return; }
+  const no = String(Math.round(Number(seatNo)));
+  const seat = t.seats[no];
+  if (!seat) { res.status(400).json({ error: "Posto inesistente" }); return; }
+  const [player] = playerId && isUUID(playerId)
+    ? await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.id, playerId))
+    : await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.playerCode, (playerCode || "").toUpperCase()));
+  if (!player) { res.status(404).json({ error: "Giocatore non trovato" }); return; }
+  if (seat.playerId && seat.playerId !== player.id) { res.status(409).json({ error: "Posto occupato" }); return; }
+  // un solo posto per tavolo: libera eventuale altro posto dello stesso giocatore
+  for (const other of Object.values(t.seats)) if (other.playerId === player.id && other !== seat) { other.playerId = null; other.status = "empty"; other.bet = 0; other.cards = []; }
+  seat.playerId = player.id;
+  if (seat.status === "empty") seat.status = t.phase === "betting" ? "joined" : "joined";
+  await saveBjTable(found.sessionId, t);
+  res.json({ ok: true, seatNo: Number(no), seatCode: seat.code, player: { id: player.id, nickname: player.nickname, fishBalance: player.fishBalance } });
+});
+router.post("/gestione/casino/bj/bet", async (req, res): Promise<void> => {
+  const { seatCode, amount, playerCode } = req.body as { seatCode?: string; amount?: number; playerCode?: string };
+  const found = await findBjTable((seatCode || "").toUpperCase());
+  if (!found || found.seatNo == null) { res.status(404).json({ error: "Posto non trovato" }); return; }
+  const t = found.table; const seat = t.seats[String(found.seatNo)]!;
+  if (t.phase !== "betting") { res.status(409).json({ error: "Puntate chiuse" }); return; }
+  if (!seat.playerId) { res.status(409).json({ error: "Posto libero" }); return; }
+  const amt = Math.round(Number(amount));
+  if (!(amt > 0) || amt < t.minBet || amt > t.maxBet || amt % t.step !== 0) { res.status(400).json({ error: `Puntata ${t.minBet}–${t.maxBet}, multipli di ${t.step}` }); return; }
+  const [player] = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.id, seat.playerId));
+  if (!player) { res.status(404).json({ error: "Giocatore non trovato" }); return; }
+  // disponibile = saldo + eventuale puntata già riservata su questo posto
+  const available = player.fishBalance + seat.bet;
+  if (amt > available) { res.status(409).json({ error: "Credito insufficiente" }); return; }
+  const delta = seat.bet - amt; // >0 rimborso, <0 addebito
+  const nb = player.fishBalance + delta;
+  await db.update(casinoPlayersTable).set({ fishBalance: nb }).where(eq(casinoPlayersTable.id, player.id));
+  await db.insert(casinoTransactionsTable).values({ sessionId: found.sessionId, tableId: null, dealerCode: "", playerId: player.id, delta, kind: "blackjack_bet", balanceAfter: nb });
+  seat.bet = amt; seat.status = "bet";
+  await saveBjTable(found.sessionId, t);
+  res.json({ ok: true, balance: nb, reserved: amt });
+});
+router.post("/gestione/casino/bj/unbet", async (req, res): Promise<void> => {
+  const found = await findBjTable((req.body?.seatCode || "").toUpperCase());
+  if (!found || found.seatNo == null) { res.status(404).json({ error: "Posto non trovato" }); return; }
+  const t = found.table; const seat = t.seats[String(found.seatNo)]!;
+  if (t.phase !== "betting" || seat.bet <= 0 || !seat.playerId) { res.status(409).json({ error: "Niente da annullare" }); return; }
+  const [player] = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.id, seat.playerId));
+  if (player) {
+    const nb = player.fishBalance + seat.bet;
+    await db.update(casinoPlayersTable).set({ fishBalance: nb }).where(eq(casinoPlayersTable.id, player.id));
+    await db.insert(casinoTransactionsTable).values({ sessionId: found.sessionId, tableId: null, dealerCode: "", playerId: player.id, delta: seat.bet, kind: "blackjack_unbet", balanceAfter: nb });
+  }
+  seat.bet = 0; seat.status = "joined";
+  await saveBjTable(found.sessionId, t);
+  res.json({ ok: true });
+});
+// azione del giocatore nel suo turno: valida posto, fase, turno e proprietà
+async function bjActionGuard(req: { body: unknown }): Promise<{ sessionId: string; table: BjTable; seatNo: number; seat: BjSeat } | { error: string; code: number }> {
+  const b = (req.body ?? {}) as { seatCode?: string; playerCode?: string };
+  const found = await findBjTable((b.seatCode || "").toUpperCase());
+  if (!found || found.seatNo == null) return { error: "Posto non trovato", code: 404 };
+  const seat = found.table.seats[String(found.seatNo)]!;
+  if (found.table.phase !== "playing") return { error: "Non è fase di gioco", code: 409 };
+  if (found.table.activeSeat !== found.seatNo) return { error: "Non è il tuo turno", code: 409 };
+  if (seat.status !== "playing") return { error: "Turno concluso", code: 409 };
+  if (b.playerCode) { const [p] = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.playerCode, b.playerCode.toUpperCase())); if (!p || p.id !== seat.playerId) return { error: "Non autorizzato", code: 403 }; }
+  return { sessionId: found.sessionId, table: found.table, seatNo: found.seatNo, seat };
+}
+router.post("/gestione/casino/bj/hit", async (req, res): Promise<void> => {
+  const g = await bjActionGuard(req);
+  if ("error" in g) { res.status(g.code).json({ error: g.error }); return; }
+  g.seat.cards.push(drawCard(g.table));
+  if (handValue(g.seat.cards).total > 21) g.seat.status = "bust";
+  await advanceBj(g.sessionId, g.table);
+  await saveBjTable(g.sessionId, g.table);
+  res.json({ ok: true });
+});
+router.post("/gestione/casino/bj/stand", async (req, res): Promise<void> => {
+  const g = await bjActionGuard(req);
+  if ("error" in g) { res.status(g.code).json({ error: g.error }); return; }
+  g.seat.status = "stand";
+  await advanceBj(g.sessionId, g.table);
+  await saveBjTable(g.sessionId, g.table);
+  res.json({ ok: true });
+});
+router.post("/gestione/casino/bj/double", async (req, res): Promise<void> => {
+  const g = await bjActionGuard(req);
+  if ("error" in g) { res.status(g.code).json({ error: g.error }); return; }
+  if (g.seat.cards.length !== 2 || g.seat.doubled) { res.status(409).json({ error: "Raddoppio non consentito" }); return; }
+  const [player] = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.id, g.seat.playerId!));
+  if (!player || player.fishBalance < g.seat.bet) { res.status(409).json({ error: "Credito insufficiente" }); return; }
+  const nb = player.fishBalance - g.seat.bet;
+  await db.update(casinoPlayersTable).set({ fishBalance: nb }).where(eq(casinoPlayersTable.id, player.id));
+  await db.insert(casinoTransactionsTable).values({ sessionId: g.sessionId, tableId: null, dealerCode: "", playerId: player.id, delta: -g.seat.bet, kind: "blackjack_double", balanceAfter: nb });
+  g.seat.bet *= 2; g.seat.doubled = true;
+  g.seat.cards.push(drawCard(g.table));
+  g.seat.status = handValue(g.seat.cards).total > 21 ? "bust" : "stand";
+  await advanceBj(g.sessionId, g.table);
+  await saveBjTable(g.sessionId, g.table);
+  res.json({ ok: true, balance: nb });
 });
 
 export default router;
