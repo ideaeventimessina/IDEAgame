@@ -43,6 +43,7 @@ type CasinoConfig = {
   pendingBets?: Record<string, { amount: number; tableId: string | null; at: string }>;
   gameTables?: Record<string, GameTable>;
   bjTables?: Record<string, BjTable>;
+  horseTables?: Record<string, HorseTable>;
 };
 const cfgOf = (session: { config?: unknown }): CasinoConfig => (session?.config ?? {}) as CasinoConfig;
 async function patchConfig(id: string, patch: Partial<CasinoConfig>): Promise<void> {
@@ -854,6 +855,253 @@ router.post("/gestione/casino/bj/double", async (req, res): Promise<void> => {
   g.seat.status = handValue(g.seat.cards).total > 21 ? "bust" : "stand";
   await advanceBj(g.sessionId, g.table);
   await saveBjTable(g.sessionId, g.table);
+  res.json({ ok: true, balance: nb });
+});
+
+/* ═══ IPPODROMO (corsa dei cavalli) ───────────────────────────────────────────
+   6 cavalli EQUIPROBABILI (1/6). Pagamento fisso 6× sul ritorno totale (puntata
+   inclusa): puntata 20 → vincitore 120 (profitto 100), perdente 0. L'ordine di
+   arrivo completo è estratto dal server alla chiusura puntate con RNG sicuro e
+   NON viene inviato ai client prima della fase corsa (puntate già chiuse).
+   L'animazione è deterministica (order+seeds) e sincronizzata sulla scadenza
+   server, così tutti i client mostrano la stessa corsa e lo stesso arrivo. */
+
+type HorseBet = { playerId: string; horse: number; amount: number; at: string };
+type HorseResultRow = { playerId: string; nickname: string; horse: number; bet: number; credit: number; profit: number };
+type HorseHist = { race: number; at: string; winner: number; order: number[]; players: number; cancelled?: boolean; results: HorseResultRow[] };
+type HorseTable = {
+  id: string; type: "horse"; name: string; displayCode: string;
+  phase: "waiting" | "betting" | "racing" | "result";
+  race: number;
+  bets: HorseBet[];           // una puntata per giocatore
+  known: string[];            // playerId che hanno giocato a questo tavolo (fascia profili)
+  minBet: number; maxBet: number; step: number; betSeconds: number; raceMs: number;
+  betEndsAt: string | null; raceEndsAt: string | null;
+  current: { order: number[]; seeds: number[]; startedAt: string; durMs: number } | null; // segreto in betting
+  suspended: boolean;
+  history: HorseHist[];
+};
+const HORSE_MULT = 6;
+
+async function findHorseTable(code: string): Promise<{ sessionId: string; table: HorseTable } | null> {
+  const sessions = await db.select().from(casinoSessionsTable).where(eq(casinoSessionsTable.status, "active"));
+  for (const s of sessions) {
+    const cfg = (s.config ?? {}) as CasinoConfig;
+    for (const t of Object.values(cfg.horseTables ?? {})) if (t.displayCode === code) return { sessionId: s.id, table: t };
+  }
+  return null;
+}
+async function saveHorseTable(sessionId: string, table: HorseTable): Promise<void> {
+  const [s] = await db.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, sessionId));
+  const cur = (s?.config ?? {}) as CasinoConfig;
+  await db.update(casinoSessionsTable).set({ config: { ...cur, horseTables: { ...(cur.horseTables ?? {}), [table.id]: table } } }).where(eq(casinoSessionsTable.id, sessionId));
+}
+async function horseState(sessionId: string, table: HorseTable) {
+  const ids = Array.from(new Set([...table.known, ...table.bets.map(b => b.playerId)]));
+  const players = ids.length ? await db.select().from(casinoPlayersTable).where(inArray(casinoPlayersTable.id, ids)) : [];
+  const [sess] = await db.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, sessionId));
+  const avatars = ((sess?.config ?? {}) as CasinoConfig).playerAvatars ?? {};
+  const betOf = new Map(table.bets.map(b => [b.playerId, b]));
+  const plist = players.map(p => ({ id: p.id, nickname: p.nickname, avatarUrl: avatars[p.id] ?? null, balance: p.fishBalance, bet: betOf.get(p.id) ? { horse: betOf.get(p.id)!.horse, amount: betOf.get(p.id)!.amount } : null }))
+    .sort((a, b) => b.balance - a.balance);
+  const reveal = table.phase === "racing" || table.phase === "result";
+  return {
+    table: {
+      id: table.id, name: table.name, displayCode: table.displayCode, type: "horse",
+      phase: table.phase, race: table.race,
+      minBet: table.minBet, maxBet: table.maxBet, step: table.step, betSeconds: table.betSeconds, raceMs: table.raceMs,
+      betEndsAt: table.betEndsAt, raceEndsAt: table.raceEndsAt,
+      current: reveal ? table.current : null,       // ordine/seed solo da corsa in poi
+      betsCount: table.bets.length,
+      players: plist,
+      suspended: table.suspended,
+      history: table.history.slice(0, 20),
+    },
+    sessionId,
+  };
+}
+async function settleHorse(sessionId: string, table: HorseTable): Promise<void> {
+  const order = table.current?.order ?? [];
+  const winner = order[0] ?? 0;
+  const ids = table.bets.map(b => b.playerId);
+  const players = ids.length ? await db.select().from(casinoPlayersTable).where(inArray(casinoPlayersTable.id, ids)) : [];
+  const pMap = new Map(players.map(p => [p.id, p]));
+  const results: HorseResultRow[] = [];
+  for (const b of table.bets) {
+    const p = pMap.get(b.playerId);
+    const credit = b.horse === winner ? b.amount * HORSE_MULT : 0;
+    if (credit > 0 && p) {
+      const nb = p.fishBalance + credit;
+      await db.update(casinoPlayersTable).set({ fishBalance: nb }).where(eq(casinoPlayersTable.id, p.id));
+      await db.insert(casinoTransactionsTable).values({ sessionId, tableId: null, dealerCode: "", playerId: p.id, delta: credit, kind: "horse_win", balanceAfter: nb });
+      p.fishBalance = nb;
+    }
+    results.push({ playerId: b.playerId, nickname: p?.nickname ?? "—", horse: b.horse, bet: b.amount, credit, profit: credit - b.amount });
+  }
+  table.history.unshift({ race: table.race, at: new Date().toISOString(), winner, order: [...order], players: table.bets.length, results });
+  table.history = table.history.slice(0, 50);
+  table.phase = "result"; table.raceEndsAt = null;
+}
+
+/* ── Creazione / elenco (regia) ── */
+router.post("/gestione/casino/sessions/:id/horse-tables", async (req, res): Promise<void> => {
+  const { id } = req.params;
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const b = req.body as { name?: string; minBet?: number; maxBet?: number; step?: number; betSeconds?: number; raceSeconds?: number };
+  const table: HorseTable = {
+    id: makeCode(8), type: "horse", name: (b.name || "Tavolo Ippodromo").slice(0, 40), displayCode: makeCode(6),
+    phase: "waiting", race: 1, bets: [], known: [],
+    minBet: Math.max(1, Math.round(Number(b.minBet) || 10)), maxBet: Math.max(1, Math.round(Number(b.maxBet) || 100)),
+    step: Math.max(1, Math.round(Number(b.step) || 10)), betSeconds: Math.max(10, Math.round(Number(b.betSeconds) || 30)),
+    raceMs: Math.max(8000, Math.round(Number(b.raceSeconds) || 35) * 1000), betEndsAt: null, raceEndsAt: null,
+    current: null, suspended: false, history: [],
+  };
+  await saveHorseTable(id, table);
+  res.json(await horseState(id, table));
+});
+router.get("/gestione/casino/sessions/:id/horse-tables", async (req, res): Promise<void> => {
+  const { id } = req.params;
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const [s] = await db.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, id));
+  const tables = Object.values(((s?.config ?? {}) as CasinoConfig).horseTables ?? {}).map(t => ({
+    id: t.id, name: t.name, displayCode: t.displayCode, phase: t.phase, race: t.race, suspended: t.suspended,
+    players: t.bets.length, minBet: t.minBet, maxBet: t.maxBet,
+  }));
+  res.json({ tables });
+});
+
+/* ── Stato (monitor/telefono/regia) con progressione pigra ── */
+router.get("/gestione/casino/horse/:code", async (req, res): Promise<void> => {
+  const found = await findHorseTable((req.params.code || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  if (found.table.phase === "racing" && found.table.raceEndsAt && Date.now() > Date.parse(found.table.raceEndsAt) + 300) {
+    await settleHorse(found.sessionId, found.table); await saveHorseTable(found.sessionId, found.table);
+  }
+  res.json(await horseState(found.sessionId, found.table));
+});
+
+/* ── Regia: apri / avvia / impostazioni / sospendi / annulla ── */
+router.post("/gestione/casino/horse/open", async (req, res): Promise<void> => {
+  const found = await findHorseTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const t = found.table;
+  if (t.suspended) { res.status(409).json({ error: "Tavolo sospeso" }); return; }
+  if (t.phase === "result") t.race += 1;
+  t.bets = []; t.current = null; t.raceEndsAt = null; t.phase = "betting";
+  t.betEndsAt = new Date(Date.now() + t.betSeconds * 1000).toISOString();
+  await saveHorseTable(found.sessionId, t);
+  res.json({ ok: true });
+});
+router.post("/gestione/casino/horse/start", async (req, res): Promise<void> => {
+  const found = await findHorseTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const t = found.table;
+  if (t.phase !== "betting") { res.status(409).json({ error: "Non in fase puntate" }); return; }
+  const order = [1, 2, 3, 4, 5, 6];
+  for (let i = order.length - 1; i > 0; i--) { const j = randomInt(i + 1); const tmp = order[i]!; order[i] = order[j]!; order[j] = tmp; }
+  const seeds = Array.from({ length: 6 }, () => randomInt(1_000_000) / 1_000_000);
+  t.current = { order, seeds, startedAt: new Date().toISOString(), durMs: t.raceMs };
+  t.phase = "racing"; t.betEndsAt = null; t.raceEndsAt = new Date(Date.now() + t.raceMs).toISOString();
+  await saveHorseTable(found.sessionId, t);
+  res.json({ ok: true });
+});
+router.post("/gestione/casino/horse/settings", async (req, res): Promise<void> => {
+  const found = await findHorseTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const t = found.table;
+  if (t.phase === "racing") { res.status(409).json({ error: "Corsa in corso" }); return; }
+  const b = req.body as { minBet?: number; maxBet?: number; step?: number; betSeconds?: number; raceSeconds?: number };
+  if (b.minBet != null) t.minBet = Math.max(1, Math.round(b.minBet));
+  if (b.maxBet != null) t.maxBet = Math.max(t.minBet, Math.round(b.maxBet));
+  if (b.step != null) t.step = Math.max(1, Math.round(b.step));
+  if (b.betSeconds != null) t.betSeconds = Math.max(10, Math.round(b.betSeconds));
+  if (b.raceSeconds != null) t.raceMs = Math.max(8000, Math.round(b.raceSeconds) * 1000);
+  await saveHorseTable(found.sessionId, t);
+  res.json({ ok: true });
+});
+router.post("/gestione/casino/horse/suspend", async (req, res): Promise<void> => {
+  const found = await findHorseTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  found.table.suspended = !!req.body?.suspended;
+  await saveHorseTable(found.sessionId, found.table);
+  res.json({ ok: true, suspended: found.table.suspended });
+});
+router.post("/gestione/casino/horse/cancel", async (req, res): Promise<void> => {
+  const { displayCode, motivo } = req.body as { displayCode?: string; motivo?: string };
+  if (!motivo || !motivo.trim()) { res.status(400).json({ error: "Motivo obbligatorio" }); return; }
+  const found = await findHorseTable((displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const t = found.table;
+  if (t.phase !== "betting" && t.phase !== "racing") { res.status(409).json({ error: "Niente da annullare" }); return; }
+  // rimborso atomico delle puntate, una sola volta; nessun pagamento vincite
+  const ids = t.bets.map(b => b.playerId);
+  const players = ids.length ? await db.select().from(casinoPlayersTable).where(inArray(casinoPlayersTable.id, ids)) : [];
+  const pMap = new Map(players.map(p => [p.id, p]));
+  const results: HorseResultRow[] = [];
+  for (const b of t.bets) {
+    const p = pMap.get(b.playerId);
+    if (p) {
+      const nb = p.fishBalance + b.amount;
+      await db.update(casinoPlayersTable).set({ fishBalance: nb }).where(eq(casinoPlayersTable.id, p.id));
+      await db.insert(casinoTransactionsTable).values({ sessionId: found.sessionId, tableId: null, dealerCode: motivo.slice(0, 40), playerId: p.id, delta: b.amount, kind: "horse_cancel", balanceAfter: nb });
+      p.fishBalance = nb;
+    }
+    results.push({ playerId: b.playerId, nickname: p?.nickname ?? "—", horse: b.horse, bet: b.amount, credit: b.amount, profit: 0 });
+  }
+  t.history.unshift({ race: t.race, at: new Date().toISOString(), winner: 0, order: [], players: t.bets.length, cancelled: true, results });
+  t.history = t.history.slice(0, 50);
+  t.bets = []; t.current = null; t.betEndsAt = null; t.raceEndsAt = null; t.phase = "waiting";
+  await saveHorseTable(found.sessionId, t);
+  res.json({ ok: true });
+});
+
+/* ── Telefono: puntata / annulla ── */
+router.post("/gestione/casino/horse/bet", async (req, res): Promise<void> => {
+  const { displayCode, playerCode, playerId, horse, amount } = req.body as { displayCode?: string; playerCode?: string; playerId?: string; horse?: number; amount?: number };
+  const found = await findHorseTable((displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const t = found.table;
+  if (t.suspended) { res.status(409).json({ error: "Tavolo sospeso" }); return; }
+  if (t.phase !== "betting") { res.status(409).json({ error: "Puntate chiuse" }); return; }
+  const h = Math.round(Number(horse));
+  if (!(h >= 1 && h <= 6)) { res.status(400).json({ error: "Cavallo non valido" }); return; }
+  const amt = Math.round(Number(amount));
+  if (!(amt > 0) || amt < t.minBet || amt > t.maxBet || amt % t.step !== 0) { res.status(400).json({ error: `Puntata ${t.minBet}–${t.maxBet}, multipli di ${t.step}` }); return; }
+  const [player] = playerId && isUUID(playerId)
+    ? await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.id, playerId))
+    : await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.playerCode, (playerCode || "").toUpperCase()));
+  if (!player) { res.status(404).json({ error: "Giocatore non trovato" }); return; }
+  const existing = t.bets.find(b => b.playerId === player.id);
+  const available = player.fishBalance + (existing?.amount ?? 0);
+  if (amt > available) { res.status(409).json({ error: "Credito insufficiente" }); return; }
+  const delta = (existing?.amount ?? 0) - amt;
+  const nb = player.fishBalance + delta;
+  await db.update(casinoPlayersTable).set({ fishBalance: nb }).where(eq(casinoPlayersTable.id, player.id));
+  await db.insert(casinoTransactionsTable).values({ sessionId: found.sessionId, tableId: null, dealerCode: "", playerId: player.id, delta, kind: "horse_bet", balanceAfter: nb });
+  if (existing) { existing.horse = h; existing.amount = amt; existing.at = new Date().toISOString(); }
+  else t.bets.push({ playerId: player.id, horse: h, amount: amt, at: new Date().toISOString() });
+  if (!t.known.includes(player.id)) t.known.push(player.id);
+  await saveHorseTable(found.sessionId, t);
+  res.json({ ok: true, balance: nb, reserved: amt, horse: h });
+});
+router.post("/gestione/casino/horse/unbet", async (req, res): Promise<void> => {
+  const { displayCode, playerCode, playerId } = req.body as { displayCode?: string; playerCode?: string; playerId?: string };
+  const found = await findHorseTable((displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const t = found.table;
+  if (t.phase !== "betting") { res.status(409).json({ error: "Puntate chiuse" }); return; }
+  const [player] = playerId && isUUID(playerId)
+    ? await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.id, playerId))
+    : await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.playerCode, (playerCode || "").toUpperCase()));
+  if (!player) { res.status(404).json({ error: "Giocatore non trovato" }); return; }
+  const idx = t.bets.findIndex(b => b.playerId === player.id);
+  if (idx < 0) { res.status(409).json({ error: "Nessuna puntata" }); return; }
+  const amt = t.bets[idx]!.amount;
+  const nb = player.fishBalance + amt;
+  await db.update(casinoPlayersTable).set({ fishBalance: nb }).where(eq(casinoPlayersTable.id, player.id));
+  await db.insert(casinoTransactionsTable).values({ sessionId: found.sessionId, tableId: null, dealerCode: "", playerId: player.id, delta: amt, kind: "horse_unbet", balanceAfter: nb });
+  t.bets.splice(idx, 1);
+  await saveHorseTable(found.sessionId, t);
   res.json({ ok: true, balance: nb });
 });
 
