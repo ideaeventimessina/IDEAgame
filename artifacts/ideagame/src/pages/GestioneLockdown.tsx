@@ -122,10 +122,12 @@ function useScale(w = 744, h = 456) {
   return Math.min(dim.w / w, dim.h / h);
 }
 
-// ── Dispatcher: ?sfida=CODE → MONITOR SFIDA, altrimenti MONITOR CASA ───────────
+// ── Dispatcher: ?finale=CODE → FINALE, ?sfida=CODE → SFIDA, altrimenti CASA ────
 export default function GestioneLockdown() {
-  const sfida = new URLSearchParams(window.location.search).get('sfida');
-  return sfida !== null ? <MonitorSfida /> : <MonitorCasa />;
+  const q = new URLSearchParams(window.location.search);
+  if (q.get('finale') !== null) return <MonitorFinale />;
+  if (q.get('sfida') !== null) return <MonitorSfida />;
+  return <MonitorCasa />;
 }
 
 function MonitorCasa() {
@@ -311,6 +313,219 @@ function MonitorSfida() {
           <Lock size={15} />{fmt(MASTER.current)} <span className="goal">/ {fmt(MASTER.goal)}</span>
         </div>
         <div className="a s-mbar"><i style={{ width: `${pct * 100}%` }} /></div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── MONITOR FINALE (vista display 80") ──────────────────────────────────────
+   Replica pixel-faithful del mockup 07, pannello "16 FINALE · IL VINCITORE".
+   Stesso impianto delle viste casa/sfida: palco fisso 744×448 scalato.
+
+   Mockup DIPINTO → separazione pittura/interfaccia:
+   · finale.png = scena notturna villa/giardino + podio fotorealistico (basi
+     1/2/3 con alloro), cornice rossa della spia, coriandoli dipinti → PITTURA
+     ritagliata dal mockup (baked base).
+   · Logo "LOCKDOWN" reale + "by IDEAeventi" (testo, regola brand).
+   · DINAMICI, coperti da fasce/pannelli OPACHI e ri-disegnati in CODICE sopra la
+     pittura (mai testo su testo): "LA VINCITRICE È <nome>", i saldi dei 3 podi,
+     "LA SPIA ERA <nome>", "RIEPILOGO MASTER n/m" + barra.
+   · Avatar dei 3 vincitori + foto spia = p-*.png (demo), cerchiati, sopra i volti
+     dipinti; cornice rossa spia resta dipinta.
+   MOTION: coriandoli dorati che cadono · nome vincitore che entra e pulsa · le
+     colonne del podio (avatar+saldo) che salgono in sequenza sulle basi · spia
+     rivelata con flip/fade · barra MASTER che si riempie. Rispetta reduce-motion.
+   Nessun backend: DATI MOCK interni. ?finale=CODE seleziona questa vista. */
+
+type Podium = { name: string; avatar: string; balance: number };
+const FINALE: {
+  winner: Podium; second: Podium; third: Podium;
+  spy: { name: string; avatar: string };
+  master: { current: number; goal: number };
+} = {
+  winner: { name: 'Giulia', avatar: 'p-giulia.png', balance: 1200 },
+  second: { name: 'Davide', avatar: 'p-davide.png', balance: 950 },
+  third:  { name: 'Elena',  avatar: 'p-elena.png',  balance: 770 },
+  spy:    { name: 'Marco',  avatar: 'p-marco.png' },
+  master: { current: 950, goal: 1500 },
+};
+
+// Coriandoli dorati: generati una volta, cadono in loop con delay/durata varie.
+type Confetto = { left: number; delay: number; dur: number; w: number; h: number; rot: number; hue: string; sway: number };
+function makeConfetti(n: number): Confetto[] {
+  const golds = ['#ffe08a', '#e8c879', '#c9972f', '#f6d27a', '#fff2cf'];
+  const out: Confetto[] = [];
+  for (let i = 0; i < n; i++) {
+    const r = (a: number, b: number) => a + Math.random() * (b - a);
+    out.push({
+      left: r(2, 98), delay: r(0, 5.5), dur: r(4.5, 8.5),
+      w: r(4, 8), h: r(7, 14), rot: r(0, 360),
+      hue: golds[i % golds.length], sway: r(-26, 26),
+    });
+  }
+  return out;
+}
+
+const CSS_FINALE = `
+.lkd .f-bg{position:absolute;left:0;top:0;width:744px;height:448px;object-fit:cover;}
+/* velo scuro ai bordi per far risaltare testi e podio */
+.lkd .f-vig{left:0;top:0;width:744px;height:448px;pointer-events:none;
+  background:radial-gradient(120% 90% at 42% 44%,rgba(2,6,11,0) 40%,rgba(2,6,11,.55) 100%);}
+/* coriandoli */
+.lkd .f-conf{left:0;top:0;width:744px;height:448px;overflow:hidden;pointer-events:none;}
+.lkd .f-conf i{position:absolute;top:-16px;border-radius:1px;opacity:.9;
+  animation:fFall linear infinite;will-change:transform;}
+@keyframes fFall{
+  0%{transform:translate(0,-20px) rotate(0deg);opacity:0;}
+  8%{opacity:.95;}
+  100%{transform:translate(var(--sway),470px) rotate(540deg);opacity:.9;}
+}
+/* logo reale + sottotitolo brand */
+/* fascia superiore opaca: nasconde logo+sottotitolo dipinti, sfuma sul cielo */
+/* fascia superiore OPACA larga: copre logo + "LA VINCITRICE È GIULIA" dipinti */
+.lkd .f-top{left:80px;top:0;width:548px;height:120px;pointer-events:none;
+  background:linear-gradient(180deg,#06101f 0%,#06101f 92%,rgba(6,16,31,0) 100%);}
+.lkd .f-logo{left:316px;top:3px;width:120px;height:38px;}
+.lkd .f-by{left:276px;top:40px;width:200px;text-align:center;
+  font:700 9px/1 "Baskerville Lockdown",serif;letter-spacing:.24em;color:#d8b96a;text-shadow:0 1px 3px #000;}
+/* titolo vincitrice: impilato SOTTO il logo, centrato, su fascia opaca (niente sovrapposizioni) */
+.lkd .f-win{left:352px;top:52px;width:430px;transform:translateX(-50%);text-align:center;
+  transform-origin:50% 60%;animation:fWinIn .75s cubic-bezier(.2,.8,.25,1) both;}
+.lkd .f-sub{display:flex;align-items:center;justify-content:center;gap:9px;white-space:nowrap;
+  font:400 13px/1 "Baskerville Lockdown",serif;letter-spacing:.14em;color:#e9dcb6;text-shadow:0 1px 3px #000;}
+.lkd .f-sub::before,.lkd .f-sub::after{content:"";width:22px;height:1px;background:linear-gradient(90deg,rgba(201,151,47,0),#c9972f);}
+.lkd .f-sub::after{background:linear-gradient(90deg,#c9972f,rgba(201,151,47,0));}
+.lkd .f-name{margin-top:3px;font:700 42px/1 "Baskerville Lockdown",serif;letter-spacing:.03em;
+  color:#ffe29a;background:linear-gradient(180deg,#fff3cf 0%,#ffdf93 46%,#d79b2e 100%);
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+  filter:drop-shadow(0 2px 3px rgba(0,0,0,.65)) drop-shadow(0 0 14px rgba(255,200,110,.4));
+  animation:fPulse 2.6s ease-in-out 1s infinite;}
+@keyframes fWinIn{0%{opacity:0;transform:translate(-50%,16px) scale(.9);}100%{opacity:1;transform:translate(-50%,0) scale(1);}}
+@keyframes fPulse{0%,100%{filter:drop-shadow(0 2px 3px rgba(0,0,0,.65)) drop-shadow(0 0 12px rgba(255,200,110,.35));}
+  50%{filter:drop-shadow(0 2px 3px rgba(0,0,0,.65)) drop-shadow(0 0 22px rgba(255,210,130,.7));}}
+/* colonne podio (avatar + saldo) — salgono sulle basi dipinte, in sequenza */
+.lkd .f-col{position:absolute;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;
+  animation:fRise .7s cubic-bezier(.2,.8,.25,1) both;will-change:transform,opacity;}
+@keyframes fRise{0%{opacity:0;transform:translate(-50%,56px);}100%{opacity:1;transform:translate(-50%,0);}}
+.lkd .f-av{border-radius:50%;object-fit:cover;background:#0a0f16;}
+.lkd .f-av.g1{width:132px;height:132px;border:4px solid #f3c969;box-shadow:0 0 22px rgba(255,205,105,.6),0 6px 16px rgba(0,0,0,.6);}
+.lkd .f-av.g2{width:102px;height:102px;border:3px solid #cdd3da;box-shadow:0 0 14px rgba(205,213,222,.45),0 5px 14px rgba(0,0,0,.6);}
+.lkd .f-av.g3{width:86px;height:86px;border:3px solid #c08a4e;box-shadow:0 0 12px rgba(192,138,78,.45),0 5px 12px rgba(0,0,0,.6);}
+/* pillola saldo (copre il badge dipinto) */
+.lkd .f-bal{display:flex;align-items:center;justify-content:center;gap:5px;white-space:nowrap;border-radius:9px;position:relative;z-index:2;
+  background:linear-gradient(180deg,#14100a,#0a0806);box-shadow:0 2px 7px rgba(0,0,0,.6),inset 0 0 0 1.5px rgba(232,200,121,.7);
+  color:#ffe7a6;font-weight:700;font-family:"Baskerville Lockdown",serif;}
+.lkd .f-bal.g1{margin-top:-2px;padding:9px 16px;font-size:24px;}
+.lkd .f-bal.g2{margin-top:0;padding:8px 13px;font-size:19px;}
+.lkd .f-bal.g3{margin-top:0;padding:8px 11px;font-size:17px;}
+/* pannello spia (dx alto) — fasce opache sopra i testi dipinti */
+.lkd .f-spy{left:652px;top:92px;width:180px;transform:translateX(-50%);text-align:center;
+  animation:fFlip .7s ease-out 1.5s both;transform-origin:50% 50%;will-change:transform,opacity;}
+@keyframes fFlip{0%{opacity:0;transform:translateX(-50%) perspective(600px) rotateY(82deg);}
+  60%{opacity:1;}100%{opacity:1;transform:translateX(-50%) perspective(600px) rotateY(0deg);}}
+.lkd .f-spy .cover{position:absolute;left:-6px;background:linear-gradient(180deg,#0c1422,#0a1119);border-radius:4px;}
+.lkd .f-spy .h1{font:400 11px/1 "Baskerville Lockdown",serif;letter-spacing:.14em;color:#d9cba6;}
+.lkd .f-spy .h2{margin-top:7px;font:700 15px/1 "Baskerville Lockdown",serif;letter-spacing:.08em;color:#f2d9d0;
+  text-shadow:0 0 9px rgba(220,70,60,.5);}
+.lkd .f-spyph{left:652px;top:190px;width:84px;height:84px;transform:translate(-50%,-50%);border-radius:50%;
+  object-fit:cover;box-shadow:inset 0 0 0 1px rgba(0,0,0,.4);}
+.lkd .f-spynm{left:652px;top:269px;width:170px;transform:translateX(-50%);text-align:center;white-space:nowrap;z-index:2;
+  font:700 25px/1 "Baskerville Lockdown",serif;color:#ffe7a6;text-shadow:0 2px 3px #000,0 0 12px rgba(255,200,110,.35);}
+.lkd .f-spynm-bg{left:566px;top:240px;width:172px;height:46px;border-radius:5px;
+  background:linear-gradient(180deg,#0b1220,#0a1018);}
+/* pannello MASTER (dx basso) — copre tutto il pannello master dipinto */
+.lkd .f-mbg{left:566px;top:298px;width:172px;height:102px;border-radius:7px;
+  background:linear-gradient(180deg,#0c1422,#0a1119);box-shadow:inset 0 0 0 1px rgba(201,151,47,.45),0 4px 12px rgba(0,0,0,.5);}
+.lkd .f-mttl{left:652px;top:311px;width:180px;transform:translateX(-50%);text-align:center;white-space:nowrap;
+  font:700 12px/1 "Baskerville Lockdown",serif;letter-spacing:.08em;color:#f2e4ad;}
+.lkd .f-mval{left:652px;top:333px;transform:translateX(-50%);display:flex;align-items:center;gap:6px;white-space:nowrap;
+  font:700 16px/1 "Baskerville Lockdown",serif;color:#ffe7a6;}
+.lkd .f-mval .goal{color:#8a7a52;}
+.lkd .f-mbar{left:576px;top:370px;width:152px;height:11px;border-radius:6px;background:#10171f;
+  box-shadow:inset 0 0 0 1px rgba(201,151,47,.4);overflow:hidden;}
+.lkd .f-mbar>i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,#c9972f,#ffe08a);
+  width:var(--w);animation:fBar 1.2s cubic-bezier(.2,.8,.25,1) .9s both;}
+@keyframes fBar{0%{width:0;}100%{width:var(--w);}}
+@media (prefers-reduced-motion: reduce){
+  .lkd .f-conf i{animation:none;opacity:0;}
+  .lkd .f-win,.lkd .f-name,.lkd .f-col,.lkd .f-spy,.lkd .f-mbar>i{animation:none!important;opacity:1!important;transform:translateX(-50%)!important;}
+  .lkd .f-win,.lkd .f-name{transform:translateX(-50%)!important;}
+  .lkd .f-mbar>i{width:var(--w)!important;transform:none!important;}
+}
+`;
+
+function MonitorFinale() {
+  const scale = useScale(744, 448);
+  const pct = Math.max(0, Math.min(1, FINALE.master.current / FINALE.master.goal));
+  const confetti = useState(() => makeConfetti(26))[0];
+  const { winner, second, third, spy, master } = FINALE;
+
+  return (
+    <div className="lkd"><style>{CSS + CSS_FINALE}</style>
+      <div className="st" style={{ height: 448, transform: `scale(${scale})` }}>
+        {/* scena dipinta (base baked) */}
+        <img className="f-bg" src={`${LK}finale.png`} alt="Finale: la vincitrice sul podio" />
+        <div className="a f-vig" />
+
+        {/* coriandoli dorati animati */}
+        <div className="a f-conf" aria-hidden>
+          {confetti.map((c, i) => (
+            <i key={i} style={{
+              left: `${c.left}%`, width: c.w, height: c.h, background: c.hue,
+              ['--sway' as string]: `${c.sway}px`, transform: `rotate(${c.rot}deg)`,
+              animationDelay: `${c.delay}s`, animationDuration: `${c.dur}s`,
+            }} />
+          ))}
+        </div>
+
+        {/* fascia superiore opaca (copre logo + titolo dipinti) */}
+        <div className="a f-top" />
+
+        {/* logo reale + sottotitolo brand (copre il logo dipinto, resta sopra) */}
+        <img className="a f-logo" src={`${LK}logo-lockdown.png`} alt="LOCKDOWN" />
+        <div className="a f-by">by IDEAeventi</div>
+        <div className="a f-win">
+          <div className="f-sub">LA VINCITRICE È</div>
+          <div className="f-name">{winner.name.toUpperCase()}</div>
+        </div>
+
+        {/* PODIO — 3 colonne (avatar + saldo) che salgono in sequenza sulle basi */}
+        <div className="f-col" style={{ left: 129, top: 160, animationDelay: '.35s' }}>
+          <img className="f-av g2" src={`${LK}${second.avatar}`} alt={second.name} />
+          <div className="f-bal g2" aria-label={`${second.name}: ${fmt(second.balance)} Lock-Euro`}>
+            <Lock size={17} />{fmt(second.balance)}
+          </div>
+        </div>
+        <div className="f-col" style={{ left: 484, top: 190, animationDelay: '.6s' }}>
+          <img className="f-av g3" src={`${LK}${third.avatar}`} alt={third.name} />
+          <div className="f-bal g3" aria-label={`${third.name}: ${fmt(third.balance)} Lock-Euro`}>
+            <Lock size={15} />{fmt(third.balance)}
+          </div>
+        </div>
+        <div className="f-col" style={{ left: 315, top: 124, animationDelay: '.9s' }}>
+          <img className="f-av g1" src={`${LK}${winner.avatar}`} alt={winner.name} />
+          <div className="f-bal g1" aria-label={`${winner.name}: ${fmt(winner.balance)} Lock-Euro`}>
+            <Lock size={22} />{fmt(winner.balance)}
+          </div>
+        </div>
+
+        {/* PANNELLO SPIA — foto demo nella cornice rossa dipinta + nome dinamico */}
+        <img className="a f-spyph" src={`${LK}${spy.avatar}`} alt={spy.name} />
+        <div className="a f-spy">
+          <div className="cover" style={{ top: -4, width: 192, height: 44 }} />
+          <div className="h1" style={{ position: 'relative' }}>E INFINE…</div>
+          <div className="h2" style={{ position: 'relative' }}>LA SPIA ERA</div>
+        </div>
+        <div className="a f-spynm-bg" />
+        <div className="a f-spynm">{spy.name}</div>
+
+        {/* PANNELLO MASTER — riepilogo + barra che si riempie */}
+        <div className="a f-mbg" />
+        <div className="a f-mttl">RIEPILOGO MASTER</div>
+        <div className="a f-mval" aria-label={`Master: ${fmt(master.current)} di ${fmt(master.goal)} Lock-Euro`}>
+          <Lock size={16} />{fmt(master.current)} <span className="goal">/ {fmt(master.goal)}</span>
+        </div>
+        <div className="a f-mbar"><i style={{ ['--w' as string]: `${pct * 100}%` }} /></div>
       </div>
     </div>
   );
