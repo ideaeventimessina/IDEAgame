@@ -420,15 +420,24 @@ const GALLOP_AR = 161 / 200; // aspetto cella dello sprite-sheet
 function racePoint(p: number, lane: number) {
   const cx = 372, cy = 212, rxB = 300, ryB = 116;     // centerline anello
   const laneOff = lane - 2.5;                          // -2.5..2.5 (corsie)
-  const rx = rxB - laneOff * 10, ry = ryB - laneOff * 4;
-  // p=0 partenza (davanti, un po' a sinistra) → un giro completo in senso orario → arrivo davanti
-  const deg = 118 - Math.max(0, Math.min(1, p)) * 360;
+  const rx = rxB - laneOff * 13, ry = ryB - laneOff * 5; // corsie concentriche distinte
+  const pc = Math.max(0, Math.min(1, p));
+  // stagger ai nastri: in partenza i 6 sono distribuiti lungo la pista (non ammassati),
+  // lo scarto svanisce verso l'arrivo → ordine d'arrivo corretto.
+  const gate = laneOff * 12 * (1 - pc);
+  const deg = 118 - pc * 360 + gate;                   // giro completo orario, arrivo davanti
   const th = deg * Math.PI / 180, s = Math.sin(th);
   const x = cx + rx * Math.cos(th);
   const y = cy + ry * s;
   const near = (y - (cy - ryB)) / (2 * ryB);           // 0 fondo … 1 davanti
-  const sc = 0.46 + near * 1.05;                        // lontano piccolo, davanti grande
-  return { x, y, sc, faceLeft: s < 0 };                 // metà di fondo → verso sinistra
+  const sc = 0.5 + near * 0.9;                          // lontano piccolo, davanti grande
+  // orientamento CONTINUO lungo la tangente: la pedina si inclina nelle curve
+  // (nessun flip secco; il ribaltamento avviene dove il cavallo è quasi verticale).
+  const vx = rx * s, vy = -ry * Math.cos(th);           // direzione di marcia (schermo)
+  const flip = vx < 0;                                  // metà di fondo → verso sinistra
+  const lean = Math.max(-34, Math.min(34, Math.atan2(vy, Math.abs(vx)) * 180 / Math.PI));
+  const rot = flip ? -lean : lean;
+  return { x, y, sc, flip, rot };
 }
 function MonitorRacing({ t, now, scale }: { t: HorseTbl; now: number; scale: number }) {
   const runners = HORSES
@@ -447,17 +456,19 @@ function MonitorRacing({ t, now, scale }: { t: HorseTbl; now: number; scale: num
         {/* banner codificato OPACO (copre quello dipinto nel track) + numero corsa LIVE */}
         <div className="a cbanner" style={{ left: 206, top: 7, width: 332, height: 48 }}><span>CORSA {String(t.race).padStart(3, '0')} · IN DIRETTA</span></div>
         {runners.map(r => {
-          const w = 168 * r.sc, hh = w * GALLOP_AR, bs = w * 0.24;
+          const w = 168 * r.sc, hh = w * GALLOP_AR, bs = w * 0.3;
           return (
             <div key={r.h.n} className="a runner" style={{ left: r.x, top: r.y, width: w, height: hh, transform: 'translate(-50%, -90%)' }}>
-              <div className="dust" style={{ left: r.faceLeft ? w * 0.52 : w * 0.06, top: hh * 0.72, width: w * 0.42, height: w * 0.26 }} />
-              <div className="dust b" style={{ left: r.faceLeft ? w * 0.62 : w * 0.0, top: hh * 0.78, width: w * 0.3, height: w * 0.2 }} />
-              <div style={{ width: w, height: hh, transform: `scaleX(${r.faceLeft ? -1 : 1})` }}>
+              <div className="dust" style={{ left: r.flip ? w * 0.52 : w * 0.06, top: hh * 0.72, width: w * 0.42, height: w * 0.26 }} />
+              <div className="dust b" style={{ left: r.flip ? w * 0.62 : w * 0.0, top: hh * 0.78, width: w * 0.3, height: w * 0.2 }} />
+              {/* wrapper: segue la tangente (rotazione continua) + flip; sprite + badge insieme */}
+              <div style={{ position: 'relative', width: w, height: hh, transformOrigin: '50% 72%', transform: `rotate(${r.rot}deg) scaleX(${r.flip ? -1 : 1})` }}>
                 <div className="sprite" style={{ width: w, height: hh }}>
                   <img src={`${AP}horse-gallop.png`} alt={r.h.name} style={{ animationDelay: `${(r.h.n * 0.07).toFixed(2)}s` }} />
                 </div>
+                {/* badge sulla gualdrappa; contro-flip per numero leggibile */}
+                <div className="rbadge" style={{ left: w * 0.13, top: hh * 0.3, width: bs, height: bs, fontSize: bs * 0.6, transform: `scaleX(${r.flip ? -1 : 1})`, background: `radial-gradient(circle at 40% 30%, ${r.h.glow}, ${r.h.color} 70%)` }}>{r.h.n}</div>
               </div>
-              <div className="rbadge" style={{ left: (w - bs) / 2, top: hh * 0.26, width: bs, height: bs, fontSize: bs * 0.62, background: `radial-gradient(circle at 40% 30%, ${r.h.glow}, ${r.h.color} 70%)` }}>{r.h.n}</div>
             </div>
           );
         })}
