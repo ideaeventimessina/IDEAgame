@@ -953,7 +953,8 @@ router.post("/gestione/casino/sessions/:id/horse-tables", async (req, res): Prom
     phase: "waiting", race: 1, bets: [], known: [],
     minBet: Math.max(1, Math.round(Number(b.minBet) || 10)), maxBet: Math.max(1, Math.round(Number(b.maxBet) || 100)),
     step: Math.max(1, Math.round(Number(b.step) || 10)), betSeconds: Math.max(10, Math.round(Number(b.betSeconds) || 30)),
-    raceMs: Math.max(8000, Math.round(Number(b.raceSeconds) || 35) * 1000), betEndsAt: null, raceEndsAt: null,
+    // durata FISSA in base ai giri: 3 giri × 12s = 36s (il frontend gira LAPS=3 volte l'anello)
+    raceMs: Math.max(8000, Math.round(Number(b.raceSeconds) || 36) * 1000), betEndsAt: null, raceEndsAt: null,
     current: null, suspended: false, history: [],
   };
   await saveHorseTable(id, table);

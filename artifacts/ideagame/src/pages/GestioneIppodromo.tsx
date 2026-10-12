@@ -413,35 +413,39 @@ const RACE_CSS = FONT + `
 @keyframes bshine{0%,100%{filter:drop-shadow(0 0 0 rgba(255,220,140,0))}50%{filter:drop-shadow(0 0 8px rgba(255,220,140,.6))}}
 `;
 const GALLOP_AR = 161 / 200; // aspetto cella dello sprite-sheet
-// I cavalli percorrono TUTTO l'anello ovale della pista dipinta (un giro completo),
-// con prospettiva (vicino=grande, lontano=piccolo) e orientamento che segue la pista
-// (fronte a destra sul rettilineo davanti, a sinistra sul rettilineo di fondo).
-// Ellisse della corsia calibrata su track-clean.png (744×456). lane 0..5 = corsie.
-function racePoint(p: number, lane: number) {
+const LAPS = 3;              // giri completi dell'anello prima dello stop al nastro
+const START_DEG = 118;      // nastro di partenza/arrivo (rettilineo davanti)
+// I cavalli partono dal NASTRO (a ventaglio sulle corsie), girano LAPS volte attorno
+// a TUTTO l'anello ovale dipinto e si FERMANO di nuovo al nastro (ordine d'arrivo).
+// Prospettiva (vicino=grande, lontano=piccolo) + orientamento continuo lungo la tangente.
+// Ellisse calibrata su track-clean.png (744×456). lane 0..5 = corsie concentriche.
+function racePoint(p: number, lane: number, rank: number) {
   const cx = 372, cy = 212, rxB = 300, ryB = 116;     // centerline anello
   const laneOff = lane - 2.5;                          // -2.5..2.5 (corsie)
-  const rx = rxB - laneOff * 13, ry = ryB - laneOff * 5; // corsie concentriche distinte
+  const rx = rxB - laneOff * 15, ry = ryB - laneOff * 6.5; // corsie concentriche nette
   const pc = Math.max(0, Math.min(1, p));
-  // stagger ai nastri: in partenza i 6 sono distribuiti lungo la pista (non ammassati),
-  // lo scarto svanisce verso l'arrivo → ordine d'arrivo corretto.
-  const gate = laneOff * 12 * (1 - pc);
-  const deg = 118 - pc * 360 + gate;                   // giro completo orario, arrivo davanti
+  // scarto angolare PERSISTENTE per POSIZIONE DI GARA (rank): il leader è sempre più
+  // avanti lungo la pista → i cavalli restano distanziati (niente ammasso di zampe) E
+  // tagliano il traguardo nell'ORDINE D'ARRIVO reale. partenza a ventaglio al nastro.
+  const stag = (rank - 2.5) * 14;
+  const deg = START_DEG - pc * 360 * LAPS + stag;      // LAPS giri, ritorno al nastro
   const th = deg * Math.PI / 180, s = Math.sin(th);
   const x = cx + rx * Math.cos(th);
   const y = cy + ry * s;
   const near = (y - (cy - ryB)) / (2 * ryB);           // 0 fondo … 1 davanti
-  const sc = 0.5 + near * 0.9;                          // lontano piccolo, davanti grande
+  const sc = 0.52 + near * 0.74;                       // lontano piccolo, davanti grande
   // orientamento CONTINUO lungo la tangente: la pedina si inclina nelle curve
   // (nessun flip secco; il ribaltamento avviene dove il cavallo è quasi verticale).
   const vx = rx * s, vy = -ry * Math.cos(th);           // direzione di marcia (schermo)
   const flip = vx < 0;                                  // metà di fondo → verso sinistra
-  const lean = Math.max(-34, Math.min(34, Math.atan2(vy, Math.abs(vx)) * 180 / Math.PI));
+  const lean = Math.max(-30, Math.min(30, Math.atan2(vy, Math.abs(vx)) * 180 / Math.PI));
   const rot = flip ? -lean : lean;
   return { x, y, sc, flip, rot };
 }
 function MonitorRacing({ t, now, scale }: { t: HorseTbl; now: number; scale: number }) {
+  const order = t.current?.order ?? [];
   const runners = HORSES
-    .map((h, i) => { const p = horseProgress(t.current, h.n, now); return { h, p, ...racePoint(p, i) }; })
+    .map((h, i) => { const p = horseProgress(t.current, h.n, now); const rank = order.indexOf(h.n); return { h, p, ...racePoint(p, i, rank < 0 ? i : rank) }; })
     .sort((a, b) => a.y - b.y); // chi è più davanti (y maggiore) disegnato per ultimo → sopra
   return (
     <div className="hmr"><style>{RACE_CSS}</style>
@@ -456,11 +460,10 @@ function MonitorRacing({ t, now, scale }: { t: HorseTbl; now: number; scale: num
         {/* banner codificato OPACO (copre quello dipinto nel track) + numero corsa LIVE */}
         <div className="a cbanner" style={{ left: 206, top: 7, width: 332, height: 48 }}><span>CORSA {String(t.race).padStart(3, '0')} · IN DIRETTA</span></div>
         {runners.map(r => {
-          const w = 168 * r.sc, hh = w * GALLOP_AR, bs = w * 0.3;
+          const w = 156 * r.sc, hh = w * GALLOP_AR, bs = w * 0.3;
           return (
-            <div key={r.h.n} className="a runner" style={{ left: r.x, top: r.y, width: w, height: hh, transform: 'translate(-50%, -90%)' }}>
-              <div className="dust" style={{ left: r.flip ? w * 0.52 : w * 0.06, top: hh * 0.72, width: w * 0.42, height: w * 0.26 }} />
-              <div className="dust b" style={{ left: r.flip ? w * 0.62 : w * 0.0, top: hh * 0.78, width: w * 0.3, height: w * 0.2 }} />
+            <div key={r.h.n} className="a runner" style={{ left: r.x, top: r.y, width: w, height: hh, transform: 'translate(-50%, -90%)', zIndex: Math.round(r.y) }}>
+              <div className="dust" style={{ left: r.flip ? w * 0.5 : w * 0.08, top: hh * 0.74, width: w * 0.4, height: w * 0.24 }} />
               {/* wrapper: segue la tangente (rotazione continua) + flip; sprite + badge insieme */}
               <div style={{ position: 'relative', width: w, height: hh, transformOrigin: '50% 72%', transform: `rotate(${r.rot}deg) scaleX(${r.flip ? -1 : 1})` }}>
                 <div className="sprite" style={{ width: w, height: hh }}>
