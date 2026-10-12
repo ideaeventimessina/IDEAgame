@@ -117,7 +117,11 @@ const PHONE_CSS = FONT + `
 .hp .lanes{display:flex;flex-direction:column;gap:6px;border-radius:14px;overflow:hidden;border:2px solid #6e5320;background:linear-gradient(#5a3f22,#43301a);padding:8px 6px;}
 .hp .lane{position:relative;height:30px;border-radius:7px;background:repeating-linear-gradient(90deg,#6b4a28,#6b4a28 16px,#5e4122 16px,#5e4122 32px);}
 .hp .lane .fin{position:absolute;right:6px;top:0;bottom:0;width:4px;background:repeating-linear-gradient(#fff,#fff 4px,#111 4px,#111 8px);}
-.hp .lane .run{position:absolute;top:50%;transform:translate(-50%,-50%);transition:left .09s linear;display:flex;align-items:center;}
+.hp .lane .run{position:absolute;top:50%;transform:translate(-50%,-50%);transition:left .09s linear;}
+.hp .lane .gallop{position:relative;overflow:hidden;}
+.hp .lane .gallop img{position:absolute;left:0;top:0;height:100%;width:600%;animation:phgallop .5s steps(6) infinite;filter:drop-shadow(0 1px 2px #0008);}
+@keyframes phgallop{from{transform:translateX(0)}to{transform:translateX(-100%)}}
+.hp .lane .lbadge{position:absolute;border-radius:50%;border:2px solid #fff;display:grid;place-items:center;color:#fff;font-weight:700;font-family:"Baskerville Casino",serif;text-shadow:0 1px 2px #0009;z-index:2;}
 `;
 function PhoneShell({ children }: { children: React.ReactNode }) {
   return <div className="hp"><style>{PHONE_CSS}</style><div className="wrap"><div style={{ textAlign: 'center' }}><Brand /></div>{children}</div></div>;
@@ -128,7 +132,7 @@ function Lanes({ cur, now, big }: { cur: HorseTbl['current']; now: number; big?:
       {HORSES.map(h => { const p = horseProgress(cur, h.n, now); return (
         <div className="lane" key={h.n} style={big ? { height: 46 } : undefined}>
           <div className="fin" />
-          <div className="run" style={{ left: `${6 + p * 86}%` }}><span style={{ fontSize: big ? 30 : 22, filter: `drop-shadow(0 0 4px ${h.glow})`, transform: 'scaleX(-1)', display: 'inline-block' }}>🐎</span><div style={{ marginLeft: -6 }}><HorseBadge n={h.n} size={big ? 26 : 20} /></div></div>
+          <div className="run" style={{ left: `${6 + p * 86}%` }}>{(() => { const gh = big ? 42 : 28, gw = Math.round(gh / GALLOP_AR), bs = Math.round(gh * 0.5); return (<><div className="gallop" style={{ width: gw, height: gh }}><img src={`${AB}ippo/horse-gallop.png`} alt={h.name} style={{ animationDelay: `${(h.n * 0.07).toFixed(2)}s` }} /></div><div className="lbadge" style={{ left: gw * 0.27, top: gh * 0.34, width: bs, height: bs, fontSize: bs * 0.58, background: `radial-gradient(circle at 40% 30%, ${h.glow}, ${h.color} 70%)` }}>{h.n}</div></>); })()}</div>
         </div>
       ); })}
     </div>
