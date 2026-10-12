@@ -360,7 +360,7 @@ function MasterView({ sessionId }: { sessionId: string }) {
         <img className="corner" src={`${AB}casino/regia/corner-br.png`} style={{ right: 0, bottom: 0, width: 210 }} alt="" />
 
         {/* header */}
-        <img className="abs logo" src={`${AB}casino/logo-placeholder.jpg`} alt="IDEA EVENTI CASINÒ" />
+        <img className="abs logo" src={`${AB}casino/logo-idea-casino.png`} alt="IDEA EVENTI CASINÒ" />
         <div className="abs vline" />
         <div className="abs rtitle">REGIA MASTER</div>
         <div className="abs rsub">Gestione della serata</div>
@@ -526,7 +526,7 @@ function SetupWizard({ sessionId }: { sessionId: string }) {
     <div className="setup-root">
       <style>{`@font-face{font-family:"Baskerville Casino";font-weight:400;src:url(${AB}casino/libre-baskerville-latin-400-normal.woff2) format("woff2");font-display:block;}@font-face{font-family:"Baskerville Casino";font-weight:700;src:url(${AB}casino/libre-baskerville-latin-700-normal.woff2) format("woff2");font-display:block;}` + SETUP_CSS}</style>
       <div className="wrap">
-        <img className="logo" src={`${AB}casino/logo-placeholder.jpg`} alt="IDEA EVENTI CASINÒ" />
+        <img className="logo" src={`${AB}casino/logo-idea-casino.png`} alt="IDEA EVENTI CASINÒ" />
         <div className="sub">Prepariamo la serata</div>
         <div className="panel">
           <div className="lbl">Quanti dealer (tavoli)?</div>
@@ -1065,7 +1065,8 @@ const RT_CSS = `
 .rt-root .title{left:605px;top:46px;width:657px;height:78px;border-radius:40px;border:4px solid #f6cf72;background:radial-gradient(ellipse 70% 120% at 50% 50%,#000d04 0%,#00140a 60%,#052e17 100%);box-shadow:0 0 0 1px #6b4a17,0 0 18px rgba(255,210,120,.35),inset 0 0 0 2px rgba(0,0,0,.6),inset 0 0 14px rgba(255,220,140,.25);display:flex;align-items:center;justify-content:center;gap:22px;}
 .rt-root .title h1{font:700 47px/1 var(--serif);letter-spacing:-.012em;white-space:nowrap;transform:scaleX(.84);background:linear-gradient(180deg,#fff6c8 0%,#ffe08a 40%,#e9b24f 72%,#ffe594 100%);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 2px 1px rgba(0,0,0,.8));margin:0 -44px;}
 .rt-root .title img{width:60px;height:26px;flex:none;}
-.rt-root .logo{left:1285px;top:8px;width:360px;height:230px;object-fit:contain;-webkit-mask:linear-gradient(90deg,transparent,#000 14%,#000 88%,transparent),linear-gradient(transparent,#000 10%,#000 86%,transparent);-webkit-mask-composite:source-in;mask-composite:intersect;mask:linear-gradient(90deg,transparent,#000 14%,#000 88%,transparent),linear-gradient(transparent,#000 10%,#000 86%,transparent);}
+.rt-root .logo{left:1295px;top:10px;width:340px;height:196px;object-fit:contain;filter:drop-shadow(0 3px 10px #000b);}
+.rt-root .gamename{left:1295px;top:200px;width:340px;text-align:center;font:700 34px/1 var(--serif);letter-spacing:.3em;padding-left:.3em;background:linear-gradient(180deg,#fff3c2,#ffe08a 48%,#e4ad4b);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 2px 4px #000a);}
 .rt-root .zero{left:650px;top:248px;width:73px;height:281px;overflow:visible;}
 .rt-root .zero text{font:700 54px var(--serif);fill:#fff;text-anchor:middle;dominant-baseline:central;}
 .rt-root .grid{left:720px;top:248px;width:922px;height:281px;display:grid;grid-template-columns:repeat(12,1fr) 77px;grid-template-rows:repeat(3,1fr);gap:var(--line);padding:var(--line) var(--line) 0 0;background:var(--gold);border-top-right-radius:8px;}
@@ -1100,7 +1101,7 @@ const RT_CSS = `
 .rt-root .betchip{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);min-width:30px;height:30px;padding:0 6px;border-radius:15px;display:grid;place-items:center;font:700 16px/1 var(--serif);color:#1a1205;background:linear-gradient(#ffe08a,#e0a83a);border:2px solid #fff6;box-shadow:0 2px 5px #0008;z-index:4;}
 `;
 
-function RouletteTableView({ displayCode }: { displayCode: string }) {
+export function RouletteTableView({ displayCode }: { displayCode: string }) {
   const [st, setSt] = useState<GameTableState | null>(null);
   const [dim, setDim] = useState({ w: typeof window !== 'undefined' ? window.innerWidth : 1280, h: typeof window !== 'undefined' ? window.innerHeight : 800 });
   const spinning = useRef(false);
@@ -1217,7 +1218,8 @@ function RouletteTableView({ displayCode }: { displayCode: string }) {
         </svg>
 
         <div className="abs title"><img src={`${A_}casino/flourish-l.png`} alt="" /><h1>{t.phase === 'betting' ? 'FAI LA TUA PUNTATA' : revealN == null ? 'LA PALLINA GIRA…' : `È USCITO IL ${revealN}`}</h1><img src={`${A_}casino/flourish-r.png`} alt="" /></div>
-        <img className="abs logo" src={`${A_}casino/logo-placeholder.jpg`} alt="IDEAeventi Casinò" />
+        <img className="abs logo" src={`${A_}casino/logo-idea-casino.png`} alt="IDEA EVENTI CASINÒ" />
+        <div className="abs gamename">ROULETTE</div>
 
         {/* tavolo */}
         <svg className="abs zero" viewBox="0 0 73 281" style={winNum(0) ? { animation: 'winpulse .85s ease-in-out infinite alternate' } : undefined}>
