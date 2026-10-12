@@ -45,6 +45,7 @@ const HomeLobbyPage  = lazy(() => import("@/pages/HomeLobbyPage"));
 const GestioneHome    = lazy(() => import("@/pages/GestioneHome"));
 const GestioneBurraco = lazy(() => import("@/pages/GestioneBurraco"));
 const GestioneCasino  = lazy(() => import("@/pages/GestioneCasino"));
+const GestioneLockdown = lazy(() => import("@/pages/GestioneLockdown"));
 const JoinPage       = lazy(() => import("@/pages/JoinPage"));
 
 // Game boards (event/party mode)
@@ -190,6 +191,7 @@ function Router() {
         <Route path="/gestione" component={GestioneHome} />
         <Route path="/gestione/burraco" component={GestioneBurraco} />
         <Route path="/gestione/casino" component={GestioneCasino} />
+        <Route path="/gestione/lockdown" component={GestioneLockdown} />
         <Route path="/live-dashboard">{() => { window.location.replace('/admin/show'); return null; }}</Route>
         <Route path="/admin/live">{() => { window.location.replace('/admin/show'); return null; }}</Route>
         <Route path="/live-join" component={ToLive} />
