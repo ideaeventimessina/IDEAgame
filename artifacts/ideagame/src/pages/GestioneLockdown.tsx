@@ -127,12 +127,19 @@ export default function GestioneLockdown() {
   return (
     <div className="lkd"><style>{CSS}</style>
       <div className="st" style={{ transform: `scale(${scale})` }}>
-        {/* villa dipinta (logo + base baked) */}
+        {/* villa dipinta (base baked) */}
         <img className="bg" src={`${LK}house.png`} alt="Mappa della casa" />
 
-        {/* QR vero in alto a destra */}
-        <div className="a qr" style={{ left: 674, top: 1 }}>
-          <QRCodeSVG value={joinUrl} size={46} />
+        {/* fascia scura in alto: nasconde titolo/sottotitolo/QR dipinti (baked) */}
+        <div className="a" style={{ left: 0, top: 0, width: 744, height: 50, background: 'linear-gradient(180deg,#0a1322 0%,#0a1322 58%,rgba(10,19,34,0) 100%)' }} />
+
+        {/* logo REALE intero + sottotitolo testo corretto */}
+        <img className="a" src={`${LK}logo-lockdown.png`} alt="LOCKDOWN" style={{ left: 282, top: 0, width: 180, height: 50 }} />
+        <div className="a" style={{ left: 272, top: 44, width: 200, textAlign: 'center', font: '700 10px/1 "Baskerville Casino",serif', letterSpacing: '.24em', color: '#d8b96a', textShadow: '0 1px 3px #000' }}>by IDEAeventi</div>
+
+        {/* QR vero in alto a destra — riquadro bianco che copre il QR finto baked */}
+        <div className="a" style={{ left: 648, top: 4, width: 84, height: 84, background: '#fff', borderRadius: 4, display: 'grid', placeItems: 'center', boxShadow: '0 0 0 1px rgba(232,200,121,.5)' }}>
+          <QRCodeSVG value={joinUrl} size={70} />
         </div>
 
         {/* bordo oro stanza attiva */}

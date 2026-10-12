@@ -74,16 +74,9 @@ async function fileToAvatar(file: File): Promise<string> {
 
 const FONT = `@font-face{font-family:"Baskerville Casino";font-weight:400;src:url(${AB}casino/libre-baskerville-latin-400-normal.woff2) format("woff2");font-display:swap}@font-face{font-family:"Baskerville Casino";font-weight:700;src:url(${AB}casino/libre-baskerville-latin-700-normal.woff2) format("woff2");font-display:swap}`;
 
+// Logo REALE dell'utente (mascotte Johnnino) — mai sostituirlo con un wordmark.
 function Brand({ size = 1 }: { size?: number }) {
-  return (
-    <div style={{ textAlign: 'center', lineHeight: 1 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 * size }}>
-        <span style={{ fontSize: 30 * size }}>🐎</span>
-        <span style={{ font: `700 ${30 * size}px "Baskerville Casino",serif`, letterSpacing: '.04em', background: 'linear-gradient(180deg,#fff6c8,#ffe08a 45%,#e9b24f)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>IDEA EVENTI</span>
-      </div>
-      <div style={{ font: `700 ${15 * size}px "Baskerville Casino",serif`, letterSpacing: '.42em', color: '#e8c879', marginTop: 3 * size, paddingLeft: '.42em' }}>IPPODROMO</div>
-    </div>
-  );
+  return <img src={`${AB}ippo/logo-ippodromo.png`} alt="IDEAeventi Ippodromo" style={{ height: 62 * size, objectFit: 'contain', display: 'block', margin: '0 auto', filter: 'drop-shadow(0 2px 6px #000a)' }} />;
 }
 // Pedina cavallo: colore + numero (riconoscibile anche senza distinguere i colori).
 function HorseBadge({ n, size = 44, active }: { n: number; size?: number; active?: boolean }) {
@@ -394,6 +387,10 @@ const RACE_CSS = FONT + `
 .hmr .prof{display:flex;flex-direction:column;align-items:center;gap:1px;width:60px;flex:none;}
 .hmr .prof .nm{font-size:11px;color:#fff;}
 .hmr .prof .cr{font:700 13px "Baskerville Casino",serif;color:#ffe9a6;}
+.hmr .cbanner{border:2px solid #f6cf72;border-radius:30px;background:radial-gradient(ellipse at 50% 50%,#06160c,#0a2414);box-shadow:0 0 0 1px #6b4a17,inset 0 0 0 2px #2a1d06,inset 0 0 14px rgba(255,220,140,.3);display:grid;place-items:center;}
+.hmr .cbanner span{font:700 24px/1 "Baskerville Casino",serif;letter-spacing:.03em;white-space:nowrap;background:linear-gradient(180deg,#fff6c8,#ffe08a 48%,#e4ad4b);-webkit-background-clip:text;background-clip:text;color:transparent;}
+.hmr .runner .g{width:100%;height:100%;animation:gallop .4s linear infinite;will-change:transform;}
+@keyframes gallop{0%{transform:translateY(0) rotate(-1.4deg)}25%{transform:translateY(-7px) rotate(.7deg)}50%{transform:translateY(-2px) rotate(1.4deg)}75%{transform:translateY(-8px) rotate(0deg)}100%{transform:translateY(0) rotate(-1.4deg)}}
 `;
 // Punto lungo il RETTILINEO FRONTALE dipinto (home stretch): arco inferiore della
 // centerline, calibrato sul righello di design/ippo-monitor-corsa@744.png.
@@ -418,20 +415,16 @@ function MonitorRacing({ t, now, scale }: { t: HorseTbl; now: number; scale: num
     <div className="hmr"><style>{RACE_CSS}</style>
       <div className="st" style={{ transform: `scale(${scale})`, boxShadow: '0 0 0 3px #0a2a16, 0 0 0 5px #c9972f' }}>
         <img className="track" src={`${AP}track-clean.png`} alt="" />
-        {/* banner: cornice dorata dipinta (ritaglio) + numero corsa LIVE in codice */}
-        <div className="a" style={{ left: 206, top: 7, width: 332, height: 48 }}>
-          <img src={`${AP}banner-corsa.png`} alt="CORSA IN DIRETTA" style={{ position: 'absolute', inset: 0, width: 332, height: 48 }} />
-          <div style={{ position: 'absolute', left: 101, top: 9, width: 58, height: 30, display: 'grid', placeItems: 'center', background: 'radial-gradient(ellipse at 50% 50%,#0a1c0e 62%,rgba(10,28,14,0))' }}>
-            <span style={{ font: '700 23px/1 "Baskerville Casino",serif', letterSpacing: '.02em', background: 'linear-gradient(180deg,#fff6c8,#ffe08a 48%,#e4ad4b)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>{String(t.race).padStart(3, '0')}</span>
-          </div>
-        </div>
+        {/* banner codificato OPACO (copre quello dipinto nel track) + numero corsa LIVE */}
+        <div className="a cbanner" style={{ left: 206, top: 7, width: 332, height: 48 }}><span>CORSA {String(t.race).padStart(3, '0')} · IN DIRETTA</span></div>
         {runners.map(r => {
           const w = 90 * r.scale, hh = 80 * r.scale;
           return (
-            <img key={r.h.n} className="runner" src={`${AP}run-${r.h.n}.png`} alt={r.h.name}
-              style={{ left: r.x, top: r.y, width: w, height: hh,
-                transform: 'translate(-50%, -82%)',
-                filter: 'drop-shadow(0 4px 5px rgba(0,0,0,.45))' }} />
+            <div key={r.h.n} className="a runner" style={{ left: r.x, top: r.y, width: w, height: hh, transform: 'translate(-50%, -82%)' }}>
+              <div className="g" style={{ animationDelay: `${(r.h.n * 0.06).toFixed(2)}s` }}>
+                <img src={`${AP}run-${r.h.n}.png`} alt={r.h.name} style={{ width: '100%', height: '100%', filter: 'drop-shadow(0 4px 5px rgba(0,0,0,.45))' }} />
+              </div>
+            </div>
           );
         })}
         <div className="a strip" style={{ left: 4, top: 382, width: 736, height: 70 }}>
