@@ -397,27 +397,34 @@ const RACE_CSS = FONT + `
 .hmr .sprite img{position:absolute;left:0;top:0;height:100%;width:600%;animation:gallop .5s steps(6) infinite;filter:drop-shadow(0 4px 5px rgba(0,0,0,.45));}
 @keyframes gallop{from{transform:translateX(0)}to{transform:translateX(-100%)}}
 .hmr .rbadge{position:absolute;border-radius:50%;border:2px solid #fff;display:grid;place-items:center;color:#fff;font-weight:700;font-family:"Baskerville Casino",serif;text-shadow:0 1px 2px #0008;box-shadow:0 1px 3px #0008;z-index:2;}
+.hmr .dust{position:absolute;border-radius:50%;background:radial-gradient(circle,rgba(214,184,132,.6),rgba(190,160,110,0) 70%);filter:blur(2px);pointer-events:none;animation:dust .42s ease-out infinite;}
+.hmr .dust.b{animation-delay:.21s;}
+@keyframes dust{0%{transform:scale(.35);opacity:.65}100%{transform:scale(1.6);opacity:0}}
+.hmr .cbanner span{animation:bshine 2.4s ease-in-out infinite;}
+@keyframes bshine{0%,100%{filter:drop-shadow(0 0 0 rgba(255,220,140,0))}50%{filter:drop-shadow(0 0 8px rgba(255,220,140,.6))}}
 `;
 const GALLOP_AR = 161 / 200; // aspetto cella dello sprite-sheet
-// Punto lungo il RETTILINEO FRONTALE dipinto (home stretch): arco inferiore della
-// centerline, calibrato sul righello di design/ippo-monitor-corsa@744.png.
-// p∈[0,1] = avanzamento gara (0 = partenza a sinistra, 1 = arrivo a destra); i 6
-// cavalli corrono tutti verso destra, come nel mockup. lane (0..5) = corsia radiale.
+// I cavalli percorrono TUTTO l'anello ovale della pista dipinta (un giro completo),
+// con prospettiva (vicino=grande, lontano=piccolo) e orientamento che segue la pista
+// (fronte a destra sul rettilineo davanti, a sinistra sul rettilineo di fondo).
+// Ellisse della corsia calibrata su track-clean.png (744×456). lane 0..5 = corsie.
 function racePoint(p: number, lane: number) {
-  const cx = 372, rx = 298;
-  const laneOff = lane - 2.5;                         // -2.5..2.5
-  const cy = 246 + laneOff * 10;                      // corsia interna = più in alto/piccola
-  const ry = 60 + laneOff * 4;
-  const ang = Math.PI - Math.max(0, Math.min(1, p)) * Math.PI; // π→0 : sinistra→destra
-  const x = cx + rx * Math.cos(ang) + laneOff * 6;    // leggero sfalsamento di corsia
-  const y = cy + ry * Math.sin(ang);
-  const scale = 0.72 + ((y - 206) / 100) * 0.40;      // prospettiva: grande al centro/davanti
-  return { x, y, scale };
+  const cx = 372, cy = 212, rxB = 300, ryB = 116;     // centerline anello
+  const laneOff = lane - 2.5;                          // -2.5..2.5 (corsie)
+  const rx = rxB - laneOff * 10, ry = ryB - laneOff * 4;
+  // p=0 partenza (davanti, un po' a sinistra) → un giro completo in senso orario → arrivo davanti
+  const deg = 118 - Math.max(0, Math.min(1, p)) * 360;
+  const th = deg * Math.PI / 180, s = Math.sin(th);
+  const x = cx + rx * Math.cos(th);
+  const y = cy + ry * s;
+  const near = (y - (cy - ryB)) / (2 * ryB);           // 0 fondo … 1 davanti
+  const sc = 0.46 + near * 1.05;                        // lontano piccolo, davanti grande
+  return { x, y, sc, faceLeft: s < 0 };                 // metà di fondo → verso sinistra
 }
 function MonitorRacing({ t, now, scale }: { t: HorseTbl; now: number; scale: number }) {
   const runners = HORSES
     .map((h, i) => { const p = horseProgress(t.current, h.n, now); return { h, p, ...racePoint(p, i) }; })
-    .sort((a, b) => a.y - b.y); // chi è più in basso (davanti) è disegnato per ultimo → in cima
+    .sort((a, b) => a.y - b.y); // chi è più davanti (y maggiore) disegnato per ultimo → sopra
   return (
     <div className="hmr"><style>{RACE_CSS}</style>
       <div className="st" style={{ transform: `scale(${scale})`, boxShadow: '0 0 0 3px #0a2a16, 0 0 0 5px #c9972f' }}>
@@ -425,13 +432,17 @@ function MonitorRacing({ t, now, scale }: { t: HorseTbl; now: number; scale: num
         {/* banner codificato OPACO (copre quello dipinto nel track) + numero corsa LIVE */}
         <div className="a cbanner" style={{ left: 206, top: 7, width: 332, height: 48 }}><span>CORSA {String(t.race).padStart(3, '0')} · IN DIRETTA</span></div>
         {runners.map(r => {
-          const w = 104 * r.scale, hh = w * GALLOP_AR, bs = w * 0.30;
+          const w = 168 * r.sc, hh = w * GALLOP_AR, bs = w * 0.24;
           return (
-            <div key={r.h.n} className="a runner" style={{ left: r.x, top: r.y, width: w, height: hh, transform: 'translate(-50%, -88%)' }}>
-              <div className="sprite" style={{ width: w, height: hh }}>
-                <img src={`${AP}horse-gallop.png`} alt={r.h.name} style={{ animationDelay: `${(r.h.n * 0.07).toFixed(2)}s` }} />
+            <div key={r.h.n} className="a runner" style={{ left: r.x, top: r.y, width: w, height: hh, transform: 'translate(-50%, -90%)' }}>
+              <div className="dust" style={{ left: r.faceLeft ? w * 0.52 : w * 0.06, top: hh * 0.72, width: w * 0.42, height: w * 0.26 }} />
+              <div className="dust b" style={{ left: r.faceLeft ? w * 0.62 : w * 0.0, top: hh * 0.78, width: w * 0.3, height: w * 0.2 }} />
+              <div style={{ width: w, height: hh, transform: `scaleX(${r.faceLeft ? -1 : 1})` }}>
+                <div className="sprite" style={{ width: w, height: hh }}>
+                  <img src={`${AP}horse-gallop.png`} alt={r.h.name} style={{ animationDelay: `${(r.h.n * 0.07).toFixed(2)}s` }} />
+                </div>
               </div>
-              <div className="rbadge" style={{ left: w * 0.27, top: hh * 0.36, width: bs, height: bs, fontSize: bs * 0.6, background: `radial-gradient(circle at 40% 30%, ${r.h.glow}, ${r.h.color} 70%)` }}>{r.h.n}</div>
+              <div className="rbadge" style={{ left: (w - bs) / 2, top: hh * 0.26, width: bs, height: bs, fontSize: bs * 0.62, background: `radial-gradient(circle at 40% 30%, ${r.h.glow}, ${r.h.color} 70%)` }}>{r.h.n}</div>
             </div>
           );
         })}
@@ -440,6 +451,84 @@ function MonitorRacing({ t, now, scale }: { t: HorseTbl; now: number; scale: num
           {t.players.slice(0, 10).map(p => (<div className="prof" key={p.id}>{avatarImg(p.avatarUrl, p.nickname, 38)}<div className="nm">{p.nickname}</div><div className="cr">{p.balance.toLocaleString('it-IT')}</div></div>))}
           {t.players.length === 0 && <div style={{ color: '#9fe0b4', fontSize: 14, marginLeft: 16 }}>In attesa di giocatori…</div>}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* Monitor RISULTATI — palco fisso 744×456 fedele al mockup: scena dipinta
+   (ippodromo notturno + podio + 3 cavalli + alloro/corona dorati, risultati-bg.png)
+   con SOPRA gli elementi dinamici in codice: vincitore nel banner, codice corsa,
+   card 2°/3° posto (badge colore cavallo + nome + piazzamento), righe dei giocatori
+   vincenti (avatar · nome · puntata · accredito). Coordinate dal righello di
+   design/ippo-monitor-risultati@744.png. Crediti virtuali, niente simbolo monetario. */
+const RES_CSS = FONT + `
+.hmx{position:fixed;inset:0;overflow:hidden;background:#04140a;display:flex;align-items:center;justify-content:center;font-family:"Baskerville Casino",Georgia,serif;}
+.hmx .st{position:relative;width:744px;height:456px;flex:none;transform-origin:center center;background:#060b06;}
+.hmx img.bg{position:absolute;left:0;top:0;width:744px;height:452px;}
+.hmx .a{position:absolute;}
+.hmx .corsa .c1{font:700 21px/1 "Baskerville Casino",serif;letter-spacing:.04em;background:linear-gradient(180deg,#fff3c2,#ffe08a 48%,#e4ad4b);-webkit-background-clip:text;background-clip:text;color:transparent;}
+.hmx .corsa .c2{font:700 12px/1.1 "Baskerville Casino",serif;letter-spacing:.14em;color:#e9d7a6;margin-top:3px;}
+.hmx .win{display:grid;place-items:center;border-radius:11px;background:radial-gradient(120% 150% at 50% 38%,#0f4b2e 0%,#05271a 62%,#01150e 100%);}
+.hmx .win span{font:700 34px/1 "Baskerville Casino",serif;letter-spacing:.01em;white-space:nowrap;background:linear-gradient(180deg,#fff6cc,#ffe08a 46%,#e3ab49);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 1px 1px #0008);}
+.hmx .card{border:1.5px solid #c9972f;border-radius:12px;background:linear-gradient(160deg,#1b170e,#0a0906);box-shadow:inset 0 0 0 1px rgba(255,228,150,.1);display:flex;flex-direction:column;align-items:center;padding:7px 6px 8px;}
+.hmx .card .nm{font:700 14px/1 "Baskerville Casino",serif;color:#f4ece0;text-shadow:0 1px 2px #000a;margin-top:5px;}
+.hmx .card .pz{margin-top:6px;border-radius:10px;padding:3px 0;width:94px;text-align:center;font:700 12px/1 "Baskerville Casino",serif;letter-spacing:.03em;color:#241704;background:linear-gradient(180deg,#ffe99c,#efc266 52%,#d59e3c);box-shadow:inset 0 1px 0 #fff7,0 1px 2px #0007;}
+.hmx .nbadge{display:grid;place-items:center;border:2px solid #f1d78f;color:#fff;font:700 18px/1 "Baskerville Casino",serif;text-shadow:0 1px 2px #0009;box-shadow:0 1px 3px #0008;}
+.hmx .row{display:flex;align-items:center;border:1.5px solid #9c7a3c;border-radius:10px;background:linear-gradient(#06160e,#03110a);box-shadow:inset 0 0 0 1px rgba(246,207,114,.18);padding:0 12px;}
+.hmx .row .av{width:26px;height:26px;border-radius:50%;object-fit:cover;border:2px solid #e6c268;flex:none;}
+.hmx .row .nm{font:700 17px/1 "Baskerville Casino",serif;color:#f4ece0;margin-left:10px;}
+.hmx .row .st2{margin-left:auto;display:flex;align-items:center;gap:12px;font:400 16px/1 "Baskerville Casino",serif;color:#e8ddc6;}
+.hmx .row .st2 b{color:#f6cf72;font-weight:700;}
+.hmx .row .st2 .cr{color:#f1e8d4;font-weight:700;}
+.hmx .row .st2 .dot{color:#8f7a4e;}
+`;
+function ResBadge({ n, left, top, w, h }: { n: number; left: number; top: number; w: number; h: number }) {
+  const hh = H(n);
+  return <div className="a nbadge" style={{ left, top, width: w, height: h, borderRadius: Math.round(w * 0.24), fontSize: Math.round(h * 0.62), background: `radial-gradient(circle at 42% 30%, ${hh.glow}, ${hh.color} 70%)` }}>{n}</div>;
+}
+function MonitorResult({ t, scale }: { t: HorseTbl; scale: number }) {
+  const order = t.current?.order ?? [];
+  const w = order[0] ?? 0, second = order[1] ?? 0, third = order[2] ?? 0;
+  const winners = (t.history[0]?.results ?? []).filter(r => r.credit > 0).slice(0, 2);
+  const avatarOf = (nick: string) => t.players.find(p => p.nickname === nick)?.avatarUrl ?? null;
+  return (
+    <div className="hmx"><style>{RES_CSS}</style>
+      <div className="st" style={{ transform: `scale(${scale})`, boxShadow: '0 0 0 3px #0a2a16, 0 0 0 5px #c9972f' }}>
+        <img className="bg" src={`${AP}risultati-bg.png`} alt="" />
+        {/* logo REALE dell'utente sopra quello dipinto */}
+        <img className="a" src={`${AP}logo-ippodromo.png`} alt="IDEAeventi Ippodromo" style={{ left: 6, top: 6, width: 150, height: 86, objectFit: 'contain' }} />
+        {/* codice corsa + "risultati ufficiali" (numero dinamico) */}
+        <div className="a corsa" style={{ left: 540, top: 16, width: 182, textAlign: 'right' }}>
+          <div className="c1">CORSA {String(t.race).padStart(3, '0')}</div>
+          <div className="c2">RISULTATI UFFICIALI</div>
+        </div>
+        {/* vincitore dentro il banner con alloro dipinto (dinamico) */}
+        {w > 0 && <div className="a win" style={{ left: 241, top: 47, width: 264, height: 42 }}><span>{w} · {H(w).name.toUpperCase()}</span></div>}
+        {/* card 2° posto (sinistra) */}
+        {second > 0 && (
+          <div className="a card" style={{ left: 19, top: 203, width: 106, height: 78 }}>
+            <ResBadge n={second} left={57} top={210} w={30} h={27} />
+            <div className="nm">{H(second).name.toUpperCase()}</div>
+            <div className="pz">2° POSTO</div>
+          </div>
+        )}
+        {/* card 3° posto (destra) */}
+        {third > 0 && (
+          <div className="a card" style={{ left: 619, top: 203, width: 106, height: 78 }}>
+            <ResBadge n={third} left={657} top={210} w={30} h={27} />
+            <div className="nm">{H(third).name.toUpperCase()}</div>
+            <div className="pz">3° POSTO</div>
+          </div>
+        )}
+        {/* giocatori vincenti (il titolo "GIOCATORI VINCENTI" e le monete sono dipinti nello sfondo) */}
+        {winners.map((r, i) => (
+          <div className="a row" key={r.playerId} style={{ left: 50, top: 338 + i * 38, width: 466, height: 34 }}>
+            {avatarImg(avatarOf(r.nickname), r.nickname, 26)}
+            <span className="nm">{r.nickname}</span>
+            <span className="st2"><span>Puntata <b>{r.bet}</b></span><span className="dot">·</span><span>Accredito <span className="cr">{r.credit}</span></span></span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -459,35 +548,12 @@ export function HorseMonitor({ displayCode }: { displayCode: string }) {
   }, [st, displayCode, t]);
   const betCd = useCountdown(t?.phase === 'betting' ? t.betEndsAt : null);
   if (!t) return <div className="hm"><style>{MON_CSS}</style><div style={{ color: '#9fe0b4', fontSize: 30 }}>Carico il tavolo…</div></div>;
-  const scale = Math.min(dim.w / 1920, dim.h / 1080);
   const playUrl = `${ORIGIN}gestione/casino?hplay=${t.displayCode}`;
-  if (t.phase === 'betting' || t.phase === 'waiting') return <MonitorBetting t={t} playUrl={playUrl} betCd={betCd} scale={Math.min(dim.w / 744, dim.h / 456)} />;
-  if (t.phase === 'racing') return <MonitorRacing t={t} now={now} scale={Math.min(dim.w / 744, dim.h / 456)} />;
-  return (
-    <div className="hm"><style>{MON_CSS}</style>
-      <div className="stage" style={{ transform: `scale(${scale})` }}>
-        <div className="brand"><Brand size={1.4} /></div>
-        {/* fase 'result' (betting/waiting/racing gestite da early return) */}
-        {(
-          (() => { const order = t.current?.order ?? []; const w = order[0] ?? 0; const winners = (t.history[0]?.results ?? []).filter(r => r.credit > 0);
-            const podSpot = (rank: number, size: number) => { const n = order[rank]; return n ? <div className="pod"><HorseBadge n={n} size={size} active={rank === 0} /><div style={{ font: '700 24px "Baskerville Casino",serif' }}>{H(n).name}</div><div className="base" style={{ height: rank === 0 ? 170 : rank === 1 ? 120 : 90 }}>{rank + 1}</div></div> : null; };
-            return (
-              <>
-                <div className="banner" style={{ top: 30 }}><h1>🏆 VINCE {w} · {H(w).name}</h1></div>
-                <div style={{ position: 'absolute', right: 60, top: 50, textAlign: 'right', color: '#e8c879', fontSize: 26 }}>CORSA {String(t.race).padStart(3, '0')}<br /><span style={{ fontSize: 18, color: '#9fe0b4' }}>Risultati ufficiali</span></div>
-                <div className="podium">{podSpot(1, 90)}{podSpot(0, 120)}{podSpot(2, 80)}</div>
-                <div className="winners">
-                  <div style={{ textAlign: 'center', color: '#e8c879', font: '700 28px "Baskerville Casino",serif', marginBottom: 12 }}>GIOCATORI VINCENTI</div>
-                  {winners.slice(0, 5).map(r => (<div key={r.playerId} style={{ display: 'flex', alignItems: 'center', gap: 14, borderBottom: '1px solid #2f5a3a', padding: '8px 12px', fontSize: 24 }}><b style={{ flex: 1 }}>{r.nickname}</b><span>Puntata {r.bet}</span><span style={{ color: '#5ee08a', fontWeight: 700 }}>Accredito {r.credit}</span></div>))}
-                  {winners.length === 0 && <div style={{ textAlign: 'center', color: '#9fe0b4', fontSize: 24 }}>Nessun vincitore in questa corsa.</div>}
-                </div>
-              </>
-            );
-          })()
-        )}
-      </div>
-    </div>
-  );
+  const stageScale = Math.min(dim.w / 744, dim.h / 456);
+  if (t.phase === 'betting' || t.phase === 'waiting') return <MonitorBetting t={t} playUrl={playUrl} betCd={betCd} scale={stageScale} />;
+  if (t.phase === 'racing') return <MonitorRacing t={t} now={now} scale={stageScale} />;
+  if (t.phase === 'result') return <MonitorResult t={t} scale={stageScale} />;
+  return null;
 }
 
 /* ════════════════════════════════════════════════ REGIA ═══════════════════ */
