@@ -37,6 +37,7 @@ type BjState = { table: BjTbl; sessionId: string; seatNo: number | null };
 const SUIT: Record<string, string> = { s: '♠', h: '♥', d: '♦', c: '♣' };
 const seatOrder = (t: BjTbl) => Object.keys(t.seats).map(Number).sort((a, b) => a - b);
 const fmtTime = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+const grp = (n: number) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.'); // migliaia col punto (indipendente dall'ICU)
 function outcomeLabel(o: string | null): { t: string; cls: string } {
   switch (o) {
     case 'win': return { t: 'HAI VINTO', cls: 'win' };
@@ -121,58 +122,176 @@ function Avatar({ url, name, size = 54 }: { url?: string | null; name?: string |
    ════════════════════════════════════════════════════════════════════════════ */
 const PHONE_CSS = BJ_FONT + CARD_CSS + `
 .bjp{position:fixed;inset:0;overflow:auto;color:#fff;font-family:"Baskerville Casino",Georgia,serif;
-  background:radial-gradient(ellipse 150% 80% at 50% 0%,#0a5a26 0%,#063f18 45%,#02220c 100%);display:flex;flex-direction:column;align-items:center;}
-.bjp .wrap{width:100%;max-width:460px;min-height:100%;display:flex;flex-direction:column;padding:14px 16px 24px;gap:14px;}
-.bjp .head{text-align:center;}
-.bjp .logo{height:66px;object-fit:contain;margin:0 auto;display:block;filter:drop-shadow(0 2px 8px #000a);}
-.bjp .word{display:flex;align-items:center;justify-content:center;gap:12px;color:#e8c879;font:700 20px/1 "Baskerville Casino",serif;letter-spacing:.14em;margin-top:2px;}
-.bjp .word::before,.bjp .word::after{content:"❧";color:#b98b38;font-size:15px;}
-.bjp .h1{font:700 26px/1.1 "Baskerville Casino",serif;color:#fff;text-align:center;margin:6px 0 2px;}
-.bjp .h2{text-align:center;color:#cbd8c9;font-size:14px;margin-bottom:4px;}
-.bjp .panel{position:relative;border-radius:16px;padding:16px;background:linear-gradient(160deg,#0d2a19,#07180e);border:2px solid #b98b38;box-shadow:0 0 0 2px #3a2708,inset 0 0 0 1px rgba(255,235,160,.12),inset 0 10px 34px #0006;}
+  background:radial-gradient(ellipse 150% 80% at 50% 6%,#0a5a26 0%,#063f18 45%,#02220c 100%);display:flex;flex-direction:column;align-items:center;}
+.bjp .wrap{width:100%;max-width:460px;min-height:100%;display:flex;flex-direction:column;}
+.bjp .content{display:flex;flex-direction:column;padding:4px 16px 22px;gap:12px;flex:1;}
+/* ── header: barra di stato + duomo di marmo + arco oro + wordmark ── */
+.bjp .head{position:relative;text-align:center;}
+.bjp .sbar{position:absolute;top:7px;left:0;right:0;z-index:4;display:flex;align-items:center;justify-content:space-between;padding:0 18px;color:#fff;font:600 13px/1 -apple-system,"Helvetica Neue",Arial,sans-serif;}
+.bjp .sbar .ic{display:flex;align-items:center;gap:5px;}
+.bjp .dome{position:relative;height:96px;overflow:hidden;
+  background:
+    radial-gradient(120% 150% at 18% -30%,rgba(90,94,102,.35),transparent 46%),
+    radial-gradient(130% 150% at 86% -20%,rgba(70,74,82,.3),transparent 44%),
+    linear-gradient(120deg,transparent 46%,rgba(150,150,160,.10) 47%,transparent 49%),
+    linear-gradient(55deg,transparent 60%,rgba(140,140,150,.08) 61%,transparent 63%),
+    radial-gradient(130% 160% at 50% -46%,#1b1d22 0%,#0c0d10 44%,#050506 72%);
+  border-radius:0 0 46% 46%/0 0 100% 100%;
+  box-shadow:inset 0 -3px 0 #d9b65d,inset 0 -5px 0 #8a6a24,inset 0 -14px 20px #e8c87918,0 3px 7px #000a;}
+.bjp .logo{position:absolute;left:50%;top:14px;transform:translateX(-50%);height:66px;object-fit:contain;filter:drop-shadow(0 2px 8px #000c);z-index:3;}
+.bjp .word{position:relative;display:flex;align-items:center;justify-content:center;gap:14px;margin:5px 0 2px;
+  font:700 22px/1 "Baskerville Casino",serif;letter-spacing:.1em;
+  background:linear-gradient(180deg,#fff3c4,#ffdd87 48%,#e0a847);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 1px 1px #000a);}
+.bjp .word::before,.bjp .word::after{content:"";width:34px;height:12px;background:no-repeat center/contain;}
+.bjp .word::before{background-image:url(${AB}casino/flourish-l.png);}
+.bjp .word::after{background-image:url(${AB}casino/flourish-r.png);}
+.bjp .h1{font:700 26px/1.12 "Baskerville Casino",serif;color:#fff;text-align:center;margin:2px 0 0;text-shadow:0 2px 6px #0007;}
+.bjp .h1 .gold{color:#ffdd87;}
+.bjp .h2{text-align:center;color:#cbd8c9;font-size:14px;line-height:1.35;margin:-2px 0 2px;}
+.bjp .panel{position:relative;border-radius:16px;padding:14px 16px;background:linear-gradient(160deg,#0d2a19,#061710);border:2px solid #c6992f;box-shadow:0 0 0 1px #3a2708,inset 0 0 0 1px rgba(255,235,160,.14),inset 0 10px 30px #0007,0 4px 12px #0006;}
 .bjp .lbl{color:#e8c879;font-size:13px;text-align:center;}
+.bjp .lbl.left{text-align:left;}
 .bjp .big{font:700 40px/1 "Baskerville Casino",serif;color:#ffe9a6;text-align:center;}
 .bjp .credit{display:flex;align-items:center;justify-content:center;gap:10px;font:700 34px/1 "Baskerville Casino",serif;color:#ffe9a6;}
-.bjp input[type=text]{width:100%;box-sizing:border-box;padding:14px;border-radius:12px;border:2px solid #6e5320;background:#0b1a10;color:#ffe9a6;font:700 20px/1 "Baskerville Casino",serif;text-align:center;letter-spacing:.14em;text-transform:uppercase;}
-.bjp .name{letter-spacing:0;text-transform:none;font-size:18px;}
-.bjp .gbtn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;box-sizing:border-box;padding:16px;border-radius:12px;border:1px solid #f3dea0;background:linear-gradient(180deg,#ffe694,#f0c357 48%,#d59a34 52%,#eab74a);color:#231503;font:700 20px/1 "Baskerville Casino",serif;cursor:pointer;box-shadow:0 3px 0 #7a4d12,0 6px 14px #0007,inset 0 1px 0 #fff8;margin-top:auto;}
-.bjp .gbtn:disabled{opacity:.5;}
-.bjp .step{display:flex;align-items:center;justify-content:center;gap:16px;}
-.bjp .rnd{width:64px;height:64px;border-radius:50%;border:3px solid #e6c268;background:radial-gradient(circle at 40% 30%,#1a1305,#0c0c08);color:#ffe9a6;font:700 34px/1 serif;cursor:pointer;}
-.bjp .chips{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
-.bjp .chip{width:52px;height:52px;border-radius:50%;border:3px dashed #fff;display:grid;place-items:center;font:700 15px/1 serif;color:#fff;cursor:pointer;box-shadow:0 2px 6px #0008;}
-.bjp .chip.sel{outline:3px solid #ffe9a6;outline-offset:2px;}
-.bjp .seatpick{position:relative;height:230px;margin:6px 0;}
-.bjp .seatpick .felt{position:absolute;inset:0;border-radius:50%/42%;background:radial-gradient(ellipse at 50% 30%,#0a6b2c,#064a1c 70%,#042f12);border:3px solid #c9972f;box-shadow:inset 0 0 40px #0008;}
-.bjp .sbtn{position:absolute;width:52px;height:52px;border-radius:50%;transform:translate(-50%,-50%);display:grid;place-items:center;border:3px solid #6e5320;background:linear-gradient(#232320,#121210);color:#cdbf8f;font:700 16px/1 serif;cursor:pointer;}
-.bjp .sbtn.occ{opacity:.5;cursor:not-allowed;}
-.bjp .sbtn.mine{border-color:#4ade80;box-shadow:0 0 14px #4ade80aa;}
-.bjp .hand{display:flex;gap:16px;}
-.bjp .handbox{flex:1;border-radius:12px;border:1px solid #2f5a3a;background:#06160d;padding:10px;text-align:center;}
-.bjp .handbox .t{color:#cbd8c9;font-size:12px;margin-bottom:6px;}
-.bjp .cards{display:flex;gap:6px;justify-content:center;align-items:flex-end;margin-bottom:8px;min-height:84px;}
-.bjp .actions{display:flex;gap:10px;}
-.bjp .act{flex:1;border:none;border-radius:12px;padding:14px 4px;color:#fff;font:700 15px/1.1 "Baskerville Casino",serif;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;box-shadow:0 3px 0 rgba(0,0,0,.4);}
-.bjp .act .ic{font-size:22px;}
-.bjp .act.hit{background:linear-gradient(#1aa64b,#0c7a33);}
-.bjp .act.stand{background:linear-gradient(#d4303a,#9c0208);}
-.bjp .act.dbl{background:linear-gradient(#f0c357,#cf9633);color:#231503;}
-.bjp .act:disabled{filter:grayscale(1);opacity:.45;}
-.bjp .outcome{font:700 40px/1 "Baskerville Casino",serif;text-align:center;letter-spacing:.02em;}
-.bjp .outcome.win,.bjp .outcome.bj{color:#ffe08a;text-shadow:0 0 18px rgba(243,201,95,.6);}
+.bjp .mchip{width:28px;height:28px;border-radius:50%;flex:none;position:relative;background:radial-gradient(circle at 38% 30%,#f26d6d,#c21118 60%,#8c0a10);box-shadow:0 1px 3px #0009,inset 0 0 0 1px #0004;}
+.bjp .mchip::before{content:"";position:absolute;inset:3px;border-radius:50%;border:2px dashed #fff;opacity:.92;}
+.bjp .mchip::after{content:"";position:absolute;inset:8px;border-radius:50%;background:radial-gradient(circle at 40% 30%,#fff5,transparent 60%);border:1px solid #fff6;}
+.bjp .mchip.grn{background:radial-gradient(circle at 38% 30%,#5fd481,#1a9247 60%,#0c6a32);}
+.bjp .mchip.drop{animation:bjChipDrop .6s cubic-bezier(.22,1.2,.4,1) both;}
+.bjp input[type=text]{width:100%;box-sizing:border-box;padding:14px;border-radius:12px;border:2px solid #6e5320;background:#0b1a10;color:#ffe9a6;font:700 20px/1 "Baskerville Casino",serif;text-align:center;letter-spacing:.14em;text-transform:uppercase;box-shadow:inset 0 2px 6px #0008;}
+.bjp input.name{letter-spacing:0;text-transform:none;font-size:18px;text-align:left;}
+.bjp .photo{position:relative;width:104px;height:104px;margin:2px auto 0;}
+.bjp .photo img,.bjp .photo .ph{width:104px;height:104px;border-radius:50%;object-fit:cover;border:3px solid #e6c268;box-shadow:0 0 0 2px #0008,0 4px 12px #0008;}
+.bjp .photo .ph{display:grid;place-items:center;background:radial-gradient(circle at 42% 34%,#2a2a28,#121210);color:#8a7a52;font-size:48px;}
+.bjp .cambadge{position:absolute;right:2px;bottom:2px;width:30px;height:30px;border-radius:50%;background:linear-gradient(180deg,#ffe694,#d59a34);border:2px solid #7a4d12;display:grid;place-items:center;box-shadow:0 2px 5px #0008;}
+.bjp .gbtn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;box-sizing:border-box;padding:15px;border-radius:13px;border:1px solid #f3dea0;background:linear-gradient(180deg,#ffe694,#f0c357 48%,#d59a34 52%,#eab74a);color:#231503;font:700 20px/1 "Baskerville Casino",serif;cursor:pointer;box-shadow:0 3px 0 #7a4d12,0 7px 15px #0007,inset 0 1px 0 #fff8;margin-top:auto;}
+.bjp .gbtn.ghost{background:#121511;color:#ffe9a6;border:2px solid #6e5320;box-shadow:inset 0 0 0 1px #ffe9a620;}
+.bjp .gbtn:disabled{opacity:.5;cursor:default;}
+.bjp .step{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+.bjp .rnd{width:60px;height:60px;border-radius:50%;border:3px solid #e8cd7a;background:radial-gradient(circle at 40% 28%,#201708,#0a0a07);color:#ffe9a6;font:700 38px/1 serif;cursor:pointer;display:grid;place-items:center;box-shadow:0 0 12px #e8c87933,inset 0 2px 5px #fff2,0 3px 6px #0007;}
+.bjp .rnd:active{transform:scale(.94);}
+.bjp .stepval{flex:1;text-align:center;font:700 56px/1 "Baskerville Casino",serif;color:#ffe9a6;text-shadow:0 2px 6px #0008;}
+.bjp .chips{display:flex;gap:8px;justify-content:center;}
+.bjp .chipcol{display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;}
+.bjp .chip{width:52px;height:52px;border-radius:50%;position:relative;flex:none;box-shadow:0 3px 7px #0009,inset 0 0 0 2px #0003;transition:transform .15s ease;}
+.bjp .chip::before{content:"";position:absolute;inset:3px;border-radius:50%;border:3px dashed #ffffffe0;}
+.bjp .chip::after{content:"";position:absolute;inset:10px;border-radius:50%;border:1px solid #ffffff66;background:radial-gradient(circle at 40% 30%,#ffffff40,transparent 62%);}
+.bjp .chip b{position:absolute;inset:0;display:grid;place-items:center;z-index:1;font:700 15px/1 Georgia,serif;color:#fff;text-shadow:0 1px 2px #000a;}
+.bjp .chipcol.sel .chip{transform:translateY(-3px) scale(1.04);box-shadow:0 0 0 3px #ffe9a6,0 0 14px #ffe9a6aa,0 4px 8px #0009;}
+.bjp .chiplbl{padding:3px 0;width:46px;text-align:center;border-radius:8px;background:#0b1a10;border:1px solid #6e5320;color:#e8c879;font:700 13px/1 "Baskerville Casino",serif;}
+.bjp .chipcol.sel .chiplbl{border-color:#ffe9a6;color:#ffe9a6;background:#13230f;}
+.bjp .seatpick{position:relative;height:272px;margin:2px 0 0;}
+.bjp .seatpick .felt{position:absolute;left:2%;right:2%;top:0;bottom:4%;border-radius:48%/40%;background:radial-gradient(ellipse at 50% 26%,#0c7a31,#076322 52%,#044a1a 78%,#032f12);border:3px solid #c9972f;box-shadow:inset 0 0 44px #0009,inset 0 0 0 1px #ffe9a630,0 6px 16px #0007;}
+.bjp .tlogo{position:absolute;left:50%;top:48%;transform:translate(-50%,-50%);height:46px;opacity:.5;filter:grayscale(.3);}
+.bjp .dealer{position:absolute;left:50%;top:4%;transform:translate(-50%,-50%);z-index:3;}
+.bjp .sbtn{position:absolute;width:46px;height:46px;border-radius:50%;transform:translate(-50%,-50%);display:grid;place-items:center;border:3px solid #cdaa52;background:radial-gradient(circle at 42% 34%,#2b2b27,#111110);color:#e3d6a8;font:700 16px/1 serif;cursor:pointer;z-index:2;box-shadow:0 2px 5px #0008;overflow:hidden;}
+.bjp .sbtn .ava{width:100%;height:100%;object-fit:cover;}
+.bjp .sbtn.occ{cursor:not-allowed;border-color:#8a7a52;}
+.bjp .sbtn.sel{border-color:#4ade80;box-shadow:0 0 0 3px #4ade8066,0 0 16px #4ade80cc;animation:bjPulse 1.7s ease-in-out infinite;}
+.bjp .hand{display:flex;gap:12px;}
+.bjp .handbox{flex:1;position:relative;border-radius:13px;border:2px solid #b98b38;background:linear-gradient(160deg,#0c2717,#06160d);padding:9px 8px 20px;text-align:center;box-shadow:inset 0 0 0 1px #ffe9a614,0 3px 9px #0006;}
+.bjp .handbox .t{color:#eadbb0;font:700 13px/1 "Baskerville Casino",serif;margin-bottom:6px;}
+.bjp .cards{display:flex;gap:6px;justify-content:center;align-items:flex-end;min-height:76px;}
+.bjp .handbox .bjtot{position:absolute;left:50%;bottom:-13px;transform:translateX(-50%);}
+.bjp .actions{display:flex;gap:9px;}
+.bjp .act{flex:1;border:none;border-radius:13px;padding:12px 4px 10px;color:#fff;font:700 15px/1.1 "Baskerville Casino",serif;letter-spacing:.03em;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;box-shadow:0 3px 0 rgba(0,0,0,.45),inset 0 1px 0 #ffffff33;}
+.bjp .act svg{width:30px;height:30px;}
+.bjp .act.hit{background:linear-gradient(#1fb356,#0b7531);}
+.bjp .act.stand{background:linear-gradient(#e03a44,#9c0208);}
+.bjp .act.dbl{background:linear-gradient(#f3cf6a,#cf9633);color:#241704;}
+.bjp .act:disabled{background:linear-gradient(#3b3f3b,#2a2d2a);color:#8c938c;box-shadow:0 3px 0 rgba(0,0,0,.4);cursor:default;}
+.bjp .act:disabled svg{opacity:.55;}
+.bjp .act:active:not(:disabled){transform:translateY(2px);box-shadow:0 1px 0 rgba(0,0,0,.45);}
+.bjp .winrow{position:relative;display:flex;align-items:center;justify-content:center;gap:6px;margin:3px 0;}
+.bjp .laurel{width:34px;height:50px;flex:none;}
+.bjp .outcome{font:700 38px/1 "Baskerville Casino",serif;text-align:center;letter-spacing:.02em;white-space:nowrap;}
+.bjp .outcome.win,.bjp .outcome.bj{background:linear-gradient(180deg,#fff3c4,#ffdd87 46%,#e3a948);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 14px rgba(243,201,95,.55));}
 .bjp .outcome.lose{color:#ff7a7a;text-shadow:0 0 16px rgba(220,40,40,.5);}
 .bjp .outcome.push{color:#cfe8d6;}
-.bjp .note{display:flex;align-items:center;justify-content:center;gap:8px;color:#9fe0b4;font-size:14px;}
+.bjp .winrow .spark{position:absolute;width:8px;height:8px;background:radial-gradient(#fff,#ffe08a 42%,transparent 72%);border-radius:50%;opacity:.8;animation:bjTwinkle 1.5s ease-in-out infinite;}
+.bjp .note{display:flex;align-items:center;justify-content:center;gap:8px;color:#8ee6a8;font:700 16px/1.2 "Baskerville Casino",serif;}
+.bjp .note.lose{color:#ff8e8e;}
+.bjp .notesub{text-align:center;color:#cbd8c9;font-size:13px;margin-top:-4px;}
 .bjp .err{color:#ffb3b3;text-align:center;font-size:14px;}
-.bjp .ministate{display:flex;align-items:center;gap:10px;justify-content:center;background:#0b1a10;border:1px solid #2f5a3a;border-radius:999px;padding:8px 14px;}
-.bjp .dealerrow{display:flex;align-items:center;justify-content:center;gap:10px;}
+.bjp .prow{display:flex;align-items:center;gap:12px;}
+.bjp .prow .pname{font:700 20px/1 "Baskerville Casino",serif;color:#fff;}
+.bjp .prow .pcr{margin-left:auto;text-align:right;color:#cbd8c9;font-size:12px;line-height:1.3;}
+.bjp .prow .pcr b{display:block;color:#ffe9a6;font-size:17px;}
+.bjp .profit{font:700 30px/1 "Baskerville Casino",serif;}
+.bjp .tbar{height:6px;border-radius:999px;background:#02160b;border:1px solid #3a2708;overflow:hidden;margin-top:8px;}
+.bjp .tbar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#f0c357,#ffe9a6);box-shadow:0 0 8px #e8c87988;transition:width .9s linear;}
+/* ── motion ── */
+@keyframes bjRise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@keyframes bjPulse{0%,100%{box-shadow:0 0 0 3px #4ade8044,0 0 10px #4ade8066}50%{box-shadow:0 0 0 3px #4ade8088,0 0 20px #4ade80cc}}
+@keyframes bjGlow{0%,100%{box-shadow:0 0 0 1px #3a2708,inset 0 0 0 1px rgba(255,235,160,.14),inset 0 10px 30px #0007,0 0 6px #e8c87900}50%{box-shadow:0 0 0 1px #3a2708,inset 0 0 0 1px rgba(255,235,160,.2),inset 0 10px 30px #0007,0 0 20px #e8c87977}}
+@keyframes bjChipDrop{0%{transform:translateY(-34px) scale(1.35);opacity:0}70%{transform:translateY(3px) scale(1)}100%{transform:none;opacity:1}}
+@keyframes bjWin{0%{transform:scale(.55);opacity:0}60%{transform:scale(1.07);opacity:1}100%{transform:scale(1)}}
+@keyframes bjTwinkle{0%{opacity:.4;transform:scale(.7)}50%{opacity:1;transform:scale(1.15)}100%{opacity:.6;transform:scale(.85)}}
+.bjp .content>*{animation:bjRise .45s ease both;}
+.bjp .content>*:nth-child(2){animation-delay:.05s}
+.bjp .content>*:nth-child(3){animation-delay:.1s}
+.bjp .content>*:nth-child(4){animation-delay:.15s}
+.bjp .content>*:nth-child(5){animation-delay:.2s}
+.bjp .content>*:nth-child(6){animation-delay:.25s}
+.bjp .content>*:nth-child(7){animation-delay:.3s}
+.bjp .turnglow{animation:bjGlow 1.8s ease-in-out infinite;}
+.bjp .h1.turnpulse{animation:bjH1 1.8s ease-in-out infinite;}
+@keyframes bjH1{0%,100%{text-shadow:0 2px 6px #0007}50%{text-shadow:0 0 16px #ffe08a99,0 2px 6px #0007}}
+.bjp .winout{animation:bjWin .7s cubic-bezier(.22,1.3,.4,1) both;}
+/* dorso carta ornato (immagine condivisa col monitor) */
+.bjp .bjcard.back{background:#0a1430 url(${AB}bj/card-back.png) center/cover;box-shadow:0 3px 7px rgba(0,0,0,.55),inset 0 0 0 1px #0007;}
+.bjp .bjcard.back::after{content:none;}
+@media (prefers-reduced-motion:reduce){.bjp *{animation:none!important;}}
 `;
-const CHIP_COLORS: Record<number, string> = { 10: 'radial-gradient(circle at 40% 30%,#3bbf63,#0c7a33)', 20: 'radial-gradient(circle at 40% 30%,#ef4444,#9c0208)', 50: 'radial-gradient(circle at 40% 30%,#3b82f6,#13408a)', 100: 'radial-gradient(circle at 40% 30%,#3a3a3a,#0b0b0a)', 500: 'radial-gradient(circle at 40% 30%,#a855f7,#5b1a8a)' };
+const CHIP_BG: Record<number, string> = {
+  10: 'radial-gradient(circle at 40% 30%,#4fd277,#0c7a33 62%,#064d1f)',
+  20: 'radial-gradient(circle at 40% 30%,#f26d6d,#c21118 62%,#8c0a10)',
+  50: 'radial-gradient(circle at 40% 30%,#5aa0f6,#13408a 62%,#0c2d63)',
+  100: 'radial-gradient(circle at 40% 30%,#4a4a4a,#111110 62%,#060606)',
+  500: 'radial-gradient(circle at 40% 30%,#c07cf7,#5b1a8a 62%,#3c0f5e)',
+};
+
+/* ── barra di stato iOS fittizia (coerenza col mockup) ── */
+function PhoneStatusBar() {
+  return (
+    <div className="sbar">
+      <span>9:41</span>
+      <span className="ic">
+        <svg width="18" height="12" viewBox="0 0 18 12" fill="#fff"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5" width="3" height="7" rx="1"/><rect x="10" y="2.5" width="3" height="9.5" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+        <svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="#fff" strokeWidth="1.4"><path d="M1 4.3C3 2.5 5.3 1.6 8 1.6s5 .9 7 2.7"/><path d="M3.4 6.8C4.7 5.7 6.2 5.1 8 5.1s3.3.6 4.6 1.7"/><path d="M5.8 9.2C6.4 8.7 7.1 8.4 8 8.4s1.6.3 2.2.8"/></svg>
+        <svg width="24" height="12" viewBox="0 0 24 12" fill="none"><rect x="1" y="1" width="19" height="10" rx="2.5" stroke="#fff" strokeOpacity=".6"/><rect x="2.6" y="2.6" width="15" height="6.8" rx="1.3" fill="#fff"/><rect x="21" y="4" width="1.8" height="4" rx="1" fill="#fff" fillOpacity=".7"/></svg>
+      </span>
+    </div>
+  );
+}
+
+/* ── icone azioni (bianche, nette) ── */
+const IconCarta = () => (<svg viewBox="0 0 32 32" fill="none"><rect x="3" y="7" width="16" height="21" rx="2.5" transform="rotate(-9 11 17)" fill="#fff"/><rect x="12" y="5" width="16" height="21" rx="2.5" transform="rotate(7 20 15)" fill="#fff" stroke="#0b7531" strokeWidth="1.2"/><text x="17" y="19" fontSize="10" fontFamily="Georgia" fontWeight="700" fill="#0b7531" textAnchor="middle">A</text></svg>);
+const IconStai = () => (<svg viewBox="0 0 32 32" fill="#fff"><path d="M9 15V7.5a2 2 0 0 1 4 0V14h1V5.5a2 2 0 0 1 4 0V14h1V7a2 2 0 0 1 4 0v7h1V9.5a2 2 0 0 1 4 0V19c0 5-3.6 9-9 9-4 0-6.5-2-9-6l-3.2-5.3a2 2 0 0 1 3.3-2.2L9 16z"/></svg>);
+const IconDbl = () => (<svg viewBox="0 0 32 32" fill="none"><ellipse cx="16" cy="11" rx="12" ry="4.6" fill="#241704" stroke="#7a5410" strokeWidth="1.2"/><path d="M4 11v6c0 2.5 5.4 4.6 12 4.6s12-2.1 12-4.6v-6" fill="#2e1e05"/><ellipse cx="16" cy="11" rx="12" ry="4.6" fill="#3a2706"/><ellipse cx="16" cy="11" rx="7" ry="2.6" fill="none" stroke="#f3cf6a" strokeWidth="1.2"/><path d="M4 17v5c0 2.5 5.4 4.6 12 4.6s12-2.1 12-4.6v-5" fill="none" stroke="#7a5410" strokeWidth="1.2"/></svg>);
+const IconClock = () => (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e8c879" strokeWidth="2"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2" strokeLinecap="round"/><path d="M9 2h6" strokeLinecap="round"/></svg>);
+const IconHourglass = () => (<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 3h12M6 21h12M7 3c0 5 10 6 10 9s-10 4-10 9M17 3c0 5-10 6-10 9" strokeLinecap="round" strokeLinejoin="round"/></svg>);
+
+/* ── rami d'alloro (oro) per "HAI VINTO" ── */
+function Laurel({ flip }: { flip?: boolean }) {
+  return (
+    <svg className="laurel" viewBox="0 0 40 58" fill="#e7b64a" style={flip ? { transform: 'scaleX(-1)' } : undefined}>
+      <path d="M33 56C20 50 12 40 11 24 10 16 13 8 20 2c-3 7-3 13-1 20 2 8 7 14 15 18z" opacity=".95"/>
+      {[8, 15, 22, 29, 36, 43].map((y, i) => {
+        const s = 1 - i * 0.07, x = 30 - i * 3.3;
+        return <ellipse key={i} cx={x} cy={y} rx={7 * s} ry={3.3 * s} transform={`rotate(-38 ${x} ${y})`} />;
+      })}
+    </svg>
+  );
+}
 
 function BlackjackHeader() {
   return (
     <div className="head">
-      <img className="logo" src={`${AB}casino/logo-idea-casino.png`} alt="IDEA EVENTI CASINÒ" />
+      <PhoneStatusBar />
+      <div className="dome">
+        <img className="logo" src={`${AB}casino/logo-idea-casino.png`} alt="IDEA EVENTI CASINÒ" />
+      </div>
       <div className="word">BLACKJACK</div>
     </div>
   );
@@ -189,6 +308,7 @@ export function BlackjackPhone({ displayCode }: { displayCode: string }) {
   const [err, setErr] = useState('');
   const [chip, setChip] = useState(0);
   const [confirmDbl, setConfirmDbl] = useState(false);
+  const [selSeat, setSelSeat] = useState<number | null>(null);
 
   // carica identità giocatore se ho già il codice
   useEffect(() => {
@@ -227,21 +347,23 @@ export function BlackjackPhone({ displayCode }: { displayCode: string }) {
   const unbet = async () => { setBusy(true); try { await api('/gestione/casino/bj/unbet', { seatCode: myCode, playerCode }); } finally { setBusy(false); } };
   const act = async (kind: 'hit' | 'stand' | 'double') => { setBusy(true); setErr(''); try { const r = await api(`/gestione/casino/bj/${kind}`, { seatCode: myCode, playerCode }); if (r?.error) setErr(r.error); setConfirmDbl(false); } finally { setBusy(false); } };
 
-  const Shell = (children: React.ReactNode) => <div className="bjp"><style>{PHONE_CSS}</style><div className="wrap"><BlackjackHeader />{children}</div></div>;
+  const Shell = (children: React.ReactNode) => <div className="bjp"><style>{PHONE_CSS}</style><div className="wrap"><BlackjackHeader /><div className="content">{children}</div></div></div>;
 
   // 01 ACCESSO
   if (!me) return Shell(
     <>
       <div className="h1">Entra al tavolo</div>
-      <div className="h2">Inserisci il codice del tavolo che ti ha fornito l'organizzazione</div>
+      <div className="h2">Inserisci il codice del tavolo<br />che ti ha fornito l'organizzazione</div>
       <input type="text" value={tableCode} onChange={e => setTableCode(e.target.value)} placeholder="CODICE" />
-      <div className="lbl" style={{ marginTop: 4 }}>Il tuo nome</div>
+      <div className="lbl left">Il tuo nome</div>
       <input type="text" className="name" value={nick} onChange={e => setNick(e.target.value)} placeholder="Come ti chiami" />
       <div className="lbl">La tua foto (opzionale)</div>
-      <label style={{ display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
-        {photo ? <img src={photo} alt="" style={{ width: 96, height: 96, borderRadius: '50%', objectFit: 'cover', border: '3px solid #e6c268' }} /> : <Avatar size={96} />}
+      <label className="photo" style={{ cursor: 'pointer' }}>
+        {photo ? <img src={photo} alt="" /> : <div className="ph">👤</div>}
+        <span className="cambadge" aria-hidden>
+          <svg width="16" height="14" viewBox="0 0 16 14" fill="#231503"><path d="M5.2 1.6 4.3 3H2a1.4 1.4 0 0 0-1.4 1.4v7A1.4 1.4 0 0 0 2 12.8h12a1.4 1.4 0 0 0 1.4-1.4v-7A1.4 1.4 0 0 0 14 3h-2.3l-.9-1.4z"/><circle cx="8" cy="7.6" r="2.7" fill="#d59a34"/></svg>
+        </span>
         <input type="file" accept="image/*" capture="user" style={{ display: 'none' }} onChange={async e => { const f = e.target.files?.[0]; if (f) setPhoto(await fileToAvatar(f)); }} />
-        <span style={{ color: '#e8c879', fontSize: 13, marginTop: 6 }}>📷 Aggiungi foto</span>
       </label>
       {err && <div className="err">{err}</div>}
       <button className="gbtn" disabled={busy} onClick={enroll}>Entra ›</button>
@@ -253,26 +375,39 @@ export function BlackjackPhone({ displayCode }: { displayCode: string }) {
 
   // 02 POSTO (lobby)
   if (mySeatNo == null) {
-    const occupied = seatOrder(t).filter(no => t.seats[String(no)]?.playerId).length;
-    const full = occupied >= seatOrder(t).length;
-    const pos = (i: number, n: number) => { const a = (-90 + (i / n) * 360) * Math.PI / 180; return { left: `${50 + 40 * Math.cos(a)}%`, top: `${50 + 42 * Math.sin(a)}%` }; };
     const nos = seatOrder(t);
+    const occupied = nos.filter(no => t.seats[String(no)]?.playerId).length;
+    const full = occupied >= nos.length;
+    // posizioni fedeli al mockup: banco in alto, 7 posti attorno all'ovale
+    const SEAT_POS: Record<number, { left: string; top: string }> = {
+      1: { left: '86%', top: '27%' }, 2: { left: '80%', top: '82%' }, 3: { left: '92%', top: '57%' },
+      4: { left: '51%', top: '90%' }, 5: { left: '22%', top: '82%' }, 6: { left: '8%', top: '57%' }, 7: { left: '14%', top: '27%' },
+    };
+    const circ = (i: number, n: number) => { const a = (90 + (i / n) * 360) * Math.PI / 180; return { left: `${50 + 42 * Math.cos(a)}%`, top: `${50 + 44 * Math.sin(a)}%` }; };
     return Shell(
       <>
         <div className="h1">{t.name}</div>
         <div className="h2">{full ? 'Tavolo pieno — attendi un posto' : 'Scegli il tuo posto'}</div>
         <div className="seatpick">
           <div className="felt" />
-          <img src={`${AB}casino/logo-idea-casino.png`} alt="" style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', height: 54, opacity: .9 }} />
-          {nos.map((no, i) => { const s = t.seats[String(no)]!; const occ = !!s.playerId; return (
-            <button key={no} className={`sbtn${occ ? ' occ' : ''}`} style={pos(i, nos.length)} disabled={occ || busy} onClick={() => takeSeat(no)} title={occ ? (s.nickname ?? 'occupato') : `Posto ${no}`}>
-              {occ && s.avatarUrl ? <img src={s.avatarUrl} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} /> : no}
-            </button>
-          ); })}
+          <img className="tlogo" src={`${AB}casino/logo-idea-casino.png`} alt="" />
+          <div className="dealer"><Avatar size={50} /></div>
+          {nos.map((no, i) => {
+            const s = t.seats[String(no)]!; const occ = !!s.playerId; const sel = selSeat === no;
+            const style = { ...(SEAT_POS[no] ?? circ(i, nos.length)), ...(occ ? { opacity: .78 } : {}) };
+            return (
+              <button key={no} className={`sbtn${occ ? ' occ' : ''}${sel ? ' sel' : ''}`} style={style} disabled={occ || busy}
+                onClick={() => setSelSeat(no)} title={occ ? (s.nickname ?? 'occupato') : `Posto ${no}`}>
+                {occ && s.avatarUrl ? <img className="ava" src={s.avatarUrl} alt="" />
+                  : sel && photo ? <img className="ava" src={photo} alt="" />
+                  : no}
+              </button>
+            );
+          })}
         </div>
-        <div className="panel"><div className="lbl">Il tuo credito</div><div className="credit">🪙 {myBalance.toLocaleString('it-IT')}</div></div>
+        <div className="panel"><div className="lbl">Il tuo credito</div><div className="credit"><span className="mchip" />{grp(myBalance)}</div></div>
         {err && <div className="err">{err}</div>}
-        <div style={{ marginTop: 'auto', textAlign: 'center', color: '#9fe0b4', fontSize: 13 }}>{occupied}/{nos.length} posti occupati</div>
+        <button className="gbtn" disabled={busy || selSeat == null} onClick={() => selSeat != null && takeSeat(selSeat)}>Conferma posto ›</button>
       </>
     );
   }
@@ -296,18 +431,25 @@ export function BlackjackPhone({ displayCode }: { displayCode: string }) {
   // RISULTATO (06/13/14)
   if (t.phase === 'result') {
     const ol = outcomeLabel(mySeat!.outcome);
+    const won = ol.cls === 'win' || ol.cls === 'bj';
+    const profit = mySeat!.profit;
+    const sparks = won ? [{ left: '20%', top: '8%', d: '0s' }, { left: '82%', top: '14%', d: '.3s' }, { left: '12%', top: '62%', d: '.6s' }, { left: '88%', top: '66%', d: '.9s' }, { left: '50%', top: '2%', d: '.45s' }, { left: '66%', top: '78%', d: '.15s' }] : [];
     return Shell(
       <>
-        <div className="h2">Mano {String(t.round).padStart(3, '0')}</div>
-        <div className={`outcome ${ol.cls}`}>{ol.t || '—'}</div>
+        <div className="winrow">
+          {won && <Laurel />}
+          <div className={`outcome ${ol.cls} winout`}>{ol.t || '—'}</div>
+          {won && <Laurel flip />}
+          {sparks.map((s, i) => <span key={i} className="spark" style={{ left: s.left, top: s.top, animationDelay: s.d }} />)}
+        </div>
         {handPanel}
         <div className="hand">
-          <div className="handbox"><div className="t">Puntata</div><div className="big" style={{ fontSize: 28 }}>🪙 {mySeat!.bet}</div></div>
-          <div className="handbox"><div className="t">Profitto</div><div className="big" style={{ fontSize: 28, color: mySeat!.profit > 0 ? '#5ee08a' : mySeat!.profit < 0 ? '#ff7a7a' : '#cfe8d6' }}>{mySeat!.profit > 0 ? '+' : ''}{mySeat!.profit}</div></div>
+          <div className="panel" style={{ flex: 1, padding: '9px 8px' }}><div className="lbl">Puntata</div><div className="credit" style={{ fontSize: 26, marginTop: 5 }}><span className="mchip" />{mySeat!.bet}</div></div>
+          <div className="panel" style={{ flex: 1, padding: '9px 8px' }}><div className="lbl">Profitto</div><div className="credit profit" style={{ fontSize: 26, marginTop: 5, color: profit > 0 ? '#5fe08a' : profit < 0 ? '#ff7a7a' : '#cfe8d6' }}><span className="mchip grn" />{profit > 0 ? '+' : ''}{profit}</div></div>
         </div>
-        <div className="panel"><div className="lbl">Nuovo credito</div><div className="credit">🪙 {myBalance.toLocaleString('it-IT')}</div></div>
+        <div className="panel"><div className="lbl">Nuovo credito</div><div className="credit"><span className="mchip" />{grp(myBalance)}</div></div>
         {err && <div className="err">{err}</div>}
-        <button className="gbtn" disabled>La regia avvia la prossima mano ›</button>
+        <button className="gbtn">Prossima mano ›</button>
       </>
     );
   }
@@ -315,33 +457,42 @@ export function BlackjackPhone({ displayCode }: { displayCode: string }) {
   // TURNO (04) / ATTESA (05)
   if (t.phase === 'playing' || t.phase === 'dealer') {
     const myTurn = t.phase === 'playing' && t.activeSeat === mySeatNo && mySeat!.status === 'playing';
-    const activeName = t.activeSeat != null ? (t.seats[String(t.activeSeat)]?.nickname ?? `Posto ${t.activeSeat}`) : '—';
+    const activeSeat = t.activeSeat != null ? t.seats[String(t.activeSeat)] : null;
+    const activeName = activeSeat?.nickname ?? (t.activeSeat != null ? `Posto ${t.activeSeat}` : '—');
     const canDouble = myTurn && mySeat!.cards.length === 2 && !mySeat!.doubled && myBalance >= mySeat!.bet;
+    const headSeat = activeSeat ?? mySeat!;
+    const headName = activeSeat?.nickname ?? me.nickname;
+    const headBal = headSeat.balance ?? myBalance;
+    const turnPct = t.timeout ? Math.max(0, Math.min(100, (turnCd / t.timeout) * 100)) : 0;
     return Shell(
       <>
-        <div className="ministate"><Avatar url={mySeat!.avatarUrl} name={me.nickname} size={40} /><b style={{ color: '#ffe9a6' }}>{me.nickname}</b><span style={{ marginLeft: 'auto', color: '#cbd8c9', fontSize: 13 }}>Credito<br /><b style={{ color: '#ffe9a6', fontSize: 16 }}>{myBalance.toLocaleString('it-IT')}</b></span></div>
-        <div className="h1" style={{ fontSize: 23 }}>{myTurn ? 'È il tuo turno' : <>Turno di <span style={{ color: '#ffe08a' }}>{activeName}</span></>}</div>
+        <div className="prow">
+          <Avatar url={headSeat.avatarUrl} name={headName} size={52} />
+          <span className="pname">{headName}</span>
+          <span className="pcr">Credito<b>{grp(headBal)}</b></span>
+        </div>
+        <div className={`h1${myTurn ? ' turnpulse' : ''}`}>{myTurn ? 'È il tuo turno' : <>Turno di <span className="gold">{activeName}</span></>}</div>
         {handPanel}
-        <div className="panel" style={{ padding: 12 }}><div className="lbl">Puntata corrente</div><div className="credit" style={{ fontSize: 26 }}>🪙 {mySeat!.bet}</div></div>
+        <div className="panel" style={{ padding: '10px 12px' }}><div className="lbl">Puntata corrente</div><div className="credit" style={{ fontSize: 26, marginTop: 4 }}><span className="mchip" />{mySeat!.bet}</div></div>
         {myTurn
-          ? <div className="panel" style={{ padding: 12 }}><div className="lbl">⏱ Tempo per giocare</div><div className="big" style={{ fontSize: 30 }}>{fmtTime(turnCd)}</div></div>
-          : mySeat!.status === 'stand' ? <div className="note">⏳ Hai scelto STAI · attendi il banco…</div>
-          : mySeat!.status === 'bust' ? <div className="note" style={{ color: '#ff7a7a' }}>Sei sballato · attendi fine mano</div>
-          : mySeat!.status === 'blackjack' ? <div className="note">Blackjack! · attendi fine mano</div>
-          : <div className="note">Attendi il tuo turno…</div>}
+          ? <div className="panel turnglow" style={{ padding: '10px 12px' }}><div className="lbl" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><IconClock />Tempo per giocare</div><div className="big" style={{ fontSize: 32, marginTop: 2 }}>{fmtTime(turnCd)}</div><div className="tbar"><i style={{ width: `${turnPct}%` }} /></div></div>
+          : mySeat!.status === 'stand' ? <div className="panel" style={{ padding: '12px' }}><div className="note"><IconHourglass />Hai scelto STAI</div><div className="notesub">Attendi il banco…</div></div>
+          : mySeat!.status === 'bust' ? <div className="panel" style={{ padding: '12px' }}><div className="note lose">Sei sballato</div><div className="notesub">Attendi la fine della mano</div></div>
+          : mySeat!.status === 'blackjack' ? <div className="panel" style={{ padding: '12px' }}><div className="note">Blackjack!</div><div className="notesub">Attendi la fine della mano</div></div>
+          : <div className="panel" style={{ padding: '12px' }}><div className="note"><IconHourglass />Attendi il tuo turno…</div></div>}
         {err && <div className="err">{err}</div>}
         {confirmDbl ? (
           <div className="panel">
             <div className="h1" style={{ fontSize: 20 }}>Confermi il raddoppio?</div>
             <div className="h2">Puntata da {mySeat!.bet} a {mySeat!.bet * 2} · Riceverai una sola carta</div>
             <button className="gbtn" style={{ background: 'linear-gradient(#1aa64b,#0c7a33)', color: '#fff' }} disabled={busy} onClick={() => act('double')}>✓ Conferma {mySeat!.bet}</button>
-            <button className="gbtn" style={{ background: '#1a1a18', color: '#fff', boxShadow: 'none', marginTop: 8 }} onClick={() => setConfirmDbl(false)}>✕ Annulla</button>
+            <button className="gbtn ghost" style={{ marginTop: 8 }} onClick={() => setConfirmDbl(false)}>✕ Annulla</button>
           </div>
         ) : (
           <div className="actions" style={{ marginTop: 'auto' }}>
-            <button className="act hit" disabled={!myTurn || busy} onClick={() => act('hit')}><span className="ic">🂡</span>CARTA</button>
-            <button className="act stand" disabled={!myTurn || busy} onClick={() => act('stand')}><span className="ic">✋</span>STAI</button>
-            <button className="act dbl" disabled={!canDouble || busy} onClick={() => setConfirmDbl(true)}><span className="ic">🪙</span>RADDOPPIA</button>
+            <button className="act hit" disabled={!myTurn || busy} onClick={() => act('hit')}><IconCarta />CARTA</button>
+            <button className="act stand" disabled={!myTurn || busy} onClick={() => act('stand')}><IconStai />STAI</button>
+            <button className="act dbl" disabled={!canDouble || busy} onClick={() => setConfirmDbl(true)}><IconDbl />RADDOPPIA</button>
           </div>
         )}
       </>
@@ -355,12 +506,12 @@ export function BlackjackPhone({ displayCode }: { displayCode: string }) {
         <div className="h1">Puntata confermata</div>
         {t.dealer.cards.length === 0 && <div className="h2">In attesa della distribuzione</div>}
         <div className="panel">
-          <div className="credit" style={{ fontSize: 30 }}>🪙 {mySeat!.bet}</div>
-          <div className="lbl" style={{ marginTop: 6 }}>{mySeat!.bet} crediti riservati · Disponibili {myBalance.toLocaleString('it-IT')}</div>
+          <div className="credit" style={{ fontSize: 30 }}><span className="mchip drop" />{mySeat!.bet}</div>
+          <div className="lbl" style={{ marginTop: 6 }}>{mySeat!.bet} crediti riservati · Disponibili {grp(myBalance)}</div>
         </div>
-        <div className="note">⏳ In attesa della distribuzione{t.betEndsAt ? ` · ${fmtTime(betCd)}` : ''}</div>
+        <div className="panel" style={{ padding: 12 }}><div className="note"><IconHourglass />In attesa della distribuzione{t.betEndsAt ? ` · ${fmtTime(betCd)}` : ''}</div></div>
         {err && <div className="err">{err}</div>}
-        <button className="gbtn" style={{ background: '#1a1a18', color: '#ffe9a6', boxShadow: 'none' }} disabled={busy} onClick={unbet}>✎ Modifica puntata</button>
+        <button className="gbtn ghost" disabled={busy} onClick={unbet}>✎ Modifica puntata</button>
       </>
     );
   }
@@ -369,14 +520,19 @@ export function BlackjackPhone({ displayCode }: { displayCode: string }) {
   const cur = chip || (mySeat!.bet || Math.max(t.minBet, chips[0] || t.minBet));
   const dec = () => setChip(Math.max(t.minBet, cur - t.step));
   const inc = () => setChip(Math.min(t.maxBet, Math.min(myBalance, cur + t.step)));
+  const betPct = t.betSeconds ? Math.max(0, Math.min(100, (betCd / t.betSeconds) * 100)) : 0;
   return Shell(
     <>
       <div className="h1">Fai la tua puntata</div>
-      <div className="panel"><div className="lbl">Credito disponibile</div><div className="credit">🪙 {myBalance.toLocaleString('it-IT')}</div></div>
-      <div className="step"><button className="rnd" onClick={dec}>−</button><div className="big" style={{ minWidth: 120 }}>{cur}</div><button className="rnd" onClick={inc}>+</button></div>
-      <div className="chips">{chips.map(c => <button key={c} className={`chip${cur === c ? ' sel' : ''}`} style={{ background: CHIP_COLORS[c] }} onClick={() => setChip(c)}>{c}</button>)}</div>
-      {t.betEndsAt && <div className="panel" style={{ padding: 12 }}><div className="lbl">⏱ Tempo rimanente</div><div className="big" style={{ fontSize: 30 }}>{fmtTime(betCd)}</div></div>}
-      <div className="h2">Puntata {t.minBet}–{t.maxBet}, multipli di {t.step}</div>
+      <div className="panel"><div className="lbl">Credito disponibile</div><div className="credit"><span className="mchip" />{grp(myBalance)}</div></div>
+      <div className="step"><button className="rnd" onClick={dec}>−</button><div className="stepval">{cur}</div><button className="rnd" onClick={inc}>+</button></div>
+      <div className="chips">{chips.map(c => (
+        <div key={c} className={`chipcol${cur === c ? ' sel' : ''}`} onClick={() => setChip(c)}>
+          <div className="chip" style={{ background: CHIP_BG[c] }}><b>{c}</b></div>
+          <div className="chiplbl">{c}</div>
+        </div>
+      ))}</div>
+      {t.betEndsAt && <div className="panel" style={{ padding: '10px 12px' }}><div className="lbl" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><IconClock />Tempo rimanente</div><div className="big" style={{ fontSize: 32, marginTop: 2 }}>{fmtTime(betCd)}</div><div className="tbar"><i style={{ width: `${betPct}%` }} /></div></div>}
       {err && <div className="err">{err}</div>}
       <button className="gbtn" disabled={busy || cur > myBalance} onClick={() => placeBet(cur)}>Conferma puntata ›</button>
     </>
