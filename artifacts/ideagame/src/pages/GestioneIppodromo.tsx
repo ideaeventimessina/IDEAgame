@@ -75,8 +75,14 @@ async function fileToAvatar(file: File): Promise<string> {
 const FONT = `@font-face{font-family:"Baskerville Casino";font-weight:400;src:url(${AB}casino/libre-baskerville-latin-400-normal.woff2) format("woff2");font-display:swap}@font-face{font-family:"Baskerville Casino";font-weight:700;src:url(${AB}casino/libre-baskerville-latin-700-normal.woff2) format("woff2");font-display:swap}`;
 
 // Logo REALE dell'utente (mascotte Johnnino) — mai sostituirlo con un wordmark.
+// Brand condiviso: logo del CASINO (IDEA EVENTI CASINÒ) + nome gioco "IPPODROMO" sotto.
 function Brand({ size = 1 }: { size?: number }) {
-  return <img src={`${AB}ippo/logo-ippodromo.png`} alt="IDEAeventi Ippodromo" style={{ height: 62 * size, objectFit: 'contain', display: 'block', margin: '0 auto', filter: 'drop-shadow(0 2px 6px #000a)' }} />;
+  return (
+    <div style={{ textAlign: 'center', lineHeight: 1 }}>
+      <img src={`${AB}casino/logo-idea-casino.png`} alt="IDEA EVENTI CASINÒ" style={{ height: 56 * size, objectFit: 'contain', display: 'block', margin: '0 auto', filter: 'drop-shadow(0 2px 6px #000a)' }} />
+      <div style={{ font: `700 ${13 * size}px/1 "Baskerville Casino",serif`, letterSpacing: '.28em', paddingLeft: '.28em', marginTop: 3 * size, background: 'linear-gradient(180deg,#fff3c2,#ffe08a 48%,#e4ad4b)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>IPPODROMO</div>
+    </div>
+  );
 }
 // Pedina cavallo: colore + numero (riconoscibile anche senza distinguere i colori).
 function HorseBadge({ n, size = 44, active }: { n: number; size?: number; active?: boolean }) {
@@ -354,7 +360,10 @@ function MonitorBetting({ t, playUrl, betCd, scale }: { t: HorseTbl; playUrl: st
     <div className="hmb"><style>{BET_CSS}</style>
       <div className="st" style={{ transform: `scale(${scale})`, boxShadow: '0 0 0 3px #0a2a16, 0 0 0 5px #c9972f' }}>
         <div className="a" style={{ left: 0, top: 0, width: 744, height: 456, background: 'radial-gradient(ellipse 120% 90% at 50% 30%,#0e3a1c 0%,#082712 46%,#03150a 100%)' }} />
-        <img className="a" src={`${AP}logo-ippodromo.png`} alt="" style={{ left: 6, top: 8, width: 150, height: 88 }} />
+        <div className="a" style={{ left: 8, top: 6, width: 148, textAlign: 'center' }}>
+          <img src={`${AB}casino/logo-idea-casino.png`} alt="IDEA EVENTI CASINÒ" style={{ height: 66, objectFit: 'contain', display: 'block', margin: '0 auto' }} />
+          <div style={{ font: '700 13px/1 "Baskerville Casino",serif', letterSpacing: '.26em', paddingLeft: '.26em', marginTop: 2, background: 'linear-gradient(180deg,#fff3c2,#ffe08a 48%,#e4ad4b)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>IPPODROMO</div>
+        </div>
         <img className="a" src={`${AP}corsa-wordmark.png`} alt="" style={{ left: 162, top: 2, width: 396, height: 92 }} />
         <div className="a code" style={{ left: 556, top: 16, width: 104 }}>{t.displayCode}</div>
         <div className="a scan" style={{ left: 556, top: 42, width: 104 }}>SCANSIONA<br />IL QR CODE DAL TUO<br />SMARTPHONE PER GIOCARE</div>
@@ -429,6 +438,12 @@ function MonitorRacing({ t, now, scale }: { t: HorseTbl; now: number; scale: num
     <div className="hmr"><style>{RACE_CSS}</style>
       <div className="st" style={{ transform: `scale(${scale})`, boxShadow: '0 0 0 3px #0a2a16, 0 0 0 5px #c9972f' }}>
         <img className="track" src={`${AP}track-clean.png`} alt="" />
+        {/* copre il logo IPPODROMO DIPINTO nel track e mette il brand casino + IPPODROMO */}
+        <div className="a" style={{ left: 0, top: 0, width: 236, height: 132, background: 'radial-gradient(ellipse 152px 84px at 86px 50px, rgba(4,12,6,.985) 0%, rgba(4,12,6,.965) 72%, rgba(4,12,6,0) 100%)' }} />
+        <div className="a" style={{ left: 8, top: 8, width: 150, textAlign: 'center' }}>
+          <img src={`${AB}casino/logo-idea-casino.png`} alt="IDEA EVENTI CASINÒ" style={{ height: 66, objectFit: 'contain', display: 'block', margin: '0 auto' }} />
+          <div style={{ font: '700 13px/1 "Baskerville Casino",serif', letterSpacing: '.26em', paddingLeft: '.26em', marginTop: 2, background: 'linear-gradient(180deg,#fff3c2,#ffe08a 48%,#e4ad4b)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>IPPODROMO</div>
+        </div>
         {/* banner codificato OPACO (copre quello dipinto nel track) + numero corsa LIVE */}
         <div className="a cbanner" style={{ left: 206, top: 7, width: 332, height: 48 }}><span>CORSA {String(t.race).padStart(3, '0')} · IN DIRETTA</span></div>
         {runners.map(r => {
@@ -467,25 +482,56 @@ const RES_CSS = FONT + `
 .hmx .st{position:relative;width:744px;height:456px;flex:none;transform-origin:center center;background:#060b06;}
 .hmx img.bg{position:absolute;left:0;top:0;width:744px;height:452px;}
 .hmx .a{position:absolute;}
+/* patch che fonde col cielo notturno: copre il "CORSA 012" dipinto, il numero è dinamico */
+.hmx .corsa-bg{background:radial-gradient(ellipse 120% 80% at 72% 44%,rgba(4,8,10,.96) 46%,rgba(4,8,10,.72) 70%,rgba(4,8,10,0) 100%);}
 .hmx .corsa .c1{font:700 21px/1 "Baskerville Casino",serif;letter-spacing:.04em;background:linear-gradient(180deg,#fff3c2,#ffe08a 48%,#e4ad4b);-webkit-background-clip:text;background-clip:text;color:transparent;}
 .hmx .corsa .c2{font:700 12px/1.1 "Baskerville Casino",serif;letter-spacing:.14em;color:#e9d7a6;margin-top:3px;}
-.hmx .win{display:grid;place-items:center;border-radius:11px;background:radial-gradient(120% 150% at 50% 38%,#0f4b2e 0%,#05271a 62%,#01150e 100%);}
-.hmx .win span{font:700 34px/1 "Baskerville Casino",serif;letter-spacing:.01em;white-space:nowrap;background:linear-gradient(180deg,#fff6cc,#ffe08a 46%,#e3ab49);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 1px 1px #0008);}
-.hmx .card{border:1.5px solid #c9972f;border-radius:12px;background:linear-gradient(160deg,#1b170e,#0a0906);box-shadow:inset 0 0 0 1px rgba(255,228,150,.1);display:flex;flex-direction:column;align-items:center;padding:7px 6px 8px;}
+.hmx .win{display:grid;place-items:center;border-radius:11px;background:radial-gradient(120% 150% at 50% 38%,#0f4b2e 0%,#05271a 62%,#01150e 100%);overflow:hidden;}
+.hmx .win span{font:700 34px/1 "Baskerville Casino",serif;letter-spacing:.01em;white-space:nowrap;background:linear-gradient(180deg,#fff6cc,#ffe08a 46%,#e3ab49);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 1px 1px #0008);animation:resWinIn .6s cubic-bezier(.2,.85,.3,1) both,resWinGlow 2.6s ease-in-out .7s infinite;}
+/* pannello card SEMPRE opaco e fermo (copre la card dipinta); anima solo .inner,
+   così il testo dipinto non traspare MAI durante l'ingresso. */
+.hmx .card{border:1.5px solid #c9972f;border-radius:12px;background:linear-gradient(160deg,#1b170e,#0a0906);box-shadow:inset 0 0 0 1px rgba(255,228,150,.1);overflow:hidden;}
+.hmx .card .inner{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:7px 6px 8px;box-sizing:border-box;animation:resCardIn .55s ease-out both;}
+.hmx .card .cbadge{display:grid;place-items:center;border:2px solid #f1d78f;border-radius:8px;color:#fff;font:700 17px/1 "Baskerville Casino",serif;text-shadow:0 1px 2px #0009;box-shadow:0 1px 3px #0008;width:30px;height:27px;}
 .hmx .card .nm{font:700 14px/1 "Baskerville Casino",serif;color:#f4ece0;text-shadow:0 1px 2px #000a;margin-top:5px;}
 .hmx .card .pz{margin-top:6px;border-radius:10px;padding:3px 0;width:94px;text-align:center;font:700 12px/1 "Baskerville Casino",serif;letter-spacing:.03em;color:#241704;background:linear-gradient(180deg,#ffe99c,#efc266 52%,#d59e3c);box-shadow:inset 0 1px 0 #fff7,0 1px 2px #0007;}
-.hmx .nbadge{display:grid;place-items:center;border:2px solid #f1d78f;color:#fff;font:700 18px/1 "Baskerville Casino",serif;text-shadow:0 1px 2px #0009;box-shadow:0 1px 3px #0008;}
-.hmx .row{display:flex;align-items:center;border:1.5px solid #9c7a3c;border-radius:10px;background:linear-gradient(#06160e,#03110a);box-shadow:inset 0 0 0 1px rgba(246,207,114,.18);padding:0 12px;}
+/* pannello riga SEMPRE opaco e fermo (copre la riga dipinta); anima solo .inner. */
+.hmx .row{border:1.5px solid #9c7a3c;border-radius:10px;background:linear-gradient(#06160e,#03110a);box-shadow:inset 0 0 0 1px rgba(246,207,114,.18);overflow:hidden;}
+.hmx .row .inner{display:flex;align-items:center;width:100%;height:100%;padding:0 12px;box-sizing:border-box;animation:resRowIn .5s ease-out both;}
 .hmx .row .av{width:26px;height:26px;border-radius:50%;object-fit:cover;border:2px solid #e6c268;flex:none;}
 .hmx .row .nm{font:700 17px/1 "Baskerville Casino",serif;color:#f4ece0;margin-left:10px;}
 .hmx .row .st2{margin-left:auto;display:flex;align-items:center;gap:12px;font:400 16px/1 "Baskerville Casino",serif;color:#e8ddc6;}
 .hmx .row .st2 b{color:#f6cf72;font-weight:700;}
 .hmx .row .st2 .cr{color:#f1e8d4;font-weight:700;}
 .hmx .row .st2 .dot{color:#8f7a4e;}
+/* ─── MOTION DESIGN (elegante) ─── le animazioni in loop partono "spente" così il
+   confronto congelato resta fedele; vivono solo nella pagina reale. ───────────── */
+.hmx .spot{pointer-events:none;background:radial-gradient(ellipse 60% 70% at 50% 60%,rgba(255,221,140,.5),rgba(255,210,120,.12) 46%,rgba(255,210,120,0) 72%);mix-blend-mode:screen;opacity:0;transform:translateX(-50%);animation:resSpot 3.4s ease-in-out .3s infinite;}
+.hmx .sweep{pointer-events:none;overflow:hidden;}
+.hmx .sweep i{position:absolute;top:0;left:0;width:34%;height:100%;background:linear-gradient(105deg,rgba(255,240,190,0),rgba(255,240,190,.55) 50%,rgba(255,240,190,0));mix-blend-mode:screen;transform:translateX(-160%);opacity:0;animation:resSweep 4.2s ease-in-out 1s infinite;}
+.hmx .spark{pointer-events:none;position:absolute;width:5px;height:5px;border-radius:50%;background:radial-gradient(circle,#fff3c2,#f6cf72 55%,rgba(246,207,114,0));opacity:0;animation:resFall 3.2s linear infinite;}
+@keyframes resWinIn{from{opacity:0;transform:scale(.8)}to{opacity:1;transform:scale(1)}}
+@keyframes resWinGlow{0%,100%{filter:drop-shadow(0 1px 1px #0008)}50%{filter:drop-shadow(0 1px 1px #0008) drop-shadow(0 0 11px rgba(255,220,140,.8))}}
+@keyframes resCardIn{from{opacity:0;transform:translateY(12px) scale(.93)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes resRowIn{from{opacity:0;transform:translateX(-16px)}to{opacity:1;transform:translateX(0)}}
+@keyframes resSpot{0%,100%{opacity:0;transform:translateX(-50%) translateY(10px) scale(.95)}50%{opacity:.85;transform:translateX(-50%) translateY(0) scale(1.05)}}
+@keyframes resSweep{0%{transform:translateX(-160%);opacity:0}18%{opacity:1}70%{transform:translateX(360%);opacity:0}100%{transform:translateX(360%);opacity:0}}
+@keyframes resFall{0%{transform:translate(0,-8px) rotate(0);opacity:0}12%{opacity:.95}88%{opacity:.9}100%{transform:translate(var(--dx,8px),228px) rotate(300deg);opacity:0}}
+@media (prefers-reduced-motion:reduce){.hmx .win span,.hmx .card .inner,.hmx .row .inner{animation:none;opacity:1;transform:none;}.hmx .win span{filter:drop-shadow(0 1px 1px #0008);}.hmx .spot,.hmx .sweep i,.hmx .spark{animation:none;opacity:0;}}
 `;
-function ResBadge({ n, left, top, w, h }: { n: number; left: number; top: number; w: number; h: number }) {
+// scintille dorate deterministiche (poche, eleganti) sparse sulla scena
+const SPARKS = [
+  { l: 120, t: 110, d: 0.0, dx: 10, s: 5 }, { l: 250, t: 96, d: 1.1, dx: -8, s: 4 },
+  { l: 372, t: 104, d: 0.5, dx: 6, s: 6 }, { l: 470, t: 92, d: 1.7, dx: -12, s: 4 },
+  { l: 596, t: 112, d: 0.8, dx: 9, s: 5 }, { l: 196, t: 150, d: 2.1, dx: -6, s: 4 },
+  { l: 548, t: 150, d: 1.4, dx: 8, s: 5 }, { l: 320, t: 130, d: 2.6, dx: -10, s: 4 },
+  { l: 424, t: 140, d: 0.3, dx: 7, s: 5 }, { l: 660, t: 128, d: 1.9, dx: -9, s: 4 },
+  { l: 84, t: 134, d: 2.3, dx: 11, s: 4 }, { l: 372, t: 86, d: 1.2, dx: 0, s: 6 },
+];
+// Pedina quadrata-arrotondata del cavallo (colore + numero), in flusso dentro la card.
+function CardBadge({ n }: { n: number }) {
   const hh = H(n);
-  return <div className="a nbadge" style={{ left, top, width: w, height: h, borderRadius: Math.round(w * 0.24), fontSize: Math.round(h * 0.62), background: `radial-gradient(circle at 42% 30%, ${hh.glow}, ${hh.color} 70%)` }}>{n}</div>;
+  return <div className="cbadge" style={{ background: `radial-gradient(circle at 42% 30%, ${hh.glow}, ${hh.color} 70%)` }}>{n}</div>;
 }
 function MonitorResult({ t, scale }: { t: HorseTbl; scale: number }) {
   const order = t.current?.order ?? [];
@@ -496,37 +542,64 @@ function MonitorResult({ t, scale }: { t: HorseTbl; scale: number }) {
     <div className="hmx"><style>{RES_CSS}</style>
       <div className="st" style={{ transform: `scale(${scale})`, boxShadow: '0 0 0 3px #0a2a16, 0 0 0 5px #c9972f' }}>
         <img className="bg" src={`${AP}risultati-bg.png`} alt="" />
-        {/* logo REALE dell'utente sopra quello dipinto */}
-        <img className="a" src={`${AP}logo-ippodromo.png`} alt="IDEAeventi Ippodromo" style={{ left: 6, top: 6, width: 150, height: 86, objectFit: 'contain' }} />
-        {/* codice corsa + "risultati ufficiali" (numero dinamico) */}
-        <div className="a corsa" style={{ left: 540, top: 16, width: 182, textAlign: 'right' }}>
+
+        {/* ── MOTION: riflettore dorato che sale/pulsa sul podio del 1° (solo live) ── */}
+        <div className="a spot" style={{ left: 372, top: 150, width: 300, height: 176 }} />
+        {/* ── MOTION: scintille dorate che cadono sulla scena (solo live) ── */}
+        {SPARKS.map((s, i) => (
+          <div className="spark" key={i} style={{ left: s.l, top: s.t, width: s.s, height: s.s, animationDelay: `${s.d}s`, ['--dx' as string]: `${s.dx}px` }} />
+        ))}
+        {/* ── MOTION: riflesso dorato che scorre su alloro/corona e banner (solo live) ── */}
+        <div className="a sweep" style={{ left: 182, top: 6, width: 384, height: 88 }}><i /></div>
+
+        {/* LOGO: brand condiviso del casino (IDEA EVENTI) + nome gioco "IPPODROMO".
+            Pannello opaco a registro che COPRE del tutto il logo dipinto nello sfondo. */}
+        <div className="a" style={{ left: 0, top: 0, width: 162, height: 106, background: 'linear-gradient(155deg,#0a1812 0%,#05110b 68%,#030a06 100%)', borderRadius: '0 0 14px 0', boxShadow: 'inset -1px -1px 0 rgba(201,151,47,.22)' }} />
+        <img className="a" src={`${AB}casino/logo-idea-casino.png`} alt="IDEA EVENTI" style={{ left: 23, top: 6, width: 116, height: 77, objectFit: 'contain' }} />
+        <div className="a" style={{ left: 0, top: 83, width: 162, textAlign: 'center', font: '700 15px/1 "Baskerville Casino",serif', letterSpacing: '.26em', paddingLeft: '.26em', background: 'linear-gradient(180deg,#fff3c2,#ffe08a 48%,#e4ad4b)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>IPPODROMO</div>
+
+        {/* CODICE CORSA + "risultati ufficiali": numero dinamico, su patch opaco che
+            copre il "CORSA 012" dipinto (niente testo sopra testo). */}
+        <div className="a corsa-bg" style={{ left: 544, top: 6, width: 200, height: 56 }} />
+        <div className="a corsa" style={{ left: 540, top: 15, width: 190, textAlign: 'right' }}>
           <div className="c1">CORSA {String(t.race).padStart(3, '0')}</div>
           <div className="c2">RISULTATI UFFICIALI</div>
         </div>
-        {/* vincitore dentro il banner con alloro dipinto (dinamico) */}
-        {w > 0 && <div className="a win" style={{ left: 241, top: 47, width: 264, height: 42 }}><span>{w} · {H(w).name.toUpperCase()}</span></div>}
-        {/* card 2° posto (sinistra) */}
+
+        {/* VINCITORE nel banner (dentro l'alloro dipinto): pannello verde OPACO che
+            copre del tutto il "3 · VENTO" dipinto; il numero/nome sono dinamici. */}
+        {w > 0 && <div className="a win" style={{ left: 236, top: 46, width: 272, height: 46 }}><span>{w} · {H(w).name.toUpperCase()}</span></div>}
+
+        {/* CARD 2° POSTO (sinistra) — badge in flusso (bug di annidamento corretto) */}
         {second > 0 && (
-          <div className="a card" style={{ left: 19, top: 203, width: 106, height: 78 }}>
-            <ResBadge n={second} left={57} top={210} w={30} h={27} />
-            <div className="nm">{H(second).name.toUpperCase()}</div>
-            <div className="pz">2° POSTO</div>
+          <div className="a card" style={{ left: 15, top: 201, width: 124, height: 88 }}>
+            <div className="inner" style={{ animationDelay: '.12s' }}>
+              <CardBadge n={second} />
+              <div className="nm">{H(second).name.toUpperCase()}</div>
+              <div className="pz">2° POSTO</div>
+            </div>
           </div>
         )}
-        {/* card 3° posto (destra) */}
+        {/* CARD 3° POSTO (destra) */}
         {third > 0 && (
-          <div className="a card" style={{ left: 619, top: 203, width: 106, height: 78 }}>
-            <ResBadge n={third} left={657} top={210} w={30} h={27} />
-            <div className="nm">{H(third).name.toUpperCase()}</div>
-            <div className="pz">3° POSTO</div>
+          <div className="a card" style={{ left: 607, top: 201, width: 131, height: 88 }}>
+            <div className="inner" style={{ animationDelay: '.24s' }}>
+              <CardBadge n={third} />
+              <div className="nm">{H(third).name.toUpperCase()}</div>
+              <div className="pz">3° POSTO</div>
+            </div>
           </div>
         )}
-        {/* giocatori vincenti (il titolo "GIOCATORI VINCENTI" e le monete sono dipinti nello sfondo) */}
+
+        {/* GIOCATORI VINCENTI — righe su pannello OPACO (coprono i nomi dipinti),
+            ingresso in sequenza (stagger). Titolo e monete restano dipinti nello sfondo. */}
         {winners.map((r, i) => (
-          <div className="a row" key={r.playerId} style={{ left: 50, top: 338 + i * 38, width: 466, height: 34 }}>
-            {avatarImg(avatarOf(r.nickname), r.nickname, 26)}
-            <span className="nm">{r.nickname}</span>
-            <span className="st2"><span>Puntata <b>{r.bet}</b></span><span className="dot">·</span><span>Accredito <span className="cr">{r.credit}</span></span></span>
+          <div className="a row" key={r.playerId} style={{ left: 48, top: 341 + i * 38, width: 472, height: 34 }}>
+            <div className="inner" style={{ animationDelay: `${0.35 + i * 0.14}s` }}>
+              {avatarImg(avatarOf(r.nickname), r.nickname, 28)}
+              <span className="nm">{r.nickname}</span>
+              <span className="st2"><span>Puntata <b>{r.bet}</b></span><span className="dot">·</span><span>Accredito <span className="cr">{r.credit}</span></span></span>
+            </div>
           </div>
         ))}
       </div>
