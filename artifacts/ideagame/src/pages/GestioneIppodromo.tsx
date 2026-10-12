@@ -412,7 +412,7 @@ const RACE_CSS = FONT + `
 .hmr .cbanner span{animation:bshine 2.4s ease-in-out infinite;}
 @keyframes bshine{0%,100%{filter:drop-shadow(0 0 0 rgba(255,220,140,0))}50%{filter:drop-shadow(0 0 8px rgba(255,220,140,.6))}}
 `;
-const GALLOP_AR = 161 / 200; // aspetto cella dello sprite-sheet
+const GALLOP_AR = 172 / 218; // aspetto cella dello sprite-sheet (6 frame registrati al COM)
 const LAPS = 3;              // giri completi dell'anello prima dello stop al nastro
 const START_DEG = 118;      // nastro di partenza/arrivo (rettilineo davanti)
 // I cavalli partono dal NASTRO (a ventaglio sulle corsie), girano LAPS volte attorno
