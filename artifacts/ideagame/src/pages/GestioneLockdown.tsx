@@ -111,16 +111,26 @@ const CSS = FONT + `
 .lkd .mbar>i{display:block;height:100%;border-radius:5px;background:linear-gradient(90deg,#c9972f,#ffe08a);}
 `;
 
-export default function GestioneLockdown() {
+// Scala condivisa: palco fisso → riempie lo schermo mantenendo le proporzioni.
+function useScale(w = 744, h = 456) {
   const [dim, setDim] = useState({ w: window.innerWidth, h: window.innerHeight });
   useEffect(() => {
     const r = () => setDim({ w: window.innerWidth, h: window.innerHeight });
     window.addEventListener('resize', r);
     return () => window.removeEventListener('resize', r);
   }, []);
+  return Math.min(dim.w / w, dim.h / h);
+}
 
+// ── Dispatcher: ?sfida=CODE → MONITOR SFIDA, altrimenti MONITOR CASA ───────────
+export default function GestioneLockdown() {
+  const sfida = new URLSearchParams(window.location.search).get('sfida');
+  return sfida !== null ? <MonitorSfida /> : <MonitorCasa />;
+}
+
+function MonitorCasa() {
+  const scale = useScale(744, 456);
   const casa = new URLSearchParams(window.location.search).get('casa') || 'LOCK24';
-  const scale = Math.min(dim.w / 744, dim.h / 456);
   const joinUrl = `${ORIGIN}gestione/lockdown/join?casa=${encodeURIComponent(casa)}`;
   const pct = Math.max(0, Math.min(1, MASTER.current / MASTER.goal));
 
@@ -172,6 +182,135 @@ export default function GestioneLockdown() {
           <Lock size={15} />{fmt(MASTER.current)} <span className="goal">/ {fmt(MASTER.goal)}</span>
         </div>
         <div className="a mbar"><i style={{ width: `${pct * 100}%` }} /></div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── MONITOR SFIDA (vista display 80") ───────────────────────────────────────
+   Replica pixel-faithful del mockup 07, pannello "14 MONITOR SFIDA · CREATIVITA'
+   IN CUCINA". Stesso impianto della vista casa: palco fisso 744×452 scalato.
+
+   Mockup DIPINTO → separazione pittura/interfaccia:
+   · kitchen.png = scena cucina notturna + le 3 cornici d'oro dipinte
+     (INGREDIENTE, TEMPO, "Scrivi le ricette"), i pomodori, la clessidra, l'icona
+     telefono, la miniatura della stanza → tutta PITTURA, ritagliata dal mockup.
+   · Logo "LOCKDOWN" reale + "by IDEAeventi" (testo, regola brand).
+   · DINAMICI, coperti e ri-disegnati in CODICE sopra la pittura: nome ingrediente
+     (POMODORO), timer (00:35), "N/M risposte ricevute" + pallini, etichetta stanza.
+   · Fascia giocatori (avatar p-*.png + saldi Lock-Euro) e barra MASTER = codice.
+   Nessun backend: DATI MOCK interni. ?sfida=CODE seleziona questa vista. */
+
+const SFIDA = {
+  room: 'Cucina',
+  ingredient: 'Pomodoro',  // nome dinamico → mostrato in MAIUSCOLO
+  timeLeft: 35,            // secondi rimanenti → mm:ss
+  got: 5,                  // risposte ricevute
+  total: 8,                // giocatori attesi
+};
+const mmss = (s: number) =>
+  `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+// Centri avatar della fascia SFIDA (dal righello: passo ~66px, leggermente diversi da CASA).
+const SFIDA_CX = [36, 100, 166, 234, 300, 366, 431, 497];
+
+const CSS_SFIDA = `
+/* base dipinta (scena + cornici), fino al bordo oro della fascia (y360) */
+.lkd .s-bg{position:absolute;left:0;top:0;width:744px;height:360px;object-fit:cover;}
+/* strip che nasconde il logo dipinto (solo al centro: lascia libera la miniatura a dx) */
+.lkd .s-top{left:146px;top:0;width:428px;height:48px;background:linear-gradient(180deg,#07111b 0%,#07111b 68%,rgba(7,17,27,0) 100%);}
+/* etichetta stanza (copre la "Cucina" dipinta, dato-driven) */
+.lkd .s-room{top:3px;width:60px;height:23px;transform:translateX(-50%);display:grid;place-items:center;
+  background:linear-gradient(180deg,#121a25,#0c131c);color:#f3e2ac;
+  font:400 14px/1 "Baskerville Lockdown",serif;letter-spacing:.02em;border-radius:3px;}
+/* valore ingrediente (copre POMODORO dipinto) */
+.lkd .s-ingr{left:260px;top:80px;width:182px;height:42px;display:grid;place-items:center;
+  text-transform:uppercase;white-space:nowrap;
+  background:radial-gradient(140% 175% at 50% 135%,#241b0f 0%,#120f0b 46%,#0a0b10 72%);
+  color:#f6d27a;font:700 29px/1 "Baskerville Lockdown",serif;letter-spacing:.035em;
+  text-shadow:0 1px 2px #000,0 0 13px rgba(246,200,110,.35);}
+/* timer (copre 00:35 dipinto) — a destra della clessidra */
+.lkd .s-timer{left:353px;top:168px;width:114px;height:42px;display:grid;place-items:center;white-space:nowrap;
+  background:radial-gradient(155% 185% at 50% 130%,#241b0f 0%,#120f0b 44%,#07090e 70%);
+  color:#f6d27a;font:700 44px/1 "Baskerville Lockdown",serif;letter-spacing:.01em;
+  text-shadow:0 1px 2px #000,0 0 14px rgba(246,200,110,.35);}
+/* blocco risposte (copre "N/M risposte" + pallini dipinti, sulla scena calda) */
+.lkd .s-respbg{left:256px;top:306px;width:186px;height:44px;
+  background:radial-gradient(135% 150% at 45% 45%,rgba(16,11,8,.99) 0%,rgba(16,11,8,.95) 52%,rgba(16,11,8,0) 100%);}
+.lkd .s-resptxt{left:373px;top:310px;transform:translateX(-50%);white-space:nowrap;
+  font:400 15px/1 "Baskerville Lockdown",serif;color:#efe3c6;}
+.lkd .s-resptxt b{font-weight:700;color:#ffe7a6;}
+.lkd .s-dots{left:395px;top:335px;transform:translateX(-50%);display:flex;align-items:center;gap:9px;}
+.lkd .s-dots i{display:block;width:26px;height:9px;border-radius:5px;background:#231a0d;box-shadow:inset 0 0 0 1px rgba(201,151,47,.45);}
+.lkd .s-dots i.on{background:linear-gradient(90deg,#c9972f,#ffe08a);box-shadow:0 0 6px rgba(255,200,110,.55);}
+/* fascia giocatori (bordo oro a y360, come la vista casa) */
+.lkd .s-band{left:0;top:360px;width:744px;height:92px;
+  background:linear-gradient(180deg,#0a1119 0%,#060b11 100%);
+  border-top:1px solid rgba(201,151,47,.58);box-shadow:inset 0 1px 0 rgba(255,220,140,.12);}
+.lkd .s-pl{position:absolute;top:361px;width:62px;transform:translateX(-50%);
+  display:flex;flex-direction:column;align-items:center;gap:6px;}
+.lkd .s-pl img{width:46px;height:46px;border-radius:50%;object-fit:cover;box-shadow:0 0 0 2px rgba(201,151,47,.5);}
+.lkd .s-pl .nm{font:400 11px/1 "Baskerville Lockdown",serif;color:#efe6d2;}
+.lkd .s-pl .cr{display:flex;align-items:center;gap:3px;font:700 13px/1 "Baskerville Lockdown",serif;color:#ffe7a6;}
+/* divisore + MASTER */
+.lkd .s-div{left:522px;top:368px;width:1px;height:72px;background:linear-gradient(180deg,rgba(201,151,47,0),rgba(201,151,47,.6),rgba(201,151,47,0));}
+.lkd .s-mttl{left:654px;top:376px;transform:translateX(-50%);font:700 15px/1 "Baskerville Lockdown",serif;letter-spacing:.09em;color:#f2e4ad;}
+.lkd .s-mval{left:652px;top:398px;transform:translateX(-50%);display:flex;align-items:center;gap:6px;white-space:nowrap;font:700 16px/1 "Baskerville Lockdown",serif;color:#ffe7a6;}
+.lkd .s-mval .goal{color:#8a7a52;}
+.lkd .s-mbar{left:556px;top:421px;width:166px;height:12px;border-radius:6px;background:#10171f;box-shadow:inset 0 0 0 1px rgba(201,151,47,.4);overflow:hidden;}
+.lkd .s-mbar>i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,#c9972f,#ffe08a);}
+`;
+
+function MonitorSfida() {
+  const scale = useScale(744, 452);
+  const pct = Math.max(0, Math.min(1, MASTER.current / MASTER.goal));
+  const dots = Array.from({ length: SFIDA.total });
+
+  return (
+    <div className="lkd"><style>{CSS + CSS_SFIDA}</style>
+      <div className="st" style={{ height: 452, transform: `scale(${scale})` }}>
+        {/* scena cucina + cornici dipinte (base) */}
+        <img className="s-bg" src={`${LK}kitchen.png`} alt="Cucina in gioco" />
+
+        {/* strip + logo reale (aspetto 196×62, non deformato) + sottotitolo brand */}
+        <div className="a s-top" />
+        <img className="a" src={`${LK}logo-lockdown.png`} alt="LOCKDOWN" style={{ left: 305, top: 0, width: 138, height: 44 }} />
+        <div className="a" style={{ left: 274, top: 44, width: 200, textAlign: 'center', font: '700 9px/1 "Baskerville Lockdown",serif', letterSpacing: '.22em', color: '#d8b96a', textShadow: '0 1px 3px #000' }}>by IDEAeventi</div>
+
+        {/* etichetta stanza attiva (copre la "Cucina" dipinta) */}
+        <div className="a s-room" style={{ left: 709 }}>{SFIDA.room}</div>
+
+        {/* ingrediente dinamico */}
+        <div className="a s-ingr">{SFIDA.ingredient}</div>
+
+        {/* timer dinamico */}
+        <div className="a s-timer" aria-label={`Tempo rimanente ${mmss(SFIDA.timeLeft)}`}>{mmss(SFIDA.timeLeft)}</div>
+
+        {/* risposte ricevute + pallini (testo e pallini centrati indipendentemente) */}
+        <div className="a s-respbg" />
+        <div className="a s-resptxt"><b>{SFIDA.got}/{SFIDA.total}</b> risposte ricevute</div>
+        <div className="a s-dots" aria-label={`${SFIDA.got} di ${SFIDA.total} risposte`}>
+          {dots.map((_, i) => <i key={i} className={i < SFIDA.got ? 'on' : ''} />)}
+        </div>
+
+        {/* fascia giocatori */}
+        <div className="a s-band" />
+        {PLAYERS.map((p, i) => (
+          <div className="s-pl" key={p.name} style={{ left: SFIDA_CX[i] }}>
+            <img src={`${LK}${p.avatar}`} alt={p.name} />
+            <div className="nm">{p.name}</div>
+            <div className="cr" aria-label={`${p.name}: ${fmt(p.balance)} Lock-Euro`}>
+              <Lock size={12} />{fmt(p.balance)}
+            </div>
+          </div>
+        ))}
+
+        {/* MASTER */}
+        <div className="a s-div" />
+        <div className="a s-mttl">MASTER</div>
+        <div className="a s-mval" aria-label={`Master: ${fmt(MASTER.current)} di ${fmt(MASTER.goal)} Lock-Euro`}>
+          <Lock size={15} />{fmt(MASTER.current)} <span className="goal">/ {fmt(MASTER.goal)}</span>
+        </div>
+        <div className="a s-mbar"><i style={{ width: `${pct * 100}%` }} /></div>
       </div>
     </div>
   );
