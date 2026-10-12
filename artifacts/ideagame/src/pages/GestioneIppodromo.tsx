@@ -389,9 +389,12 @@ const RACE_CSS = FONT + `
 .hmr .prof .cr{font:700 13px "Baskerville Casino",serif;color:#ffe9a6;}
 .hmr .cbanner{border:2px solid #f6cf72;border-radius:30px;background:radial-gradient(ellipse at 50% 50%,#06160c,#0a2414);box-shadow:0 0 0 1px #6b4a17,inset 0 0 0 2px #2a1d06,inset 0 0 14px rgba(255,220,140,.3);display:grid;place-items:center;}
 .hmr .cbanner span{font:700 24px/1 "Baskerville Casino",serif;letter-spacing:.03em;white-space:nowrap;background:linear-gradient(180deg,#fff6c8,#ffe08a 48%,#e4ad4b);-webkit-background-clip:text;background-clip:text;color:transparent;}
-.hmr .runner .g{width:100%;height:100%;animation:gallop .4s linear infinite;will-change:transform;}
-@keyframes gallop{0%{transform:translateY(0) rotate(-1.4deg)}25%{transform:translateY(-7px) rotate(.7deg)}50%{transform:translateY(-2px) rotate(1.4deg)}75%{transform:translateY(-8px) rotate(0deg)}100%{transform:translateY(0) rotate(-1.4deg)}}
+.hmr .sprite{position:relative;overflow:hidden;}
+.hmr .sprite img{position:absolute;left:0;top:0;height:100%;width:600%;animation:gallop .5s steps(6) infinite;filter:drop-shadow(0 4px 5px rgba(0,0,0,.45));}
+@keyframes gallop{from{transform:translateX(0)}to{transform:translateX(-100%)}}
+.hmr .rbadge{position:absolute;border-radius:50%;border:2px solid #fff;display:grid;place-items:center;color:#fff;font-weight:700;font-family:"Baskerville Casino",serif;text-shadow:0 1px 2px #0008;box-shadow:0 1px 3px #0008;z-index:2;}
 `;
+const GALLOP_AR = 161 / 200; // aspetto cella dello sprite-sheet
 // Punto lungo il RETTILINEO FRONTALE dipinto (home stretch): arco inferiore della
 // centerline, calibrato sul righello di design/ippo-monitor-corsa@744.png.
 // p∈[0,1] = avanzamento gara (0 = partenza a sinistra, 1 = arrivo a destra); i 6
@@ -418,12 +421,13 @@ function MonitorRacing({ t, now, scale }: { t: HorseTbl; now: number; scale: num
         {/* banner codificato OPACO (copre quello dipinto nel track) + numero corsa LIVE */}
         <div className="a cbanner" style={{ left: 206, top: 7, width: 332, height: 48 }}><span>CORSA {String(t.race).padStart(3, '0')} · IN DIRETTA</span></div>
         {runners.map(r => {
-          const w = 90 * r.scale, hh = 80 * r.scale;
+          const w = 104 * r.scale, hh = w * GALLOP_AR, bs = w * 0.30;
           return (
-            <div key={r.h.n} className="a runner" style={{ left: r.x, top: r.y, width: w, height: hh, transform: 'translate(-50%, -82%)' }}>
-              <div className="g" style={{ animationDelay: `${(r.h.n * 0.06).toFixed(2)}s` }}>
-                <img src={`${AP}run-${r.h.n}.png`} alt={r.h.name} style={{ width: '100%', height: '100%', filter: 'drop-shadow(0 4px 5px rgba(0,0,0,.45))' }} />
+            <div key={r.h.n} className="a runner" style={{ left: r.x, top: r.y, width: w, height: hh, transform: 'translate(-50%, -88%)' }}>
+              <div className="sprite" style={{ width: w, height: hh }}>
+                <img src={`${AP}horse-gallop.png`} alt={r.h.name} style={{ animationDelay: `${(r.h.n * 0.07).toFixed(2)}s` }} />
               </div>
+              <div className="rbadge" style={{ left: w * 0.27, top: hh * 0.36, width: bs, height: bs, fontSize: bs * 0.6, background: `radial-gradient(circle at 40% 30%, ${r.h.glow}, ${r.h.color} 70%)` }}>{r.h.n}</div>
             </div>
           );
         })}
