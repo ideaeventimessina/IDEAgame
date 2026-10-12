@@ -384,36 +384,8 @@ export function BlackjackPhone({ displayCode }: { displayCode: string }) {
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
-   MONITOR 80" (sola lettura) — canvas fisso 1920×1080 scalato
+   MONITOR 80" (sola lettura) — palchi fissi 744×407 fedeli ai mockup
    ════════════════════════════════════════════════════════════════════════════ */
-const MON_CSS = BJ_FONT + CARD_CSS + `
-.bjm{position:fixed;inset:0;overflow:hidden;background:#02140a;display:flex;align-items:center;justify-content:center;color:#fff;font-family:"Baskerville Casino",Georgia,serif;}
-.bjm .stage{position:relative;width:1920px;height:1080px;flex:none;transform-origin:center center;
-  background:radial-gradient(ellipse 120% 90% at 50% 34%,#0a6b2c 0%,#064a1c 46%,#02260e 82%,#011606 100%);box-shadow:inset 0 0 0 10px #0a2a16,inset 0 0 0 14px #c9972f;}
-.bjm .logo{position:absolute;left:44px;top:34px;height:150px;}
-.bjm .banner{position:absolute;left:50%;top:44px;transform:translateX(-50%);min-width:760px;text-align:center;border:5px solid #f6cf72;border-radius:60px;padding:14px 40px;background:radial-gradient(ellipse at 50% 50%,#000d04,#052e17);box-shadow:0 0 0 2px #6b4a17,0 0 22px rgba(255,210,120,.3),inset 0 0 16px rgba(255,220,140,.2);}
-.bjm .banner h1{margin:0;font:700 60px/1 "Baskerville Casino",serif;letter-spacing:.02em;background:linear-gradient(180deg,#fff6c8,#ffe08a 45%,#e9b24f);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 2px 1px #000a);}
-.bjm .phone{position:absolute;right:60px;top:60px;text-align:center;color:#ffe9a6;font-size:28px;line-height:1.2;}
-.bjm .dealer{position:absolute;left:50%;top:150px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:10px;}
-.bjm .dealer .lab{color:#ffe9a6;letter-spacing:.3em;font-size:26px;}
-.bjm .dcards{display:flex;gap:10px;align-items:flex-end;}
-.bjm .turn{position:absolute;left:50%;top:470px;transform:translateX(-50%);color:#ffe08a;font:700 44px/1 "Baskerville Casino",serif;text-shadow:0 0 16px rgba(243,201,95,.4);}
-.bjm .seats{position:absolute;left:0;right:0;bottom:46px;display:flex;justify-content:center;gap:18px;padding:0 40px;}
-.bjm .seat{width:238px;border-radius:16px;background:linear-gradient(160deg,#0c2417,#06150d);border:2px solid #2f5a3a;padding:12px;display:flex;flex-direction:column;align-items:center;gap:6px;}
-.bjm .seat.active{border-color:#4ade80;box-shadow:0 0 22px #4ade80aa;}
-.bjm .seat .num{position:absolute;margin-top:-26px;background:#0c0c08;border:2px solid #e6c268;color:#ffe9a6;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-weight:700;}
-.bjm .seat .scards{display:flex;gap:5px;min-height:96px;align-items:flex-end;}
-.bjm .seat .nm{font:700 24px/1 "Baskerville Casino",serif;color:#fff;}
-.bjm .seat .meta{font-size:17px;color:#cbd8c9;text-align:center;line-height:1.3;}
-.bjm .seat.free{opacity:.6;justify-content:center;min-height:200px;}
-.bjm .seat .res{font-weight:700;font-size:22px;padding:3px 14px;border-radius:8px;}
-.bjm .res.win{background:#0c3d1d;color:#7ef0a4;border:1px solid #2f8a4e;}
-.bjm .res.lose{background:#3d0c0c;color:#ff9b9b;border:1px solid #8a2f2f;}
-.bjm .res.push{background:#2a2a0c;color:#ffe08a;border:1px solid #8a7a2f;}
-.bjm .wait{position:absolute;left:60px;top:220px;width:760px;display:flex;flex-direction:column;align-items:center;gap:18px;}
-.bjm .qrbox{background:#fff;padding:18px;border-radius:14px;border:4px solid #c9972f;}
-.bjm .code{font:700 52px/1 "Baskerville Casino",serif;color:#ffe9a6;letter-spacing:.12em;}
-`;
 function dealerVisibleTotal(d: { cards: BjCard[]; total: number | null; hidden: boolean }): number | null {
   if (!d.hidden) return d.total;
   const up = d.cards[0]; if (!up) return null;
@@ -505,6 +477,155 @@ function BjPlayStage({ t, turnCd, dim }: { t: BjTbl; turnCd: number; dim: { w: n
   );
 }
 
+/* ── Icona gruppo giocatori (oro) ── */
+function PeopleIcon() {
+  return (
+    <svg viewBox="0 0 64 44" width={46} height={34} fill="#efc14c" style={{ flex: 'none' }} xmlns="http://www.w3.org/2000/svg">
+      <circle cx="32" cy="12" r="10" />
+      <path d="M13 44c0-11 8.5-17 19-17s19 6 19 17z" />
+      <circle cx="10" cy="17" r="7.5" />
+      <path d="M0 43c0-8 5-13.5 11-13.5 2 0 3.9.6 5.5 1.6C13.2 33.5 10.8 38 10.8 43z" />
+      <circle cx="54" cy="17" r="7.5" />
+      <path d="M64 43c0-8-5-13.5-11-13.5-2 0-3.9.6-5.5 1.6C50.8 33.5 53.2 38 53.2 43z" />
+    </svg>
+  );
+}
+function outcomeBadge(o: string | null): { t: string; cls: string } {
+  switch (o) {
+    case 'win': return { t: 'VINTO', cls: 'win' };
+    case 'blackjack': return { t: 'BLACKJACK', cls: 'win' };
+    case 'push': return { t: 'PARI', cls: 'push' };
+    default: return { t: 'PERSO', cls: 'lose' };
+  }
+}
+
+/* ── Monitor ATTESA / PUNTATE (fase waiting/betting) — palco fisso 744×407 fedele al mockup "07 MONITOR ATTESA" ── */
+const MON3_CSS = BJ_FONT + CARD_CSS + `
+.bjm3{position:fixed;inset:0;overflow:hidden;background:#02120a;display:flex;align-items:center;justify-content:center;color:#fff;font-family:"Baskerville Casino",Georgia,serif;}
+.bjm3 .stage{position:relative;width:744px;height:407px;flex:none;transform-origin:center center;border-radius:18px;overflow:hidden;
+  background:
+    radial-gradient(ellipse 66% 46% at 50% -4%,#020a05 0%,#04140a 36%,rgba(5,24,12,0) 62%),
+    radial-gradient(ellipse 122% 86% at 50% 52%,#0b7330 0%,#065a22 38%,#033d15 68%,#01240b 100%);
+  box-shadow:inset 0 0 0 3px #0a2a16,inset 0 0 0 7px #bd922f,inset 0 0 0 9px #0a2a16,inset 0 0 80px #000a;}
+.bjm3 .logo{position:absolute;left:6px;top:4px;width:167px;height:101px;object-fit:fill;filter:drop-shadow(0 2px 6px #000a);}
+.bjm3 .title{position:absolute;left:150px;width:470px;top:12px;text-align:center;font:700 58px/1 "Baskerville Casino",serif;letter-spacing:.015em;background:linear-gradient(180deg,#fff6c8,#ffe08a 45%,#e9b24f);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 2px 1px #000a);}
+.bjm3 .qrbox{position:absolute;left:100px;top:107px;width:146px;height:146px;background:#fff;border-radius:8px;padding:8px;box-sizing:border-box;box-shadow:0 2px 8px #0009;}
+.bjm3 .qrbox svg{display:block;width:100%;height:100%;}
+.bjm3 .scan{position:absolute;left:256px;top:118px;width:182px;text-align:center;color:#f3e7c2;font:700 21px/1.25 "Baskerville Casino",serif;}
+.bjm3 .codelbl{position:absolute;left:256px;top:208px;width:182px;text-align:center;color:#e8c879;font:400 13px/1 "Baskerville Casino",serif;letter-spacing:.16em;}
+.bjm3 .codepill{position:absolute;left:290px;top:226px;width:118px;text-align:center;padding:7px 0;border:2px solid #debb60;border-radius:11px;background:radial-gradient(ellipse at 50% 50%,#083016,#04200c);color:#ffe9a6;font:700 26px/1 "Baskerville Casino",serif;letter-spacing:.08em;box-shadow:0 0 10px #e8c87955,inset 0 1px 2px #fff3;}
+.bjm3 .tavolo{position:absolute;left:520px;top:106px;width:184px;text-align:center;padding:9px 0;border:3px solid #e8cd7a;border-radius:14px;background:radial-gradient(ellipse at 50% 50%,#06330f,#02220c);color:#ffe3a0;font:700 30px/1 "Baskerville Casino",serif;text-shadow:0 1px 1px #000a;box-shadow:0 0 14px #e8c87944,inset 0 0 10px #0009;}
+.bjm3 .players{position:absolute;left:510px;top:160px;width:200px;display:flex;flex-direction:column;align-items:center;gap:3px;}
+.bjm3 .players .prow{display:flex;align-items:center;gap:13px;}
+.bjm3 .players .pn{font:700 34px/1 "Baskerville Casino",serif;color:#fff;}
+.bjm3 .players .pl{font:400 15px/1 "Baskerville Casino",serif;color:#e8c879;}
+.bjm3 .status{position:absolute;left:510px;top:224px;width:200px;text-align:center;padding:10px 0;border:3px solid #4ade80;border-radius:14px;background:linear-gradient(180deg,#05240d,#01160a);color:#eafff0;font:700 24px/1 "Baskerville Casino",serif;box-shadow:0 0 16px #4ade8077,inset 0 0 10px #0009;}
+.bjm3 .status.wait{border-color:#e0b24a;color:#ffe3a0;box-shadow:0 0 16px #e0b24a66,inset 0 0 10px #0009;}
+.bjm3 .wseats{position:absolute;left:6px;right:6px;bottom:7px;display:flex;gap:5px;}
+.bjm3 .ws{position:relative;flex:1 1 0;height:116px;border-radius:12px;border:2px solid #7c6632;background:linear-gradient(162deg,#0e2c1b,#06160d);display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:16px;box-shadow:inset 0 1px 0 #ffffff10,inset 0 0 0 1px #4a3c1a;}
+.bjm3 .ws.free{border-color:#5a4a26;opacity:.9;}
+.bjm3 .wsnum{position:absolute;top:-11px;left:50%;transform:translateX(-50%);width:24px;height:24px;border-radius:50%;background:radial-gradient(circle at 40% 30%,#1d1708,#0b0b07);border:2px solid #e6c268;color:#ffe9a6;display:grid;place-items:center;font:700 12px/1 serif;z-index:2;box-shadow:0 2px 4px #0008;}
+.bjm3 .wsnm{font:700 16px/1 "Baskerville Casino",serif;color:#fff;margin-top:7px;}
+.bjm3 .wscr{font:400 14px/1 "Baskerville Casino",serif;color:#ffe9a6;margin-top:4px;}
+.bjm3 .wsfree{color:#8aa08c;font:400 15px/1 "Baskerville Casino",serif;margin-top:12px;}
+`;
+function BjWaitStage({ t, dim, playUrl }: { t: BjTbl; dim: { w: number; h: number }; playUrl: string }) {
+  const scale = Math.min(dim.w / 744, dim.h / 407);
+  const nos = seatOrder(t);
+  const occupied = nos.filter(no => t.seats[String(no)]?.playerId).length;
+  const betting = t.phase === 'betting';
+  return (
+    <div className="bjm3"><style>{MON3_CSS}</style>
+      <div className="stage" style={{ transform: `scale(${scale})` }}>
+        <img className="logo" src={`${AB}casino/logo-idea-casino.png`} alt="IDEA EVENTI CASINÒ" />
+        <div className="title">BLACKJACK</div>
+        <div className="qrbox"><QRCodeSVG value={playUrl} size={130} /></div>
+        <div className="scan">Scansiona<br />e gioca dal<br />tuo telefono</div>
+        <div className="codelbl">CODICE TAVOLO</div>
+        <div className="codepill">{t.displayCode}</div>
+        <div className="tavolo">{t.name}</div>
+        <div className="players"><div className="prow"><PeopleIcon /><span className="pn">{occupied} / {nos.length}</span></div><div className="pl">giocatori</div></div>
+        <div className={`status${betting ? '' : ' wait'}`}>{betting ? 'Puntate aperte' : 'In attesa'}</div>
+        <div className="wseats">
+          {nos.map(no => {
+            const s = t.seats[String(no)]!;
+            if (!s.playerId) return <div key={no} className="ws free"><div className="wsnum">{no}</div><Avatar size={44} /><div className="wsfree">Libero</div></div>;
+            return (
+              <div key={no} className="ws"><div className="wsnum">{no}</div>
+                <Avatar url={s.avatarUrl} name={s.nickname} size={46} />
+                <div className="wsnm">{s.nickname}</div>
+                <div className="wscr">{String(s.balance ?? 0).replace(/\B(?=(\d{3})+(?!\d))/g, '.')}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Monitor RISULTATI (fase result) — palco fisso 744×407 fedele al mockup "17 MONITOR RISULTATI" ── */
+const MON4_CSS = BJ_FONT + CARD_CSS + `
+.bjm4{position:fixed;inset:0;overflow:hidden;background:#02120a;display:flex;align-items:center;justify-content:center;color:#fff;font-family:"Baskerville Casino",Georgia,serif;}
+.bjm4 .stage{position:relative;width:744px;height:407px;flex:none;transform-origin:center center;border-radius:18px;overflow:hidden;
+  background:
+    radial-gradient(ellipse 66% 46% at 50% -4%,#020a05 0%,#04140a 36%,rgba(5,24,12,0) 62%),
+    radial-gradient(ellipse 122% 86% at 50% 52%,#0b7330 0%,#065a22 38%,#033d15 68%,#01240b 100%);
+  box-shadow:inset 0 0 0 3px #0a2a16,inset 0 0 0 7px #bd922f,inset 0 0 0 9px #0a2a16,inset 0 0 80px #000a;}
+.bjm4 .logo{position:absolute;right:8px;top:4px;width:150px;height:80px;object-fit:fill;filter:drop-shadow(0 2px 6px #000a);}
+.bjm4 .banner{position:absolute;left:50%;top:5px;transform:translateX(-50%);padding:6px 32px;border:3px solid #e8cd7a;border-radius:14px;background:radial-gradient(ellipse at 50% 50%,#06330f,#02220c);white-space:nowrap;box-shadow:0 0 14px #e8c87955,inset 0 0 10px #0009;z-index:3;}
+.bjm4 .banner span{font:700 30px/1 "Baskerville Casino",serif;background:linear-gradient(180deg,#fff4c6,#ffe091 48%,#e4ad4c);-webkit-background-clip:text;background-clip:text;color:transparent;letter-spacing:.02em;}
+.bjm4 .bancolab{position:absolute;left:0;right:0;top:55px;text-align:center;color:#eed9a0;font:400 15px/1 "Baskerville Casino",serif;letter-spacing:.28em;}
+.bjm4 .bancorow{position:absolute;left:252px;top:76px;display:flex;align-items:center;gap:14px;z-index:2;}
+.bjm4 .bancorow .bcards{display:flex;gap:4px;}
+.bjm4 .seats4{position:absolute;left:4px;right:4px;top:150px;display:flex;gap:5px;}
+.bjm4 .rs{position:relative;flex:1 1 0;height:216px;border-radius:12px;border:2px solid #356a41;background:linear-gradient(162deg,#0e2c1b,#06160d);box-shadow:inset 0 1px 0 #ffffff12,0 4px 10px #0007;display:flex;flex-direction:column;align-items:center;}
+.bjm4 .rscards{display:flex;justify-content:center;align-items:flex-end;gap:3px;margin-top:15px;height:54px;}
+.bjm4 .rstot{margin-top:-5px;position:relative;z-index:2;}
+.bjm4 .rsav{margin-top:7px;}
+.bjm4 .rsnm{font:700 15px/1 "Baskerville Casino",serif;color:#fff;margin-top:6px;}
+.bjm4 .rsout{margin-top:7px;width:84%;text-align:center;padding:5px 0 6px;border-radius:9px;font:700 14px/1 "Baskerville Casino",serif;letter-spacing:.04em;}
+.bjm4 .rsout .amt{display:block;font:700 18px/1 "Baskerville Casino",serif;margin-top:3px;}
+.bjm4 .rsout.win{background:linear-gradient(180deg,#0e4a24,#07381a);border:1px solid #2f8a4e;color:#86f2aa;}
+.bjm4 .rsout.lose{background:linear-gradient(180deg,#4a1010,#380b0b);border:1px solid #8a2f2f;color:#ff9b9b;}
+.bjm4 .rsout.push{background:linear-gradient(180deg,#43430f,#2a2a0c);border:1px solid #8a7a2f;color:#ffe08a;}
+.bjm4 .nextpill{position:absolute;left:50%;bottom:7px;transform:translateX(-50%);padding:7px 36px;border:3px solid #e8cd7a;border-radius:16px;background:radial-gradient(ellipse at 50% 50%,#06330f,#02220c);color:#ffe9a6;font:700 20px/1 "Baskerville Casino",serif;white-space:nowrap;box-shadow:0 0 12px #e8c87944,inset 0 0 10px #0009;}
+`;
+function BjResultStage({ t, dim }: { t: BjTbl; dim: { w: number; h: number } }) {
+  const scale = Math.min(dim.w / 744, dim.h / 407);
+  const nos = seatOrder(t);
+  return (
+    <div className="bjm4"><style>{MON4_CSS}</style>
+      <div className="stage" style={{ transform: `scale(${scale})` }}>
+        <img className="logo" src={`${AB}casino/logo-idea-casino.png`} alt="IDEA EVENTI CASINÒ" />
+        <div className="banner"><span>Mano {String(t.round).padStart(3, '0')} · Banco {t.dealer.total ?? '—'}</span></div>
+        <div className="bancolab">BANCO</div>
+        <div className="bancorow">
+          <Total v={t.dealer.total} size={18} />
+          <div className="bcards">{t.dealer.cards.map((c, i) => <Card key={i} c={c} w={50} />)}</div>
+        </div>
+        <div className="seats4">
+          {nos.map(no => {
+            const s = t.seats[String(no)]!;
+            if (!s.playerId) return <div key={no} className="rs"><div className="rscards"><Card back w={34} /></div><div className="rsav" style={{ marginTop: 20 }}><Avatar size={44} /></div><div className="rsnm">Libero</div></div>;
+            const o = outcomeBadge(s.outcome);
+            return (
+              <div key={no} className="rs">
+                <div className="rscards">{s.cards.length ? s.cards.map((c, i) => <Card key={i} c={c} w={34} />) : <Card back w={34} />}</div>
+                {s.total != null && <div className="rstot"><Total v={s.total} bust={s.status === 'bust'} size={13} /></div>}
+                <div className="rsav"><Avatar url={s.avatarUrl} name={s.nickname} size={44} /></div>
+                <div className="rsnm">{s.nickname ?? '—'}</div>
+                <div className={`rsout ${o.cls}`}>{o.t}<span className="amt">{s.profit > 0 ? '+' : ''}{s.profit}</span></div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="nextpill">La prossima mano inizierà a breve</div>
+      </div>
+    </div>
+  );
+}
+
 export function BlackjackMonitor({ displayCode }: { displayCode: string }) {
   const st = useBjTable(displayCode, 900);
   const [dim, setDim] = useState({ w: window.innerWidth, h: window.innerHeight });
@@ -518,74 +639,16 @@ export function BlackjackMonitor({ displayCode }: { displayCode: string }) {
     if (t.phase === 'playing' && t.turnEndsAt && now > Date.parse(t.turnEndsAt) + 1200 && t.activeSeat != null && now - lastAuto.current > 1500) { lastAuto.current = now; fetch(`${API}/gestione/casino/bj/${displayCode}`); }
   }, [st, displayCode]);
   const turnCd = useCountdown(st?.table.phase === 'playing' ? st.table.turnEndsAt : null);
-  if (!st) return <div className="bjm"><style>{MON_CSS}</style><div style={{ color: '#9fe0b4', fontSize: 30 }}>Carico il tavolo…</div></div>;
+  if (!st) return <div className="bjm3"><style>{MON3_CSS}</style><div style={{ color: '#9fe0b4', fontSize: 24 }}>Carico il tavolo…</div></div>;
   const t = st.table;
-  const scale = Math.min(dim.w / 1920, dim.h / 1080);
-  const nos = seatOrder(t);
-  const occupied = nos.filter(no => t.seats[String(no)]?.playerId).length;
   const playUrl = `${ORIGIN}gestione/casino?bjplay=${t.displayCode}`;
-  const inHand = t.phase === 'playing' || t.phase === 'dealer' || (t.phase === 'result');
 
   // Fase di gioco: palco fisso 744×407 fedele al mockup "08 MONITOR PARTITA"
   if (t.phase === 'playing' || t.phase === 'dealer') return <BjPlayStage t={t} turnCd={turnCd} dim={dim} />;
-
-  return (
-    <div className="bjm"><style>{MON_CSS}</style>
-      <div className="stage" style={{ transform: `scale(${scale})` }}>
-        <img className="logo" src={`${AB}casino/logo-idea-casino.png`} alt="" />
-        {/* ATTESA / PUNTATE */}
-        {!inHand ? (
-          <>
-            <div className="banner"><h1>BLACKJACK</h1></div>
-            <div className="wait">
-              <div className="qrbox"><QRCodeSVG value={playUrl} size={240} /></div>
-              <div style={{ color: '#ffe9a6', fontSize: 30, textAlign: 'center' }}>Scansiona e gioca dal tuo telefono</div>
-              <div style={{ color: '#cbd8c9', fontSize: 24 }}>CODICE TAVOLO</div>
-              <div className="code">{t.displayCode}</div>
-            </div>
-            <div style={{ position: 'absolute', right: 90, top: 230, textAlign: 'center' }}>
-              <div style={{ fontSize: 34, color: '#ffe9a6', fontWeight: 700 }}>{t.name}</div>
-              <div style={{ fontSize: 50, fontWeight: 700, margin: '14px 0' }}>👥 {occupied} / {nos.length}</div>
-              <div style={{ display: 'inline-block', padding: '10px 26px', borderRadius: 999, border: '2px solid #4ade80', color: '#9fe0b4', fontSize: 26, boxShadow: '0 0 16px #4ade8066' }}>{t.phase === 'betting' ? 'Puntate aperte' : 'In attesa'}</div>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="dealer">
-              <div className="lab">BANCO</div>
-              <div className="dcards">
-                {t.dealer.cards[0] && <Card c={t.dealer.cards[0]} w={92} />}
-                {t.dealer.hidden && <Card back w={92} />}
-                {!t.dealer.hidden && t.dealer.cards.slice(1).map((c, i) => <Card key={i} c={c} w={92} />)}
-                <Total v={dealerVisibleTotal(t.dealer)} size={26} />
-              </div>
-            </div>
-            <div className="phone">🎮 Gioca dal tuo<br />smartphone</div>
-            {t.phase !== 'result'
-              ? <div className="turn">{t.activeSeat != null ? <>Turno di {t.seats[String(t.activeSeat)]?.nickname ?? `Posto ${t.activeSeat}`} · {fmtTime(turnCd)}</> : 'Il banco gioca…'}</div>
-              : <div className="turn">Mano {String(t.round).padStart(3, '0')} · Banco {t.dealer.total}</div>}
-          </>
-        )}
-        {/* postazioni in basso (sempre) */}
-        <div className="seats">
-          {nos.map(no => { const s = t.seats[String(no)]!; const active = t.activeSeat === no && t.phase === 'playing';
-            if (!s.playerId) return <div key={no} className="seat free"><div className="num">{no}</div><Avatar size={64} /><div className="meta">Libero</div></div>;
-            const res = t.phase === 'result' && s.bet > 0 ? outcomeShort(s.outcome || 'lose') : null;
-            return (
-              <div key={no} className={`seat${active ? ' active' : ''}`}><div className="num">{no}</div>
-                {s.cards.length > 0 && <div className="scards">{s.cards.map((c, i) => <Card key={i} c={c} w={54} />)}</div>}
-                {s.total != null && <Total v={s.total} bust={s.status === 'bust'} size={18} />}
-                <Avatar url={s.avatarUrl} name={s.nickname} size={54} />
-                <div className="nm">{s.nickname}</div>
-                {res ? <div className={`res ${res.cls}`}>{res.t} {s.profit > 0 ? '+' : ''}{s.profit}</div>
-                  : <div className="meta">Puntata {s.bet || '—'}<br />Credito {(s.balance ?? 0).toLocaleString('it-IT')}</div>}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
+  // Risultati: palco fisso 744×407 fedele al mockup "17 MONITOR RISULTATI"
+  if (t.phase === 'result') return <BjResultStage t={t} dim={dim} />;
+  // Attesa / puntate: palco fisso 744×407 fedele al mockup "07 MONITOR ATTESA"
+  return <BjWaitStage t={t} dim={dim} playUrl={playUrl} />;
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
