@@ -44,6 +44,7 @@ type CasinoConfig = {
   gameTables?: Record<string, GameTable>;
   bjTables?: Record<string, BjTable>;
   horseTables?: Record<string, HorseTable>;
+  siciliaTables?: Record<string, SiciliaTable>;
 };
 const cfgOf = (session: { config?: unknown }): CasinoConfig => (session?.config ?? {}) as CasinoConfig;
 async function patchConfig(id: string, patch: Partial<CasinoConfig>): Promise<void> {
@@ -1130,6 +1131,176 @@ router.post("/gestione/casino/horse/unbet", async (req, res): Promise<void> => {
   t.bets.splice(idx, 1);
   await saveHorseTable(found.sessionId, t);
   res.json({ ok: true, balance: nb });
+});
+
+/* ════════════════════════════════════════════════════════════════════════════
+   CORSA SICILIANA — 4 cavalli, uno per seme (coppe/denari/spade/bastoni). Si pesca
+   una carta dal mazzo siciliano (40 carte, 10 per seme): avanza di UNA casella SOLO
+   il cavallo di quel seme (il valore non conta). Primo al traguardo vince. L'esito
+   deriva dalle CARTE estratte, non da un ordine pre-deciso. Nessuna quota/saldo: i
+   giocatori SCELGONO un cavallo dal telefono (tifo), senza escrow sulle fiche.
+   ════════════════════════════════════════════════════════════════════════════ */
+type Suit = "coppe" | "denari" | "spade" | "bastoni";
+const SUITS: Suit[] = ["coppe", "denari", "spade", "bastoni"];
+type SiciliaCard = { suit: Suit; value: number };
+type SiciliaBet = { playerId: string; suit: Suit; at: string };
+type SiciliaHist = { race: number; at: string; winner: Suit | null; cards: number; players: number; pickedWinner: number };
+type SiciliaTable = {
+  id: string; type: "sicilia"; name: string; displayCode: string;
+  phase: "betting" | "racing" | "result";
+  race: number; trackLen: number;
+  deck: SiciliaCard[]; drawn: number;
+  positions: Record<Suit, number>;
+  last: SiciliaCard | null; winner: Suit | null;
+  lastToken: string | null;            // anti doppio-click: stesso token ⇒ stessa pescata
+  bets: SiciliaBet[]; known: string[];
+  suspended: boolean; history: SiciliaHist[];
+};
+function buildSiciliaDeck(): SiciliaCard[] {
+  const deck: SiciliaCard[] = [];
+  for (const suit of SUITS) for (let v = 1; v <= 10; v++) deck.push({ suit, value: v });
+  for (let i = deck.length - 1; i > 0; i--) { const j = randomInt(i + 1); const t = deck[i]!; deck[i] = deck[j]!; deck[j] = t; }
+  return deck;
+}
+const zeroPos = (): Record<Suit, number> => ({ coppe: 0, denari: 0, spade: 0, bastoni: 0 });
+async function findSiciliaTable(code: string): Promise<{ sessionId: string; table: SiciliaTable } | null> {
+  const up = (code || "").toUpperCase();
+  const rows = await db.select({ id: casinoSessionsTable.id, config: casinoSessionsTable.config }).from(casinoSessionsTable);
+  for (const r of rows) { const cfg = (r.config ?? {}) as CasinoConfig; for (const t of Object.values(cfg.siciliaTables ?? {})) if (t.displayCode === up) return { sessionId: r.id, table: t }; }
+  return null;
+}
+async function saveSiciliaTable(sessionId: string, table: SiciliaTable): Promise<void> {
+  const [s] = await db.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, sessionId));
+  const cur = (s?.config ?? {}) as CasinoConfig;
+  await db.update(casinoSessionsTable).set({ config: { ...cur, siciliaTables: { ...(cur.siciliaTables ?? {}), [table.id]: table } } }).where(eq(casinoSessionsTable.id, sessionId));
+}
+async function siciliaState(sessionId: string, table: SiciliaTable) {
+  const ids = Array.from(new Set([...table.known, ...table.bets.map(b => b.playerId)]));
+  const players = ids.length ? await db.select().from(casinoPlayersTable).where(inArray(casinoPlayersTable.id, ids)) : [];
+  const [sess] = await db.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, sessionId));
+  const avatars = ((sess?.config ?? {}) as CasinoConfig).playerAvatars ?? {};
+  const betOf = new Map(table.bets.map(b => [b.playerId, b.suit]));
+  const plist = players.map(p => ({ id: p.id, nickname: p.nickname, avatarUrl: avatars[p.id] ?? null, balance: p.fishBalance, suit: betOf.get(p.id) ?? null })).sort((a, b) => b.balance - a.balance);
+  return {
+    table: {
+      id: table.id, name: table.name, displayCode: table.displayCode, type: "sicilia",
+      phase: table.phase, race: table.race, trackLen: table.trackLen,
+      positions: table.positions, last: table.last, winner: table.winner,
+      drawn: table.drawn, deckLeft: table.deck.length - table.drawn,
+      players: plist, suspended: table.suspended, history: table.history.slice(0, 20),
+    },
+    sessionId,
+  };
+}
+const clampLen = (n: unknown): number => Math.max(3, Math.min(10, Math.round(Number(n) || 9)));
+
+router.post("/gestione/casino/sessions/:id/sicilia-tables", async (req, res): Promise<void> => {
+  const { id } = req.params;
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const b = req.body as { name?: string; trackLen?: number };
+  const table: SiciliaTable = {
+    id: makeCode(8), type: "sicilia", name: (b.name || "Corsa Siciliana").slice(0, 40), displayCode: makeCode(6),
+    phase: "betting", race: 1, trackLen: clampLen(b.trackLen), deck: buildSiciliaDeck(), drawn: 0,
+    positions: zeroPos(), last: null, winner: null, lastToken: null, bets: [], known: [], suspended: false, history: [],
+  };
+  await saveSiciliaTable(id, table);
+  res.json(await siciliaState(id, table));
+});
+router.get("/gestione/casino/sessions/:id/sicilia-tables", async (req, res): Promise<void> => {
+  const { id } = req.params;
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const [s] = await db.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, id));
+  const tables = Object.values(((s?.config ?? {}) as CasinoConfig).siciliaTables ?? {}).map(t => ({ id: t.id, name: t.name, displayCode: t.displayCode, phase: t.phase, race: t.race, trackLen: t.trackLen, suspended: t.suspended, players: t.known.length }));
+  res.json({ tables });
+});
+router.get("/gestione/casino/sicilia/:code", async (req, res): Promise<void> => {
+  const found = await findSiciliaTable(req.params.code || "");
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  res.json(await siciliaState(found.sessionId, found.table));
+});
+router.post("/gestione/casino/sicilia/open", async (req, res): Promise<void> => {
+  const found = await findSiciliaTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const t = found.table;
+  if (t.suspended) { res.status(409).json({ error: "Tavolo sospeso" }); return; }
+  if (t.phase === "result") t.race += 1;
+  t.phase = "betting"; t.deck = buildSiciliaDeck(); t.drawn = 0; t.positions = zeroPos();
+  t.last = null; t.winner = null; t.lastToken = null; t.bets = [];
+  await saveSiciliaTable(found.sessionId, t);
+  res.json(await siciliaState(found.sessionId, t));
+});
+router.post("/gestione/casino/sicilia/start", async (req, res): Promise<void> => {
+  const found = await findSiciliaTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const t = found.table;
+  if (t.phase !== "betting") { res.status(409).json({ error: "Non in fase puntate" }); return; }
+  t.phase = "racing";
+  await saveSiciliaTable(found.sessionId, t);
+  res.json(await siciliaState(found.sessionId, t));
+});
+/* Pescata ATOMICA: una carta, avanza il cavallo del seme, eventuale vincitore. Il
+   `token` client rende la pescata idempotente: un retry/doppio-click con lo stesso
+   token NON pesca una seconda carta (ritorna lo stato corrente). */
+router.post("/gestione/casino/sicilia/draw", async (req, res): Promise<void> => {
+  const found = await findSiciliaTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const t = found.table;
+  const token = String(req.body?.token ?? "");
+  if (token && t.lastToken === token) { res.json(await siciliaState(found.sessionId, t)); return; }  // idempotente
+  if (t.phase !== "racing") { res.status(409).json({ error: "La corsa non è in svolgimento" }); return; }
+  if (t.winner) { res.json(await siciliaState(found.sessionId, t)); return; }
+  if (t.drawn >= t.deck.length) { res.status(409).json({ error: "Mazzo esaurito" }); return; }
+  const card = t.deck[t.drawn]!; t.drawn += 1; t.last = card; t.lastToken = token || `d${t.drawn}`;
+  t.positions[card.suit] = Math.min(t.trackLen, t.positions[card.suit] + 1);
+  if (t.positions[card.suit] >= t.trackLen) {
+    t.winner = card.suit; t.phase = "result";
+    const picked = t.bets.filter(b => b.suit === card.suit).length;
+    t.history.unshift({ race: t.race, at: new Date().toISOString(), winner: card.suit, cards: t.drawn, players: t.bets.length, pickedWinner: picked });
+    t.history = t.history.slice(0, 50);
+  }
+  await saveSiciliaTable(found.sessionId, t);
+  res.json(await siciliaState(found.sessionId, t));
+});
+router.post("/gestione/casino/sicilia/settings", async (req, res): Promise<void> => {
+  const found = await findSiciliaTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const t = found.table;
+  if (t.phase === "racing") { res.status(409).json({ error: "Corsa in corso" }); return; }
+  if (req.body?.name) t.name = String(req.body.name).slice(0, 40);
+  if (req.body?.trackLen != null) { t.trackLen = clampLen(req.body.trackLen); t.positions = zeroPos(); }
+  await saveSiciliaTable(found.sessionId, t);
+  res.json(await siciliaState(found.sessionId, t));
+});
+router.post("/gestione/casino/sicilia/suspend", async (req, res): Promise<void> => {
+  const found = await findSiciliaTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const t = found.table; t.suspended = !t.suspended;
+  await saveSiciliaTable(found.sessionId, t);
+  res.json(await siciliaState(found.sessionId, t));
+});
+router.post("/gestione/casino/sicilia/bet", async (req, res): Promise<void> => {
+  const found = await findSiciliaTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const t = found.table;
+  if (t.phase === "result") { res.status(409).json({ error: "Corsa conclusa" }); return; }
+  const suit = String(req.body?.suit ?? "") as Suit;
+  if (!SUITS.includes(suit)) { res.status(400).json({ error: "Seme non valido" }); return; }
+  const [player] = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.playerCode, String(req.body?.playerCode ?? "")));
+  if (!player || player.sessionId !== found.sessionId) { res.status(404).json({ error: "Giocatore non trovato" }); return; }
+  t.bets = t.bets.filter(b => b.playerId !== player.id);
+  t.bets.push({ playerId: player.id, suit, at: new Date().toISOString() });
+  if (!t.known.includes(player.id)) t.known.push(player.id);
+  await saveSiciliaTable(found.sessionId, t);
+  res.json(await siciliaState(found.sessionId, t));
+});
+router.post("/gestione/casino/sicilia/unbet", async (req, res): Promise<void> => {
+  const found = await findSiciliaTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const t = found.table;
+  const [player] = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.playerCode, String(req.body?.playerCode ?? "")));
+  if (player) t.bets = t.bets.filter(b => b.playerId !== player.id);
+  await saveSiciliaTable(found.sessionId, t);
+  res.json(await siciliaState(found.sessionId, t));
 });
 
 export default router;
