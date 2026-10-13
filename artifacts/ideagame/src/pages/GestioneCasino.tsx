@@ -329,19 +329,25 @@ const REGIA_CSS = `
 .regia-root .srank .v{font:700 19px/1 var(--serif);color:#ffe9a6;}
 `;
 
-function MasterView({ sessionId }: { sessionId: string }) {
+export function MasterView({ sessionId }: { sessionId: string }) {
   const state = useCasinoState(sessionId);
   const [busy, setBusy] = useState(false);
   const [showDealerQr, setShowDealerQr] = useState(false);
   const [gts, setGts] = useState<GameTableState['table'][]>([]);
+  const [bjts, setBjts] = useState<{ id: string; name: string; displayCode: string }[]>([]);
+  const [hts, setHts] = useState<{ id: string; name: string; displayCode: string }[]>([]);
   const [dim, setDim] = useState({ w: typeof window !== 'undefined' ? window.innerWidth : 1280, h: typeof window !== 'undefined' ? window.innerHeight : 800 });
   useEffect(() => { const r = () => setDim({ w: window.innerWidth, h: window.innerHeight }); window.addEventListener('resize', r); return () => window.removeEventListener('resize', r); }, []);
   const loadGts = useCallback(() => fetch(`${API}/gestione/casino/sessions/${sessionId}/game-tables`).then(r => r.ok ? r.json() : null).then(d => { if (d) setGts(d.tables); }).catch(() => {}), [sessionId]);
-  useEffect(() => { loadGts(); const t = setInterval(loadGts, 3000); return () => clearInterval(t); }, [loadGts]);
+  const loadBjts = useCallback(() => fetch(`${API}/gestione/casino/sessions/${sessionId}/bj-tables`).then(r => r.ok ? r.json() : null).then(d => { if (d) setBjts(d.tables); }).catch(() => {}), [sessionId]);
+  const loadHts = useCallback(() => fetch(`${API}/gestione/casino/sessions/${sessionId}/horse-tables`).then(r => r.ok ? r.json() : null).then(d => { if (d) setHts(d.tables); }).catch(() => {}), [sessionId]);
+  useEffect(() => { const run = () => { loadGts(); loadBjts(); loadHts(); }; run(); const t = setInterval(run, 3000); return () => clearInterval(t); }, [loadGts, loadBjts, loadHts]);
 
   const AB = (import.meta.env.BASE_URL as string) || '/';
   const addTable = async () => { setBusy(true); try { await api(`/gestione/casino/sessions/${sessionId}/tables`, {}); } finally { setBusy(false); } };
   const addRoulette = async () => { setBusy(true); try { await api(`/gestione/casino/sessions/${sessionId}/game-tables`, { type: 'roulette', seats: 10 }); await loadGts(); } finally { setBusy(false); } };
+  const addBlackjack = async () => { setBusy(true); try { await api(`/gestione/casino/sessions/${sessionId}/bj-tables`, { name: 'Tavolo Blackjack' }); await loadBjts(); } finally { setBusy(false); } };
+  const addHorse = async () => { setBusy(true); try { await api(`/gestione/casino/sessions/${sessionId}/horse-tables`, { name: 'Tavolo Ippodromo' }); await loadHts(); } finally { setBusy(false); } };
 
   if (!state) return <Center>Carico…</Center>;
   if (state.tables.length === 0) return <SetupWizard sessionId={sessionId} />;
@@ -413,21 +419,47 @@ function MasterView({ sessionId }: { sessionId: string }) {
         <div className="panel" style={{ left: 878, width: 392 }}>
           <div className="phead"><div className="ht"><span className="orn">❧</span>TAVOLI DA GIOCO<span className="orn" style={{ transform: 'scaleX(-1)' }}>❧</span></div><small>Schermi 80 pollici</small></div>
           <div className="pbody" style={{ top: 78 }}>
-            <button className="gbtn" onClick={addRoulette} disabled={busy}>＋ Nuovo tavolo Roulette</button>
-            <button className="gbtn" style={{ marginTop: 8 }} onClick={() => window.open(`${ORIGIN}gestione/casino?bjtables=${sessionId}`, '_blank')}>🂡 Tavoli Blackjack ↗</button>
-            <button className="gbtn" style={{ marginTop: 8 }} onClick={() => window.open(`${ORIGIN}gestione/casino?htables=${sessionId}`, '_blank')}>🐎 Tavoli Ippodromo ↗</button>
-            <div style={{ overflowY: 'auto', marginTop: 2 }}>
+            {/* Tutti e tre i giochi INLINE come la roulette: crei il tavolo e apri subito
+                l'80″ e la regia — niente pagina-hub separata. */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+              <button className="gbtn sm" onClick={addRoulette} disabled={busy}>＋ Roulette</button>
+              <button className="gbtn sm" onClick={addBlackjack} disabled={busy}>＋ Blackjack</button>
+              <button className="gbtn sm" onClick={addHorse} disabled={busy}>＋ Cavalli</button>
+            </div>
+            <div style={{ overflowY: 'auto', marginTop: 8 }}>
               {gts.map(g => (
                 <div className="tile" key={g.id}>
                   <img className="thumb" src={`${AB}casino/regia/roulette.png`} alt="" />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="nm">{g.name}</div>
-                    <div className="cd">{Object.keys(g.seats).length} postazioni · Codice {g.displayCode}</div>
-                    <a className="lnk" href={`${ORIGIN}gestione/casino?table=${g.displayCode}`} target="_blank" rel="noreferrer">🖥️ Apri sul maxi-schermo ↗</a>
+                    <div className="nm">🎡 {g.name}</div>
+                    <div className="cd">{Object.keys(g.seats).length} postazioni · {g.displayCode}</div>
+                    <a className="lnk" href={`${ORIGIN}gestione/casino?table=${g.displayCode}`} target="_blank" rel="noreferrer">🖥️ Apri sull'80″ ↗</a>
                   </div>
                 </div>
               ))}
-              {gts.length === 0 && <div style={{ color: '#9c8a5e', textAlign: 'center', marginTop: 40, font: '400 18px var(--serif)' }}>Crea una roulette e aprila sull'80″.</div>}
+              {bjts.map(t => (
+                <div className="tile" key={t.id}>
+                  <img className="thumb" src={`${AB}casino/regia/table.png`} alt="" />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="nm">🂡 {t.name}</div>
+                    <div className="cd">Codice {t.displayCode}</div>
+                    <a className="lnk" href={`${ORIGIN}gestione/casino?bj=${t.displayCode}`} target="_blank" rel="noreferrer">🖥️ 80″ ↗</a>
+                    <a className="lnk" style={{ marginLeft: 10 }} href={`${ORIGIN}gestione/casino?bjregia=${t.displayCode}`} target="_blank" rel="noreferrer">🎛️ Regia ↗</a>
+                  </div>
+                </div>
+              ))}
+              {hts.map(t => (
+                <div className="tile" key={t.id}>
+                  <img className="thumb" src={`${AB}casino/regia/roulette.png`} alt="" />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="nm">🐎 {t.name}</div>
+                    <div className="cd">Codice {t.displayCode}</div>
+                    <a className="lnk" href={`${ORIGIN}gestione/casino?horse=${t.displayCode}`} target="_blank" rel="noreferrer">🖥️ 80″ ↗</a>
+                    <a className="lnk" style={{ marginLeft: 10 }} href={`${ORIGIN}gestione/casino?hregia=${t.displayCode}`} target="_blank" rel="noreferrer">🎛️ Regia ↗</a>
+                  </div>
+                </div>
+              ))}
+              {gts.length === 0 && bjts.length === 0 && hts.length === 0 && <div style={{ color: '#9c8a5e', textAlign: 'center', marginTop: 40, font: '400 18px var(--serif)' }}>Crea un tavolo e aprilo sull'80″.</div>}
             </div>
           </div>
         </div>

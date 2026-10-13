@@ -713,8 +713,9 @@ router.post("/gestione/casino/bj/deal", async (req, res): Promise<void> => {
   if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
   const t = found.table;
   if (t.phase !== "betting") { res.status(409).json({ error: "Non in fase puntate" }); return; }
+  // Come la roulette: la mano parte anche SENZA puntate (il banco gioca da solo); chi si
+  // siede entra dalla mano successiva. Niente blocco "serve una puntata".
   const participants = Object.entries(t.seats).filter(([, s]) => s.bet > 0 && s.playerId);
-  if (participants.length === 0) { res.status(409).json({ error: "Nessuna puntata confermata" }); return; }
   t.betEndsAt = null;
   for (const [, s] of participants) s.cards = [];
   t.dealer = [];
