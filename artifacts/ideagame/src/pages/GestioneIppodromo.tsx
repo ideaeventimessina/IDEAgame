@@ -67,10 +67,19 @@ function useRaceClock(active: boolean): number {
 // e duelli reali) che si ANNULLANO verso l'arrivo, dove l'ordine vero (order[], via lo
 // scarto per rank in racePoint) riemerge con un finale pulito. Niente più fuga solitaria.
 const TAU = Math.PI * 2;
+const GATE_MS = 1600;   // partenza in piedi: i cavalli restano FERMI al nastro prima del via
+// Stato del movimento della corsa (per fermare DAVVERO le zampe quando sono fermi).
+function raceRunning(cur: HorseTbl['current'], now: number): boolean {
+  if (!cur) return false;
+  const e = now - Date.parse(cur.startedAt);
+  return e >= GATE_MS && e < cur.durMs;
+}
 function horseProgress(cur: HorseTbl['current'], h: number, now: number): number {
   if (!cur) return 0;
   const rank = cur.order.indexOf(h); if (rank < 0) return 0;
-  const frac = Math.max(0, Math.min(1, (now - Date.parse(cur.startedAt)) / cur.durMs));
+  const elapsed = now - Date.parse(cur.startedAt);
+  if (elapsed < GATE_MS) return 0;                      // fermi al nastro durante il gate
+  const frac = Math.max(0, Math.min(1, (elapsed - GATE_MS) / Math.max(1, cur.durMs - GATE_MS)));
   const s = cur.seeds[h - 1] ?? 0.5;
   const ph = h * 0.618;                                 // fase propria, decorrelata
   // onda LENTA (meno di un giro): fughe prolungate che poi rientrano → il campo si
@@ -149,12 +158,13 @@ function PhoneShell({ children }: { children: React.ReactNode }) {
   return <div className="hp"><style>{PHONE_CSS}</style><div className="wrap"><div style={{ textAlign: 'center' }}><Brand /></div>{children}</div></div>;
 }
 function Lanes({ cur, now, big }: { cur: HorseTbl['current']; now: number; big?: boolean }) {
+  const running = raceRunning(cur, now);   // zampe ferme quando il cavallo è fermo
   return (
     <div className="lanes" style={big ? { padding: '12px 8px' } : undefined}>
       {HORSES.map(h => { const p = horseProgress(cur, h.n, now); return (
         <div className="lane" key={h.n} style={big ? { height: 46 } : undefined}>
           <div className="fin" />
-          <div className="run" style={{ left: `${6 + p * 86}%` }}>{(() => { const gh = big ? 42 : 28, gw = Math.round(gh / GALLOP_AR), bs = Math.round(gh * 0.5); return (<><div className="gallop" style={{ width: gw, height: gh }}><img src={`${AB}ippo/horse-gallop.png`} alt={h.name} style={{ animationDelay: `${(h.n * 0.07).toFixed(2)}s` }} /></div><div className="lbadge" style={{ left: gw * 0.27, top: gh * 0.34, width: bs, height: bs, fontSize: bs * 0.58, background: `radial-gradient(circle at 40% 30%, ${h.glow}, ${h.color} 70%)` }}>{h.n}</div></>); })()}</div>
+          <div className="run" style={{ left: `${6 + p * 86}%` }}>{(() => { const gh = big ? 42 : 28, gw = Math.round(gh / GALLOP_AR), bs = Math.round(gh * 0.5); return (<><div className="gallop" style={{ width: gw, height: gh }}><img src={`${AB}ippo/horse-gallop.png`} alt={h.name} style={running ? { animationDelay: `${(h.n * 0.07).toFixed(2)}s` } : { animation: 'none', transform: 'translateX(0)' }} /></div><div className="lbadge" style={{ left: gw * 0.27, top: gh * 0.34, width: bs, height: bs, fontSize: bs * 0.58, background: `radial-gradient(circle at 40% 30%, ${h.glow}, ${h.color} 70%)` }}>{h.n}</div></>); })()}</div>
         </div>
       ); })}
     </div>
@@ -464,6 +474,7 @@ function racePoint(p: number, lane: number, rank: number) {
 }
 function MonitorRacing({ t, now, scale }: { t: HorseTbl; now: number; scale: number }) {
   const order = t.current?.order ?? [];
+  const running = raceRunning(t.current, now);   // FERMO = FERMO: zampe/polvere solo se in corsa
   const runners = HORSES
     .map((h, i) => { const p = horseProgress(t.current, h.n, now); const rank = order.indexOf(h.n); return { h, p, ...racePoint(p, i, rank < 0 ? i : rank) }; })
     .sort((a, b) => a.y - b.y); // chi è più davanti (y maggiore) disegnato per ultimo → sopra
@@ -490,11 +501,12 @@ function MonitorRacing({ t, now, scale }: { t: HorseTbl; now: number; scale: num
           const sadX = ox + ddx * co - ddy * si, sadY = oy + ddx * si + ddy * co;
           return (
             <div key={r.h.n} className="a runner" style={{ left: r.x, top: r.y, width: w, height: hh, transform: 'translate(-50%, -90%)', zIndex: Math.round(r.y) }}>
-              <div className="dust" style={{ left: r.flip ? w * 0.5 : w * 0.08, top: hh * 0.74, width: w * 0.4, height: w * 0.24 }} />
+              {running && <div className="dust" style={{ left: r.flip ? w * 0.5 : w * 0.08, top: hh * 0.74, width: w * 0.4, height: w * 0.24 }} />}
               {/* wrapper sprite: segue la tangente (rotazione) + scaleX CONTINUO (curva fluida) */}
               <div style={{ position: 'relative', width: w, height: hh, transformOrigin: '50% 72%', transform: `rotate(${r.rot}deg) scaleX(${r.sx})` }}>
                 <div className="sprite" style={{ width: w, height: hh }}>
-                  <img src={`${AP}horse-gallop.png`} alt={r.h.name} style={{ animationDelay: `${(r.h.n * 0.07).toFixed(2)}s` }} />
+                  {/* zampe in movimento SOLO in corsa; fermo = frame unico, nessuna animazione */}
+                  <img src={`${AP}horse-gallop.png`} alt={r.h.name} style={running ? { animationDelay: `${(r.h.n * 0.07).toFixed(2)}s` } : { animation: 'none', transform: 'translateX(0)' }} />
                 </div>
               </div>
               {/* gualdrappa-numero: piccola, SUL dorso (segue il cavallo), sempre dritta e leggibile */}
