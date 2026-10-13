@@ -476,13 +476,13 @@ function MonitorRacing({ t, now, scale }: { t: HorseTbl; now: number; scale: num
         {/* banner codificato OPACO (copre quello dipinto nel track) + numero corsa LIVE */}
         <div className="a cbanner" style={{ left: 206, top: 7, width: 332, height: 48 }}><span>CORSA {String(t.race).padStart(3, '0')} · IN DIRETTA</span></div>
         {runners.map(r => {
-          const w = 170 * r.sc, hh = w * GALLOP_AR, bs = w * 0.15;
+          const w = 170 * r.sc, hh = w * GALLOP_AR, bs = Math.min(w * 0.115, 19);
           // posizione SCHERMO della gualdrappa (il "numero sul fantino"): parte dal punto
           // sella nel sprite e segue scaleX+rotazione del cavallo, così resta SUL dorso.
           const ox = w * 0.5, oy = hh * 0.72;                 // origine trasformazioni
           const s1x = ox + (w * 0.44 - ox) * r.sx;            // dopo scaleX
           const rr = r.rot * Math.PI / 180, co = Math.cos(rr), si = Math.sin(rr);
-          const ddx = s1x - ox, ddy = hh * 0.50 - oy;         // dopo rotazione
+          const ddx = s1x - ox, ddy = hh * 0.38 - oy;         // dopo rotazione (sulla gualdrappa)
           const sadX = ox + ddx * co - ddy * si, sadY = oy + ddx * si + ddy * co;
           return (
             <div key={r.h.n} className="a runner" style={{ left: r.x, top: r.y, width: w, height: hh, transform: 'translate(-50%, -90%)', zIndex: Math.round(r.y) }}>
