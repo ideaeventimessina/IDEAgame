@@ -251,3 +251,106 @@ export function CorsaSiciliaMonitor({ displayCode, host = false }: { displayCode
     </div>
   );
 }
+
+/* ════════════════════════════════════════════════ TELEFONO ════════════════ */
+const PHONE_CSS = FONT + `
+.sicp{position:fixed;inset:0;overflow:auto;color:#fff;font-family:"Baskerville Casino",Georgia,serif;background:radial-gradient(ellipse 150% 80% at 50% 0%,#2f6fae,#143b86 55%,#0a2a6a 100%);display:flex;flex-direction:column;align-items:center;}
+.sicp .wrap{width:100%;max-width:460px;min-height:100%;display:flex;flex-direction:column;padding:16px 16px 28px;gap:14px;}
+.sicp .h1{font:700 26px/1.15 "Baskerville Casino",serif;text-align:center;}
+.sicp .h2{text-align:center;color:#cfe0f5;font-size:14px;}
+.sicp .suits{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.sicp .suit{display:flex;align-items:center;gap:12px;padding:16px;border-radius:16px;border:2px solid #ffffff22;background:#ffffff0e;cursor:pointer;color:#fff;}
+.sicp .suit.sel{border-color:#f1d98c;box-shadow:0 0 0 2px #f1d98c,0 0 18px #f1d98c55;background:#ffffff18;}
+.sicp .suit .nm{font:700 22px/1 "Baskerville Casino",serif;}
+.sicp .medal{width:56px;height:56px;flex:none;border-radius:50%;background:radial-gradient(circle at 40% 30%,#fff6d8,#e7c976 70%);border:3px solid #c9972f;display:grid;place-items:center;}
+.sicp .panel{border-radius:16px;border:2px solid #f1d98c55;background:#ffffff0e;padding:16px;text-align:center;}
+.sicp .big{font:700 34px/1 "Baskerville Casino",serif;color:#ffe9a6;}
+`;
+export function CorsaSiciliaPhone({ displayCode }: { displayCode: string }) {
+  const [playerCode] = useState<string>(() => { try { return localStorage.getItem('casino_player') || ''; } catch { return ''; } });
+  const [me, setMe] = useState<{ id: string; nickname: string } | null>(null);
+  const st = useSicTable(displayCode, 900);
+  const t = st?.table;
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (!playerCode) { setMe(null); return; } fetch(`${API}/gestione/casino/player/${playerCode}`).then(r => r.ok ? r.json() : null).then(d => { if (d?.player) setMe({ id: d.player.id, nickname: d.player.nickname }); }).catch(() => {}); }, [playerCode, t?.race]);
+  const mine = t && me ? (t.players.find(p => p.id === me.id)?.suit ?? null) : null;
+  const pick = async (suit: Suit) => { setBusy(true); try { await api('/gestione/casino/sicilia/bet', { displayCode, playerCode, suit }); } finally { setBusy(false); } };
+
+  const Shell = (c: React.ReactNode) => <div className="sicp"><style>{PHONE_CSS}</style><div className="wrap"><div style={{ textAlign: 'center' }}><div style={{ font: '700 20px/1 "Baskerville Casino",serif', color: '#ffe9a6', letterSpacing: '.08em' }}>CORSA SICILIANA</div></div>{c}</div></div>;
+  if (!playerCode || !me) return Shell(<div className="panel" style={{ marginTop: 30 }}><div className="h1">Entra alla serata</div><div className="h2">Scansiona il QR del casinò e accedi, poi scegli il tuo cavallo.</div></div>);
+  if (!t) return Shell(<div className="h2" style={{ marginTop: 40 }}>Carico il tavolo…</div>);
+
+  if (t.phase === 'result' && t.winner) {
+    const won = mine === t.winner;
+    return Shell(<>
+      <div className="panel"><div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}><SuitIcon suit={t.winner} size={64} /></div><div className="big">Vince {SUIT_META[t.winner].label}</div><div className="h2" style={{ marginTop: 6 }}>{mine ? (won ? '🎉 Hai scelto bene!' : `Avevi scelto ${SUIT_META[mine].label}`) : 'Non avevi scelto'}</div></div>
+    </>);
+  }
+  return Shell(<>
+    <div className="h1">{mine ? 'Il tuo cavallo' : 'Scegli il tuo cavallo'}</div>
+    <div className="h2">{t.phase === 'racing' ? 'La corsa è iniziata — tifa per il tuo seme!' : 'Scegli un seme prima del via'}</div>
+    <div className="suits">
+      {SUITS.map(s => { const m = SUIT_META[s]; return (
+        <button key={s} className={`suit${mine === s ? ' sel' : ''}`} disabled={busy} onClick={() => pick(s)}>
+          <span className="medal"><SuitIcon suit={s} size={34} /></span>
+          <span style={{ flex: 1 }}><span className="nm" style={{ color: m.glow }}>{m.label}</span><br /><span className="h2" style={{ fontSize: 12 }}>casella {t.positions[s]}/{t.trackLen}</span></span>
+        </button>
+      ); })}
+    </div>
+    {mine && <div className="panel"><div className="h2">Hai scelto</div><div className="big" style={{ color: SUIT_META[mine].glow, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}><SuitIcon suit={mine} size={34} />{SUIT_META[mine].label}</div></div>}
+  </>);
+}
+
+/* ════════════════════════════════════════════════ REGIA ═══════════════════ */
+export function CorsaSiciliaRegia({ displayCode }: { displayCode: string }) {
+  const st = useSicTable(displayCode, 800);
+  const t = st?.table;
+  const [busy, setBusy] = useState(false);
+  const call = async (path: string, body?: object) => { setBusy(true); try { await api(path, { displayCode, ...body }); } finally { setTimeout(() => setBusy(false), 500); } };
+  const B = (import.meta.env.BASE_URL as string) || '/';
+  if (!t) return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#0a2a6a', color: '#ffe9a6', fontFamily: 'Georgia' }}>Carico…</div>;
+  const m = (s: Suit) => SUIT_META[s];
+  return (
+    <div style={{ minHeight: '100vh', background: 'radial-gradient(ellipse 120% 90% at 50% 0%,#1f4a9c,#0a2a6a)', color: '#fff', fontFamily: '"Baskerville Casino",Georgia,serif', padding: 24, boxSizing: 'border-box' }}>
+      <style>{FONT}</style>
+      <div style={{ maxWidth: 680, margin: '0 auto' }}>
+        <div style={{ textAlign: 'center', marginBottom: 14 }}>
+          <img src={`${B}casino/logo-idea-casino.png`} alt="" style={{ height: 56 }} />
+          <div style={{ font: '700 32px/1 "Baskerville Casino",serif', color: '#ffe9a6', marginTop: 4 }}>Regia · Corsa Siciliana</div>
+          <div style={{ color: '#cfe0f5' }}>{t.name} · <b style={{ color: '#ffe9a6' }}>{t.displayCode}</b> · Giro {t.race}</div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+          {SUITS.map(s => (
+            <div key={s} style={{ borderRadius: 12, border: `2px solid ${m(s).glow}66`, background: '#ffffff0e', padding: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+              <SuitIcon suit={s} size={34} />
+              <div style={{ flex: 1 }}><div style={{ font: '700 18px/1 "Baskerville Casino",serif', color: m(s).glow }}>{m(s).label}</div><div style={{ color: '#cfe0f5', fontSize: 13 }}>casella {t.positions[s]} / {t.trackLen}</div></div>
+              {t.winner === s && <span style={{ color: '#ffe08a', fontWeight: 700 }}>🏁</span>}
+            </div>
+          ))}
+        </div>
+        {t.last && <div style={{ textAlign: 'center', marginBottom: 12, color: '#cfe0f5' }}>Ultima carta: <b style={{ color: '#fff' }}>{t.last.value} di {m(t.last.suit).label}</b> · mazzo {t.deckLeft}</div>}
+
+        <div style={{ display: 'grid', gap: 10 }}>
+          {t.phase === 'racing' && !t.winner && (
+            <button disabled={busy} onClick={() => call('/gestione/casino/sicilia/draw', { token: `${t.race}:${t.drawn}:${Date.now()}` })}
+              style={{ padding: 20, borderRadius: 14, border: '2px solid #f1d98c', background: 'linear-gradient(180deg,#ffe694,#f0c357 52%,#d59a34)', color: '#231503', font: '700 28px "Baskerville Casino",serif', cursor: 'pointer', boxShadow: '0 4px 0 #7a4d12' }}>
+              🂠 PESCA UNA CARTA
+            </button>
+          )}
+          {t.phase === 'betting' && <button disabled={busy} onClick={() => call('/gestione/casino/sicilia/start')} style={btnG}>▶ Avvia la corsa (Via)</button>}
+          {(t.phase === 'result' || t.phase === 'betting') && <button disabled={busy} onClick={() => call('/gestione/casino/sicilia/open')} style={btnGhost}>↻ Nuova corsa (apri puntate)</button>}
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'center', marginTop: 4 }}>
+            <label style={{ color: '#cfe0f5' }}>Caselle
+              <input type="number" min={3} max={10} defaultValue={t.trackLen} disabled={t.phase === 'racing' || busy} onBlur={e => call('/gestione/casino/sicilia/settings', { trackLen: +e.target.value })}
+                style={{ width: 64, marginLeft: 8, padding: 8, borderRadius: 8, border: '1px solid #ffffff33', background: '#0a2a6a', color: '#ffe9a6', textAlign: 'center' }} />
+            </label>
+            <button disabled={busy} onClick={() => call('/gestione/casino/sicilia/suspend')} style={{ ...btnGhost, width: 'auto', padding: '8px 14px' }}>{t.suspended ? 'Riattiva' : 'Sospendi'}</button>
+          </div>
+          <a href={`${ORIGIN}gestione/casino?sic=${t.displayCode}&host=1`} target="_blank" rel="noreferrer" style={{ ...btnGhost, textAlign: 'center', textDecoration: 'none', display: 'block' }}>🖥️ Apri il monitor 80″ (host) ↗</a>
+        </div>
+      </div>
+    </div>
+  );
+}
+const btnG: React.CSSProperties = { padding: 16, borderRadius: 12, border: '1px solid #bff0cf', background: 'linear-gradient(180deg,#39d46b,#139a3e 52%,#0c7a33)', color: '#04210e', font: '700 20px "Baskerville Casino",serif', cursor: 'pointer' };
+const btnGhost: React.CSSProperties = { padding: 12, borderRadius: 12, border: '1px solid #f1d98c66', background: '#ffffff12', color: '#ffe9a6', font: '700 16px "Baskerville Casino",serif', cursor: 'pointer', width: '100%' };
