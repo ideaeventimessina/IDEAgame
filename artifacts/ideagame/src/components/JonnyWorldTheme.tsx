@@ -7,6 +7,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { ReactNode } from 'react';
 import { useLocation } from 'wouter';
+import { JohhyAvatar } from '@/jonny/JohhyAvatar';
 
 // ── Arena theme configuration ────────────────────────────────────────────────
 export type ArenaKey = 'quizzone' | 'coppie' | 'ballo' | 'percorso' | 'wordback' | 'adult' | 'karaoke';
@@ -122,11 +123,7 @@ export function JonnyWaitingScreen({ theme, subtitle, label }: { theme: typeof A
     <div className="flex flex-1 flex-col items-center justify-center gap-5 px-8 text-center">
       <NeonTitle text={theme.title} color={theme.accent} size="lg" />
       {subtitle && <p className="text-lg text-white/55 font-semibold max-w-lg">{subtitle}</p>}
-      <motion.img src="/jonny-master.jpg" alt="Jonny"
-        style={{ height: 200, width: 'auto', objectFit: 'contain', filter: `drop-shadow(0 8px 36px ${theme.glow}77)` }}
-        animate={{ y: [0, -14, 0] }}
-        transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
-      />
+      <JohhyAvatar state="greeting" size={200} style={{ filter: `drop-shadow(0 8px 36px ${theme.glow}77)` }} />
       {label && (
         <motion.div className="rounded-2xl border px-6 py-2.5 text-sm font-bold"
           style={{ borderColor: `${theme.accent}55`, background: `${theme.accent}12`, color: theme.accent }}
@@ -175,11 +172,8 @@ export function WinPodium({ theme, teams, winnerName, onHome }: {
       <motion.div initial={{ scale: 0.75, y: 50, opacity: 0 }} animate={{ scale: 1, y: 0, opacity: 1 }}
         transition={{ type: 'spring', stiffness: 200, damping: 24 }}
         className="flex flex-col items-center gap-5 w-full max-w-lg px-6">
-        {/* Jonny celebrating */}
-        <motion.img src="/jonny-master.jpg" alt="Jonny"
-          style={{ height: 130, filter: `drop-shadow(0 8px 32px ${theme.glow}99)` }}
-          animate={{ y: [0, -10, 0], rotate: [-2, 2, -2] }}
-          transition={{ duration: 2.8, repeat: Infinity }} />
+        {/* Johhy celebrating */}
+        <JohhyAvatar state="celebrating" size={130} style={{ filter: `drop-shadow(0 8px 32px ${theme.glow}99)` }} />
         {/* Title */}
         <div className="text-center">
           <NeonTitle text="FINE PARTITA" color={theme.accent} size="lg" />
