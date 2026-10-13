@@ -77,7 +77,7 @@ export function JonnyWaiting({ playerName, eventName, jonnyMode }: JonnyWaitingP
         }}
       >
         <div className="mb-1 text-[10px] font-black tracking-widest" style={{ color: '#D4AF37' }}>
-          JONNY{jonnyMode === 'home' ? ' HOME' : ''}
+          JOHHY{jonnyMode === 'home' ? ' HOME' : ''}
         </div>
         <AnimatePresence mode="wait">
           {visible && (
