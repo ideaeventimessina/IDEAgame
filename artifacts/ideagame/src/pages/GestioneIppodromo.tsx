@@ -27,15 +27,19 @@ export const HORSES = [
   { n: 6, name: 'Luna', color: '#e8862f', glow: '#ffb46a' },
 ];
 const H = (n: number) => HORSES[n - 1]!;
+// Nome VISIBILE del cavallo n: quello estratto per la corsa corrente (ruota a ogni giro),
+// con fallback ai nomi generici. Colore/pettorina restano per posizione 1..6.
+const hnameOf = (names: string[] | undefined, n: number): string => names?.[n - 1] || hnameOf(t.names, n);
 
 type HorsePlayer = { id: string; nickname: string; avatarUrl: string | null; balance: number; bet: { horse: number; amount: number } | null };
-type HorseHist = { race: number; at: string; winner: number; order: number[]; players: number; cancelled?: boolean; results: { playerId: string; nickname: string; horse: number; bet: number; credit: number; profit: number }[] };
+type HorseHist = { race: number; at: string; winner: number; order: number[]; players: number; cancelled?: boolean; names?: string[]; results: { playerId: string; nickname: string; horse: number; bet: number; credit: number; profit: number }[] };
 type HorseTbl = {
   id: string; name: string; displayCode: string; type: 'horse';
   phase: 'waiting' | 'betting' | 'racing' | 'result'; race: number;
   minBet: number; maxBet: number; step: number; betSeconds: number; raceMs: number;
   betEndsAt: string | null; raceEndsAt: string | null;
   current: { order: number[]; seeds: number[]; startedAt: string; durMs: number } | null;
+  names: string[];
   betsCount: number; players: HorsePlayer[]; suspended: boolean; history: HorseHist[];
 };
 type HorseState = { table: HorseTbl; sessionId: string };
@@ -220,7 +224,7 @@ export function HorsePhone({ displayCode }: { displayCode: string }) {
         <div className={`outcome ${won ? 'win' : 'lose'}`}>{won ? '🏆 HAI VINTO' : 'HAI PERSO'}</div>
         <div className="panel" style={{ display: 'flex', alignItems: 'center', gap: 14, justifyContent: 'center' }}>
           <HorseBadge n={won ? myBet.horse : winner} size={54} active />
-          <div><div style={{ color: '#bfe0c6', fontSize: 13 }}>{won ? 'Il tuo cavallo vince' : `Vince ${winner} · ${H(winner).name}`}</div><div style={{ font: '700 24px "Baskerville Casino",serif' }}>{H(won ? myBet.horse : winner).name}</div>{!won && <div style={{ color: '#bfe0c6', fontSize: 13, marginTop: 4 }}>Il tuo: {myBet.horse} · {H(myBet.horse).name}</div>}</div>
+          <div><div style={{ color: '#bfe0c6', fontSize: 13 }}>{won ? 'Il tuo cavallo vince' : `Vince ${winner} · ${hnameOf(t.names, winner)}`}</div><div style={{ font: '700 24px "Baskerville Casino",serif' }}>{hnameOf(t.names, won ? myBet.horse : winner)}</div>{!won && <div style={{ color: '#bfe0c6', fontSize: 13, marginTop: 4 }}>Il tuo: {myBet.horse} · {hnameOf(t.names, myBet.horse)}</div>}</div>
         </div>
         <div className="panel">
           <div className="kv">Puntata<b>{myBet.amount}</b></div>
@@ -240,7 +244,7 @@ export function HorsePhone({ displayCode }: { displayCode: string }) {
         <div className="h1" style={{ fontSize: 20 }}>Puntate chiuse · <span style={{ color: '#5ee08a' }}>Corsa in diretta</span></div>
         <Lanes cur={t.current} now={now} big />
         {myBet ? (
-          <div className="panel"><div style={{ display: 'flex', alignItems: 'center', gap: 12 }}><HorseBadge n={myBet.horse} size={44} /><div style={{ flex: 1 }}><div style={{ color: '#bfe0c6', fontSize: 13 }}>Il tuo cavallo</div><div style={{ font: '700 20px "Baskerville Casino",serif' }}>{myBet.horse} · {H(myBet.horse).name}</div></div></div>
+          <div className="panel"><div style={{ display: 'flex', alignItems: 'center', gap: 12 }}><HorseBadge n={myBet.horse} size={44} /><div style={{ flex: 1 }}><div style={{ color: '#bfe0c6', fontSize: 13 }}>Il tuo cavallo</div><div style={{ font: '700 20px "Baskerville Casino",serif' }}>{myBet.horse} · {hnameOf(t.names, myBet.horse)}</div></div></div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10 }}><span>Puntata <b style={{ color: '#ffe9a6' }}>{myBet.amount}</b></span><span>Disponibili <b style={{ color: '#ffe9a6' }}>{myBalance.toLocaleString('it-IT')}</b></span></div></div>
         ) : <div className="note">Non hai puntato su questa corsa.</div>}
       </PhoneShell>
@@ -252,7 +256,7 @@ export function HorsePhone({ displayCode }: { displayCode: string }) {
     return (
       <PhoneShell>
         <div className="panel" style={{ textAlign: 'center', borderColor: '#2f8a4e' }}><div style={{ color: '#5ee08a', font: '700 20px "Baskerville Casino",serif' }}>✓ Puntata confermata</div></div>
-        <div className="panel" style={{ display: 'flex', alignItems: 'center', gap: 14 }}><HorseBadge n={myBet.horse} size={54} /><div><div style={{ color: '#bfe0c6', fontSize: 13 }}>Corsa {String(t.race).padStart(3, '0')} · Cavallo {myBet.horse}</div><div style={{ font: '700 24px "Baskerville Casino",serif' }}>{H(myBet.horse).name}</div></div></div>
+        <div className="panel" style={{ display: 'flex', alignItems: 'center', gap: 14 }}><HorseBadge n={myBet.horse} size={54} /><div><div style={{ color: '#bfe0c6', fontSize: 13 }}>Corsa {String(t.race).padStart(3, '0')} · Cavallo {myBet.horse}</div><div style={{ font: '700 24px "Baskerville Casino",serif' }}>{hnameOf(t.names, myBet.horse)}</div></div></div>
         <div className="panel"><div className="kv">Riservati<b>{myBet.amount}</b></div><div className="kv" style={{ borderBottom: 'none' }}>Disponibili<b>{myBalance.toLocaleString('it-IT')}</b></div></div>
         {t.betEndsAt && <div className="panel" style={{ textAlign: 'center' }}><div className="h2">⏱ Chiusura scommesse tra</div><div className="big">{fmtTime(betCd)}</div></div>}
         {err && <div className="err">{err}</div>}
@@ -272,7 +276,7 @@ export function HorsePhone({ displayCode }: { displayCode: string }) {
       <PhoneShell>
         <div className="h1">Conferma puntata</div>
         <div className="panel" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, borderColor: h.color }}>
-          <HorseBadge n={chosen} size={64} active /><div style={{ font: '700 26px "Baskerville Casino",serif' }}>{h.name}</div>
+          <HorseBadge n={chosen} size={64} active /><div style={{ font: '700 26px "Baskerville Casino",serif' }}>{hnameOf(t.names, h.n)}</div>
         </div>
         <div className="panel"><div className="kv">Puntata<b>{amount}</b></div><div className="kv">Ritorno totale se vinci<b>{ret}</b></div><div className="kv" style={{ borderBottom: 'none' }}>Profitto possibile<b className="green">+{ret - amount}</b></div></div>
         {err && <div className="err">{err}</div>}
@@ -294,7 +298,7 @@ export function HorsePhone({ displayCode }: { displayCode: string }) {
         {HORSES.map(h => (
           <div key={h.n} className={`hrow${chosen === h.n ? ' sel' : ''}`} onClick={() => { setChosen(h.n); if (!amount) setAmount(t.minBet); }}>
             <HorseBadge n={h.n} size={40} active={chosen === h.n} />
-            <div className="nm">{h.name}</div>
+            <div className="nm">{hnameOf(t.names, h.n)}</div>
             <div className="mx">6×<br /><span style={{ fontSize: 11, color: '#9fe0b4' }}>ritorno totale</span></div>
           </div>
         ))}
@@ -605,14 +609,14 @@ function MonitorResult({ t, scale }: { t: HorseTbl; scale: number }) {
 
         {/* VINCITORE nel banner (dentro l'alloro dipinto): pannello verde OPACO che
             copre del tutto il "3 · VENTO" dipinto; il numero/nome sono dinamici. */}
-        {w > 0 && <div className="a win" style={{ left: 236, top: 46, width: 272, height: 46 }}><span>{w} · {H(w).name.toUpperCase()}</span></div>}
+        {w > 0 && <div className="a win" style={{ left: 236, top: 46, width: 272, height: 46 }}><span>{w} · {hnameOf(t.names, w).toUpperCase()}</span></div>}
 
         {/* CARD 2° POSTO (sinistra) — badge in flusso (bug di annidamento corretto) */}
         {second > 0 && (
           <div className="a card" style={{ left: 15, top: 201, width: 124, height: 88 }}>
             <div className="inner" style={{ animationDelay: '.12s' }}>
               <CardBadge n={second} />
-              <div className="nm">{H(second).name.toUpperCase()}</div>
+              <div className="nm">{hnameOf(t.names, second).toUpperCase()}</div>
               <div className="pz">2° POSTO</div>
             </div>
           </div>
@@ -622,7 +626,7 @@ function MonitorResult({ t, scale }: { t: HorseTbl; scale: number }) {
           <div className="a card" style={{ left: 607, top: 201, width: 131, height: 88 }}>
             <div className="inner" style={{ animationDelay: '.24s' }}>
               <CardBadge n={third} />
-              <div className="nm">{H(third).name.toUpperCase()}</div>
+              <div className="nm">{hnameOf(t.names, third).toUpperCase()}</div>
               <div className="pz">3° POSTO</div>
             </div>
           </div>
@@ -731,7 +735,7 @@ export function HorseRegia({ displayCode }: { displayCode: string }) {
           </div></div>
         </div>
 
-        <div className="cards">{HORSES.map(h => (<div className="hcard" key={h.n} style={{ ['--c' as string]: h.color }}><HorseBadge n={h.n} size={52} /><div className="nm">{h.name}</div><div className="mult">6×</div><div style={{ color: '#9fe0b4', fontSize: 14 }}>ritorno totale</div></div>))}</div>
+        <div className="cards">{HORSES.map(h => (<div className="hcard" key={h.n} style={{ ['--c' as string]: h.color }}><HorseBadge n={h.n} size={52} /><div className="nm">{hnameOf(t.names, h.n)}</div><div className="mult">6×</div><div style={{ color: '#9fe0b4', fontSize: 14 }}>ritorno totale</div></div>))}</div>
 
         <div className="btns">
           {primary}
@@ -745,8 +749,8 @@ export function HorseRegia({ displayCode }: { displayCode: string }) {
           <div style={{ color: '#e8c879', font: '700 22px "Baskerville Casino",serif', marginBottom: 8 }}>Ultime corse</div>
           <table><thead><tr><th>#</th><th>Ora</th><th>Vincitore</th><th>Giocatori</th><th>Stato</th></tr></thead>
             <tbody>
-              <tr><td>{String(t.race).padStart(3, '0')}</td><td>—</td><td>{t.phase === 'result' && t.current ? <><HorseBadge n={t.current.order[0]!} size={22} /> {H(t.current.order[0]!).name}</> : <span style={{ color: '#9fe0b4' }}>in corso</span>}</td><td>{t.betsCount}</td><td><span style={{ color: t.phase === 'racing' ? '#ff9b9b' : t.phase === 'betting' ? '#5ee08a' : '#e8c879' }}>● {stateLabel}</span></td></tr>
-              {t.history.map(h => (<tr key={h.race + h.at}><td>{String(h.race).padStart(3, '0')}</td><td>{new Date(h.at).toLocaleTimeString('it-IT')}</td><td>{h.cancelled ? <span style={{ color: '#ff9b9b' }}>Annullata</span> : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><HorseBadge n={h.winner} size={22} /> {H(h.winner).name}</span>}</td><td>{h.players}</td><td style={{ color: '#9fe0b4' }}>● {h.cancelled ? 'Rimborsata' : 'Completata'}</td></tr>))}
+              <tr><td>{String(t.race).padStart(3, '0')}</td><td>—</td><td>{t.phase === 'result' && t.current ? <><HorseBadge n={t.current.order[0]!} size={22} /> {hnameOf(t.names, t.current.order[0]!)}</> : <span style={{ color: '#9fe0b4' }}>in corso</span>}</td><td>{t.betsCount}</td><td><span style={{ color: t.phase === 'racing' ? '#ff9b9b' : t.phase === 'betting' ? '#5ee08a' : '#e8c879' }}>● {stateLabel}</span></td></tr>
+              {t.history.map(h => (<tr key={h.race + h.at}><td>{String(h.race).padStart(3, '0')}</td><td>{new Date(h.at).toLocaleTimeString('it-IT')}</td><td>{h.cancelled ? <span style={{ color: '#ff9b9b' }}>Annullata</span> : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><HorseBadge n={h.winner} size={22} /> {hnameOf(h.names, h.winner)}</span>}</td><td>{h.players}</td><td style={{ color: '#9fe0b4' }}>● {h.cancelled ? 'Rimborsata' : 'Completata'}</td></tr>))}
             </tbody>
           </table>
         </div>

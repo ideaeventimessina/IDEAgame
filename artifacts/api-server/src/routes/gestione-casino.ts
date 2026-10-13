@@ -869,7 +869,7 @@ router.post("/gestione/casino/bj/double", async (req, res): Promise<void> => {
 
 type HorseBet = { playerId: string; horse: number; amount: number; at: string };
 type HorseResultRow = { playerId: string; nickname: string; horse: number; bet: number; credit: number; profit: number };
-type HorseHist = { race: number; at: string; winner: number; order: number[]; players: number; cancelled?: boolean; results: HorseResultRow[] };
+type HorseHist = { race: number; at: string; winner: number; order: number[]; players: number; cancelled?: boolean; results: HorseResultRow[]; names?: string[] };
 type HorseTable = {
   id: string; type: "horse"; name: string; displayCode: string;
   phase: "waiting" | "betting" | "racing" | "result";
@@ -879,10 +879,33 @@ type HorseTable = {
   minBet: number; maxBet: number; step: number; betSeconds: number; raceMs: number;
   betEndsAt: string | null; raceEndsAt: string | null;
   current: { order: number[]; seeds: number[]; startedAt: string; durMs: number } | null; // segreto in betting
+  names: string[];            // 6 nomi (indice 0 = cavallo 1 … 5 = cavallo 6), estratti a ogni corsa
   suspended: boolean;
   history: HorseHist[];
 };
 const HORSE_MULT = 6;
+
+/* Nomi REALI di grandi cavalli della storia ippica italiana (galoppo Dormello-Olgiata/Tesio
+   + campioni moderni + grandi trottatori). A ogni corsa se ne estraggono 6 a caso → i nomi
+   ruotano e gli ospiti puntano sul NOME. */
+const HORSE_NAMES: string[] = [
+  // Galoppo — Tesio / Dormello-Olgiata e campioni italiani
+  "Ribot", "Nearco", "Donatello", "Tenerani", "Bellini", "Romanella", "Nogara", "Apelle",
+  "Cavaliere d'Arpino", "Niccolò dell'Arca", "Botticelli", "Toulouse Lautrec", "Ortello",
+  "Crapom", "Molvedo", "Gladiolo", "Marguerite Vernaut", "Tofanella", "Daumier", "Hogarth",
+  "Tissot", "Bella Minna", "Andreina", "Ribocco", "Ribero", "Prince Royal", "Tony Bin",
+  "Falbrav", "Scopas", "Jacopa del Sellaio", "Dossa Dossi", "Duccia di Buoninsegna",
+  "Barbara Burrini", "Appiani", "Sommacampagna",
+  // Trotto — grandi trottatori
+  "Varenne", "Tornese", "Crevalcore", "Delfo", "Bellino II", "Birbone", "Une de Mai",
+  "Mack Grace Sm", "Wayne Eden", "Ideal du Gazeau",
+];
+/** Estrae 6 nomi DISTINTI a caso dal pool (RNG sicuro). */
+function pickHorseNames(): string[] {
+  const pool = [...HORSE_NAMES];
+  for (let i = pool.length - 1; i > 0; i--) { const j = randomInt(i + 1); const t = pool[i]!; pool[i] = pool[j]!; pool[j] = t; }
+  return pool.slice(0, 6);
+}
 
 async function findHorseTable(code: string): Promise<{ sessionId: string; table: HorseTable } | null> {
   const sessions = await db.select().from(casinoSessionsTable).where(eq(casinoSessionsTable.status, "active"));
@@ -913,6 +936,7 @@ async function horseState(sessionId: string, table: HorseTable) {
       minBet: table.minBet, maxBet: table.maxBet, step: table.step, betSeconds: table.betSeconds, raceMs: table.raceMs,
       betEndsAt: table.betEndsAt, raceEndsAt: table.raceEndsAt,
       current: reveal ? table.current : null,       // ordine/seed solo da corsa in poi
+      names: table.names ?? [],                      // 6 nomi della corsa corrente (si punta sul nome)
       betsCount: table.bets.length,
       players: plist,
       suspended: table.suspended,
@@ -939,7 +963,7 @@ async function settleHorse(sessionId: string, table: HorseTable): Promise<void> 
     }
     results.push({ playerId: b.playerId, nickname: p?.nickname ?? "—", horse: b.horse, bet: b.amount, credit, profit: credit - b.amount });
   }
-  table.history.unshift({ race: table.race, at: new Date().toISOString(), winner, order: [...order], players: table.bets.length, results });
+  table.history.unshift({ race: table.race, at: new Date().toISOString(), winner, order: [...order], players: table.bets.length, results, names: [...(table.names ?? [])] });
   table.history = table.history.slice(0, 50);
   table.phase = "result"; table.raceEndsAt = null;
 }
@@ -956,7 +980,7 @@ router.post("/gestione/casino/sessions/:id/horse-tables", async (req, res): Prom
     step: Math.max(1, Math.round(Number(b.step) || 10)), betSeconds: Math.max(10, Math.round(Number(b.betSeconds) || 30)),
     // durata FISSA in base ai giri: 3 giri × 12s = 36s (il frontend gira LAPS=3 volte l'anello)
     raceMs: Math.max(8000, Math.round(Number(b.raceSeconds) || 36) * 1000), betEndsAt: null, raceEndsAt: null,
-    current: null, suspended: false, history: [],
+    current: null, names: pickHorseNames(), suspended: false, history: [],
   };
   await saveHorseTable(id, table);
   res.json(await horseState(id, table));
@@ -990,6 +1014,7 @@ router.post("/gestione/casino/horse/open", async (req, res): Promise<void> => {
   if (t.suspended) { res.status(409).json({ error: "Tavolo sospeso" }); return; }
   if (t.phase === "result") t.race += 1;
   t.bets = []; t.current = null; t.raceEndsAt = null; t.phase = "betting";
+  t.names = pickHorseNames();                 // nomi nuovi a ogni corsa → rotazione
   t.betEndsAt = new Date(Date.now() + t.betSeconds * 1000).toISOString();
   await saveHorseTable(found.sessionId, t);
   res.json({ ok: true });
@@ -1050,7 +1075,7 @@ router.post("/gestione/casino/horse/cancel", async (req, res): Promise<void> => 
     }
     results.push({ playerId: b.playerId, nickname: p?.nickname ?? "—", horse: b.horse, bet: b.amount, credit: b.amount, profit: 0 });
   }
-  t.history.unshift({ race: t.race, at: new Date().toISOString(), winner: 0, order: [], players: t.bets.length, cancelled: true, results });
+  t.history.unshift({ race: t.race, at: new Date().toISOString(), winner: 0, order: [], players: t.bets.length, cancelled: true, results, names: [...(t.names ?? [])] });
   t.history = t.history.slice(0, 50);
   t.bets = []; t.current = null; t.betEndsAt = null; t.raceEndsAt = null; t.phase = "waiting";
   await saveHorseTable(found.sessionId, t);
