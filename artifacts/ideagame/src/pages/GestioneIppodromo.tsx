@@ -57,14 +57,26 @@ function useRaceClock(active: boolean): number {
   useEffect(() => { if (!active) return; let raf = 0; const loop = () => { setT(x => (x + 1) % 1e6); raf = requestAnimationFrame(loop); }; raf = requestAnimationFrame(loop); return () => cancelAnimationFrame(raf); }, [active]);
   return Date.now();
 }
-// progresso 0..1 del cavallo h, deterministico da order+seeds (uguale su ogni client)
+// progresso 0..1 del cavallo h, deterministico da order+seeds (uguale su ogni client).
+// Il VINCITORE lo decide il backend (order[], serve per le puntate): qui NON si decide
+// chi vince. Però durante la corsa ogni cavallo ha ONDATE di velocità proprie (sorpassi
+// e duelli reali) che si ANNULLANO verso l'arrivo, dove l'ordine vero (order[], via lo
+// scarto per rank in racePoint) riemerge con un finale pulito. Niente più fuga solitaria.
+const TAU = Math.PI * 2;
 function horseProgress(cur: HorseTbl['current'], h: number, now: number): number {
   if (!cur) return 0;
   const rank = cur.order.indexOf(h); if (rank < 0) return 0;
-  const pFinal = 1 - rank * 0.014;
-  const e = 0.72 + (cur.seeds[h - 1] ?? 0.5) * 0.7;
   const frac = Math.max(0, Math.min(1, (now - Date.parse(cur.startedAt)) / cur.durMs));
-  return pFinal * Math.pow(frac, e);
+  const s = cur.seeds[h - 1] ?? 0.5;
+  const ph = h * 0.618;                                 // fase propria, decorrelata
+  // onda LENTA (meno di un giro): fughe prolungate che poi rientrano → il campo si
+  // ALLARGA in testa/gruppo/coda invece di restare ammassato, e cambia continuamente.
+  const slow = 0.070 * Math.sin((frac * 0.8 + ph) * TAU);
+  // onda media: duelli ravvicinati, sorpassi tra vicini.
+  const fast = 0.030 * Math.sin((frac * 2.3 + ph * 1.6) * TAU);
+  // inviluppo che si spegne all'arrivo → l'ordine finale torna quello del backend (order[]).
+  const env = Math.pow(1 - frac, 0.6);
+  return Math.max(0, Math.min(1, frac + (slow + fast) * env));
 }
 async function fileToAvatar(file: File): Promise<string> {
   const img = await createImageBitmap(file); const s = 320, cv = document.createElement('canvas'); cv.width = s; cv.height = s;
@@ -405,14 +417,14 @@ const RACE_CSS = FONT + `
 .hmr .sprite{position:relative;overflow:hidden;}
 .hmr .sprite img{position:absolute;left:0;top:0;height:100%;width:600%;animation:gallop .5s steps(6) infinite;filter:drop-shadow(0 4px 5px rgba(0,0,0,.45));}
 @keyframes gallop{from{transform:translateX(0)}to{transform:translateX(-100%)}}
-.hmr .rbadge{position:absolute;border-radius:50%;border:2px solid #fff;display:grid;place-items:center;color:#fff;font-weight:700;font-family:"Baskerville Casino",serif;text-shadow:0 1px 2px #0008;box-shadow:0 1px 3px #0008;z-index:2;}
+.hmr .scloth{position:absolute;transform:translate(-50%,-50%);border-radius:5px;border:1.5px solid rgba(255,255,255,.95);display:grid;place-items:center;color:#fff;font-weight:700;font-family:"Baskerville Casino",serif;text-shadow:0 1px 2px #000b;box-shadow:0 1px 4px #0008,inset 0 1px 0 rgba(255,255,255,.3);z-index:3;line-height:1;}
 .hmr .dust{position:absolute;border-radius:50%;background:radial-gradient(circle,rgba(214,184,132,.6),rgba(190,160,110,0) 70%);filter:blur(2px);pointer-events:none;animation:dust .42s ease-out infinite;}
 .hmr .dust.b{animation-delay:.21s;}
 @keyframes dust{0%{transform:scale(.35);opacity:.65}100%{transform:scale(1.6);opacity:0}}
 .hmr .cbanner span{animation:bshine 2.4s ease-in-out infinite;}
 @keyframes bshine{0%,100%{filter:drop-shadow(0 0 0 rgba(255,220,140,0))}50%{filter:drop-shadow(0 0 8px rgba(255,220,140,.6))}}
 `;
-const GALLOP_AR = 172 / 218; // aspetto cella dello sprite-sheet (6 frame registrati al COM)
+const GALLOP_AR = 194 / 246; // aspetto cella dello sprite-sheet (6 frame registrati + padding anti-taglio)
 const LAPS = 3;              // giri completi dell'anello prima dello stop al nastro
 const START_DEG = 118;      // nastro di partenza/arrivo (rettilineo davanti)
 // I cavalli partono dal NASTRO (a ventaglio sulle corsie), girano LAPS volte attorno
@@ -427,7 +439,7 @@ function racePoint(p: number, lane: number, rank: number) {
   // scarto angolare PERSISTENTE per POSIZIONE DI GARA (rank): il leader è sempre più
   // avanti lungo la pista → i cavalli restano distanziati (niente ammasso di zampe) E
   // tagliano il traguardo nell'ORDINE D'ARRIVO reale. partenza a ventaglio al nastro.
-  const stag = (rank - 2.5) * 14;
+  const stag = (rank - 2.5) * 17;
   const deg = START_DEG - pc * 360 * LAPS + stag;      // LAPS giri, ritorno al nastro
   const th = deg * Math.PI / 180, s = Math.sin(th);
   const x = cx + rx * Math.cos(th);
@@ -440,7 +452,11 @@ function racePoint(p: number, lane: number, rank: number) {
   const flip = vx < 0;                                  // metà di fondo → verso sinistra
   const lean = Math.max(-30, Math.min(30, Math.atan2(vy, Math.abs(vx)) * 180 / Math.PI));
   const rot = flip ? -lean : lean;
-  return { x, y, sc, flip, rot };
+  // orientamento ORIZZONTALE CONTINUO: scaleX passa dolcemente da +1 a -1 attraversando
+  // lo 0 (il cavallo si "stringe" girando la curva) → niente ribaltamento a scatto. Lo
+  // schiacciamento all'apice nasconde anche il cambio di segno di rot → curva fluida.
+  const sx = Math.tanh(vx / 55);
+  return { x, y, sc, flip, rot, sx };
 }
 function MonitorRacing({ t, now, scale }: { t: HorseTbl; now: number; scale: number }) {
   const order = t.current?.order ?? [];
@@ -460,18 +476,25 @@ function MonitorRacing({ t, now, scale }: { t: HorseTbl; now: number; scale: num
         {/* banner codificato OPACO (copre quello dipinto nel track) + numero corsa LIVE */}
         <div className="a cbanner" style={{ left: 206, top: 7, width: 332, height: 48 }}><span>CORSA {String(t.race).padStart(3, '0')} · IN DIRETTA</span></div>
         {runners.map(r => {
-          const w = 156 * r.sc, hh = w * GALLOP_AR, bs = w * 0.3;
+          const w = 170 * r.sc, hh = w * GALLOP_AR, bs = w * 0.15;
+          // posizione SCHERMO della gualdrappa (il "numero sul fantino"): parte dal punto
+          // sella nel sprite e segue scaleX+rotazione del cavallo, così resta SUL dorso.
+          const ox = w * 0.5, oy = hh * 0.72;                 // origine trasformazioni
+          const s1x = ox + (w * 0.44 - ox) * r.sx;            // dopo scaleX
+          const rr = r.rot * Math.PI / 180, co = Math.cos(rr), si = Math.sin(rr);
+          const ddx = s1x - ox, ddy = hh * 0.50 - oy;         // dopo rotazione
+          const sadX = ox + ddx * co - ddy * si, sadY = oy + ddx * si + ddy * co;
           return (
             <div key={r.h.n} className="a runner" style={{ left: r.x, top: r.y, width: w, height: hh, transform: 'translate(-50%, -90%)', zIndex: Math.round(r.y) }}>
               <div className="dust" style={{ left: r.flip ? w * 0.5 : w * 0.08, top: hh * 0.74, width: w * 0.4, height: w * 0.24 }} />
-              {/* wrapper: segue la tangente (rotazione continua) + flip; sprite + badge insieme */}
-              <div style={{ position: 'relative', width: w, height: hh, transformOrigin: '50% 72%', transform: `rotate(${r.rot}deg) scaleX(${r.flip ? -1 : 1})` }}>
+              {/* wrapper sprite: segue la tangente (rotazione) + scaleX CONTINUO (curva fluida) */}
+              <div style={{ position: 'relative', width: w, height: hh, transformOrigin: '50% 72%', transform: `rotate(${r.rot}deg) scaleX(${r.sx})` }}>
                 <div className="sprite" style={{ width: w, height: hh }}>
                   <img src={`${AP}horse-gallop.png`} alt={r.h.name} style={{ animationDelay: `${(r.h.n * 0.07).toFixed(2)}s` }} />
                 </div>
-                {/* badge sulla gualdrappa; contro-flip per numero leggibile */}
-                <div className="rbadge" style={{ left: w * 0.13, top: hh * 0.3, width: bs, height: bs, fontSize: bs * 0.6, transform: `scaleX(${r.flip ? -1 : 1})`, background: `radial-gradient(circle at 40% 30%, ${r.h.glow}, ${r.h.color} 70%)` }}>{r.h.n}</div>
               </div>
+              {/* gualdrappa-numero: piccola, SUL dorso (segue il cavallo), sempre dritta e leggibile */}
+              <div className="scloth" style={{ left: sadX, top: sadY, width: bs * 1.9, height: bs * 1.6, fontSize: bs * 1.05, background: `linear-gradient(160deg, ${r.h.glow}, ${r.h.color} 72%)` }}>{r.h.n}</div>
             </div>
           );
         })}
