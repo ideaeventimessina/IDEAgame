@@ -752,7 +752,7 @@ function JoinView({ sessionId }: { sessionId: string }) {
 }
 
 // ══════════════════ GIOCATORE — vista con puntata ══════════════════
-function PlayerView({ code }: { code: string }) {
+export function PlayerView({ code }: { code: string }) {
   const [data, setData] = useState<{ player: Player; sessionName: string; sessionId: string } | null>(null);
   const [err, setErr] = useState('');
   const [betInput, setBetInput] = useState('');
@@ -769,6 +769,26 @@ function PlayerView({ code }: { code: string }) {
     finally { setSending(false); }
   };
 
+  // ── Tavoli interattivi: il giocatore sceglie dal SUO telefono dove sedersi
+  //    (niente QR per postazione). Un solo QR d'ingresso -> qui scegli il tavolo. ──
+  const sid = data?.sessionId;
+  const [tbls, setTbls] = useState<{ roulette: any[]; bj: any[]; horse: any[] }>({ roulette: [], bj: [], horse: [] });
+  useEffect(() => {
+    if (!sid) return;
+    const g = (path: string) => fetch(`${API}/gestione/casino/sessions/${sid}/${path}`).then(r => r.ok ? r.json() : { tables: [] }).catch(() => ({ tables: [] }));
+    const load = async () => { const [r, b, h] = await Promise.all([g('game-tables'), g('bj-tables'), g('horse-tables')]); setTbls({ roulette: r.tables ?? [], bj: b.tables ?? [], horse: h.tables ?? [] }); };
+    load(); const t = setInterval(load, 3000); return () => clearInterval(t);
+  }, [sid]);
+
+  // Roulette: assegna un posto libero e vai al controller di quella sedia.
+  const sitRoulette = async (displayCode: string) => {
+    const st = await fetch(`${API}/gestione/casino/table/${displayCode}`).then(r => r.ok ? r.json() : null).catch(() => null);
+    const seats = (st?.table?.seats ?? {}) as Record<string, { code: string; playerId: string | null }>;
+    const free = Object.values(seats).find(s => !s.playerId);
+    if (!free) { setErr(''); alert('Questo tavolo è pieno, prova un altro.'); return; }
+    window.location.href = `${ORIGIN}gestione/casino?seat=${free.code}`;
+  };
+
   if (err) return <Center>{err}</Center>;
   if (!data) return <Center>Carico…</Center>;
   const p = data.player;
@@ -782,6 +802,28 @@ function PlayerView({ code }: { code: string }) {
       <motion.div key={p.fishBalance} initial={{ scale: 1.14 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 300, damping: 18 }}
         style={{ fontSize: 'clamp(56px,18vw,110px)', fontWeight: 900, color: GOLD, lineHeight: 1, fontVariantNumeric: 'tabular-nums', textShadow: `0 0 30px ${GOLD}44` }}><AnimatedNumber value={p.fishBalance} /></motion.div>
       <div style={{ opacity: 0.5, marginTop: -6 }}>le tue fiche</div>
+
+      {/* Siediti a un tavolo — scelta dal TELEFONO del giocatore (niente QR per postazione) */}
+      {(tbls.roulette.length + tbls.bj.length + tbls.horse.length) > 0 && (
+        <div style={{ width: '100%', maxWidth: 360, background: '#ffffff0a', border: `1px solid ${GOLD}55`, borderRadius: 20, padding: 14 }}>
+          <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 10, textAlign: 'center', color: GOLD }}>🎲 Siediti a un tavolo</div>
+          {[
+            ...tbls.roulette.map((t) => ({ k: 'r' + t.id, icon: '🎡', name: t.name, meta: `${Object.values(t.seats ?? {}).filter((s: any) => !s.playerId).length} posti liberi`, go: () => sitRoulette(t.displayCode) })),
+            ...tbls.bj.map((t) => ({ k: 'b' + t.id, icon: '🂡', name: t.name, meta: t.occupied != null ? `${Math.max(0, (t.seatsN ?? 7) - t.occupied)} posti liberi` : 'blackjack', go: () => { window.location.href = `${ORIGIN}gestione/casino?bjplay=${t.displayCode}`; } })),
+            ...tbls.horse.map((t) => ({ k: 'h' + t.id, icon: '🐎', name: t.name, meta: `${t.players ?? 0} in gioco`, go: () => { window.location.href = `${ORIGIN}gestione/casino?hplay=${t.displayCode}`; } })),
+          ].map((row) => (
+            <motion.button whileTap={{ scale: 0.97 }} key={row.k} onClick={row.go}
+              style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', background: '#ffffff0a', border: '1px solid #ffffff18', borderRadius: 14, padding: '12px 14px', color: '#fff', cursor: 'pointer', marginBottom: 8 }}>
+              <span style={{ fontSize: 26 }}>{row.icon}</span>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ display: 'block', fontWeight: 800, fontSize: 16 }}>{row.name}</span>
+                <span style={{ display: 'block', fontSize: 12, opacity: 0.6 }}>{row.meta}</span>
+              </span>
+              <span style={{ color: GOLD, fontWeight: 900 }}>Siediti ›</span>
+            </motion.button>
+          ))}
+        </div>
+      )}
 
       {/* Puntata */}
       <div style={{ width: '100%', maxWidth: 360, background: '#ffffff0a', border: `1px solid ${pending > 0 ? GOLD : '#ffffff18'}`, borderRadius: 20, padding: 16 }}>
@@ -978,9 +1020,9 @@ function PlayerChip({ no, seat, bet, h, serif = false }: { no: number; seat: Sea
   }
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, background: 'linear-gradient(#141210,#0a0906)', border: `1.5px solid ${GOLD}44`, borderRadius: 12, padding: `${h * 0.08}px ${h * 0.06}px`, width: '100%' }}>
-      <div style={{ background: '#fff', padding: 4, borderRadius: 8 }}><QRCodeSVG value={`${ORIGIN}gestione/casino?seat=${seat.code}`} size={av} /></div>
+      <div style={{ width: av, height: av, borderRadius: '50%', border: `2px dashed ${GOLD}66`, display: 'grid', placeItems: 'center', color: GOLD, fontSize: av * 0.44, fontWeight: 900 }}>{no}</div>
       <div style={{ fontSize: h * 0.14, fontWeight: 800, opacity: 0.7 }}>Posto {no}</div>
-      <div style={{ fontSize: h * 0.1, opacity: 0.45 }}>scansiona</div>
+      <div style={{ fontSize: h * 0.1, opacity: 0.45 }}>libero · siediti dal telefono</div>
     </div>
   );
 }
@@ -1305,9 +1347,9 @@ export function RouletteTableView({ displayCode }: { displayCode: string }) {
             }
             return (
               <article key={no} className="player" style={{ left, width }}>
-                <div className="qr"><QRCodeSVG value={`${ORIGIN}gestione/casino?seat=${seat?.code ?? ''}`} size={74} /></div>
+                <div style={{ width: 74, height: 74, margin: '0 auto', borderRadius: '50%', border: `2px dashed ${GOLD}66`, display: 'grid', placeItems: 'center', color: GOLD, fontSize: 32, fontWeight: 900 }}>{no}</div>
                 <div className="name" style={{ top: 92 }}>Posto {no}</div>
-                <div className="lbl" style={{ top: 118 }}>SCANSIONA</div>
+                <div className="lbl" style={{ top: 118 }}>LIBERO</div>
               </article>
             );
           })}
