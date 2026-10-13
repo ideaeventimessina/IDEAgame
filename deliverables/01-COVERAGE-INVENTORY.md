@@ -124,8 +124,26 @@ lip-sync fonetico), fumetto ancorato mai su risposte/numeri/QR/timer, muto di de
 6. **Build id** non sensibile esposto (UI/health) per correlare build↔HEAD.
 7. **Collaudo** — fixture deterministiche, screenshot a viewport fissa (display 1920×1080/3840×2160, phone 390×844/360×800, tablet 1024×768, admin 1440×900), confronto overlay (geom ≤4px@1080, ΔE<5), sessione pilota multi-device.
 
-## 8. Prossimo passo
+## 8. Fase 5 — Johhy: FATTO (core) 2026-10-13
 
-Avvio **Fase 5 — Johhy unificato** (scelta utente): lettura puntuale di `JonnyVoice.ts` +
-componenti duplicati, poi progetto del motore unico (SpeechCue + un solo avatar + un solo fumetto +
-rename displayName), con verifica a viewport fissa contro lo storyboard `05-johhy`.
+Motore personaggio unificato e su `main`:
+- **Voce**: `JonnyVoice` emette testo esatto + clock audio; provider **ElevenLabs** (toggle env,
+  convenzione IDEAphoto, chiave via `scripts/con-secrets.sh`/Replit) con fallback OpenAI onyx;
+  cache per provider+voce. Commit `5b69399`,`e8502b4`,`f1139fe`,`fa332fd`.
+- **Fumetto unico** `JohhyBubble`: testo ESATTO pronunciato, segmenti sul clock audio, mute-safe,
+  Rileggi. `JonnyLayer` lo usa; `JonnyMessage` resta toast. Commit `5b69399`,`466c721`.
+- **Avatar unico** `JohhyAvatar`: stati + voce, niente bocca finta; i 3 renderer delegano.
+  Commit `f9c3189`,`2e5b0ac`.
+- **Rename** visibile Jonny→Johhy (187 occ./35 file, id/route/asset legacy intatti). `0578101`.
+- **Orchestratore SpeechCue** `orchestrator.ts`: audience public/player/host (no eco 8 telefoni,
+  segreti solo al destinatario), un solo playback per device (dedup), performance-lock,
+  priorità/interrupt, scadenza. Gating testato 11/11; innescato game-start. Commit `153eae8`.
+
+**Resta (non-core, legato alle schermate):** wiring del `setPerformanceLock` nei video karaoke/
+ballo e di altri trigger voce via `playCue`; rig a bocca/occhi segmentati (produzione asset, oggi
+movimento onesto di tutto il corpo); decisione su `admin/AdultOnly.tsx` ("Jonny's World" valore-dato).
+
+## 9. Prossimo passo
+
+Tornare alla fedeltà dei moduli (Fase 3/4): schermate casino/lockdown/ideagame a viewport fissa
+contro i mockup, + i fix prioritari (RNG roulette, saldi in transazione). Priorità da concordare.
