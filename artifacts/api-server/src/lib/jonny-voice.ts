@@ -15,6 +15,7 @@ import { db, gameMediaSlotsTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { textToSpeech } from "@workspace/integrations-openai-ai-server/audio";
 import { uploadBufferToStorage } from "./objectStorage.js";
+import { elevenLabsTTS, elevenLabsEnabled, elevenLabsVoiceTag } from "./tts-elevenlabs.js";
 
 const CACHE_SLUG = "_voicecache";
 /** Voce del personaggio: showman caldo e sicuro. Override via env JONNY_VOICE. */
@@ -59,8 +60,14 @@ export const JONNY_SCRIPTS: Record<string, string> = {
     "E il momento della verità è arrivato! Ecco il podio. Applausi per tutti, ma i punti… non mentono. Bravissimi!",
 };
 
+/** Tag del provider+voce attivo: entra nell'hash della cache, così cambiando
+ *  provider/voce (es. OpenAI onyx → ElevenLabs) le battute si RIGENERANO. */
+function voiceTag(): string {
+  return elevenLabsEnabled() ? elevenLabsVoiceTag() : `oai:${JONNY_VOICE}`;
+}
+
 function normKey(slug: string, text: string): string {
-  const h = createHash("sha1").update(text).digest("hex").slice(0, 10);
+  const h = createHash("sha1").update(`${voiceTag()}|${text}`).digest("hex").slice(0, 10);
   return `voice:${slug}:${h}`.slice(0, 220);
 }
 
@@ -99,7 +106,11 @@ export async function getJonnyVoiceUrl(key: string): Promise<string | null> {
   const cached = await readCache(slotKey);
   if (cached) return cached;
   try {
-    const buffer = await textToSpeech(text, JONNY_VOICE, "mp3");
+    // Provider: ElevenLabs se configurato (chiave in ambiente), altrimenti OpenAI.
+    // Se ElevenLabs è attivo ma fallisce, fallback su OpenAI; poi niente voce.
+    let buffer: Buffer | null = null;
+    if (elevenLabsEnabled()) buffer = await elevenLabsTTS(text);
+    if (!buffer?.length) buffer = await textToSpeech(text, JONNY_VOICE, "mp3");
     if (!buffer?.length) return null;
     const objectPath = await uploadBufferToStorage(buffer, "audio/mpeg", "mp3");
     const mediaUrl = `/api/storage/objects/uploads/${objectPath.split("/").pop()}`;
