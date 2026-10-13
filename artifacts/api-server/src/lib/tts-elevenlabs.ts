@@ -6,17 +6,20 @@
    la chiave manca o la chiamata fallisce, ritorna null e jonny-voice.ts fa
    fallback su OpenAI (e in ultimo il gioco continua senza voce).
 
-   Config via env:
-     ELEVENLABS_API_KEY   (obbligatoria per usare questo provider)
-     ELEVENLABS_VOICE_ID  (default: showman caldo multilingua; override consigliato)
-     ELEVENLABS_MODEL     (default: eleven_multilingual_v2 — buon italiano)
+   Config via env (stessa convenzione di IDEAphoto-Suite — chiave condivisa):
+     ELEVENLABS_API_KEY        (obbligatoria; identico nome usato dalle altre app)
+     ELEVENLABS_JOHHY_VOICE_ID (voce dedicata a Johhy; fallback ELEVENLABS_VOICE_ID, poi default)
+     ELEVENLABS_JOHHY_MODEL    (modello per Johhy; fallback ELEVENLABS_MODEL, poi default)
 ──────────────────────────────────────────────────────────────────────────── */
 
 const ENDPOINT = "https://api.elevenlabs.io/v1/text-to-speech";
 // Voce di default "Antoni" (maschile, calda) — disponibile sugli account ElevenLabs;
-// sovrascrivibile con ELEVENLABS_VOICE_ID.
+// sovrascrivibile con ELEVENLABS_JOHHY_VOICE_ID (o il generico ELEVENLABS_VOICE_ID).
 const DEFAULT_VOICE = "ErXwobaYiN019PkySvjV";
 const DEFAULT_MODEL = "eleven_multilingual_v2";
+
+const voiceId = (): string => process.env["ELEVENLABS_JOHHY_VOICE_ID"] || process.env["ELEVENLABS_VOICE_ID"] || DEFAULT_VOICE;
+const modelId = (): string => process.env["ELEVENLABS_JOHHY_MODEL"] || process.env["ELEVENLABS_MODEL"] || DEFAULT_MODEL;
 
 /** true se il provider ElevenLabs è configurato (chiave presente nell'ambiente). */
 export function elevenLabsEnabled(): boolean {
@@ -25,19 +28,17 @@ export function elevenLabsEnabled(): boolean {
 
 /** Tag provider+voce+modello per invalidare la cache quando cambiano. */
 export function elevenLabsVoiceTag(): string {
-  const v = process.env["ELEVENLABS_VOICE_ID"] || DEFAULT_VOICE;
-  const m = process.env["ELEVENLABS_MODEL"] || DEFAULT_MODEL;
-  return `el:${v}:${m}`;
+  return `el:${voiceId()}:${modelId()}`;
 }
 
 /** Genera l'MP3 della battuta con ElevenLabs. null se non configurato o errore. */
 export async function elevenLabsTTS(text: string): Promise<Buffer | null> {
   const apiKey = process.env["ELEVENLABS_API_KEY"];
   if (!apiKey || !text.trim()) return null;
-  const voiceId = process.env["ELEVENLABS_VOICE_ID"] || DEFAULT_VOICE;
-  const modelId = process.env["ELEVENLABS_MODEL"] || DEFAULT_MODEL;
+  const voice = voiceId();
+  const model = modelId();
   try {
-    const res = await fetch(`${ENDPOINT}/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`, {
+    const res = await fetch(`${ENDPOINT}/${encodeURIComponent(voice)}?output_format=mp3_44100_128`, {
       method: "POST",
       headers: {
         "xi-api-key": apiKey,
@@ -46,7 +47,7 @@ export async function elevenLabsTTS(text: string): Promise<Buffer | null> {
       },
       body: JSON.stringify({
         text,
-        model_id: modelId,
+        model_id: model,
         voice_settings: { stability: 0.45, similarity_boost: 0.8, style: 0.35, use_speaker_boost: true },
       }),
     });
