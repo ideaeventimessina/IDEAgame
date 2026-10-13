@@ -27,7 +27,7 @@ type SettingsValue = {
   musicVolume: number;
   // Dance
   balloSensitivity: number;
-  // Jonny
+  // Johhy
   jonnyEnabled: boolean;
   jonnyMode: 'live' | 'home';
   jonnyVoiceEnabled: boolean;
@@ -425,12 +425,12 @@ export default function Settings() {
           </div>
         </SectionHeader>
 
-        {/* ── 4. JONNY AI HOST ─────────────────────────────────────────── */}
-        <SectionHeader emoji="🎩" title="Jonny AI Host" color="#D4AF37">
+        {/* ── 4. JOHHY AI HOST ─────────────────────────────────────────── */}
+        <SectionHeader emoji="🎩" title="Johhy AI Host" color="#D4AF37">
 
           <SettingRow
-            label="Jonny attivo"
-            desc="Abilita Jonny come co-host animato sui telefoni dei giocatori (onboarding, attesa, gioco, vittoria)."
+            label="Johhy attivo"
+            desc="Abilita Johhy come co-host animato sui telefoni dei giocatori (onboarding, attesa, gioco, vittoria)."
             where="📱 Telefoni giocatori">
             <div className="flex items-center gap-2">
               <JonnyAvatar mood={v.jonnyEnabled ? 'excited' : 'idle'} size={36} />
@@ -441,7 +441,7 @@ export default function Settings() {
           {v.jonnyEnabled && (
             <>
               <SettingRow
-                label="Modalità Jonny"
+                label="Modalità Johhy"
                 desc="Live: affianca l'animatore umano. Home: è il game master autonomo della serata."
                 where="🎤 Comportamento co-host">
                 <div className="flex gap-2">
@@ -461,7 +461,7 @@ export default function Settings() {
 
               <SettingRow
                 label="Frequenza reazioni"
-                desc="Quanto spesso Jonny commenta e reagisce durante il gioco."
+                desc="Quanto spesso Johhy commenta e reagisce durante il gioco."
                 where="💬 Messaggi in gioco">
                 <div className="flex gap-2">
                   {REACTION_OPTIONS.map(opt => (
@@ -480,13 +480,13 @@ export default function Settings() {
 
               <SettingRow
                 label="Può interrompere il gioco"
-                desc="Se abilitato, Jonny può mostrare messaggi durante le fasi attive (non solo in attesa)."
+                desc="Se abilitato, Johhy può mostrare messaggi durante le fasi attive (non solo in attesa)."
                 where="⚡ Fasi di gioco attive">
                 <Toggle checked={v.jonnyCanInterrupt} onChange={c => patch({ jonnyCanInterrupt: c })} color="#D4AF37" />
               </SettingRow>
 
               <SettingRow
-                label="Voce di Jonny"
+                label="Voce di Johhy"
                 desc="Abilita sintesi vocale (placeholder — non ancora collegato al modello AI)."
                 where="🔊 Altoparlante giocatori">
                 <Toggle checked={v.jonnyVoiceEnabled} onChange={c => patch({ jonnyVoiceEnabled: c })} color="#D4AF37" />
@@ -494,7 +494,7 @@ export default function Settings() {
 
               {v.jonnyVoiceEnabled && (
                 <div>
-                  <div className="font-black text-sm text-white mb-2">Volume voce Jonny</div>
+                  <div className="font-black text-sm text-white mb-2">Volume voce Johhy</div>
                   <VolumeSlider value={v.jonnyVoiceVolume} onChange={val => patch({ jonnyVoiceVolume: val })} color="#D4AF37" />
                 </div>
               )}
@@ -502,7 +502,7 @@ export default function Settings() {
               <div className="rounded-xl px-3 py-2 text-[11px] text-muted-foreground"
                 style={{ background: 'rgba(212,175,55,0.06)', border: '1px solid rgba(212,175,55,0.15)' }}>
                 Attivabile via URL: <code className="font-mono" style={{ color: '#D4AF37' }}>?jonny=1</code>
-                {' '}· L'AI automation è in roadmap — attualmente Jonny usa reazioni predefinite.
+                {' '}· L'AI automation è in roadmap — attualmente Johhy usa reazioni predefinite.
               </div>
             </>
           )}

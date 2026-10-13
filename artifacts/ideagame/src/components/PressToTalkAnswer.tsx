@@ -820,7 +820,7 @@ export default function PressToTalkAnswer({
     let statusChip: string | null = null;
     if (isWaiting)                           statusChip = '🎤 Autorizzazione…';
     else if (status === 'speak-again')       statusChip = '🔄 Parla di nuovo…';
-    else if (isListening && !transcript)     statusChip = '🎙 Jonny ti ascolta…';
+    else if (isListening && !transcript)     statusChip = '🎙 Johhy ti ascolta…';
     else if (isListening && transcript)      statusChip = `Ho sentito: "${transcript}"`;
     else if (status === 'no-speech')         statusChip = 'Non ho sentito nulla, continua…';
     else if (status === 'error' && errorMsg) statusChip = `⚠️ ${errorMsg}`;
@@ -833,7 +833,7 @@ export default function PressToTalkAnswer({
     return (
       <div className="flex flex-col items-center gap-4 w-full">
 
-        {/* Jonny listening overlay */}
+        {/* Johhy listening overlay */}
         <AnimatePresence>
           {(isListening || isWaiting) && (
             <motion.div key="jonny-listening"
@@ -849,7 +849,7 @@ export default function PressToTalkAnswer({
                 <JonnyAvatar mood="thinking" size={52} background="none" />
                 <div className="flex flex-col gap-1">
                   <div className="text-sm font-black" style={{color:'#A78BFA'}}>
-                    {isWaiting ? '🎤 Autorizzazione microfono…' : status === 'speak-again' ? '🔄 Parla di nuovo…' : 'Jonny ti ascolta…'}
+                    {isWaiting ? '🎤 Autorizzazione microfono…' : status === 'speak-again' ? '🔄 Parla di nuovo…' : 'Johhy ti ascolta…'}
                   </div>
                   <WaveformBars active={isListening} />
                 </div>

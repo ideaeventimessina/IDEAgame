@@ -65,7 +65,7 @@ function Landing({ onNext }: { onNext: () => void }) {
     <motion.div {...fadeUp} className="relative flex flex-col items-center justify-between h-full px-6 pt-8 pb-10">
       <motion.img
         src={asset('/jonny-world-hero.png')}
-        alt="Jonny's World"
+        alt="Johhy's World"
         className="w-full max-w-lg rounded-3xl object-cover shadow-2xl"
         style={{ maxHeight: 340 }}
         initial={{ scale: 1.05, opacity: 0 }}
@@ -83,7 +83,7 @@ function Landing({ onNext }: { onNext: () => void }) {
             Il Parco del Divertimento Intelligente
           </div>
           <h1 className="text-4xl font-black text-white leading-tight drop-shadow-xl">
-            JONNY'S&nbsp;<span className="text-amber-400">WORLD</span>
+            JOHHY'S&nbsp;<span className="text-amber-400">WORLD</span>
           </h1>
           <p className="mt-3 text-white/60 text-sm max-w-xs mx-auto">
             8 mondi di gioco. Un palco. Venti giocatori. Costruito per far divertire tutti.
@@ -443,7 +443,7 @@ function LiveInfo({ onJoin, onBack }: { onJoin: () => void; onBack: () => void }
       </div>
 
       <div className="rounded-3xl overflow-hidden mb-5">
-        <img src={asset('/jonny-world-promo.jpg')} alt="Jonny Live"
+        <img src={asset('/jonny-world-promo.jpg')} alt="Johhy Live"
           className="w-full object-cover" style={{ maxHeight: 180 }} />
       </div>
 
@@ -508,7 +508,7 @@ function LiveWait({ onBack }: { onBack: () => void }) {
           className="mb-6"
           whileTap={{ scale: 0.9 }}
         >
-          <img src={asset('/jonny-master-nobg.png')} alt="Jonny"
+          <img src={asset('/jonny-master-nobg.png')} alt="Johhy"
             className="w-32 h-32 object-contain drop-shadow-2xl" />
         </motion.button>
 

@@ -160,7 +160,7 @@ export default function HomeSetupPage() {
         </motion.button>
 
         <motion.img
-          src={pub('/jonny-world-logo.png')} alt="Jonny's World"
+          src={pub('/jonny-world-logo.png')} alt="Johhy's World"
           initial={{ y: -10, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.05, duration: 0.5 }}
           style={{ width: 'clamp(7rem,11vw,9rem)', objectFit: 'contain',
@@ -200,7 +200,7 @@ export default function HomeSetupPage() {
           fontSize: '0.65rem', letterSpacing: '0.22em',
           color: isLive ? 'rgba(245,182,66,0.7)' : isLockdown ? 'rgba(165,180,252,0.85)' : 'rgba(255,255,255,0.35)',
           fontWeight: 600, textTransform: 'uppercase', marginTop: 2,
-        }}>{isLive ? '🔴 Modalità Live · Show Professionale' : isLockdown ? '🔒 Lockdown · Il gioco da tavolo di Jonny' : 'Modalità Home · Partita Privata'}</div>
+        }}>{isLive ? '🔴 Modalità Live · Show Professionale' : isLockdown ? '🔒 Lockdown · Il gioco da tavolo di Johhy' : 'Modalità Home · Partita Privata'}</div>
       </motion.div>
 
       {/* form card */}

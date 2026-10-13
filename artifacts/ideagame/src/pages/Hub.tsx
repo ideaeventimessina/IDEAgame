@@ -480,7 +480,7 @@ export default function Hub() {
             <div className="absolute inset-0 oct-clip bg-gradient-to-br from-primary via-accent to-primary opacity-90" />
             <div className="absolute inset-1.5 oct-clip" style={{ background: 'rgba(14,5,32,0.92)' }} />
             <div className="relative z-10 flex items-center justify-center" style={{ width: oct * 0.66, height: oct * 0.66 }}>
-              <img src="/jonny-world-hero.png" alt="Jonny's World" className="w-full h-full object-contain drop-shadow-[0_0_18px_rgba(245,182,66,0.7)]" />
+              <img src="/jonny-world-hero.png" alt="Johhy's World" className="w-full h-full object-contain drop-shadow-[0_0_18px_rgba(245,182,66,0.7)]" />
             </div>
           </div>
         </motion.div>
@@ -737,7 +737,7 @@ export default function Hub() {
                 </button>
 
                 <div className="mx-auto flex items-center justify-center mb-5">
-                  <img src="/jonny-world-hero.png" alt="Jonny's World" className="h-16 w-auto object-contain"
+                  <img src="/jonny-world-hero.png" alt="Johhy's World" className="h-16 w-auto object-contain"
                     style={{ filter: 'drop-shadow(0 0 16px rgba(245,182,66,0.55))' }} />
                 </div>
 
@@ -794,7 +794,7 @@ export default function Hub() {
         style={{ background: 'radial-gradient(ellipse 160% 90% at 50% -10%, #1a0830 0%, #0a0318 50%, #030110 100%)' }}>
         <HubStars />
         <div className="relative z-10 flex flex-col items-center gap-8 text-center px-8">
-          <img src="/jonny-world-hero.png" alt="Jonny's World" className="h-16 w-auto object-contain"
+          <img src="/jonny-world-hero.png" alt="Johhy's World" className="h-16 w-auto object-contain"
             style={{ filter: 'drop-shadow(0 0 20px rgba(245,182,66,0.55))' }} />
           <div>
             <div className="text-display text-5xl sm:text-6xl font-black"
@@ -807,9 +807,9 @@ export default function Hub() {
           <div className="text-4xl">🎉</div>
           <div className="text-muted-foreground/60 text-sm">Grazie per aver partecipato!</div>
         </div>
-        {/* Jonny — scontornato, fermo */}
+        {/* Johhy — scontornato, fermo */}
         <div className="pointer-events-none absolute bottom-0 right-10 hidden lg:block" style={{ width: 220, height: 340 }}>
-          <motion.img src="/jonny-master-nobg.png" alt="Jonny"
+          <motion.img src="/jonny-master-nobg.png" alt="Johhy"
             className="w-full h-full object-contain object-bottom"
             style={{ filter: 'drop-shadow(0 0 40px rgba(245,182,66,0.45))' }}
             animate={{ y: [0, -12, 0] }}
@@ -834,7 +834,7 @@ export default function Hub() {
 
         {/* Header */}
         <header className="hub-tv-header relative z-20 flex shrink-0 items-center justify-between">
-          <img src="/jonny-world-hero.png" alt="Jonny's World" className="h-14 w-auto object-contain"
+          <img src="/jonny-world-hero.png" alt="Johhy's World" className="h-14 w-auto object-contain"
             style={{ filter: 'drop-shadow(0 0 16px rgba(245,182,66,0.55))' }} />
           <div className="flex items-center gap-3">
             {publicSessionActive ? (
@@ -862,10 +862,10 @@ export default function Hub() {
         {/* Main content — QR gigante + titolo */}
         <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-8 px-8 pb-10">
 
-          {/* Title — Jonny's World logo */}
+          {/* Title — Johhy's World logo */}
           <motion.div initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
             className="flex flex-col items-center gap-3">
-            <img src="/jonny-world-hero.png" alt="Jonny's World"
+            <img src="/jonny-world-hero.png" alt="Johhy's World"
               className="w-auto object-contain"
               style={{ height: 'clamp(120px, 18vh, 200px)', filter: 'drop-shadow(0 0 40px rgba(245,182,66,0.6)) drop-shadow(0 4px 24px rgba(0,0,0,0.7))' }} />
             <div className="text-lg sm:text-xl text-muted-foreground">
@@ -921,9 +921,9 @@ export default function Hub() {
           )}
         </div>
 
-        {/* Jonny floating — scontornato */}
+        {/* Johhy floating — scontornato */}
         <div className="pointer-events-none absolute bottom-0 right-10 z-10 select-none hidden lg:block" style={{ width: 220, height: 340 }}>
-          <motion.img src="/jonny-master-nobg.png" alt="Jonny"
+          <motion.img src="/jonny-master-nobg.png" alt="Johhy"
             className="w-full h-full object-contain object-bottom"
             style={{ filter: 'drop-shadow(0 0 40px rgba(245,182,66,0.45))' }}
             animate={{ y: [0, -12, 0] }}
@@ -940,7 +940,7 @@ export default function Hub() {
         style={{ background: 'radial-gradient(ellipse 160% 90% at 50% -10%, #2d0d52 0%, #130628 45%, #060213 100%)' }}>
         <HubStars />
         <header className="hub-tv-header relative z-20 flex shrink-0 items-center justify-between">
-          <img src="/jonny-world-hero.png" alt="Jonny's World" className="h-14 w-auto object-contain"
+          <img src="/jonny-world-hero.png" alt="Johhy's World" className="h-14 w-auto object-contain"
             style={{ filter: 'drop-shadow(0 0 16px rgba(245,182,66,0.55))' }} />
           <div className="flex items-center gap-3">
             <div className="rounded-full border border-destructive px-3 py-1 text-xs font-black uppercase tracking-widest text-destructive">
@@ -967,7 +967,7 @@ export default function Hub() {
       <div className="relative h-screen w-full overflow-hidden select-none">
 
         {/* Full-screen hero poster — object-contain so edges aren't cropped on TV overscan */}
-        <motion.img src="/jonny-world-hero.png" alt="Jonny's World"
+        <motion.img src="/jonny-world-hero.png" alt="Johhy's World"
           className="absolute inset-0 w-full h-full object-contain object-center"
           style={{ filter: 'brightness(0.92) saturate(1.1)' }}
           initial={{ opacity: 0, scale: 1.06 }} animate={{ opacity: 1, scale: 1 }}
@@ -1128,14 +1128,14 @@ export default function Hub() {
 
       {/* Audio unlock now handled globally by AudioUnlockFab in App.tsx */}
 
-      {/* ── Jonny's World ambient layers ── */}
+      {/* ── Johhy's World ambient layers ── */}
       <HubStars />
       <HubConfetti />
 
-      {/* ── Jonny floating figure — desktop only ── */}
+      {/* ── Johhy floating figure — desktop only ── */}
       <div className="hidden lg:block pointer-events-none absolute bottom-0 right-[235px] z-5 select-none"
         style={{ width: 220, height: 340 }}>
-        <motion.img src="/jonny-master-nobg.png" alt="Jonny"
+        <motion.img src="/jonny-master-nobg.png" alt="Johhy"
           className="w-full h-full object-contain object-bottom"
           style={{ filter: 'drop-shadow(0 0 40px rgba(245,182,66,0.45)) drop-shadow(0 20px 60px rgba(100,40,200,0.4))' }}
           animate={{ y: [0, -12, 0] }}
@@ -1249,7 +1249,7 @@ export default function Hub() {
       {/* ── Header ────────────────────────────────────────────────── */}
       <header className="relative z-20 flex shrink-0 items-center justify-between px-4 py-3 sm:px-8 sm:py-4 lg:px-10 lg:py-5">
         <div className="flex items-center gap-3 sm:gap-5 min-w-0">
-          <img src="/jonny-world-hero.png" alt="Jonny's World"
+          <img src="/jonny-world-hero.png" alt="Johhy's World"
             className="h-10 w-auto object-contain sm:h-14 shrink-0"
             style={{ filter: 'drop-shadow(0 0 14px rgba(245,182,66,0.55))' }} />
         </div>
@@ -1276,7 +1276,7 @@ export default function Hub() {
         </div>
       </header>
 
-      {/* ── Live event banner + Gioca con Jonny ──────────────────── */}
+      {/* ── Live event banner + Gioca con Johhy ──────────────────── */}
       <div className="relative z-10 shrink-0 px-4 sm:px-8 lg:px-10">
         {liveEvent ? (
           <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
@@ -1299,7 +1299,7 @@ export default function Hub() {
               className="flex items-center gap-2 rounded-full bg-primary px-4 py-1.5 text-xs font-black text-black shadow-lg shadow-primary/30"
             >
               <Sparkles className="h-3.5 w-3.5" />
-              Gioca con Jonny — Modalità Home
+              Gioca con Johhy — Modalità Home
             </motion.button>
           </div>
         )}
@@ -1431,7 +1431,7 @@ export default function Hub() {
               >
                 <Sparkles className="h-7 w-7 text-primary" />
                 <div>
-                  <div className="text-display text-sm font-black text-primary">Gioca con Jonny</div>
+                  <div className="text-display text-sm font-black text-primary">Gioca con Johhy</div>
                   <div className="mt-0.5 text-[10px] text-muted-foreground">Modalità Home — senza evento</div>
                 </div>
               </motion.button>

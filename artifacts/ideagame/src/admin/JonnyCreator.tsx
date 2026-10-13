@@ -524,7 +524,7 @@ export default function JonnyCreator() {
   const draftCount = generation?.items.filter(i => i.status === 'draft').length ?? 0;
 
   return (
-    <AdminLayout title="Jonny AI Creator">
+    <AdminLayout title="Johhy AI Creator">
       <div className="flex h-full min-h-0 gap-0 lg:gap-6">
 
         {/* ── LEFT: Form ─────────────────────────────────────────── */}
@@ -537,7 +537,7 @@ export default function JonnyCreator() {
                 <Wand2 className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <h1 className="text-display text-lg font-black text-primary">Jonny AI Creator</h1>
+                <h1 className="text-display text-lg font-black text-primary">Johhy AI Creator</h1>
                 <p className="text-xs text-muted-foreground">Genera contenuti per la serata</p>
               </div>
             </div>
@@ -626,14 +626,14 @@ export default function JonnyCreator() {
             className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary py-3.5 text-sm font-black text-primary-foreground shadow-lg shadow-primary/20 hover:opacity-90 disabled:opacity-60"
           >
             {generating
-              ? <><Loader2 className="h-5 w-5 animate-spin" /> Jonny sta generando…</>
+              ? <><Loader2 className="h-5 w-5 animate-spin" /> Johhy sta generando…</>
               : <><Sparkles className="h-5 w-5" /> Genera contenuti</>
             }
           </button>
 
           {generating && (
             <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
-              <strong className="text-primary">Jonny è al lavoro…</strong><br/>
+              <strong className="text-primary">Johhy è al lavoro…</strong><br/>
               La generazione AI richiede 20–40 secondi. Non chiudere la pagina.
             </div>
           )}
@@ -649,7 +649,7 @@ export default function JonnyCreator() {
               </div>
               <div className="text-display text-xl font-black text-muted-foreground/40">Pronto a creare</div>
               <p className="mt-2 max-w-xs text-sm text-muted-foreground/60">
-                Compila il form a sinistra e clicca "Genera contenuti" per far lavorare Jonny AI.
+                Compila il form a sinistra e clicca "Genera contenuti" per far lavorare Johhy AI.
               </p>
             </div>
           )}
@@ -662,7 +662,7 @@ export default function JonnyCreator() {
               >
                 <Wand2 className="h-10 w-10 text-primary" />
               </motion.div>
-              <div className="text-display text-xl font-black">Jonny sta creando…</div>
+              <div className="text-display text-xl font-black">Johhy sta creando…</div>
               <p className="mt-2 text-sm text-muted-foreground">Generazione AI in corso per {selectedGames.length} giochi</p>
               <div className="mt-4 flex gap-1">
                 {selectedGames.map((_, i) => (

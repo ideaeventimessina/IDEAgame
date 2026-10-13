@@ -291,7 +291,7 @@ export default function HomeLobbyPage() {
         </div>
 
         {/* Logo — centred */}
-        <motion.img src={pub('/jonny-world-logo.png')} alt="Jonny's World"
+        <motion.img src={pub('/jonny-world-logo.png')} alt="Johhy's World"
           initial={{ y: -10, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.05, duration: 0.5 }}
           style={{ width: 'clamp(7rem,10vw,9rem)', objectFit: 'contain',

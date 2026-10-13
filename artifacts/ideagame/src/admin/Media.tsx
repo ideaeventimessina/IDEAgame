@@ -23,7 +23,7 @@ const GAME_ORDER: { slug: string; label: string; emoji: string; color: string; s
       { key: 'success_sound',     label: 'Suono successo ✅',          type: 'youtube', icon: '✅', hint: 'URL YouTube — sfida completata' },
       { key: 'failure_sound',     label: 'Suono fallimento ❌',        type: 'youtube', icon: '❌', hint: 'URL YouTube — sfida fallita' },
       { key: 'vote_open_sound',   label: 'Suono apertura voto',       type: 'youtube', icon: '🗳️', hint: 'URL YouTube — voto aperto' },
-      { key: 'jonny_reaction_url',label: 'Jonny reaction (immagine)', type: 'image',   icon: '🤖', hint: 'URL immagine — Jonny sticker/GIF' },
+      { key: 'jonny_reaction_url',label: 'Johhy reaction (immagine)', type: 'image',   icon: '🤖', hint: 'URL immagine — Johhy sticker/GIF' },
     ],
   },
   {
@@ -54,8 +54,8 @@ const GAME_ORDER: { slug: string; label: string; emoji: string; color: string; s
       { key: 'correct_reveal',    label: 'Risposta corretta',         type: 'youtube', icon: '✅', hint: 'URL YouTube — fanfara successo' },
       { key: 'wrong_reveal',      label: 'Risposta sbagliata',        type: 'youtube', icon: '❌', hint: 'URL YouTube — suono fallimento' },
       { key: 'time_expired',      label: 'Tempo scaduto',             type: 'youtube', icon: '⏰', hint: 'URL YouTube — suono fine tempo' },
-      { key: 'jonny_idle',        label: 'Jonny posa idle',           type: 'image',   icon: '🤖', hint: 'URL immagine — Jonny in attesa' },
-      { key: 'jonny_celebration', label: 'Jonny celebration',         type: 'image',   icon: '🎉', hint: 'URL immagine — Jonny festeggia' },
+      { key: 'jonny_idle',        label: 'Johhy posa idle',           type: 'image',   icon: '🤖', hint: 'URL immagine — Johhy in attesa' },
+      { key: 'jonny_celebration', label: 'Johhy celebration',         type: 'image',   icon: '🎉', hint: 'URL immagine — Johhy festeggia' },
     ],
   },
   {
@@ -66,7 +66,7 @@ const GAME_ORDER: { slug: string; label: string; emoji: string; color: string; s
       { key: 'mission_intro',    label: 'Intro missione',            type: 'youtube', icon: '⚡', hint: 'URL YouTube — stacchetto sfida' },
       { key: 'timer_loop',       label: 'Loop timer',                type: 'youtube', icon: '⏳', hint: 'URL YouTube — musica countdown' },
       { key: 'audience_reaction',label: 'Reazione pubblico',         type: 'youtube', icon: '👏', hint: 'URL YouTube — applausi/boato' },
-      { key: 'jonny_idle',       label: 'Jonny posa idle',           type: 'image',   icon: '🤖', hint: 'URL immagine — Jonny in attesa' },
+      { key: 'jonny_idle',       label: 'Johhy posa idle',           type: 'image',   icon: '🤖', hint: 'URL immagine — Johhy in attesa' },
     ],
   },
   {
@@ -343,7 +343,7 @@ export default function Media() {
             style={{ background: 'rgba(245,182,66,0.06)', border: '1px solid rgba(245,182,66,0.15)' }}>
             <span className="text-lg shrink-0">💡</span>
             <span className="text-muted-foreground">
-              Incolla URL YouTube per audio/suoni. Incolla URL immagine diretta per sfondi e Jonny poses.
+              Incolla URL YouTube per audio/suoni. Incolla URL immagine diretta per sfondi e Johhy poses.
               I valori vengono usati automaticamente durante il gioco in Home Mode e LiveControl.
             </span>
           </div>

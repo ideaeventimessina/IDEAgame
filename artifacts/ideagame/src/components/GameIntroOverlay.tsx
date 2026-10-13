@@ -153,10 +153,10 @@ export function GameIntroOverlay({ name, tagline, accentColor, icon, slug, onDon
           </div>
 
 
-          {/* Jonny floating from bottom-right */}
+          {/* Johhy floating from bottom-right */}
           <AnimatePresence>
             {phase === 'text' && (
-              <motion.img src="/jonny-master.jpg" alt="Jonny"
+              <motion.img src="/jonny-master.jpg" alt="Johhy"
                 initial={{ opacity: 0, x: 80, y: 40 }}
                 animate={{ opacity: 1, x: 0, y: [0, -10, 0] }}
                 exit={{ opacity: 0, x: 80 }}

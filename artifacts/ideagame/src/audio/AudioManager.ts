@@ -1,7 +1,7 @@
 /* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
 
 /**
- * Jonny's World — Soundtrack Engine
+ * Johhy's World — Soundtrack Engine
  * Singleton AudioManager. Silent fallback on any error or missing file.
  *
  * All audio is MP3-only. If a file doesn't exist for the given slug/type,

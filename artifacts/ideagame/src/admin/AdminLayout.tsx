@@ -101,7 +101,7 @@ export function AdminLayout({ children, title }: { children: ReactNode; title: s
             <img src="/logo.png" alt="IDEA" className="h-8 w-auto object-contain" />
           </a>
           <div>
-            <div className="text-xs font-bold text-foreground/80">Jonny's World</div>
+            <div className="text-xs font-bold text-foreground/80">Johhy's World</div>
             <div className="text-xs text-muted-foreground">Admin Console</div>
           </div>
         </div>
@@ -118,7 +118,7 @@ export function AdminLayout({ children, title }: { children: ReactNode; title: s
               <Menu className="h-4 w-4" />
             </button>
             <div className="min-w-0">
-              <div className="text-xs uppercase tracking-widest text-muted-foreground hidden sm:block">Jonny's World</div>
+              <div className="text-xs uppercase tracking-widest text-muted-foreground hidden sm:block">Johhy's World</div>
               <h1 className="text-display text-lg font-black sm:text-2xl truncate">{title}</h1>
             </div>
           </div>

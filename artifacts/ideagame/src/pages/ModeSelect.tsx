@@ -47,8 +47,8 @@ const MODES: Mode[] = [
     id: 'home',
     title: 'MODALITÀ HOME',
     subtitle: 'Gratis e sempre aperta',
-    desc: 'I giochi di festa con musica e la voce di Jonny che presenta. Versione libera: contenuti fissi, niente IA e niente Karaoke Live.',
-    tags: ['Sempre gratis', 'Musica + voce di Jonny', 'Senza IA · no Karaoke Live'],
+    desc: 'I giochi di festa con musica e la voce di Johhy che presenta. Versione libera: contenuti fissi, niente IA e niente Karaoke Live.',
+    tags: ['Sempre gratis', 'Musica + voce di Johhy', 'Senza IA · no Karaoke Live'],
     color: '#F5B642',
     glow: '#FFD040',
     bgSolid: 'rgba(24,10,2,0.88)',
@@ -62,7 +62,7 @@ const MODES: Mode[] = [
     id: 'live',
     title: 'MODALITÀ LIVE',
     subtitle: 'Tutto sbloccato — eventi e club',
-    desc: 'Lo stesso motore, ma completo: contenuti infiniti con l\'IA, Adult per il club, Karaoke Live, musica e Jonny che presenta. Si entra con login o token.',
+    desc: 'Lo stesso motore, ma completo: contenuti infiniti con l\'IA, Adult per il club, Karaoke Live, musica e Johhy che presenta. Si entra con login o token.',
     tags: ['Tutto sbloccato', 'IA · Adult · Karaoke Live', 'Con login / token'],
     color: '#A855F7',
     glow: '#C084FC',
@@ -91,7 +91,7 @@ const MODES: Mode[] = [
   {
     id: 'lockdown',
     title: 'LOCKDOWN',
-    subtitle: 'Il gioco da tavolo di Jonny',
+    subtitle: 'Il gioco da tavolo di Johhy',
     desc: 'Master, Lock-Euro e una spia segreta tra voi: prove, economia, sopravvivenza.',
     tags: ['Ruoli & poteri', 'Spia segreta', 'Master + Lock-Euro'],
     color: '#818CF8',
@@ -324,7 +324,7 @@ export default function ModeSelect() {
       background: '#09050f',
     }}>
 
-      {/* ── Background image: cover with Jonny/park centred ── */}
+      {/* ── Background image: cover with Johhy/park centred ── */}
       <img
         src={pub('/mode-select-bg.png')}
         alt="" aria-hidden
@@ -358,7 +358,7 @@ export default function ModeSelect() {
 
       {/* ── Content column ──
            Desktop/tablet: flex-end pushes cards into the lower half, leaving
-           the Jonny's World artwork visible above. Mobile: flex-start + scroll. */}
+           the Johhy's World artwork visible above. Mobile: flex-start + scroll. */}
       <div style={{
         position: 'relative', zIndex: 20,
         minHeight: '100dvh',
@@ -438,7 +438,7 @@ export default function ModeSelect() {
             textTransform: 'uppercase',
             textShadow: '0 1px 12px rgba(0,0,0,0.95)',
           }}>
-            Quattro modi di giocare. Un solo Jonny.
+            Quattro modi di giocare. Un solo Johhy.
           </div>
         </motion.div>
 

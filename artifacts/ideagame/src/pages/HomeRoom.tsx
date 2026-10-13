@@ -292,7 +292,7 @@ export default function HomeRoom() {
           </motion.button>
 
           <motion.img
-            src={pub('/jonny-world-logo.png')} alt="Jonny's World"
+            src={pub('/jonny-world-logo.png')} alt="Johhy's World"
             initial={{ y: -10, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 0.05, duration: 0.5 }}
@@ -521,7 +521,7 @@ export default function HomeRoom() {
               </div>
             </div>
 
-            {/* Jonny speech bubble */}
+            {/* Johhy speech bubble */}
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -544,7 +544,7 @@ export default function HomeRoom() {
               <div style={{
                 display: 'flex', alignItems: 'flex-start', gap: 10,
               }}>
-                <img src={pub('/jonny-master-nobg.png')} alt="Jonny"
+                <img src={pub('/jonny-master-nobg.png')} alt="Johhy"
                   style={{
                     width: 44, height: 44, objectFit: 'contain', flexShrink: 0,
                     filter: 'drop-shadow(0 0 10px rgba(168,85,247,0.6))',
@@ -554,7 +554,7 @@ export default function HomeRoom() {
                   <div style={{
                     fontSize: '0.58rem', fontWeight: 800, letterSpacing: '0.15em',
                     color: '#F5B642', textTransform: 'uppercase', marginBottom: 4,
-                  }}>Jonny dice</div>
+                  }}>Johhy dice</div>
                   <div style={{
                     fontFamily: "'Outfit',sans-serif", fontWeight: 600,
                     fontSize: 'clamp(0.72rem,1vw,0.82rem)',
@@ -605,7 +605,7 @@ export default function HomeRoom() {
 
       </div>{/* end layout */}
 
-      {/* Jonny full — scenic right */}
+      {/* Johhy full — scenic right */}
       <motion.div
         className="absolute pointer-events-none select-none"
         style={{ right: '-3%', bottom: 0, zIndex: 2, width: 'clamp(120px,16vw,200px)' }}
@@ -619,7 +619,7 @@ export default function HomeRoom() {
           borderRadius: '50%', filter: 'blur(6px)',
         }}/>
         <motion.img
-          src={pub('/jonny-master-nobg.png')} alt="Jonny host"
+          src={pub('/jonny-master-nobg.png')} alt="Johhy host"
           style={{
             display: 'block', width: '100%', objectFit: 'contain',
             filter: 'drop-shadow(0 0 40px rgba(245,182,66,0.5)) drop-shadow(-4px 0 20px rgba(168,85,247,0.4)) drop-shadow(0 6px 24px rgba(0,0,0,0.6))',

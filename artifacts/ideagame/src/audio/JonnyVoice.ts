@@ -1,12 +1,12 @@
 /* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
 
 /**
- * Voce di Jonny (lato client).
+ * Voce di Johhy (lato client).
  *
- * Chiede al server l'MP3 con la voce di Jonny per una battuta del copione
+ * Chiede al server l'MP3 con la voce di Johhy per una battuta del copione
  * (GET /api/home/voice/:key), lo riproduce e nel frattempo:
  *  - fa il DUCKING della musica di fondo (AudioManager.duck) così la base si
- *    abbassa mentre Jonny parla, e risale quando ha finito;
+ *    abbassa mentre Johhy parla, e risale quando ha finito;
  *  - pubblica lo stato "sta parlando" + un livello di ampiezza (0..1) letto con
  *    un AnalyserNode, così l'avatar può muovere la bocca a tempo con la voce.
  *
@@ -95,7 +95,7 @@ class _JonnyVoice {
   }
 
   /**
-   * Fai parlare Jonny con la battuta `key`. Interrompe l'eventuale battuta in
+   * Fai parlare Johhy con la battuta `key`. Interrompe l'eventuale battuta in
    * corso. Ritorna quando l'audio è partito (non quando è finito).
    */
   async speak(key: string): Promise<void> {

@@ -340,7 +340,7 @@ export default function JonnyPosesPage() {
   const totalPoses = poses.filter(p => p.imageUrl).length;
 
   return (
-    <AdminLayout title="Jonny — Pose per Gioco">
+    <AdminLayout title="Johhy — Pose per Gioco">
       <div className="mx-auto max-w-6xl space-y-6">
 
         {/* Header */}
@@ -350,7 +350,7 @@ export default function JonnyPosesPage() {
             <div className="flex items-start gap-4">
               <div className="text-4xl">🎭</div>
               <div>
-                <h2 className="text-lg font-black text-foreground">Action Figure di Jonny per Mood</h2>
+                <h2 className="text-lg font-black text-foreground">Action Figure di Johhy per Mood</h2>
                 <p className="text-sm text-muted-foreground mt-1">
                   Carica un'immagine per ogni mood. Le immagini vengono <strong>salvate direttamente nel DB</strong> e non si perdono mai al riavvio del server.<br />
                   <span className="text-amber-400 font-bold">{totalPoses} pose salvate nel DB.</span>

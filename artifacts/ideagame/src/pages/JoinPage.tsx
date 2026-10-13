@@ -142,7 +142,7 @@ export default function JoinPage() {
         }}>
 
         {/* Logo */}
-        <img src={pub('/jonny-world-logo.png')} alt="Jonny's World"
+        <img src={pub('/jonny-world-logo.png')} alt="Johhy's World"
           style={{ width: 120, objectFit: 'contain', filter: 'drop-shadow(0 0 20px rgba(245,182,66,0.6))' }}/>
 
         {/* Room info card */}

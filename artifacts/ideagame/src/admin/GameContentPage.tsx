@@ -64,7 +64,7 @@ const MEDIA_SLOTS: Record<string, MediaSlotDef[]> = {
     { key: 'spin_bottle_sound',   label: 'Suono bottiglia spin',   type: 'youtube', icon: '🍾', hint: 'URL YouTube — effetto gira-gira' },
     { key: 'success_sound',       label: 'Suono successo ✅',       type: 'youtube', icon: '✅', hint: 'URL YouTube — sfida completata' },
     { key: 'failure_sound',       label: 'Suono fallimento ❌',     type: 'youtube', icon: '❌', hint: 'URL YouTube — sfida fallita' },
-    { key: 'jonny_reaction_url',  label: 'Jonny reaction (image)', type: 'image',   icon: '🤖', hint: 'URL immagine — Jonny sticker/GIF' },
+    { key: 'jonny_reaction_url',  label: 'Johhy reaction (image)', type: 'image',   icon: '🤖', hint: 'URL immagine — Johhy sticker/GIF' },
   ],
   'saramusica': [
     { key: 'intro_sting',         label: 'Jingle intro',           type: 'youtube', icon: '🎬', hint: 'URL YouTube — stacchetto apertura' },
@@ -77,8 +77,8 @@ const MEDIA_SLOTS: Record<string, MediaSlotDef[]> = {
     { key: 'thinking_loop',       label: 'Musica attesa',           type: 'youtube', icon: '🤔', hint: 'URL YouTube — loop durante il turno' },
     { key: 'correct_reveal',      label: 'Risposta corretta',       type: 'youtube', icon: '✅', hint: 'URL YouTube — fanfara successo' },
     { key: 'wrong_reveal',        label: 'Risposta sbagliata',      type: 'youtube', icon: '❌', hint: 'URL YouTube — suono fallimento' },
-    { key: 'jonny_idle',          label: 'Jonny posa idle',         type: 'image',   icon: '🤖', hint: 'URL immagine — Jonny in attesa' },
-    { key: 'jonny_celebration',   label: 'Jonny celebration',       type: 'image',   icon: '🎉', hint: 'URL immagine — Jonny festeggia' },
+    { key: 'jonny_idle',          label: 'Johhy posa idle',         type: 'image',   icon: '🤖', hint: 'URL immagine — Johhy in attesa' },
+    { key: 'jonny_celebration',   label: 'Johhy celebration',       type: 'image',   icon: '🎉', hint: 'URL immagine — Johhy festeggia' },
   ],
   'quizzone': [
     { key: 'question_reveal',     label: 'Reveal domanda',          type: 'youtube', icon: '❓', hint: 'URL YouTube — stacchetto domanda' },
@@ -377,7 +377,7 @@ export default function GameContentPage({ slug }: { slug: string }) {
             </div>
             <div>
               <div className="font-black text-foreground text-base">✨ Genera Nuovo Tema con AI</div>
-              <div className="text-xs text-muted-foreground">Jonny crea contenuti su misura per questo gioco</div>
+              <div className="text-xs text-muted-foreground">Johhy crea contenuti su misura per questo gioco</div>
             </div>
           </div>
 
@@ -456,7 +456,7 @@ export default function GameContentPage({ slug }: { slug: string }) {
               className="flex items-center gap-2 rounded-2xl px-7 py-3.5 text-sm font-black text-black disabled:opacity-40 transition-all hover:scale-105 active:scale-95"
               style={{ background: `linear-gradient(135deg, ${C}, ${C}aa)`, boxShadow: generating ? 'none' : `0 0 30px ${C}55` }}>
               {generating ? (
-                <><span className="animate-spin">⭐</span> Jonny sta generando…</>
+                <><span className="animate-spin">⭐</span> Johhy sta generando…</>
               ) : (
                 <><Sparkles className="h-4 w-4" /> GENERA</>
               )}
@@ -789,10 +789,10 @@ export default function GameContentPage({ slug }: { slug: string }) {
           style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
           <div className="text-lg shrink-0">📋</div>
           <div className="space-y-1 text-muted-foreground">
-            <div><span className="text-foreground font-bold">Testo:</span> generato da AI Jonny</div>
+            <div><span className="text-foreground font-bold">Testo:</span> generato da AI Johhy</div>
             <div><span className="text-foreground font-bold">Immagini:</span> generate da AI OPPURE URL placeholder</div>
             <div><span className="text-foreground font-bold">Audio/Suoni:</span> solo YouTube URL OPPURE DB media library</div>
-            <div><span className="text-foreground font-bold">Animazioni:</span> asset media salvati o pose Jonny</div>
+            <div><span className="text-foreground font-bold">Animazioni:</span> asset media salvati o pose Johhy</div>
           </div>
         </div>
 

@@ -19,7 +19,7 @@ const MONDI = [
 const STEPS = [
   { num: '01', title: "L'animatore avvia",    body: "Crea l'evento in pochi secondi, sceglie i giochi e gestisce tutto dal suo tablet" },
   { num: '02', title: 'Gli ospiti entrano',   body: "Inquadrano il QR code con il telefono — nessuna app da scaricare, nessuna registrazione" },
-  { num: '03', title: 'Jonny guida il gioco', body: "Il parco si anima, le squadre si sfidano, Jonny porta il divertimento fino all'ultima sfida" },
+  { num: '03', title: 'Johhy guida il gioco', body: "Il parco si anima, le squadre si sfidano, Johhy porta il divertimento fino all'ultima sfida" },
 ];
 
 // ── Stelle ───────────────────────────────────────────────────────────────────
@@ -99,7 +99,7 @@ function Hero({ onJoin, onHome, onAdmin, onScrollDown }: { onJoin: () => void; o
       <motion.div className="absolute inset-0 z-0"
         initial={{ opacity: 0, scale: 1.04 }} animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 1.1, ease: 'easeOut' }}>
-        <img src="/jonny-world-hero.png" alt="Jonny's World"
+        <img src="/jonny-world-hero.png" alt="Johhy's World"
           className="w-full h-full object-cover object-top"
           style={{ filter: 'brightness(0.88) saturate(1.15)' }} />
         <div className="absolute inset-0"
@@ -288,15 +288,15 @@ function Modalita({ onJoin, onHome }: { onJoin: () => void; onHome?: () => void 
   const modes = [
     {
       tag: 'Live Event', title: 'Feste, matrimoni, eventi aziendali',
-      body: "Jonny's World è pensato per le serate dal vivo. Fino a 200 persone, tutto su schermo, tutto live.",
+      body: "Johhy's World è pensato per le serate dal vivo. Fino a 200 persone, tutto su schermo, tutto live.",
       color: '#F5B642', dark: '#7a3e00',
       items: ['Proiettore + QR code', 'Fino a 200 ospiti', 'Ogni gioco su misura'],
       btnLabel: '🎯 Entra in un evento', btnAction: onJoin,
       btnStyle: { background: 'linear-gradient(135deg, #FFE57A 0%, #F5B642 100%)', color: '#000', boxShadow: '0 0 24px rgba(245,182,66,0.45)' },
     },
     ...(onHome ? [{
-      tag: 'Home Mode', title: 'Gioca da casa con Jonny come host',
-      body: "Stessa esperienza, divano di casa. Connetti la TV, invita gli amici — Jonny è lì.",
+      tag: 'Home Mode', title: 'Gioca da casa con Johhy come host',
+      body: "Stessa esperienza, divano di casa. Connetti la TV, invita gli amici — Johhy è lì.",
       color: '#A78BFA', dark: '#2d1060',
       items: ['Smart TV + telefoni', 'Nessun limite di giocatori', 'Modalità family-friendly'],
       btnLabel: '🏠 Avvia Home Mode', btnAction: onHome,
@@ -313,7 +313,7 @@ function Modalita({ onJoin, onHome }: { onJoin: () => void; onHome?: () => void 
 
         <div className="text-center mb-10 sm:mb-14">
           <h2 className="font-black text-white" style={{ fontSize: 'clamp(1.8rem, 5vw, 3.5rem)' }}>
-            Live o a casa — Jonny arriva.
+            Live o a casa — Johhy arriva.
           </h2>
         </div>
 
@@ -368,11 +368,11 @@ function Modalita({ onJoin, onHome }: { onJoin: () => void; onHome?: () => void 
   );
 }
 
-// ── JONNY CREATOR ─────────────────────────────────────────────────────────────
+// ── JOHHY CREATOR ─────────────────────────────────────────────────────────────
 
 const CREATOR_STEPS = [
-  { num: '01', emoji: '🎭', title: 'Scegli il tema',       body: 'Digiti "La Bella e la Bestia" e Jonny capisce tutto — pubblico, tono, difficoltà.' },
-  { num: '02', emoji: '🤖', title: 'Jonny genera',         body: 'In 30 secondi: quiz, sfide, playlist e parole — pronti per la tua serata.' },
+  { num: '01', emoji: '🎭', title: 'Scegli il tema',       body: 'Digiti "La Bella e la Bestia" e Johhy capisce tutto — pubblico, tono, difficoltà.' },
+  { num: '02', emoji: '🤖', title: 'Johhy genera',         body: 'In 30 secondi: quiz, sfide, playlist e parole — pronti per la tua serata.' },
   { num: '03', emoji: '✅', title: 'Approvi o modifichi',  body: 'Rivedi ogni contenuto, tieni quello che vuoi, elimina il resto con un clic.' },
   { num: '04', emoji: '🚀', title: 'Importa direttamente', body: 'Un clic e il contenuto è live nella tua console — pronto per il proiettore.' },
 ];
@@ -388,7 +388,7 @@ function JonnyCrea() {
       </div>
 
       <div className="max-w-7xl mx-auto relative z-10">
-        <SectionLabel>Jonny AI Creator</SectionLabel>
+        <SectionLabel>Johhy AI Creator</SectionLabel>
 
         <div className="text-center mb-10 sm:mb-14">
           <motion.div className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 mb-4 text-xs font-black uppercase tracking-[0.2em]"
@@ -400,14 +400,14 @@ function JonnyCrea() {
             style={{ fontSize: 'clamp(1.8rem, 5vw, 3.5rem)' }}
             initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
             transition={{ delay: 0.08 }}>
-            Jonny crea la tua serata.<br />
+            Johhy crea la tua serata.<br />
             <span style={{ color: '#F5B642' }}>Tu ti diverti.</span>
           </motion.h2>
           <motion.p className="mt-4 max-w-lg mx-auto"
             style={{ fontSize: 'clamp(0.83rem, 1.7vw, 1rem)', color: 'rgba(255,255,255,0.45)', lineHeight: 1.7 }}
             initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} transition={{ delay: 0.15 }}>
             Digita il tema — "matrimonio anni '80", "La Bella e la Bestia", "serata aziendale tech" —
-            e Jonny genera in 30 secondi quiz, sfide fisiche, playlist karaoke e molto altro.
+            e Johhy genera in 30 secondi quiz, sfide fisiche, playlist karaoke e molto altro.
           </motion.p>
         </div>
 
@@ -452,7 +452,7 @@ function JonnyCrea() {
                 Tema: "La Bella e la Bestia"
               </div>
               <p style={{ fontSize: 'clamp(0.78rem, 1.5vw, 0.9rem)', color: 'rgba(255,255,255,0.45)', lineHeight: 1.65 }}>
-                Jonny genera automaticamente: <strong style={{ color: 'rgba(255,255,255,0.7)' }}>15 domande quiz</strong> sui film Disney,
+                Johhy genera automaticamente: <strong style={{ color: 'rgba(255,255,255,0.7)' }}>15 domande quiz</strong> sui film Disney,
                 una <strong style={{ color: 'rgba(255,255,255,0.7)' }}>playlist karaoke</strong> con "Tale As Old As Time" e altri classici,
                 <strong style={{ color: 'rgba(255,255,255,0.7)' }}> 10 sfide fisiche</strong> a tema fiaba e
                 <strong style={{ color: 'rgba(255,255,255,0.7)' }}> 20 parole</strong> per "Parola alle Spalle".
@@ -500,8 +500,8 @@ function Finale({ onJoin }: { onJoin: () => void }) {
 
       <div className="relative z-10 flex flex-col items-center max-w-4xl mx-auto">
 
-        {/* Jonny vincitore */}
-        <motion.img src="/jonny-master.jpg" alt="Jonny"
+        {/* Johhy vincitore */}
+        <motion.img src="/jonny-master.jpg" alt="Johhy"
           style={{ height: 'clamp(180px, 30vh, 340px)', width: 'auto', objectFit: 'contain', filter: 'drop-shadow(0 16px 50px rgba(245,182,66,0.6))' }}
           initial={{ opacity: 0, y: 40, scale: 0.85 }} whileInView={{ opacity: 1, y: 0, scale: 1 }} viewport={{ once: true }}
           transition={{ duration: 0.7, type: 'spring', stiffness: 100 }}
@@ -513,7 +513,7 @@ function Finale({ onJoin }: { onJoin: () => void }) {
           initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
           transition={{ delay: 0.15, duration: 0.6 }}>
           Benvenuto nel<br />
-          <span style={{ color: '#F5B642' }}>mondo di Jonny</span>
+          <span style={{ color: '#F5B642' }}>mondo di Johhy</span>
         </motion.h2>
 
         <motion.p className="mt-4 max-w-lg" style={{ fontSize: 'clamp(0.85rem, 1.8vw, 1.05rem)', color: 'rgba(255,255,255,0.45)', lineHeight: 1.7 }}
@@ -530,7 +530,7 @@ function Finale({ onJoin }: { onJoin: () => void }) {
           <motion.div className="absolute inset-0 -skew-x-12 w-1/4"
             style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.45), transparent)' }}
             animate={{ x: ['-150%', '400%'] }} transition={{ duration: 3.2, repeat: Infinity, repeatDelay: 1.5 }} />
-          Gioca ora con Jonny
+          Gioca ora con Johhy
         </motion.button>
 
         <motion.button onClick={onJoin} className="mt-4 font-medium transition-colors"
@@ -559,7 +559,7 @@ function Footer() {
           Progettato e sviluppato da <span style={{ color: 'rgba(255,255,255,0.45)' }}>Andrea Gentile</span>
         </div>
         <div className="text-xs" style={{ color: 'rgba(255,255,255,0.15)' }}>
-          © {new Date().getFullYear()} Jonny's World
+          © {new Date().getFullYear()} Johhy's World
         </div>
       </div>
     </footer>

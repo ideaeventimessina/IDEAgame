@@ -48,7 +48,7 @@ export function JonnyWaiting({ playerName, eventName, jonnyMode }: JonnyWaitingP
   return (
     <div className="mt-6 flex flex-col items-center gap-5 text-center px-4">
 
-      {/* Jonny avatar — waiting pose with gentle float */}
+      {/* Johhy avatar — waiting pose with gentle float */}
       <motion.div
         animate={{ y: [0, -8, 0] }}
         transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }}
@@ -66,7 +66,7 @@ export function JonnyWaiting({ playerName, eventName, jonnyMode }: JonnyWaitingP
         )}
       </div>
 
-      {/* Cycling Jonny message */}
+      {/* Cycling Johhy message */}
       <div
         className="relative w-full max-w-xs rounded-2xl border px-4 py-3 text-sm font-medium"
         style={{

@@ -60,7 +60,7 @@ export default function ProjectorStandby() {
     <div className="relative h-screen w-screen overflow-hidden bg-[#050014] text-white">
       <motion.img
         src="/jonny-world-hero.png"
-        alt="Jonny's World"
+        alt="Johhy's World"
         className="absolute inset-0 h-full w-full object-cover object-center"
         initial={{ opacity: 0, scale: 1.04 }}
         animate={{ opacity: 1, scale: 1 }}

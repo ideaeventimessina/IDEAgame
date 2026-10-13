@@ -499,7 +499,7 @@ export default function Player() {
     emit('player:register', { playerId: player.id, eventId: event.id });
   }, [connected, player, event, emit]);
 
-  // ─── Jonny reactive hooks — solo messaggi, nessuna logica di gioco ──────────
+  // ─── Johhy reactive hooks — solo messaggi, nessuna logica di gioco ──────────
   useEffect(() => {
     if (!isHostedByJonny) return;
     if (gameState.status === 'running') jonnyTell('Via! Forza squadra! 🚀', 'excited');
@@ -574,7 +574,7 @@ export default function Player() {
          }}>
       <header className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <img src="/jonny-world-hero.png" alt="Jonny's World" className="h-10 w-auto object-contain"
+          <img src="/jonny-world-hero.png" alt="Johhy's World" className="h-10 w-auto object-contain"
             style={{ filter: 'drop-shadow(0 0 10px rgba(245,182,66,0.5))' }} />
         </div>
         <div className="flex items-center gap-2">
@@ -595,7 +595,7 @@ export default function Player() {
         {step === 'loading' && (
           <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="flex flex-1 flex-col items-center justify-center gap-5">
-            <motion.img src="/jonny-master.jpg" alt="Jonny"
+            <motion.img src="/jonny-master.jpg" alt="Johhy"
               style={{ height: 120, width: 'auto', filter: 'drop-shadow(0 0 24px rgba(245,182,66,0.4))' }}
               animate={{ y: [0, -8, 0] }} transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }} />
             <div className="flex flex-col items-center gap-2">
@@ -624,9 +624,9 @@ export default function Player() {
           <motion.div key="enter-code" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
             className="flex flex-1 flex-col">
             <div className="flex flex-1 flex-col items-center justify-center gap-4">
-              {/* Jonny's World logo */}
+              {/* Johhy's World logo */}
               <div className="flex items-center justify-center w-full max-w-xs py-2">
-                <img src="/jonny-world-hero.png" alt="Jonny's World"
+                <img src="/jonny-world-hero.png" alt="Johhy's World"
                   className="w-auto object-contain"
                   style={{ height: 140, filter: 'drop-shadow(0 0 28px rgba(245,182,66,0.65)) drop-shadow(0 4px 16px rgba(0,0,0,0.7))' }} />
               </div>
@@ -902,7 +902,7 @@ const JONNY_BETWEEN_MSGS = [
   'La prossima sfida è ancora più divertente! 🚀',
   'Guarda il punteggio — la rimonta è possibile! 😏',
   'Parla con la tua squadra, strategia! 🧠',
-  'Jonny ci crede in te — e tanto! ⭐',
+  'Johhy ci crede in te — e tanto! ⭐',
   'Respira… e preparati a vincere! 🏆',
 ];
 
@@ -926,7 +926,7 @@ function BetweenGamesScreen({ myTeam, myTeamScore, prevGameSlug, jonnyMode }: {
     <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
       className="mt-6 flex flex-col items-center gap-5 text-center px-4">
 
-      {/* Jonny celebrating */}
+      {/* Johhy celebrating */}
       <motion.div animate={{ y: [0, -10, 0] }} transition={{ repeat: Infinity, duration: 2.8, ease: 'easeInOut' }}>
         <JonnyAvatar mood="winner" size={130} />
       </motion.div>
@@ -953,11 +953,11 @@ function BetweenGamesScreen({ myTeam, myTeamScore, prevGameSlug, jonnyMode }: {
         </div>
       )}
 
-      {/* Jonny message */}
+      {/* Johhy message */}
       <div className="relative w-full max-w-xs rounded-2xl border px-4 py-3 text-sm font-medium"
         style={{ background: 'linear-gradient(135deg, rgba(16,12,34,0.9) 0%, rgba(10,8,25,0.9) 100%)', borderColor: 'rgba(212,175,55,0.3)', color: '#e8d5a3', minHeight: 56 }}>
         <div className="mb-1 text-[10px] font-black tracking-widest" style={{ color: '#D4AF37' }}>
-          JONNY{jonnyMode === 'home' ? ' HOME' : ''}
+          JOHHY{jonnyMode === 'home' ? ' HOME' : ''}
         </div>
         <AnimatePresence mode="wait">
           {msgVisible && (

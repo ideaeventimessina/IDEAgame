@@ -1,7 +1,7 @@
 /* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
 
 /**
- * Jonny's World — Procedural Music Bed
+ * Johhy's World — Procedural Music Bed
  *
  * Generatore musicale a tema, 100% Web Audio, senza file. È il "pavimento"
  * garantito della colonna sonora: se il tenant NON ha caricato una traccia (o

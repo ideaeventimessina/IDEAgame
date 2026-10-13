@@ -279,7 +279,7 @@ export default function LiveRoom() {
                 <CmdButton label="🗳️ Toggle Voting" color="#A78BFA"
                   loading={cmdLoading === 'toggle_voting{}'}
                   onClick={() => sendCommand('toggle_voting', undefined, 'Voting toggleato')} />
-                <CmdButton label="🤖 Toggle AI (Jonny)" color={settings.jonnyEnabled ? '#D4AF37' : '#6B7280'}
+                <CmdButton label="🤖 Toggle AI (Johhy)" color={settings.jonnyEnabled ? '#D4AF37' : '#6B7280'}
                   loading={cmdLoading === 'toggle_ai{}'}
                   onClick={() => sendCommand('toggle_ai', undefined, 'AI toggleata')} />
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>

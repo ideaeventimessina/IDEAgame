@@ -348,7 +348,7 @@ function HomeGameWheel({ selected, onSelect, spinning, games }:{
             );
           })}
 
-          {/* Hub — Jonny's World logo instead of text */}
+          {/* Hub — Johhy's World logo instead of text */}
           <circle cx={cx} cy={cy} r={ri+5} fill="rgba(0,0,0,0.85)"/>
           <circle cx={cx} cy={cy} r={ri} fill="url(#hw-hub)" stroke="url(#hw-ring1)" strokeWidth="3"
             style={{filter:'drop-shadow(0 0 12px rgba(168,85,247,0.7))'}}/>
@@ -625,7 +625,7 @@ export default function HomeGame() {
   const [addTimeFlash, setAddTimeFlash] = useState<{ id: number; seconds: number } | null>(null);
   const [selectingGame, setSelectingGame] = useState<string | null>(null);
   const [jonnyMood, setJonnyMood] = useState<'idle' | 'excited' | 'thinking' | 'winner' | 'scoreboard' | 'correct'>('excited');
-  const [jonnyMsg, setJonnyMsg] = useState('Benvenuti a JONNY\'S WORLD!');
+  const [jonnyMsg, setJonnyMsg] = useState('Benvenuti a JOHHY\'S WORLD!');
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Tracks the last known roundPayload.mode so home:state can detect flow→ballo transition
   // even when slug/round haven't changed (both stay at sfida-ballo / 0 through the whole flow).
@@ -1007,7 +1007,7 @@ export default function HomeGame() {
       _log('[AudioTrace] home:game_started — stopLoop then playLoop', { slug: d.session.gameSlug ?? 'global', type: 'round_loop' });
       AudioManager.stopLoop(true);
       void AudioManager.playLoop(d.session.gameSlug ?? 'global', 'round_loop');
-      // Jonny presenta il gioco con la sua voce (abbassa la musica mentre parla).
+      // Johhy presenta il gioco con la sua voce (abbassa la musica mentre parla).
       if (d.session.gameSlug) jonnySpeak(d.session.gameSlug);
     });
     const u4 = on<{ round: number; payload: Record<string, unknown> }>('home:round', (d) => {
@@ -1314,7 +1314,7 @@ export default function HomeGame() {
   }, [introVideo?.url]);
 
   // Dissolvi la musica di fondo mentre parte il video introduttivo (ha audio suo).
-  // Jonny smette di parlare: la sua voce non deve sovrapporsi all'audio del video.
+  // Johhy smette di parlare: la sua voce non deve sovrapporsi all'audio del video.
   useEffect(() => {
     if (!introVideo) return;
     JonnyVoice.stop();
@@ -1728,10 +1728,10 @@ export default function HomeGame() {
 
             {/* TOP-LEFT: logo + status */}
             <div className="flex items-center pl-5 pt-3 pb-1 z-20 gap-3">
-              <img src="/jonny-master-nobg.png" alt="Jonny" className="h-10 w-auto object-contain"
+              <img src="/jonny-master-nobg.png" alt="Johhy" className="h-10 w-auto object-contain"
                 style={{filter:'drop-shadow(0 0 18px #F5B64265)'}}/>
               <div>
-                <img src="/jonny-world-logo-nobg.png" alt="Jonny's World" className="h-9 w-auto object-contain"
+                <img src="/jonny-world-logo-nobg.png" alt="Johhy's World" className="h-9 w-auto object-contain"
                   style={{filter:'drop-shadow(0 0 12px rgba(245,182,66,0.65))'}}/>
                 <div className="flex items-center gap-2 mt-0.5">
                   <div className="text-[10px] font-bold tracking-widest uppercase" style={{color:'rgba(168,85,247,0.75)'}}>
@@ -1757,7 +1757,7 @@ export default function HomeGame() {
               </div>
             </div>
 
-            {/* TOP-CENTER: Jonny message */}
+            {/* TOP-CENTER: Johhy message */}
             <div className="flex items-center justify-center pt-2 pb-0 z-20">
               <div className="flex items-center gap-2 rounded-2xl px-4 py-1.5"
                 style={{background:'rgba(10,2,28,0.7)',border:'1px solid rgba(245,182,66,0.2)',backdropFilter:'blur(12px)'}}>
@@ -1899,13 +1899,13 @@ export default function HomeGame() {
                 loading={!!selectingGame}/>
             </div>
 
-            {/* Jonny — enlarged scenic presence */}
+            {/* Johhy — enlarged scenic presence */}
             <div className="absolute pointer-events-none select-none"
               style={{right:'0%',bottom:'6vh',zIndex:12,width:'30%'}}>
               <div style={{position:'absolute',bottom:-4,left:'8%',right:'8%',height:28,background:'rgba(0,0,0,0.65)',borderRadius:'50%',filter:'blur(20px)'}}/>
               <div style={{position:'absolute',bottom:2,left:'5%',right:'5%',height:12,background:'linear-gradient(90deg,transparent,rgba(168,85,247,0.8),rgba(245,182,66,0.6),rgba(168,85,247,0.8),transparent)',borderRadius:'50%',filter:'blur(8px)'}}/>
               <div style={{position:'absolute',bottom:0,left:'-20%',right:'-10%',top:'5%',background:`radial-gradient(ellipse 65% 75% at 52% 65%,${wheelSelectedGame.glow}30 0%,rgba(168,85,247,0.15) 55%,transparent 80%)`,pointerEvents:'none'}}/>
-              <motion.img src="/jonny-master-nobg.png" alt="Jonny host"
+              <motion.img src="/jonny-master-nobg.png" alt="Johhy host"
                 style={{height:'min(74vh,600px)',display:'block',objectFit:'contain',width:'100%',filter:`drop-shadow(0 0 65px ${wheelSelectedGame.glow}dd) drop-shadow(-6px 0 28px rgba(168,85,247,0.6)) drop-shadow(0 12px 40px rgba(0,0,0,0.75))`}}
                 animate={{y:[0,-10,0]}}
                 transition={{duration:3.5,repeat:Infinity,ease:'easeInOut' as const}}/>
@@ -2165,7 +2165,7 @@ export default function HomeGame() {
 
             <motion.div initial={{scale:0,rotate:-20}} animate={{scale:1,rotate:0}}
               transition={{type:'spring',stiffness:180}}>
-              <img src="/jonny-world-logo-nobg.png" alt="Jonny's World" className="mx-auto mb-2 h-36 w-auto object-contain"
+              <img src="/jonny-world-logo-nobg.png" alt="Johhy's World" className="mx-auto mb-2 h-36 w-auto object-contain"
                 style={{filter:'drop-shadow(0 0 60px rgba(245,182,66,0.85))'}}/>
             </motion.div>
 
@@ -2174,7 +2174,7 @@ export default function HomeGame() {
                 style={{background:'linear-gradient(135deg,#fff,#F5B642)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',filter:'drop-shadow(0 0 40px #F5B64270)'}}>
                 Champion!
               </h2>
-              <div className="mt-2 text-xl text-white/45">🏆 Classifica Suprema di JONNY'S WORLD 🏆</div>
+              <div className="mt-2 text-xl text-white/45">🏆 Classifica Suprema di JOHHY'S WORLD 🏆</div>
             </div>
 
             <div className="flex w-full max-w-xl flex-col gap-3">
@@ -2787,7 +2787,7 @@ function QuizzoneBoard({ payload, session, players }: {
     <div className="flex flex-col items-center gap-8 text-center">
       <motion.div animate={{ scale:[1,1.05,1], opacity:[0.7,1,0.7] }} transition={{ repeat:Infinity, duration:1.8 }}
         className="text-8xl">⭐</motion.div>
-      <div className="text-display text-3xl font-black text-white">Jonny sta creando</div>
+      <div className="text-display text-3xl font-black text-white">Johhy sta creando</div>
       <div className="text-display text-4xl font-black" style={{ color: QZ }}>la gara perfetta…</div>
       <div className="flex gap-2 mt-2">
         {[0,1,2,3,4].map(i => (
@@ -4622,7 +4622,7 @@ function BalloVideoBg({ videoId, startSeconds = 0, roundKey = '' }: { videoId: s
   }, [roundKey, tryPlay]);
 
   // Dissolvi la musica di fondo (bed/loop) per tutta la durata del video ballo.
-  // Se Jonny sta parlando, tace: il video ballo ha la sua musica.
+  // Se Johhy sta parlando, tace: il video ballo ha la sua musica.
   useEffect(() => {
     JonnyVoice.stop();
     AudioManager.duck();
@@ -4677,7 +4677,7 @@ function YTClipPlayer({ clip, roundIndex, sessionId, autoStart }: {
   }, [clip.youtubeId, roundIndex]);
 
   // Dissolvi la musica di fondo mentre la clip YouTube suona; torna a fine clip.
-  // Jonny tace: la clip ha il suo audio.
+  // Johhy tace: la clip ha il suo audio.
   useEffect(() => {
     if (status !== 'playing') return;
     JonnyVoice.stop();
@@ -5171,7 +5171,7 @@ function SaraMusicaBoard({ payload, session, players }: {
     <div className="flex flex-col items-center gap-7 text-center">
       <motion.div animate={{ scale: [1,1.08,1], opacity: [0.7,1,0.7] }} transition={{ repeat: IS_LOW_POWER ? 0 : Infinity, duration: 1.8 }}
         className="text-8xl">🎵</motion.div>
-      <div className="text-display text-3xl font-black text-white">Jonny sta preparando</div>
+      <div className="text-display text-3xl font-black text-white">Johhy sta preparando</div>
       <div className="text-display text-4xl font-black" style={{color:SM}}>la sfida musicale…</div>
       <div className="flex gap-2">
         {[0,1,2,3,4].map(i => (
@@ -5704,7 +5704,7 @@ function AdultOnlyBoard({ payload, session, players }: {
       <div className="flex flex-col items-center gap-6 text-center w-full max-w-4xl">
         <div className="flex flex-col items-center gap-2">
           <div className="text-7xl" style={{ filter: `drop-shadow(0 0 40px ${AC_GLOW})` }}>🍾</div>
-          <div className="text-display text-4xl font-black text-white">Jonny After Dark</div>
+          <div className="text-display text-4xl font-black text-white">Johhy After Dark</div>
           <div className="text-white/40 text-sm">{players.length} giocatori · {consentedCount} pronti a giocare</div>
         </div>
 
@@ -6183,12 +6183,12 @@ function AdultOnlyBoard({ payload, session, players }: {
   return (
     <div className="flex flex-col items-center gap-4 text-center">
       <div className="text-5xl">🍾</div>
-      <div className="text-white/50">Jonny After Dark…</div>
+      <div className="text-white/50">Johhy After Dark…</div>
     </div>
   );
 }
 
-// ── WordBackSetupBoard (TV view: choose preset or Jonny AI generation) ───────────
+// ── WordBackSetupBoard (TV view: choose preset or Johhy AI generation) ───────────
 
 const WB_COUNTS = [5, 10, 15, 20] as const;
 const WB_COLOR = '#67E8F9';
@@ -6266,8 +6266,8 @@ function WordBackSetupBoard({ payload, sessionId }: {
           style={{background:'rgba(251,191,36,0.12)',border:'2px solid rgba(251,191,36,0.35)'}}>
           <span className="text-3xl">🤖</span>
           <div>
-            <div className="text-yellow-300 text-xl font-black">B — Genera con Jonny</div>
-            <div className="text-white/50 text-sm font-normal">I giocatori propongono un tema, Jonny crea le parole</div>
+            <div className="text-yellow-300 text-xl font-black">B — Genera con Johhy</div>
+            <div className="text-white/50 text-sm font-normal">I giocatori propongono un tema, Johhy crea le parole</div>
           </div>
         </motion.button>
       </div>
@@ -6382,7 +6382,7 @@ function WordBackSetupBoard({ payload, sessionId }: {
     return (
       <motion.div key="wb-jonny-diff" initial={{opacity:0,y:16}} animate={{opacity:1,y:0}}
         className="flex w-full max-w-xl flex-col items-center gap-6">
-        <div className="text-3xl font-black text-yellow-300 tracking-tight text-center">Configura Jonny</div>
+        <div className="text-3xl font-black text-yellow-300 tracking-tight text-center">Configura Johhy</div>
 
         {/* Proposals to pick or custom */}
         {proposals.length > 0 ? (
@@ -6467,7 +6467,7 @@ function WordBackSetupBoard({ payload, sessionId }: {
           disabled={busy || !jonnyTheme.trim()}
           className="rounded-2xl px-10 py-3 font-black text-lg text-slate-900 transition-all disabled:opacity-40"
           style={{background:'#FACC15'}}>
-          {busy ? 'Avvio…' : '🤖 Genera con Jonny →'}
+          {busy ? 'Avvio…' : '🤖 Genera con Johhy →'}
         </motion.button>
       </motion.div>
     );
@@ -6481,7 +6481,7 @@ function WordBackSetupBoard({ payload, sessionId }: {
         animate={{scale:[1,1.08,1],rotate:[0,5,-5,0]}}
         transition={{duration:1.2,repeat:Infinity,ease:'easeInOut'}}
         className="text-7xl">🤖</motion.div>
-      <div className="text-3xl font-black text-yellow-300">Jonny sta creando le parole proibite…</div>
+      <div className="text-3xl font-black text-yellow-300">Johhy sta creando le parole proibite…</div>
       <div className="text-white/50">
         {selectedJonnyTheme
           ? <>Tema: <span className="text-yellow-300 font-bold">{selectedJonnyTheme}</span></>
@@ -7174,7 +7174,7 @@ function CoppieBoard({ payload, onNext, sessionId, players }: { payload: Record<
     <div className="flex flex-col items-center gap-7 text-center">
       <motion.div animate={{ scale: [1,1.08,1], opacity: [0.7,1,0.7] }} transition={{ repeat: IS_LOW_POWER ? 0 : Infinity, duration: 1.8 }}
         className="text-8xl">💞</motion.div>
-      <div className="text-display text-3xl font-black text-white">Jonny sta creando</div>
+      <div className="text-display text-3xl font-black text-white">Johhy sta creando</div>
       <div className="text-display text-4xl font-black" style={{ color: '#F472B6' }}>gli abbinamenti…</div>
       <div className="flex gap-2 mt-2">
         {[0,1,2,3,4].map(i => (
@@ -7308,7 +7308,7 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
 }) {
   const { on } = useEventSocket(null);
   // Karaoke ha i suoi video/basi: dissolvi la musica di fondo per tutta la fase
-  // e ferma la voce di Jonny (non deve sovrapporsi al karaoke).
+  // e ferma la voce di Johhy (non deve sovrapporsi al karaoke).
   useEffect(() => { JonnyVoice.stop(); AudioManager.duck(); return () => AudioManager.unduck(); }, []);
   const [liveState, setLiveState] = useState<KaraokeHomeState>(state);
   const [floatingEmojis, setFloatingEmojis] = useState<{ id: number; emoji: string; x: number }[]>([]);
@@ -8152,7 +8152,7 @@ function FreestyleBattleBoard({ sessionId, state: s, post }: {
   useEffect(() => () => { beatAudioRef.current?.pause(); beatSynthRef.current?.stop(); }, []);
 
   // Durante il rap il BEAT è la musica: dissolvi il loop di fondo (altrimenti si
-  // sommano) e ferma la voce di Jonny.
+  // sommano) e ferma la voce di Johhy.
   useEffect(() => {
     if (!battling) return;
     JonnyVoice.stop();

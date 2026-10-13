@@ -1,7 +1,7 @@
 /* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
 
 /**
- * Jonny's World — Shared theme components for all arenas.
+ * Johhy's World — Shared theme components for all arenas.
  * Visual-only layer. Zero game logic here.
  */
 import { motion, AnimatePresence } from 'framer-motion';
@@ -117,7 +117,7 @@ export function ArenaHeader({ theme, left, right }: { theme: typeof ARENA[ArenaK
   );
 }
 
-// ── Jonny waiting / idle screen ──────────────────────────────────────────────
+// ── Johhy waiting / idle screen ──────────────────────────────────────────────
 export function JonnyWaitingScreen({ theme, subtitle, label }: { theme: typeof ARENA[ArenaKey]; subtitle?: string; label?: string }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-5 px-8 text-center">
@@ -247,7 +247,7 @@ export function NeonTimerBar({ pct, color }: { pct: number; color: string }) {
   );
 }
 
-// ── Jonny home button ────────────────────────────────────────────────────────
+// ── Johhy home button ────────────────────────────────────────────────────────
 export function HomeButton({ onClick, accent }: { onClick: () => void; accent: string }) {
   const [, navigate] = useLocation();
   const handler = onClick ?? (() => navigate('/'));

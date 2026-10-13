@@ -395,7 +395,7 @@ function ShowLanding({ onArena }: { onArena: () => void }) {
               textShadow: '0 0 50px rgba(168,85,247,0.9), 0 6px 30px rgba(0,0,0,0.9)',
               fontFamily: "'Outfit','Arial Black',sans-serif",
             }}>
-            JONNY'S<br />
+            JOHHY'S<br />
             <span style={{ color: '#F5B642', textShadow: '0 0 70px rgba(245,182,66,1), 0 0 140px rgba(245,182,66,0.5)' }}>WORLD</span>
           </h1>
           <p className="mb-10 max-w-sm"
@@ -428,11 +428,11 @@ function ShowLanding({ onArena }: { onArena: () => void }) {
         </motion.div>
       </div>
 
-      {/* RIGHT — Jonny hero image, fullscreen anchor */}
+      {/* RIGHT — Johhy hero image, fullscreen anchor */}
       <div className="flex-1 relative">
         <motion.img
           src={a('/jonny-world-hero.png')}
-          alt="Jonny's World"
+          alt="Johhy's World"
           className="absolute bottom-0 right-0 object-contain object-bottom"
           style={{
             height: '94vh', maxWidth: '62vw',
@@ -581,12 +581,12 @@ function Arena({ onPodium }: { onPodium: () => void }) {
         </motion.div>
       </div>
 
-      {/* RIGHT — Jonny + game card (34%) */}
+      {/* RIGHT — Johhy + game card (34%) */}
       <div className="w-[34%] z-10 pt-[62px] pb-6 pr-6 pl-2 flex flex-col justify-end relative">
-        {/* Jonny — tall, overlapping, dominant */}
+        {/* Johhy — tall, overlapping, dominant */}
         <motion.img
           src={a('/jonny-master-nobg.png')}
-          alt="Jonny"
+          alt="Johhy"
           className="absolute pointer-events-none"
           style={{
             right: '4%', bottom: '32%',
@@ -598,7 +598,7 @@ function Arena({ onPodium }: { onPodium: () => void }) {
           transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' as const }}
         />
 
-        {/* game card — positioned at bottom, below Jonny feet */}
+        {/* game card — positioned at bottom, below Johhy feet */}
         <div className="relative z-10" style={{ marginTop: 'auto' }}>
           <GameCard game={selected} />
         </div>

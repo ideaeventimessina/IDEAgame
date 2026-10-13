@@ -1156,7 +1156,7 @@ function HomeJoinInner() {
 
             {/* Hero image — top 55% */}
             <div className="relative w-full overflow-hidden" style={{height:'55vh',minHeight:260}}>
-              <img src="/jonny-world-promo.jpg" alt="Jonny's World"
+              <img src="/jonny-world-promo.jpg" alt="Johhy's World"
                 className="absolute inset-0 h-full w-full object-cover object-top"
                 style={{objectPosition:'center 15%'}}/>
               {/* Bottom fade into form panel */}
@@ -1204,7 +1204,7 @@ function HomeJoinInner() {
 
             {/* Hero image — compact top */}
             <div className="relative w-full overflow-hidden" style={{height:'45vh',minHeight:220}}>
-              <img src="/jonny-world-promo.jpg" alt="Jonny's World"
+              <img src="/jonny-world-promo.jpg" alt="Johhy's World"
                 className="absolute inset-0 h-full w-full object-cover"
                 style={{objectPosition:'center 10%'}}/>
               <div className="absolute inset-x-0 bottom-0 h-24"
@@ -1849,8 +1849,8 @@ function WordBackSetupController({ payload, player, session }: {
   const msgs: Record<string, string> = {
     setup_choice:            "L'animatore sta scegliendo la modalità…",
     setup_preset:            "L'animatore sta scegliendo il tema…",
-    setup_jonny_diff:        "L'animatore sta configurando Jonny…",
-    setup_jonny_generating:  "Jonny sta creando le parole… 🤖",
+    setup_jonny_diff:        "L'animatore sta configurando Johhy…",
+    setup_jonny_generating:  "Johhy sta creando le parole… 🤖",
   };
   const msg = msgs[phase] ?? "Preparazione in corso…";
 
@@ -3976,7 +3976,7 @@ function SaraMusicaController({ payload, player, session }: {
   const WAIT_PHASES: Record<string, { emoji: string; msg: string; sub?: string }> = {
     setup_theme: { emoji: '🎵', msg: 'L\'host sceglie il tema…' },
     setup_count: { emoji: '🎵', msg: 'L\'host sceglie le manche…' },
-    generating:  { emoji: '⭐', msg: 'Jonny prepara il quiz!', sub: 'Ci vorrà qualche secondo…' },
+    generating:  { emoji: '⭐', msg: 'Johhy prepara il quiz!', sub: 'Ci vorrà qualche secondo…' },
     countdown:   { emoji: '🎵', msg: 'Si comincia!', sub: 'Pronto?' },
     ranking:     { emoji: '📊', msg: 'Classifica in corso…' },
     finale:      { emoji: '🏆', msg: 'Fine dello spettacolo!' },
@@ -4450,7 +4450,7 @@ function AdultController({ payload, player, session, players }: {
     return (
       <div className="flex flex-col items-center gap-5 py-6 text-center">
         <div className="text-5xl">🍾</div>
-        <div className="text-xl font-black text-white">Jonny After Dark</div>
+        <div className="text-xl font-black text-white">Johhy After Dark</div>
         <div className="rounded-2xl px-4 py-2 text-sm font-black"
           style={{ background: `${AC}22`, border: `1px solid ${AC}44`, color: AC }}>
           {levelObj.emoji} {levelLabel}
@@ -4569,7 +4569,7 @@ function AdultController({ payload, player, session, players }: {
             </button>
           </div>
           {choiceDeadlineAt && (
-            <div className="text-white/30 text-xs">Scegli entro 8 secondi · altrimenti sceglie Jonny!</div>
+            <div className="text-white/30 text-xs">Scegli entro 8 secondi · altrimenti sceglie Johhy!</div>
           )}
         </div>
       );
@@ -4839,7 +4839,7 @@ function AdultController({ payload, player, session, players }: {
   return (
     <div className="flex flex-col items-center gap-4 py-8 text-center">
       <div className="text-4xl">🍾</div>
-      <div className="text-white/40">Jonny After Dark</div>
+      <div className="text-white/40">Johhy After Dark</div>
     </div>
   );
 }

@@ -14,7 +14,7 @@ import {
   type ScoreboardEntry, type Game as ApiGame,
 } from '@workspace/api-client-react';
 
-/* ─── Jonny poses: PNG transparent — no blend mode needed */
+/* ─── Johhy poses: PNG transparent — no blend mode needed */
 /* jonnyNobg = /public/jonny-master-nobg.png (already no background) */
 
 /* ─── types ─────────────────────────────────────── */
@@ -933,7 +933,7 @@ function Arena({ onPodium }: { onPodium:()=>void }) {
       {/* title top-center — logo dominante 18–22% screen width */}
       <motion.div className="flex flex-col items-center justify-center pt-1 pb-0 z-20"
         initial={{ y:-20, opacity:0 }} animate={{ y:0, opacity:1 }} transition={{ delay:0.1 }}>
-        <img src={pub('/jonny-world-logo.png')} alt="Jonny's World"
+        <img src={pub('/jonny-world-logo.png')} alt="Johhy's World"
           className="object-contain block"
           style={{ width:'clamp(12rem,20vw,18rem)',
             filter:'drop-shadow(0 0 30px rgba(245,182,66,0.7)) drop-shadow(0 0 70px rgba(168,85,247,0.4))' }}/>
@@ -988,12 +988,12 @@ function Arena({ onPodium }: { onPodium:()=>void }) {
         </motion.div>
       </div>
 
-      {/* right: game card — Jonny è outside/absolute separato */}
+      {/* right: game card — Johhy è outside/absolute separato */}
       <div className="flex flex-col pl-1 pb-1 z-20 relative justify-end" style={{ paddingRight:'var(--tv-safe-x)' }}>
         <GameCard game={selected}/>
       </div>
 
-      {/* Jonny — presenza scenica grande, pedana illuminata */}
+      {/* Johhy — presenza scenica grande, pedana illuminata */}
       <div className="absolute pointer-events-none select-none"
         style={{ right:'-1%', bottom:'10vh', zIndex:12, width:'24%' }}>
         {/* pedana spotlight cone */}
@@ -1011,7 +1011,7 @@ function Arena({ onPodium }: { onPodium:()=>void }) {
         <div style={{ position:'absolute', bottom:0, left:'-25%', right:'-10%', top:'5%',
           background:`radial-gradient(ellipse 65% 75% at 52% 65%,${selected.glow}30 0%,rgba(168,85,247,0.15) 55%,transparent 80%)`,
           pointerEvents:'none' }}/>
-        <motion.img src={pub('/jonny-master-nobg.png')} alt="Jonny host"
+        <motion.img src={pub('/jonny-master-nobg.png')} alt="Johhy host"
           style={{ height:'min(58vh,480px)', display:'block', objectFit:'contain', width:'100%',
             filter:`drop-shadow(0 0 55px ${selected.glow}cc) drop-shadow(-5px 0 25px rgba(168,85,247,0.55)) drop-shadow(0 10px 35px rgba(0,0,0,0.7))` }}
           animate={{ y:[0,-8,0] }}
@@ -1066,11 +1066,11 @@ function Podium({ onRestart }: { onRestart:()=>void }) {
       initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
       transition={{ duration:0.5 }}>
       <Confetti/>
-      {/* Jonny podio */}
+      {/* Johhy podio */}
       <motion.div className="absolute pointer-events-none select-none" style={{ right:'-1%', bottom:0, zIndex:5 }}>
         <div style={{ position:'absolute', inset:0, background:'radial-gradient(ellipse 80% 90% at 50% 90%,rgba(245,182,66,0.45) 0%,transparent 70%)', pointerEvents:'none' }}/>
         <div style={{ position:'absolute', bottom:0, left:'5%', right:'5%', height:20, background:'rgba(0,0,0,0.5)', borderRadius:'50%', filter:'blur(14px)' }}/>
-        <motion.img src={pub('/jonny-master-nobg.png')} alt="Jonny festeggia"
+        <motion.img src={pub('/jonny-master-nobg.png')} alt="Johhy festeggia"
           style={{ height:'68vh', display:'block', objectFit:'contain',
             filter:'drop-shadow(0 0 60px rgba(245,182,66,0.8)) drop-shadow(0 0 120px rgba(245,182,66,0.35))' }}
           animate={{ y:[0,-10,0], rotate:[-1,1,-1] }}

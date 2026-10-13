@@ -397,7 +397,7 @@ function EditPackDrawer({ pack, onClose, onUpdated, onDeleted }: {
               </div>
 
               <div className="grid grid-cols-2 gap-3 rounded-xl bg-muted/20 p-3 text-xs text-muted-foreground">
-                <div><span className="font-semibold">Creato da:</span> {pack.createdBy === "jonny" ? "🤖 Jonny" : "👤 Admin"}</div>
+                <div><span className="font-semibold">Creato da:</span> {pack.createdBy === "jonny" ? "🤖 Johhy" : "👤 Admin"}</div>
                 <div><span className="font-semibold">Lingua:</span> {pack.language.toUpperCase()}</div>
                 <div><span className="font-semibold">Aggiornato:</span> {new Date(pack.updatedAt).toLocaleDateString("it-IT")}</div>
                 <div><span className="font-semibold">Versione:</span> {pack.version}</div>
@@ -633,7 +633,7 @@ export default function AdminContentPacks() {
                           {modeBadge(pack.modeAvailability)}
                           {pack.createdBy === "jonny" && (
                             <span className="flex items-center gap-1 rounded-full bg-purple-900/40 px-2 py-0.5 text-xs text-purple-300">
-                              <Sparkles className="h-3 w-3" /> Jonny
+                              <Sparkles className="h-3 w-3" /> Johhy
                             </span>
                           )}
                         </div>

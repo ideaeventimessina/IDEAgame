@@ -3,7 +3,7 @@
 /**
  * HomeV5 — Cinematic Game Show Arena (visual experiment, zero backend)
  * Environment staging only: LED wall, side screens, 3D floor, spotlights,
- * crowd silhouettes, particles, alive Jonny.
+ * crowd silhouettes, particles, alive Johhy.
  * DO NOT touch HomeV4.
  */
 import { useState, useEffect, useMemo, useCallback } from 'react';
@@ -353,7 +353,7 @@ function CinematicStage({ selectedGlow, selectedGame }:{ selectedGlow:string; se
 }
 
 /* ══════════════════════════════════════════════════
-   JONNY ALIVE
+   JOHHY ALIVE
 ══════════════════════════════════════════════════ */
 function JonnyAlive({ glow }:{ glow:string }) {
   return (
@@ -386,7 +386,7 @@ function JonnyAlive({ glow }:{ glow:string }) {
 
           {/* MIC GESTURE: img rotates very slightly for arm movement */}
           <motion.img
-            src={pub('/jonny-master-nobg.png')} alt="Jonny host"
+            src={pub('/jonny-master-nobg.png')} alt="Johhy host"
             style={{ height:'min(52vh,430px)', display:'block', objectFit:'contain', width:'100%',
               filter:`drop-shadow(0 0 45px ${glow}bb) drop-shadow(-4px 0 20px rgba(168,85,247,0.45)) drop-shadow(0 8px 30px rgba(0,0,0,0.6))`,
               transformOrigin:'50% 80%',
@@ -587,7 +587,7 @@ function V5Arena() {
 
       {/* ── LOGO top-center ── */}
       <div className="col-span-3 flex justify-center items-start pt-2 z-20">
-        <motion.img src={pub('/jonny-world-logo.png')} alt="Jonny's World"
+        <motion.img src={pub('/jonny-world-logo.png')} alt="Johhy's World"
           style={{ height:'clamp(3rem,6.5vh,5.5rem)', objectFit:'contain',
             filter:`drop-shadow(0 0 24px ${selected.glow}99) drop-shadow(0 0 50px rgba(168,85,247,0.4))` }}
           initial={{ y:-15, opacity:0 }} animate={{ y:0, opacity:1 }} transition={{ delay:0.1, duration:0.7, ease:'easeOut' as const }}/>
@@ -610,7 +610,7 @@ function V5Arena() {
         <GameCard game={selected}/>
       </div>
 
-      {/* ── JONNY ALIVE — absolute, not in grid flow ── */}
+      {/* ── JOHHY ALIVE — absolute, not in grid flow ── */}
       <JonnyAlive glow={selected.glow}/>
 
       {/* ── BOTTOM-LEFT: spacer ── */}

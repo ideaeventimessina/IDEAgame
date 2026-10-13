@@ -19,7 +19,7 @@ const UNLOCKS = [
   { Icon: Bot,   t: 'Intelligenza Artificiale', d: 'Domande, canzoni e sfide infinite generate al momento: partite sempre diverse.' },
   { Icon: Lock,  t: 'Adult per il club',        d: 'Livelli 4 e 5 espliciti, obblighi veri, musica per livello, preferiti segreti.' },
   { Icon: Mic2,  t: 'Karaoke Live',             d: 'Il karaoke con video, code e votazioni per gestire una serata intera.' },
-  { Icon: Music, t: 'Tutto il resto',           d: 'Lockdown, contenuti curati, la voce di Jonny e la musica su misura.' },
+  { Icon: Music, t: 'Tutto il resto',           d: 'Lockdown, contenuti curati, la voce di Johhy e la musica su misura.' },
 ];
 
 export default function UpgradeLive() {
