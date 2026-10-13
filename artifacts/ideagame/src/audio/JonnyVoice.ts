@@ -18,10 +18,22 @@ import { AudioManager } from './AudioManager';
 
 const BASE = (import.meta.env.BASE_URL as string) ?? '/';
 
-type Listener = (state: { speaking: boolean; level: number; key: string | null }) => void;
+/** Stato pubblicato a ogni frame mentre Johhy parla. `text` = testo ESATTO pronunciato
+ *  (fonte unica di voce e fumetto); `timeMs`/`durMs` = clock dell'audio reale, per
+ *  sincronizzare i segmenti del fumetto senza finto effetto macchina da scrivere. */
+export type JohhyVoiceState = {
+  speaking: boolean;
+  level: number;
+  key: string | null;
+  text: string | null;
+  timeMs: number;
+  durMs: number;
+};
+type Listener = (state: JohhyVoiceState) => void;
+type Clip = { url: string; text: string };
 
 class _JonnyVoice {
-  private urlCache = new Map<string, string | null>();
+  private clipCache = new Map<string, Clip | null>();
   private audio: HTMLAudioElement | null = null;
   private ctx: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
@@ -30,37 +42,56 @@ class _JonnyVoice {
   private _speaking = false;
   private _level = 0;
   private _key: string | null = null;
+  private _text: string | null = null;
 
   get speaking(): boolean { return this._speaking; }
   get level(): number { return this._level; }
+  get text(): string | null { return this._text; }
+
+  private snapshot(): JohhyVoiceState {
+    const a = this.audio;
+    return {
+      speaking: this._speaking, level: this._level, key: this._key, text: this._text,
+      timeMs: a ? a.currentTime * 1000 : 0,
+      durMs: a && isFinite(a.duration) ? a.duration * 1000 : 0,
+    };
+  }
 
   subscribe(fn: Listener): () => void {
     this.listeners.add(fn);
-    fn({ speaking: this._speaking, level: this._level, key: this._key });
+    fn(this.snapshot());
     return () => { this.listeners.delete(fn); };
   }
 
   private emit(): void {
-    const s = { speaking: this._speaking, level: this._level, key: this._key };
+    const s = this.snapshot();
     this.listeners.forEach((fn) => { try { fn(s); } catch { /* ignore */ } });
   }
 
-  private async resolveUrl(key: string): Promise<string | null> {
-    if (this.urlCache.has(key)) return this.urlCache.get(key) ?? null;
+  /** Testo ESATTO di una battuta (per il fumetto) — dal catalogo server, in cache. */
+  textFor(key: string): string | null { return this.clipCache.get(key)?.text ?? null; }
+
+  private async resolveClip(key: string): Promise<Clip | null> {
+    if (this.clipCache.has(key)) return this.clipCache.get(key) ?? null;
     try {
       const u = `${BASE}api/home/voice/${encodeURIComponent(key)}`.replace(/([^:])\/\//g, '$1/');
       const r = await fetch(u);
-      if (!r.ok) { this.urlCache.set(key, null); return null; }
-      const j = await r.json() as { url?: string };
-      const url = j?.url ? `${BASE}${j.url.replace(/^\//, '')}`.replace(/([^:])\/\//g, '$1/') : null;
-      this.urlCache.set(key, url);
-      return url;
-    } catch { this.urlCache.set(key, null); return null; }
+      if (!r.ok) { this.clipCache.set(key, null); return null; }
+      const j = await r.json() as { url?: string; text?: string };
+      const raw = j?.url ?? '';
+      // URL assoluti/data/blob passano intatti; i path relativi prendono il BASE
+      const url = raw
+        ? (/^(data:|https?:|blob:)/.test(raw) ? raw : `${BASE}${raw.replace(/^\//, '')}`.replace(/([^:])\/\//g, '$1/'))
+        : null;
+      const clip = url ? { url, text: (j.text ?? '').trim() } : null;
+      this.clipCache.set(key, clip);
+      return clip;
+    } catch { this.clipCache.set(key, null); return null; }
   }
 
   /** Precarica (genera lato server) una o più battute, senza riprodurle. */
   prefetch(keys: string[]): void {
-    keys.forEach((k) => { void this.resolveUrl(k); });
+    keys.forEach((k) => { void this.resolveClip(k); });
   }
 
   /**
@@ -68,15 +99,16 @@ class _JonnyVoice {
    * corso. Ritorna quando l'audio è partito (non quando è finito).
    */
   async speak(key: string): Promise<void> {
-    const url = await this.resolveUrl(key);
-    if (!url) return;
+    const clip = await this.resolveClip(key);
+    if (!clip) return;
     this.stop(); // interrompe la precedente
 
-    const audio = new Audio(url);
+    const audio = new Audio(clip.url);
     audio.crossOrigin = 'anonymous';
     audio.preload = 'auto';
     this.audio = audio;
     this._key = key;
+    this._text = clip.text || null;
 
     // Analyser per l'ampiezza (best-effort: se fallisce, niente lip-sync)
     try {
@@ -144,6 +176,7 @@ class _JonnyVoice {
       this._speaking = false;
       this._level = 0;
       this._key = null;
+      this._text = null;
       AudioManager.unduck();
       this.emit();
     }

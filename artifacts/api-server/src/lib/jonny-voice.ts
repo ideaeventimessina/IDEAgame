@@ -32,7 +32,7 @@ const JONNY_VOICE: OpenAIVoice = ((): OpenAIVoice => {
  */
 export const JONNY_SCRIPTS: Record<string, string> = {
   welcome:
-    "Ehilà, sono Jonny! Benvenuti a Jonny's World, la festa dove giocate tutti insieme. Prendete i telefoni, si comincia!",
+    "Ehilà, sono Johhy! Benvenuti a Johhy's World, la festa dove giocate tutti insieme. Prendete i telefoni, si comincia!",
   hub:
     "Scegliete un gioco dalla ruota! Ognuno è una sfida diversa. Io vi spiego tutto, voi pensate solo a divertirvi.",
   quizzone:
