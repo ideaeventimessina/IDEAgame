@@ -34,6 +34,7 @@ import { GameFlowEngine } from '@/components/GameFlowEngine';
 import { AudioManager } from '@/audio/AudioManager';
 import { JonnyVoice } from '@/audio/JonnyVoice';
 import { jonnySpeak } from '@/hooks/useJonnyVoice';
+import { playCue } from '@/jonny/orchestrator';
 import { PlayerAvatar } from '@/components/PlayerAvatar';
 import { useAudioSettings } from '@/contexts/AudioContext';
 import { IS_LOW_POWER, IS_PS4 } from '@/hooks/useLowPower';
@@ -1008,7 +1009,14 @@ export default function HomeGame() {
       AudioManager.stopLoop(true);
       void AudioManager.playLoop(d.session.gameSlug ?? 'global', 'round_loop');
       // Johhy presenta il gioco con la sua voce (abbassa la musica mentre parla).
-      if (d.session.gameSlug) jonnySpeak(d.session.gameSlug);
+      // Via orchestratore: solo sul monitor (audience public, niente eco sui telefoni) e
+      // un solo playback per presentazione (dedup su slug+avvio, no replay da re-delivery).
+      if (d.session.gameSlug) {
+        playCue(
+          { id: `gs:${d.session.gameSlug}:${String(d.payload?.roundStartedAt ?? d.session.currentRound)}`, scriptKey: d.session.gameSlug, audience: 'public' },
+          { role: 'public' },
+        );
+      }
     });
     const u4 = on<{ round: number; payload: Record<string, unknown> }>('home:round', (d) => {
       const roundMode = String(d.payload?.mode ?? '');
