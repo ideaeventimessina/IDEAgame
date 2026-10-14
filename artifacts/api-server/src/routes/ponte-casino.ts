@@ -22,7 +22,7 @@
  */
 
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { randomBytes, randomInt } from "node:crypto";
 import { db, casinoSessionsTable, casinoPlayersTable } from "@workspace/db";
 import {
@@ -310,6 +310,45 @@ router.post("/ponte/casino/guest/join", async (req, res): Promise<void> => {
     pending: restPending,
   });
   res.json({ ready: true, playerCode: player.playerCode });
+});
+
+/* ════════════════ 5. CLASSIFICA FISH PER IL WALL CONDIVISO ════════════════════
+ * Quando Suite e Casinò sono entrambi attivi, il maxi-schermo condiviso mostra le
+ * foto della serata (lato Suite) + uno split con la CLASSIFICA GENERALE FISH (qui).
+ * Read-only e pubblica come la TV del casinò (solo nickname/fiche/avatar, nessun
+ * dato sensibile). La Suite può: (a) incorporare la nostra vista `?wall=<sessionId>`
+ * in un iframe nello split, oppure (b) pollare questo JSON e disegnarla da sé.
+ * Chiave per sessionId (UUID = casinoEventoId del contratto).
+ * CORS: il BROWSER del proiettore Suite la legge cross-origin e disegna lo split
+ * (contratto concordato: niente iframe, niente push). Dati pubblici come la TV. */
+router.options("/ponte/casino/classifica/:sessionId", (_req, res): void => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Max-Age", "600");
+  res.status(204).end();
+});
+router.get("/ponte/casino/classifica/:sessionId", async (req, res): Promise<void> => {
+  res.setHeader("Access-Control-Allow-Origin", "*");       // lo split del muro Suite legge da browser
+  res.setHeader("Cache-Control", "no-store");
+  const sessionId = String(req.params["sessionId"]);
+  const sess = await loadSession(sessionId);
+  if (!sess) { err(res, 404, "non_trovato", "Serata casinò inesistente."); return; }
+  const avatars = (sess.config.playerAvatars ?? {}) as Record<string, string>;
+  const players = await db.select({
+    id: casinoPlayersTable.id, nickname: casinoPlayersTable.nickname, fishBalance: casinoPlayersTable.fishBalance,
+  }).from(casinoPlayersTable).where(eq(casinoPlayersTable.sessionId, sessionId)).orderBy(desc(casinoPlayersTable.fishBalance));
+  const cassaTotale = players.reduce((s, p) => s + p.fishBalance, 0);
+  const classifica = players.slice(0, 20).map((p, i) => ({
+    rank: i + 1, nickname: p.nickname, fish: p.fishBalance, avatarUrl: avatars[p.id] ?? null,
+  }));
+  res.json({
+    nomeFesta: sess.config.suite?.nomeFesta ?? null,
+    linked: !!(sess.config.suite && sess.config.suite.giocoUrl),
+    giocatori: players.length,
+    cassaTotale,
+    classifica,
+    at: new Date().toISOString(),
+  });
 });
 
 export default router;

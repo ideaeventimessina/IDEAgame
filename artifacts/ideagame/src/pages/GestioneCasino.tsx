@@ -56,6 +56,52 @@ type State = {
 const api = (path: string, body?: unknown, method = 'POST') =>
   fetch(`${API}${path}`, { method, headers: { 'Content-Type': 'application/json' }, body: method === 'GET' ? undefined : JSON.stringify(body ?? {}) }).then(r => r.json());
 
+/* PONTE SUITE — CLASSIFICA FISH per il WALL CONDIVISO.
+ * Vista fluida (riempie il contenitore) pensata per stare in uno SPLIT del maxi-schermo
+ * accanto allo slideshow foto della Suite. La Suite la incorpora via iframe:
+ *   <giocoBase>/gestione/casino?wall=<casinoEventoId>
+ * Read-only, auto-refresh. Solo nickname/fiche/avatar (come la TV pubblica). */
+type WallRow = { rank: number; nickname: string; fish: number; avatarUrl: string | null };
+function WallClassifica({ sessionId }: { sessionId: string }) {
+  const AB = (import.meta.env.BASE_URL as string) || '/';
+  const [data, setData] = useState<{ nomeFesta: string | null; giocatori: number; cassaTotale: number; classifica: WallRow[] } | null>(null);
+  useEffect(() => {
+    let on = true;
+    const load = () => fetch(`${API}/ponte/casino/classifica/${sessionId}`).then(r => r.ok ? r.json() : null).then(d => { if (on && d) setData(d); }).catch(() => {});
+    load(); const t = setInterval(load, 2500); return () => { on = false; clearInterval(t); };
+  }, [sessionId]);
+  const rows = data?.classifica ?? [];
+  const medal = (r: number) => r === 1 ? '#f4d77a' : r === 2 ? '#d7dde6' : r === 3 ? '#d79a5a' : '#8a7a4e';
+  return (
+    <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', color: '#fff', fontFamily: '"Cinzel","Baskerville Casino",Georgia,serif', background: 'radial-gradient(ellipse 120% 90% at 50% 0%,#15305f,#0a1f45 60%,#06152e 100%)', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '3.2vh 4%', borderBottom: '2px solid #e8c45f55' }}>
+        <img src={`${AB}casino/logo-idea-casino.png`} alt="IDEA EVENTI" style={{ height: '6.2vh', objectFit: 'contain' }} onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ font: '700 clamp(20px,3.4vh,42px)/1 "Cinzel",serif', background: 'linear-gradient(180deg,#fff6c8,#ffe08a 55%,#e4ad4b)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent', letterSpacing: '.03em' }}>CLASSIFICA FISH</div>
+          {data?.nomeFesta && <div style={{ color: '#bcd0ef', font: 'italic 400 clamp(12px,1.9vh,20px)/1.2 "Lora",serif', marginTop: 4 }}>{data.nomeFesta}</div>}
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ color: '#ffe9a6', font: '700 clamp(18px,3vh,36px)/1 "Cinzel",serif' }}>{(data?.cassaTotale ?? 0).toLocaleString('it-IT')}</div>
+          <div style={{ color: '#9fb6d8', font: '400 clamp(10px,1.4vh,14px)/1 "Lora",serif' }}>fiche in gioco</div>
+        </div>
+      </div>
+      <div style={{ flex: 1, overflow: 'hidden', padding: '1.6vh 3% 2vh', display: 'flex', flexDirection: 'column', gap: '1.1vh' }}>
+        {rows.length === 0 && <div style={{ margin: 'auto', color: '#8ea6cc', font: 'italic 400 clamp(14px,2.2vh,22px) "Lora",serif' }}>In attesa dei giocatori…</div>}
+        {rows.map(r => (
+          <div key={r.rank} style={{ display: 'flex', alignItems: 'center', gap: '1.6vw', background: r.rank <= 3 ? '#ffffff14' : '#ffffff0a', border: `1px solid ${r.rank <= 3 ? medal(r.rank) + '88' : '#ffffff18'}`, borderRadius: 12, padding: '1vh 1.4vw' }}>
+            <div style={{ width: 'clamp(30px,4.4vh,56px)', textAlign: 'center', font: '700 clamp(18px,3vh,38px)/1 "Cinzel",serif', color: medal(r.rank) }}>{r.rank}</div>
+            {r.avatarUrl
+              ? <img src={r.avatarUrl} alt="" style={{ width: 'clamp(34px,5.2vh,64px)', height: 'clamp(34px,5.2vh,64px)', borderRadius: '50%', objectFit: 'cover', border: `2px solid ${medal(r.rank)}` }} />
+              : <div style={{ width: 'clamp(34px,5.2vh,64px)', height: 'clamp(34px,5.2vh,64px)', borderRadius: '50%', background: '#1c3f80', border: `2px solid ${medal(r.rank)}`, display: 'grid', placeItems: 'center', font: '700 clamp(14px,2.4vh,26px) "Cinzel",serif', color: '#ffe9a6' }}>{r.nickname.slice(0, 1).toUpperCase()}</div>}
+            <div style={{ flex: 1, minWidth: 0, font: '700 clamp(15px,2.6vh,30px)/1.1 "Cinzel",serif', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.nickname}</div>
+            <div style={{ font: '700 clamp(16px,2.8vh,34px)/1 "Cinzel",serif', color: '#ffe9a6' }}>{r.fish.toLocaleString('it-IT')}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function GestioneCasino() {
   const params = new URLSearchParams(window.location.search);
   const playerCode = params.get('player');
@@ -84,6 +130,8 @@ export default function GestioneCasino() {
   if (sic) return <CorsaSiciliaMonitor displayCode={sic.toUpperCase()} host={sicHost} />;
   if (sicPlay) return <CorsaSiciliaPhone displayCode={sicPlay.toUpperCase()} />;
   if (sicRegia) return <CorsaSiciliaRegia displayCode={sicRegia.toUpperCase()} />;
+  const wall = params.get('wall'); // PONTE SUITE: classifica fish per il wall condiviso (split)
+  if (wall) return <WallClassifica sessionId={wall} />;
   if (hTables) return <HorseTablesView sessionId={hTables} />;
   if (tableCode) return <RouletteTableView displayCode={tableCode.toUpperCase()} />;
   if (seatCode) return <SeatController seatCode={seatCode.toUpperCase()} />;
