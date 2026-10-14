@@ -122,11 +122,12 @@ function useScale(w = 744, h = 456) {
   return Math.min(dim.w / w, dim.h / h);
 }
 
-// ── Dispatcher: ?finale=CODE → FINALE, ?sfida=CODE → SFIDA, altrimenti CASA ────
+// ── Dispatcher: ?finale → FINALE, ?sfida → SFIDA, ?regia → REGIA, else CASA ─────
 export default function GestioneLockdown() {
   const q = new URLSearchParams(window.location.search);
   if (q.get('finale') !== null) return <MonitorFinale />;
   if (q.get('sfida') !== null) return <MonitorSfida />;
+  if (q.get('regia') !== null) return <RegiaMaster />;
   return <MonitorCasa />;
 }
 
@@ -526,6 +527,239 @@ function MonitorFinale() {
           <Lock size={16} />{fmt(master.current)} <span className="goal">/ {fmt(master.goal)}</span>
         </div>
         <div className="a f-mbar"><i style={{ ['--w' as string]: `${pct * 100}%` }} /></div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── REGIA MASTER (console host, tablet/desktop) ──────────────────────────────
+   Replica del mockup 07, pannello "15 REGIA MASTER · GESTISCI LA PARTITA".
+   Palco fisso 768×512 scalato (come casa/sfida/finale).
+
+   Mockup DIPINTO → separazione pittura/interfaccia:
+   · room-thumb-cucina.png = miniatura stanza attiva ritagliata dal dipinto.
+   · Logo "LOCKDOWN" reale + "by IDEAeventi" (regola brand).
+   · Tutto il resto (tab, tabella, timeline, pulsanti, barra MASTER) = CODICE a
+     coordinate misurate col righello di measure.mjs.
+   CORREZIONI dal pacchetto (03-SCHERMATE): la tabella Cucina del mockup riporta
+   somme esemplificative incoerenti. Qui ESITO/VARIAZIONE sono CALCOLATE dalla
+   regola Cucina (Premio 40×ricette valide se ≥4, altrimenti Penalità 80), non
+   copiate dalle righe dipinte. Vedi DEVIATIONS.md. La console NON conosce la spia.
+   Nessun backend: DATI MOCK interni. ?regia seleziona questa vista. */
+
+// Riga tabella: nome + n. ricette valide; esito/variazione calcolati dalla regola.
+type RegiaRow = { name: string; valid: number };
+const REGIA_ROWS: RegiaRow[] = [
+  { name: 'Giulia', valid: 5 },
+  { name: 'Marco', valid: 3 },
+  { name: 'Elena', valid: 4 },
+  { name: 'Luca', valid: 2 },
+  { name: 'Sofia', valid: 4 },
+  { name: 'Davide', valid: 3 },
+  { name: 'Chiara', valid: 1 },
+  { name: 'Matteo', valid: 3 },
+];
+// Regola Cucina (02-REGOLE-E-STANZE): 40 Lock-Euro per ricetta valida; <4 ricette → penalità 80.
+function cucinaOutcome(valid: number): { label: string; delta: number; kind: 'premio' | 'penalita' } {
+  if (valid >= 4) return { label: 'Premio', delta: 40 * valid, kind: 'premio' };
+  return { label: 'Penalità', delta: -80, kind: 'penalita' };
+}
+// Timeline "ANDAMENTO PARTITA": i 10 nomi reali del catalogo, nell'ordine del mockup.
+const ANDAMENTO = [
+  '10 Sfumature', 'Biblioteca', 'Palestra', 'Studio',
+  'Cinema', 'Balcone', 'Gabinetto', 'Ufficio', 'Salone',
+];
+const TABS: { id: string; label: string }[] = [
+  { id: 'giocatori', label: 'Giocatori' },
+  { id: 'stanze', label: 'Stanze' },
+  { id: 'contenuti', label: 'Contenuti' },
+  { id: 'registro', label: 'Registro' },
+];
+
+// ── Icone (SVG nitidi, currentColor) ──────────────────────────────────────────
+const IPeople = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><circle cx="9" cy="8" r="3.1" fill="currentColor"/><circle cx="16.5" cy="9" r="2.4" fill="currentColor" opacity=".8"/><path d="M3.5 19c0-3 2.5-4.8 5.5-4.8s5.5 1.8 5.5 4.8" stroke="currentColor" strokeWidth="1.8" fill="none"/><path d="M15 14.3c2.6.1 5 1.7 5 4.7" stroke="currentColor" strokeWidth="1.6" fill="none" opacity=".8"/></svg>);
+const IHome = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><path d="M4 11l8-6.5L20 11" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/><path d="M6 10.5V19h12v-8.5" stroke="currentColor" strokeWidth="1.8" fill="none" strokeLinejoin="round"/></svg>);
+const IDoc = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><path d="M7 3.5h7l4 4V20.5H7z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/><path d="M13.5 3.8V8h4.2M9.5 12h7M9.5 15h7" stroke="currentColor" strokeWidth="1.6"/></svg>);
+const IList = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><rect x="4" y="5" width="4" height="4" rx="1" fill="currentColor"/><rect x="4" y="14" width="4" height="4" rx="1" fill="currentColor"/><path d="M11 7h9M11 16h9" stroke="currentColor" strokeWidth="1.8"/></svg>);
+const ICheck = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><path d="M5 12.5l4.5 4.5L19 7" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"/></svg>);
+const INext = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><path d="M4 5l8 7-8 7zM13 5l8 7-8 7z" fill="currentColor"/></svg>);
+const IBolt = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><path d="M13 2L4 14h6l-1 8 9-12h-6z" fill="currentColor"/></svg>);
+const IMinus = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2.2"/><path d="M7.5 12h9" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"/></svg>);
+const IPause = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><rect x="6.5" y="5" width="4" height="14" rx="1.4" fill="currentColor"/><rect x="13.5" y="5" width="4" height="14" rx="1.4" fill="currentColor"/></svg>);
+const IClipboard = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><rect x="5" y="4.5" width="14" height="17" rx="2" stroke="currentColor" strokeWidth="1.7"/><rect x="9" y="2.6" width="6" height="3.4" rx="1.1" fill="currentColor"/><path d="M8.5 12l2.3 2.3L15.5 9.6" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"/></svg>);
+
+const TAB_ICON: Record<string, typeof IPeople> = {
+  giocatori: IPeople, stanze: IHome, contenuti: IDoc, registro: IList,
+};
+
+const CSS_REGIA = `
+.lkd .rg{position:relative;width:768px;height:512px;flex:none;background:#010b14;transform-origin:center center;
+  color:#eadfc4;font-family:"Baskerville Lockdown",Georgia,serif;}
+.lkd .rg .a{position:absolute;}
+/* header */
+.rg .r-ttl{left:20px;top:16px;font:700 23px/1 "Baskerville Lockdown",serif;letter-spacing:.015em;color:#f3ead2;}
+.rg .r-sub{left:21px;top:48px;font:400 12px/1 "Baskerville Lockdown",serif;letter-spacing:.17em;color:#8a7a52;}
+.rg .r-by{left:284px;top:62px;width:200px;text-align:center;font:700 9px/1 "Baskerville Lockdown",serif;letter-spacing:.24em;color:#d8b96a;}
+/* tabs */
+.rg .r-tabs{left:16px;top:86px;width:589px;height:42px;display:flex;gap:8px;}
+.rg .r-tab{flex:1;display:flex;align-items:center;justify-content:center;gap:9px;border-radius:9px;
+  background:linear-gradient(180deg,#0b1420,#081019);box-shadow:inset 0 0 0 1px rgba(90,110,130,.32);
+  color:#c6d2dc;font:400 15px/1 "Baskerville Lockdown",serif;}
+.rg .r-tab svg{font-size:19px;color:#9fb0bd;}
+.rg .r-tab.on{color:#ffe7a6;background:linear-gradient(180deg,#171206,#0f0c05);
+  box-shadow:0 0 12px rgba(255,200,110,.28),inset 0 0 0 1.5px rgba(232,200,121,.85);}
+.rg .r-tab.on svg{color:#e8c879;}
+/* MASTER box (destra, in alto) */
+.rg .r-right{left:600px;top:82px;width:150px;height:388px;border-radius:11px;
+  background:linear-gradient(180deg,#0a1420,#070f18);box-shadow:inset 0 0 0 1px rgba(201,151,47,.28);}
+.rg .r-mttl{left:675px;top:90px;transform:translateX(-50%);font:700 12px/1 "Baskerville Lockdown",serif;letter-spacing:.1em;color:#f2e4ad;}
+.rg .r-mval{left:675px;top:106px;transform:translateX(-50%);display:flex;align-items:center;gap:6px;white-space:nowrap;
+  font:700 17px/1 "Baskerville Lockdown",serif;color:#ffe7a6;}
+.rg .r-mval .goal{color:#8a7a52;}
+.rg .r-mbar{left:614px;top:131px;width:122px;height:9px;border-radius:5px;background:#10171f;
+  box-shadow:inset 0 0 0 1px rgba(201,151,47,.4);overflow:hidden;}
+.rg .r-mbar>i{display:block;height:100%;border-radius:5px;background:linear-gradient(90deg,#c9972f,#ffe08a);}
+.rg .r-rdiv{left:614px;top:153px;width:122px;height:1px;background:linear-gradient(90deg,rgba(201,151,47,0),rgba(201,151,47,.5),rgba(201,151,47,0));}
+/* ANDAMENTO PARTITA */
+.rg .r-andt{left:613px;top:173px;white-space:nowrap;font:700 10px/1 "Baskerville Lockdown",serif;letter-spacing:.04em;color:#c9b887;}
+.rg .r-tl{left:614px;top:200px;width:132px;}
+.rg .r-step{position:relative;display:flex;align-items:flex-start;gap:11px;height:26.5px;}
+.rg .r-step.first{height:30px;}
+.rg .r-step .dot{flex:none;width:13px;height:13px;border-radius:50%;margin-top:1px;z-index:1;
+  background:#0a131d;box-shadow:inset 0 0 0 2px rgba(130,120,92,.75);}
+.rg .r-step.on .dot{background:radial-gradient(circle,#ffe08a 0%,#e8c879 55%,#c9972f 100%);box-shadow:0 0 8px rgba(255,200,110,.7);}
+.rg .r-step::before{content:"";position:absolute;left:6px;top:13px;width:1.5px;height:30px;background:rgba(120,108,78,.5);}
+.rg .r-step:last-child::before{display:none;}
+.rg .r-step .lbl{font:400 13px/1.15 "Baskerville Lockdown",serif;color:#b9c4cd;}
+.rg .r-step.on .lbl{color:#ffe29a;}
+.rg .r-step.on .lbl b{display:block;font-weight:700;}
+.rg .r-step.on .lbl span{font-size:12px;color:#d8c48a;}
+/* colonna sinistra: miniatura + stato */
+.rg .r-left{left:6px;top:142px;width:140px;text-align:center;}
+.rg .r-thumb{width:118px;height:55px;border-radius:7px;object-fit:cover;display:block;margin:0 auto;
+  box-shadow:0 2px 7px rgba(0,0,0,.55),inset 0 0 0 1.5px rgba(201,151,47,.6);}
+.rg .r-lcap{margin-top:15px;font:400 11px/1 "Baskerville Lockdown",serif;letter-spacing:.11em;color:#8a7a52;}
+.rg .r-lval{margin-top:6px;font:700 22px/1 "Baskerville Lockdown",serif;letter-spacing:-.005em;color:#f6d27a;}
+.rg .r-licon{margin-top:22px;color:#e8c879;font-size:30px;line-height:0;}
+/* tabella RISPOSTE */
+.rg .r-tbl{left:148px;top:140px;width:430px;height:248px;border-radius:9px;overflow:hidden;
+  background:#060d16;box-shadow:inset 0 0 0 1px rgba(90,110,130,.28);}
+.rg .r-tcap{position:absolute;left:11px;top:13px;font:700 13px/1 "Baskerville Lockdown",serif;letter-spacing:.02em;color:#f1ead6;}
+.rg .r-thead{position:absolute;left:0;top:38px;width:430px;height:28px;background:#131d28;display:flex;align-items:center;
+  font:700 9px/1 "Baskerville Lockdown",serif;letter-spacing:.07em;color:#8fa0ad;box-shadow:inset 0 -1px 0 rgba(90,110,130,.3);}
+.rg .r-row{position:absolute;left:0;width:430px;height:22.6px;display:flex;align-items:center;font:400 13px/1 "Baskerville Lockdown",serif;}
+.rg .r-row.alt{background:rgba(255,255,255,.022);}
+.rg .c1{width:108px;padding-left:18px;color:#e9e3d2;text-align:left;}
+.rg .c2{width:125px;text-align:center;color:#e9e3d2;}
+.rg .c3{width:105px;text-align:center;}
+.rg .c4{width:92px;text-align:center;font-weight:700;}
+.rg .r-thead .c1{color:#8fa0ad;}
+.rg .premio{color:#55c07e;}
+.rg .penalita{color:#e85c52;}
+/* pulsanti azione */
+.rg .r-acts{left:16px;top:400px;width:567px;height:84px;display:flex;gap:10px;}
+.rg .r-btn{flex:1;border-radius:11px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;
+  font:700 13px/1.12 "Baskerville Lockdown",serif;text-align:center;letter-spacing:.01em;}
+.rg .r-btn svg{font-size:23px;margin-bottom:1px;}
+.rg .r-btn.green{background:linear-gradient(180deg,#1b5a3a,#123f29);color:#e8f6ec;box-shadow:inset 0 0 0 1.5px rgba(70,190,120,.6),0 3px 8px rgba(0,0,0,.4);}
+.rg .r-btn.green svg{color:#7ee6a6;}
+.rg .r-btn.blue{background:linear-gradient(180deg,#123a58,#0c2a42);color:#e4f0f8;box-shadow:inset 0 0 0 1.5px rgba(70,150,210,.55),0 3px 8px rgba(0,0,0,.4);}
+.rg .r-btn.blue svg{color:#6fb6e6;}
+.rg .r-btn.gold{background:linear-gradient(180deg,#4a3410,#2c2008);color:#f4dfa0;box-shadow:inset 0 0 0 1.5px rgba(200,160,70,.6),0 3px 8px rgba(0,0,0,.4);}
+.rg .r-btn.gold svg{color:#ffd86a;}
+.rg .r-btn.red{background:linear-gradient(180deg,#6a2224,#481618);color:#f7e2e2;box-shadow:inset 0 0 0 1.5px rgba(200,80,80,.6),0 3px 8px rgba(0,0,0,.4);}
+.rg .r-btn.red svg{color:#ff8a82;}
+.rg .r-btn.slate{background:linear-gradient(180deg,#1b2735,#121c28);color:#e2eaf1;box-shadow:inset 0 0 0 1.5px rgba(90,110,130,.5),0 3px 8px rgba(0,0,0,.4);}
+.rg .r-btn.slate svg{color:#b9c6d2;}
+`;
+
+function RegiaMaster() {
+  const scale = useScale(768, 512);
+  const pct = Math.max(0, Math.min(1, MASTER.current / MASTER.goal));
+  const [tab, setTab] = useState('giocatori');
+
+  return (
+    <div className="lkd"><style>{CSS + CSS_REGIA}</style>
+      <div className="rg" style={{ transform: `scale(${scale})` }}>
+        {/* header */}
+        <div className="a r-ttl">REGIA MASTER</div>
+        <div className="a r-sub">GESTISCI LA PARTITA</div>
+        <img className="a" src={`${LK}logo-lockdown-t.png`} alt="LOCKDOWN" style={{ left: 294, top: 16, width: 180, height: 46 }} />
+        <div className="a r-by">by IDEAeventi</div>
+
+        {/* tabs */}
+        <div className="a r-tabs" role="tablist">
+          {TABS.map(t => {
+            const Ic = TAB_ICON[t.id];
+            return (
+              <button key={t.id} role="tab" aria-selected={tab === t.id}
+                className={`r-tab${tab === t.id ? ' on' : ''}`} onClick={() => setTab(t.id)}>
+                <Ic /> {t.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* colonna destra: MASTER + ANDAMENTO PARTITA */}
+        <div className="a r-right" />
+        <div className="a r-mttl">MASTER</div>
+        <div className="a r-mval" aria-label={`Master: ${fmt(MASTER.current)} di ${fmt(MASTER.goal)} Lock-Euro`}>
+          <Lock size={16} />{fmt(MASTER.current)} <span className="goal">/ {fmt(MASTER.goal)}</span>
+        </div>
+        <div className="a r-mbar"><i style={{ width: `${pct * 100}%` }} /></div>
+        <div className="a r-rdiv" />
+        <div className="a r-andt">ANDAMENTO PARTITA</div>
+        <div className="a r-tl">
+          <div className="r-step first on">
+            <span className="dot" />
+            <span className="lbl"><b>Cucina</b><span>Valutazione</span></span>
+          </div>
+          {ANDAMENTO.map(r => (
+            <div className="r-step" key={r}>
+              <span className="dot" />
+              <span className="lbl">{r}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* colonna sinistra: miniatura stanza attiva + stato */}
+        <div className="a r-left">
+          <img className="r-thumb" src={`${LK}room-thumb-cucina.png`} alt="Stanza attuale: Cucina" />
+          <div className="r-lcap">STANZA ATTUALE</div>
+          <div className="r-lval">Cucina</div>
+          <div className="r-licon"><IClipboard /></div>
+          <div className="r-lcap" style={{ marginTop: 10 }}>FASE ATTUALE</div>
+          <div className="r-lval">Valutazione</div>
+        </div>
+
+        {/* tabella RISPOSTE DEI GIOCATORI */}
+        <div className="a r-tbl">
+          <div className="r-tcap">RISPOSTE DEI GIOCATORI</div>
+          <div className="r-thead">
+            <div className="c1">GIOCATORE</div><div className="c2">N. RICETTE VALIDE</div>
+            <div className="c3">ESITO</div><div className="c4">VARIAZIONE</div>
+          </div>
+          {REGIA_ROWS.map((r, i) => {
+            const o = cucinaOutcome(r.valid);
+            return (
+              <div className={`r-row${i % 2 ? ' alt' : ''}`} key={r.name} style={{ top: 66 + i * 22.6 }}>
+                <div className="c1">{r.name}</div>
+                <div className="c2">{r.valid}</div>
+                <div className={`c3 ${o.kind}`}>{o.label}</div>
+                <div className={`c4 ${o.kind}`}>{o.delta > 0 ? o.delta : Math.abs(o.delta)}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* pulsanti azione */}
+        <div className="a r-acts">
+          <button className="r-btn green"><ICheck />Conferma<br />valutazione</button>
+          <button className="r-btn blue"><INext />Prossima<br />stanza</button>
+          <button className="r-btn gold"><IBolt />Colpo di scena</button>
+          <button className="r-btn red"><IMinus />Penalità</button>
+          <button className="r-btn slate"><IPause />Pausa</button>
+        </div>
       </div>
     </div>
   );
