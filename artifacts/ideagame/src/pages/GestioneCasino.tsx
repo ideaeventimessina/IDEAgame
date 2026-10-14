@@ -15,7 +15,6 @@ import { motion, AnimatePresence, useMotionValue, animate } from 'framer-motion'
 import { QRCodeSVG } from 'qrcode.react';
 import { PlayerAvatar, fileToAvatarDataUrl } from '../components/PlayerAvatar';
 import { BlackjackPhone, BlackjackMonitor, BlackjackRegia, BlackjackTablesView } from './GestioneBlackjack';
-import { HorsePhone, HorseMonitor, HorseRegia, HorseTablesView } from './GestioneIppodromo';
 import { CorsaSiciliaMonitor, CorsaSiciliaPhone, CorsaSiciliaRegia } from './GestioneCorsaSiciliana';
 import { IppodromoSprintMonitor, IppodromoSprintPhone, IppodromoSprintRegia } from './GestioneIppodromoSprint';
 
@@ -117,13 +116,6 @@ export default function GestioneCasino() {
   if (bjPlay) return <BlackjackPhone displayCode={bjPlay.toUpperCase()} />;
   if (bjRegia) return <BlackjackRegia displayCode={bjRegia.toUpperCase()} />;
   if (bjTables) return <BlackjackTablesView sessionId={bjTables} />;
-  const horse = params.get('horse');      // monitor 80" ippodromo
-  const hPlay = params.get('hplay');       // telefono giocatore ippodromo
-  const hRegia = params.get('hregia');     // regia tavolo ippodromo
-  const hTables = params.get('htables');   // hub elenco/crea tavoli ippodromo
-  if (horse) return <HorseMonitor displayCode={horse.toUpperCase()} />;
-  if (hPlay) return <HorsePhone displayCode={hPlay.toUpperCase()} />;
-  if (hRegia) return <HorseRegia displayCode={hRegia.toUpperCase()} />;
   const sic = params.get('sic');          // monitor 80" Corsa Siciliana
   const sicPlay = params.get('sicplay');   // telefono giocatore Corsa Siciliana
   const sicRegia = params.get('sicregia'); // regia tavolo Corsa Siciliana
@@ -139,7 +131,6 @@ export default function GestioneCasino() {
   if (sprint) return <IppodromoSprintMonitor displayCode={sprint.toUpperCase()} host={sicHost} />;
   if (sprintPlay) return <IppodromoSprintPhone displayCode={sprintPlay.toUpperCase()} />;
   if (sprintRegia) return <IppodromoSprintRegia displayCode={sprintRegia.toUpperCase()} />;
-  if (hTables) return <HorseTablesView sessionId={hTables} />;
   if (tableCode) return <RouletteTableView displayCode={tableCode.toUpperCase()} />;
   if (seatCode) return <SeatController seatCode={seatCode.toUpperCase()} />;
   if (playerCode) return <PlayerView code={playerCode.toUpperCase()} />;
@@ -426,23 +417,20 @@ export function MasterView({ sessionId }: { sessionId: string }) {
   const [showDealerQr, setShowDealerQr] = useState(false);
   const [gts, setGts] = useState<GameTableState['table'][]>([]);
   const [bjts, setBjts] = useState<{ id: string; name: string; displayCode: string }[]>([]);
-  const [hts, setHts] = useState<{ id: string; name: string; displayCode: string }[]>([]);
   const [sts, setSts] = useState<{ id: string; name: string; displayCode: string }[]>([]);
   const [sprts, setSprts] = useState<{ id: string; name: string; displayCode: string }[]>([]);
   const [dim, setDim] = useState({ w: typeof window !== 'undefined' ? window.innerWidth : 1280, h: typeof window !== 'undefined' ? window.innerHeight : 800 });
   useEffect(() => { const r = () => setDim({ w: window.innerWidth, h: window.innerHeight }); window.addEventListener('resize', r); return () => window.removeEventListener('resize', r); }, []);
   const loadGts = useCallback(() => fetch(`${API}/gestione/casino/sessions/${sessionId}/game-tables`).then(r => r.ok ? r.json() : null).then(d => { if (d) setGts(d.tables); }).catch(() => {}), [sessionId]);
   const loadBjts = useCallback(() => fetch(`${API}/gestione/casino/sessions/${sessionId}/bj-tables`).then(r => r.ok ? r.json() : null).then(d => { if (d) setBjts(d.tables); }).catch(() => {}), [sessionId]);
-  const loadHts = useCallback(() => fetch(`${API}/gestione/casino/sessions/${sessionId}/horse-tables`).then(r => r.ok ? r.json() : null).then(d => { if (d) setHts(d.tables); }).catch(() => {}), [sessionId]);
   const loadSts = useCallback(() => fetch(`${API}/gestione/casino/sessions/${sessionId}/sicilia-tables`).then(r => r.ok ? r.json() : null).then(d => { if (d) setSts(d.tables); }).catch(() => {}), [sessionId]);
   const loadSprts = useCallback(() => fetch(`${API}/gestione/casino/sessions/${sessionId}/sprint-tables`).then(r => r.ok ? r.json() : null).then(d => { if (d) setSprts(d.tables); }).catch(() => {}), [sessionId]);
-  useEffect(() => { const run = () => { loadGts(); loadBjts(); loadHts(); loadSts(); loadSprts(); }; run(); const t = setInterval(run, 3000); return () => clearInterval(t); }, [loadGts, loadBjts, loadHts, loadSts, loadSprts]);
+  useEffect(() => { const run = () => { loadGts(); loadBjts(); loadSts(); loadSprts(); }; run(); const t = setInterval(run, 3000); return () => clearInterval(t); }, [loadGts, loadBjts, loadSts, loadSprts]);
 
   const AB = (import.meta.env.BASE_URL as string) || '/';
   const addTable = async () => { setBusy(true); try { await api(`/gestione/casino/sessions/${sessionId}/tables`, {}); } finally { setBusy(false); } };
   const addRoulette = async () => { setBusy(true); try { await api(`/gestione/casino/sessions/${sessionId}/game-tables`, { type: 'roulette', seats: 10 }); await loadGts(); } finally { setBusy(false); } };
   const addBlackjack = async () => { setBusy(true); try { await api(`/gestione/casino/sessions/${sessionId}/bj-tables`, { name: 'Tavolo Blackjack' }); await loadBjts(); } finally { setBusy(false); } };
-  const addHorse = async () => { setBusy(true); try { await api(`/gestione/casino/sessions/${sessionId}/horse-tables`, { name: 'Tavolo Ippodromo' }); await loadHts(); } finally { setBusy(false); } };
   const addSicilia = async () => { setBusy(true); try { await api(`/gestione/casino/sessions/${sessionId}/sicilia-tables`, { name: 'Corsa Siciliana' }); await loadSts(); } finally { setBusy(false); } };
   const addSprint = async () => { setBusy(true); try { await api(`/gestione/casino/sessions/${sessionId}/sprint-tables`, { name: 'Ippodromo Sprint' }); await loadSprts(); } finally { setBusy(false); } };
 
@@ -535,7 +523,6 @@ export function MasterView({ sessionId }: { sessionId: string }) {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <button className="gbtn sm" onClick={addRoulette} disabled={busy}>＋ Roulette</button>
               <button className="gbtn sm" onClick={addBlackjack} disabled={busy}>＋ Blackjack</button>
-              <button className="gbtn sm" onClick={addHorse} disabled={busy}>＋ Cavalli</button>
               <button className="gbtn sm" onClick={addSicilia} disabled={busy}>＋ Corsa Siciliana</button>
               <button className="gbtn sm" onClick={addSprint} disabled={busy}>＋ Ippodromo Sprint</button>
             </div>
@@ -561,17 +548,6 @@ export function MasterView({ sessionId }: { sessionId: string }) {
                   </div>
                 </div>
               ))}
-              {hts.map(t => (
-                <div className="tile" key={t.id}>
-                  <img className="thumb" src={`${AB}casino/regia/roulette.png`} alt="" />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="nm">🐎 {t.name}</div>
-                    <div className="cd">Codice {t.displayCode}</div>
-                    <a className="lnk" href={`${ORIGIN}gestione/casino?horse=${t.displayCode}`} target="_blank" rel="noreferrer">🖥️ 80″ ↗</a>
-                    <a className="lnk" style={{ marginLeft: 10 }} href={`${ORIGIN}gestione/casino?hregia=${t.displayCode}`} target="_blank" rel="noreferrer">🎛️ Regia ↗</a>
-                  </div>
-                </div>
-              ))}
               {sts.map(t => (
                 <div className="tile" key={t.id}>
                   <img className="thumb" src={`${AB}corsa-siciliana/crops/medaglione-denari.png`} alt="" />
@@ -594,7 +570,7 @@ export function MasterView({ sessionId }: { sessionId: string }) {
                   </div>
                 </div>
               ))}
-              {gts.length === 0 && bjts.length === 0 && hts.length === 0 && sts.length === 0 && sprts.length === 0 && <div style={{ color: '#9c8a5e', textAlign: 'center', marginTop: 40, font: '400 18px var(--serif)' }}>Crea un tavolo e aprilo sull'80″.</div>}
+              {gts.length === 0 && bjts.length === 0 && sts.length === 0 && sprts.length === 0 && <div style={{ color: '#9c8a5e', textAlign: 'center', marginTop: 40, font: '400 18px var(--serif)' }}>Crea un tavolo e aprilo sull'80″.</div>}
             </div>
           </div>
         </div>
@@ -1038,11 +1014,11 @@ export function PlayerView({ code }: { code: string }) {
   //    (niente QR per postazione). Un solo QR d'ingresso -> qui scegli il tavolo. ──
   const sid = data?.sessionId;
   const suiteLink = useSuiteLink(sid);   // PONTE SUITE: tasto per tornare al feed
-  const [tbls, setTbls] = useState<{ roulette: any[]; bj: any[]; horse: any[]; sicilia: any[]; sprint: any[] }>({ roulette: [], bj: [], horse: [], sicilia: [], sprint: [] });
+  const [tbls, setTbls] = useState<{ roulette: any[]; bj: any[]; sicilia: any[]; sprint: any[] }>({ roulette: [], bj: [], sicilia: [], sprint: [] });
   useEffect(() => {
     if (!sid) return;
     const g = (path: string) => fetch(`${API}/gestione/casino/sessions/${sid}/${path}`).then(r => r.ok ? r.json() : { tables: [] }).catch(() => ({ tables: [] }));
-    const load = async () => { const [r, b, h, s, sp] = await Promise.all([g('game-tables'), g('bj-tables'), g('horse-tables'), g('sicilia-tables'), g('sprint-tables')]); setTbls({ roulette: r.tables ?? [], bj: b.tables ?? [], horse: h.tables ?? [], sicilia: s.tables ?? [], sprint: sp.tables ?? [] }); };
+    const load = async () => { const [r, b, s, sp] = await Promise.all([g('game-tables'), g('bj-tables'), g('sicilia-tables'), g('sprint-tables')]); setTbls({ roulette: r.tables ?? [], bj: b.tables ?? [], sicilia: s.tables ?? [], sprint: sp.tables ?? [] }); };
     load(); const t = setInterval(load, 3000); return () => clearInterval(t);
   }, [sid]);
 
@@ -1079,13 +1055,12 @@ export function PlayerView({ code }: { code: string }) {
       <div style={{ opacity: 0.5, marginTop: -6 }}>le tue fiche</div>
 
       {/* Siediti a un tavolo — scelta dal TELEFONO del giocatore (niente QR per postazione) */}
-      {(tbls.roulette.length + tbls.bj.length + tbls.horse.length + tbls.sicilia.length + tbls.sprint.length) > 0 && (
+      {(tbls.roulette.length + tbls.bj.length + tbls.sicilia.length + tbls.sprint.length) > 0 && (
         <div style={{ width: '100%', maxWidth: 360, background: '#ffffff0a', border: `1px solid ${GOLD}55`, borderRadius: 20, padding: 14 }}>
           <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 10, textAlign: 'center', color: GOLD }}>🎲 Siediti a un tavolo</div>
           {[
             ...tbls.roulette.map((t) => ({ k: 'r' + t.id, icon: '🎡', name: t.name, meta: `${Object.values(t.seats ?? {}).filter((s: any) => !s.playerId).length} posti liberi`, go: () => sitRoulette(t.displayCode) })),
             ...tbls.bj.map((t) => ({ k: 'b' + t.id, icon: '🂡', name: t.name, meta: t.occupied != null ? `${Math.max(0, (t.seatsN ?? 7) - t.occupied)} posti liberi` : 'blackjack', go: () => { window.location.href = `${ORIGIN}gestione/casino?bjplay=${t.displayCode}`; } })),
-            ...tbls.horse.map((t) => ({ k: 'h' + t.id, icon: '🐎', name: t.name, meta: `${t.players ?? 0} in gioco`, go: () => { window.location.href = `${ORIGIN}gestione/casino?hplay=${t.displayCode}`; } })),
             ...tbls.sicilia.map((t) => ({ k: 's' + t.id, icon: '🏇', name: t.name, meta: `${t.players ?? 0} in gioco`, go: () => { window.location.href = `${ORIGIN}gestione/casino?sicplay=${t.displayCode}`; } })),
             ...tbls.sprint.map((t) => ({ k: 'sp' + t.id, icon: '🏇', name: t.name, meta: `${t.players ?? 0}/6 piloti · gara interattiva`, go: () => { window.location.href = `${ORIGIN}gestione/casino?sprintplay=${t.displayCode}`; } })),
           ].map((row) => (
