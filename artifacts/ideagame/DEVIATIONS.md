@@ -27,6 +27,15 @@ pacchetto `04-DECISIONI-E-CORREZIONI.md`).
   recuperabile. Da collegare al recupero reale quando si tocca la logica di sessione (ora → /home-setup).
 - **"Scopri i giochi"** → /demo (vetrina); nel mockup non è specificata la destinazione.
 
+## 05-02 MODALITÀ
+- **Sfondi card**: il mockup usa foto dipinte per scena (salotto, discoteca, videochiamata, tavolo
+  da carte, pubblico). Rese con gradienti tinta per mantenere la tonalità dominante e la legibilità
+  del testo in codice. Scelta autonoma e leggera; le zone restano ~24-54% nel compare (atteso).
+- **Icone**: Casa=Home, Eventi=MapPin, Lockdown=Lock, Burraco=Spade, Casinò=Crown. Il mockup mostra
+  per Casinò un pedone di scacchi (Lucide non ha scacchi): Crown come sostituto "giochi di società".
+- **Modalità mostrate**: allineate al mockup (Casa/Eventi + Lockdown/Burraco/Casinò). La vecchia
+  card "Gestione giochi" generica è stata sostituita dalle due voci reali Burraco e Casinò.
+
 ## Note di salute (non scostamenti, ambientali)
 `health.mjs` esce 1 su OGNI rotta per `/api/auth/me`, `/api/home/music-config` e socket.io: nel
 worktree gira solo il frontend (vite), senza backend. Non sono regressioni introdotte dal redesign.

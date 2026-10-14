@@ -32,8 +32,17 @@ Prima: vecchia hero "Jonny's World" (tutt'altro). Ora: palco fisso 752×500 fede
   chiamate backend (`/api/auth/me`, `/api/home/music-config`, socket.io) che falliscono perché
   nel worktree NON gira il backend — identiche su ogni rotta (verificato su `/login`). Ambientali.
 
+### [FATTO] 05-02 MODALITÀ — `src/pages/ModeSelect.tsx`
+Prima: 4 card verticali (Home/Live/Gestione/Lockdown) su grande bg. Ora: palco fisso fedele —
+2 card grandi (Gioca a casa / Eventi e locali) + divider "ALTRE MODALITÀ" + 3 card piccole
+(Lockdown / Burraco / Casinò). Reflow telefono (1 colonna). Routing e **flusso login Live preservati**
+(useAuth + redirect /login per ruoli non abilitati). Casa→/home-setup, Eventi→LIVE_DEST(login),
+Lockdown→/home-setup?mode=lockdown, Burraco→/gestione/burraco, Casinò→/gestione/casino.
+Typecheck exit 0. Compare per zone (blur4, g2): subtitle 54% · casa 50% · eventi 42% · divider 18% ·
+lockdown 40% · burraco 31% · casino 24% (residuo = scena dipinta vs gradiente tinta, atteso).
+
 ## DA FARE (in ordine di priorità del caller)
-1. 05-02 ModeSelect · 05-03 CreaSerata (step1) · 05-04 ScegliGiochi (step2)
+1. 05-03 CreaSerata (step1) · 05-04 ScegliGiochi (step2)
 2. Tavola 06 (lobby/ruota + dispositivi)
 3. Tavola 07/10 (telefono ingresso+quiz, stati)
 4. Tavola 08/09 (monitor giochi display)
