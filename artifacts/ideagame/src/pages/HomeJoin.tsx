@@ -3231,8 +3231,8 @@ const LKD_CSS = `
 @font-face{font-family:"Baskerville Lockdown";font-weight:400;font-style:normal;src:url(${LKA}casino/libre-baskerville-latin-400-normal.woff2) format("woff2");font-display:swap}
 @font-face{font-family:"Baskerville Lockdown";font-weight:700;font-style:normal;src:url(${LKA}casino/libre-baskerville-latin-700-normal.woff2) format("woff2");font-display:swap}
 .lkp{font-family:"Baskerville Lockdown",Georgia,serif;position:relative;width:100%;border-radius:26px;overflow:hidden;background:${LOCK_INK};box-shadow:0 18px 50px rgba(0,0,0,.55),inset 0 0 0 1px rgba(201,151,47,.28);}
-.lkp .scene{position:absolute;inset:0;background-size:cover;background-position:center;}
-.lkp .scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(4,8,12,.30) 0%,rgba(4,8,12,.70) 44%,${LOCK_INK} 92%);}
+.lkp .scene{position:absolute;inset:-22px;background-size:cover;background-position:center;filter:blur(8px) brightness(.52) saturate(1.12);transform:scale(1.12);}
+.lkp .scrim{position:absolute;inset:0;background:linear-gradient(180deg,${LOCK_INK} 0%,rgba(4,8,12,.95) 30%,rgba(4,8,12,.82) 50%,rgba(4,8,12,.86) 66%,${LOCK_INK} 90%);}
 .lkp .body{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:13px;padding:16px 15px 20px;min-height:380px;}
 .lkp .brand{height:34px;width:auto;margin-top:2px;filter:drop-shadow(0 2px 6px rgba(0,0,0,.8));}
 .lkp .eyebrow{font:700 11px/1 "Baskerville Lockdown",serif;letter-spacing:.26em;text-transform:uppercase;color:${LOCK_GOLD_DEEP};text-align:center;}
@@ -3288,7 +3288,7 @@ const LKD_CSS = `
 `;
 
 const LOCK_SCENES: Record<string, string> = {
-  cucina: 'kitchen.png',
+  cucina: 'scene-cucina.jpg',
   biblioteca: 'scene-biblioteca.jpg',
   salone: 'scene-salone.jpg',
   balcone: 'scene-balcone.jpg',
@@ -3447,7 +3447,7 @@ function LockdownController({ payload, player, session }: {
     const f = roomId ? LOCK_SCENES[roomId] : undefined;
     return f ? `${LK_ASSET}${f}` : (fallback ? `${LK_ASSET}${fallback}` : '');
   };
-  const brand = <img className="brand" src={`${LK_ASSET}logo-lockdown.png`} alt="LOCKDOWN — IDEAeventi" />;
+  const brand = <img className="brand" src={`${LK_ASSET}logo-lockdown-t.png`} alt="LOCKDOWN — IDEAeventi" />;
   const renderShell = (bg: string, children: React.ReactNode, onMenu?: () => void) => (
     <div className="lkp">
       <style>{LKD_CSS}</style>
@@ -3481,7 +3481,7 @@ function LockdownController({ payload, player, session }: {
   const myBalance = me?.lockEuro ?? 0;
   const others = ls.players.filter(p => p.id !== player.id);
   const typeLabel = roomId ? (LOCK_TYPE_LABEL[roomId] ?? 'SFIDA') : 'SFIDA';
-  const bg = sceneUrl(roomId, 'house.png');
+  const bg = sceneUrl(roomId, 'scene-accesso.jpg');
 
   // ── Flag di gioco (INVARIATI rispetto all'originale) ───────────────────────────
   const hasChallenge = !!ch && (ls.phase === 'challenge' || ls.phase === 'result');
@@ -3555,7 +3555,7 @@ function LockdownController({ payload, player, session }: {
   if (ls.status === 'ended' || ls.phase === 'ended') {
     const iWon = ls.winnerId === player.id;
     const spy = ls.spyRevealed ? ls.players.find(p => p.id === ls.spyPlayerId) : null;
-    return renderShell(`${LK_ASSET}finale.png`, (
+    return renderShell(`${LK_ASSET}scene-accesso.jpg`, (
       <>
         {brand}
         <div className="text-6xl" style={{ marginTop: 6 }}>{iWon ? '👑' : '🏁'}</div>
@@ -3681,7 +3681,7 @@ function LockdownController({ payload, player, session }: {
 
   // ── MAPPA (tavola 05) — fase intro stanza ─────────────────────────────────────
   if (ls.phase === 'room_intro') {
-    return renderShell(`${LK_ASSET}house.png`, (
+    return renderShell(`${LK_ASSET}scene-accesso.jpg`, (
       <>
         {brand}
         {balancePill}
@@ -3715,7 +3715,7 @@ function LockdownController({ payload, player, session }: {
 
   // ── COLPO DI SCENA (dpcm) ─────────────────────────────────────────────────────
   if (ls.phase === 'dpcm') {
-    return renderShell(`${LK_ASSET}event-colpo.png`, (
+    return renderShell('', (
       <>
         {brand}
         <div className="eyebrow" style={{ color: LOCK_PURPLE }}>📜 Colpo di scena</div>

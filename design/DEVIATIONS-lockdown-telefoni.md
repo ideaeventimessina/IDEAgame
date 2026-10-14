@@ -51,11 +51,18 @@ e il socket `home:lockdown_update`. Nessun endpoint nuovo è stato introdotto.
 4. **Foto giocatori**: le tavole mostrano foto reali; il DTO `lockdownState.players`
    espone solo `avatarColor` (niente `avatarUrl` per gli altri). Avatar resi con
    iniziali su colore. → collaudo live: aggiungere avatarUrl al DTO se desiderato.
-5. **Sfondi illustrati per stanza**: non esistevano come asset. Ritagliati dai mockup
-   (clean-scene, senza testo) e installati in `public/lockdown/scene-*.jpg`
-   (studio/cinema/balcone/palestra/gabinetto/ufficio/biblioteca/salone/accesso/spia).
-   `cucina`→`kitchen.png`, mappa→`house.png`, finale→`finale.png`, colpo→`event-colpo.png`
-   (asset già presenti). `dieci_sfumature` non ha mockup dedicato → vignette scura CSS.
+5. **Sfondi illustrati per stanza**: non esistevano come asset puliti. Ritagliati
+   dai mockup in regioni **senza testo** e installati in `public/lockdown/scene-*.jpg`
+   (cucina/biblioteca/salone/balcone/cinema/studio/gabinetto/palestra/ufficio/accesso/spia).
+   Le scene sono rese con trattamento **blur + scurimento** (`filter: blur(8px)
+   brightness(.52)`) sotto uno scrim verticale forte: diventano ambiente (come le
+   tavole, dove la scena è molto scurita sotto i pannelli) e **nessun testo del mockup
+   resta leggibile** (regola "mai testo-su-testo" rispettata). `dieci_sfumature` non ha
+   mockup dedicato → vignette scura CSS.
+   NB: gli asset legacy `kitchen.png`/`house.png`/`finale.png`/`event-colpo.png` sono in
+   realtà **screenshot di mockup con testo bruciato** (usati dalla `GestioneLockdown`
+   con strisce coprenti): NON riusati come sfondo qui. Mappa/finale usano `scene-accesso`,
+   colpo-di-scena usa la vignette. Logo header = `logo-lockdown-t.png` (versione trasparente).
 6. **MIMO/compagno (salone, tav. 09)**: il DTO non contiene il ruolo mimo né la coppia.
    Il titolo segreto (`challenge.answer`, non redatto dal server) è mostrato con
    **hold-to-reveal** per non spoilerarlo passivamente; "Indovinato" invia una
