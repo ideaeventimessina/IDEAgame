@@ -36,6 +36,24 @@ pacchetto `04-DECISIONI-E-CORREZIONI.md`).
 - **Modalità mostrate**: allineate al mockup (Casa/Eventi + Lockdown/Burraco/Casinò). La vecchia
   card "Gestione giochi" generica è stata sostituita dalle due voci reali Burraco e Casinò.
 
+## 05-03 / 05-04 CREA SERATA + SCEGLI GIOCHI
+- **Da form unico a wizard 3 passi**: il mockup mostra lo stepper Serata/Giochi/Dispositivi. La
+  logica di creazione sessione è invariata; cambia solo l'impaginazione in passi.
+- **Nome serata / Pubblico**: campi nuovi del mockup. "Nome serata" alimenta il titolo della sessione
+  Live (title); nella create HOME il payload resta `hostName`+`selectedGames`+`liveCode` (nessun campo
+  sconosciuto inviato, per non rompere la validazione backend). "Pubblico=Famiglia" blocca Adult Only.
+- **Adult Only**: mostrato come card VISIBILE ma bloccata (badge 18+ rosso + lucchetto) quando il
+  pubblico è Famiglia — coerente col mockup e con la spec ("non nasconderlo solo dopo la creazione").
+  Selezionabile solo con pubblico Adulti.
+- **Conteggio selezionati**: il mockup disegna "5 giochi selezionati" con alcune card pre-spuntate;
+  i numeri sono esempi (04-DECISIONI). Qui il conteggio è reale: default HOME = nessun gioco pre-scelto.
+- **Step 3 "Dispositivi"**: il mockup di dettaglio è nella tavola 06; qui è un pannello riepilogativo
+  (monitor/audio/connessione) che porta a "Crea stanza". Da approfondire con la tavola 06.
+- **Sfondi card gioco**: scene dipinte rese con gradienti tinta per gioco (come per 05-02). Icone
+  Lucide: Quizzone=Brain, Coppie=Heart, SaraMusica=Music, Percorso=Laugh, Ballo=Activity,
+  Parola=MessageCircleQuestion, Karaoke=Mic, Adult=18+.
+- **Pulsante INDIETRO**: aggiunto (non nel mockup) per navigare tra i passi; utile e non invasivo.
+
 ## Note di salute (non scostamenti, ambientali)
 `health.mjs` esce 1 su OGNI rotta per `/api/auth/me`, `/api/home/music-config` e socket.io: nel
 worktree gira solo il frontend (vite), senza backend. Non sono regressioni introdotte dal redesign.

@@ -2,98 +2,169 @@
 
 /**
  * HomeSetupPage — /home-setup
- * Crea una nuova stanza HOME MODE con configurazione reale.
- * Visually matches HomeRoom aesthetic. No visual redesign.
+ * Wizard "Crea serata" in 3 passi (Serata · Giochi · Dispositivi), fedele ai
+ * mockup 05-03 / 05-04. Il motore resta lo stesso: crea una sessione HOME
+ * (e, in Live, la sessione Live collegata) e porta alla lobby.
  */
 import { useState } from 'react';
 import { useLocation } from 'wouter';
-import { motion } from 'framer-motion';
-import { ChevronLeft, Loader2 } from 'lucide-react';
+import {
+  Pencil, User, Users, ChevronDown, ChevronRight, ChevronLeft, Check, Lock,
+  Brain, Heart, Music, Laugh, Activity, MessageCircleQuestion, Mic, X, Loader2,
+  Volume2, MonitorSmartphone, Wifi,
+} from 'lucide-react';
+import ShowStage from '@/components/ShowStage';
+import ShellHeader from '@/components/ShellHeader';
+import StageFit from '@/components/StageFit';
 
-const BASE = (import.meta.env.BASE_URL as string) ?? '/';
-function pub(path: string) {
-  const b = BASE.endsWith('/') ? BASE.slice(0, -1) : BASE;
-  return `${b}${path}`;
-}
+type GameDef = {
+  slug: string;
+  label: string;
+  desc: string;
+  Icon: React.FC<{ size?: number; strokeWidth?: number }>;
+  tint: string;
+  border: string;
+  adult?: boolean;
+};
 
-const GAME_OPTIONS = [
-  { slug: 'percorso-a-risate',  label: 'Percorso a Risate',  emoji: '😂' },
-  { slug: 'gioco-coppie',       label: 'Gioco delle Coppie', emoji: '💞' },
-  { slug: 'quizzone',           label: 'Quizzone',            emoji: '⭐' },
-  { slug: 'saramusica',         label: 'SaraMusica',          emoji: '🎵' },
-  { slug: 'adult-only',         label: 'Adult Only',          emoji: '🔞' },
-  { slug: 'sfida-ballo',        label: 'Sfida di Ballo',      emoji: '💃' },
-  { slug: 'parola-alle-spalle', label: 'Parola alle Spalle',  emoji: '💬' },
-  { slug: 'karaoke-battle',     label: 'Karaoke Battle',      emoji: '🎤' },
+const GAMES: GameDef[] = [
+  { slug: 'quizzone',           label: 'Quizzone',           desc: 'Domande, curiosità\ne colpi di scena', Icon: Brain,                   tint: 'linear-gradient(150deg,rgba(90,40,160,0.5),rgba(12,8,24,0.92))',  border: 'rgba(168,110,246,0.5)' },
+  { slug: 'gioco-coppie',       label: 'Gioco delle Coppie', desc: 'Quanto vi conoscete\ndavvero?',        Icon: Heart,                   tint: 'linear-gradient(150deg,rgba(190,50,130,0.5),rgba(24,8,20,0.92))', border: 'rgba(240,110,190,0.5)' },
+  { slug: 'saramusica',         label: 'SaraMusica',         desc: 'Indovina, canta,\nscatena la musica!', Icon: Music,                   tint: 'linear-gradient(150deg,rgba(30,90,180,0.5),rgba(8,14,30,0.92))',  border: 'rgba(90,160,240,0.5)' },
+  { slug: 'percorso-a-risate',  label: 'Percorso a Risate',  desc: 'Mini giochi, sfide\ne tanto divertimento', Icon: Laugh,                 tint: 'linear-gradient(150deg,rgba(190,120,30,0.5),rgba(24,14,6,0.92))', border: 'rgba(240,186,90,0.55)' },
+  { slug: 'sfida-ballo',        label: 'Sfida di Ballo',     desc: 'Muoviti, imita,\nfai punti!',          Icon: Activity,                tint: 'linear-gradient(150deg,rgba(30,150,90,0.5),rgba(8,24,16,0.92))',  border: 'rgba(70,210,140,0.5)' },
+  { slug: 'parola-alle-spalle', label: 'Parola alle Spalle', desc: 'Spiega, fai indovinare,\nnon dire la parola!', Icon: MessageCircleQuestion, tint: 'linear-gradient(150deg,rgba(30,90,190,0.5),rgba(8,14,30,0.92))', border: 'rgba(90,150,240,0.5)' },
+  { slug: 'karaoke-battle',     label: 'Karaoke Battle',     desc: 'Canta, sfida, fai volare\nla serata!', Icon: Mic,                     tint: 'linear-gradient(150deg,rgba(170,40,150,0.5),rgba(20,8,26,0.92))', border: 'rgba(220,100,210,0.5)' },
+  { slug: 'adult-only',         label: 'Adult Only',         desc: 'Solo per un pubblico\nadatto',         Icon: Lock,                    tint: 'linear-gradient(150deg,rgba(60,20,30,0.6),rgba(14,6,8,0.95))',    border: 'rgba(120,60,70,0.5)', adult: true },
 ];
 
-
-/* LA PROVA DALLO SHOWROOM DI IDEAEVENTI — 15/9/2026. Andrea: «su ideagame
-   fargli provare direttamente un gioco dove bloccando le funzioni ia e quindi
-   i giochi che funzionano solo con quella». Con ?prova=1 la famiglia entra
-   già con i giochi che non dipendono dall'AI scelti e il nome compilato: un
-   tocco e si gioca. Quizzone e SaraMusica, che domande e canzoni le genera
-   l'AI, in prova non compaiono; nemmeno Adult Only, in una sala con la famiglia. */
 const IN_PROVA = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('prova') === '1';
 const SOLO_CON_AI = new Set(['quizzone', 'saramusica']);
-const GIOCHI_VISIBILI = IN_PROVA
-  ? GAME_OPTIONS.filter((g) => !SOLO_CON_AI.has(g.slug) && g.slug !== 'adult-only')
-  : GAME_OPTIONS;
+const AUDIENCES = ['Famiglia', 'Amici', 'Adulti'];
 
-function SceneBg() {
+function Stepper({ step }: { step: number }) {
+  const nodes = [
+    { n: 1, label: 'Serata' },
+    { n: 2, label: 'Giochi' },
+    { n: 3, label: 'Dispositivi' },
+  ];
   return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none" style={{ zIndex: 0 }}>
-      <div className="absolute inset-0" style={{
-        background: 'radial-gradient(ellipse 130% 90% at 50% 100%,rgba(245,182,66,0.2) 0%,rgba(60,20,120,0.55) 30%,#030010 70%)',
-      }}/>
-      <div className="absolute" style={{
-        left: '-8%', top: 0, width: '40%', height: '80%',
-        background: 'conic-gradient(from -6deg at 20% 0%,transparent 0deg,rgba(245,182,66,0.08) 16deg,transparent 32deg)',
-        filter: 'blur(2px)',
-      }}/>
-      <div className="absolute" style={{
-        right: '-8%', top: 0, width: '40%', height: '80%',
-        background: 'conic-gradient(from 6deg at 80% 0%,transparent 0deg,rgba(245,182,66,0.08) 16deg,transparent 32deg)',
-        filter: 'blur(2px)',
-      }}/>
-      <div className="absolute bottom-0 left-0 right-0" style={{
-        height: 3,
-        background: 'linear-gradient(90deg,transparent,rgba(245,182,66,0.5),rgba(168,85,247,0.4),rgba(245,182,66,0.5),transparent)',
-      }}/>
+    <div className="flex items-start justify-center" style={{ gap: 0 }}>
+      {nodes.map((nd, i) => {
+        const done = step > nd.n;
+        const active = step === nd.n;
+        return (
+          <div key={nd.n} className="flex items-start">
+            <div className="flex flex-col items-center" style={{ width: 92 }}>
+              <div
+                className="grid place-items-center rounded-full font-extrabold"
+                style={{
+                  width: 32, height: 32, fontSize: 14,
+                  background: done || active ? 'linear-gradient(180deg,#FCE08B,#E6B85C)' : 'transparent',
+                  border: done || active ? 'none' : '2px solid rgba(255,255,255,0.28)',
+                  color: done || active ? '#241803' : 'rgba(255,255,255,0.5)',
+                }}
+              >
+                {done ? <Check size={17} strokeWidth={3} /> : nd.n}
+              </div>
+              <span className="font-bold" style={{ marginTop: 6, fontSize: 12.5, color: active || done ? '#F7F3E8' : 'rgba(247,243,232,0.5)' }}>
+                {nd.label}
+              </span>
+            </div>
+            {i < nodes.length - 1 && (
+              <span style={{ height: 2, width: 46, marginTop: 15, background: step > nd.n ? 'rgba(230,184,92,0.7)' : 'rgba(255,255,255,0.18)' }} />
+            )}
+          </div>
+        );
+      })}
     </div>
+  );
+}
+
+function GoldButton({ label, onClick, disabled, loading, width }: { label: string; onClick: () => void; disabled?: boolean; loading?: boolean; width?: number | string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled || loading}
+      className="flex items-center justify-center rounded-2xl font-extrabold transition-transform active:scale-[0.99]"
+      style={{
+        height: 54, padding: '0 28px', gap: 10, width,
+        background: disabled ? 'rgba(230,184,92,0.4)' : 'linear-gradient(180deg,#FCE08B 0%,#EDB857 52%,#E0A63F 100%)',
+        border: '1px solid rgba(255,228,150,0.7)', color: '#241803', fontSize: 19,
+        boxShadow: '0 10px 24px rgba(224,166,63,0.35), inset 0 1px 0 rgba(255,255,255,0.5)',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+      }}
+    >
+      {loading ? <Loader2 size={20} className="animate-spin" /> : null}
+      {loading ? 'Creazione...' : label}
+      {!loading ? <ChevronRight size={21} strokeWidth={2.6} /> : null}
+    </button>
   );
 }
 
 export default function HomeSetupPage() {
   const [, navigate] = useLocation();
-  const mode = new URLSearchParams(window.location.search).get('mode');
+  const mode = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('mode') : null;
   const isLive = mode === 'live';
   const isLockdown = mode === 'lockdown';
-  const urlCode = new URLSearchParams(window.location.search).get('code') ?? '';
+  const urlCode = typeof window !== 'undefined' ? (new URLSearchParams(window.location.search).get('code') ?? '') : '';
 
-  const [liveCode, setLiveCode]         = useState(urlCode);
-  const [hostName, setHostName]         = useState(IN_PROVA ? 'Prova in showroom' : '');
+  // ?step=N: utile per anteprima/confronto di un singolo passo del wizard.
+  const initialStep = (() => {
+    const n = typeof window !== 'undefined' ? Number(new URLSearchParams(window.location.search).get('step')) : 1;
+    return n >= 1 && n <= 3 ? n : 1;
+  })();
+  const [step, setStep] = useState(initialStep);
+  const [eventName, setEventName] = useState(IN_PROVA ? 'Prova in showroom' : '');
+  const [hostName, setHostName] = useState('');
+  const [audience, setAudience] = useState('Famiglia');
+  const [liveCode, setLiveCode] = useState(urlCode);
   const [selectedGames, setSelectedGames] = useState<string[]>(() =>
     isLockdown ? ['lockdown'] : (IN_PROVA ? ['gioco-coppie', 'parola-alle-spalle', 'sfida-ballo'] : []));
-  const [loading, setLoading]           = useState(false);
-  const [error, setError]               = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const isFamily = audience === 'Famiglia';
+  // Adult Only resta VISIBILE ma bloccato per il pubblico Famiglia (spec: non nasconderlo
+  // solo dopo aver creato la sessione). In prova showroom famiglia è escluso del tutto.
+  const visibleGames = GAMES.filter((g) => !(IN_PROVA && (SOLO_CON_AI.has(g.slug) || g.adult)));
 
   const toggleGame = (slug: string) => {
-    setSelectedGames(prev =>
-      prev.includes(slug) ? prev.filter(s => s !== slug) : [...prev, slug]
-    );
+    const g = GAMES.find((x) => x.slug === slug);
+    if (g?.adult && isFamily) return;                 // bloccato per Famiglia
+    setSelectedGames((prev) => (prev.includes(slug) ? prev.filter((s) => s !== slug) : [...prev, slug]));
+  };
+
+  const back = () => {
+    setError('');
+    if (step === 1) { navigate('/mode-select'); return; }
+    if (step === 3 && isLockdown) { setStep(1); return; }
+    setStep(step - 1);
+  };
+
+  const next = () => {
+    setError('');
+    if (step === 1) {
+      if (!hostName.trim()) { setError('Inserisci il nome del conduttore.'); return; }
+      setStep(isLockdown ? 3 : 2);
+      return;
+    }
+    if (step === 2) {
+      if (selectedGames.length === 0) { setError('Seleziona almeno un gioco.'); return; }
+      setStep(3);
+    }
   };
 
   const handleCreate = async () => {
-    if (!hostName.trim()) { setError('Inserisci il tuo nome per continuare.'); return; }
-    if (selectedGames.length === 0) { setError('Seleziona almeno un gioco.'); return; }
+    if (!hostName.trim()) { setError('Inserisci il nome del conduttore.'); setStep(1); return; }
+    if (!isLockdown && selectedGames.length === 0) { setError('Seleziona almeno un gioco.'); setStep(2); return; }
     setError('');
     setLoading(true);
     try {
-      // 1. Create Home session (same for both Home and Live modes)
       const homeRes = await fetch('/api/home/sessions', {
         method: 'POST',
-        credentials: 'include', // staff loggato → full; altrimenti conta il codice
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ hostName: hostName.trim(), selectedGames, ...(liveCode.trim() ? { liveCode: liveCode.trim() } : {}) }),
       });
@@ -102,26 +173,17 @@ export default function HomeSetupPage() {
       const homeSession = await homeRes.json() as { id: string; joinCode: string };
 
       if (isLive) {
-        // 2. In Live mode: also create a Live session linked to the Home session
         const liveRes = await fetch('/api/live-sessions', {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            title: hostName.trim(),
-            homeSessionId: homeSession.id,
-          }),
+          body: JSON.stringify({ title: (eventName.trim() || hostName.trim()), homeSessionId: homeSession.id }),
         });
-        if (!liveRes.ok) {
-          if (liveRes.status === 401) {
-            navigate('/login?redirect=' + encodeURIComponent('/home-setup?mode=live'));
-            return;
-          }
-          // Non-blocking — proceed to lobby even if live session creation fails
+        if (!liveRes.ok && liveRes.status === 401) {
+          navigate('/login?redirect=' + encodeURIComponent('/home-setup?mode=live'));
+          return;
         }
-        const liveSession = liveRes.ok
-          ? await liveRes.json() as { id: string; tvCode: string; presenterCode: string }
-          : null;
+        const liveSession = liveRes.ok ? await liveRes.json() as { id: string; tvCode: string; presenterCode: string } : null;
         navigate(`/home-lobby/${homeSession.joinCode}${liveSession ? `?live=${liveSession.tvCode}` : ''}`);
       } else {
         navigate(`/home-lobby/${homeSession.joinCode}`);
@@ -133,233 +195,214 @@ export default function HomeSetupPage() {
     }
   };
 
-  return (
-    <div className="fixed inset-0 overflow-auto"
-      style={{ background: '#030010', fontFamily: "'Outfit','Space Grotesk','Arial Black',sans-serif" }}>
-      <SceneBg />
+  const badge = isLockdown ? 'LOCKDOWN' : step === 2 ? 'SCEGLI GIOCHI' : 'CREA SERATA';
+  const badgeNum = step === 2 ? '04' : '03';
 
-      {/* top bar */}
-      <div className="relative z-10 flex items-center justify-between"
-        style={{ padding: 'clamp(10px,1.5vh,18px) clamp(16px,2.5vw,32px) 4px' }}>
-        <motion.button
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }}
-          onClick={() => navigate('/mode-select')}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '0.45rem 1.1rem',
-            background: 'rgba(255,255,255,0.05)',
-            border: '1.5px solid rgba(255,255,255,0.12)',
-            borderRadius: 100,
-            color: 'rgba(255,255,255,0.5)',
-            fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.05em', cursor: 'pointer',
-            backdropFilter: 'blur(8px)',
-          }}
-          whileHover={{ borderColor: 'rgba(255,255,255,0.3)', color: 'rgba(255,255,255,0.8)' }}
-          whileTap={{ scale: 0.97 }}>
-          <ChevronLeft size={13}/> MODALITÀ
-        </motion.button>
-
-        <motion.img
-          src={pub('/jonny-world-logo.png')} alt="Johhy's World"
-          initial={{ y: -10, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.05, duration: 0.5 }}
-          style={{ width: 'clamp(7rem,11vw,9rem)', objectFit: 'contain',
-            filter: 'drop-shadow(0 0 20px rgba(245,182,66,0.6))' }}
-        />
-        {isLive ? (
-          <button
-            onClick={() => window.open('/admin', '_blank')}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 7,
-              padding: '0.45rem 1.1rem',
-              background: 'rgba(245,182,66,0.12)',
-              border: '1.5px solid rgba(245,182,66,0.45)',
-              borderRadius: 100,
-              color: '#F5B642',
-              fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.08em',
-              cursor: 'pointer',
-              backdropFilter: 'blur(8px)',
-            }}>
-            🔑 Accedi
-          </button>
-        ) : (
-          <div style={{ width: 100 }}/>
-        )}
+  /* ── pannelli ── */
+  const FieldRow = ({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) => (
+    <div className="flex items-center" style={{ gap: 12 }}>
+      <div className="flex items-center" style={{ width: 150, gap: 9, color: '#F7F3E8' }}>
+        <span style={{ color: '#E6B85C' }}>{icon}</span>
+        <span className="font-bold" style={{ fontSize: 15 }}>{label}</span>
       </div>
-
-      {/* page title */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.15, duration: 0.45 }}
-        style={{ textAlign: 'center', marginBottom: 'clamp(10px,1.6vh,18px)', position: 'relative', zIndex: 10 }}>
-        <div style={{
-          fontWeight: 900, fontSize: 'clamp(1.1rem,2vw,1.6rem)',
-          letterSpacing: '0.06em', color: '#fff',
-        }}>CREA LA TUA STANZA</div>
-        <div style={{
-          fontSize: '0.65rem', letterSpacing: '0.22em',
-          color: isLive ? 'rgba(245,182,66,0.7)' : isLockdown ? 'rgba(165,180,252,0.85)' : 'rgba(255,255,255,0.35)',
-          fontWeight: 600, textTransform: 'uppercase', marginTop: 2,
-        }}>{isLive ? '🔴 Modalità Live · Show Professionale' : isLockdown ? '🔒 Lockdown · Il gioco da tavolo di Johhy' : 'Modalità Home · Partita Privata'}</div>
-      </motion.div>
-
-      {/* form card */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2, duration: 0.5 }}
-        style={{
-          position: 'relative', zIndex: 10,
-          maxWidth: 600, margin: '0 auto',
-          padding: '0 clamp(16px,2.5vw,32px) 32px',
-          display: 'flex', flexDirection: 'column', gap: 16,
-        }}>
-
-        {/* host name */}
-        <div style={{
-          background: 'rgba(255,255,255,0.04)',
-          border: '1.5px solid rgba(255,255,255,0.1)',
-          borderRadius: 20, padding: 'clamp(14px,2vh,20px)',
-          backdropFilter: 'blur(14px)',
-          display: 'flex', flexDirection: 'column', gap: 12,
-        }}>
-          <div style={{ fontSize: '0.65rem', fontWeight: 900, letterSpacing: '0.2em', color: '#F5B642', textTransform: 'uppercase' }}>
-            ⚙ Impostazioni Stanza
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.45)' }}>
-              Nome Host
-            </label>
-            <input
-              value={hostName}
-              onChange={e => setHostName(e.target.value)}
-              placeholder="Come ti chiami?"
-              maxLength={30}
-              style={{
-                background: 'rgba(255,255,255,0.06)',
-                border: `1.5px solid ${error && !hostName ? 'rgba(239,68,68,0.6)' : 'rgba(255,255,255,0.15)'}`,
-                borderRadius: 10, padding: '0.6rem 1rem',
-                color: '#fff', fontFamily: "'Outfit',sans-serif",
-                fontSize: '0.9rem', fontWeight: 600, outline: 'none', width: '100%',
-              }}
-              onFocus={e => (e.target.style.borderColor = 'rgba(245,182,66,0.6)')}
-              onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.15)')}
-            />
-          </div>
-
-        </div>
-
-        {/* Live: codice serata (dal pagamento). Vuoto = demo; valido = full. */}
-        {isLive && (
-          <div style={{
-            background: liveCode.trim() ? 'rgba(52,211,153,0.1)' : 'rgba(255,255,255,0.04)',
-            border: `1.5px solid ${liveCode.trim() ? 'rgba(52,211,153,0.5)' : 'rgba(255,255,255,0.1)'}`,
-            borderRadius: 20, padding: 'clamp(14px,2vh,20px)', backdropFilter: 'blur(14px)',
-            display: 'flex', flexDirection: 'column', gap: 8,
-          }}>
-            <div style={{ fontSize: '0.65rem', fontWeight: 900, letterSpacing: '0.2em', color: '#34D399', textTransform: 'uppercase' }}>
-              🎟️ Codice serata Live
-            </div>
-            <input
-              value={liveCode}
-              onChange={e => setLiveCode(e.target.value.toUpperCase())}
-              placeholder="LIVE-XXXX-XXXX"
-              style={{
-                background: 'rgba(255,255,255,0.06)', border: '1.5px solid rgba(255,255,255,0.15)',
-                borderRadius: 10, padding: '0.6rem 1rem', color: '#fff', fontFamily: "'Outfit',sans-serif",
-                fontSize: '0.95rem', fontWeight: 700, letterSpacing: '0.08em', outline: 'none', width: '100%',
-              }}
-            />
-            <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)' }}>
-              Hai un codice dal pagamento? Incollalo qui per sbloccare la serata. Se sei staff e hai fatto login, è già tutto sbloccato.
-              {' '}Non hai un codice? <span onClick={() => navigate('/passa-a-live')} style={{ color: '#C084FC', cursor: 'pointer', textDecoration: 'underline' }}>Passa a Live</span>.
-            </div>
-          </div>
-        )}
-
-        {/* Lockdown: nessuna selezione giochi, è la modalità dedicata */}
-        {isLockdown && (
-          <div style={{
-            background: 'rgba(129,140,248,0.1)',
-            border: '1.5px solid rgba(129,140,248,0.4)',
-            borderRadius: 20, padding: 'clamp(14px,2vh,20px)',
-            backdropFilter: 'blur(14px)',
-            fontSize: '0.8rem', fontWeight: 600, color: 'rgba(226,232,255,0.85)', lineHeight: 1.5,
-          }}>
-            🔒 Stanza <b>Lockdown</b>: Master, Lock-Euro e una spia segreta. Crea la stanza,
-            i giocatori entrano col codice e il gioco parte da solo sul tabellone.
-          </div>
-        )}
-
-        {/* game selector */}
-        {!isLockdown && (
-        <div style={{
-          background: 'rgba(255,255,255,0.04)',
-          border: '1.5px solid rgba(255,255,255,0.1)',
-          borderRadius: 20, padding: 'clamp(14px,2vh,20px)',
-          backdropFilter: 'blur(14px)',
-          display: 'flex', flexDirection: 'column', gap: 10,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ fontSize: '0.65rem', fontWeight: 900, letterSpacing: '0.2em', color: '#A855F7', textTransform: 'uppercase' }}>
-              🎮 Giochi Inclusi
-            </div>
-            <button onClick={() => setSelectedGames(selectedGames.length === GIOCHI_VISIBILI.length ? [] : GIOCHI_VISIBILI.map(g => g.slug))}
-              style={{
-                fontSize: '0.58rem', fontWeight: 700, letterSpacing: '0.08em',
-                color: 'rgba(255,255,255,0.35)', background: 'none', border: 'none', cursor: 'pointer',
-                textTransform: 'uppercase',
-              }}>
-              {selectedGames.length === GIOCHI_VISIBILI.length ? 'Deseleziona tutti' : 'Seleziona tutti'}
-            </button>
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {GIOCHI_VISIBILI.map(g => {
-              const active = selectedGames.includes(g.slug);
-              return (
-                <button key={g.slug} onClick={() => toggleGame(g.slug)} style={{
-                  display: 'flex', alignItems: 'center', gap: 5,
-                  padding: '5px 12px',
-                  background: active ? 'rgba(168,85,247,0.15)' : 'rgba(255,255,255,0.04)',
-                  border: `1.5px solid ${active ? 'rgba(168,85,247,0.55)' : 'rgba(255,255,255,0.1)'}`,
-                  borderRadius: 100, cursor: 'pointer', transition: 'all 0.18s',
-                }}>
-                  <span style={{ fontSize: '0.85rem' }}>{g.emoji}</span>
-                  <span style={{ fontFamily: "'Outfit',sans-serif", fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.04em', color: active ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.4)' }}>
-                    {g.label}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-        )}
-
-        {/* error */}
-        {error && (
-          <div style={{
-            background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.4)',
-            borderRadius: 10, padding: '8px 14px',
-            fontSize: '0.78rem', fontWeight: 600, color: 'rgba(255,100,100,0.9)',
-          }}>{error}</div>
-        )}
-
-        {/* CTA */}
-        <motion.button
-          whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
-          onClick={handleCreate} disabled={loading}
-          style={{
-            background: loading ? 'rgba(245,182,66,0.4)' : 'linear-gradient(135deg,#F5B642,#E09020)',
-            border: 'none', borderRadius: 100, padding: '0.9rem 2rem',
-            fontSize: '1rem', fontWeight: 900, letterSpacing: '0.12em', color: '#fff',
-            boxShadow: '0 0 40px rgba(245,182,66,0.45)', cursor: loading ? 'not-allowed' : 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-            width: '100%',
-          }}>
-          {loading ? <Loader2 size={20} style={{ animation: 'spin 1s linear infinite' }}/> : '⚡'}
-          {loading ? 'CREAZIONE...' : 'CREA STANZA'}
-        </motion.button>
-      </motion.div>
+      <div className="flex-1">{children}</div>
     </div>
+  );
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%', height: 44, padding: '0 14px', borderRadius: 12,
+    background: 'rgba(255,255,255,0.06)', border: '1.5px solid rgba(255,255,255,0.14)',
+    color: '#F7F3E8', fontFamily: "'Outfit',system-ui,sans-serif", fontSize: 15, fontWeight: 600, outline: 'none',
+  };
+
+  const Step1 = (
+    <div className="flex flex-col" style={{ gap: 14 }}>
+      <div
+        className="rounded-2xl"
+        style={{ background: 'rgba(13,13,25,0.72)', border: '1.5px solid rgba(255,255,255,0.12)', padding: 22, backdropFilter: 'blur(10px)' }}
+      >
+        <div className="font-black" style={{ fontFamily: "'Outfit',system-ui,sans-serif", fontSize: 22, color: '#F7F3E8' }}>
+          Impostazioni della serata
+        </div>
+        <div style={{ fontSize: 13.5, color: 'rgba(247,243,232,0.6)', margin: '4px 0 18px' }}>
+          Dai un nome alla tua serata e personalizza i dettagli.
+        </div>
+        <div className="flex flex-col" style={{ gap: 12 }}>
+          <FieldRow icon={<Pencil size={18} strokeWidth={2.2} />} label="Nome serata">
+            <div className="relative">
+              <input value={eventName} onChange={(e) => setEventName(e.target.value.slice(0, 40))} placeholder="Es. Compleanno di Giulia" style={inputStyle} />
+              {eventName && (
+                <button type="button" aria-label="Cancella" onClick={() => setEventName('')} className="absolute" style={{ right: 10, top: '50%', transform: 'translateY(-50%)', color: 'rgba(247,243,232,0.5)' }}>
+                  <X size={17} />
+                </button>
+              )}
+            </div>
+          </FieldRow>
+          <FieldRow icon={<User size={18} strokeWidth={2.2} />} label="Conduttore">
+            <input value={hostName} onChange={(e) => setHostName(e.target.value.slice(0, 30))} placeholder="Il tuo nome" style={inputStyle} />
+          </FieldRow>
+          <FieldRow icon={<Users size={18} strokeWidth={2.2} />} label="Pubblico">
+            <div className="relative">
+              <select value={audience} onChange={(e) => setAudience(e.target.value)} style={{ ...inputStyle, appearance: 'none', cursor: 'pointer' }}>
+                {AUDIENCES.map((a) => <option key={a} value={a} style={{ color: '#111' }}>{a}</option>)}
+              </select>
+              <ChevronDown size={18} className="pointer-events-none absolute" style={{ right: 12, top: '50%', transform: 'translateY(-50%)', color: 'rgba(247,243,232,0.6)' }} />
+            </div>
+          </FieldRow>
+          {isLive && (
+            <FieldRow icon={<Check size={18} strokeWidth={2.2} />} label="Codice Live">
+              <input value={liveCode} onChange={(e) => setLiveCode(e.target.value.toUpperCase())} placeholder="LIVE-XXXX-XXXX (opzionale)" style={inputStyle} />
+            </FieldRow>
+          )}
+        </div>
+      </div>
+      <div className="flex justify-center">
+        <GoldButton label="Continua" onClick={next} width={260} />
+      </div>
+    </div>
+  );
+
+  const GameCard = ({ g }: { g: GameDef }) => {
+    const locked = !!g.adult && isFamily;
+    const active = selectedGames.includes(g.slug);
+    const { Icon } = g;
+    return (
+      <button
+        type="button"
+        onClick={() => toggleGame(g.slug)}
+        disabled={locked}
+        className="group relative flex h-full flex-col justify-end overflow-hidden rounded-xl text-left transition-transform active:scale-[0.99]"
+        style={{ padding: 12, background: g.tint, border: `1.5px solid ${active ? g.border : 'rgba(255,255,255,0.1)'}`, boxShadow: active ? `0 0 16px ${g.border}` : 'none', opacity: locked ? 0.85 : 1, cursor: locked ? 'not-allowed' : 'pointer' }}
+      >
+        <span className="absolute" style={{ top: 10, left: 12, color: '#F7F3E8', opacity: 0.95 }}>
+          {g.adult ? (
+            <span className="grid place-items-center rounded-full font-black" style={{ width: 30, height: 30, border: '2px solid #F0556B', color: '#F0556B', fontSize: 11 }}>18+</span>
+          ) : (
+            <Icon size={26} strokeWidth={2} />
+          )}
+        </span>
+        <span
+          className="absolute grid place-items-center rounded-md"
+          style={{
+            top: 10, right: 10, width: 22, height: 22,
+            background: active ? 'linear-gradient(180deg,#FCE08B,#E6B85C)' : 'rgba(0,0,0,0.35)',
+            border: active ? 'none' : '1.5px solid rgba(255,255,255,0.4)', color: '#241803',
+          }}
+        >
+          {active ? <Check size={15} strokeWidth={3} /> : null}
+          {locked ? <Lock size={12} style={{ color: 'rgba(255,255,255,0.7)' }} /> : null}
+        </span>
+        <div className="font-extrabold" style={{ fontFamily: "'Outfit',system-ui,sans-serif", fontSize: 16, color: '#F7F3E8', lineHeight: 1.05 }}>
+          {g.label}
+        </div>
+        <div style={{ fontSize: 11.5, color: 'rgba(247,243,232,0.72)', marginTop: 3, lineHeight: 1.2, whiteSpace: 'pre-line' }}>{g.desc}</div>
+      </button>
+    );
+  };
+
+  const Step2 = (
+    <div className="flex flex-1 flex-col" style={{ gap: 10 }}>
+      <div className="text-center">
+        <h1 className="font-black" style={{ fontFamily: "'Outfit',system-ui,sans-serif", fontSize: 23, color: '#F7F3E8', margin: 0 }}>
+          Seleziona i giochi per la tua serata
+        </h1>
+        <div style={{ fontSize: 13, color: 'rgba(247,243,232,0.6)', marginTop: 4 }}>
+          Scegli fino a 8 giochi. Ti consigliamo un mix per una serata ancora più divertente!
+        </div>
+      </div>
+      <div className="grid flex-1" style={{ gridTemplateColumns: 'repeat(4,1fr)', gridTemplateRows: '1fr 1fr', gap: 10 }}>
+        {visibleGames.map((g) => <GameCard key={g.slug} g={g} />)}
+      </div>
+      <div className="flex items-center justify-between rounded-xl" style={{ padding: '10px 14px', background: 'rgba(13,13,25,0.72)', border: '1.5px solid rgba(255,255,255,0.12)' }}>
+        <div className="flex items-center" style={{ gap: 10, color: '#F7F3E8' }}>
+          <span className="grid place-items-center rounded-lg" style={{ width: 34, height: 34, background: 'rgba(255,255,255,0.06)', color: '#E6B85C' }}>🎲</span>
+          <span className="font-bold" style={{ fontSize: 14 }}>{selectedGames.length} giochi selezionati</span>
+        </div>
+        <GoldButton label="Continua" onClick={next} width={210} />
+      </div>
+    </div>
+  );
+
+  const Step3 = (
+    <div className="flex flex-col" style={{ gap: 14 }}>
+      <div className="rounded-2xl" style={{ background: 'rgba(13,13,25,0.72)', border: '1.5px solid rgba(255,255,255,0.12)', padding: 22 }}>
+        <div className="font-black" style={{ fontFamily: "'Outfit',system-ui,sans-serif", fontSize: 22, color: '#F7F3E8' }}>
+          Dispositivi e audio
+        </div>
+        <div style={{ fontSize: 13.5, color: 'rgba(247,243,232,0.6)', margin: '4px 0 18px' }}>
+          Controlla schermo, audio e connessione prima di aprire la stanza.
+        </div>
+        <div className="flex flex-col" style={{ gap: 12 }}>
+          {[
+            { Icon: MonitorSmartphone, t: 'Monitor / proiettore', s: 'Apri la lobby su uno schermo grande per i giocatori.' },
+            { Icon: Volume2, t: 'Audio', s: 'Musica e voce di Johhy. Attivabile con un tocco in sala.' },
+            { Icon: Wifi, t: 'Connessione', s: 'I telefoni entrano col QR o col codice della serata.' },
+          ].map((r) => (
+            <div key={r.t} className="flex items-center rounded-xl" style={{ gap: 12, padding: '12px 14px', background: 'rgba(255,255,255,0.04)', border: '1.5px solid rgba(255,255,255,0.1)' }}>
+              <span className="grid place-items-center rounded-full" style={{ width: 40, height: 40, background: 'linear-gradient(180deg,#FCE08B,#E6B85C)', color: '#241803' }}>
+                <r.Icon size={20} strokeWidth={2} />
+              </span>
+              <div>
+                <div className="font-bold" style={{ fontSize: 15, color: '#F7F3E8' }}>{r.t}</div>
+                <div style={{ fontSize: 12.5, color: 'rgba(247,243,232,0.65)' }}>{r.s}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="flex justify-center">
+        <GoldButton label="Crea stanza" onClick={handleCreate} loading={loading} width={280} />
+      </div>
+    </div>
+  );
+
+  const header = (
+    <ShellHeader num={badgeNum} label={badge} onPlayers={() => navigate('/home/join')} onSettings={() => navigate('/mode-select')} onProfile={() => navigate('/mode-select')} />
+  );
+
+  const errorBar = error ? (
+    <div className="mx-auto rounded-xl text-center" style={{ maxWidth: 480, padding: '8px 14px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.4)', color: 'rgba(255,140,140,0.95)', fontSize: 13, fontWeight: 600 }}>
+      {error}
+    </div>
+  ) : null;
+
+  const backBtn = (
+    <button type="button" onClick={back} className="absolute flex items-center rounded-full" style={{ left: 14, top: 64, gap: 5, padding: '6px 14px', background: 'rgba(255,255,255,0.06)', border: '1.5px solid rgba(255,255,255,0.14)', color: 'rgba(247,243,232,0.7)', fontSize: 12, fontWeight: 700, letterSpacing: '0.04em', zIndex: 30 }}>
+      <ChevronLeft size={14} /> INDIETRO
+    </button>
+  );
+
+  const body = (
+    <>
+      <div style={{ paddingTop: 6 }}><Stepper step={step} /></div>
+      {step === 2 ? (
+        <main className="flex flex-1 flex-col" style={{ padding: '2px 16px 12px', gap: 6 }}>
+          {errorBar}
+          {Step2}
+        </main>
+      ) : (
+        <main className="relative flex flex-1" style={{ padding: '6px 16px 14px' }}>
+          <div className="grid w-full" style={{ gridTemplateColumns: '290px 1fr', columnGap: 10, alignItems: 'stretch' }}>
+            <div className="relative flex h-full items-end justify-center" style={{ overflow: 'visible' }}>
+              <img src="/jonny-master-nobg.png" alt="Johhy" style={{ height: 420, width: 'auto', maxWidth: 'none', objectFit: 'contain', objectPosition: 'bottom', filter: 'drop-shadow(0 16px 26px rgba(0,0,0,0.55))' }} draggable={false} />
+            </div>
+            <div className="flex flex-col justify-start" style={{ gap: 10, paddingTop: 2 }}>
+              {errorBar}
+              {step === 1 ? Step1 : Step3}
+            </div>
+          </div>
+        </main>
+      )}
+    </>
+  );
+
+  return (
+    <ShowStage>
+      <StageFit designW={752} designH={500}>
+        {header}
+        {backBtn}
+        {body}
+      </StageFit>
+    </ShowStage>
   );
 }

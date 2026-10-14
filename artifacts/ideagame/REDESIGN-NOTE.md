@@ -41,9 +41,18 @@ Lockdown→/home-setup?mode=lockdown, Burraco→/gestione/burraco, Casinò→/ge
 Typecheck exit 0. Compare per zone (blur4, g2): subtitle 54% · casa 50% · eventi 42% · divider 18% ·
 lockdown 40% · burraco 31% · casino 24% (residuo = scena dipinta vs gradiente tinta, atteso).
 
+### [FATTO] 05-03 / 05-04 CREA SERATA + SCEGLI GIOCHI — `src/pages/HomeSetupPage.tsx`
+Prima: form unico (nome + giochi). Ora: wizard 3 passi fedele ai mockup —
+step1 "Impostazioni della serata" (Nome serata / Conduttore / Pubblico) con Johhy e stepper,
+step2 "Seleziona i giochi" (griglia 4×2, Adult Only bloccato con 18+ per Famiglia, barra selezione +
+Continua), step3 "Dispositivi e audio" → Crea stanza. Logica di sessione PRESERVATA
+(POST /api/home/sessions + live-sessions, navigate alla lobby, idempotenza invariata).
+Nuovi campi UI: Nome serata (→ titolo Live) e Pubblico (Famiglia filtra Adult). `?step=N` per anteprima.
+Typecheck exit 0. Compare per zone — step1: stepper 24% · righe 16-33% · continua ~83%(posizione,
+atteso) ; step2: title 38% · grid 35% (x-12 y20) · bottombar 22%. Residuo = scena dipinta vs gradiente.
+
 ## DA FARE (in ordine di priorità del caller)
-1. 05-03 CreaSerata (step1) · 05-04 ScegliGiochi (step2)
-2. Tavola 06 (lobby/ruota + dispositivi)
+1. Tavola 06 (lobby/ruota + dispositivi)
 3. Tavola 07/10 (telefono ingresso+quiz, stati)
 4. Tavola 08/09 (monitor giochi display)
 5. Tavola 12 admin come 1 TEMPLATE applicato
