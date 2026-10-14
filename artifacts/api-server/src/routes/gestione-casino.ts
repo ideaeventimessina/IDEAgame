@@ -22,6 +22,11 @@ import {
   rouletteWinMoves, horseWinMoves, alreadySettled, rouletteCanSpin,
   payAll, type FishTx, type FishMove,
 } from "./gestione-casino-atomic-lib.js";
+import {
+  HORSES as SPRINT_HORSES, RULES as SPRINT_RULES, projectRace, snapToGrid,
+  action as sprintEngineAction,
+  type RaceInput as SprintInput, type Pilot as SprintPilot,
+} from "./gestione-sprint-engine.js";
 
 const router = Router();
 const DEFAULT_START_FISH = 500;
@@ -98,6 +103,7 @@ type CasinoConfig = {
   bjTables?: Record<string, BjTable>;
   horseTables?: Record<string, HorseTable>;
   siciliaTables?: Record<string, SiciliaTable>;
+  sprintTables?: Record<string, SprintTable>;
 };
 const cfgOf = (session: { config?: unknown }): CasinoConfig => (session?.config ?? {}) as CasinoConfig;
 async function patchConfig(id: string, patch: Partial<CasinoConfig>): Promise<void> {
@@ -1388,6 +1394,317 @@ router.post("/gestione/casino/sicilia/unbet", async (req, res): Promise<void> =>
   if (player) t.bets = t.bets.filter(b => b.playerId !== player.id);
   await saveSiciliaTable(found.sessionId, t);
   res.json(await siciliaState(found.sessionId, t));
+});
+
+/* ═══ IPPODROMO SPRINT ──────────────────────────────────────────────────────────
+   Modalità DISTINTA dall'ippodromo classico (type "sprint"): gara interattiva a 6
+   cavalli con partenza da fermo, galoppo, 4 ostacoli, comandi SPRINT/SALTA dai
+   telefoni dei piloti e un solo AVVIA in regia. Vincitore dall'avanzamento REALE
+   simulato dal motore server (gestione-sprint-engine), MAI da un ordine predeciso.
+   NESSUNA quota/accredito economico: i piloti non mettono fiche in gioco qui.
+
+   Lo stato vive in config.sprintTables (jsonb, niente migrazioni, come la Sicilia).
+   La corsa NON è ticchettata a 20 Hz sul DB: si persiste (startedAt, pausedAccum,
+   piloti, LOG di input idempotenti) e lo stato si RICOSTRUISCE a ogni lettura con
+   projectRace() a passo fisso. Clock monotono da tempo persistito, mai Date.now del
+   client per l'arrivo. I posti liberi sono guidati da CPU (etichettati come CPU). */
+type SprintSeat = { playerId: string | null; ready: boolean };
+type SprintResultRow = { horse: number; name: string; pilot: string; time: number; cleared: number; hits: number; place: number; points: number };
+type SprintHist = { race: number; at: string; winner: number; winnerName: string; pilot: string; time: number; results: SprintResultRow[] };
+type SprintTable = {
+  id: string; type: "sprint"; name: string; displayCode: string;
+  race: number;
+  started: boolean; startedAt: number | null;        // wall-clock (ms) dell'inizio del countdown
+  paused: boolean; pausedAt: number | null; pausedAccum: number;
+  finished: boolean; finishedRaceMs: number; results: SprintResultRow[] | null;
+  seats: Record<string, SprintSeat>;                 // "1".."6" → pilota + pronto
+  inputs: SprintInput[];                             // log azioni (sprint/jump) con tempo di gara agganciato alla griglia
+  seq: number; seen: string[];                       // seq monotono + idempotenza commandId
+  suspended: boolean; history: SprintHist[];
+};
+const SPRINT_SEATS = ["1", "2", "3", "4", "5", "6"];
+function freshSprintSeats(prev?: Record<string, SprintSeat>): Record<string, SprintSeat> {
+  const seats: Record<string, SprintSeat> = {};
+  for (const n of SPRINT_SEATS) seats[n] = { playerId: prev?.[n]?.playerId ?? null, ready: false };
+  return seats;
+}
+async function findSprintTable(code: string): Promise<{ sessionId: string; table: SprintTable } | null> {
+  const up = (code || "").toUpperCase();
+  const rows = await db.select({ id: casinoSessionsTable.id, config: casinoSessionsTable.config }).from(casinoSessionsTable);
+  for (const r of rows) { const cfg = (r.config ?? {}) as CasinoConfig; for (const t of Object.values(cfg.sprintTables ?? {})) if (t.displayCode === up) return { sessionId: r.id, table: t }; }
+  return null;
+}
+async function saveSprintTable(sessionId: string, table: SprintTable): Promise<void> {
+  await db.transaction(async (tx) => {
+    const [s] = await tx.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, sessionId)).for("update");
+    const cur = (s?.config ?? {}) as CasinoConfig;
+    await tx.update(casinoSessionsTable).set({ config: { ...cur, sprintTables: { ...(cur.sprintTables ?? {}), [table.id]: table } } }).where(eq(casinoSessionsTable.id, sessionId));
+  });
+}
+/* Clock della corsa, derivato dal tempo persistito (mai dal client). */
+function sprintClock(t: SprintTable, now: number): { phase: "lobby" | "countdown" | "race" | "paused" | "results"; raceMs: number; countdown: number } {
+  if (!t.started) return { phase: "lobby", raceMs: 0, countdown: 0 };
+  if (t.finished) return { phase: "results", raceMs: t.finishedRaceMs, countdown: 0 };
+  const eff = t.paused ? (t.pausedAt ?? now) : now;
+  const elapsed = Math.max(0, eff - (t.startedAt ?? eff) - t.pausedAccum);
+  if (elapsed < SPRINT_RULES.countdownMs) return { phase: t.paused ? "paused" : "countdown", raceMs: 0, countdown: SPRINT_RULES.countdownMs - elapsed };
+  return { phase: t.paused ? "paused" : "race", raceMs: elapsed - SPRINT_RULES.countdownMs, countdown: 0 };
+}
+/* Ricostruisce i cavalli al tempo corrente usando i piloti noti + il log input. */
+function pilotsOf(table: SprintTable, nameById: Map<string, string>): Record<number, SprintPilot> {
+  const pilots: Record<number, SprintPilot> = {};
+  for (const n of SPRINT_SEATS) { const pid = table.seats[n]?.playerId; pilots[Number(n)] = pid ? { name: nameById.get(pid) ?? "Pilota" } : null; }
+  return pilots;
+}
+async function sprintState(sessionId: string, table: SprintTable) {
+  const now = Date.now();
+  const clk = sprintClock(table, now);
+  const ids = SPRINT_SEATS.map((n) => table.seats[n]?.playerId).filter((x): x is string => !!x);
+  const players = ids.length ? await db.select().from(casinoPlayersTable).where(inArray(casinoPlayersTable.id, ids)) : [];
+  const [sess] = await db.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, sessionId));
+  const avatars = ((sess?.config ?? {}) as CasinoConfig).playerAvatars ?? {};
+  const nameById = new Map(players.map((p) => [p.id, p.nickname]));
+  const race = projectRace(pilotsOf(table, nameById), table.inputs, clk.raceMs);
+  // Corsa conclusa durante la ricostruzione ma non ancora persistita: salda una volta (idempotente).
+  if (!table.finished && (clk.phase === "race") && race.status === "results") {
+    await mutateSession<null>(sessionId, async (_tx, cfg) => {
+      const t = cfg.sprintTables?.[table.id];
+      if (!t || t.finished) return { save: false, result: null };
+      t.finished = true; t.finishedRaceMs = clk.raceMs; t.results = race.results as SprintResultRow[];
+      const w = race.results[0];
+      if (w) { t.history.unshift({ race: t.race, at: new Date().toISOString(), winner: w.horse, winnerName: w.name, pilot: w.pilot, time: w.time, results: race.results as SprintResultRow[] }); t.history = t.history.slice(0, 50); }
+      return { save: true, result: null };
+    });
+    table.finished = true; table.finishedRaceMs = clk.raceMs; table.results = race.results as SprintResultRow[];
+  }
+  const status = table.finished ? "results" : clk.phase;
+  const seats = SPRINT_SEATS.map((n) => {
+    const seat = table.seats[n]!; const hid = Number(n); const h = race.horses[hid - 1]!;
+    const meta = SPRINT_HORSES[hid - 1]!;
+    const pid = seat.playerId;
+    return {
+      horseId: hid, name: meta[0], color: meta[1],
+      playerId: pid, nickname: pid ? (nameById.get(pid) ?? null) : null, avatarUrl: pid ? (avatars[pid] ?? null) : null,
+      ready: seat.ready, cpu: !pid,
+      position: h.position, speed: h.speed, energy: h.energy, finish: h.finish,
+      sprintUntil: h.sprintUntil, jumpAt: h.jumpAt, lastSprint: h.lastSprint, lastJump: h.lastJump,
+      slowUntil: h.slowUntil, nextHurdle: h.nextHurdle, cleared: h.cleared, hits: h.hits,
+    };
+  });
+  // Classifica live (per progresso/resistenza in regia e posizione sul telefono).
+  const order = [...seats].sort((a, b) => (a.finish ?? Infinity) - (b.finish ?? Infinity) || b.position - a.position || a.horseId - b.horseId);
+  const rank = new Map(order.map((s, i) => [s.horseId, i + 1]));
+  return {
+    table: {
+      id: table.id, name: table.name, displayCode: table.displayCode, type: "sprint",
+      status, race: table.race, countdown: Math.ceil(clk.countdown / 1000), raceMs: clk.raceMs,
+      serverTime: now, suspended: table.suspended,
+      seats: seats.map((s) => ({ ...s, rank: rank.get(s.horseId) ?? null })),
+      results: table.finished ? table.results : (status === "results" ? race.results : null),
+      history: table.history.slice(0, 20),
+      rules: { length: SPRINT_RULES.length, hurdles: SPRINT_RULES.hurdles, sprintCost: SPRINT_RULES.sprintCost, jumpCooldownMs: SPRINT_RULES.jumpCooldownMs, sprintCooldownMs: SPRINT_RULES.sprintCooldownMs, maxSprintPerSec: 4 },
+    },
+    sessionId,
+  };
+}
+
+/* ── Creazione / elenco (Master) ── */
+router.post("/gestione/casino/sessions/:id/sprint-tables", async (req, res): Promise<void> => {
+  const { id } = req.params;
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const b = req.body as { name?: string };
+  const table: SprintTable = {
+    id: makeCode(8), type: "sprint", name: (b.name || "Ippodromo Sprint").slice(0, 40), displayCode: makeCode(6),
+    race: 1, started: false, startedAt: null, paused: false, pausedAt: null, pausedAccum: 0,
+    finished: false, finishedRaceMs: 0, results: null, seats: freshSprintSeats(), inputs: [], seq: 0, seen: [],
+    suspended: false, history: [],
+  };
+  await saveSprintTable(id, table);
+  res.json(await sprintState(id, table));
+});
+router.get("/gestione/casino/sessions/:id/sprint-tables", async (req, res): Promise<void> => {
+  const { id } = req.params;
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const [s] = await db.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, id));
+  const tables = Object.values(((s?.config ?? {}) as CasinoConfig).sprintTables ?? {}).map((t) => ({
+    id: t.id, name: t.name, displayCode: t.displayCode, race: t.race, suspended: t.suspended,
+    players: Object.values(t.seats).filter((x) => x.playerId).length,
+  }));
+  res.json({ tables });
+});
+router.get("/gestione/casino/sprint/:code", async (req, res): Promise<void> => {
+  const found = await findSprintTable(req.params.code || "");
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  res.json(await sprintState(found.sessionId, found.table));
+});
+
+/* ── Comandi regia (host): avvia / pausa / riprendi / nuova gara / impostazioni ── */
+router.post("/gestione/casino/sprint/start", async (req, res): Promise<void> => {
+  const found = await findSprintTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const out = await mutateSession<{ status: number; body?: unknown }>(found.sessionId, async (_tx, cfg) => {
+    const t = cfg.sprintTables?.[found.table.id];
+    if (!t) return { save: false, result: { status: 404, body: { error: "Tavolo non trovato" } } };
+    if (t.suspended) return { save: false, result: { status: 409, body: { error: "Tavolo sospeso" } } };
+    if (t.started && !t.finished) return { save: false, result: { status: 409, body: { error: "Gara già avviata" } } };
+    const occupiedNotReady = SPRINT_SEATS.some((n) => t.seats[n]!.playerId && !t.seats[n]!.ready);
+    if (occupiedNotReady) return { save: false, result: { status: 409, body: { error: "Attendi i piloti pronti" } } };
+    if (t.finished) { t.race += 1; t.seats = freshSprintSeats(t.seats); }
+    t.started = true; t.startedAt = Date.now(); t.paused = false; t.pausedAt = null; t.pausedAccum = 0;
+    t.finished = false; t.finishedRaceMs = 0; t.results = null; t.inputs = []; t.seq = 0; t.seen = [];
+    return { save: true, result: { status: 200 } };
+  });
+  if (out.status !== 200) { res.status(out.status).json(out.body); return; }
+  const fresh = await findSprintTable(found.table.displayCode);
+  res.json(await sprintState(found.sessionId, fresh!.table));
+});
+router.post("/gestione/casino/sprint/pause", async (req, res): Promise<void> => {
+  const found = await findSprintTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const out = await mutateSession<{ status: number; body?: unknown }>(found.sessionId, async (_tx, cfg) => {
+    const t = cfg.sprintTables?.[found.table.id]; if (!t) return { save: false, result: { status: 404, body: { error: "Tavolo non trovato" } } };
+    const clk = sprintClock(t, Date.now());
+    if (t.paused || t.finished || !(clk.phase === "race" || clk.phase === "countdown")) return { save: false, result: { status: 409, body: { error: "Pausa non disponibile" } } };
+    t.paused = true; t.pausedAt = Date.now();
+    return { save: true, result: { status: 200 } };
+  });
+  if (out.status !== 200) { res.status(out.status).json(out.body); return; }
+  const fr = await findSprintTable(found.table.displayCode); res.json(await sprintState(found.sessionId, fr!.table));
+});
+router.post("/gestione/casino/sprint/resume", async (req, res): Promise<void> => {
+  const found = await findSprintTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const out = await mutateSession<{ status: number; body?: unknown }>(found.sessionId, async (_tx, cfg) => {
+    const t = cfg.sprintTables?.[found.table.id]; if (!t) return { save: false, result: { status: 404, body: { error: "Tavolo non trovato" } } };
+    if (!t.paused) return { save: false, result: { status: 409, body: { error: "La gara non è in pausa" } } };
+    t.pausedAccum += Date.now() - (t.pausedAt ?? Date.now()); t.paused = false; t.pausedAt = null;
+    return { save: true, result: { status: 200 } };
+  });
+  if (out.status !== 200) { res.status(out.status).json(out.body); return; }
+  const fr = await findSprintTable(found.table.displayCode); res.json(await sprintState(found.sessionId, fr!.table));
+});
+/* Nuova gara: conserva i piloti, azzera la dinamica, incrementa raceId (torna in lobby). */
+router.post("/gestione/casino/sprint/reset", async (req, res): Promise<void> => {
+  const found = await findSprintTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  await mutateSession<null>(found.sessionId, async (_tx, cfg) => {
+    const t = cfg.sprintTables?.[found.table.id]; if (!t) return { save: false, result: null };
+    t.race += 1; t.started = false; t.startedAt = null; t.paused = false; t.pausedAt = null; t.pausedAccum = 0;
+    t.finished = false; t.finishedRaceMs = 0; t.results = null; t.inputs = []; t.seq = 0; t.seen = [];
+    t.seats = freshSprintSeats(t.seats);
+    return { save: true, result: null };
+  });
+  const fr = await findSprintTable(found.table.displayCode); res.json(await sprintState(found.sessionId, fr!.table));
+});
+router.post("/gestione/casino/sprint/settings", async (req, res): Promise<void> => {
+  const found = await findSprintTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  await mutateSession<null>(found.sessionId, async (_tx, cfg) => {
+    const t = cfg.sprintTables?.[found.table.id]; if (!t) return { save: false, result: null };
+    if (req.body?.name) t.name = String(req.body.name).slice(0, 40);
+    return { save: true, result: null };
+  });
+  const fr = await findSprintTable(found.table.displayCode); res.json(await sprintState(found.sessionId, fr!.table));
+});
+router.post("/gestione/casino/sprint/suspend", async (req, res): Promise<void> => {
+  const found = await findSprintTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  await mutateSession<null>(found.sessionId, async (_tx, cfg) => { const t = cfg.sprintTables?.[found.table.id]; if (t) t.suspended = !t.suspended; return { save: !!t, result: null }; });
+  const fr = await findSprintTable(found.table.displayCode); res.json(await sprintState(found.sessionId, fr!.table));
+});
+
+/* ── Pilota: sceglie/lascia un cavallo (atomico, esclusivo) e si dichiara pronto ── */
+async function resolveSprintPlayer(sessionId: string, playerCode: string) {
+  const [player] = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.playerCode, String(playerCode ?? "").toUpperCase().trim()));
+  return player && player.sessionId === sessionId ? player : null;
+}
+router.post("/gestione/casino/sprint/join", async (req, res): Promise<void> => {
+  const found = await findSprintTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const player = await resolveSprintPlayer(found.sessionId, req.body?.playerCode);
+  if (!player) { res.status(404).json({ error: "Accedi prima come giocatore della serata" }); return; }
+  const horseId = Math.round(Number(req.body?.horseId));
+  if (!SPRINT_SEATS.includes(String(horseId))) { res.status(400).json({ error: "Cavallo inesistente" }); return; }
+  const out = await mutateSession<{ status: number; body?: unknown }>(found.sessionId, async (_tx, cfg) => {
+    const t = cfg.sprintTables?.[found.table.id]; if (!t) return { save: false, result: { status: 404, body: { error: "Tavolo non trovato" } } };
+    const clk = sprintClock(t, Date.now());
+    if (clk.phase !== "lobby") return { save: false, result: { status: 409, body: { error: "Ingresso dalla prossima gara" } } };
+    const target = t.seats[String(horseId)]!;
+    if (target.playerId && target.playerId !== player.id) return { save: false, result: { status: 409, body: { error: "Cavallo occupato" } } };
+    // esclusività: libera l'eventuale cavallo precedente di questo pilota
+    for (const n of SPRINT_SEATS) if (t.seats[n]!.playerId === player.id) t.seats[n] = { playerId: null, ready: false };
+    t.seats[String(horseId)] = { playerId: player.id, ready: false };
+    return { save: true, result: { status: 200 } };
+  });
+  if (out.status !== 200) { res.status(out.status).json(out.body); return; }
+  const fr = await findSprintTable(found.table.displayCode);
+  res.json({ ...(await sprintState(found.sessionId, fr!.table)), you: { playerId: player.id, horseId } });
+});
+router.post("/gestione/casino/sprint/leave", async (req, res): Promise<void> => {
+  const found = await findSprintTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const player = await resolveSprintPlayer(found.sessionId, req.body?.playerCode);
+  if (!player) { res.status(404).json({ error: "Giocatore non trovato" }); return; }
+  await mutateSession<null>(found.sessionId, async (_tx, cfg) => {
+    const t = cfg.sprintTables?.[found.table.id]; if (!t) return { save: false, result: null };
+    if (sprintClock(t, Date.now()).phase !== "lobby") return { save: false, result: null };
+    for (const n of SPRINT_SEATS) if (t.seats[n]!.playerId === player.id) t.seats[n] = { playerId: null, ready: false };
+    return { save: true, result: null };
+  });
+  const fr = await findSprintTable(found.table.displayCode); res.json(await sprintState(found.sessionId, fr!.table));
+});
+router.post("/gestione/casino/sprint/ready", async (req, res): Promise<void> => {
+  const found = await findSprintTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const player = await resolveSprintPlayer(found.sessionId, req.body?.playerCode);
+  if (!player) { res.status(404).json({ error: "Giocatore non trovato" }); return; }
+  const out = await mutateSession<{ status: number; body?: unknown }>(found.sessionId, async (_tx, cfg) => {
+    const t = cfg.sprintTables?.[found.table.id]; if (!t) return { save: false, result: { status: 404, body: { error: "Tavolo non trovato" } } };
+    if (sprintClock(t, Date.now()).phase !== "lobby") return { save: false, result: { status: 409, body: { error: "Preparazione chiusa" } } };
+    const n = SPRINT_SEATS.find((k) => t.seats[k]!.playerId === player.id);
+    if (!n) return { save: false, result: { status: 409, body: { error: "Scegli prima un cavallo" } } };
+    t.seats[n]!.ready = typeof req.body?.ready === "boolean" ? req.body.ready : !t.seats[n]!.ready;
+    return { save: true, result: { status: 200 } };
+  });
+  if (out.status !== 200) { res.status(out.status).json(out.body); return; }
+  const fr = await findSprintTable(found.table.displayCode); res.json(await sprintState(found.sessionId, fr!.table));
+});
+
+/* ── Pilota: input di gara (SPRINT/SALTA) — autorevole, idempotente, validato ──────
+   L'attore è il giocatore (dal suo playerCode), non il body: non può pilotare un altro
+   cavallo né usare comandi di regia. L'input è validato contro lo stato RICOSTRUITO al
+   tempo corrente (fase/energia/cooldown) e, se valido, registrato nel log agganciato
+   alla griglia. commandId rende l'operazione idempotente (niente tocchi doppi). */
+router.post("/gestione/casino/sprint/input", async (req, res): Promise<void> => {
+  const found = await findSprintTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const player = await resolveSprintPlayer(found.sessionId, req.body?.playerCode);
+  if (!player) { res.status(404).json({ error: "Giocatore non trovato" }); return; }
+  const act = String(req.body?.action ?? "");
+  if (act !== "sprint" && act !== "jump") { res.status(400).json({ error: "Comando sconosciuto" }); return; }
+  const commandId = String(req.body?.commandId ?? "").slice(0, 100);
+  const now = Date.now();
+  const out = await mutateSession<{ status: number; body?: unknown }>(found.sessionId, async (_tx, cfg) => {
+    const t = cfg.sprintTables?.[found.table.id]; if (!t) return { save: false, result: { status: 404, body: { error: "Tavolo non trovato" } } };
+    const n = SPRINT_SEATS.find((k) => t.seats[k]!.playerId === player.id);
+    if (!n) return { save: false, result: { status: 403, body: { error: "Non piloti un cavallo in questa gara" } } };
+    const horseId = Number(n);
+    if (commandId && t.seen.includes(commandId)) return { save: false, result: { status: 200, body: { ok: true, duplicate: true } } };
+    const clk = sprintClock(t, now);
+    if (clk.phase !== "race") return { save: false, result: { status: 409, body: { error: "Comando fuori fase" } } };
+    const at = snapToGrid(clk.raceMs);
+    // Nomi piloti per la ricostruzione di validazione.
+    const ids = SPRINT_SEATS.map((k) => t.seats[k]!.playerId).filter((x): x is string => !!x);
+    const players = ids.length ? await db.select({ id: casinoPlayersTable.id, nickname: casinoPlayersTable.nickname }).from(casinoPlayersTable).where(inArray(casinoPlayersTable.id, ids)) : [];
+    const nameById = new Map(players.map((p) => [p.id, p.nickname]));
+    const race = projectRace(pilotsOf(t, nameById), t.inputs, at);
+    try { sprintEngineAction(race, act, horseId); }
+    catch (e) { return { save: false, result: { status: 409, body: { error: (e as Error).message } } }; }
+    t.inputs.push({ seq: ++t.seq, horseId, action: act, at });
+    if (commandId) { t.seen.push(commandId); if (t.seen.length > 4000) t.seen = t.seen.slice(-2000); }
+    return { save: true, result: { status: 200, body: { ok: true } } };
+  });
+  res.status(out.status).json(out.body ?? { ok: true });
 });
 
 export default router;
