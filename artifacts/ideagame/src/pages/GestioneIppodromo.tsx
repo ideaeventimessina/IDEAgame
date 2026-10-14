@@ -29,7 +29,7 @@ export const HORSES = [
 const H = (n: number) => HORSES[n - 1]!;
 // Nome VISIBILE del cavallo n: quello estratto per la corsa corrente (ruota a ogni giro),
 // con fallback ai nomi generici. Colore/pettorina restano per posizione 1..6.
-const hnameOf = (names: string[] | undefined, n: number): string => names?.[n - 1] || hnameOf(t.names, n);
+const hnameOf = (names: string[] | undefined, n: number): string => names?.[n - 1] || H(n).name;
 
 type HorsePlayer = { id: string; nickname: string; avatarUrl: string | null; balance: number; bet: { horse: number; amount: number } | null };
 type HorseHist = { race: number; at: string; winner: number; order: number[]; players: number; cancelled?: boolean; names?: string[]; results: { playerId: string; nickname: string; horse: number; bet: number; credit: number; profit: number }[] };
