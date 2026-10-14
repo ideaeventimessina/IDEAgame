@@ -132,6 +132,8 @@ export default function GestioneLockdown() {
   if (q.get('penalita') !== null) return <AdminPenalita />;
   if (q.get('registro') !== null) return <AdminRegistro />;
   if (q.get('crea') !== null) return <AdminCrea />;
+  if (q.get('colpo') !== null) return <EventoColpo />;
+  if (q.get('riconnessione') !== null) return <Riconnessione />;
   return <MonitorCasa />;
 }
 
@@ -895,6 +897,9 @@ const IInfo = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="non
 const IChevron = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>);
 const IUndo = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><path d="M9 7H5V3M5 7a8 8 0 1 1-2 5.3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>);
 const IPlay = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><path d="M7 4.5l13 7.5-13 7.5z" fill="currentColor"/></svg>);
+const ICloud = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><path d="M7 18h10a4 4 0 0 0 .6-7.95A5.5 5.5 0 0 0 6.5 9.2 3.9 3.9 0 0 0 7 18z" fill="currentColor"/></svg>);
+const IRefresh = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><path d="M19 8a7.5 7.5 0 1 0 1.2 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><path d="M19 3v5h-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>);
+const IMaskLk = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><path d="M3 8c3-1.2 6-1.2 9 0 3-1.2 6-1.2 9 0 0 6-3.5 8.5-6 6.5-1.6-1.3-4.4-1.3-6 0C6.5 16.5 3 14 3 8z" fill="currentColor"/><circle cx="8.3" cy="10.3" r="1.5" fill="#2a1d06"/><circle cx="15.7" cy="10.3" r="1.5" fill="#2a1d06"/></svg>);
 const IClose = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>);
 
 const PEN_ROWS: { label: string; value: string; info?: boolean }[] = [
@@ -1127,6 +1132,103 @@ function AdminCrea() {
 
         {/* CTA */}
         <div className="a cr-btn">Crea e mostra QR</div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── EVENTO · COLPO DI SCENA (overlay/reveal) ─────────────────────────────────
+   Replica del mockup 08, pannello "18 COLPO DI SCENA · EVENTO SPECIALE".
+   Palco fisso 512×512. La scena teatrale (tende, candelabri, busto, cornice d'oro
+   della carta, maschera) è PITTURA ritagliata (event-colpo.png). In CODICE: logo
+   reale + "COLPO DI SCENA / EVENTO SPECIALE" (regola brand) su fascia centrale che
+   maschera l'header dipinto. Il testo della carta ("Parla in rima…") è un ESEMPIO
+   del mazzo Colpi di scena (03-SCHERMATE: nel gioco reale viene dal catalogo
+   approvato). Badge "18" omesso. ?colpo. */
+
+const CSS_EVENTO = `
+.ad .ev-bg{position:absolute;left:0;top:0;width:512px;height:512px;object-fit:cover;}
+.ad .ev-mask{left:80px;top:0;width:352px;height:170px;pointer-events:none;
+  background:radial-gradient(115% 118% at 50% 40%,#0b0709 0%,#0b0709 60%,rgba(11,7,9,0) 100%);}
+.ad .ev-badge{left:0;top:0;width:96px;height:96px;pointer-events:none;
+  background:radial-gradient(60% 60% at 42% 42%,#0b0709 0%,#0b0709 46%,rgba(11,7,9,0) 100%);}
+.ad .ev-h1{left:0;top:86px;width:512px;text-align:center;font:700 26px/1 "Baskerville Lockdown",serif;letter-spacing:.07em;color:#f0e2bd;}
+.ad .ev-h2{left:0;top:120px;width:512px;text-align:center;font:400 12px/1 "Baskerville Lockdown",serif;letter-spacing:.17em;color:#b6a06f;}
+`;
+
+function EventoColpo() {
+  const scale = useScale(512, 512);
+  return (
+    <div className="lkd"><style>{CSS + CSS_ADMIN + CSS_EVENTO}</style>
+      <div className="ad" style={{ transform: `scale(${scale})`, background: '#0b0709' }}>
+        <img className="ev-bg" src={`${LK}event-colpo.png`} alt="Colpo di scena" />
+        {/* maschere: badge catalogo "18" + header dipinto; poi logo reale + brand */}
+        <div className="a ev-badge" />
+        <div className="a ev-mask" />
+        <img className="a" src={`${LK}logo-lockdown-t.png`} alt="LOCKDOWN" style={{ left: 181, top: 8, width: 150, height: 38 }} />
+        <div className="a ad-by" style={{ top: 47 }}>by IDEAeventi</div>
+        <div className="a ev-h1">COLPO DI SCENA</div>
+        <div className="a ev-h2">EVENTO SPECIALE</div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── RICONNESSIONE / SEDATO (schermata giocatore) ─────────────────────────────
+   Replica del mockup 08, pannello "20 RICONNESSIONE · SCHERMATA GIOCATORE (MOBILE)".
+   Palco fisso 512×512 (ricostruito in codice). Due stati: partita conservata +
+   riconnessione (il timer continua), e "Sedato per questa prova" (non partecipa a
+   questa stanza ma resta in partita — 02-REGOLE Dottore). Badge "20" omesso.
+   Atmosfera serratura resa come bagliore teal. ?riconnessione. */
+
+const CSS_RICONN = `
+.ad.rc{background:radial-gradient(120% 90% at 78% 24%,rgba(30,120,140,.28),rgba(2,8,12,0) 55%),#041017;}
+.ad .rc-h1{left:0;top:84px;width:512px;text-align:center;font:700 26px/1 "Baskerville Lockdown",serif;letter-spacing:.06em;color:#e8f1f3;}
+.ad .rc-h2{left:0;top:116px;width:512px;text-align:center;font:400 12px/1 "Baskerville Lockdown",serif;letter-spacing:.14em;color:#8fb0b6;}
+.ad .rc-c1{left:24px;top:148px;width:464px;height:204px;background:linear-gradient(180deg,rgba(9,22,28,.9),rgba(5,14,19,.94));}
+.ad .rc-c2{left:24px;top:368px;width:464px;height:122px;background:linear-gradient(180deg,rgba(9,22,28,.9),rgba(5,14,19,.94));}
+.ad .rc-head{position:absolute;left:0;width:464px;display:flex;align-items:center;justify-content:center;gap:12px;}
+.ad .rc-head svg{flex:none;}
+.ad .rc-t1{font:700 19px/1 "Baskerville Lockdown",serif;}
+.ad .rc-t1.teal{color:#bfe9f0;}
+.ad .rc-t1.cream{color:#f1e7cf;}
+.ad .rc-p{position:absolute;text-align:center;width:464px;left:0;font:400 13px/1.45 "Baskerville Lockdown",serif;color:#a6b7bd;}
+.ad .rc-spin{position:absolute;left:236px;width:28px;height:28px;border-radius:50%;border:3px solid rgba(120,150,160,.3);border-top-color:#7fdbe6;animation:rcspin .9s linear infinite;}
+@keyframes rcspin{to{transform:rotate(360deg);}}
+.ad .rc-btn{position:absolute;left:128px;width:256px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;gap:9px;
+  background:#0a1620;box-shadow:inset 0 0 0 1px rgba(120,150,160,.5);color:#dfeaee;font:700 14px/1 "Baskerville Lockdown",serif;}
+.ad .rc-btn svg{font-size:15px;}
+@media (prefers-reduced-motion: reduce){.ad .rc-spin{animation:none;}}
+`;
+
+function Riconnessione() {
+  const scale = useScale(512, 512);
+  return (
+    <div className="lkd"><style>{CSS + CSS_ADMIN + CSS_RICONN}</style>
+      <div className="ad rc" style={{ transform: `scale(${scale})` }}>
+        {/* header */}
+        <img className="a" src={`${LK}logo-lockdown-t.png`} alt="LOCKDOWN" style={{ left: 181, top: 8, width: 150, height: 38 }} />
+        <div className="a ad-by" style={{ top: 47 }}>by IDEAeventi</div>
+        <div className="a rc-h1">RICONNESSIONE</div>
+        <div className="a rc-h2">SCHERMATA GIOCATORE (MOBILE)</div>
+
+        {/* card 1: partita conservata + riconnessione */}
+        <div className="a card rc-c1">
+          <div className="rc-head" style={{ top: 30, color: '#4fc5d6', fontSize: 28 }}>
+            <ICloud /><span className="rc-t1 teal">La partita è conservata.</span>
+          </div>
+          <div className="rc-p" style={{ top: 66 }}>Riconnessione in corso…<br />Il timer continua a scorrere.</div>
+          <div className="rc-spin" style={{ top: 116 }} />
+          <div className="rc-btn" style={{ top: 158 }}><IRefresh />Riprova</div>
+        </div>
+
+        {/* card 2: sedato */}
+        <div className="a card rc-c2">
+          <div className="rc-head" style={{ top: 28, color: '#e8c879', fontSize: 28 }}>
+            <IMaskLk /><span className="rc-t1 cream">Sedato per questa prova</span>
+          </div>
+          <div className="rc-p" style={{ top: 64 }}>Non puoi partecipare a questa stanza.<br />Puoi continuare a giocare nella prossima.</div>
+        </div>
       </div>
     </div>
   );

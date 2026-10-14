@@ -31,8 +31,13 @@ Pacchetto: `/private/tmp/idea_pkg/IDEA-EVENTI/02-lockdown/` (28 viste su 5 tavol
 | 19 PENALITÀ (`?penalita`) | 2 | **FATTO (questa sessione)** | economia 80/50/50/0 spec-corretta |
 | 22 PAUSA E REGISTRO (`?registro`) | 2 | **FATTO (questa sessione)** | pausa+timer, log eventi, annulla con motivo |
 | 17 CREA PARTITA (`?crea`) | 2 | **FATTO (questa sessione)** | setup + QR REALE (non illustrativo) |
+| 18 COLPO DI SCENA (`?colpo`) | 2 | **FATTO (questa sessione)** | carta reveal (scena dipinta + brand overlay) |
+| 20 RICONNESSIONE/SEDATO (`?riconnessione`) | 2 | **FATTO (questa sessione)** | ricostruito in codice, 2 stati |
 | Telefono (05/06/09) | 3 | DA FARE | vive in Home; vedi DEVIATIONS |
-| Admin stati residui (08) | 3 | DA FARE | colpo(18)/riconn-sedato(20) — reference ritagliati |
+
+Tutti i 6 pannelli admin/master della tavola 08 + i 4 della tavola 07 sono ora
+coperti su /gestione/lockdown. Restano i telefoni-giocatore (tavole 05/06/09),
+che vanno realizzati come componenti reali nel motore Home (vedi DEVIATIONS).
 
 ### 17 CREA PARTITA — confronto per zone (giro g1, --blur 4, palco 512×512)
 | Zona | percettivo | spostamento | note |

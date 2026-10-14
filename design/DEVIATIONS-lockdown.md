@@ -51,6 +51,22 @@ prevalgono sui dettagli illustrativi. Qui ogni scostamento con il motivo.
    un pannello admin nitido; la pittura decorativa non è UI. Logo reale + 'IDEAeventi'.
 4. **Badge "21"** di catalogo omesso.
 
+## Pannello 18 COLPO DI SCENA
+- La scena teatrale (tende, candelabri, busto, cornice d'oro, maschera, titolo
+  "Colpo di scena") è PITTURA riusata (`event-colpo.png`), coerente col metodo dei
+  monitor. In codice: logo reale + "COLPO DI SCENA / EVENTO SPECIALE" su una fascia
+  che maschera l'header dipinto (brand 'IDEAeventi'), e maschera sul badge "18".
+- Il testo della carta ("Parla in rima fino alla fine della stanza.") è un ESEMPIO
+  del mazzo Colpi di scena (03-SCHERMATE: non garantito nel mazzo originale). Nel
+  gioco reale la carta pescata viene dal catalogo approvato e mostrata dinamicamente.
+
+## Pannello 20 RICONNESSIONE / SEDATO
+- Ricostruito interamente in codice (due card: partita conservata + riconnessione,
+  e "Sedato per questa prova"). Atmosfera serratura resa come bagliore teal.
+- "Sedato": non partecipa a QUESTA prova ma resta in partita (02-REGOLE Dottore;
+  03-SCHERMATE "continua a partecipare"). Spinner rispetta prefers-reduced-motion.
+- Badge "20" omesso.
+
 ## Monitor Casa/Sfida/Finale (priorità 1) — verifica
 Viste preesistenti CONFERMATE fedeli ai pannelli 13/14/16: le pitture (house.png,
 kitchen.png, finale.png) sono ritagli dei rispettivi pannelli; layout, pill stanze,
