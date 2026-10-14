@@ -3198,6 +3198,10 @@ type LockdownState = {
   currentChallenge: LockdownChallenge | null;
   dpcm: { text: string } | null;
   lastMulta: { id?: string; text: string; amount?: number } | null;
+  /** Scadenza (ISO) della prova corrente — usata per il countdown sul telefono. */
+  endsAt?: string | null;
+  /** Ultimo evento di gioco (flash pubblico) — usato in risultato/accusa. */
+  lastFlash?: { text: string; type: string } | null;
   mode: string;
   winnerId: string | null;
   spyRevealed: boolean;
@@ -3210,8 +3214,92 @@ type LockdownState = {
   youAreSpy?: boolean;
 };
 
-const LOCK_GOLD = '#F5B642';
+// ── Lockdown — tema telefono (palette oro/nero/petrolio, serif Baskerville) ─────
+// Reskin fedele alle tavole 05/06/09 del pacchetto mockup. NESSUN endpoint o wiring
+// è stato cambiato: ogni azione passa dagli stessi POST già esistenti (answer, vote,
+// accuse, choose-ingredient, choose-words, sedate, selfie-bonus, spy-sabotage…).
+const LOCK_GOLD = '#f3d27a';
+const LOCK_GOLD_HI = '#ffe7a6';
+const LOCK_GOLD_DEEP = '#c9972f';
+const LOCK_TEAL = '#2fb8a6';
 const LOCK_PURPLE = '#A78BFA';
+const LOCK_INK = '#05080c';
+const LKA = ((import.meta.env.BASE_URL as string) ?? '/');          // base per asset/font
+const LK_ASSET = `${LKA}lockdown/`;
+
+const LKD_CSS = `
+@font-face{font-family:"Baskerville Lockdown";font-weight:400;font-style:normal;src:url(${LKA}casino/libre-baskerville-latin-400-normal.woff2) format("woff2");font-display:swap}
+@font-face{font-family:"Baskerville Lockdown";font-weight:700;font-style:normal;src:url(${LKA}casino/libre-baskerville-latin-700-normal.woff2) format("woff2");font-display:swap}
+.lkp{font-family:"Baskerville Lockdown",Georgia,serif;position:relative;width:100%;border-radius:26px;overflow:hidden;background:${LOCK_INK};box-shadow:0 18px 50px rgba(0,0,0,.55),inset 0 0 0 1px rgba(201,151,47,.28);}
+.lkp .scene{position:absolute;inset:0;background-size:cover;background-position:center;}
+.lkp .scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(4,8,12,.30) 0%,rgba(4,8,12,.70) 44%,${LOCK_INK} 92%);}
+.lkp .body{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:13px;padding:16px 15px 20px;min-height:380px;}
+.lkp .brand{height:34px;width:auto;margin-top:2px;filter:drop-shadow(0 2px 6px rgba(0,0,0,.8));}
+.lkp .eyebrow{font:700 11px/1 "Baskerville Lockdown",serif;letter-spacing:.26em;text-transform:uppercase;color:${LOCK_GOLD_DEEP};text-align:center;}
+.lkp .ttl{font:700 23px/1.08 "Baskerville Lockdown",serif;letter-spacing:.05em;text-transform:uppercase;color:${LOCK_GOLD_HI};text-shadow:0 2px 10px rgba(0,0,0,.7);text-align:center;}
+.lkp .sub{font:400 13px/1.4 "Baskerville Lockdown",serif;color:#efe3c6;text-align:center;}
+.lkp .sub b{color:${LOCK_GOLD_HI};font-weight:700;}
+.lkp .panel{width:100%;border-radius:16px;background:linear-gradient(180deg,rgba(12,17,24,.92),rgba(6,10,15,.94));box-shadow:inset 0 0 0 1px rgba(201,151,47,.42),0 8px 22px rgba(0,0,0,.4);padding:14px;display:flex;flex-direction:column;gap:10px;}
+.lkp .timer{display:inline-flex;align-items:center;gap:7px;padding:7px 18px;border-radius:999px;font:700 22px/1 "Baskerville Lockdown",serif;letter-spacing:.04em;font-variant-numeric:tabular-nums;color:#7fe9d8;background:rgba(10,38,34,.72);box-shadow:inset 0 0 0 1.5px rgba(47,184,166,.55),0 0 18px rgba(47,184,166,.22);}
+.lkp .goldpill{display:inline-flex;align-items:center;gap:8px;padding:7px 16px;border-radius:999px;font:700 17px/1 "Baskerville Lockdown",serif;color:${LOCK_GOLD_HI};background:rgba(18,13,5,.7);box-shadow:inset 0 0 0 1.5px rgba(201,151,47,.5);}
+.lkp .goldpill .u{font-size:11px;letter-spacing:.12em;color:#d8b96a;font-weight:700;}
+.lkp .coin{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#ffe9a8,#c9972f 70%,#8a5f17);color:#3a2708;font-weight:900;font-size:12px;box-shadow:0 1px 2px rgba(0,0,0,.5);}
+.lkp .btn{width:100%;border:none;border-radius:14px;padding:15px 16px;font:700 17px/1 "Baskerville Lockdown",serif;letter-spacing:.02em;cursor:pointer;transition:transform .08s ease,filter .15s ease;display:flex;align-items:center;justify-content:center;gap:9px;}
+.lkp .btn:active{transform:scale(.97);}
+.lkp .btn:disabled{opacity:.42;cursor:default;}
+.lkp .btn-gold{color:#2a1d06;background:linear-gradient(180deg,#fff3cf 0%,#ffdf93 46%,#d79b2e 100%);box-shadow:0 6px 18px rgba(201,151,47,.35),inset 0 1px 0 rgba(255,255,255,.6);}
+.lkp .btn-teal{color:#d5fff6;background:linear-gradient(180deg,#1c6a5e,#0f3f38);box-shadow:inset 0 0 0 1.5px rgba(47,184,166,.55);}
+.lkp .btn-navy{color:${LOCK_GOLD_HI};background:linear-gradient(180deg,#24405a,#13243a);box-shadow:inset 0 0 0 1.5px rgba(201,151,47,.4);}
+.lkp .btn-ghost{color:#efe3c6;background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px rgba(201,151,47,.3);}
+.lkp .row{display:flex;gap:10px;width:100%;}
+.lkp .row>.btn{flex:1;}
+.lkp .opt{width:100%;display:flex;align-items:center;gap:12px;text-align:left;border:none;cursor:pointer;border-radius:13px;padding:14px 15px;font:700 16px/1.2 "Baskerville Lockdown",serif;color:#f3ead2;background:rgba(10,15,21,.82);box-shadow:inset 0 0 0 1px rgba(201,151,47,.3);transition:transform .08s ease;}
+.lkp .opt:active{transform:scale(.98);}
+.lkp .opt.sel{box-shadow:inset 0 0 0 2px ${LOCK_TEAL},0 0 16px rgba(47,184,166,.3);color:#eafffb;}
+.lkp .opt .lab{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;font-weight:900;font-size:13px;color:${LOCK_GOLD_HI};box-shadow:inset 0 0 0 1.5px rgba(201,151,47,.6);flex:none;}
+.lkp .opt.sel .lab{color:#eafffb;box-shadow:inset 0 0 0 1.5px ${LOCK_TEAL};}
+.lkp .radio{margin-left:auto;width:22px;height:22px;border-radius:50%;box-shadow:inset 0 0 0 2px rgba(201,151,47,.55);flex:none;}
+.lkp .opt.sel .radio{background:radial-gradient(circle at 50% 50%,${LOCK_TEAL} 0 42%,transparent 46%);box-shadow:inset 0 0 0 2px ${LOCK_TEAL};}
+.lkp .av{display:grid;place-items:center;border-radius:50%;font-weight:900;color:#2a1d06;flex:none;background-size:cover;background-position:center;box-shadow:inset 0 0 0 1.5px rgba(201,151,47,.5);overflow:hidden;}
+.lkp .pcard{position:relative;border-radius:13px;overflow:hidden;display:flex;flex-direction:column;align-items:center;gap:7px;padding:10px 6px;background:rgba(10,15,21,.7);box-shadow:inset 0 0 0 1px rgba(201,151,47,.3);cursor:pointer;}
+.lkp .pcard.sel{box-shadow:inset 0 0 0 2px ${LOCK_TEAL},0 0 16px rgba(47,184,166,.3);}
+.lkp .pcard .pn{font:700 13px/1 "Baskerville Lockdown",serif;color:#f0e6cf;}
+.lkp .chip{border:none;cursor:default;border-radius:9px;padding:7px 10px;font:700 13px/1 "Baskerville Lockdown",serif;color:#f3ead2;background:rgba(10,15,21,.8);box-shadow:inset 0 0 0 1px rgba(201,151,47,.4);text-align:center;}
+.lkp .chip.pick{cursor:pointer;}
+.lkp .chip.sel{color:#eafffb;box-shadow:inset 0 0 0 1.5px ${LOCK_TEAL};}
+.lkp .divider{display:flex;align-items:center;gap:8px;color:#d8b96a;font:400 11px/1 "Baskerville Lockdown",serif;letter-spacing:.14em;width:100%;}
+.lkp .divider::before,.lkp .divider::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,transparent,rgba(201,151,47,.5),transparent);}
+.lkp input.fld,.lkp textarea.fld{width:100%;border:none;outline:none;border-radius:13px;padding:13px 14px;font:400 15px/1.4 "Baskerville Lockdown",serif;color:#f3ead2;background:rgba(6,10,15,.9);box-shadow:inset 0 0 0 1px rgba(201,151,47,.4);resize:none;}
+.lkp input.fld::placeholder,.lkp textarea.fld::placeholder{color:rgba(239,227,198,.4);}
+.lkp .listrow{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:11px;background:rgba(10,15,21,.78);box-shadow:inset 0 0 0 1px rgba(201,151,47,.3);}
+.lkp .listrow .n{color:${LOCK_GOLD_DEEP};font-weight:900;font-size:14px;width:16px;flex:none;text-align:center;}
+.lkp .listrow input{flex:1;background:transparent;border:none;outline:none;color:#f3ead2;font:400 14px/1.3 "Baskerville Lockdown",serif;}
+.lkp .listrow input::placeholder{color:rgba(239,227,198,.35);}
+.lkp .menu-btn{position:absolute;top:12px;right:12px;z-index:3;width:38px;height:38px;border:none;border-radius:11px;cursor:pointer;background:rgba(6,10,15,.7);box-shadow:inset 0 0 0 1px rgba(201,151,47,.4);color:${LOCK_GOLD_HI};font-size:17px;display:grid;place-items:center;}
+.lkp .emblem{display:grid;place-items:center;width:84px;height:84px;border-radius:50%;font-size:42px;background:radial-gradient(circle at 50% 38%,rgba(201,151,47,.28),rgba(6,10,15,.9) 72%);box-shadow:inset 0 0 0 2px rgba(201,151,47,.55),0 0 26px rgba(201,151,47,.25);}
+.lkp .grid2{display:grid;grid-template-columns:1fr 1fr;gap:9px;width:100%;}
+.lkp .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;width:100%;}
+.lkp .roomtile{position:relative;border-radius:12px;overflow:hidden;aspect-ratio:1;background:#0b1118;box-shadow:inset 0 0 0 1px rgba(201,151,47,.28);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:6px 4px;}
+.lkp .roomtile .em{font-size:23px;filter:drop-shadow(0 2px 4px rgba(0,0,0,.7));}
+.lkp .roomtile .rn{font:700 10px/1.1 "Baskerville Lockdown",serif;letter-spacing:.02em;color:#f0e6cf;text-align:center;}
+.lkp .roomtile.on{box-shadow:inset 0 0 0 2px ${LOCK_TEAL},0 0 18px rgba(47,184,166,.4);}
+.lkp .roomtile.done{opacity:.45;}
+.lkp .flash{width:100%;border-radius:13px;padding:12px 14px;text-align:center;font:700 14px/1.35 "Baskerville Lockdown",serif;color:#fff;}
+`;
+
+const LOCK_SCENES: Record<string, string> = {
+  cucina: 'kitchen.png',
+  biblioteca: 'scene-biblioteca.jpg',
+  salone: 'scene-salone.jpg',
+  balcone: 'scene-balcone.jpg',
+  cinema: 'scene-cinema.jpg',
+  studio: 'scene-studio.jpg',
+  gabinetto: 'scene-gabinetto.jpg',
+  palestra: 'scene-palestra.jpg',
+  ufficio: 'scene-ufficio.jpg',
+  dieci_sfumature: '',
+};
+
 // subjective:true = sfida a GIUDIZIO (voto del pubblico); false = OGGETTIVA (l'app conosce la risposta).
 const LOCKDOWN_ROOMS: Record<string, { name: string; emoji: string; subjective: boolean }> = {
   cucina:         { name: 'CUCINA',       emoji: '🍳', subjective: true },
@@ -3225,14 +3313,24 @@ const LOCKDOWN_ROOMS: Record<string, { name: string; emoji: string; subjective: 
   ufficio:        { name: 'UFFICIO',      emoji: '💼', subjective: false },
   dieci_sfumature:{ name: '10 SFUMATURE', emoji: '🔥', subjective: false },
 };
+// Ordine mostrato sulla mappa (presentazione; il server resta la fonte dell'ordine reale).
+const LOCK_ROOM_ORDER = ['cucina', 'dieci_sfumature', 'biblioteca', 'palestra', 'studio', 'cinema', 'balcone', 'salone', 'gabinetto', 'ufficio'];
 const lockdownRoom = (id: string | null | undefined) =>
   (id ? LOCKDOWN_ROOMS[id] : undefined)
   ?? { name: id ? id.replace(/_/g, ' ').toUpperCase() : 'STANZA', emoji: '🚪', subjective: true };
+
+// Etichetta del tipo di sfida (occhiello sopra il nome stanza), fedele alle tavole.
+const LOCK_TYPE_LABEL: Record<string, string> = {
+  cucina: 'RICETTE', biblioteca: 'QUIZ', salone: 'PROVA DAL VIVO', balcone: 'ESIBIZIONE',
+  cinema: 'STORYTELLING', studio: 'SFIDA OGGETTO', gabinetto: 'SOLO BUGIE',
+  palestra: 'GIOCO DEI DADI', ufficio: 'QUIZ DI SQUADRA', dieci_sfumature: '10 SFUMATURE',
+};
+
 const LOCKDOWN_CHARACTERS: Record<string, { name: string; emoji: string; power: string }> = {
-  cuoco:          { name: 'CUOCO',          emoji: '👨‍🍳', power: "In CUCINA scegli tu l'ingrediente principale." },
+  cuoco:          { name: 'CUOCO',          emoji: '👨‍🍳', power: "In Cucina scegli tu l'ingrediente che vuoi utilizzare per la ricetta." },
   figlio_di_papa: { name: 'FIGLIO DI PAPÀ', emoji: '🤑',   power: 'Parti con 1000 Lock-Euro; +500 col selfie.' },
-  attore:         { name: 'ATTORE',         emoji: '🎭',   power: 'In SALONE raddoppi il premio della coppia.' },
-  cantante:       { name: 'CANTANTE',       emoji: '🎤',   power: 'In BALCONE scegli 2 parole del mazzo musicale.' },
+  attore:         { name: 'ATTORE',         emoji: '🎭',   power: 'In Salone raddoppi il premio della tua coppia.' },
+  cantante:       { name: 'CANTANTE',       emoji: '🎤',   power: 'In Balcone scegli 2 parole del mazzo musicale.' },
   dottore:        { name: 'DOTTORE',        emoji: '🩺',   power: 'Puoi sedare un giocatore per una prova (1 volta).' },
   master:         { name: 'MASTER',         emoji: '🎩',   power: 'Presidente di gioco.' },
   prostituta:     { name: 'PROSTITUTA',     emoji: '💋',   power: 'Superpotere segreto.' },
@@ -3244,6 +3342,29 @@ const LOCKDOWN_CHARACTERS: Record<string, { name: string; emoji: string; power: 
 const lockdownChar = (id: string | null | undefined) =>
   (id ? LOCKDOWN_CHARACTERS[id] : undefined)
   ?? { name: id ? id.replace(/_/g, ' ').toUpperCase() : 'IN ATTESA', emoji: '🎭', power: 'Aspetta che il Master assegni il tuo ruolo.' };
+
+// ── Mattoncini UI condivisi (serif + oro) ──────────────────────────────────────
+function LkTimer({ endsAt }: { endsAt: string | null | undefined }) {
+  const [left, setLeft] = useState<number | null>(null);
+  useEffect(() => {
+    if (!endsAt) { setLeft(null); return; }
+    const tick = () => setLeft(Math.max(0, Math.ceil((new Date(endsAt).getTime() - Date.now()) / 1000)));
+    tick();
+    const iv = setInterval(tick, 500);
+    return () => clearInterval(iv);
+  }, [endsAt]);
+  if (left === null) return null;
+  const mm = String(Math.floor(left / 60)).padStart(2, '0');
+  const ss = String(left % 60).padStart(2, '0');
+  return <div className="timer"><Timer className="h-4 w-4" /> {mm}:{ss}</div>;
+}
+
+function LkAvatar({ p, size = 36 }: { p: { nickname: string; avatarColor: string; avatarUrl?: string | null }; size?: number }) {
+  const style: React.CSSProperties = { width: size, height: size, fontSize: Math.round(size * 0.34) };
+  if (p.avatarUrl) style.backgroundImage = `url(${p.avatarUrl})`;
+  else style.background = p.avatarColor;
+  return <span className="av" style={style}>{p.avatarUrl ? '' : p.nickname.slice(0, 2).toUpperCase()}</span>;
+}
 
 // ── LockdownController — telefono / GIOCATORE ──────────────────────────────────
 
@@ -3261,17 +3382,24 @@ function LockdownController({ payload, player, session }: {
   const [text, setText] = useState('');
   const [sent, setSent] = useState(false);
   // La spia è svelata SOLO al suo telefono, via GET .../state?playerId. Il socket
-  // (home:lockdown_update) NON porta youAreSpy, quindi lo teniamo a parte così un
-  // update via socket non lo azzera.
+  // (home:lockdown_update) NON porta youAreSpy, quindi lo teniamo a parte.
   const [youAreSpy, setYouAreSpy] = useState(false);
   // CANTANTE: parole selezionate (max 2). DOTTORE: pannello bersaglio aperto.
   const [wordSel, setWordSel] = useState<string[]>([]);
   const [dottoreOpen, setDottoreOpen] = useState(false);
+  // Stati di PRESENTAZIONE (solo-telefono, nessun endpoint nuovo): Pronto, rivela-spia, menu, accusa, dadi.
+  const [ready, setReady] = useState(false);
+  const [spyHold, setSpyHold] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [accuseOpen, setAccuseOpen] = useState(false);
+  const [accuseSel, setAccuseSel] = useState<string | null>(null);
+  const [recipes, setRecipes] = useState<string[]>(['', '', '']);
+  const [diceBet, setDiceBet] = useState<'pari' | 'dispari' | null>(null);
+  const [titleHold, setTitleHold] = useState(false);
   const toggleWord = (w: string) =>
     setWordSel(prev => prev.includes(w) ? prev.filter(x => x !== w) : (prev.length >= 2 ? prev : [...prev, w]));
 
-  // Fetch iniziale + polling di recupero (stesso pattern di PercorsoHomeController:
-  // l'update arriva via socket home:lockdown_update ma il polling salva da eventi persi).
+  // Fetch iniziale + polling di recupero (stesso pattern di PercorsoHomeController).
   useEffect(() => {
     let alive = true;
     const pull = () => fetch(`${BASE}api/home/sessions/${session.id}/lockdown/state?playerId=${encodeURIComponent(player.id)}`, { credentials: 'include' })
@@ -3280,7 +3408,6 @@ function LockdownController({ payload, player, session }: {
         if (!alive || !d || d.error) return;
         const st = (d.state ?? d) as LockdownState;
         setLs(st);
-        // youAreSpy può arrivare come fratello di state o dentro state: supportiamo entrambi.
         setYouAreSpy(Boolean(d.youAreSpy ?? d.state?.youAreSpy ?? (st as { youAreSpy?: boolean }).youAreSpy));
       })
       .catch(() => {});
@@ -3293,9 +3420,12 @@ function LockdownController({ payload, player, session }: {
     return on<{ state: LockdownState }>('home:lockdown_update', ({ state }) => setLs(state));
   }, [on]);
 
-  // Reset stato locale di risposta quando cambia sfida/fase
+  // Reset stato locale di risposta quando cambia sfida/fase.
   const chKey = ls ? `${ls.roomIndex}:${ls.phase}:${ls.currentChallenge?.prompt ?? ''}` : '';
-  useEffect(() => { setSent(false); setText(''); setWordSel([]); setDottoreOpen(false); }, [chKey]);
+  useEffect(() => {
+    setSent(false); setText(''); setWordSel([]); setDottoreOpen(false);
+    setAccuseOpen(false); setAccuseSel(null); setRecipes(['', '', '']); setDiceBet(null); setTitleHold(false);
+  }, [chKey]);
 
   const post = async (path: string, body?: Record<string, unknown>) => {
     setBusy(true); setMsg('');
@@ -3311,292 +3441,513 @@ function LockdownController({ payload, player, session }: {
     finally { setBusy(false); }
   };
 
+  // ── Guscio: scena a tutto schermo + scrim + corpo (funzione, non componente:
+  //    mantiene stabile l'identità degli elementi → gli input non perdono il focus). ──
+  const sceneUrl = (roomId: string | null | undefined, fallback = '') => {
+    const f = roomId ? LOCK_SCENES[roomId] : undefined;
+    return f ? `${LK_ASSET}${f}` : (fallback ? `${LK_ASSET}${fallback}` : '');
+  };
+  const brand = <img className="brand" src={`${LK_ASSET}logo-lockdown.png`} alt="LOCKDOWN — IDEAeventi" />;
+  const renderShell = (bg: string, children: React.ReactNode, onMenu?: () => void) => (
+    <div className="lkp">
+      <style>{LKD_CSS}</style>
+      {bg
+        ? <div className="scene" style={{ backgroundImage: `url(${bg})` }} />
+        : <div className="scene" style={{ background: 'radial-gradient(130% 120% at 50% 0%,#2a1620 0%,#120a12 55%,#05080c 100%)' }} />}
+      <div className="scrim" />
+      {onMenu && <button className="menu-btn" onClick={onMenu} aria-label="Menu">☰</button>}
+      <div className="body">{children}</div>
+      {msg && <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', color: '#fca5a5', fontSize: 12, padding: '0 0 10px' }}>{msg}</div>}
+    </div>
+  );
+
+  // ── Loader ──────────────────────────────────────────────────────────────────
   if (!ls) {
-    return (
-      <div className="flex flex-col items-center gap-3 py-6 text-center">
-        <motion.div animate={{ rotate: 360 }} transition={{ repeat: IS_LOW_POWER ? 0 : Infinity, duration: 2, ease: 'linear' }}
-          className="text-4xl">🔒</motion.div>
-        <div className="text-sm text-white/50">In attesa del Master…</div>
-      </div>
-    );
+    return renderShell(`${LK_ASSET}scene-accesso.jpg`, (
+      <>
+        {brand}
+        <motion.div animate={{ rotate: IS_LOW_POWER ? 0 : 360 }} transition={{ repeat: IS_LOW_POWER ? 0 : Infinity, duration: 2, ease: 'linear' }} className="text-4xl" style={{ marginTop: 44 }}>🔒</motion.div>
+        <div className="sub">In attesa del Master…</div>
+      </>
+    ));
   }
 
   const me = ls.players.find(p => p.id === player.id);
   const c = lockdownChar(me?.characterId);
   const ch = ls.currentChallenge;
-
-  // ── Ended ─────────────────────────────────────────────────────────────────────
-  if (ls.status === 'ended' || ls.phase === 'ended') {
-    const iWon = ls.winnerId === player.id;
-    const spy = ls.spyRevealed ? ls.players.find(p => p.id === ls.spyPlayerId) : null;
-    return (
-      <div className="flex flex-col items-center gap-4 py-6 text-center">
-        <div className="text-5xl">{iWon ? '👑' : '🏁'}</div>
-        <div className="text-xl font-black text-white">{iWon ? 'Hai vinto Lockdown!' : 'Fine partita'}</div>
-        <div className="text-display text-4xl font-black" style={{ color: LOCK_GOLD }}>{me?.lockEuro ?? 0} Ⱡ</div>
-        {spy && (
-          <div className="rounded-xl px-4 py-2 text-sm font-bold"
-            style={{ background: 'rgba(167,139,250,0.14)', border: '1px solid rgba(167,139,250,0.4)', color: '#A78BFA' }}>
-            🕵️ La spia era {spy.nickname}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // Header sempre visibile: personaggio + potere + saldo
-  const header = (
-    <div className="flex w-full flex-col items-center gap-2">
-      <div className="text-5xl">{c.emoji}</div>
-      <div className="text-xl font-black text-white">{c.name}</div>
-      {c.power && <div className="text-xs text-white/55 leading-relaxed px-3">{c.power}</div>}
-      <div className="rounded-2xl px-6 py-2 mt-1"
-        style={{ background: `${LOCK_GOLD}18`, border: `1px solid ${LOCK_GOLD}45` }}>
-        <span className="text-[10px] uppercase tracking-widest" style={{ color: LOCK_GOLD }}>Il tuo saldo</span>
-        <div className="text-display text-3xl font-black tabular-nums" style={{ color: LOCK_GOLD }}>{me?.lockEuro ?? 0} Ⱡ</div>
-      </div>
-    </div>
-  );
-
-  // ── ANTI-ELIMINAZIONE: nessuno esce. A 0 sei "in rosso" ma continui a giocare e votare. ──
-  const broke = me ? (me.isBroke ?? me.lockEuro <= 0) : false;
-
   const room = lockdownRoom(ls.currentRoomId);
   const subjective = room.subjective;
+  const roomId = ls.currentRoomId;
+  const myBalance = me?.lockEuro ?? 0;
+  const others = ls.players.filter(p => p.id !== player.id);
+  const typeLabel = roomId ? (LOCK_TYPE_LABEL[roomId] ?? 'SFIDA') : 'SFIDA';
+  const bg = sceneUrl(roomId, 'house.png');
+
+  // ── Flag di gioco (INVARIATI rispetto all'originale) ───────────────────────────
   const hasChallenge = !!ch && (ls.phase === 'challenge' || ls.phase === 'result');
-  // DOTTORE: se sono sedato, per questa prova non posso rispondere né essere votato.
   const iAmSedated = !!ch && ch.sedatedPlayerId === player.id;
-  // Oggettiva: rispondo (solo in fase challenge). Giudizio: voto il migliore (challenge o result).
   const canAnswer = !subjective && ls.phase === 'challenge' && !!ch && !iAmSedated;
   const canVote = subjective && hasChallenge;
   const myVote = ls.votes?.[player.id] ?? null;
-  const others = ls.players.filter(p => p.id !== player.id);
-  // Poteri di personaggio meccanici (attivi sul MIO telefono).
   const iAmCuocoPicking = !!ch && ch.awaitingIngredientFrom === player.id;
   const iAmCantantePicking = !!ch && ch.awaitingWordsFrom === player.id;
   const iAmDottore = me?.characterId === 'dottore';
   const iAmFiglio = me?.characterId === 'figlio_di_papa';
+  const broke = me ? (me.isBroke ?? me.lockEuro <= 0) : false;
 
-  return (
-    <div className="flex flex-col items-center gap-4 py-4 text-center">
-      {header}
+  const balancePill = (
+    <div className="goldpill"><span className="coin">Ⱡ</span><span>{myBalance}</span><span className="u">Lock-Euro</span></div>
+  );
 
-      {/* 🔴 IN ROSSO — saldo a 0 ma sei ancora in gioco */}
-      {broke && (
-        <div className="w-full rounded-2xl px-4 py-3 text-base font-black"
-          style={{ background: 'rgba(248,113,113,0.14)', border: '2px solid rgba(248,113,113,0.45)', color: '#f87171' }}>
-          🔴 SEI IN ROSSO — continui a giocare e votare, puoi risalire!
-        </div>
-      )}
+  // ── Potere segreto SPIA — accessibile ovunque (solo sul suo telefono) ──────────
+  const spyBlock = youAreSpy ? (
+    <button className="btn" disabled={busy || !!ls.spyPowerUsed}
+      onClick={() => { void post('spy-sabotage', { spyId: player.id }); }}
+      style={{ color: '#fff', background: `linear-gradient(180deg,${LOCK_PURPLE}33,${LOCK_PURPLE}14)`, boxShadow: `inset 0 0 0 1.5px ${LOCK_PURPLE}88` }}>
+      {ls.spyPowerUsed ? '🕵️ Sabotaggio già usato' : '🕵️ Sabota — 20% al Master'}
+    </button>
+  ) : null;
 
-      {/* 🕵️ Potere segreto della SPIA — visibile SOLO su questo telefono */}
-      {youAreSpy && (
-        <button disabled={busy || !!ls.spyPowerUsed}
-          onClick={() => { void post('spy-sabotage', { spyId: player.id }); }}
-          className="w-full rounded-2xl px-4 py-3 text-base font-black text-white disabled:opacity-45"
-          style={{ background: `${LOCK_PURPLE}22`, border: `1px solid ${LOCK_PURPLE}66` }}>
-          {ls.spyPowerUsed ? '🕵️ Sabotaggio già usato' : '🕵️ SABOTA (segreto, una volta sola)'}
+  // ── Pannello POTERE (dottore/figlio + info) per menu e mappa ───────────────────
+  const powerPanel = (
+    <div className="panel">
+      <div className="eyebrow">Il tuo potere</div>
+      <div className="sub">{c.power}</div>
+      {iAmFiglio && !me?.selfieBonusUsed && (
+        <button className="btn btn-gold" disabled={busy} onClick={() => { void post('selfie-bonus', { playerId: player.id }); }}>
+          <Camera className="h-5 w-5" /> Selfie +500 Ⱡ
         </button>
       )}
-
-      {/* 😴 SEDATO dal DOTTORE — non puoi rispondere/vincere questa prova */}
-      {iAmSedated && (
-        <div className="w-full rounded-2xl px-4 py-3 text-base font-black"
-          style={{ background: `${LOCK_PURPLE}1e`, border: `2px solid ${LOCK_PURPLE}66`, color: '#fff' }}>
-          😴 Sei stato sedato per questa prova
-        </div>
-      )}
-
-      {/* 👨‍🍳 CUOCO — scegli l'ingrediente della CUCINA */}
-      {iAmCuocoPicking && (
-        <div className="w-full rounded-2xl px-4 py-3"
-          style={{ background: `${LOCK_GOLD}14`, border: `1px solid ${LOCK_GOLD}55` }}>
-          <div className="text-[11px] uppercase tracking-widest mb-2" style={{ color: LOCK_GOLD }}>👨‍🍳 Scegli l'ingrediente</div>
-          <div className="grid grid-cols-2 gap-2">
-            {(ch?.ingredientOptions ?? []).map((opt, i) => (
-              <motion.button key={i} whileTap={{ scale: 0.96 }} disabled={busy}
-                onClick={() => { void post('choose-ingredient', { playerId: player.id, ingredient: opt }); }}
-                className="rounded-xl px-3 py-3 text-base font-black text-black"
-                style={{ background: `linear-gradient(135deg,${LOCK_GOLD},#d98f1f)` }}>{opt}</motion.button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* 🎤 CANTANTE — scegli 2 parole del mazzo musicale (BALCONE) */}
-      {iAmCantantePicking && (
-        <div className="w-full rounded-2xl px-4 py-3"
-          style={{ background: `${LOCK_PURPLE}14`, border: `1px solid ${LOCK_PURPLE}55` }}>
-          <div className="text-[11px] uppercase tracking-widest mb-2" style={{ color: LOCK_PURPLE }}>🎤 Scegli 2 parole</div>
-          <div className="grid grid-cols-2 gap-2">
-            {(ch?.wordOptions ?? []).map((opt, i) => {
-              const selected = wordSel.includes(opt);
-              return (
-                <motion.button key={i} whileTap={{ scale: 0.96 }} disabled={busy || (!selected && wordSel.length >= 2)}
-                  onClick={() => toggleWord(opt)}
-                  className="rounded-xl px-3 py-3 text-base font-black disabled:opacity-40"
-                  style={selected
-                    ? { background: LOCK_PURPLE, color: '#000' }
-                    : { background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.16)', color: '#fff' }}>
-                  {opt}
-                </motion.button>
-              );
-            })}
-          </div>
-          <motion.button whileTap={{ scale: 0.96 }} disabled={busy || wordSel.length === 0}
-            onClick={() => { void post('choose-words', { playerId: player.id, words: wordSel }); }}
-            className="mt-2 w-full rounded-xl px-4 py-3 text-base font-black text-black disabled:opacity-40"
-            style={{ background: `linear-gradient(135deg,${LOCK_PURPLE},#7C3AED)` }}>
-            🎤 Conferma ({wordSel.length}/2)
-          </motion.button>
-        </div>
-      )}
-
-      {/* 🩺 DOTTORE — seda un giocatore per la prova corrente (1 volta) */}
-      {iAmDottore && (
-        me?.dottoreUsed ? (
-          <div className="w-full rounded-2xl px-4 py-2.5 text-sm font-black text-white/50"
-            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)' }}>
-            🩺 Sedazione già usata
-          </div>
-        ) : (
-          <div className="w-full flex flex-col gap-2">
-            <motion.button whileTap={{ scale: 0.96 }} disabled={busy}
-              onClick={() => setDottoreOpen(o => !o)}
-              className="w-full rounded-2xl px-4 py-3 text-base font-black text-white"
-              style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.2)' }}>
-              😴 Seda un giocatore
-            </motion.button>
+      {iAmFiglio && me?.selfieBonusUsed && <div className="sub" style={{ opacity: .6 }}>📸 Selfie già incassato</div>}
+      {iAmDottore && (me?.dottoreUsed
+        ? <div className="sub" style={{ opacity: .6 }}>🩺 Sedazione già usata</div>
+        : (
+          <>
+            <button className="btn btn-ghost" disabled={busy} onClick={() => setDottoreOpen(o => !o)}>😴 Seda un giocatore</button>
             {dottoreOpen && (
-              <div className="grid grid-cols-1 gap-2">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {others.map(p => (
-                  <motion.button key={p.id} whileTap={{ scale: 0.96 }} disabled={busy}
-                    onClick={() => { void post('sedate', { playerId: player.id, targetId: p.id }); }}
-                    className="flex items-center gap-2 rounded-2xl px-4 py-3 text-base font-black text-left text-white"
-                    style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.16)' }}>
-                    <span className="grid h-7 w-7 place-items-center rounded-full text-xs font-black text-black shrink-0"
-                      style={{ background: p.avatarColor }}>{p.nickname.slice(0, 2).toUpperCase()}</span>
-                    <span className="flex-1 truncate">{p.nickname}</span>
-                  </motion.button>
+                  <button key={p.id} className="opt" disabled={busy}
+                    onClick={() => { void post('sedate', { playerId: player.id, targetId: p.id }); setMenuOpen(false); }}>
+                    <LkAvatar p={p} size={28} /><span>{p.nickname}</span>
+                  </button>
                 ))}
               </div>
             )}
-          </div>
-        )
-      )}
-
-      {/* 📸 FIGLIO DI PAPÀ — bonus selfie +500 (una sola volta) */}
-      {iAmFiglio && !me?.selfieBonusUsed && (
-        <motion.button whileTap={{ scale: 0.96 }} disabled={busy}
-          onClick={() => { void post('selfie-bonus', { playerId: player.id }); }}
-          className="w-full rounded-2xl px-4 py-3 text-base font-black text-black"
-          style={{ background: `linear-gradient(135deg,${LOCK_GOLD},#d98f1f)`, boxShadow: `0 0 26px ${LOCK_GOLD}55` }}>
-          📸 Selfie +500 Ⱡ
-        </motion.button>
-      )}
-
-      {ls.dpcm && (
-        <div className="w-full rounded-2xl px-4 py-3"
-          style={{ background: 'rgba(167,139,250,0.16)', border: '2px solid rgba(167,139,250,0.6)' }}>
-          <div className="text-[10px] uppercase tracking-widest" style={{ color: '#A78BFA' }}>📜 Colpo di scena</div>
-          <div className="text-base font-black text-white mt-0.5 leading-snug">{ls.dpcm.text}</div>
-        </div>
-      )}
-
-      {!canAnswer && !canVote && (
-        <div className="text-sm text-white/45 py-2">In attesa del Master…</div>
-      )}
-
-      {/* ── SFIDA A GIUDIZIO: vota il migliore (puoi cambiare voto) ── */}
-      {canVote && ch && (
-        <div className="flex w-full flex-col items-center gap-3">
-          <div className="text-base font-black text-white leading-snug px-2">{ch.prompt}</div>
-          {ch.ingredient && <div className="text-sm font-black" style={{ color: LOCK_GOLD }}>🧂 {ch.ingredient}</div>}
-          {ch.words && ch.words.length > 0 && (
-            <div className="flex flex-wrap justify-center gap-1.5">
-              {ch.words.map((w, i) => (
-                <span key={i} className="rounded-lg px-2.5 py-1 text-sm font-bold"
-                  style={{ background: 'rgba(167,139,250,0.18)', border: '1px solid rgba(167,139,250,0.4)', color: '#fff' }}>{w}</span>
-              ))}
-            </div>
-          )}
-          <div className="w-full rounded-2xl px-4 py-3"
-            style={{ background: `${LOCK_PURPLE}14`, border: `1px solid ${LOCK_PURPLE}44` }}>
-            <div className="text-[11px] uppercase tracking-widest mb-2" style={{ color: LOCK_PURPLE }}>🗳️ Vota il migliore</div>
-            <div className="grid grid-cols-1 gap-2 w-full">
-              {others.map(p => {
-                const voted = myVote === p.id;
-                return (
-                  <motion.button key={p.id} whileTap={{ scale: 0.96 }} disabled={busy}
-                    onClick={() => { void post('vote', { voterId: player.id, votedPlayerId: p.id }); }}
-                    className="flex items-center gap-2 rounded-2xl px-4 py-3 text-base font-black text-left"
-                    style={voted
-                      ? { background: LOCK_PURPLE, color: '#000' }
-                      : { background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.16)', color: '#fff' }}>
-                    <span className="grid h-7 w-7 place-items-center rounded-full text-xs font-black text-black shrink-0"
-                      style={{ background: p.avatarColor }}>{p.nickname.slice(0, 2).toUpperCase()}</span>
-                    <span className="flex-1 truncate">{p.nickname}</span>
-                    {voted && <span>✓</span>}
-                  </motion.button>
-                );
-              })}
-            </div>
-            {myVote && <div className="text-[11px] text-white/45 mt-2">Puoi cambiare voto finché il Master non assegna.</div>}
-          </div>
-        </div>
-      )}
-
-      {/* ── SFIDA OGGETTIVA: rispondi (opzioni o testo) ── */}
-      {canAnswer && ch && (
-        <div className="flex w-full flex-col items-center gap-3">
-          <div className="text-base font-black text-white leading-snug px-2">{ch.prompt}</div>
-          {ch.ingredient && <div className="text-sm font-black" style={{ color: LOCK_GOLD }}>🧂 {ch.ingredient}</div>}
-          {ch.words && ch.words.length > 0 && (
-            <div className="flex flex-wrap justify-center gap-1.5">
-              {ch.words.map((w, i) => (
-                <span key={i} className="rounded-lg px-2.5 py-1 text-sm font-bold"
-                  style={{ background: 'rgba(167,139,250,0.18)', border: '1px solid rgba(167,139,250,0.4)', color: '#fff' }}>{w}</span>
-              ))}
-            </div>
-          )}
-
-          {sent ? (
-            <div className="rounded-2xl px-5 py-4 w-full text-base font-black"
-              style={{ background: `${LOCK_GOLD}18`, border: `2px solid ${LOCK_GOLD}55`, color: LOCK_GOLD }}>
-              ✅ Risposta inviata!
-            </div>
-          ) : ch.options && ch.options.length > 0 ? (
-            <div className="grid grid-cols-1 gap-2 w-full">
-              {ch.options.map((o, i) => (
-                <motion.button key={i} whileTap={{ scale: 0.96 }} disabled={busy}
-                  onClick={() => { void post('answer', { playerId: player.id, answerIndex: i }).then(() => setSent(true)); }}
-                  className="rounded-2xl px-4 py-4 text-lg font-black text-white text-left"
-                  style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.16)' }}>
-                  <span style={{ color: LOCK_GOLD }}>{String.fromCharCode(65 + i)}.</span> {o}
-                </motion.button>
-              ))}
-            </div>
-          ) : (
-            <div className="flex w-full flex-col gap-2">
-              <textarea value={text} onChange={e => setText(e.target.value)} rows={3}
-                placeholder="Scrivi la tua risposta…"
-                className="w-full rounded-2xl px-4 py-3 text-base text-white bg-white/5 border border-white/15 outline-none"
-                style={{ resize: 'none' }} />
-              <motion.button whileTap={{ scale: 0.96 }} disabled={busy || !text.trim()}
-                onClick={() => { void post('answer', { playerId: player.id, text: text.trim() }).then(() => setSent(true)); }}
-                className="rounded-2xl px-6 py-4 text-lg font-black text-black w-full disabled:opacity-40"
-                style={{ background: `linear-gradient(135deg,${LOCK_GOLD},#d98f1f)`, boxShadow: `0 0 30px ${LOCK_GOLD}55` }}>
-                {busy ? '⏳…' : '📨 Invia'}
-              </motion.button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {msg && <div className="text-xs text-red-400">{msg}</div>}
+          </>
+        ))}
+      {spyBlock}
     </div>
   );
+
+  // ── Overlay MENU (hamburger) — potere, saldo, accusa ───────────────────────────
+  const menuOverlay = menuOpen ? (
+    <div style={{ position: 'absolute', inset: 0, zIndex: 6, background: 'rgba(3,6,10,.9)', display: 'flex', flexDirection: 'column', gap: 12, padding: 16, overflowY: 'auto' }}>
+      <button className="btn btn-ghost" onClick={() => setMenuOpen(false)} style={{ width: 'auto', alignSelf: 'flex-end', padding: '8px 12px' }}><X className="h-4 w-4" /></button>
+      <div className="eyebrow">{c.emoji} {c.name}</div>
+      <div style={{ display: 'flex', justifyContent: 'center' }}>{balancePill}</div>
+      {powerPanel}
+      <button className="btn btn-navy" onClick={() => { setMenuOpen(false); setAccuseOpen(true); }}>🎩 Accusa la spia</button>
+    </div>
+  ) : null;
+
+  // ── FINALE (ended) ──────────────────────────────────────────────────────────── (tavola finale)
+  if (ls.status === 'ended' || ls.phase === 'ended') {
+    const iWon = ls.winnerId === player.id;
+    const spy = ls.spyRevealed ? ls.players.find(p => p.id === ls.spyPlayerId) : null;
+    return renderShell(`${LK_ASSET}finale.png`, (
+      <>
+        {brand}
+        <div className="text-6xl" style={{ marginTop: 6 }}>{iWon ? '👑' : '🏁'}</div>
+        <div className="ttl">{iWon ? 'Hai vinto Lockdown!' : 'Fine partita'}</div>
+        <div className="panel" style={{ textAlign: 'center' }}>
+          <div className="eyebrow">Il tuo saldo finale</div>
+          <div style={{ font: '700 40px/1 "Baskerville Lockdown",serif', color: LOCK_GOLD_HI }}>{myBalance} <span style={{ fontSize: 22 }}>Ⱡ</span></div>
+        </div>
+        {spy && <div className="panel" style={{ textAlign: 'center', boxShadow: `inset 0 0 0 1px ${LOCK_PURPLE}66` }}><div className="sub">🕵️ La spia era <b style={{ color: LOCK_PURPLE }}>{spy.nickname}</b></div></div>}
+      </>
+    ));
+  }
+
+  // ── SPIA SEGRETA (tavola 04) — alla fase ruoli, tieni premuto per leggere ───────
+  if (youAreSpy && ls.phase === 'roles' && !ready) {
+    return renderShell(`${LK_ASSET}scene-spia.jpg`, (
+      <>
+        {brand}
+        {spyHold ? (
+          <>
+            <div className="panel" style={{ textAlign: 'center' }}>
+              <div className="text-3xl">🕵️</div>
+              <div className="ttl" style={{ fontSize: 22 }}>Sei la spia</div>
+              <div className="divider">🎭 Vinci con il Master</div>
+              <div className="sub" style={{ textAlign: 'left' }}><b>Sabotaggio:</b> trasferisci il 20% degli altri saldi al Master. Una sola volta — usa il momento giusto.</div>
+            </div>
+            {spyBlock}
+            <button className="btn btn-gold" onClick={() => setReady(true)}>Ho capito</button>
+          </>
+        ) : (
+          <>
+            <div style={{ flex: 1, minHeight: 120 }} />
+            <button className="btn btn-ghost" onPointerDown={() => setSpyHold(true)} onContextMenu={e => e.preventDefault()}>👆 Tieni premuto per leggere</button>
+          </>
+        )}
+      </>
+    ));
+  }
+
+  // ── POTERE — CUOCO sceglie l'ingrediente (tavola 11) ───────────────────────────
+  if (iAmCuocoPicking) {
+    return renderShell(sceneUrl('cucina'), (
+      <>
+        {brand}
+        <div className="eyebrow">Potere · Cuoco</div>
+        <div className="ttl" style={{ fontSize: 20 }}>Scegli un ingrediente</div>
+        <div className="panel">
+          {(ch?.ingredientOptions ?? []).map((opt, i) => (
+            <button key={i} className="opt" disabled={busy}
+              onClick={() => { void post('choose-ingredient', { playerId: player.id, ingredient: opt }); }}>
+              <span>🥗</span><span>{opt}</span><span className="radio" />
+            </button>
+          ))}
+        </div>
+      </>
+    ));
+  }
+
+  // ── POTERE — CANTANTE sceglie 2 parole (balcone) ───────────────────────────────
+  if (iAmCantantePicking) {
+    return renderShell(sceneUrl('balcone'), (
+      <>
+        {brand}
+        <div className="eyebrow">Potere · Cantante</div>
+        <div className="ttl" style={{ fontSize: 20 }}>Scegli 2 parole</div>
+        <div className="panel">
+          <div className="grid2">
+            {(ch?.wordOptions ?? []).map((opt, i) => (
+              <button key={i} className={`chip pick${wordSel.includes(opt) ? ' sel' : ''}`} disabled={busy || (!wordSel.includes(opt) && wordSel.length >= 2)}
+                onClick={() => toggleWord(opt)} style={{ padding: '13px 10px', fontSize: 15 }}>{opt}</button>
+            ))}
+          </div>
+          <button className="btn btn-gold" disabled={busy || wordSel.length === 0}
+            onClick={() => { void post('choose-words', { playerId: player.id, words: wordSel }); }}>Conferma ({wordSel.length}/2)</button>
+        </div>
+      </>
+    ));
+  }
+
+  // ── ACCUSA (tavola 12) — richiamata dalla mappa o dal menu, usa /accuse ─────────
+  if (accuseOpen) {
+    return renderShell(bg, (
+      <>
+        {brand}
+        <div className="ttl" style={{ fontSize: 20 }}>Accusa</div>
+        <div className="sub">Chi vuoi accusare?</div>
+        <div className="grid3">
+          {others.map(p => (
+            <div key={p.id} className={`pcard${accuseSel === p.id ? ' sel' : ''}`} onClick={() => setAccuseSel(p.id)}>
+              <LkAvatar p={p} size={54} />
+              <span className="pn">{p.nickname}</span>
+              <span className="radio" style={{ margin: 0 }} />
+            </div>
+          ))}
+        </div>
+        <div className="panel" style={{ boxShadow: 'inset 0 0 0 1px rgba(217,154,58,.5)' }}>
+          <div className="sub" style={{ textAlign: 'left' }}>⚠️ Una sola accusa a partita. Se sbagli perdi metà saldo. Se indovini incassi la cassa del Master.</div>
+        </div>
+        <div className="row">
+          <button className="btn btn-navy" disabled={busy} onClick={() => { setAccuseOpen(false); setAccuseSel(null); }}>Annulla</button>
+          <button className="btn btn-gold" disabled={busy || !accuseSel}
+            onClick={() => { if (accuseSel) { void post('accuse', { accuserId: player.id, suspectId: accuseSel }).then(() => setAccuseOpen(false)); } }}>Conferma accusa</button>
+        </div>
+      </>
+    ));
+  }
+
+  // ── PERSONAGGIO (tavola 03) — fase ruoli ──────────────────────────────────────
+  if (ls.phase === 'roles') {
+    return renderShell(bg || `${LK_ASSET}scene-accesso.jpg`, (
+      <>
+        {brand}
+        <div className="emblem" style={{ marginTop: 6 }}>{c.emoji}</div>
+        <div className="ttl">{c.name}</div>
+        {balancePill}
+        <div className="panel"><div className="sub">{c.power}</div></div>
+        {ready
+          ? <div className="flash" style={{ background: 'rgba(28,106,94,.35)', boxShadow: `inset 0 0 0 1px ${LOCK_TEAL}` }}>✓ Pronto — attendi il Master</div>
+          : <button className="btn btn-gold" onClick={() => setReady(true)}>Pronto</button>}
+      </>
+    ));
+  }
+
+  // ── MAPPA (tavola 05) — fase intro stanza ─────────────────────────────────────
+  if (ls.phase === 'room_intro') {
+    return renderShell(`${LK_ASSET}house.png`, (
+      <>
+        {brand}
+        {balancePill}
+        <div className="eyebrow">{typeLabel}</div>
+        <div className="ttl" style={{ fontSize: 20 }}>{room.name}</div>
+        <div className="panel">
+          <div className="grid3">
+            {LOCK_ROOM_ORDER.map((rid) => {
+              const info = LOCKDOWN_ROOMS[rid]!;
+              const isCurrent = rid === roomId;
+              const idx = LOCK_ROOM_ORDER.indexOf(rid);
+              const curIdx = roomId ? LOCK_ROOM_ORDER.indexOf(roomId) : -1;
+              const done = curIdx >= 0 && idx < curIdx;
+              return (
+                <div key={rid} className={`roomtile${isCurrent ? ' on' : ''}${done ? ' done' : ''}`}>
+                  <span className="em">{info.emoji}</span>
+                  <span className="rn">{info.name}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div className="row">
+          <button className="btn btn-teal" onClick={() => setMenuOpen(true)}><Zap className="h-5 w-5" /> Il mio potere</button>
+          <button className="btn" style={{ color: '#ffd9d9', background: 'linear-gradient(180deg,#5a2330,#331018)', boxShadow: 'inset 0 0 0 1.5px rgba(200,70,70,.5)' }} onClick={() => setAccuseOpen(true)}>🎩 Accusa spia</button>
+        </div>
+        {menuOverlay}
+      </>
+    ));
+  }
+
+  // ── COLPO DI SCENA (dpcm) ─────────────────────────────────────────────────────
+  if (ls.phase === 'dpcm') {
+    return renderShell(`${LK_ASSET}event-colpo.png`, (
+      <>
+        {brand}
+        <div className="eyebrow" style={{ color: LOCK_PURPLE }}>📜 Colpo di scena</div>
+        <div className="panel" style={{ textAlign: 'center', boxShadow: `inset 0 0 0 1px ${LOCK_PURPLE}66` }}>
+          <div className="ttl" style={{ fontSize: 18, color: '#fff' }}>{ls.dpcm?.text ?? '…'}</div>
+        </div>
+        <div className="sub">Attendi il Master…</div>
+      </>
+    ));
+  }
+
+  // ── ACCUSA risolta (fase accuse) — flash pubblico ─────────────────────────────
+  if (ls.phase === 'accuse') {
+    return renderShell(bg, (
+      <>
+        {brand}
+        <div className="text-5xl" style={{ marginTop: 10 }}>🎩</div>
+        <div className="ttl" style={{ fontSize: 20 }}>Accusa</div>
+        {ls.lastFlash && <div className="flash" style={{ background: 'rgba(12,17,24,.9)', boxShadow: 'inset 0 0 0 1px rgba(201,151,47,.4)' }}>{ls.lastFlash.text}</div>}
+        <div className="sub">Attendi il Master…</div>
+      </>
+    ));
+  }
+
+  // ── SFIDA / RISULTATO (challenge + result) ────────────────────────────────────
+  // Header comune
+  const challengeHeader = (
+    <>
+      {brand}
+      <div className="eyebrow">{typeLabel}</div>
+      <div className="ttl" style={{ fontSize: 20 }}>{room.name}</div>
+      {ls.phase === 'challenge' && ls.endsAt && <LkTimer endsAt={ls.endsAt} />}
+    </>
+  );
+
+  // Blocchi comuni
+  const sedatedBanner = iAmSedated ? (
+    <div className="flash" style={{ background: `${LOCK_PURPLE}22`, boxShadow: `inset 0 0 0 1.5px ${LOCK_PURPLE}66` }}>😴 Sei stato sedato per questa prova</div>
+  ) : null;
+  const brokeBanner = broke ? (
+    <div className="flash" style={{ background: 'rgba(248,113,113,.15)', boxShadow: 'inset 0 0 0 1.5px rgba(248,113,113,.5)', color: '#fca5a5' }}>🔴 Sei in rosso — continui a giocare e votare, puoi risalire!</div>
+  ) : null;
+
+  // Pannello VOTO (sfide a giudizio) — castVote, logica invariata
+  const votePanel = canVote && ch ? (
+    <div className="panel">
+      <div className="eyebrow">🗳️ Vota il migliore</div>
+      <div className="grid3">
+        {others.map(p => (
+          <div key={p.id} className={`pcard${myVote === p.id ? ' sel' : ''}`} onClick={() => { if (!busy) void post('vote', { voterId: player.id, votedPlayerId: p.id }); }}>
+            <LkAvatar p={p} size={50} />
+            <span className="pn">{p.nickname}</span>
+            <span className="radio" style={{ margin: 0 }} />
+          </div>
+        ))}
+      </div>
+      {myVote && <div className="sub" style={{ opacity: .6 }}>Puoi cambiare voto finché il Master non assegna.</div>}
+    </div>
+  ) : null;
+
+  // Pannello RISPOSTA OGGETTIVA (quiz / oggetti / ufficio) — /answer, logica invariata
+  const answerPanel = canAnswer && ch ? (
+    <div className="panel">
+      <div className="sub" style={{ fontSize: 15, color: '#f3ead2', fontWeight: 700 }}>{ch.prompt}</div>
+      {ch.imageUrl && <img src={ch.imageUrl} alt="" style={{ width: '100%', borderRadius: 12, boxShadow: 'inset 0 0 0 1px rgba(201,151,47,.4)' }} />}
+      {roomId === 'ufficio' && <div className="sub" style={{ opacity: .7 }}>Solo il capitano invia la risposta per la squadra.</div>}
+      {sent ? (
+        <div className="flash" style={{ background: 'rgba(28,106,94,.3)', boxShadow: `inset 0 0 0 1.5px ${LOCK_TEAL}`, color: '#d5fff6' }}>✅ Risposta inviata!</div>
+      ) : ch.options && ch.options.length > 0 ? (
+        <>
+          {ch.options.map((o, i) => (
+            <button key={i} className="opt" disabled={busy}
+              onClick={() => { void post('answer', { playerId: player.id, answerIndex: i }).then(() => setSent(true)); }}>
+              <span className="lab">{String.fromCharCode(65 + i)}</span><span>{o}</span>
+            </button>
+          ))}
+          <button className="btn btn-gold" disabled style={{ opacity: .5 }}>{roomId === 'ufficio' ? 'Invia risposta di squadra' : 'Conferma risposta'}</button>
+        </>
+      ) : (
+        <>
+          <input className="fld" value={text} onChange={e => setText(e.target.value)} placeholder="Scrivi la tua risposta…" />
+          <button className="btn btn-gold" disabled={busy || !text.trim()}
+            onClick={() => { void post('answer', { playerId: player.id, text: text.trim() }).then(() => setSent(true)); }}>Conferma risposta</button>
+        </>
+      )}
+    </div>
+  ) : null;
+
+  // Pannello PERFORM soggettivo (ricette / storia / canto / mimo / bugie / dadi) in CHALLENGE.
+  const performPanel = (subjective && ls.phase === 'challenge' && ch && !iAmSedated) ? (() => {
+    // RICETTE (cucina) — editor a elenco, invio unico via /answer (text)
+    if (roomId === 'cucina') {
+      return (
+        <div className="panel">
+          {ch.ingredient && <div style={{ textAlign: 'center' }}><div className="eyebrow">Ingrediente di oggi</div><div className="ttl" style={{ fontSize: 18 }}>🍅 {ch.ingredient}</div></div>}
+          <div className="sub">Crea il tuo elenco di ricette con l'ingrediente di oggi.</div>
+          {sent ? <div className="flash" style={{ background: 'rgba(28,106,94,.3)', boxShadow: `inset 0 0 0 1.5px ${LOCK_TEAL}`, color: '#d5fff6' }}>✅ Elenco inviato!</div> : (
+            <>
+              {recipes.map((rv, i) => (
+                <div key={i} className="listrow">
+                  <span className="n">{i + 1}</span>
+                  <input value={rv} placeholder={`Ricetta ${i + 1}`} onChange={e => setRecipes(prev => prev.map((x, j) => j === i ? e.target.value : x))} />
+                </div>
+              ))}
+              <button className="btn btn-ghost" disabled={busy} onClick={() => setRecipes(prev => [...prev, ''])}>＋ Aggiungi ricetta</button>
+              <button className="btn btn-gold" disabled={busy || !recipes.some(r => r.trim())}
+                onClick={() => { void post('answer', { playerId: player.id, text: recipes.map(r => r.trim()).filter(Boolean).join('\n') }).then(() => setSent(true)); }}>Invia elenco</button>
+            </>
+          )}
+        </div>
+      );
+    }
+    // STORIA (cinema) — chip parole + editor + conteggio, invio via /answer (text)
+    if (roomId === 'cinema') {
+      const words = ch.words ?? [];
+      const used = words.filter(w => text.toLowerCase().includes(String(w).toLowerCase())).length;
+      return (
+        <div className="panel">
+          <div className="eyebrow">Storytelling editor</div>
+          <div className="sub">Crea una storia utilizzando le parole a disposizione.</div>
+          {words.length > 0 && <div className="grid2">{words.map((w, i) => <span key={i} className="chip">{w}</span>)}</div>}
+          <div className="sub" style={{ opacity: .8 }}>{used}/{words.length} parole usate</div>
+          {sent ? <div className="flash" style={{ background: 'rgba(28,106,94,.3)', boxShadow: `inset 0 0 0 1.5px ${LOCK_TEAL}`, color: '#d5fff6' }}>✅ Storia inviata!</div> : (
+            <>
+              <textarea className="fld" rows={4} value={text} placeholder="Scrivi qui la tua storia…" onChange={e => setText(e.target.value)} />
+              <button className="btn btn-gold" disabled={busy || !text.trim()}
+                onClick={() => { void post('answer', { playerId: player.id, text: text.trim() }).then(() => setSent(true)); }}>Invia storia</button>
+            </>
+          )}
+        </div>
+      );
+    }
+    // CANTO (balcone) — parole + emblema nota + Passa (presentazione; Master valuta)
+    if (roomId === 'balcone') {
+      const words = ch.words ?? [];
+      return (
+        <div className="panel" style={{ alignItems: 'center' }}>
+          <div className="eyebrow">La tua esibizione</div>
+          <div className="sub">Seleziona una canzone che contiene una delle seguenti parole.</div>
+          {words.length > 0 && <div className="grid3">{words.map((w, i) => <span key={i} className="chip">{w}</span>)}</div>}
+          <div style={{ fontSize: 44 }}>🎵</div>
+          <div className="row">
+            <button className="btn btn-navy" disabled={busy || sent} onClick={() => setSent(true)}>Passa</button>
+          </div>
+          <div className="sub" style={{ opacity: .7 }}>Il Master valuta la tua esibizione.</div>
+        </div>
+      );
+    }
+    // MIMO (salone) — titolo privato (tieni premuto) + Indovinato (richiesta valid.) / Passa
+    if (roomId === 'salone') {
+      return (
+        <div className="panel" style={{ alignItems: 'center' }}>
+          <div className="eyebrow">Prova dal vivo</div>
+          <div className="sub">Mostra solo al mimo</div>
+          <button className="chip pick" style={{ padding: '18px 16px', fontSize: 17, width: '100%' }} onPointerDown={() => setTitleHold(true)} onContextMenu={e => e.preventDefault()}>
+            {titleHold ? (ch.answer ? String(ch.answer) : '—') : '👆 Tieni premuto per vedere il titolo'}
+          </button>
+          <div className="row">
+            <button className="btn btn-teal" disabled={busy || sent} onClick={() => { void post('answer', { playerId: player.id, text: 'INDOVINATO' }).then(() => setSent(true)); }}><Check className="h-5 w-5" /> Indovinato</button>
+            <button className="btn btn-navy" disabled={busy || sent} onClick={() => setSent(true)}>Passa</button>
+          </div>
+          <div className="sub" style={{ opacity: .7 }}>Indovinato invia una richiesta di validazione al Master.</div>
+        </div>
+      );
+    }
+    // BUGIE (gabinetto) — domanda del Master + Passa (Master registra gli errori)
+    if (roomId === 'gabinetto') {
+      return (
+        <div className="panel" style={{ alignItems: 'center' }}>
+          <div className="eyebrow">Rispondi solo con bugie</div>
+          {ch.prompt && <div className="ttl" style={{ fontSize: 18, color: '#fff' }}>{ch.prompt}</div>}
+          <div className="sub" style={{ opacity: .8 }}>🎭 Il Master registra gli errori.</div>
+          <button className="btn btn-gold" disabled={busy || sent} onClick={() => setSent(true)}>Passa</button>
+        </div>
+      );
+    }
+    // DADI (palestra) — pari/dispari + conferma (invio scelta via /answer text)
+    if (roomId === 'palestra') {
+      return (
+        <div className="panel" style={{ alignItems: 'center' }}>
+          <div className="eyebrow">Gioco dei dadi</div>
+          <div style={{ fontSize: 40 }}>🎲🎲</div>
+          <div className="sub">Scegli Pari o Dispari.</div>
+          <div className="row">
+            <button className={`btn ${diceBet === 'pari' ? 'btn-teal' : 'btn-ghost'}`} disabled={busy || sent} onClick={() => setDiceBet('pari')}>Pari</button>
+            <button className={`btn ${diceBet === 'dispari' ? 'btn-teal' : 'btn-ghost'}`} disabled={busy || sent} onClick={() => setDiceBet('dispari')}>Dispari</button>
+          </div>
+          {sent ? <div className="flash" style={{ background: 'rgba(28,106,94,.3)', boxShadow: `inset 0 0 0 1.5px ${LOCK_TEAL}`, color: '#d5fff6' }}>✅ Scelta inviata!</div> : (
+            <button className="btn btn-gold" disabled={busy || !diceBet}
+              onClick={() => { if (diceBet) void post('answer', { playerId: player.id, text: diceBet }).then(() => setSent(true)); }}>Conferma</button>
+          )}
+          <div className="sub" style={{ opacity: .6 }}>Conferma la tua scelta prima del countdown.</div>
+        </div>
+      );
+    }
+    return null;
+  })() : null;
+
+  // RISULTATO (tavola 06)
+  const resultPanel = ls.phase === 'result' ? (
+    <div className="panel" style={{ alignItems: 'center' }}>
+      <div className="text-4xl">✅</div>
+      <div className="ttl" style={{ fontSize: 18 }}>{room.name} completata</div>
+      <div style={{ textAlign: 'center' }}>
+        <div className="eyebrow">Nuovo saldo</div>
+        <div style={{ font: '700 32px/1 "Baskerville Lockdown",serif', color: LOCK_GOLD_HI }}>{myBalance} <span style={{ fontSize: 18 }}>Ⱡ</span></div>
+      </div>
+      {ls.lastFlash && <div className="sub">{ls.lastFlash.text}</div>}
+      <div className="sub" style={{ opacity: .7 }}>👥 Nessuno viene eliminato</div>
+      <div className="flash" style={{ background: 'rgba(12,17,24,.8)', boxShadow: 'inset 0 0 0 1px rgba(201,151,47,.35)' }}>⏳ Attendi prossima stanza</div>
+    </div>
+  ) : null;
+
+  const waiting = (!answerPanel && !performPanel && !votePanel && !resultPanel) ? (
+    <div className="sub" style={{ padding: '18px 0' }}>In attesa del Master…</div>
+  ) : null;
+
+  return renderShell(bg, (
+    <>
+      {challengeHeader}
+      {brokeBanner}
+      {sedatedBanner}
+      {resultPanel}
+      {answerPanel}
+      {performPanel}
+      {votePanel}
+      {waiting}
+      {menuOverlay}
+    </>
+  ), () => setMenuOpen(true));
 }
+
 
 // ── SimpleController (Ballo, Adult, WordBack) ──────────────────────────────────
 
