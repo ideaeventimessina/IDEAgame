@@ -11,11 +11,13 @@ import { useLocation } from 'wouter';
 import {
   Pencil, User, Users, ChevronDown, ChevronRight, ChevronLeft, Check, Lock,
   Brain, Heart, Music, Laugh, Activity, MessageCircleQuestion, Mic, X, Loader2,
-  Volume2, MonitorSmartphone, Wifi,
+  Volume2,
 } from 'lucide-react';
 import ShowStage from '@/components/ShowStage';
 import ShellHeader from '@/components/ShellHeader';
 import StageFit from '@/components/StageFit';
+import { CheckCircle2, AlertCircle, Monitor as MonitorIcon, Smartphone } from 'lucide-react';
+import { AudioManager } from '@/audio/AudioManager';
 
 type GameDef = {
   slug: string;
@@ -124,6 +126,12 @@ export default function HomeSetupPage() {
     isLockdown ? ['lockdown'] : (IN_PROVA ? ['gioco-coppie', 'parola-alle-spalle', 'sfida-ballo'] : []));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [audioOk, setAudioOk] = useState(false);
+
+  const provaAudio = () => {
+    AudioManager.resumeContext();
+    setAudioOk(true);
+  };
 
   const isFamily = audience === 'Famiglia';
   // Adult Only resta VISIBILE ma bloccato per il pubblico Famiglia (spec: non nasconderlo
@@ -323,35 +331,61 @@ export default function HomeSetupPage() {
     </div>
   );
 
+  const okChip = <CheckCircle2 size={24} style={{ color: '#34D27A' }} />;
+  const DeviceRow = ({ icon, title, sub, right }: { icon: React.ReactNode; title: string; sub: string; right: React.ReactNode }) => (
+    <div className="flex items-center" style={{ gap: 14, padding: '12px 4px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+      <span className="grid place-items-center shrink-0" style={{ width: 40, color: '#E6B85C' }}>{icon}</span>
+      <div className="flex-1">
+        <div className="font-bold" style={{ fontSize: 16, color: '#F7F3E8' }}>{title}</div>
+        <div style={{ fontSize: 12.5, color: 'rgba(247,243,232,0.6)' }}>{sub}</div>
+      </div>
+      <div className="shrink-0">{right}</div>
+    </div>
+  );
+
   const Step3 = (
     <div className="flex flex-col" style={{ gap: 14 }}>
-      <div className="rounded-2xl" style={{ background: 'rgba(13,13,25,0.72)', border: '1.5px solid rgba(255,255,255,0.12)', padding: 22 }}>
-        <div className="font-black" style={{ fontFamily: "'Outfit',system-ui,sans-serif", fontSize: 22, color: '#F7F3E8' }}>
-          Dispositivi e audio
-        </div>
-        <div style={{ fontSize: 13.5, color: 'rgba(247,243,232,0.6)', margin: '4px 0 18px' }}>
-          Controlla schermo, audio e connessione prima di aprire la stanza.
-        </div>
-        <div className="flex flex-col" style={{ gap: 12 }}>
-          {[
-            { Icon: MonitorSmartphone, t: 'Monitor / proiettore', s: 'Apri la lobby su uno schermo grande per i giocatori.' },
-            { Icon: Volume2, t: 'Audio', s: 'Musica e voce di Johhy. Attivabile con un tocco in sala.' },
-            { Icon: Wifi, t: 'Connessione', s: 'I telefoni entrano col QR o col codice della serata.' },
-          ].map((r) => (
-            <div key={r.t} className="flex items-center rounded-xl" style={{ gap: 12, padding: '12px 14px', background: 'rgba(255,255,255,0.04)', border: '1.5px solid rgba(255,255,255,0.1)' }}>
-              <span className="grid place-items-center rounded-full" style={{ width: 40, height: 40, background: 'linear-gradient(180deg,#FCE08B,#E6B85C)', color: '#241803' }}>
-                <r.Icon size={20} strokeWidth={2} />
-              </span>
-              <div>
-                <div className="font-bold" style={{ fontSize: 15, color: '#F7F3E8' }}>{r.t}</div>
-                <div style={{ fontSize: 12.5, color: 'rgba(247,243,232,0.65)' }}>{r.s}</div>
-              </div>
+      <div className="rounded-2xl" style={{ background: 'rgba(13,13,25,0.72)', border: '1.5px solid rgba(255,255,255,0.12)', padding: '8px 18px' }}>
+        <DeviceRow
+          icon={<MonitorIcon size={26} strokeWidth={2} />}
+          title="Monitor" sub="Pronto per la proiezione"
+          right={okChip}
+        />
+        <DeviceRow
+          icon={<Volume2 size={26} strokeWidth={2} />}
+          title="Audio" sub={audioOk ? 'Attivo' : 'Non ancora attivato'}
+          right={audioOk ? okChip : (
+            <div className="flex items-center" style={{ gap: 12 }}>
+              <AlertCircle size={22} style={{ color: '#E6B85C' }} />
+              <button type="button" onClick={provaAudio} className="rounded-xl font-extrabold" style={{ padding: '9px 18px', background: 'linear-gradient(180deg,#FCE08B,#E6B85C)', color: '#241803', fontSize: 14 }}>
+                Prova audio
+              </button>
             </div>
-          ))}
+          )}
+        />
+        <DeviceRow
+          icon={<Smartphone size={26} strokeWidth={2} />}
+          title="Telefoni giocatori" sub="Entrano col QR o col codice dopo l'apertura"
+          right={okChip}
+        />
+        <div className="flex items-center" style={{ gap: 14, padding: '12px 4px' }}>
+          <span className="grid place-items-center shrink-0" style={{ width: 40 }}>
+            <img src="/brand/logo-glasses.png" alt="" aria-hidden style={{ height: 30 }} />
+          </span>
+          <div className="flex-1">
+            <div className="font-bold" style={{ fontSize: 16, color: '#F7F3E8' }}>Johhy</div>
+            <div style={{ fontSize: 12.5, color: 'rgba(247,243,232,0.6)' }}>Voce pronta</div>
+          </div>
+          {okChip}
         </div>
       </div>
-      <div className="flex justify-center">
-        <GoldButton label="Crea stanza" onClick={handleCreate} loading={loading} width={280} />
+      <div className="grid" style={{ gridTemplateColumns: '1fr 1.2fr', gap: 14 }}>
+        <button type="button" onClick={handleCreate} disabled={loading}
+          className="flex items-center justify-center rounded-2xl font-extrabold"
+          style={{ height: 54, gap: 10, background: 'rgba(13,13,25,0.72)', border: '1.5px solid rgba(230,184,92,0.4)', color: '#F7F3E8', fontSize: 16, cursor: loading ? 'not-allowed' : 'pointer' }}>
+          <MonitorIcon size={19} /> Apri monitor
+        </button>
+        <GoldButton label="Vai alla lobby" onClick={handleCreate} loading={loading} width="100%" />
       </div>
     </div>
   );

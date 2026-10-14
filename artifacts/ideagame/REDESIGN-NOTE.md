@@ -51,8 +51,20 @@ Nuovi campi UI: Nome serata (→ titolo Live) e Pubblico (Famiglia filtra Adult)
 Typecheck exit 0. Compare per zone — step1: stepper 24% · righe 16-33% · continua ~83%(posizione,
 atteso) ; step2: title 38% · grid 35% (x-12 y20) · bottombar 22%. Residuo = scena dipinta vs gradiente.
 
+### [FATTO] 06-05 CONTROLLO DISPOSITIVI — step 3 del wizard `HomeSetupPage.tsx`
+Step "Dispositivi" rifatto fedele al mockup 06-05: righe Monitor (pronto ✓) · Audio
+(Prova audio → AudioManager.resumeContext, poi ✓) · Telefoni giocatori (✓) · Johhy (voce ✓),
+più pulsanti "Apri monitor" + "Vai alla lobby →". Niente avatar finti (prima della creazione non
+ci sono giocatori reali). Framing speculare al mockup: il wizard tiene Johhy a sinistra per coerenza
+con step 1. Create-flow fedele end-to-end: landing → modalità → serata → giochi → dispositivi → lobby.
+
 ## DA FARE (in ordine di priorità del caller)
-1. Tavola 06 (lobby/ruota + dispositivi)
+### Riferimenti già ritagliati e pronti: `design/refs/06-06-lobby.png`, `06-05-dispositivi.png`.
+1. Tavola 06 restante: **06-06 MONITOR LOBBY** (`HomeLobbyPage.tsx`, ~750 righe con QR reale,
+   roster live, musica, flusso presenter/live, avvio partita) — prossima slice consigliata, ma è un
+   file con logica real-time non testabile senza backend: va reskin-ato preservando ogni handler.
+   **07 RUOTA** e **08 REGIA** vivono dentro `HomeGame.tsx` (462KB) e `LiveControl.tsx`: alto rischio,
+   non toccati in questo giro.
 3. Tavola 07/10 (telefono ingresso+quiz, stati)
 4. Tavola 08/09 (monitor giochi display)
 5. Tavola 12 admin come 1 TEMPLATE applicato
