@@ -17,9 +17,62 @@ import {
   casinoTransactionsTable,
 } from "@workspace/db";
 import { emitToRoom } from "../socket.js";
+import {
+  PAYOUT, bjOutcome, creditFor, HORSE_MULT,
+  rouletteWinMoves, horseWinMoves, alreadySettled, rouletteCanSpin,
+  payAll, type FishTx, type FishMove,
+} from "./gestione-casino-atomic-lib.js";
 
 const router = Router();
 const DEFAULT_START_FISH = 500;
+
+/* ── Atomicità dei soldi ──────────────────────────────────────────────────────
+   Tipo della transazione Drizzle (parametro del callback di db.transaction). */
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/* Movimento ATOMICO di fiche dentro una transazione: UPDATE condizionale in SQL
+   (`fish_balance = fish_balance + delta`, niente read-modify-write JS) + riga di
+   ledger nella STESSA transazione. Per le USCITE (`requireFunds`) l'UPDATE ha un
+   WHERE che impedisce lo scoperto in modo atomico: se non tocca righe ritorna null
+   e NON scrive ledger. Elimina lost-update e ledger disallineato (report §0a/§0b). */
+async function moveFish(tx: Tx, sessionId: string, move: FishMove): Promise<number | null> {
+  const guard = move.requireFunds
+    ? and(eq(casinoPlayersTable.id, move.playerId), sql`${casinoPlayersTable.fishBalance} + ${move.delta} >= 0`)
+    : eq(casinoPlayersTable.id, move.playerId);
+  const rows = await tx.update(casinoPlayersTable)
+    .set({ fishBalance: sql`${casinoPlayersTable.fishBalance} + ${move.delta}` })
+    .where(guard)
+    .returning({ balance: casinoPlayersTable.fishBalance });
+  const balanceAfter = rows[0]?.balance;
+  if (balanceAfter == null) return null;
+  await tx.insert(casinoTransactionsTable).values({
+    sessionId, tableId: move.tableId ?? null, dealerCode: move.dealerCode ?? "",
+    playerId: move.playerId, delta: move.delta, kind: move.kind, balanceAfter,
+  });
+  return balanceAfter;
+}
+/* Adapter FishTx (per i pagamenti in blocco della lib) legato a una tx + serata. */
+const fishTxOf = (tx: Tx, sessionId: string): FishTx => ({ pay: (m) => moveFish(tx, sessionId, m) });
+
+/* Esegue una mutazione della serata in modo ATOMICO e SERIALIZZATO:
+   db.transaction → SELECT … FOR UPDATE sulla riga della serata (lock) → rilettura
+   del config FRESCO → callback (muove saldi/ledger via `tx`, muta `cfg`) →
+   riscrittura del config nella STESSA transazione (solo se `save`). Il lock di riga
+   serializza le operazioni concorrenti sulla stessa serata: il read-modify-write
+   dell'intero jsonb non può più sovrascrivere tavoli diversi (fix report §5/§0c). */
+async function mutateSession<T>(
+  sessionId: string,
+  fn: (tx: Tx, cfg: CasinoConfig) => Promise<{ save: boolean; result: T }>,
+): Promise<T> {
+  return db.transaction(async (tx) => {
+    const [row] = await tx.select({ config: casinoSessionsTable.config })
+      .from(casinoSessionsTable).where(eq(casinoSessionsTable.id, sessionId)).for("update");
+    const cfg = (row?.config ? JSON.parse(JSON.stringify(row.config)) : {}) as CasinoConfig;
+    const { save, result } = await fn(tx, cfg);
+    if (save) await tx.update(casinoSessionsTable).set({ config: cfg }).where(eq(casinoSessionsTable.id, sessionId));
+    return result;
+  });
+}
 
 /* Config della serata (jsonb, niente migrazioni):
    { startFish, tvCode, playerAvatars:{playerId:url}, pendingBets:{playerId:{amount,tableId,at}} } */
@@ -48,9 +101,13 @@ type CasinoConfig = {
 };
 const cfgOf = (session: { config?: unknown }): CasinoConfig => (session?.config ?? {}) as CasinoConfig;
 async function patchConfig(id: string, patch: Partial<CasinoConfig>): Promise<void> {
-  const [s] = await db.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, id));
-  const cur = (s?.config ?? {}) as CasinoConfig;
-  await db.update(casinoSessionsTable).set({ config: { ...cur, ...patch } }).where(eq(casinoSessionsTable.id, id));
+  // Merge sotto lock di riga (rilettura fresca): non sovrascrive chiavi scritte in
+  // parallelo da un altro tavolo/dealer della stessa serata (report §5).
+  await db.transaction(async (tx) => {
+    const [s] = await tx.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, id)).for("update");
+    const cur = (s?.config ?? {}) as CasinoConfig;
+    await tx.update(casinoSessionsTable).set({ config: { ...cur, ...patch } }).where(eq(casinoSessionsTable.id, id));
+  });
 }
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const makeCode = (n = 6) => Array.from({ length: n }, () => CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)]).join("");
@@ -263,13 +320,13 @@ router.post("/gestione/casino/tx", async (req, res): Promise<void> => {
     ? await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.id, String(playerId)))
     : await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.playerCode, String(playerCode ?? "").toUpperCase().trim()));
   if (!player || player.sessionId !== table.sessionId) { res.status(404).json({ error: "Giocatore non trovato in questa serata" }); return; }
-  const newBalance = player.fishBalance + Math.round(amt);
-  if (newBalance < 0) { res.status(409).json({ error: "Fish insufficienti", balance: player.fishBalance }); return; }
-  await db.update(casinoPlayersTable).set({ fishBalance: newBalance }).where(eq(casinoPlayersTable.id, player.id));
-  await db.insert(casinoTransactionsTable).values({
-    sessionId: table.sessionId, tableId: table.id, dealerCode: table.dealerCode, playerId: player.id,
-    delta: Math.round(amt), kind: String(kind ?? (amt > 0 ? "pay" : "take")), balanceAfter: newBalance,
-  });
+  // ATOMICO: UPDATE saldo (con guard anti-scoperto) + INSERT ledger nella stessa tx.
+  const amtDelta = Math.round(amt);
+  const newBalance = await db.transaction((tx) => moveFish(tx, table.sessionId, {
+    playerId: player.id, delta: amtDelta, kind: String(kind ?? (amt > 0 ? "pay" : "take")),
+    tableId: table.id, dealerCode: table.dealerCode, requireFunds: true,
+  }));
+  if (newBalance == null) { res.status(409).json({ error: "Fish insufficienti", balance: player.fishBalance }); return; }
   // Risolta la giocata: azzero l'eventuale puntata in sospeso del giocatore.
   const [sCfg] = await db.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, table.sessionId));
   const curBets = cfgOf(sCfg ?? {}).pendingBets ?? {};
@@ -293,27 +350,8 @@ router.post("/gestione/casino/sessions/:id/end", async (req, res): Promise<void>
 });
 
 // ══════════════════ TAVOLI INTERATTIVI — ROULETTE ══════════════════════════════
-const RED = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
-// Payout = PROFITTO per 1 fiche (il totale accreditato al vincitore è amount*(mult+1)).
-const PAYOUT: Record<string, number> = { straight: 35, split: 17, red: 1, black: 1, even: 1, odd: 1, low: 1, high: 1, dozen1: 2, dozen2: 2, dozen3: 2, col1: 2, col2: 2, col3: 2 };
-function betWins(kind: string, numbers: number[], r: number): boolean {
-  switch (kind) {
-    case "straight": case "split": return numbers.includes(r);
-    case "red": return RED.has(r);
-    case "black": return r !== 0 && !RED.has(r);
-    case "even": return r !== 0 && r % 2 === 0;
-    case "odd": return r % 2 === 1;
-    case "low": return r >= 1 && r <= 18;
-    case "high": return r >= 19 && r <= 36;
-    case "dozen1": return r >= 1 && r <= 12;
-    case "dozen2": return r >= 13 && r <= 24;
-    case "dozen3": return r >= 25 && r <= 36;
-    case "col1": return r !== 0 && r % 3 === 1;
-    case "col2": return r !== 0 && r % 3 === 2;
-    case "col3": return r !== 0 && r % 3 === 0;
-    default: return false;
-  }
-}
+// RED / PAYOUT / betWins / creditFor / HORSE_MULT: quote e esito INVARIATI, spostati
+// in gestione-casino-atomic-lib (testabili). Qui restano solo le rotte.
 // Trova il tavolo (e la sessione) a partire dal codice display o dal codice di una sedia.
 async function findGameTable(code: string): Promise<{ sessionId: string; table: GameTable; seatNo?: string } | null> {
   const c = code.toUpperCase().trim();
@@ -329,9 +367,14 @@ async function findGameTable(code: string): Promise<{ sessionId: string; table: 
   return null;
 }
 async function saveGameTable(sessionId: string, table: GameTable): Promise<void> {
-  const [s] = await db.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, sessionId));
-  const cur = (s?.config ?? {}) as CasinoConfig;
-  await db.update(casinoSessionsTable).set({ config: { ...cur, gameTables: { ...(cur.gameTables ?? {}), [table.id]: table } } }).where(eq(casinoSessionsTable.id, sessionId));
+  // Scrittura mirata del SINGOLO tavolo sotto lock di riga (rilettura fresca dentro
+  // la transazione): due operazioni concorrenti su tavoli diversi della stessa
+  // serata non si sovrascrivono più (report §5).
+  await db.transaction(async (tx) => {
+    const [s] = await tx.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, sessionId)).for("update");
+    const cur = (s?.config ?? {}) as CasinoConfig;
+    await tx.update(casinoSessionsTable).set({ config: { ...cur, gameTables: { ...(cur.gameTables ?? {}), [table.id]: table } } }).where(eq(casinoSessionsTable.id, sessionId));
+  });
 }
 // Stato arricchito del tavolo per display e controller (nomi/foto/saldi delle sedie).
 async function tableState(sessionId: string, table: GameTable) {
@@ -413,22 +456,24 @@ router.post("/gestione/casino/table/bet", async (req, res): Promise<void> => {
   if ((kind === "straight" || kind === "split") && numbers.length === 0) { res.status(400).json({ error: "Scegli il numero" }); return; }
   const found = await findGameTable(seatCode);
   if (!found || !found.seatNo) { res.status(404).json({ error: "Postazione non trovata" }); return; }
-  const table = found.table;
-  if (table.phase !== "betting") { res.status(409).json({ error: "Puntate chiuse" }); return; }
-  const seat = table.seats[found.seatNo]!;
-  if (!seat.playerId) { res.status(409).json({ error: "Siediti prima alla postazione" }); return; }
-  const [player] = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.id, seat.playerId));
-  if (!player) { res.status(404).json({ error: "Giocatore non trovato" }); return; }
-  if (player.fishBalance < amount) { res.status(409).json({ error: "Fiche insufficienti", balance: player.fishBalance }); return; }
-  // Escrow: scala subito le fiche (sono "sul tappeto").
-  const newBal = player.fishBalance - amount;
-  await db.update(casinoPlayersTable).set({ fishBalance: newBal }).where(eq(casinoPlayersTable.id, player.id));
-  await db.insert(casinoTransactionsTable).values({ sessionId: found.sessionId, tableId: null, dealerCode: "", playerId: player.id, delta: -amount, kind: "roulette_bet", balanceAfter: newBal });
-  table.bets.push({ id: makeCode(8), seatNo: Number(found.seatNo), playerId: player.id, kind, numbers, amount });
-  await saveGameTable(found.sessionId, table);
-  await broadcastTable(found.sessionId, table);
+  const seatNo = found.seatNo, tableId = found.table.id;
+  // ATOMICO + SERIALIZZATO: escrow (scala le fiche) e aggiunta della puntata sul
+  // tavolo nella STESSA transazione → niente fiche scalate senza puntata (report §0c).
+  const out = await mutateSession<{ status: number; body: Record<string, unknown>; table?: GameTable }>(found.sessionId, async (tx, cfg) => {
+    const table = cfg.gameTables?.[tableId];
+    if (!table) return { save: false, result: { status: 404, body: { error: "Postazione non trovata" } } };
+    if (table.phase !== "betting") return { save: false, result: { status: 409, body: { error: "Puntate chiuse" } } };
+    const seat = table.seats[seatNo];
+    if (!seat?.playerId) return { save: false, result: { status: 409, body: { error: "Siediti prima alla postazione" } } };
+    const bal = await moveFish(tx, found.sessionId, { playerId: seat.playerId, delta: -amount, kind: "roulette_bet", tableId: null, requireFunds: true });
+    if (bal == null) return { save: false, result: { status: 409, body: { error: "Fiche insufficienti" } } };
+    table.bets.push({ id: makeCode(8), seatNo: Number(seatNo), playerId: seat.playerId, kind, numbers, amount });
+    return { save: true, result: { status: 200, body: { ok: true, balance: bal }, table } };
+  });
+  if (out.status !== 200) { res.status(out.status).json(out.body); return; }
+  if (out.table) await broadcastTable(found.sessionId, out.table);
   await broadcast(found.sessionId);
-  res.json({ ok: true, balance: newBal });
+  res.json(out.body);
 });
 
 // ── Annulla l'ultima puntata della sedia (rimborso) ─────────────────────────────
@@ -436,23 +481,23 @@ router.post("/gestione/casino/table/undo", async (req, res): Promise<void> => {
   const seatCode = String(req.body?.seatCode ?? "").toUpperCase().trim();
   const found = await findGameTable(seatCode);
   if (!found || !found.seatNo) { res.status(404).json({ error: "Postazione non trovata" }); return; }
-  const table = found.table;
-  if (table.phase !== "betting") { res.status(409).json({ error: "Puntate chiuse" }); return; }
-  const seatNo = Number(found.seatNo);
-  const idx = [...table.bets].reverse().findIndex(b => b.seatNo === seatNo);
-  if (idx === -1) { res.status(404).json({ error: "Nessuna puntata da annullare" }); return; }
-  const realIdx = table.bets.length - 1 - idx;
-  const [bet] = table.bets.splice(realIdx, 1);
-  const [player] = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.id, bet!.playerId));
-  if (player) {
-    const nb = player.fishBalance + bet!.amount;
-    await db.update(casinoPlayersTable).set({ fishBalance: nb }).where(eq(casinoPlayersTable.id, player.id));
-    await db.insert(casinoTransactionsTable).values({ sessionId: found.sessionId, tableId: null, dealerCode: "", playerId: player.id, delta: bet!.amount, kind: "roulette_undo", balanceAfter: nb });
-  }
-  await saveGameTable(found.sessionId, table);
-  await broadcastTable(found.sessionId, table);
+  const seatNo = Number(found.seatNo), tableId = found.table.id;
+  // ATOMICO: rimozione della puntata dal tavolo + rimborso (saldo+ledger) insieme.
+  const out = await mutateSession<{ status: number; body: Record<string, unknown>; table?: GameTable }>(found.sessionId, async (tx, cfg) => {
+    const table = cfg.gameTables?.[tableId];
+    if (!table) return { save: false, result: { status: 404, body: { error: "Postazione non trovata" } } };
+    if (table.phase !== "betting") return { save: false, result: { status: 409, body: { error: "Puntate chiuse" } } };
+    const idx = [...table.bets].reverse().findIndex(b => b.seatNo === seatNo);
+    if (idx === -1) return { save: false, result: { status: 404, body: { error: "Nessuna puntata da annullare" } } };
+    const realIdx = table.bets.length - 1 - idx;
+    const [bet] = table.bets.splice(realIdx, 1);
+    await moveFish(tx, found.sessionId, { playerId: bet!.playerId, delta: bet!.amount, kind: "roulette_undo", tableId: null });
+    return { save: true, result: { status: 200, body: { ok: true }, table } };
+  });
+  if (out.status !== 200) { res.status(out.status).json(out.body); return; }
+  if (out.table) await broadcastTable(found.sessionId, out.table);
   await broadcast(found.sessionId);
-  res.json({ ok: true });
+  res.json(out.body);
 });
 
 // ── Gira la ruota: estrae il numero, paga i vincitori ───────────────────────────
@@ -460,28 +505,28 @@ router.post("/gestione/casino/table/spin", async (req, res): Promise<void> => {
   const code = String(req.body?.displayCode ?? req.body?.seatCode ?? "").toUpperCase().trim();
   const found = await findGameTable(code);
   if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
-  const table = found.table;
-  if (table.phase !== "betting") { res.status(409).json({ error: "Giro già in corso" }); return; }
-  const r = randomInt(37); // 0–36, zero singolo europeo — RNG crittografico (node:crypto)
-  table.phase = "result";
-  table.result = { number: r, at: new Date().toISOString() };
-  table.history = [r, ...table.history].slice(0, 20);
-  // Paga i vincitori (lo stake era già scalato all'ingresso della puntata).
-  for (const b of table.bets) {
-    if (betWins(b.kind, b.numbers, r)) {
-      const payout = b.amount * (PAYOUT[b.kind]! + 1);
-      const [p] = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.id, b.playerId));
-      if (p) {
-        const nb = p.fishBalance + payout;
-        await db.update(casinoPlayersTable).set({ fishBalance: nb }).where(eq(casinoPlayersTable.id, p.id));
-        await db.insert(casinoTransactionsTable).values({ sessionId: found.sessionId, tableId: null, dealerCode: "", playerId: p.id, delta: payout, kind: "roulette_win", balanceAfter: nb });
-      }
+  const tableId = found.table.id;
+  // IDEMPOTENTE + ATOMICO: estrazione, flip di fase e pagamento vincite in UNA sola
+  // transazione sotto lock. Un secondo /spin sullo stesso giro vede phase≠"betting"
+  // e ritorna il numero già estratto SENZA ripagare (report §1).
+  const out = await mutateSession<{ status: number; body: Record<string, unknown>; table?: GameTable }>(found.sessionId, async (tx, cfg) => {
+    const table = cfg.gameTables?.[tableId];
+    if (!table) return { save: false, result: { status: 404, body: { error: "Tavolo non trovato" } } };
+    if (!rouletteCanSpin(table.phase)) {
+      return { save: false, result: { status: 200, body: { ok: true, number: table.result?.number ?? null, alreadySpun: true }, table } };
     }
-  }
-  await saveGameTable(found.sessionId, table);
-  await broadcastTable(found.sessionId, table);
+    const r = randomInt(37); // 0–36, zero singolo europeo — RNG crittografico (node:crypto)
+    table.phase = "result";
+    table.result = { number: r, at: new Date().toISOString() };
+    table.history = [r, ...table.history].slice(0, 20);
+    // Paga i vincitori (lo stake era già scalato all'ingresso della puntata).
+    await payAll(fishTxOf(tx, found.sessionId), rouletteWinMoves(table.bets, r));
+    return { save: true, result: { status: 200, body: { ok: true, number: r }, table } };
+  });
+  if (out.status !== 200) { res.status(out.status).json(out.body); return; }
+  if (out.table) await broadcastTable(found.sessionId, out.table);
   await broadcast(found.sessionId);
-  res.json({ ok: true, number: r });
+  res.json(out.body);
 });
 
 // ── Nuovo giro: pulisce le puntate, tiene le sedie ──────────────────────────────
@@ -519,6 +564,7 @@ type BjTable = {
   betEndsAt: string | null;
   minBet: number; maxBet: number; step: number; timeout: number; betSeconds: number; soft17Hit: boolean;
   suspended: boolean;
+  settledHand?: number;   // round già saldato (idempotenza: non ripagare lo stesso)
   history: BjHistory[];
 };
 
@@ -539,12 +585,7 @@ function handValue(cards: Card[]): { total: number; soft: boolean } {
 }
 const isNaturalBJ = (cards: Card[]) => cards.length === 2 && handValue(cards).total === 21;
 function drawCard(t: BjTable): Card { if (t.shoe.length === 0) t.shoe = freshShoe(); return t.shoe.shift()!; }
-function creditFor(outcome: string, bet: number): number {
-  if (outcome === "win") return bet * 2;             // puntata + profitto 1:1
-  if (outcome === "blackjack") return bet + (bet * 3) / 2; // puntata + profitto 3:2 (bet multiplo di 10 → intero)
-  if (outcome === "push") return bet;                 // restituzione
-  return 0;                                           // lose | bust
-}
+// creditFor: accredito invariato, ora in gestione-casino-atomic-lib.
 
 async function findBjTable(code: string): Promise<{ sessionId: string; table: BjTable; seatNo?: number } | null> {
   const sessions = await db.select().from(casinoSessionsTable).where(eq(casinoSessionsTable.status, "active"));
@@ -558,9 +599,11 @@ async function findBjTable(code: string): Promise<{ sessionId: string; table: Bj
   return null;
 }
 async function saveBjTable(sessionId: string, table: BjTable): Promise<void> {
-  const [s] = await db.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, sessionId));
-  const cur = (s?.config ?? {}) as CasinoConfig;
-  await db.update(casinoSessionsTable).set({ config: { ...cur, bjTables: { ...(cur.bjTables ?? {}), [table.id]: table } } }).where(eq(casinoSessionsTable.id, sessionId));
+  await db.transaction(async (tx) => {
+    const [s] = await tx.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, sessionId)).for("update");
+    const cur = (s?.config ?? {}) as CasinoConfig;
+    await tx.update(casinoSessionsTable).set({ config: { ...cur, bjTables: { ...(cur.bjTables ?? {}), [table.id]: table } } }).where(eq(casinoSessionsTable.id, sessionId));
+  });
 }
 // Stato ripulito per il client: niente shoe, carta coperta nascosta finché non rivelata.
 async function bjState(sessionId: string, table: BjTable) {
@@ -601,7 +644,10 @@ function nextBjActive(table: BjTable): number | null {
   return null;
 }
 // Chiude i turni: scopre la coperta, banco pesca, salda, accredita, storicizza.
-async function finishBjHand(sessionId: string, table: BjTable): Promise<void> {
+// ATOMICO: gli accrediti usano `tx` (saldo+ledger insieme). IDEMPOTENTE: se la mano
+// corrente è già stata saldata (settledHand === round) non ripaga (report §2).
+async function finishBjHand(tx: Tx, sessionId: string, table: BjTable): Promise<void> {
+  if (alreadySettled(table.settledHand, table.round)) return;
   if (table.hole) { table.dealer.push(table.hole); table.hole = null; }
   const anyStand = Object.values(table.seats).some(s => s.bet > 0 && s.status === "stand");
   if (anyStand) {
@@ -616,40 +662,33 @@ async function finishBjHand(sessionId: string, table: BjTable): Promise<void> {
   const dhv = handValue(table.dealer);
   const dealerBJ = isNaturalBJ(table.dealer);
   const ids = Object.values(table.seats).map(s => s.playerId).filter((x): x is string => !!x);
-  const players = ids.length ? await db.select().from(casinoPlayersTable).where(inArray(casinoPlayersTable.id, ids)) : [];
+  const players = ids.length ? await tx.select().from(casinoPlayersTable).where(inArray(casinoPlayersTable.id, ids)) : [];
   const pMap = new Map(players.map(p => [p.id, p]));
   const results: BjResultRow[] = [];
   for (const [no, s] of Object.entries(table.seats)) {
     if (s.bet <= 0 || !s.playerId) continue;
     const hv = handValue(s.cards);
-    let outcome: string;
-    if (s.status === "bust") outcome = "bust";
-    else if (s.status === "blackjack") outcome = dealerBJ ? "push" : "blackjack";
-    else if (dealerBJ) outcome = "lose";
-    else if (dhv.total > 21) outcome = "win";
-    else if (hv.total > dhv.total) outcome = "win";
-    else if (hv.total < dhv.total) outcome = "lose";
-    else outcome = "push";
+    const outcome = bjOutcome(s.status, hv.total, dhv.total, dealerBJ);
     const credit = creditFor(outcome, s.bet);
     s.outcome = outcome; s.profit = credit - s.bet; s.status = "done";
     const p = pMap.get(s.playerId);
     if (credit > 0 && p) {
-      const nb = p.fishBalance + credit;
-      await db.update(casinoPlayersTable).set({ fishBalance: nb }).where(eq(casinoPlayersTable.id, p.id));
-      await db.insert(casinoTransactionsTable).values({ sessionId, tableId: null, dealerCode: "", playerId: p.id, delta: credit, kind: outcome === "push" ? "blackjack_push" : "blackjack_win", balanceAfter: nb });
-      p.fishBalance = nb;
+      // ATOMICO: UPDATE saldo + INSERT ledger nella stessa transazione.
+      const nb = await moveFish(tx, sessionId, { playerId: p.id, delta: credit, kind: outcome === "push" ? "blackjack_push" : "blackjack_win", tableId: null });
+      if (nb != null) p.fishBalance = nb;
     }
     results.push({ seatNo: Number(no), nickname: p?.nickname ?? "—", bet: s.bet, total: hv.total, outcome, profit: s.profit });
   }
   table.history.unshift({ hand: table.round, at: new Date().toISOString(), dealerTotal: dhv.total, dealerCards: [...table.dealer], results });
   table.history = table.history.slice(0, 50);
+  table.settledHand = table.round;   // marca la mano come saldata (idempotenza)
   table.activeSeat = null; table.turnEndsAt = null; table.phase = "result";
 }
 // Dopo un'azione: passa al prossimo giocatore o chiude la mano. Ritorna se ha chiuso.
-async function advanceBj(sessionId: string, table: BjTable): Promise<void> {
+async function advanceBj(tx: Tx, sessionId: string, table: BjTable): Promise<void> {
   const nxt = nextBjActive(table);
   if (nxt != null) { table.activeSeat = nxt; table.turnEndsAt = new Date(Date.now() + table.timeout * 1000).toISOString(); table.phase = "playing"; return; }
-  await finishBjHand(sessionId, table);
+  await finishBjHand(tx, sessionId, table);
 }
 
 /* ── Creazione / elenco (regia) ── */
@@ -684,15 +723,27 @@ router.get("/gestione/casino/sessions/:id/bj-tables", async (req, res): Promise<
 
 /* ── Stato tavolo (monitor 80" + telefono) ── */
 router.get("/gestione/casino/bj/:code", async (req, res): Promise<void> => {
-  const found = await findBjTable((req.params.code || "").toUpperCase());
+  const code = (req.params.code || "").toUpperCase();
+  const found = await findBjTable(code);
   if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
-  // timeout turno gestito lato server: se scaduto, forza STAI e avanza
+  // timeout turno gestito lato server: se scaduto, forza STAI e avanza — ATOMICO
+  // (eventuale chiusura mano con pagamenti nella stessa tx; idempotente via settledHand).
   if (found.table.phase === "playing" && found.table.turnEndsAt && Date.now() > Date.parse(found.table.turnEndsAt) + 1500) {
-    const no = found.table.activeSeat;
-    if (no != null) { const s = found.table.seats[String(no)]; if (s && s.status === "playing") { s.status = "stand"; await advanceBj(found.sessionId, found.table); await saveBjTable(found.sessionId, found.table); } }
+    const tableId = found.table.id;
+    await mutateSession<null>(found.sessionId, async (tx, cfg) => {
+      const t = cfg.bjTables?.[tableId];
+      if (!t || !(t.phase === "playing" && t.turnEndsAt && Date.now() > Date.parse(t.turnEndsAt) + 1500)) return { save: false, result: null };
+      const no = t.activeSeat;
+      if (no == null) return { save: false, result: null };
+      const s = t.seats[String(no)];
+      if (!s || s.status !== "playing") return { save: false, result: null };
+      s.status = "stand"; await advanceBj(tx, found.sessionId, t);
+      return { save: true, result: null };
+    });
   }
-  const st = await bjState(found.sessionId, found.table);
-  res.json({ ...st, seatNo: found.seatNo ?? null });
+  const fresh = await findBjTable(code) ?? found;
+  const st = await bjState(fresh.sessionId, fresh.table);
+  res.json({ ...st, seatNo: fresh.seatNo ?? null });
 });
 
 /* ── Regia: apri puntate / distribuisci / impostazioni / sospendi ── */
@@ -710,27 +761,33 @@ router.post("/gestione/casino/bj/open", async (req, res): Promise<void> => {
   res.json({ ok: true });
 });
 router.post("/gestione/casino/bj/deal", async (req, res): Promise<void> => {
-  const found = await findBjTable((req.body?.displayCode || "").toUpperCase());
-  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
-  const t = found.table;
-  if (t.phase !== "betting") { res.status(409).json({ error: "Non in fase puntate" }); return; }
-  // Come la roulette: la mano parte anche SENZA puntate (il banco gioca da solo); chi si
-  // siede entra dalla mano successiva. Niente blocco "serve una puntata".
-  const participants = Object.entries(t.seats).filter(([, s]) => s.bet > 0 && s.playerId);
-  t.betEndsAt = null;
-  for (const [, s] of participants) s.cards = [];
-  t.dealer = [];
-  for (const [, s] of participants) s.cards.push(drawCard(t));
-  t.dealer.push(drawCard(t));                 // carta visibile del banco
-  for (const [, s] of participants) s.cards.push(drawCard(t));
-  t.hole = drawCard(t);                        // carta coperta (segreta)
-  for (const [, s] of participants) s.status = isNaturalBJ(s.cards) ? "blackjack" : "playing";
-  const up = t.dealer[0]!;
-  const dealerPeek = (up.r === "A" || cardVal(up.r) === 10) && isNaturalBJ([up, t.hole]);
-  if (dealerPeek) { await finishBjHand(found.sessionId, t); }
-  else { t.phase = "playing"; await advanceBj(found.sessionId, t); }
-  await saveBjTable(found.sessionId, t);
-  res.json({ ok: true });
+  const loc = await findBjTable((req.body?.displayCode || "").toUpperCase());
+  if (!loc) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const tableId = loc.table.id;
+  // Distribuzione + eventuale chiusura (dealer BJ) ATOMICHE: se peek chiude la mano,
+  // i pagamenti vivono nella STESSA transazione del salvataggio del tavolo (report §2).
+  const out = await mutateSession<{ status: number; body: Record<string, unknown> }>(loc.sessionId, async (tx, cfg) => {
+    const t = cfg.bjTables?.[tableId];
+    if (!t) return { save: false, result: { status: 404, body: { error: "Tavolo non trovato" } } };
+    if (t.phase !== "betting") return { save: false, result: { status: 409, body: { error: "Non in fase puntate" } } };
+    // Come la roulette: la mano parte anche SENZA puntate (il banco gioca da solo); chi si
+    // siede entra dalla mano successiva. Niente blocco "serve una puntata".
+    const participants = Object.entries(t.seats).filter(([, s]) => s.bet > 0 && s.playerId);
+    t.betEndsAt = null;
+    for (const [, s] of participants) s.cards = [];
+    t.dealer = [];
+    for (const [, s] of participants) s.cards.push(drawCard(t));
+    t.dealer.push(drawCard(t));                 // carta visibile del banco
+    for (const [, s] of participants) s.cards.push(drawCard(t));
+    t.hole = drawCard(t);                        // carta coperta (segreta)
+    for (const [, s] of participants) s.status = isNaturalBJ(s.cards) ? "blackjack" : "playing";
+    const up = t.dealer[0]!;
+    const dealerPeek = (up.r === "A" || cardVal(up.r) === 10) && isNaturalBJ([up, t.hole]);
+    if (dealerPeek) { await finishBjHand(tx, loc.sessionId, t); }
+    else { t.phase = "playing"; await advanceBj(tx, loc.sessionId, t); }
+    return { save: true, result: { status: 200, body: { ok: true } } };
+  });
+  res.status(out.status).json(out.body);
 });
 router.post("/gestione/casino/bj/settings", async (req, res): Promise<void> => {
   const found = await findBjTable((req.body?.displayCode || "").toUpperCase());
@@ -779,85 +836,98 @@ router.post("/gestione/casino/bj/join", async (req, res): Promise<void> => {
 });
 router.post("/gestione/casino/bj/bet", async (req, res): Promise<void> => {
   const { seatCode, amount, playerCode } = req.body as { seatCode?: string; amount?: number; playerCode?: string };
-  const found = await findBjTable((seatCode || "").toUpperCase());
-  if (!found || found.seatNo == null) { res.status(404).json({ error: "Posto non trovato" }); return; }
-  const t = found.table; const seat = t.seats[String(found.seatNo)]!;
-  if (t.phase !== "betting") { res.status(409).json({ error: "Puntate chiuse" }); return; }
-  if (!seat.playerId) { res.status(409).json({ error: "Posto libero" }); return; }
+  void playerCode;
+  const loc = await findBjTable((seatCode || "").toUpperCase());
+  if (!loc || loc.seatNo == null) { res.status(404).json({ error: "Posto non trovato" }); return; }
+  const seatNo = loc.seatNo, tableId = loc.table.id;
   const amt = Math.round(Number(amount));
-  if (!(amt > 0) || amt < t.minBet || amt > t.maxBet || amt % t.step !== 0) { res.status(400).json({ error: `Puntata ${t.minBet}–${t.maxBet}, multipli di ${t.step}` }); return; }
-  const [player] = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.id, seat.playerId));
-  if (!player) { res.status(404).json({ error: "Giocatore non trovato" }); return; }
-  // disponibile = saldo + eventuale puntata già riservata su questo posto
-  const available = player.fishBalance + seat.bet;
-  if (amt > available) { res.status(409).json({ error: "Credito insufficiente" }); return; }
-  const delta = seat.bet - amt; // >0 rimborso, <0 addebito
-  const nb = player.fishBalance + delta;
-  await db.update(casinoPlayersTable).set({ fishBalance: nb }).where(eq(casinoPlayersTable.id, player.id));
-  await db.insert(casinoTransactionsTable).values({ sessionId: found.sessionId, tableId: null, dealerCode: "", playerId: player.id, delta, kind: "blackjack_bet", balanceAfter: nb });
-  seat.bet = amt; seat.status = "bet";
-  await saveBjTable(found.sessionId, t);
-  res.json({ ok: true, balance: nb, reserved: amt });
+  // ATOMICO: addebito/rimborso differenziale (saldo+ledger) + riserva sul posto insieme.
+  const out = await mutateSession<{ status: number; body: Record<string, unknown> }>(loc.sessionId, async (tx, cfg) => {
+    const t = cfg.bjTables?.[tableId];
+    if (!t) return { save: false, result: { status: 404, body: { error: "Posto non trovato" } } };
+    const seat = t.seats[String(seatNo)];
+    if (!seat) return { save: false, result: { status: 404, body: { error: "Posto non trovato" } } };
+    if (t.phase !== "betting") return { save: false, result: { status: 409, body: { error: "Puntate chiuse" } } };
+    if (!seat.playerId) return { save: false, result: { status: 409, body: { error: "Posto libero" } } };
+    if (!(amt > 0) || amt < t.minBet || amt > t.maxBet || amt % t.step !== 0) return { save: false, result: { status: 400, body: { error: `Puntata ${t.minBet}–${t.maxBet}, multipli di ${t.step}` } } };
+    const delta = seat.bet - amt; // >0 rimborso, <0 addebito differenziale
+    const bal = await moveFish(tx, loc.sessionId, { playerId: seat.playerId, delta, kind: "blackjack_bet", tableId: null, requireFunds: true });
+    if (bal == null) return { save: false, result: { status: 409, body: { error: "Credito insufficiente" } } };
+    seat.bet = amt; seat.status = "bet";
+    return { save: true, result: { status: 200, body: { ok: true, balance: bal, reserved: amt } } };
+  });
+  res.status(out.status).json(out.body);
 });
 router.post("/gestione/casino/bj/unbet", async (req, res): Promise<void> => {
-  const found = await findBjTable((req.body?.seatCode || "").toUpperCase());
-  if (!found || found.seatNo == null) { res.status(404).json({ error: "Posto non trovato" }); return; }
-  const t = found.table; const seat = t.seats[String(found.seatNo)]!;
-  if (t.phase !== "betting" || seat.bet <= 0 || !seat.playerId) { res.status(409).json({ error: "Niente da annullare" }); return; }
-  const [player] = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.id, seat.playerId));
-  if (player) {
-    const nb = player.fishBalance + seat.bet;
-    await db.update(casinoPlayersTable).set({ fishBalance: nb }).where(eq(casinoPlayersTable.id, player.id));
-    await db.insert(casinoTransactionsTable).values({ sessionId: found.sessionId, tableId: null, dealerCode: "", playerId: player.id, delta: seat.bet, kind: "blackjack_unbet", balanceAfter: nb });
-  }
-  seat.bet = 0; seat.status = "joined";
-  await saveBjTable(found.sessionId, t);
-  res.json({ ok: true });
+  const loc = await findBjTable((req.body?.seatCode || "").toUpperCase());
+  if (!loc || loc.seatNo == null) { res.status(404).json({ error: "Posto non trovato" }); return; }
+  const seatNo = loc.seatNo, tableId = loc.table.id;
+  const out = await mutateSession<{ status: number; body: Record<string, unknown> }>(loc.sessionId, async (tx, cfg) => {
+    const t = cfg.bjTables?.[tableId];
+    if (!t) return { save: false, result: { status: 404, body: { error: "Posto non trovato" } } };
+    const seat = t.seats[String(seatNo)];
+    if (!seat || t.phase !== "betting" || seat.bet <= 0 || !seat.playerId) return { save: false, result: { status: 409, body: { error: "Niente da annullare" } } };
+    await moveFish(tx, loc.sessionId, { playerId: seat.playerId, delta: seat.bet, kind: "blackjack_unbet", tableId: null });
+    seat.bet = 0; seat.status = "joined";
+    return { save: true, result: { status: 200, body: { ok: true } } };
+  });
+  res.status(out.status).json(out.body);
 });
-// azione del giocatore nel suo turno: valida posto, fase, turno e proprietà
-async function bjActionGuard(req: { body: unknown }): Promise<{ sessionId: string; table: BjTable; seatNo: number; seat: BjSeat } | { error: string; code: number }> {
-  const b = (req.body ?? {}) as { seatCode?: string; playerCode?: string };
-  const found = await findBjTable((b.seatCode || "").toUpperCase());
-  if (!found || found.seatNo == null) return { error: "Posto non trovato", code: 404 };
-  const seat = found.table.seats[String(found.seatNo)]!;
-  if (found.table.phase !== "playing") return { error: "Non è fase di gioco", code: 409 };
-  if (found.table.activeSeat !== found.seatNo) return { error: "Non è il tuo turno", code: 409 };
-  if (seat.status !== "playing") return { error: "Turno concluso", code: 409 };
-  if (b.playerCode) { const [p] = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.playerCode, b.playerCode.toUpperCase())); if (!p || p.id !== seat.playerId) return { error: "Non autorizzato", code: 403 }; }
-  return { sessionId: found.sessionId, table: found.table, seatNo: found.seatNo, seat };
+// Azione del giocatore (hit/stand/double) ATOMICA: rivalida posto/fase/turno/proprietà
+// sullo stato FRESCO sotto lock, applica l'azione e avanza (eventuale chiusura mano +
+// pagamenti nella STESSA transazione, idempotente via settledHand).
+async function bjAction(
+  body: unknown,
+  act: (tx: Tx, sessionId: string, table: BjTable, seat: BjSeat) => Promise<{ save: boolean; status: number; body: Record<string, unknown> }>,
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const b = (body ?? {}) as { seatCode?: string; playerCode?: string };
+  const loc = await findBjTable((b.seatCode || "").toUpperCase());
+  if (!loc || loc.seatNo == null) return { status: 404, body: { error: "Posto non trovato" } };
+  const seatNo = loc.seatNo, tableId = loc.table.id;
+  return mutateSession(loc.sessionId, async (tx, cfg) => {
+    const table = cfg.bjTables?.[tableId];
+    const seat = table?.seats[String(seatNo)];
+    if (!table || !seat) return { save: false, result: { status: 404, body: { error: "Posto non trovato" } } };
+    if (table.phase !== "playing") return { save: false, result: { status: 409, body: { error: "Non è fase di gioco" } } };
+    if (table.activeSeat !== seatNo) return { save: false, result: { status: 409, body: { error: "Non è il tuo turno" } } };
+    if (seat.status !== "playing") return { save: false, result: { status: 409, body: { error: "Turno concluso" } } };
+    if (b.playerCode) {
+      const [p] = await tx.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.playerCode, b.playerCode.toUpperCase()));
+      if (!p || p.id !== seat.playerId) return { save: false, result: { status: 403, body: { error: "Non autorizzato" } } };
+    }
+    const r = await act(tx, loc.sessionId, table, seat);
+    return { save: r.save, result: { status: r.status, body: r.body } };
+  });
 }
 router.post("/gestione/casino/bj/hit", async (req, res): Promise<void> => {
-  const g = await bjActionGuard(req);
-  if ("error" in g) { res.status(g.code).json({ error: g.error }); return; }
-  g.seat.cards.push(drawCard(g.table));
-  if (handValue(g.seat.cards).total > 21) g.seat.status = "bust";
-  await advanceBj(g.sessionId, g.table);
-  await saveBjTable(g.sessionId, g.table);
-  res.json({ ok: true });
+  const out = await bjAction(req.body, async (tx, sid, table, seat) => {
+    seat.cards.push(drawCard(table));
+    if (handValue(seat.cards).total > 21) seat.status = "bust";
+    await advanceBj(tx, sid, table);
+    return { save: true, status: 200, body: { ok: true } };
+  });
+  res.status(out.status).json(out.body);
 });
 router.post("/gestione/casino/bj/stand", async (req, res): Promise<void> => {
-  const g = await bjActionGuard(req);
-  if ("error" in g) { res.status(g.code).json({ error: g.error }); return; }
-  g.seat.status = "stand";
-  await advanceBj(g.sessionId, g.table);
-  await saveBjTable(g.sessionId, g.table);
-  res.json({ ok: true });
+  const out = await bjAction(req.body, async (tx, sid, table, seat) => {
+    seat.status = "stand";
+    await advanceBj(tx, sid, table);
+    return { save: true, status: 200, body: { ok: true } };
+  });
+  res.status(out.status).json(out.body);
 });
 router.post("/gestione/casino/bj/double", async (req, res): Promise<void> => {
-  const g = await bjActionGuard(req);
-  if ("error" in g) { res.status(g.code).json({ error: g.error }); return; }
-  if (g.seat.cards.length !== 2 || g.seat.doubled) { res.status(409).json({ error: "Raddoppio non consentito" }); return; }
-  const [player] = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.id, g.seat.playerId!));
-  if (!player || player.fishBalance < g.seat.bet) { res.status(409).json({ error: "Credito insufficiente" }); return; }
-  const nb = player.fishBalance - g.seat.bet;
-  await db.update(casinoPlayersTable).set({ fishBalance: nb }).where(eq(casinoPlayersTable.id, player.id));
-  await db.insert(casinoTransactionsTable).values({ sessionId: g.sessionId, tableId: null, dealerCode: "", playerId: player.id, delta: -g.seat.bet, kind: "blackjack_double", balanceAfter: nb });
-  g.seat.bet *= 2; g.seat.doubled = true;
-  g.seat.cards.push(drawCard(g.table));
-  g.seat.status = handValue(g.seat.cards).total > 21 ? "bust" : "stand";
-  await advanceBj(g.sessionId, g.table);
-  await saveBjTable(g.sessionId, g.table);
-  res.json({ ok: true, balance: nb });
+  const out = await bjAction(req.body, async (tx, sid, table, seat) => {
+    if (seat.cards.length !== 2 || seat.doubled) return { save: false, status: 409, body: { error: "Raddoppio non consentito" } };
+    const bal = await moveFish(tx, sid, { playerId: seat.playerId!, delta: -seat.bet, kind: "blackjack_double", tableId: null, requireFunds: true });
+    if (bal == null) return { save: false, status: 409, body: { error: "Credito insufficiente" } };
+    seat.bet *= 2; seat.doubled = true;
+    seat.cards.push(drawCard(table));
+    seat.status = handValue(seat.cards).total > 21 ? "bust" : "stand";
+    await advanceBj(tx, sid, table);
+    return { save: true, status: 200, body: { ok: true, balance: bal } };
+  });
+  res.status(out.status).json(out.body);
 });
 
 /* ═══ IPPODROMO (corsa dei cavalli) ───────────────────────────────────────────
@@ -882,9 +952,10 @@ type HorseTable = {
   current: { order: number[]; seeds: number[]; startedAt: string; durMs: number } | null; // segreto in betting
   names: string[];            // 6 nomi (indice 0 = cavallo 1 … 5 = cavallo 6), estratti a ogni corsa
   suspended: boolean;
+  settledRace?: number;       // corsa già saldata (idempotenza: non ripagare la stessa)
   history: HorseHist[];
 };
-const HORSE_MULT = 6;
+// HORSE_MULT (6×): quota invariata, ora in gestione-casino-atomic-lib.
 
 /* Nomi REALI di grandi cavalli della storia ippica italiana (galoppo Dormello-Olgiata/Tesio
    + campioni moderni + grandi trottatori). A ogni corsa se ne estraggono 6 a caso → i nomi
@@ -917,9 +988,11 @@ async function findHorseTable(code: string): Promise<{ sessionId: string; table:
   return null;
 }
 async function saveHorseTable(sessionId: string, table: HorseTable): Promise<void> {
-  const [s] = await db.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, sessionId));
-  const cur = (s?.config ?? {}) as CasinoConfig;
-  await db.update(casinoSessionsTable).set({ config: { ...cur, horseTables: { ...(cur.horseTables ?? {}), [table.id]: table } } }).where(eq(casinoSessionsTable.id, sessionId));
+  await db.transaction(async (tx) => {
+    const [s] = await tx.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, sessionId)).for("update");
+    const cur = (s?.config ?? {}) as CasinoConfig;
+    await tx.update(casinoSessionsTable).set({ config: { ...cur, horseTables: { ...(cur.horseTables ?? {}), [table.id]: table } } }).where(eq(casinoSessionsTable.id, sessionId));
+  });
 }
 async function horseState(sessionId: string, table: HorseTable) {
   const ids = Array.from(new Set([...table.known, ...table.bets.map(b => b.playerId)]));
@@ -946,26 +1019,25 @@ async function horseState(sessionId: string, table: HorseTable) {
     sessionId,
   };
 }
-async function settleHorse(sessionId: string, table: HorseTable): Promise<void> {
+// ATOMICO (accrediti via `tx`) + IDEMPOTENTE: se la corsa è già stata saldata
+// (settledRace === race) non ripaga (report §3).
+async function settleHorse(tx: Tx, sessionId: string, table: HorseTable): Promise<void> {
+  if (alreadySettled(table.settledRace, table.race)) return;
   const order = table.current?.order ?? [];
   const winner = order[0] ?? 0;
   const ids = table.bets.map(b => b.playerId);
-  const players = ids.length ? await db.select().from(casinoPlayersTable).where(inArray(casinoPlayersTable.id, ids)) : [];
+  const players = ids.length ? await tx.select().from(casinoPlayersTable).where(inArray(casinoPlayersTable.id, ids)) : [];
   const pMap = new Map(players.map(p => [p.id, p]));
   const results: HorseResultRow[] = [];
+  await payAll(fishTxOf(tx, sessionId), horseWinMoves(table.bets, winner));
   for (const b of table.bets) {
     const p = pMap.get(b.playerId);
     const credit = b.horse === winner ? b.amount * HORSE_MULT : 0;
-    if (credit > 0 && p) {
-      const nb = p.fishBalance + credit;
-      await db.update(casinoPlayersTable).set({ fishBalance: nb }).where(eq(casinoPlayersTable.id, p.id));
-      await db.insert(casinoTransactionsTable).values({ sessionId, tableId: null, dealerCode: "", playerId: p.id, delta: credit, kind: "horse_win", balanceAfter: nb });
-      p.fishBalance = nb;
-    }
     results.push({ playerId: b.playerId, nickname: p?.nickname ?? "—", horse: b.horse, bet: b.amount, credit, profit: credit - b.amount });
   }
   table.history.unshift({ race: table.race, at: new Date().toISOString(), winner, order: [...order], players: table.bets.length, results, names: [...(table.names ?? [])] });
   table.history = table.history.slice(0, 50);
+  table.settledRace = table.race;   // marca la corsa come saldata (idempotenza)
   table.phase = "result"; table.raceEndsAt = null;
 }
 
@@ -999,12 +1071,21 @@ router.get("/gestione/casino/sessions/:id/horse-tables", async (req, res): Promi
 
 /* ── Stato (monitor/telefono/regia) con progressione pigra ── */
 router.get("/gestione/casino/horse/:code", async (req, res): Promise<void> => {
-  const found = await findHorseTable((req.params.code || "").toUpperCase());
+  const code = (req.params.code || "").toUpperCase();
+  const found = await findHorseTable(code);
   if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  // Saldo pigro a fine corsa: ATOMICO (accrediti nella stessa tx) + idempotente.
   if (found.table.phase === "racing" && found.table.raceEndsAt && Date.now() > Date.parse(found.table.raceEndsAt) + 300) {
-    await settleHorse(found.sessionId, found.table); await saveHorseTable(found.sessionId, found.table);
+    const tableId = found.table.id;
+    await mutateSession<null>(found.sessionId, async (tx, cfg) => {
+      const t = cfg.horseTables?.[tableId];
+      if (!t || !(t.phase === "racing" && t.raceEndsAt && Date.now() > Date.parse(t.raceEndsAt) + 300)) return { save: false, result: null };
+      await settleHorse(tx, found.sessionId, t);
+      return { save: true, result: null };
+    });
   }
-  res.json(await horseState(found.sessionId, found.table));
+  const fresh = await findHorseTable(code) ?? found;
+  res.json(await horseState(fresh.sessionId, fresh.table));
 });
 
 /* ── Regia: apri / avvia / impostazioni / sospendi / annulla ── */
@@ -1057,80 +1138,84 @@ router.post("/gestione/casino/horse/suspend", async (req, res): Promise<void> =>
 router.post("/gestione/casino/horse/cancel", async (req, res): Promise<void> => {
   const { displayCode, motivo } = req.body as { displayCode?: string; motivo?: string };
   if (!motivo || !motivo.trim()) { res.status(400).json({ error: "Motivo obbligatorio" }); return; }
-  const found = await findHorseTable((displayCode || "").toUpperCase());
-  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
-  const t = found.table;
-  if (t.phase !== "betting" && t.phase !== "racing") { res.status(409).json({ error: "Niente da annullare" }); return; }
-  // rimborso atomico delle puntate, una sola volta; nessun pagamento vincite
-  const ids = t.bets.map(b => b.playerId);
-  const players = ids.length ? await db.select().from(casinoPlayersTable).where(inArray(casinoPlayersTable.id, ids)) : [];
-  const pMap = new Map(players.map(p => [p.id, p]));
-  const results: HorseResultRow[] = [];
-  for (const b of t.bets) {
-    const p = pMap.get(b.playerId);
-    if (p) {
-      const nb = p.fishBalance + b.amount;
-      await db.update(casinoPlayersTable).set({ fishBalance: nb }).where(eq(casinoPlayersTable.id, p.id));
-      await db.insert(casinoTransactionsTable).values({ sessionId: found.sessionId, tableId: null, dealerCode: motivo.slice(0, 40), playerId: p.id, delta: b.amount, kind: "horse_cancel", balanceAfter: nb });
-      p.fishBalance = nb;
+  const loc = await findHorseTable((displayCode || "").toUpperCase());
+  if (!loc) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const tableId = loc.table.id;
+  // Rimborso ATOMICO (saldo+ledger insieme) e UNA SOLA VOLTA: sotto lock, azzera le
+  // puntate nella STESSA transazione dei rimborsi → un secondo /cancel vede phase
+  // "waiting" e non rimborsa di nuovo (report §3).
+  const out = await mutateSession<{ status: number; body: Record<string, unknown> }>(loc.sessionId, async (tx, cfg) => {
+    const t = cfg.horseTables?.[tableId];
+    if (!t) return { save: false, result: { status: 404, body: { error: "Tavolo non trovato" } } };
+    if (t.phase !== "betting" && t.phase !== "racing") return { save: false, result: { status: 409, body: { error: "Niente da annullare" } } };
+    const players = t.bets.length ? await tx.select().from(casinoPlayersTable).where(inArray(casinoPlayersTable.id, t.bets.map(b => b.playerId))) : [];
+    const pMap = new Map(players.map(p => [p.id, p]));
+    const results: HorseResultRow[] = [];
+    for (const b of t.bets) {
+      await moveFish(tx, loc.sessionId, { playerId: b.playerId, delta: b.amount, kind: "horse_cancel", tableId: null, dealerCode: motivo.slice(0, 40) });
+      const p = pMap.get(b.playerId);
+      results.push({ playerId: b.playerId, nickname: p?.nickname ?? "—", horse: b.horse, bet: b.amount, credit: b.amount, profit: 0 });
     }
-    results.push({ playerId: b.playerId, nickname: p?.nickname ?? "—", horse: b.horse, bet: b.amount, credit: b.amount, profit: 0 });
-  }
-  t.history.unshift({ race: t.race, at: new Date().toISOString(), winner: 0, order: [], players: t.bets.length, cancelled: true, results, names: [...(t.names ?? [])] });
-  t.history = t.history.slice(0, 50);
-  t.bets = []; t.current = null; t.betEndsAt = null; t.raceEndsAt = null; t.phase = "waiting";
-  await saveHorseTable(found.sessionId, t);
-  res.json({ ok: true });
+    t.history.unshift({ race: t.race, at: new Date().toISOString(), winner: 0, order: [], players: t.bets.length, cancelled: true, results, names: [...(t.names ?? [])] });
+    t.history = t.history.slice(0, 50);
+    t.bets = []; t.current = null; t.betEndsAt = null; t.raceEndsAt = null; t.phase = "waiting";
+    return { save: true, result: { status: 200, body: { ok: true } } };
+  });
+  res.status(out.status).json(out.body);
 });
 
 /* ── Telefono: puntata / annulla ── */
 router.post("/gestione/casino/horse/bet", async (req, res): Promise<void> => {
   const { displayCode, playerCode, playerId, horse, amount } = req.body as { displayCode?: string; playerCode?: string; playerId?: string; horse?: number; amount?: number };
-  const found = await findHorseTable((displayCode || "").toUpperCase());
-  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
-  const t = found.table;
-  if (t.suspended) { res.status(409).json({ error: "Tavolo sospeso" }); return; }
-  if (t.phase !== "betting") { res.status(409).json({ error: "Puntate chiuse" }); return; }
+  const loc = await findHorseTable((displayCode || "").toUpperCase());
+  if (!loc) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const tableId = loc.table.id;
   const h = Math.round(Number(horse));
-  if (!(h >= 1 && h <= 6)) { res.status(400).json({ error: "Cavallo non valido" }); return; }
   const amt = Math.round(Number(amount));
-  if (!(amt > 0) || amt < t.minBet || amt > t.maxBet || amt % t.step !== 0) { res.status(400).json({ error: `Puntata ${t.minBet}–${t.maxBet}, multipli di ${t.step}` }); return; }
   const [player] = playerId && isUUID(playerId)
     ? await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.id, playerId))
     : await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.playerCode, (playerCode || "").toUpperCase()));
   if (!player) { res.status(404).json({ error: "Giocatore non trovato" }); return; }
-  const existing = t.bets.find(b => b.playerId === player.id);
-  const available = player.fishBalance + (existing?.amount ?? 0);
-  if (amt > available) { res.status(409).json({ error: "Credito insufficiente" }); return; }
-  const delta = (existing?.amount ?? 0) - amt;
-  const nb = player.fishBalance + delta;
-  await db.update(casinoPlayersTable).set({ fishBalance: nb }).where(eq(casinoPlayersTable.id, player.id));
-  await db.insert(casinoTransactionsTable).values({ sessionId: found.sessionId, tableId: null, dealerCode: "", playerId: player.id, delta, kind: "horse_bet", balanceAfter: nb });
-  if (existing) { existing.horse = h; existing.amount = amt; existing.at = new Date().toISOString(); }
-  else t.bets.push({ playerId: player.id, horse: h, amount: amt, at: new Date().toISOString() });
-  if (!t.known.includes(player.id)) t.known.push(player.id);
-  await saveHorseTable(found.sessionId, t);
-  res.json({ ok: true, balance: nb, reserved: amt, horse: h });
+  // ATOMICO: addebito/rimborso differenziale (saldo+ledger) + puntata sul tavolo insieme.
+  const out = await mutateSession<{ status: number; body: Record<string, unknown> }>(loc.sessionId, async (tx, cfg) => {
+    const t = cfg.horseTables?.[tableId];
+    if (!t) return { save: false, result: { status: 404, body: { error: "Tavolo non trovato" } } };
+    if (t.suspended) return { save: false, result: { status: 409, body: { error: "Tavolo sospeso" } } };
+    if (t.phase !== "betting") return { save: false, result: { status: 409, body: { error: "Puntate chiuse" } } };
+    if (!(h >= 1 && h <= 6)) return { save: false, result: { status: 400, body: { error: "Cavallo non valido" } } };
+    if (!(amt > 0) || amt < t.minBet || amt > t.maxBet || amt % t.step !== 0) return { save: false, result: { status: 400, body: { error: `Puntata ${t.minBet}–${t.maxBet}, multipli di ${t.step}` } } };
+    const existing = t.bets.find(b => b.playerId === player.id);
+    const delta = (existing?.amount ?? 0) - amt; // >0 rimborso, <0 addebito differenziale
+    const bal = await moveFish(tx, loc.sessionId, { playerId: player.id, delta, kind: "horse_bet", tableId: null, requireFunds: true });
+    if (bal == null) return { save: false, result: { status: 409, body: { error: "Credito insufficiente" } } };
+    if (existing) { existing.horse = h; existing.amount = amt; existing.at = new Date().toISOString(); }
+    else t.bets.push({ playerId: player.id, horse: h, amount: amt, at: new Date().toISOString() });
+    if (!t.known.includes(player.id)) t.known.push(player.id);
+    return { save: true, result: { status: 200, body: { ok: true, balance: bal, reserved: amt, horse: h } } };
+  });
+  res.status(out.status).json(out.body);
 });
 router.post("/gestione/casino/horse/unbet", async (req, res): Promise<void> => {
   const { displayCode, playerCode, playerId } = req.body as { displayCode?: string; playerCode?: string; playerId?: string };
-  const found = await findHorseTable((displayCode || "").toUpperCase());
-  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
-  const t = found.table;
-  if (t.phase !== "betting") { res.status(409).json({ error: "Puntate chiuse" }); return; }
+  const loc = await findHorseTable((displayCode || "").toUpperCase());
+  if (!loc) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const tableId = loc.table.id;
   const [player] = playerId && isUUID(playerId)
     ? await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.id, playerId))
     : await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.playerCode, (playerCode || "").toUpperCase()));
   if (!player) { res.status(404).json({ error: "Giocatore non trovato" }); return; }
-  const idx = t.bets.findIndex(b => b.playerId === player.id);
-  if (idx < 0) { res.status(409).json({ error: "Nessuna puntata" }); return; }
-  const amt = t.bets[idx]!.amount;
-  const nb = player.fishBalance + amt;
-  await db.update(casinoPlayersTable).set({ fishBalance: nb }).where(eq(casinoPlayersTable.id, player.id));
-  await db.insert(casinoTransactionsTable).values({ sessionId: found.sessionId, tableId: null, dealerCode: "", playerId: player.id, delta: amt, kind: "horse_unbet", balanceAfter: nb });
-  t.bets.splice(idx, 1);
-  await saveHorseTable(found.sessionId, t);
-  res.json({ ok: true, balance: nb });
+  const out = await mutateSession<{ status: number; body: Record<string, unknown> }>(loc.sessionId, async (tx, cfg) => {
+    const t = cfg.horseTables?.[tableId];
+    if (!t) return { save: false, result: { status: 404, body: { error: "Tavolo non trovato" } } };
+    if (t.phase !== "betting") return { save: false, result: { status: 409, body: { error: "Puntate chiuse" } } };
+    const idx = t.bets.findIndex(b => b.playerId === player.id);
+    if (idx < 0) return { save: false, result: { status: 409, body: { error: "Nessuna puntata" } } };
+    const amt = t.bets[idx]!.amount;
+    const bal = await moveFish(tx, loc.sessionId, { playerId: player.id, delta: amt, kind: "horse_unbet", tableId: null });
+    t.bets.splice(idx, 1);
+    return { save: true, result: { status: 200, body: { ok: true, balance: bal } } };
+  });
+  res.status(out.status).json(out.body);
 });
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -1170,9 +1255,11 @@ async function findSiciliaTable(code: string): Promise<{ sessionId: string; tabl
   return null;
 }
 async function saveSiciliaTable(sessionId: string, table: SiciliaTable): Promise<void> {
-  const [s] = await db.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, sessionId));
-  const cur = (s?.config ?? {}) as CasinoConfig;
-  await db.update(casinoSessionsTable).set({ config: { ...cur, siciliaTables: { ...(cur.siciliaTables ?? {}), [table.id]: table } } }).where(eq(casinoSessionsTable.id, sessionId));
+  await db.transaction(async (tx) => {
+    const [s] = await tx.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, sessionId)).for("update");
+    const cur = (s?.config ?? {}) as CasinoConfig;
+    await tx.update(casinoSessionsTable).set({ config: { ...cur, siciliaTables: { ...(cur.siciliaTables ?? {}), [table.id]: table } } }).where(eq(casinoSessionsTable.id, sessionId));
+  });
 }
 async function siciliaState(sessionId: string, table: SiciliaTable) {
   const ids = Array.from(new Set([...table.known, ...table.bets.map(b => b.playerId)]));
