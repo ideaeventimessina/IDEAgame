@@ -122,13 +122,26 @@ function useScale(w = 744, h = 456) {
   return Math.min(dim.w / w, dim.h / h);
 }
 
-// ── Dispatcher: ?finale=CODE → FINALE, ?sfida=CODE → SFIDA, altrimenti CASA ────
+// ── Dispatcher: ?finale → FINALE, ?sfida → SFIDA, ?regia → REGIA, else CASA ─────
 export default function GestioneLockdown() {
   const q = new URLSearchParams(window.location.search);
   if (q.get('finale') !== null) return <MonitorFinale />;
   if (q.get('sfida') !== null) return <MonitorSfida />;
+  if (q.get('regia') !== null) return <RegiaMaster />;
+  if (q.get('contenuti') !== null) return <AdminContenuti />;
+  if (q.get('penalita') !== null) return <AdminPenalita />;
+  if (q.get('registro') !== null) return <AdminRegistro />;
+  if (q.get('crea') !== null) return <AdminCrea />;
+  if (q.get('colpo') !== null) return <EventoColpo />;
+  if (q.get('riconnessione') !== null) return <Riconnessione />;
   return <MonitorCasa />;
 }
+
+// Catalogo reale delle 10 stanze (ordine del catalogo server), condiviso dalle viste admin.
+const ROOM_CATALOG = [
+  'Cucina', '10 Sfumature', 'Biblioteca', 'Palestra', 'Studio',
+  'Salone', 'Cinema', 'Balcone', 'Gabinetto', 'Ufficio',
+];
 
 function MonitorCasa() {
   const scale = useScale(744, 456);
@@ -526,6 +539,696 @@ function MonitorFinale() {
           <Lock size={16} />{fmt(master.current)} <span className="goal">/ {fmt(master.goal)}</span>
         </div>
         <div className="a f-mbar"><i style={{ ['--w' as string]: `${pct * 100}%` }} /></div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── REGIA MASTER (console host, tablet/desktop) ──────────────────────────────
+   Replica del mockup 07, pannello "15 REGIA MASTER · GESTISCI LA PARTITA".
+   Palco fisso 768×512 scalato (come casa/sfida/finale).
+
+   Mockup DIPINTO → separazione pittura/interfaccia:
+   · room-thumb-cucina.png = miniatura stanza attiva ritagliata dal dipinto.
+   · Logo "LOCKDOWN" reale + "by IDEAeventi" (regola brand).
+   · Tutto il resto (tab, tabella, timeline, pulsanti, barra MASTER) = CODICE a
+     coordinate misurate col righello di measure.mjs.
+   CORREZIONI dal pacchetto (03-SCHERMATE): la tabella Cucina del mockup riporta
+   somme esemplificative incoerenti. Qui ESITO/VARIAZIONE sono CALCOLATE dalla
+   regola Cucina (Premio 40×ricette valide se ≥4, altrimenti Penalità 80), non
+   copiate dalle righe dipinte. Vedi DEVIATIONS.md. La console NON conosce la spia.
+   Nessun backend: DATI MOCK interni. ?regia seleziona questa vista. */
+
+// Riga tabella: nome + n. ricette valide; esito/variazione calcolati dalla regola.
+type RegiaRow = { name: string; valid: number };
+const REGIA_ROWS: RegiaRow[] = [
+  { name: 'Giulia', valid: 5 },
+  { name: 'Marco', valid: 3 },
+  { name: 'Elena', valid: 4 },
+  { name: 'Luca', valid: 2 },
+  { name: 'Sofia', valid: 4 },
+  { name: 'Davide', valid: 3 },
+  { name: 'Chiara', valid: 1 },
+  { name: 'Matteo', valid: 3 },
+];
+// Regola Cucina (02-REGOLE-E-STANZE): 40 Lock-Euro per ricetta valida; <4 ricette → penalità 80.
+function cucinaOutcome(valid: number): { label: string; delta: number; kind: 'premio' | 'penalita' } {
+  if (valid >= 4) return { label: 'Premio', delta: 40 * valid, kind: 'premio' };
+  return { label: 'Penalità', delta: -80, kind: 'penalita' };
+}
+// Timeline "ANDAMENTO PARTITA": i 10 nomi reali del catalogo, nell'ordine del mockup.
+const ANDAMENTO = [
+  '10 Sfumature', 'Biblioteca', 'Palestra', 'Studio',
+  'Cinema', 'Balcone', 'Gabinetto', 'Ufficio', 'Salone',
+];
+const TABS: { id: string; label: string }[] = [
+  { id: 'giocatori', label: 'Giocatori' },
+  { id: 'stanze', label: 'Stanze' },
+  { id: 'contenuti', label: 'Contenuti' },
+  { id: 'registro', label: 'Registro' },
+];
+
+// ── Icone (SVG nitidi, currentColor) ──────────────────────────────────────────
+const IPeople = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><circle cx="9" cy="8" r="3.1" fill="currentColor"/><circle cx="16.5" cy="9" r="2.4" fill="currentColor" opacity=".8"/><path d="M3.5 19c0-3 2.5-4.8 5.5-4.8s5.5 1.8 5.5 4.8" stroke="currentColor" strokeWidth="1.8" fill="none"/><path d="M15 14.3c2.6.1 5 1.7 5 4.7" stroke="currentColor" strokeWidth="1.6" fill="none" opacity=".8"/></svg>);
+const IHome = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><path d="M4 11l8-6.5L20 11" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/><path d="M6 10.5V19h12v-8.5" stroke="currentColor" strokeWidth="1.8" fill="none" strokeLinejoin="round"/></svg>);
+const IDoc = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><path d="M7 3.5h7l4 4V20.5H7z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/><path d="M13.5 3.8V8h4.2M9.5 12h7M9.5 15h7" stroke="currentColor" strokeWidth="1.6"/></svg>);
+const IList = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><rect x="4" y="5" width="4" height="4" rx="1" fill="currentColor"/><rect x="4" y="14" width="4" height="4" rx="1" fill="currentColor"/><path d="M11 7h9M11 16h9" stroke="currentColor" strokeWidth="1.8"/></svg>);
+const ICheck = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><path d="M5 12.5l4.5 4.5L19 7" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"/></svg>);
+const INext = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><path d="M4 5l8 7-8 7zM13 5l8 7-8 7z" fill="currentColor"/></svg>);
+const IBolt = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><path d="M13 2L4 14h6l-1 8 9-12h-6z" fill="currentColor"/></svg>);
+const IMinus = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2.2"/><path d="M7.5 12h9" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"/></svg>);
+const IPause = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><rect x="6.5" y="5" width="4" height="14" rx="1.4" fill="currentColor"/><rect x="13.5" y="5" width="4" height="14" rx="1.4" fill="currentColor"/></svg>);
+const IClipboard = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><rect x="5" y="4.5" width="14" height="17" rx="2" stroke="currentColor" strokeWidth="1.7"/><rect x="9" y="2.6" width="6" height="3.4" rx="1.1" fill="currentColor"/><path d="M8.5 12l2.3 2.3L15.5 9.6" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"/></svg>);
+
+const TAB_ICON: Record<string, typeof IPeople> = {
+  giocatori: IPeople, stanze: IHome, contenuti: IDoc, registro: IList,
+};
+
+const CSS_REGIA = `
+.lkd .rg{position:relative;width:768px;height:512px;flex:none;background:#010b14;transform-origin:center center;
+  color:#eadfc4;font-family:"Baskerville Lockdown",Georgia,serif;}
+.lkd .rg .a{position:absolute;}
+/* header */
+.rg .r-ttl{left:20px;top:16px;font:700 23px/1 "Baskerville Lockdown",serif;letter-spacing:.015em;color:#f3ead2;}
+.rg .r-sub{left:21px;top:48px;font:400 12px/1 "Baskerville Lockdown",serif;letter-spacing:.17em;color:#8a7a52;}
+.rg .r-by{left:284px;top:62px;width:200px;text-align:center;font:700 9px/1 "Baskerville Lockdown",serif;letter-spacing:.24em;color:#d8b96a;}
+/* tabs */
+.rg .r-tabs{left:16px;top:86px;width:589px;height:42px;display:flex;gap:8px;}
+.rg .r-tab{flex:1;display:flex;align-items:center;justify-content:center;gap:9px;border-radius:9px;
+  background:linear-gradient(180deg,#0b1420,#081019);box-shadow:inset 0 0 0 1px rgba(90,110,130,.32);
+  color:#c6d2dc;font:400 15px/1 "Baskerville Lockdown",serif;}
+.rg .r-tab svg{font-size:19px;color:#9fb0bd;}
+.rg .r-tab.on{color:#ffe7a6;background:linear-gradient(180deg,#171206,#0f0c05);
+  box-shadow:0 0 12px rgba(255,200,110,.28),inset 0 0 0 1.5px rgba(232,200,121,.85);}
+.rg .r-tab.on svg{color:#e8c879;}
+/* MASTER box (destra, in alto) */
+.rg .r-right{left:600px;top:82px;width:150px;height:388px;border-radius:11px;
+  background:linear-gradient(180deg,#0a1420,#070f18);box-shadow:inset 0 0 0 1px rgba(201,151,47,.28);}
+.rg .r-mttl{left:675px;top:90px;transform:translateX(-50%);font:700 12px/1 "Baskerville Lockdown",serif;letter-spacing:.1em;color:#f2e4ad;}
+.rg .r-mval{left:675px;top:106px;transform:translateX(-50%);display:flex;align-items:center;gap:6px;white-space:nowrap;
+  font:700 17px/1 "Baskerville Lockdown",serif;color:#ffe7a6;}
+.rg .r-mval .goal{color:#8a7a52;}
+.rg .r-mbar{left:614px;top:131px;width:122px;height:9px;border-radius:5px;background:#10171f;
+  box-shadow:inset 0 0 0 1px rgba(201,151,47,.4);overflow:hidden;}
+.rg .r-mbar>i{display:block;height:100%;border-radius:5px;background:linear-gradient(90deg,#c9972f,#ffe08a);}
+.rg .r-rdiv{left:614px;top:153px;width:122px;height:1px;background:linear-gradient(90deg,rgba(201,151,47,0),rgba(201,151,47,.5),rgba(201,151,47,0));}
+/* ANDAMENTO PARTITA */
+.rg .r-andt{left:613px;top:173px;white-space:nowrap;font:700 10px/1 "Baskerville Lockdown",serif;letter-spacing:.04em;color:#c9b887;}
+.rg .r-tl{left:614px;top:200px;width:132px;}
+.rg .r-step{position:relative;display:flex;align-items:flex-start;gap:11px;height:26.5px;}
+.rg .r-step.first{height:30px;}
+.rg .r-step .dot{flex:none;width:13px;height:13px;border-radius:50%;margin-top:1px;z-index:1;
+  background:#0a131d;box-shadow:inset 0 0 0 2px rgba(130,120,92,.75);}
+.rg .r-step.on .dot{background:radial-gradient(circle,#ffe08a 0%,#e8c879 55%,#c9972f 100%);box-shadow:0 0 8px rgba(255,200,110,.7);}
+.rg .r-step::before{content:"";position:absolute;left:6px;top:13px;width:1.5px;height:30px;background:rgba(120,108,78,.5);}
+.rg .r-step:last-child::before{display:none;}
+.rg .r-step .lbl{font:400 13px/1.15 "Baskerville Lockdown",serif;color:#b9c4cd;}
+.rg .r-step.on .lbl{color:#ffe29a;}
+.rg .r-step.on .lbl b{display:block;font-weight:700;}
+.rg .r-step.on .lbl span{font-size:12px;color:#d8c48a;}
+/* colonna sinistra: miniatura + stato */
+.rg .r-left{left:6px;top:142px;width:140px;text-align:center;}
+.rg .r-thumb{width:118px;height:55px;border-radius:7px;object-fit:cover;display:block;margin:0 auto;
+  box-shadow:0 2px 7px rgba(0,0,0,.55),inset 0 0 0 1.5px rgba(201,151,47,.6);}
+.rg .r-lcap{margin-top:15px;font:400 11px/1 "Baskerville Lockdown",serif;letter-spacing:.11em;color:#8a7a52;}
+.rg .r-lval{margin-top:6px;font:700 22px/1 "Baskerville Lockdown",serif;letter-spacing:-.005em;color:#f6d27a;}
+.rg .r-licon{margin-top:22px;color:#e8c879;font-size:30px;line-height:0;}
+/* tabella RISPOSTE */
+.rg .r-tbl{left:148px;top:140px;width:430px;height:248px;border-radius:9px;overflow:hidden;
+  background:#060d16;box-shadow:inset 0 0 0 1px rgba(90,110,130,.28);}
+.rg .r-tcap{position:absolute;left:11px;top:13px;font:700 13px/1 "Baskerville Lockdown",serif;letter-spacing:.02em;color:#f1ead6;}
+.rg .r-thead{position:absolute;left:0;top:38px;width:430px;height:28px;background:#131d28;display:flex;align-items:center;
+  font:700 9px/1 "Baskerville Lockdown",serif;letter-spacing:.07em;color:#8fa0ad;box-shadow:inset 0 -1px 0 rgba(90,110,130,.3);}
+.rg .r-row{position:absolute;left:0;width:430px;height:22.6px;display:flex;align-items:center;font:400 13px/1 "Baskerville Lockdown",serif;}
+.rg .r-row.alt{background:rgba(255,255,255,.022);}
+.rg .c1{width:108px;padding-left:18px;color:#e9e3d2;text-align:left;}
+.rg .c2{width:125px;text-align:center;color:#e9e3d2;}
+.rg .c3{width:105px;text-align:center;}
+.rg .c4{width:92px;text-align:center;font-weight:700;}
+.rg .r-thead .c1{color:#8fa0ad;}
+.rg .premio{color:#55c07e;}
+.rg .penalita{color:#e85c52;}
+/* pulsanti azione */
+.rg .r-acts{left:16px;top:400px;width:567px;height:84px;display:flex;gap:10px;}
+.rg .r-btn{flex:1;border-radius:11px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;
+  font:700 13px/1.12 "Baskerville Lockdown",serif;text-align:center;letter-spacing:.01em;}
+.rg .r-btn svg{font-size:23px;margin-bottom:1px;}
+.rg .r-btn.green{background:linear-gradient(180deg,#1b5a3a,#123f29);color:#e8f6ec;box-shadow:inset 0 0 0 1.5px rgba(70,190,120,.6),0 3px 8px rgba(0,0,0,.4);}
+.rg .r-btn.green svg{color:#7ee6a6;}
+.rg .r-btn.blue{background:linear-gradient(180deg,#123a58,#0c2a42);color:#e4f0f8;box-shadow:inset 0 0 0 1.5px rgba(70,150,210,.55),0 3px 8px rgba(0,0,0,.4);}
+.rg .r-btn.blue svg{color:#6fb6e6;}
+.rg .r-btn.gold{background:linear-gradient(180deg,#4a3410,#2c2008);color:#f4dfa0;box-shadow:inset 0 0 0 1.5px rgba(200,160,70,.6),0 3px 8px rgba(0,0,0,.4);}
+.rg .r-btn.gold svg{color:#ffd86a;}
+.rg .r-btn.red{background:linear-gradient(180deg,#6a2224,#481618);color:#f7e2e2;box-shadow:inset 0 0 0 1.5px rgba(200,80,80,.6),0 3px 8px rgba(0,0,0,.4);}
+.rg .r-btn.red svg{color:#ff8a82;}
+.rg .r-btn.slate{background:linear-gradient(180deg,#1b2735,#121c28);color:#e2eaf1;box-shadow:inset 0 0 0 1.5px rgba(90,110,130,.5),0 3px 8px rgba(0,0,0,.4);}
+.rg .r-btn.slate svg{color:#b9c6d2;}
+`;
+
+function RegiaMaster() {
+  const scale = useScale(768, 512);
+  const pct = Math.max(0, Math.min(1, MASTER.current / MASTER.goal));
+  const [tab, setTab] = useState('giocatori');
+
+  return (
+    <div className="lkd"><style>{CSS + CSS_REGIA}</style>
+      <div className="rg" style={{ transform: `scale(${scale})` }}>
+        {/* header */}
+        <div className="a r-ttl">REGIA MASTER</div>
+        <div className="a r-sub">GESTISCI LA PARTITA</div>
+        <img className="a" src={`${LK}logo-lockdown-t.png`} alt="LOCKDOWN" style={{ left: 294, top: 16, width: 180, height: 46 }} />
+        <div className="a r-by">by IDEAeventi</div>
+
+        {/* tabs */}
+        <div className="a r-tabs" role="tablist">
+          {TABS.map(t => {
+            const Ic = TAB_ICON[t.id];
+            return (
+              <button key={t.id} role="tab" aria-selected={tab === t.id}
+                className={`r-tab${tab === t.id ? ' on' : ''}`} onClick={() => setTab(t.id)}>
+                <Ic /> {t.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* colonna destra: MASTER + ANDAMENTO PARTITA */}
+        <div className="a r-right" />
+        <div className="a r-mttl">MASTER</div>
+        <div className="a r-mval" aria-label={`Master: ${fmt(MASTER.current)} di ${fmt(MASTER.goal)} Lock-Euro`}>
+          <Lock size={16} />{fmt(MASTER.current)} <span className="goal">/ {fmt(MASTER.goal)}</span>
+        </div>
+        <div className="a r-mbar"><i style={{ width: `${pct * 100}%` }} /></div>
+        <div className="a r-rdiv" />
+        <div className="a r-andt">ANDAMENTO PARTITA</div>
+        <div className="a r-tl">
+          <div className="r-step first on">
+            <span className="dot" />
+            <span className="lbl"><b>Cucina</b><span>Valutazione</span></span>
+          </div>
+          {ANDAMENTO.map(r => (
+            <div className="r-step" key={r}>
+              <span className="dot" />
+              <span className="lbl">{r}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* colonna sinistra: miniatura stanza attiva + stato */}
+        <div className="a r-left">
+          <img className="r-thumb" src={`${LK}room-thumb-cucina.png`} alt="Stanza attuale: Cucina" />
+          <div className="r-lcap">STANZA ATTUALE</div>
+          <div className="r-lval">Cucina</div>
+          <div className="r-licon"><IClipboard /></div>
+          <div className="r-lcap" style={{ marginTop: 10 }}>FASE ATTUALE</div>
+          <div className="r-lval">Valutazione</div>
+        </div>
+
+        {/* tabella RISPOSTE DEI GIOCATORI */}
+        <div className="a r-tbl">
+          <div className="r-tcap">RISPOSTE DEI GIOCATORI</div>
+          <div className="r-thead">
+            <div className="c1">GIOCATORE</div><div className="c2">N. RICETTE VALIDE</div>
+            <div className="c3">ESITO</div><div className="c4">VARIAZIONE</div>
+          </div>
+          {REGIA_ROWS.map((r, i) => {
+            const o = cucinaOutcome(r.valid);
+            return (
+              <div className={`r-row${i % 2 ? ' alt' : ''}`} key={r.name} style={{ top: 66 + i * 22.6 }}>
+                <div className="c1">{r.name}</div>
+                <div className="c2">{r.valid}</div>
+                <div className={`c3 ${o.kind}`}>{o.label}</div>
+                <div className={`c4 ${o.kind}`}>{o.delta > 0 ? o.delta : Math.abs(o.delta)}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* pulsanti azione */}
+        <div className="a r-acts">
+          <button className="r-btn green"><ICheck />Conferma<br />valutazione</button>
+          <button className="r-btn blue"><INext />Prossima<br />stanza</button>
+          <button className="r-btn gold"><IBolt />Colpo di scena</button>
+          <button className="r-btn red"><IMinus />Penalità</button>
+          <button className="r-btn slate"><IPause />Pausa</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── ADMIN · CONTENUTI (console host, tablet/desktop) ─────────────────────────
+   Replica del mockup 08, pannello "21 CONTENUTI · PANNELLO AMMINISTRATORE".
+   Palco fisso 512×512 scalato. Editor versionato delle stanze (bozza/approvato).
+
+   CORREZIONI dal pacchetto (03-SCHERMATE): l'editor del mockup inventa nomi di
+   stanze (Atrio, Giardino, Cantina, Mansarda…). Qui la lista usa i DIECI nomi
+   reali del catalogo (ROOM_CATALOG). Cinema = 20 parole, 300s (corretto nel
+   mockup). Badge "21" di catalogo omesso. Nessun backend: DATI MOCK. ?contenuti. */
+
+const CSS_ADMIN = `
+.lkd .ad{position:relative;width:512px;height:512px;flex:none;background:#020407;transform-origin:center center;
+  color:#dfe6ee;font-family:"Baskerville Lockdown",Georgia,serif;overflow:hidden;}
+.lkd .ad .a{position:absolute;}
+/* bagliore proiettore (eco del dipinto, top-destra) */
+.ad .ad-glow{left:300px;top:-60px;width:320px;height:260px;pointer-events:none;
+  background:radial-gradient(closest-side,rgba(240,170,70,.22),rgba(240,170,70,0) 72%);}
+/* header */
+.ad .ad-h1{left:0;top:66px;width:512px;text-align:center;font:700 26px/1 "Baskerville Lockdown",serif;letter-spacing:.06em;color:#f3e6bf;}
+.ad .ad-h2{left:0;top:100px;width:512px;text-align:center;font:400 12px/1 "Baskerville Lockdown",serif;letter-spacing:.14em;color:#9a8c63;}
+.ad .ad-by{left:156px;top:45px;width:200px;text-align:center;font:700 8px/1 "Baskerville Lockdown",serif;letter-spacing:.24em;color:#d8b96a;}
+/* card generica */
+.ad .card{border-radius:12px;background:linear-gradient(180deg,rgba(11,20,28,.94),rgba(6,12,18,.96));
+  box-shadow:inset 0 0 0 1px rgba(90,110,130,.3),0 6px 18px rgba(0,0,0,.45);}
+/* lista stanze (sinistra) */
+.ad .ad-left{left:16px;top:128px;width:142px;height:330px;}
+.ad .ad-ltt{position:absolute;left:14px;top:13px;font:700 11.5px/1 "Baskerville Lockdown",serif;letter-spacing:.02em;color:#e7dcc0;}
+.ad .ad-ldv{position:absolute;left:12px;top:33px;width:118px;height:1px;background:rgba(90,110,130,.3);}
+.ad .ad-room{position:absolute;left:8px;width:126px;height:26px;display:flex;align-items:center;gap:8px;padding:0 7px;border-radius:7px;white-space:nowrap;
+  font:400 12px/1 "Baskerville Lockdown",serif;color:#cfd8e0;}
+.ad .ad-room .n{flex:none;width:18px;height:18px;border-radius:50%;display:grid;place-items:center;
+  font:700 9px/1 "Baskerville Lockdown",serif;color:#aeb9c2;box-shadow:inset 0 0 0 1.4px rgba(120,135,148,.6);}
+.ad .ad-room.on{color:#ffe7a6;box-shadow:inset 0 0 0 1.5px rgba(232,200,121,.85);background:rgba(28,22,8,.6);}
+.ad .ad-room.on .n{color:#ffe7a6;box-shadow:inset 0 0 0 1.4px rgba(232,200,121,.85);}
+/* editor (destra) */
+.ad .ad-right{left:170px;top:128px;width:326px;height:330px;}
+.ad .ad-ett{position:absolute;left:18px;top:14px;font:700 15px/1 "Baskerville Lockdown",serif;color:#eef0ee;}
+.ad .ad-echip{position:absolute;left:18px;top:40px;display:flex;align-items:center;gap:9px;font:700 14px/1 "Baskerville Lockdown",serif;color:#eadfbf;}
+.ad .ad-echip .n{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:11px;color:#ffe7a6;box-shadow:inset 0 0 0 1.5px rgba(232,200,121,.7);}
+.ad .ad-edv{position:absolute;left:16px;top:70px;width:294px;height:1px;background:rgba(90,110,130,.26);}
+.ad .ad-lbl{position:absolute;font:400 10.5px/1 "Baskerville Lockdown",serif;letter-spacing:.02em;color:#9aa7b2;}
+.ad .ad-fld{position:absolute;display:flex;align-items:center;padding:0 11px;border-radius:7px;
+  background:#0b141d;box-shadow:inset 0 0 0 1px rgba(90,110,130,.4);
+  font:400 13px/1 "Baskerville Lockdown",serif;color:#eaf0f5;}
+.ad .ad-ta{position:absolute;padding:9px 11px;border-radius:7px;background:#0b141d;box-shadow:inset 0 0 0 1px rgba(90,110,130,.4);
+  font:400 12.5px/1.3 "Baskerville Lockdown",serif;color:#dbe6ef;}
+.ad .ad-seg{position:absolute;display:flex;align-items:center;justify-content:center;height:34px;border-radius:8px;
+  font:400 13px/1 "Baskerville Lockdown",serif;color:#c3cdd6;box-shadow:inset 0 0 0 1px rgba(90,110,130,.4);background:#0b141d;}
+.ad .ad-seg.on{color:#ffe7a6;background:linear-gradient(180deg,#1b1406,#110c04);box-shadow:inset 0 0 0 1.5px rgba(232,200,121,.85);}
+.ad .ad-tog{position:absolute;width:46px;height:24px;border-radius:13px;background:#0e1822;box-shadow:inset 0 0 0 1px rgba(90,110,130,.5);}
+.ad .ad-tog>i{position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#aab4bd;}
+.ad .ad-note{position:absolute;font:400 11px/1 "Baskerville Lockdown",serif;color:#7f8b95;}
+`;
+
+function AdminContenuti() {
+  const scale = useScale(512, 512);
+  const selected = 6; // indice (0-based) di "Cinema" nel catalogo reale
+  return (
+    <div className="lkd"><style>{CSS + CSS_ADMIN}</style>
+      <div className="ad" style={{ transform: `scale(${scale})` }}>
+        <div className="a ad-glow" />
+        {/* header */}
+        <img className="a" src={`${LK}logo-lockdown-t.png`} alt="LOCKDOWN" style={{ left: 181, top: 6, width: 150, height: 38 }} />
+        <div className="a ad-by">by IDEAeventi</div>
+        <div className="a ad-h1">CONTENUTI</div>
+        <div className="a ad-h2">PANNELLO AMMINISTRATORE</div>
+
+        {/* lista stanze (10 reali) */}
+        <div className="a card ad-left">
+          <div className="ad-ltt">Stanze della casa (10)</div>
+          <div className="ad-ldv" />
+          {ROOM_CATALOG.map((r, i) => (
+            <div className={`ad-room${i === selected ? ' on' : ''}`} key={r} style={{ top: 44 + i * 28 }}>
+              <span className="n">{i + 1}</span>{r}
+            </div>
+          ))}
+        </div>
+
+        {/* editor stanza */}
+        <div className="a card ad-right">
+          <div className="ad-ett">Modifica stanza</div>
+          <div className="ad-echip"><span className="n">7</span>Cinema</div>
+          <div className="ad-edv" />
+
+          <div className="ad-lbl" style={{ left: 18, top: 80 }}>Titolo stanza</div>
+          <div className="ad-fld" style={{ left: 18, top: 95, width: 116, height: 30 }}>Cinema</div>
+          <div className="ad-lbl" style={{ left: 144, top: 81, fontSize: 9 }}>Limite parole</div>
+          <div className="ad-fld" style={{ left: 144, top: 95, width: 52, height: 30, justifyContent: 'center' }}>20</div>
+          <div className="ad-lbl" style={{ left: 214, top: 81, fontSize: 9 }}>Durata (secondi)</div>
+          <div className="ad-fld" style={{ left: 212, top: 95, width: 88, height: 30, justifyContent: 'center' }}>300</div>
+
+          <div className="ad-lbl" style={{ left: 18, top: 138 }}>Contenuto</div>
+          <div className="ad-ta" style={{ left: 18, top: 153, width: 290, height: 56 }}>
+            Descrivi una scena di un film senza nominare il titolo.
+          </div>
+
+          <div className="ad-lbl" style={{ left: 18, top: 224 }}>Stato contenuto</div>
+          <div className="ad-seg on" style={{ left: 18, top: 239, width: 92 }}>Originale</div>
+          <div className="ad-seg" style={{ left: 118, top: 239, width: 92 }}>Proposto</div>
+          <div className="ad-seg" style={{ left: 218, top: 239, width: 92 }}>Approvato</div>
+
+          <div className="ad-lbl" style={{ left: 18, top: 290, fontSize: 12, color: '#c6cfd7' }}>Contenuto Adulto (18+)</div>
+          <div className="ad-tog" style={{ left: 264, top: 286 }}><i /></div>
+          <div className="ad-note" style={{ left: 18, top: 308 }}>Non disponibile con il preset Famiglia.</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── ADMIN · PENALITÀ (console host) ──────────────────────────────────────────
+   Replica del mockup 08, pannello "19 PENALITÀ · PANNELLO AMMINISTRATORE".
+   Palco fisso 512×512. I valori (richiesta 80, saldo 50, trasferimento 50, finale 0)
+   sono SPEC-CORRETTI (02-REGOLE: penalità trasferisce solo il disponibile; nessuno
+   esce a zero → "Resta in gioco"). Badge "19" omesso. Lampada/busto dipinti resi
+   come bagliore caldo. Nessun backend: DATI MOCK. ?penalita. */
+
+const IInfo = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><circle cx="12" cy="12" r="9.3" stroke="currentColor" strokeWidth="1.7"/><circle cx="12" cy="7.7" r="1.25" fill="currentColor"/><path d="M12 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>);
+const IChevron = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>);
+const IUndo = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><path d="M9 7H5V3M5 7a8 8 0 1 1-2 5.3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>);
+const IPlay = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><path d="M7 4.5l13 7.5-13 7.5z" fill="currentColor"/></svg>);
+const ICloud = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><path d="M7 18h10a4 4 0 0 0 .6-7.95A5.5 5.5 0 0 0 6.5 9.2 3.9 3.9 0 0 0 7 18z" fill="currentColor"/></svg>);
+const IRefresh = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><path d="M19 8a7.5 7.5 0 1 0 1.2 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><path d="M19 3v5h-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>);
+const IMaskLk = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><path d="M3 8c3-1.2 6-1.2 9 0 3-1.2 6-1.2 9 0 0 6-3.5 8.5-6 6.5-1.6-1.3-4.4-1.3-6 0C6.5 16.5 3 14 3 8z" fill="currentColor"/><circle cx="8.3" cy="10.3" r="1.5" fill="#2a1d06"/><circle cx="15.7" cy="10.3" r="1.5" fill="#2a1d06"/></svg>);
+const IClose = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>);
+
+const PEN_ROWS: { label: string; value: string; info?: boolean }[] = [
+  { label: 'Penalità richiesta (punti)', value: '80' },
+  { label: 'Saldo disponibile del giocatore', value: '50' },
+  { label: 'Trasferimento effettivo (punti)', value: '50', info: true },
+  { label: 'Saldo finale del giocatore', value: '0' },
+];
+
+const CSS_PENALITA = `
+.ad .pn-warm{left:360px;top:120px;width:220px;height:300px;pointer-events:none;
+  background:radial-gradient(closest-side,rgba(240,180,90,.20),rgba(240,180,90,0) 72%);}
+.ad .pn-card{left:18px;top:148px;width:424px;height:352px;}
+.ad .pn-lbl{position:absolute;left:16px;font:400 13px/1 "Baskerville Lockdown",serif;color:#cfd8e0;}
+.ad .pn-fld{position:absolute;left:232px;width:176px;height:30px;display:flex;align-items:center;padding:0 12px;border-radius:7px;
+  background:#0b141d;box-shadow:inset 0 0 0 1px rgba(90,110,130,.42);font:400 14px/1 "Baskerville Lockdown",serif;color:#eaf0f5;}
+.ad .pn-fld.sel{justify-content:space-between;}
+.ad .pn-fld .chev{color:#8fa0ad;font-size:16px;display:flex;}
+.ad .pn-i{position:absolute;left:414px;color:#7f8b95;font-size:17px;display:flex;}
+.ad .pn-info{position:absolute;left:16px;top:208px;width:398px;height:50px;display:flex;align-items:center;gap:12px;padding:0 14px;border-radius:9px;
+  background:rgba(14,46,56,.55);box-shadow:inset 0 0 0 1px rgba(60,150,170,.5);}
+.ad .pn-info .ic{flex:none;color:#4fc5d6;font-size:22px;display:flex;}
+.ad .pn-info .t1{font:700 13px/1.25 "Baskerville Lockdown",serif;color:#bfe9f0;}
+.ad .pn-info .t2{font:400 12px/1.25 "Baskerville Lockdown",serif;color:#a9bcc4;}
+.ad .pn-btn{position:absolute;left:16px;top:270px;width:398px;height:50px;border-radius:10px;display:grid;place-items:center;
+  background:linear-gradient(180deg,#e9c877,#caa23f);color:#2a1d06;font:700 17px/1 "Baskerville Lockdown",serif;letter-spacing:.02em;
+  box-shadow:0 4px 12px rgba(0,0,0,.45),inset 0 0 0 1px rgba(255,235,180,.6);}
+`;
+
+function AdminPenalita() {
+  const scale = useScale(512, 512);
+  return (
+    <div className="lkd"><style>{CSS + CSS_ADMIN + CSS_PENALITA}</style>
+      <div className="ad" style={{ transform: `scale(${scale})` }}>
+        <div className="a pn-warm" />
+        {/* header */}
+        <img className="a" src={`${LK}logo-lockdown-t.png`} alt="LOCKDOWN" style={{ left: 181, top: 6, width: 150, height: 38 }} />
+        <div className="a ad-by">by IDEAeventi</div>
+        <div className="a ad-h1">PENALITÀ</div>
+        <div className="a ad-h2">PANNELLO AMMINISTRATORE</div>
+
+        {/* card modulo */}
+        <div className="a card pn-card">
+          <div className="pn-lbl" style={{ top: 165 - 148 }}>Giocatore destinatario</div>
+          <div className="pn-fld sel" style={{ top: 157 - 148 }}>Marco<span className="chev"><IChevron /></span></div>
+          {PEN_ROWS.map((r, i) => {
+            const fieldTop = 195 - 148 + i * 36;
+            return (
+              <div key={r.label}>
+                <div className="pn-lbl" style={{ top: fieldTop + 9 }}>{r.label}</div>
+                <div className="pn-fld" style={{ top: fieldTop }}>{r.value}</div>
+                {r.info && <div className="pn-i" style={{ top: fieldTop + 7 }}><IInfo /></div>}
+              </div>
+            );
+          })}
+          <div className="pn-info">
+            <span className="ic"><IInfo /></span>
+            <span>
+              <span className="t1">Resta in gioco</span><br />
+              <span className="t2">La penalità non elimina il giocatore dalla partita.</span>
+            </span>
+          </div>
+          <div className="pn-btn">Conferma penalità</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── ADMIN · PAUSA E REGISTRO (console host) ──────────────────────────────────
+   Replica del mockup 08, pannello "22 PAUSA E REGISTRO · PANNELLO AMMINISTRATORE".
+   Palco fisso 512×512. Pausa con timer congelato, registro eventi e rettifica come
+   NUOVA operazione compensativa con motivo obbligatorio (03-SCHERMATE: la rettifica
+   non cancella il movimento). Badge "22" omesso. DATI MOCK. ?registro. */
+
+const REG_ROWS: { ora: string; gioc: string; op: string; delta: string; kind: 'premio' | 'penalita'; note: string }[] = [
+  { ora: '21:42', gioc: 'Giulia', op: 'Premio', delta: '+200', kind: 'premio', note: 'Sfida bonus' },
+  { ora: '21:38', gioc: 'Marco', op: 'Penalità', delta: '−50', kind: 'penalita', note: 'Regola infranta' },
+  { ora: '21:35', gioc: 'Master', op: 'Premio', delta: '+50', kind: 'premio', note: 'Aiuto fornito' },
+];
+
+const CSS_REGISTRO = `
+.ad .rg-warm{left:330px;top:-30px;width:230px;height:200px;pointer-events:none;
+  background:radial-gradient(closest-side,rgba(255,190,90,.22),rgba(255,190,90,0) 70%);}
+/* card pausa */
+.ad .rg-pause{left:18px;top:118px;width:476px;height:100px;box-shadow:inset 0 0 0 1px rgba(60,150,170,.4),0 6px 18px rgba(0,0,0,.45);}
+.ad .rg-pic{position:absolute;left:36px;top:18px;width:46px;height:46px;border-radius:50%;display:grid;place-items:center;
+  color:#4fc5d6;font-size:22px;box-shadow:inset 0 0 0 2px rgba(79,197,214,.7);}
+.ad .rg-pt1{position:absolute;left:96px;top:20px;font:700 18px/1 "Baskerville Lockdown",serif;color:#d7ecef;}
+.ad .rg-pt2{position:absolute;left:96px;top:44px;font:400 12.5px/1 "Baskerville Lockdown",serif;color:#9fb2ba;}
+.ad .rg-time{position:absolute;left:300px;top:14px;width:158px;height:52px;border-radius:9px;background:#0a1016;
+  box-shadow:inset 0 0 0 1px rgba(90,110,130,.4);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;}
+.ad .rg-time .l{font:400 10px/1 "Baskerville Lockdown",serif;letter-spacing:.06em;color:#9aa7b2;}
+.ad .rg-time .v{font:700 24px/1 "Baskerville Lockdown",serif;color:#f6e6bc;}
+.ad .rg-resume{position:absolute;left:12px;top:70px;width:452px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;gap:8px;
+  background:linear-gradient(180deg,#e9c877,#caa23f);color:#2a1d06;font:700 15px/1 "Baskerville Lockdown",serif;box-shadow:inset 0 0 0 1px rgba(255,235,180,.6);}
+.ad .rg-resume svg{font-size:14px;}
+/* registro eventi */
+.ad .rg-ett{left:18px;top:232px;font:700 14px/1 "Baskerville Lockdown",serif;color:#eadfc2;}
+.ad .rg-tbl{left:18px;top:250px;width:476px;border-radius:8px;overflow:hidden;background:#0a131c;box-shadow:inset 0 0 0 1px rgba(90,110,130,.26);}
+.ad .rg-row{display:flex;align-items:center;height:23px;font:400 12px/1 "Baskerville Lockdown",serif;color:#dbe3ea;}
+.ad .rg-row.head{height:21px;background:#131d28;font-weight:700;font-size:9.5px;letter-spacing:.05em;color:#8fa0ad;}
+.ad .rg-row.alt{background:rgba(255,255,255,.02);}
+.ad .rg-row .k0{width:76px;padding-left:12px;}
+.ad .rg-row .k1{width:86px;}
+.ad .rg-row .k2{width:88px;}
+.ad .rg-row .k3{width:82px;font-weight:700;}
+.ad .rg-row .k4{flex:1;}
+.ad .rg-row .premio{color:#55c07e;}
+.ad .rg-row .penalita{color:#e85c52;}
+.ad .rg-undo{left:108px;top:344px;width:296px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;gap:8px;
+  background:linear-gradient(180deg,#e9c877,#caa23f);color:#2a1d06;font:700 13px/1 "Baskerville Lockdown",serif;box-shadow:inset 0 0 0 1px rgba(255,235,180,.6);}
+.ad .rg-undo svg{font-size:14px;}
+/* modale annulla */
+.ad .rg-modal{left:70px;top:384px;width:384px;height:114px;border-radius:11px;background:linear-gradient(180deg,#0e1826,#0a121c);
+  box-shadow:inset 0 0 0 1px rgba(120,140,160,.4),0 10px 28px rgba(0,0,0,.6);}
+.ad .rg-mtt{position:absolute;left:16px;top:12px;font:700 13px/1 "Baskerville Lockdown",serif;color:#eef1f4;}
+.ad .rg-mx{position:absolute;right:14px;top:11px;color:#9aa7b2;font-size:15px;display:flex;}
+.ad .rg-mlbl{position:absolute;left:16px;top:33px;font:400 10px/1 "Baskerville Lockdown",serif;color:#9aa7b2;}
+.ad .rg-mta{position:absolute;left:16px;top:46px;width:352px;height:32px;border-radius:7px;background:#0a1016;box-shadow:inset 0 0 0 1px rgba(90,110,130,.42);}
+.ad .rg-mb{position:absolute;top:84px;height:24px;border-radius:7px;display:grid;place-items:center;font:700 12px/1 "Baskerville Lockdown",serif;}
+.ad .rg-mb.cancel{left:196px;width:84px;color:#c6d0d8;box-shadow:inset 0 0 0 1px rgba(90,110,130,.5);}
+.ad .rg-mb.ok{left:286px;width:82px;background:linear-gradient(180deg,#e9c877,#caa23f);color:#2a1d06;}
+`;
+
+function AdminRegistro() {
+  const scale = useScale(512, 512);
+  return (
+    <div className="lkd"><style>{CSS + CSS_ADMIN + CSS_REGISTRO}</style>
+      <div className="ad" style={{ transform: `scale(${scale})` }}>
+        <div className="a rg-warm" />
+        {/* header */}
+        <img className="a" src={`${LK}logo-lockdown-t.png`} alt="LOCKDOWN" style={{ left: 181, top: 6, width: 150, height: 38 }} />
+        <div className="a ad-by">by IDEAeventi</div>
+        <div className="a ad-h1" style={{ top: 64, fontSize: 24 }}>PAUSA E REGISTRO</div>
+        <div className="a ad-h2">PANNELLO AMMINISTRATORE</div>
+
+        {/* card pausa */}
+        <div className="a card rg-pause">
+          <div className="rg-pic"><IPause /></div>
+          <div className="rg-pt1">Pausa attiva</div>
+          <div className="rg-pt2">Il timer è congelato.</div>
+          <div className="rg-time"><span className="l">Tempo rimanente</span><span className="v">00:24</span></div>
+          <div className="rg-resume"><IPlay />Riprendi</div>
+        </div>
+
+        {/* registro eventi */}
+        <div className="a rg-ett">Registro eventi</div>
+        <div className="a rg-tbl">
+          <div className="rg-row head"><div className="k0">Ora</div><div className="k1">Giocatore</div><div className="k2">Operazione</div><div className="k3">Variazione</div><div className="k4">Note</div></div>
+          {REG_ROWS.map((r, i) => (
+            <div className={`rg-row${i % 2 ? ' alt' : ''}`} key={r.ora}>
+              <div className="k0">{r.ora}</div><div className="k1">{r.gioc}</div>
+              <div className="k2">{r.op}</div><div className={`k3 ${r.kind}`}>{r.delta}</div><div className="k4">{r.note}</div>
+            </div>
+          ))}
+        </div>
+        <div className="a rg-undo"><IUndo />Annulla ultima operazione</div>
+
+        {/* modale annulla ultima operazione */}
+        <div className="a rg-modal">
+          <div className="rg-mtt">Annulla ultima operazione</div>
+          <div className="rg-mx"><IClose /></div>
+          <div className="rg-mlbl">Motivo (obbligatorio)</div>
+          <div className="rg-mta" />
+          <div className="rg-mb cancel">Annulla</div>
+          <div className="rg-mb ok">Conferma</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── ADMIN · CREA PARTITA (console host) ──────────────────────────────────────
+   Replica del mockup 08, pannello "17 CREA PARTITA · PANNELLO AMMINISTRATORE".
+   Palco fisso 512×512. Setup partita: nome, preset (Originale/Famiglia), durata
+   (Normale/A tempo), soglia Master, QR di accesso. Il QR è REALE (qrcode.react),
+   non illustrativo (03-SCHERMATE: nessun QR disegnato per accessi veri). Badge
+   "17" omesso. DATI MOCK (?crea=CODE imposta solo il codice del QR). */
+
+const CSS_CREA = `
+.ad .cr-warm{left:330px;top:-20px;width:230px;height:200px;pointer-events:none;
+  background:radial-gradient(closest-side,rgba(255,185,90,.2),rgba(255,185,90,0) 70%);}
+.ad .cr-lbl{position:absolute;font:400 12.5px/1 "Baskerville Lockdown",serif;color:#c3ccd4;}
+.ad .cr-fld{position:absolute;display:flex;align-items:center;padding:0 14px;border-radius:9px;background:#0b141d;
+  box-shadow:inset 0 0 0 1px rgba(90,110,130,.42);font:400 15px/1 "Baskerville Lockdown",serif;color:#eaf0f5;}
+.ad .cr-seg{position:absolute;height:38px;display:grid;place-items:center;border-radius:9px;
+  font:400 14px/1 "Baskerville Lockdown",serif;color:#c3ccd4;background:#0b141d;box-shadow:inset 0 0 0 1px rgba(90,110,130,.4);}
+.ad .cr-seg.on{color:#ffe7a6;background:linear-gradient(180deg,#1b1406,#110c04);box-shadow:inset 0 0 0 1.5px rgba(232,200,121,.85);}
+.ad .cr-qr{position:absolute;left:316px;top:166px;width:172px;height:172px;border-radius:12px;background:#fff;display:grid;place-items:center;
+  box-shadow:0 4px 14px rgba(0,0,0,.5),inset 0 0 0 1px rgba(232,200,121,.4);}
+.ad .cr-cap{position:absolute;left:312px;top:348px;width:184px;text-align:center;font:400 12px/1.4 "Baskerville Lockdown",serif;color:#aab6bf;}
+.ad .cr-btn{position:absolute;left:24px;top:428px;width:464px;height:50px;border-radius:11px;display:grid;place-items:center;
+  background:linear-gradient(180deg,#e9c877,#caa23f);color:#2a1d06;font:700 18px/1 "Baskerville Lockdown",serif;letter-spacing:.02em;
+  box-shadow:0 4px 12px rgba(0,0,0,.45),inset 0 0 0 1px rgba(255,235,180,.6);}
+`;
+
+function AdminCrea() {
+  const scale = useScale(512, 512);
+  const code = new URLSearchParams(window.location.search).get('crea') || 'LOCK24';
+  const joinUrl = `${ORIGIN}gestione/lockdown/join?casa=${encodeURIComponent(code)}`;
+  return (
+    <div className="lkd"><style>{CSS + CSS_ADMIN + CSS_CREA}</style>
+      <div className="ad" style={{ transform: `scale(${scale})` }}>
+        <div className="a cr-warm" />
+        {/* header */}
+        <img className="a" src={`${LK}logo-lockdown-t.png`} alt="LOCKDOWN" style={{ left: 181, top: 6, width: 150, height: 38 }} />
+        <div className="a ad-by">by IDEAeventi</div>
+        <div className="a ad-h1">CREA PARTITA</div>
+        <div className="a ad-h2">PANNELLO AMMINISTRATORE</div>
+
+        {/* form */}
+        <div className="a cr-lbl" style={{ left: 30, top: 162 }}>Nome della partita</div>
+        <div className="a cr-fld" style={{ left: 28, top: 180, width: 274, height: 36 }}>Casa di Jonny</div>
+
+        <div className="a cr-lbl" style={{ left: 30, top: 234 }}>Preset di gioco</div>
+        <div className="a cr-seg on" style={{ left: 28, top: 250, width: 134 }}>Originale</div>
+        <div className="a cr-seg" style={{ left: 168, top: 250, width: 134 }}>Famiglia</div>
+
+        <div className="a cr-lbl" style={{ left: 30, top: 304 }}>Durata della stanza</div>
+        <div className="a cr-seg on" style={{ left: 28, top: 320, width: 134 }}>Normale</div>
+        <div className="a cr-seg" style={{ left: 168, top: 320, width: 134 }}>A tempo</div>
+
+        <div className="a cr-lbl" style={{ left: 30, top: 386 }}>Soglia Master (punti)</div>
+        <div className="a cr-fld" style={{ left: 174, top: 370, width: 128, height: 36, justifyContent: 'center' }}>1500</div>
+
+        {/* QR reale */}
+        <div className="a cr-qr"><QRCodeSVG value={joinUrl} size={150} /></div>
+        <div className="a cr-cap">Scansiona questo QR con i dispositivi dei giocatori per unirsi alla partita.</div>
+
+        {/* CTA */}
+        <div className="a cr-btn">Crea e mostra QR</div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── EVENTO · COLPO DI SCENA (overlay/reveal) ─────────────────────────────────
+   Replica del mockup 08, pannello "18 COLPO DI SCENA · EVENTO SPECIALE".
+   Palco fisso 512×512. La scena teatrale (tende, candelabri, busto, cornice d'oro
+   della carta, maschera) è PITTURA ritagliata (event-colpo.png). In CODICE: logo
+   reale + "COLPO DI SCENA / EVENTO SPECIALE" (regola brand) su fascia centrale che
+   maschera l'header dipinto. Il testo della carta ("Parla in rima…") è un ESEMPIO
+   del mazzo Colpi di scena (03-SCHERMATE: nel gioco reale viene dal catalogo
+   approvato). Badge "18" omesso. ?colpo. */
+
+const CSS_EVENTO = `
+.ad .ev-bg{position:absolute;left:0;top:0;width:512px;height:512px;object-fit:cover;}
+.ad .ev-mask{left:80px;top:0;width:352px;height:170px;pointer-events:none;
+  background:radial-gradient(115% 118% at 50% 40%,#0b0709 0%,#0b0709 60%,rgba(11,7,9,0) 100%);}
+.ad .ev-badge{left:0;top:0;width:96px;height:96px;pointer-events:none;
+  background:radial-gradient(60% 60% at 42% 42%,#0b0709 0%,#0b0709 46%,rgba(11,7,9,0) 100%);}
+.ad .ev-h1{left:0;top:86px;width:512px;text-align:center;font:700 26px/1 "Baskerville Lockdown",serif;letter-spacing:.07em;color:#f0e2bd;}
+.ad .ev-h2{left:0;top:120px;width:512px;text-align:center;font:400 12px/1 "Baskerville Lockdown",serif;letter-spacing:.17em;color:#b6a06f;}
+`;
+
+function EventoColpo() {
+  const scale = useScale(512, 512);
+  return (
+    <div className="lkd"><style>{CSS + CSS_ADMIN + CSS_EVENTO}</style>
+      <div className="ad" style={{ transform: `scale(${scale})`, background: '#0b0709' }}>
+        <img className="ev-bg" src={`${LK}event-colpo.png`} alt="Colpo di scena" />
+        {/* maschere: badge catalogo "18" + header dipinto; poi logo reale + brand */}
+        <div className="a ev-badge" />
+        <div className="a ev-mask" />
+        <img className="a" src={`${LK}logo-lockdown-t.png`} alt="LOCKDOWN" style={{ left: 181, top: 8, width: 150, height: 38 }} />
+        <div className="a ad-by" style={{ top: 47 }}>by IDEAeventi</div>
+        <div className="a ev-h1">COLPO DI SCENA</div>
+        <div className="a ev-h2">EVENTO SPECIALE</div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── RICONNESSIONE / SEDATO (schermata giocatore) ─────────────────────────────
+   Replica del mockup 08, pannello "20 RICONNESSIONE · SCHERMATA GIOCATORE (MOBILE)".
+   Palco fisso 512×512 (ricostruito in codice). Due stati: partita conservata +
+   riconnessione (il timer continua), e "Sedato per questa prova" (non partecipa a
+   questa stanza ma resta in partita — 02-REGOLE Dottore). Badge "20" omesso.
+   Atmosfera serratura resa come bagliore teal. ?riconnessione. */
+
+const CSS_RICONN = `
+.ad.rc{background:radial-gradient(120% 90% at 78% 24%,rgba(30,120,140,.28),rgba(2,8,12,0) 55%),#041017;}
+.ad .rc-h1{left:0;top:84px;width:512px;text-align:center;font:700 26px/1 "Baskerville Lockdown",serif;letter-spacing:.06em;color:#e8f1f3;}
+.ad .rc-h2{left:0;top:116px;width:512px;text-align:center;font:400 12px/1 "Baskerville Lockdown",serif;letter-spacing:.14em;color:#8fb0b6;}
+.ad .rc-c1{left:24px;top:148px;width:464px;height:204px;background:linear-gradient(180deg,rgba(9,22,28,.9),rgba(5,14,19,.94));}
+.ad .rc-c2{left:24px;top:368px;width:464px;height:122px;background:linear-gradient(180deg,rgba(9,22,28,.9),rgba(5,14,19,.94));}
+.ad .rc-head{position:absolute;left:0;width:464px;display:flex;align-items:center;justify-content:center;gap:12px;}
+.ad .rc-head svg{flex:none;}
+.ad .rc-t1{font:700 19px/1 "Baskerville Lockdown",serif;}
+.ad .rc-t1.teal{color:#bfe9f0;}
+.ad .rc-t1.cream{color:#f1e7cf;}
+.ad .rc-p{position:absolute;text-align:center;width:464px;left:0;font:400 13px/1.45 "Baskerville Lockdown",serif;color:#a6b7bd;}
+.ad .rc-spin{position:absolute;left:236px;width:28px;height:28px;border-radius:50%;border:3px solid rgba(120,150,160,.3);border-top-color:#7fdbe6;animation:rcspin .9s linear infinite;}
+@keyframes rcspin{to{transform:rotate(360deg);}}
+.ad .rc-btn{position:absolute;left:128px;width:256px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;gap:9px;
+  background:#0a1620;box-shadow:inset 0 0 0 1px rgba(120,150,160,.5);color:#dfeaee;font:700 14px/1 "Baskerville Lockdown",serif;}
+.ad .rc-btn svg{font-size:15px;}
+@media (prefers-reduced-motion: reduce){.ad .rc-spin{animation:none;}}
+`;
+
+function Riconnessione() {
+  const scale = useScale(512, 512);
+  return (
+    <div className="lkd"><style>{CSS + CSS_ADMIN + CSS_RICONN}</style>
+      <div className="ad rc" style={{ transform: `scale(${scale})` }}>
+        {/* header */}
+        <img className="a" src={`${LK}logo-lockdown-t.png`} alt="LOCKDOWN" style={{ left: 181, top: 8, width: 150, height: 38 }} />
+        <div className="a ad-by" style={{ top: 47 }}>by IDEAeventi</div>
+        <div className="a rc-h1">RICONNESSIONE</div>
+        <div className="a rc-h2">SCHERMATA GIOCATORE (MOBILE)</div>
+
+        {/* card 1: partita conservata + riconnessione */}
+        <div className="a card rc-c1">
+          <div className="rc-head" style={{ top: 30, color: '#4fc5d6', fontSize: 28 }}>
+            <ICloud /><span className="rc-t1 teal">La partita è conservata.</span>
+          </div>
+          <div className="rc-p" style={{ top: 66 }}>Riconnessione in corso…<br />Il timer continua a scorrere.</div>
+          <div className="rc-spin" style={{ top: 116 }} />
+          <div className="rc-btn" style={{ top: 158 }}><IRefresh />Riprova</div>
+        </div>
+
+        {/* card 2: sedato */}
+        <div className="a card rc-c2">
+          <div className="rc-head" style={{ top: 28, color: '#e8c879', fontSize: 28 }}>
+            <IMaskLk /><span className="rc-t1 cream">Sedato per questa prova</span>
+          </div>
+          <div className="rc-p" style={{ top: 64 }}>Non puoi partecipare a questa stanza.<br />Puoi continuare a giocare nella prossima.</div>
+        </div>
       </div>
     </div>
   );
