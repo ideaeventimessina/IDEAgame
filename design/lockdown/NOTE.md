@@ -28,8 +28,15 @@ Pacchetto: `/private/tmp/idea_pkg/IDEA-EVENTI/02-lockdown/` (28 viste su 5 tavol
 | 16 FINALE (`?finale`) | 1 | preesistente pixel-faithful | ok |
 | 15 REGIA MASTER (`?regia`) | 2 | **FATTO (questa sessione)** | confronto per zone sotto |
 | 21 CONTENUTI (`?contenuti`) | 2 | **FATTO (questa sessione)** | editor stanze, 10 nomi reali |
+| 19 PENALITÀ (`?penalita`) | 2 | **FATTO (questa sessione)** | economia 80/50/50/0 spec-corretta |
 | Telefono (05/06/09) | 3 | DA FARE | vive in Home; vedi DEVIATIONS |
-| Admin stati residui (08) | 3 | DA FARE | crea(17)/colpo(18)/penalità(19)/riconn(20)/registro(22) — reference già ritagliati |
+| Admin stati residui (08) | 3 | DA FARE | crea(17)/colpo(18)/riconn(20)/registro(22) — reference già ritagliati |
+
+### 19 PENALITÀ — confronto per zone (giro g1, --blur 4, palco 512×512)
+| Zona | percettivo | spostamento | note |
+|---|---|---|---|
+| header | 37.0% | — | allineato; diff = busto/lampada dipinti (resi come bagliore) + font |
+| modulo | 13.5% | x10 y4 | allineato (verificato sul composito); valori 80/50/50/0 spec-corretti |
 
 ### 21 CONTENUTI — confronto per zone (giro g2, --blur 4, palco 512×512)
 | Zona | percettivo | spostamento | note |

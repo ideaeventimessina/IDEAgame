@@ -129,6 +129,7 @@ export default function GestioneLockdown() {
   if (q.get('sfida') !== null) return <MonitorSfida />;
   if (q.get('regia') !== null) return <RegiaMaster />;
   if (q.get('contenuti') !== null) return <AdminContenuti />;
+  if (q.get('penalita') !== null) return <AdminPenalita />;
   return <MonitorCasa />;
 }
 
@@ -875,6 +876,83 @@ function AdminContenuti() {
           <div className="ad-lbl" style={{ left: 18, top: 290, fontSize: 12, color: '#c6cfd7' }}>Contenuto Adulto (18+)</div>
           <div className="ad-tog" style={{ left: 264, top: 286 }}><i /></div>
           <div className="ad-note" style={{ left: 18, top: 308 }}>Non disponibile con il preset Famiglia.</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── ADMIN · PENALITÀ (console host) ──────────────────────────────────────────
+   Replica del mockup 08, pannello "19 PENALITÀ · PANNELLO AMMINISTRATORE".
+   Palco fisso 512×512. I valori (richiesta 80, saldo 50, trasferimento 50, finale 0)
+   sono SPEC-CORRETTI (02-REGOLE: penalità trasferisce solo il disponibile; nessuno
+   esce a zero → "Resta in gioco"). Badge "19" omesso. Lampada/busto dipinti resi
+   come bagliore caldo. Nessun backend: DATI MOCK. ?penalita. */
+
+const IInfo = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><circle cx="12" cy="12" r="9.3" stroke="currentColor" strokeWidth="1.7"/><circle cx="12" cy="7.7" r="1.25" fill="currentColor"/><path d="M12 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>);
+const IChevron = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>);
+
+const PEN_ROWS: { label: string; value: string; info?: boolean }[] = [
+  { label: 'Penalità richiesta (punti)', value: '80' },
+  { label: 'Saldo disponibile del giocatore', value: '50' },
+  { label: 'Trasferimento effettivo (punti)', value: '50', info: true },
+  { label: 'Saldo finale del giocatore', value: '0' },
+];
+
+const CSS_PENALITA = `
+.ad .pn-warm{left:360px;top:120px;width:220px;height:300px;pointer-events:none;
+  background:radial-gradient(closest-side,rgba(240,180,90,.20),rgba(240,180,90,0) 72%);}
+.ad .pn-card{left:18px;top:148px;width:424px;height:352px;}
+.ad .pn-lbl{position:absolute;left:16px;font:400 13px/1 "Baskerville Lockdown",serif;color:#cfd8e0;}
+.ad .pn-fld{position:absolute;left:232px;width:176px;height:30px;display:flex;align-items:center;padding:0 12px;border-radius:7px;
+  background:#0b141d;box-shadow:inset 0 0 0 1px rgba(90,110,130,.42);font:400 14px/1 "Baskerville Lockdown",serif;color:#eaf0f5;}
+.ad .pn-fld.sel{justify-content:space-between;}
+.ad .pn-fld .chev{color:#8fa0ad;font-size:16px;display:flex;}
+.ad .pn-i{position:absolute;left:414px;color:#7f8b95;font-size:17px;display:flex;}
+.ad .pn-info{position:absolute;left:16px;top:208px;width:398px;height:50px;display:flex;align-items:center;gap:12px;padding:0 14px;border-radius:9px;
+  background:rgba(14,46,56,.55);box-shadow:inset 0 0 0 1px rgba(60,150,170,.5);}
+.ad .pn-info .ic{flex:none;color:#4fc5d6;font-size:22px;display:flex;}
+.ad .pn-info .t1{font:700 13px/1.25 "Baskerville Lockdown",serif;color:#bfe9f0;}
+.ad .pn-info .t2{font:400 12px/1.25 "Baskerville Lockdown",serif;color:#a9bcc4;}
+.ad .pn-btn{position:absolute;left:16px;top:270px;width:398px;height:50px;border-radius:10px;display:grid;place-items:center;
+  background:linear-gradient(180deg,#e9c877,#caa23f);color:#2a1d06;font:700 17px/1 "Baskerville Lockdown",serif;letter-spacing:.02em;
+  box-shadow:0 4px 12px rgba(0,0,0,.45),inset 0 0 0 1px rgba(255,235,180,.6);}
+`;
+
+function AdminPenalita() {
+  const scale = useScale(512, 512);
+  return (
+    <div className="lkd"><style>{CSS + CSS_ADMIN + CSS_PENALITA}</style>
+      <div className="ad" style={{ transform: `scale(${scale})` }}>
+        <div className="a pn-warm" />
+        {/* header */}
+        <img className="a" src={`${LK}logo-lockdown-t.png`} alt="LOCKDOWN" style={{ left: 181, top: 6, width: 150, height: 38 }} />
+        <div className="a ad-by">by IDEAeventi</div>
+        <div className="a ad-h1">PENALITÀ</div>
+        <div className="a ad-h2">PANNELLO AMMINISTRATORE</div>
+
+        {/* card modulo */}
+        <div className="a card pn-card">
+          <div className="pn-lbl" style={{ top: 165 - 148 }}>Giocatore destinatario</div>
+          <div className="pn-fld sel" style={{ top: 157 - 148 }}>Marco<span className="chev"><IChevron /></span></div>
+          {PEN_ROWS.map((r, i) => {
+            const fieldTop = 195 - 148 + i * 36;
+            return (
+              <div key={r.label}>
+                <div className="pn-lbl" style={{ top: fieldTop + 9 }}>{r.label}</div>
+                <div className="pn-fld" style={{ top: fieldTop }}>{r.value}</div>
+                {r.info && <div className="pn-i" style={{ top: fieldTop + 7 }}><IInfo /></div>}
+              </div>
+            );
+          })}
+          <div className="pn-info">
+            <span className="ic"><IInfo /></span>
+            <span>
+              <span className="t1">Resta in gioco</span><br />
+              <span className="t2">La penalità non elimina il giocatore dalla partita.</span>
+            </span>
+          </div>
+          <div className="pn-btn">Conferma penalità</div>
         </div>
       </div>
     </div>
