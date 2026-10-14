@@ -29,8 +29,17 @@ Pacchetto: `/private/tmp/idea_pkg/IDEA-EVENTI/02-lockdown/` (28 viste su 5 tavol
 | 15 REGIA MASTER (`?regia`) | 2 | **FATTO (questa sessione)** | confronto per zone sotto |
 | 21 CONTENUTI (`?contenuti`) | 2 | **FATTO (questa sessione)** | editor stanze, 10 nomi reali |
 | 19 PENALITÀ (`?penalita`) | 2 | **FATTO (questa sessione)** | economia 80/50/50/0 spec-corretta |
+| 22 PAUSA E REGISTRO (`?registro`) | 2 | **FATTO (questa sessione)** | pausa+timer, log eventi, annulla con motivo |
 | Telefono (05/06/09) | 3 | DA FARE | vive in Home; vedi DEVIATIONS |
-| Admin stati residui (08) | 3 | DA FARE | crea(17)/colpo(18)/riconn(20)/registro(22) — reference già ritagliati |
+| Admin stati residui (08) | 3 | DA FARE | crea(17)/colpo(18)/riconn(20) — reference ritagliati per 17 |
+
+### 22 PAUSA E REGISTRO — confronto per zone (giro g1, --blur 4, palco 512×512)
+| Zona | percettivo | spostamento | note |
+|---|---|---|---|
+| header | 38.1% | — | allineato; candela/libri dipinti (bagliore) + font |
+| pausa | 29.8% | — | allineato; card pausa + timer + Riprendi |
+| tabella | 17.0% | ~x0 | colonne riallineate; righe log allineate |
+| modale | 12.2% | — | allineato; "Annulla ultima operazione" + motivo obbligatorio |
 
 ### 19 PENALITÀ — confronto per zone (giro g1, --blur 4, palco 512×512)
 | Zona | percettivo | spostamento | note |

@@ -130,6 +130,7 @@ export default function GestioneLockdown() {
   if (q.get('regia') !== null) return <RegiaMaster />;
   if (q.get('contenuti') !== null) return <AdminContenuti />;
   if (q.get('penalita') !== null) return <AdminPenalita />;
+  if (q.get('registro') !== null) return <AdminRegistro />;
   return <MonitorCasa />;
 }
 
@@ -891,6 +892,9 @@ function AdminContenuti() {
 
 const IInfo = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><circle cx="12" cy="12" r="9.3" stroke="currentColor" strokeWidth="1.7"/><circle cx="12" cy="7.7" r="1.25" fill="currentColor"/><path d="M12 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>);
 const IChevron = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>);
+const IUndo = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><path d="M9 7H5V3M5 7a8 8 0 1 1-2 5.3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>);
+const IPlay = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><path d="M7 4.5l13 7.5-13 7.5z" fill="currentColor"/></svg>);
+const IClose = () => (<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>);
 
 const PEN_ROWS: { label: string; value: string; info?: boolean }[] = [
   { label: 'Penalità richiesta (punti)', value: '80' },
@@ -953,6 +957,110 @@ function AdminPenalita() {
             </span>
           </div>
           <div className="pn-btn">Conferma penalità</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── ADMIN · PAUSA E REGISTRO (console host) ──────────────────────────────────
+   Replica del mockup 08, pannello "22 PAUSA E REGISTRO · PANNELLO AMMINISTRATORE".
+   Palco fisso 512×512. Pausa con timer congelato, registro eventi e rettifica come
+   NUOVA operazione compensativa con motivo obbligatorio (03-SCHERMATE: la rettifica
+   non cancella il movimento). Badge "22" omesso. DATI MOCK. ?registro. */
+
+const REG_ROWS: { ora: string; gioc: string; op: string; delta: string; kind: 'premio' | 'penalita'; note: string }[] = [
+  { ora: '21:42', gioc: 'Giulia', op: 'Premio', delta: '+200', kind: 'premio', note: 'Sfida bonus' },
+  { ora: '21:38', gioc: 'Marco', op: 'Penalità', delta: '−50', kind: 'penalita', note: 'Regola infranta' },
+  { ora: '21:35', gioc: 'Master', op: 'Premio', delta: '+50', kind: 'premio', note: 'Aiuto fornito' },
+];
+
+const CSS_REGISTRO = `
+.ad .rg-warm{left:330px;top:-30px;width:230px;height:200px;pointer-events:none;
+  background:radial-gradient(closest-side,rgba(255,190,90,.22),rgba(255,190,90,0) 70%);}
+/* card pausa */
+.ad .rg-pause{left:18px;top:118px;width:476px;height:100px;box-shadow:inset 0 0 0 1px rgba(60,150,170,.4),0 6px 18px rgba(0,0,0,.45);}
+.ad .rg-pic{position:absolute;left:36px;top:18px;width:46px;height:46px;border-radius:50%;display:grid;place-items:center;
+  color:#4fc5d6;font-size:22px;box-shadow:inset 0 0 0 2px rgba(79,197,214,.7);}
+.ad .rg-pt1{position:absolute;left:96px;top:20px;font:700 18px/1 "Baskerville Lockdown",serif;color:#d7ecef;}
+.ad .rg-pt2{position:absolute;left:96px;top:44px;font:400 12.5px/1 "Baskerville Lockdown",serif;color:#9fb2ba;}
+.ad .rg-time{position:absolute;left:300px;top:14px;width:158px;height:52px;border-radius:9px;background:#0a1016;
+  box-shadow:inset 0 0 0 1px rgba(90,110,130,.4);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;}
+.ad .rg-time .l{font:400 10px/1 "Baskerville Lockdown",serif;letter-spacing:.06em;color:#9aa7b2;}
+.ad .rg-time .v{font:700 24px/1 "Baskerville Lockdown",serif;color:#f6e6bc;}
+.ad .rg-resume{position:absolute;left:12px;top:70px;width:452px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;gap:8px;
+  background:linear-gradient(180deg,#e9c877,#caa23f);color:#2a1d06;font:700 15px/1 "Baskerville Lockdown",serif;box-shadow:inset 0 0 0 1px rgba(255,235,180,.6);}
+.ad .rg-resume svg{font-size:14px;}
+/* registro eventi */
+.ad .rg-ett{left:18px;top:232px;font:700 14px/1 "Baskerville Lockdown",serif;color:#eadfc2;}
+.ad .rg-tbl{left:18px;top:250px;width:476px;border-radius:8px;overflow:hidden;background:#0a131c;box-shadow:inset 0 0 0 1px rgba(90,110,130,.26);}
+.ad .rg-row{display:flex;align-items:center;height:23px;font:400 12px/1 "Baskerville Lockdown",serif;color:#dbe3ea;}
+.ad .rg-row.head{height:21px;background:#131d28;font-weight:700;font-size:9.5px;letter-spacing:.05em;color:#8fa0ad;}
+.ad .rg-row.alt{background:rgba(255,255,255,.02);}
+.ad .rg-row .k0{width:76px;padding-left:12px;}
+.ad .rg-row .k1{width:86px;}
+.ad .rg-row .k2{width:88px;}
+.ad .rg-row .k3{width:82px;font-weight:700;}
+.ad .rg-row .k4{flex:1;}
+.ad .rg-row .premio{color:#55c07e;}
+.ad .rg-row .penalita{color:#e85c52;}
+.ad .rg-undo{left:108px;top:344px;width:296px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;gap:8px;
+  background:linear-gradient(180deg,#e9c877,#caa23f);color:#2a1d06;font:700 13px/1 "Baskerville Lockdown",serif;box-shadow:inset 0 0 0 1px rgba(255,235,180,.6);}
+.ad .rg-undo svg{font-size:14px;}
+/* modale annulla */
+.ad .rg-modal{left:70px;top:384px;width:384px;height:114px;border-radius:11px;background:linear-gradient(180deg,#0e1826,#0a121c);
+  box-shadow:inset 0 0 0 1px rgba(120,140,160,.4),0 10px 28px rgba(0,0,0,.6);}
+.ad .rg-mtt{position:absolute;left:16px;top:12px;font:700 13px/1 "Baskerville Lockdown",serif;color:#eef1f4;}
+.ad .rg-mx{position:absolute;right:14px;top:11px;color:#9aa7b2;font-size:15px;display:flex;}
+.ad .rg-mlbl{position:absolute;left:16px;top:33px;font:400 10px/1 "Baskerville Lockdown",serif;color:#9aa7b2;}
+.ad .rg-mta{position:absolute;left:16px;top:46px;width:352px;height:32px;border-radius:7px;background:#0a1016;box-shadow:inset 0 0 0 1px rgba(90,110,130,.42);}
+.ad .rg-mb{position:absolute;top:84px;height:24px;border-radius:7px;display:grid;place-items:center;font:700 12px/1 "Baskerville Lockdown",serif;}
+.ad .rg-mb.cancel{left:196px;width:84px;color:#c6d0d8;box-shadow:inset 0 0 0 1px rgba(90,110,130,.5);}
+.ad .rg-mb.ok{left:286px;width:82px;background:linear-gradient(180deg,#e9c877,#caa23f);color:#2a1d06;}
+`;
+
+function AdminRegistro() {
+  const scale = useScale(512, 512);
+  return (
+    <div className="lkd"><style>{CSS + CSS_ADMIN + CSS_REGISTRO}</style>
+      <div className="ad" style={{ transform: `scale(${scale})` }}>
+        <div className="a rg-warm" />
+        {/* header */}
+        <img className="a" src={`${LK}logo-lockdown-t.png`} alt="LOCKDOWN" style={{ left: 181, top: 6, width: 150, height: 38 }} />
+        <div className="a ad-by">by IDEAeventi</div>
+        <div className="a ad-h1" style={{ top: 64, fontSize: 24 }}>PAUSA E REGISTRO</div>
+        <div className="a ad-h2">PANNELLO AMMINISTRATORE</div>
+
+        {/* card pausa */}
+        <div className="a card rg-pause">
+          <div className="rg-pic"><IPause /></div>
+          <div className="rg-pt1">Pausa attiva</div>
+          <div className="rg-pt2">Il timer è congelato.</div>
+          <div className="rg-time"><span className="l">Tempo rimanente</span><span className="v">00:24</span></div>
+          <div className="rg-resume"><IPlay />Riprendi</div>
+        </div>
+
+        {/* registro eventi */}
+        <div className="a rg-ett">Registro eventi</div>
+        <div className="a rg-tbl">
+          <div className="rg-row head"><div className="k0">Ora</div><div className="k1">Giocatore</div><div className="k2">Operazione</div><div className="k3">Variazione</div><div className="k4">Note</div></div>
+          {REG_ROWS.map((r, i) => (
+            <div className={`rg-row${i % 2 ? ' alt' : ''}`} key={r.ora}>
+              <div className="k0">{r.ora}</div><div className="k1">{r.gioc}</div>
+              <div className="k2">{r.op}</div><div className={`k3 ${r.kind}`}>{r.delta}</div><div className="k4">{r.note}</div>
+            </div>
+          ))}
+        </div>
+        <div className="a rg-undo"><IUndo />Annulla ultima operazione</div>
+
+        {/* modale annulla ultima operazione */}
+        <div className="a rg-modal">
+          <div className="rg-mtt">Annulla ultima operazione</div>
+          <div className="rg-mx"><IClose /></div>
+          <div className="rg-mlbl">Motivo (obbligatorio)</div>
+          <div className="rg-mta" />
+          <div className="rg-mb cancel">Annulla</div>
+          <div className="rg-mb ok">Conferma</div>
         </div>
       </div>
     </div>
