@@ -1,0 +1,648 @@
+{
+  "version": 1,
+  "count": 40,
+  "artwork": "generated-adaptation-sicilian-reference",
+  "format": "SVG viewport with embedded PNG; not pure vector",
+  "cards": [
+    {
+      "id": "coppe-01",
+      "suit": "coppe",
+      "rank": 1,
+      "name": "asso",
+      "label": "Asso di Coppe",
+      "asset": "carte/singole/coppe-01-asso.svg",
+      "atlas": "carte/atlanti/coppe.png",
+      "rect": {
+        "x": 74,
+        "y": 11,
+        "width": 336,
+        "height": 377
+      },
+      "advance": 1
+    },
+    {
+      "id": "coppe-02",
+      "suit": "coppe",
+      "rank": 2,
+      "name": "due",
+      "label": "Due di Coppe",
+      "asset": "carte/singole/coppe-02-due.svg",
+      "atlas": "carte/atlanti/coppe.png",
+      "rect": {
+        "x": 431,
+        "y": 11,
+        "width": 357,
+        "height": 377
+      },
+      "advance": 1
+    },
+    {
+      "id": "coppe-03",
+      "suit": "coppe",
+      "rank": 3,
+      "name": "tre",
+      "label": "Tre di Coppe",
+      "asset": "carte/singole/coppe-03-tre.svg",
+      "atlas": "carte/atlanti/coppe.png",
+      "rect": {
+        "x": 802,
+        "y": 11,
+        "width": 379,
+        "height": 377
+      },
+      "advance": 1
+    },
+    {
+      "id": "coppe-04",
+      "suit": "coppe",
+      "rank": 4,
+      "name": "quattro",
+      "label": "Quattro di Coppe",
+      "asset": "carte/singole/coppe-04-quattro.svg",
+      "atlas": "carte/atlanti/coppe.png",
+      "rect": {
+        "x": 1194,
+        "y": 11,
+        "width": 362,
+        "height": 377
+      },
+      "advance": 1
+    },
+    {
+      "id": "coppe-05",
+      "suit": "coppe",
+      "rank": 5,
+      "name": "cinque",
+      "label": "Cinque di Coppe",
+      "asset": "carte/singole/coppe-05-cinque.svg",
+      "atlas": "carte/atlanti/coppe.png",
+      "rect": {
+        "x": 1571,
+        "y": 11,
+        "width": 339,
+        "height": 377
+      },
+      "advance": 1
+    },
+    {
+      "id": "coppe-06",
+      "suit": "coppe",
+      "rank": 6,
+      "name": "sei",
+      "label": "Sei di Coppe",
+      "asset": "carte/singole/coppe-06-sei.svg",
+      "atlas": "carte/atlanti/coppe.png",
+      "rect": {
+        "x": 74,
+        "y": 400,
+        "width": 336,
+        "height": 381
+      },
+      "advance": 1
+    },
+    {
+      "id": "coppe-07",
+      "suit": "coppe",
+      "rank": 7,
+      "name": "sette",
+      "label": "Sette di Coppe",
+      "asset": "carte/singole/coppe-07-sette.svg",
+      "atlas": "carte/atlanti/coppe.png",
+      "rect": {
+        "x": 431,
+        "y": 400,
+        "width": 357,
+        "height": 381
+      },
+      "advance": 1
+    },
+    {
+      "id": "coppe-08",
+      "suit": "coppe",
+      "rank": 8,
+      "name": "donna",
+      "label": "Donna di Coppe",
+      "asset": "carte/singole/coppe-08-donna.svg",
+      "atlas": "carte/atlanti/coppe.png",
+      "rect": {
+        "x": 802,
+        "y": 400,
+        "width": 379,
+        "height": 381
+      },
+      "advance": 1
+    },
+    {
+      "id": "coppe-09",
+      "suit": "coppe",
+      "rank": 9,
+      "name": "cavallo",
+      "label": "Cavallo di Coppe",
+      "asset": "carte/singole/coppe-09-cavallo.svg",
+      "atlas": "carte/atlanti/coppe.png",
+      "rect": {
+        "x": 1194,
+        "y": 400,
+        "width": 362,
+        "height": 381
+      },
+      "advance": 1
+    },
+    {
+      "id": "coppe-10",
+      "suit": "coppe",
+      "rank": 10,
+      "name": "re",
+      "label": "Re di Coppe",
+      "asset": "carte/singole/coppe-10-re.svg",
+      "atlas": "carte/atlanti/coppe.png",
+      "rect": {
+        "x": 1571,
+        "y": 400,
+        "width": 339,
+        "height": 381
+      },
+      "advance": 1
+    },
+    {
+      "id": "denari-01",
+      "suit": "denari",
+      "rank": 1,
+      "name": "asso",
+      "label": "Asso di Denari",
+      "asset": "carte/singole/denari-01-asso.svg",
+      "atlas": "carte/atlanti/denari.png",
+      "rect": {
+        "x": 17,
+        "y": 11,
+        "width": 371,
+        "height": 375
+      },
+      "advance": 1
+    },
+    {
+      "id": "denari-02",
+      "suit": "denari",
+      "rank": 2,
+      "name": "due",
+      "label": "Due di Denari",
+      "asset": "carte/singole/denari-02-due.svg",
+      "atlas": "carte/atlanti/denari.png",
+      "rect": {
+        "x": 410,
+        "y": 11,
+        "width": 375,
+        "height": 375
+      },
+      "advance": 1
+    },
+    {
+      "id": "denari-03",
+      "suit": "denari",
+      "rank": 3,
+      "name": "tre",
+      "label": "Tre di Denari",
+      "asset": "carte/singole/denari-03-tre.svg",
+      "atlas": "carte/atlanti/denari.png",
+      "rect": {
+        "x": 804,
+        "y": 11,
+        "width": 373,
+        "height": 375
+      },
+      "advance": 1
+    },
+    {
+      "id": "denari-04",
+      "suit": "denari",
+      "rank": 4,
+      "name": "quattro",
+      "label": "Quattro di Denari",
+      "asset": "carte/singole/denari-04-quattro.svg",
+      "atlas": "carte/atlanti/denari.png",
+      "rect": {
+        "x": 1199,
+        "y": 11,
+        "width": 376,
+        "height": 375
+      },
+      "advance": 1
+    },
+    {
+      "id": "denari-05",
+      "suit": "denari",
+      "rank": 5,
+      "name": "cinque",
+      "label": "Cinque di Denari",
+      "asset": "carte/singole/denari-05-cinque.svg",
+      "atlas": "carte/atlanti/denari.png",
+      "rect": {
+        "x": 1596,
+        "y": 11,
+        "width": 371,
+        "height": 375
+      },
+      "advance": 1
+    },
+    {
+      "id": "denari-06",
+      "suit": "denari",
+      "rank": 6,
+      "name": "sei",
+      "label": "Sei di Denari",
+      "asset": "carte/singole/denari-06-sei.svg",
+      "atlas": "carte/atlanti/denari.png",
+      "rect": {
+        "x": 17,
+        "y": 399,
+        "width": 371,
+        "height": 379
+      },
+      "advance": 1
+    },
+    {
+      "id": "denari-07",
+      "suit": "denari",
+      "rank": 7,
+      "name": "sette",
+      "label": "Sette di Denari",
+      "asset": "carte/singole/denari-07-sette.svg",
+      "atlas": "carte/atlanti/denari.png",
+      "rect": {
+        "x": 410,
+        "y": 399,
+        "width": 375,
+        "height": 379
+      },
+      "advance": 1
+    },
+    {
+      "id": "denari-08",
+      "suit": "denari",
+      "rank": 8,
+      "name": "donna",
+      "label": "Donna di Denari",
+      "asset": "carte/singole/denari-08-donna.svg",
+      "atlas": "carte/atlanti/denari.png",
+      "rect": {
+        "x": 804,
+        "y": 399,
+        "width": 373,
+        "height": 379
+      },
+      "advance": 1
+    },
+    {
+      "id": "denari-09",
+      "suit": "denari",
+      "rank": 9,
+      "name": "cavallo",
+      "label": "Cavallo di Denari",
+      "asset": "carte/singole/denari-09-cavallo.svg",
+      "atlas": "carte/atlanti/denari.png",
+      "rect": {
+        "x": 1199,
+        "y": 399,
+        "width": 376,
+        "height": 379
+      },
+      "advance": 1
+    },
+    {
+      "id": "denari-10",
+      "suit": "denari",
+      "rank": 10,
+      "name": "re",
+      "label": "Re di Denari",
+      "asset": "carte/singole/denari-10-re.svg",
+      "atlas": "carte/atlanti/denari.png",
+      "rect": {
+        "x": 1596,
+        "y": 399,
+        "width": 371,
+        "height": 379
+      },
+      "advance": 1
+    },
+    {
+      "id": "spade-01",
+      "suit": "spade",
+      "rank": 1,
+      "name": "asso",
+      "label": "Asso di Spade",
+      "asset": "carte/singole/spade-01-asso.svg",
+      "atlas": "carte/atlanti/spade.png",
+      "rect": {
+        "x": 17,
+        "y": 16,
+        "width": 289,
+        "height": 461
+      },
+      "advance": 1
+    },
+    {
+      "id": "spade-02",
+      "suit": "spade",
+      "rank": 2,
+      "name": "due",
+      "label": "Due di Spade",
+      "asset": "carte/singole/spade-02-due.svg",
+      "atlas": "carte/atlanti/spade.png",
+      "rect": {
+        "x": 319,
+        "y": 16,
+        "width": 293,
+        "height": 461
+      },
+      "advance": 1
+    },
+    {
+      "id": "spade-03",
+      "suit": "spade",
+      "rank": 3,
+      "name": "tre",
+      "label": "Tre di Spade",
+      "asset": "carte/singole/spade-03-tre.svg",
+      "atlas": "carte/atlanti/spade.png",
+      "rect": {
+        "x": 623,
+        "y": 16,
+        "width": 290,
+        "height": 461
+      },
+      "advance": 1
+    },
+    {
+      "id": "spade-04",
+      "suit": "spade",
+      "rank": 4,
+      "name": "quattro",
+      "label": "Quattro di Spade",
+      "asset": "carte/singole/spade-04-quattro.svg",
+      "atlas": "carte/atlanti/spade.png",
+      "rect": {
+        "x": 925,
+        "y": 16,
+        "width": 293,
+        "height": 461
+      },
+      "advance": 1
+    },
+    {
+      "id": "spade-05",
+      "suit": "spade",
+      "rank": 5,
+      "name": "cinque",
+      "label": "Cinque di Spade",
+      "asset": "carte/singole/spade-05-cinque.svg",
+      "atlas": "carte/atlanti/spade.png",
+      "rect": {
+        "x": 1231,
+        "y": 16,
+        "width": 288,
+        "height": 461
+      },
+      "advance": 1
+    },
+    {
+      "id": "spade-06",
+      "suit": "spade",
+      "rank": 6,
+      "name": "sei",
+      "label": "Sei di Spade",
+      "asset": "carte/singole/spade-06-sei.svg",
+      "atlas": "carte/atlanti/spade.png",
+      "rect": {
+        "x": 17,
+        "y": 487,
+        "width": 289,
+        "height": 489
+      },
+      "advance": 1
+    },
+    {
+      "id": "spade-07",
+      "suit": "spade",
+      "rank": 7,
+      "name": "sette",
+      "label": "Sette di Spade",
+      "asset": "carte/singole/spade-07-sette.svg",
+      "atlas": "carte/atlanti/spade.png",
+      "rect": {
+        "x": 319,
+        "y": 487,
+        "width": 293,
+        "height": 489
+      },
+      "advance": 1
+    },
+    {
+      "id": "spade-08",
+      "suit": "spade",
+      "rank": 8,
+      "name": "donna",
+      "label": "Donna di Spade",
+      "asset": "carte/singole/spade-08-donna.svg",
+      "atlas": "carte/atlanti/spade.png",
+      "rect": {
+        "x": 623,
+        "y": 487,
+        "width": 290,
+        "height": 489
+      },
+      "advance": 1
+    },
+    {
+      "id": "spade-09",
+      "suit": "spade",
+      "rank": 9,
+      "name": "cavallo",
+      "label": "Cavallo di Spade",
+      "asset": "carte/singole/spade-09-cavallo.svg",
+      "atlas": "carte/atlanti/spade.png",
+      "rect": {
+        "x": 925,
+        "y": 487,
+        "width": 293,
+        "height": 489
+      },
+      "advance": 1
+    },
+    {
+      "id": "spade-10",
+      "suit": "spade",
+      "rank": 10,
+      "name": "re",
+      "label": "Re di Spade",
+      "asset": "carte/singole/spade-10-re.svg",
+      "atlas": "carte/atlanti/spade.png",
+      "rect": {
+        "x": 1231,
+        "y": 487,
+        "width": 288,
+        "height": 489
+      },
+      "advance": 1
+    },
+    {
+      "id": "bastoni-01",
+      "suit": "bastoni",
+      "rank": 1,
+      "name": "asso",
+      "label": "Asso di Bastoni",
+      "asset": "carte/singole/bastoni-01-asso.svg",
+      "atlas": "carte/atlanti/bastoni.png",
+      "rect": {
+        "x": 11,
+        "y": 9,
+        "width": 295,
+        "height": 476
+      },
+      "advance": 1
+    },
+    {
+      "id": "bastoni-02",
+      "suit": "bastoni",
+      "rank": 2,
+      "name": "due",
+      "label": "Due di Bastoni",
+      "asset": "carte/singole/bastoni-02-due.svg",
+      "atlas": "carte/atlanti/bastoni.png",
+      "rect": {
+        "x": 315,
+        "y": 9,
+        "width": 298,
+        "height": 476
+      },
+      "advance": 1
+    },
+    {
+      "id": "bastoni-03",
+      "suit": "bastoni",
+      "rank": 3,
+      "name": "tre",
+      "label": "Tre di Bastoni",
+      "asset": "carte/singole/bastoni-03-tre.svg",
+      "atlas": "carte/atlanti/bastoni.png",
+      "rect": {
+        "x": 622,
+        "y": 9,
+        "width": 293,
+        "height": 476
+      },
+      "advance": 1
+    },
+    {
+      "id": "bastoni-04",
+      "suit": "bastoni",
+      "rank": 4,
+      "name": "quattro",
+      "label": "Quattro di Bastoni",
+      "asset": "carte/singole/bastoni-04-quattro.svg",
+      "atlas": "carte/atlanti/bastoni.png",
+      "rect": {
+        "x": 925,
+        "y": 9,
+        "width": 297,
+        "height": 476
+      },
+      "advance": 1
+    },
+    {
+      "id": "bastoni-05",
+      "suit": "bastoni",
+      "rank": 5,
+      "name": "cinque",
+      "label": "Cinque di Bastoni",
+      "asset": "carte/singole/bastoni-05-cinque.svg",
+      "atlas": "carte/atlanti/bastoni.png",
+      "rect": {
+        "x": 1231,
+        "y": 9,
+        "width": 296,
+        "height": 476
+      },
+      "advance": 1
+    },
+    {
+      "id": "bastoni-06",
+      "suit": "bastoni",
+      "rank": 6,
+      "name": "sei",
+      "label": "Sei di Bastoni",
+      "asset": "carte/singole/bastoni-06-sei.svg",
+      "atlas": "carte/atlanti/bastoni.png",
+      "rect": {
+        "x": 11,
+        "y": 495,
+        "width": 295,
+        "height": 505
+      },
+      "advance": 1
+    },
+    {
+      "id": "bastoni-07",
+      "suit": "bastoni",
+      "rank": 7,
+      "name": "sette",
+      "label": "Sette di Bastoni",
+      "asset": "carte/singole/bastoni-07-sette.svg",
+      "atlas": "carte/atlanti/bastoni.png",
+      "rect": {
+        "x": 315,
+        "y": 495,
+        "width": 298,
+        "height": 505
+      },
+      "advance": 1
+    },
+    {
+      "id": "bastoni-08",
+      "suit": "bastoni",
+      "rank": 8,
+      "name": "donna",
+      "label": "Donna di Bastoni",
+      "asset": "carte/singole/bastoni-08-donna.svg",
+      "atlas": "carte/atlanti/bastoni.png",
+      "rect": {
+        "x": 622,
+        "y": 495,
+        "width": 293,
+        "height": 505
+      },
+      "advance": 1
+    },
+    {
+      "id": "bastoni-09",
+      "suit": "bastoni",
+      "rank": 9,
+      "name": "cavallo",
+      "label": "Cavallo di Bastoni",
+      "asset": "carte/singole/bastoni-09-cavallo.svg",
+      "atlas": "carte/atlanti/bastoni.png",
+      "rect": {
+        "x": 925,
+        "y": 495,
+        "width": 297,
+        "height": 505
+      },
+      "advance": 1
+    },
+    {
+      "id": "bastoni-10",
+      "suit": "bastoni",
+      "rank": 10,
+      "name": "re",
+      "label": "Re di Bastoni",
+      "asset": "carte/singole/bastoni-10-re.svg",
+      "atlas": "carte/atlanti/bastoni.png",
+      "rect": {
+        "x": 1231,
+        "y": 495,
+        "width": 296,
+        "height": 505
+      },
+      "advance": 1
+    }
+  ]
+}

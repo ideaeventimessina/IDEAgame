@@ -6,25 +6,37 @@
    1 casella SOLO il cavallo del seme uscito. Primo al traguardo vince. L'esito deriva
    dalle CARTE estratte (motore server). Tema Sicilia: maiolica blu/oro, limoni, mare.
    Viste: monitor 80" (?sic=CODE, host con &host=1), telefono (?sicplay=), regia (?sicregia=).
-   Semi disegnati in SVG (mai carte francesi); dorso maiolica unico.
+
+   MONITOR: ricostruito pixel-faithful sul mockup approvato col metodo mockup-replica.
+   Base = sfondo-sicilia-pulito.png (clean-plate con cornice/limoni/maiolica/plance).
+   Art dipinta ritagliata dal mockup (plancia titolo, medaglioni, ritratti); carte reali
+   dagli ATLANTI siciliani via rect del mazzo.json; testi/numeri dinamici in codice
+   (Cinzel/Lora). Cavalli PNG per seme (una posa, traslazione + oscillazione).
    ════════════════════════════════════════════════════════════════════════════ */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 
 const BASE = (import.meta.env.BASE_URL as string) || '/';
 const API = BASE + 'api';
 const AB = BASE;
+const ASSET = `${AB}corsa-siciliana/`;
 const ORIGIN = (typeof window !== 'undefined' ? window.location.origin : '') + BASE;
 
 type Suit = 'coppe' | 'denari' | 'spade' | 'bastoni';
 const SUITS: Suit[] = ['coppe', 'denari', 'spade', 'bastoni'];
-const SUIT_META: Record<Suit, { label: string; color: string; glow: string }> = {
-  coppe:   { label: 'COPPE',   color: '#9f2b2b', glow: '#e05a5a' },
-  denari:  { label: 'DENARI',  color: '#c9972f', glow: '#ffe08a' },
-  spade:   { label: 'SPADE',   color: '#2f5fa6', glow: '#6ea0ff' },
-  bastoni: { label: 'BASTONI', color: '#2e7d3a', glow: '#5ee08a' },
+const SUIT_META: Record<Suit, { label: string; color: string; glow: string; cavallo: string }> = {
+  coppe:   { label: 'COPPE',   color: '#7a1f1f', glow: '#e86a4a', cavallo: 'coppe-rosso.png' },
+  denari:  { label: 'DENARI',  color: '#9a6a12', glow: '#ffcf5a', cavallo: 'denari-oro.png' },
+  spade:   { label: 'SPADE',   color: '#26407a', glow: '#6ea0ff', cavallo: 'spade-blu.png' },
+  bastoni: { label: 'BASTONI', color: '#2e6b2e', glow: '#6fe08a', cavallo: 'bastoni-verde.png' },
 };
+/* dimensioni native degli atlanti (per il ritaglio via <image>) */
+const ATLAS_SIZE: Record<Suit, { w: number; h: number }> = {
+  coppe: { w: 1983, h: 793 }, denari: { w: 1983, h: 793 },
+  spade: { w: 1536, h: 1024 }, bastoni: { w: 1536, h: 1024 },
+};
+
 type SiciliaCard = { suit: Suit; value: number };
 type SicPlayer = { id: string; nickname: string; avatarUrl: string | null; balance: number; suit: Suit | null };
 type SicHist = { race: number; at: string; winner: Suit | null; cards: number; players: number; pickedWinner: number };
@@ -36,6 +48,14 @@ type SicTbl = {
 };
 type SicState = { table: SicTbl; sessionId: string };
 
+/* carta del mazzo.json: identità logica + rettangolo nell'atlante */
+type MazzoCard = { id: string; suit: Suit; rank: number; rect: { x: number; y: number; width: number; height: number } };
+
+const SIC_FONT = `
+@font-face{font-family:"Cinzel";font-weight:400 900;src:url(${ASSET}font/Cinzel-Variable.ttf) format("truetype");font-display:swap}
+@font-face{font-family:"Lora";font-weight:400 700;src:url(${ASSET}font/Lora-Variable.ttf) format("truetype");font-display:swap}
+@font-face{font-family:"Lora";font-weight:400 700;font-style:italic;src:url(${ASSET}font/Lora-Italic-Variable.ttf) format("truetype");font-display:swap}`;
+/* font usato da Telefono/Regia (invariato) */
 const FONT = `@font-face{font-family:"Baskerville Casino";font-weight:400;src:url(${AB}casino/libre-baskerville-latin-400-normal.woff2) format("woff2");font-display:swap}@font-face{font-family:"Baskerville Casino";font-weight:700;src:url(${AB}casino/libre-baskerville-latin-700-normal.woff2) format("woff2");font-display:swap}`;
 
 function useSicTable(code: string, ms = 800): SicState | null {
@@ -43,9 +63,24 @@ function useSicTable(code: string, ms = 800): SicState | null {
   useEffect(() => { let on = true; const load = () => fetch(`${API}/gestione/casino/sicilia/${code}`).then(r => r.ok ? r.json() : null).then(d => { if (on && d?.table) setSt(d); }).catch(() => {}); load(); const t = setInterval(load, ms); return () => { on = false; clearInterval(t); }; }, [code, ms]);
   return st;
 }
+/* mazzo.json → mappa "suit-rank" → carta (per ritagliare la carta reale dall'atlante). Identità logica dal manifest, MAI OCR. */
+function useMazzo(): Map<string, MazzoCard> {
+  const [map, setMap] = useState<Map<string, MazzoCard>>(new Map());
+  useEffect(() => {
+    let on = true;
+    fetch(`${ASSET}data/mazzo.json`).then(r => r.ok ? r.json() : null).then(d => {
+      if (!on || !d?.cards) return;
+      const m = new Map<string, MazzoCard>();
+      for (const c of d.cards as MazzoCard[]) m.set(`${c.suit}-${c.rank}`, c);
+      setMap(m);
+    }).catch(() => {});
+    return () => { on = false; };
+  }, []);
+  return map;
+}
 const api = (path: string, body?: unknown) => fetch(`${API}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) }).then(r => r.json());
 
-/* ── Semi siciliani in SVG (mai carte francesi) ──────────────────────────────── */
+/* ── Semi siciliani in SVG — usati solo da Telefono/Regia (icone piccole) ──────── */
 function SuitIcon({ suit, size = 40 }: { suit: Suit; size?: number }) {
   const c = SUIT_META[suit];
   const common = { width: size, height: size, viewBox: '0 0 48 48' } as const;
@@ -74,84 +109,89 @@ function SuitIcon({ suit, size = 40 }: { suit: Suit; size?: number }) {
   void c;
 }
 
-/* ── Carta siciliana: dorso maiolica + fronte (valore × simbolo del seme) ─────── */
-function CardBack({ w = 150 }: { w?: number }) {
-  const h = w * 1.52;
-  return (
-    <div style={{ width: w, height: h, borderRadius: 10, background: 'linear-gradient(145deg,#1f4a9c,#143b86)', border: '3px solid #f1d98c', boxShadow: '0 8px 22px #0007, inset 0 0 0 2px #0a2a6a', display: 'grid', placeItems: 'center', position: 'relative', overflow: 'hidden' }}>
-      <svg width={w * 0.62} height={w * 0.62} viewBox="0 0 100 100">
-        <circle cx="50" cy="50" r="30" fill="#f4d77a" stroke="#c9972f" strokeWidth="3" />
-        {Array.from({ length: 16 }).map((_, i) => { const a = i * 22.5 * Math.PI / 180; return <line key={i} x1={50 + 30 * Math.cos(a)} y1={50 + 30 * Math.sin(a)} x2={50 + 40 * Math.cos(a)} y2={50 + 40 * Math.sin(a)} stroke="#f4d77a" strokeWidth="3" strokeLinecap="round" />; })}
-        <circle cx="42" cy="46" r="3" fill="#143b86" /><circle cx="58" cy="46" r="3" fill="#143b86" /><path d="M40 58 q10 8 20 0" stroke="#143b86" strokeWidth="3" fill="none" strokeLinecap="round" />
-      </svg>
-      <div style={{ position: 'absolute', inset: 6, borderRadius: 7, border: '1.5px solid #f1d98c88', pointerEvents: 'none' }} />
-    </div>
-  );
+/* ── Carta siciliana reale: dorso maiolica (immagine) + fronte ritagliato dall'atlante ── */
+function CardBack({ h = 290 }: { h?: number }) {
+  const w = Math.round(h * 0.63);
+  return <div style={{ width: w, height: h, borderRadius: 12, background: `url(${ASSET}dorso-maiolica.png) center/cover`, boxShadow: '0 10px 24px #0008' }} />;
 }
-function CardFace({ card, w = 150 }: { card: SiciliaCard; w?: number }) {
-  const h = w * 1.52; const c = SUIT_META[card.suit];
-  const n = Math.min(card.value, 7); // disposizione simboli (figure 8/9/10 → mostra 1 grande)
-  const figure = card.value >= 8;
+function CardFace({ suit, value, mazzo, h = 290 }: { suit: Suit; value: number; mazzo: Map<string, MazzoCard>; h?: number }) {
+  const card = mazzo.get(`${suit}-${value}`);
+  if (!card) return <CardBack h={h} />;
+  const r = card.rect; const as = ATLAS_SIZE[suit];
+  const w = Math.round(h * (r.width / r.height));
   return (
-    <div style={{ width: w, height: h, borderRadius: 10, background: 'linear-gradient(160deg,#fff8ea,#f1e4c8)', border: '3px solid #f1d98c', boxShadow: '0 8px 22px #0007', position: 'relative', overflow: 'hidden' }}>
-      <div style={{ position: 'absolute', left: 8, top: 6, font: `700 ${w * 0.17}px/1 "Baskerville Casino",serif`, color: c.color }}>{card.value}</div>
-      <div style={{ position: 'absolute', right: 8, bottom: 6, font: `700 ${w * 0.17}px/1 "Baskerville Casino",serif`, color: c.color, transform: 'rotate(180deg)' }}>{card.value}</div>
-      <div style={{ position: 'absolute', inset: `${h * 0.17}px ${w * 0.14}px`, display: 'grid', gridTemplateColumns: figure ? '1fr' : 'repeat(2,1fr)', placeItems: 'center', gap: 2 }}>
-        {figure ? <SuitIcon suit={card.suit} size={w * 0.5} /> : Array.from({ length: n }).map((_, i) => <SuitIcon key={i} suit={card.suit} size={w * 0.26} />)}
-      </div>
-    </div>
+    <svg width={w} height={h} viewBox={`0 0 ${r.width} ${r.height}`} style={{ filter: 'drop-shadow(0 10px 24px #0008)' }}>
+      <image href={`${ASSET}atlanti/${suit}.png`} x={-r.x} y={-r.y} width={as.w} height={as.h} />
+    </svg>
   );
 }
 
-const SIC_CSS = FONT + `
-.sic{position:fixed;inset:0;overflow:hidden;background:#0a2a6a;display:flex;align-items:center;justify-content:center;font-family:"Baskerville Casino",Georgia,serif;}
-.sic .st{position:relative;width:1680px;height:945px;flex:none;transform-origin:center center;overflow:hidden;
-  background:linear-gradient(180deg,#bfe3f5 0%,#8fc6ea 30%,#2f6fae 62%,#143b86 100%);
-  box-shadow:inset 0 0 0 10px #16398a,inset 0 0 0 16px #f1d98c,inset 0 0 0 20px #16398a;}
-.sic .maj{position:absolute;inset:20px;border:14px solid transparent;border-image:repeating-linear-gradient(45deg,#1f4a9c 0 14px,#f4d77a 14px 28px) 14;border-radius:8px;pointer-events:none;opacity:.9;}
-.sic .lane{position:absolute;height:120px;border-radius:16px;background:linear-gradient(180deg,#fff8ea,#efe3c6);border:3px solid #d9bf7a;box-shadow:inset 0 2px 0 #fff,0 4px 12px #0003;display:flex;align-items:center;}
-.sic .cell{flex:1 1 0;height:100%;display:grid;place-items:center;border-left:2px solid #d9bf7a88;font:700 30px/1 "Baskerville Casino",serif;color:#9a865a;position:relative;}
-.sic .cell.cur{background:radial-gradient(ellipse at 50% 50%,var(--hl) 0%,transparent 75%);}
-.sic .medal{width:92px;height:92px;flex:none;margin:0 10px;border-radius:50%;background:radial-gradient(circle at 40% 30%,#fff6d8,#e7c976 70%);border:4px solid #c9972f;display:grid;place-items:center;box-shadow:0 3px 8px #0005;}
-.sic .lname{width:150px;flex:none;font:700 26px/1 "Baskerville Casino",serif;letter-spacing:.04em;}
-.sic .fin{width:26px;flex:none;height:100%;background:repeating-conic-gradient(#111 0 25%,#fff 0 50%) 0 0/22px 22px;border-left:3px solid #c9972f;}
-.sic .horse{position:absolute;top:50%;transform:translate(-50%,-50%);transition:left .5s cubic-bezier(.2,.8,.3,1);z-index:3;}
-.sic .horseimg{width:120px;height:94px;background:url(${AB}ippo/horse-gallop.png) 0 0/600% 100% no-repeat;filter:drop-shadow(0 4px 6px #0006);}
-.sic .title{position:absolute;left:50%;top:14px;transform:translateX(-50%);text-align:center;}
-.sic .banner{display:inline-block;padding:10px 60px;border-radius:20px;background:radial-gradient(ellipse at 50% 40%,#1f4a9c,#102c66);border:4px solid #f1d98c;box-shadow:0 6px 18px #0006,inset 0 0 0 2px #0a2a6a;}
-.sic .banner h1{margin:0;font:700 62px/1 "Baskerville Casino",serif;letter-spacing:.02em;background:linear-gradient(180deg,#fff6c8,#ffe08a 48%,#e4ad4b);-webkit-background-clip:text;background-clip:text;color:transparent;white-space:nowrap;filter:drop-shadow(0 2px 1px #0008);}
-.sic .banner .sub{color:#ffe9a6;font:400 20px/1 "Baskerville Casino",serif;letter-spacing:.02em;margin-top:4px;}
-.sic .giro{position:absolute;left:34px;top:26px;width:120px;height:92px;border-radius:14px;background:radial-gradient(ellipse at 50% 30%,#1f4a9c,#102c66);border:3px solid #f1d98c;display:grid;place-items:center;color:#ffe9a6;box-shadow:0 4px 12px #0006;}
-.sic .giro b{font:700 46px/0.9 "Baskerville Casino",serif;color:#fff;}
-.sic .panel{position:absolute;right:34px;top:196px;width:420px;height:560px;border-radius:18px;background:radial-gradient(ellipse at 50% 0%,#1f4a9c,#0f2c66);border:4px solid #f1d98c;box-shadow:0 8px 24px #0007,inset 0 0 0 2px #0a2a6a;padding:18px;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;}
-.sic .pesca{width:100%;margin-top:auto;padding:16px;border-radius:14px;border:2px solid #f1d98c;background:linear-gradient(180deg,#ffe694,#f0c357 52%,#d59a34);color:#231503;font:700 30px/1 "Baskerville Casino",serif;letter-spacing:.03em;cursor:pointer;box-shadow:0 4px 0 #7a4d12,inset 0 1px 0 #fff8;}
-.sic .pesca:disabled{opacity:.55;cursor:default;}
-.sic .pesca small{display:block;font:400 15px/1.2 "Baskerville Casino",serif;margin-top:5px;opacity:.85;}
-.sic .usc{color:#ffe9a6;text-align:center;margin:14px 0 6px;}
-.sic .usc b{font:700 30px/1 "Baskerville Casino",serif;color:#fff;letter-spacing:.06em;}
-.sic .strip{position:absolute;left:34px;right:34px;bottom:26px;height:120px;display:flex;gap:12px;}
-.sic .chip{flex:1 1 0;border-radius:14px;background:linear-gradient(180deg,#fff8ea,#efe3c6);border:3px solid #d9bf7a;display:flex;align-items:center;gap:10px;padding:0 14px;box-shadow:0 4px 12px #0003;}
-.sic .chip .av{width:70px;height:70px;border-radius:50%;object-fit:cover;border:3px solid #c9972f;background:#16398a;}
-.sic .chip .t{font:700 22px/1.1 "Baskerville Casino",serif;}
-.sic .chip .s{font:400 14px/1.2 "Baskerville Casino",serif;color:#7a6a44;}
-.sic .win{position:absolute;inset:0;display:grid;place-items:center;background:rgba(8,20,54,.72);z-index:20;}
-.sic .win .card{padding:40px 80px;border-radius:24px;background:radial-gradient(ellipse at 50% 30%,#1f4a9c,#0f2c66);border:5px solid #f1d98c;text-align:center;box-shadow:0 12px 40px #000a;}
-.sic .win h2{margin:0;font:700 64px/1 "Baskerville Casino",serif;background:linear-gradient(180deg,#fff6c8,#ffe08a 50%,#e4ad4b);-webkit-background-clip:text;background-clip:text;color:transparent;}
+/* ── Geometria del palco (coordinate del mockup 1672×941) ─────────────────────── */
+const STAGE_W = 1672, STAGE_H = 941;
+const LANES_Y = [291, 417, 543, 668];          // centri verticali delle 4 corsie
+const CELLS_L = 303, CELLS_R = 1080;            // estensione orizzontale delle caselle (9 numeri)
+const PILL_L = 162, PILL_W = 918, PILL_H = 84;  // capsula ivory della corsia: ingloba etichetta + caselle
+const FIN_L = 1090, FIN_W = 80;                 // colonna traguardo a scacchi
+const cellW = (N: number) => (CELLS_R - CELLS_L) / N;
+const cellCenter = (pos: number, N: number) => CELLS_L + (pos - 0.5) * cellW(N);
+const cellLeft = (pos: number, N: number) => CELLS_L + (pos - 1) * cellW(N);
+
+const SIC_CSS = SIC_FONT + `
+.sic{position:fixed;inset:0;overflow:hidden;background:#06204f;display:flex;align-items:center;justify-content:center;font-family:"Lora",Georgia,serif;}
+.sic .st{position:relative;width:${STAGE_W}px;height:${STAGE_H}px;flex:none;transform-origin:center center;
+  background:url(${ASSET}sfondo-sicilia-pulito.png) 0 0/${STAGE_W}px ${STAGE_H}px no-repeat;}
+.sic .lane-pill{position:absolute;height:${PILL_H}px;border-radius:16px;
+  background:linear-gradient(180deg,#fffdf4,#f0e6cc);border:3px solid #cdae6a;
+  box-shadow:inset 0 2px 0 #fff,inset 0 -3px 6px #c9b680,0 4px 10px #0003;}
+.sic .cellnum{position:absolute;display:grid;place-items:center;font:600 34px/1 "Cinzel",serif;color:#2b3c63;}
+.sic .celldiv{position:absolute;width:2px;background:#cdae6a99;}
+.sic .cellglow{position:absolute;border-radius:10px;}
+.sic .fin{position:absolute;height:${PILL_H}px;width:${FIN_W}px;border-radius:12px;overflow:hidden;
+  border:3px solid #c9972f;background:repeating-conic-gradient(#14213d 0 25%,#fbf6e6 0 50%) 0 0/20px 20px;box-shadow:0 4px 10px #0003;}
+.sic .medal{position:absolute;width:108px;height:108px;z-index:3;filter:drop-shadow(0 3px 5px #0004);}
+.sic .lname{position:absolute;z-index:2;font:700 33px/1 "Cinzel",serif;letter-spacing:.005em;text-shadow:0 1px 0 #fff9;}
+.sic .horse{position:absolute;transform:translate(-50%,-50%);transition:left .55s cubic-bezier(.22,.8,.3,1);z-index:4;
+  animation:sicbob 2.4s ease-in-out infinite;}
+.sic .horse img{display:block;height:120px;width:auto;filter:drop-shadow(0 6px 5px #0005);}
+@keyframes sicbob{0%,100%{transform:translate(-50%,-50%)}50%{transform:translate(-50%,calc(-50% - 5px))}}
+.sic .giro{position:absolute;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  border-radius:12px;background:radial-gradient(ellipse at 50% 25%,#1c3f80,#0d2250);
+  border:3px solid #e8c45f;box-shadow:0 5px 14px #0006,inset 0 0 0 2px #0a1b44;color:#ffe9a6;}
+.sic .giro span{font:600 18px/1 "Cinzel",serif;letter-spacing:.22em;opacity:.95}
+.sic .giro b{font:700 54px/.9 "Cinzel",serif;color:#fff;margin-top:4px}
+.sic .menu{position:absolute;display:grid;place-items:center;border-radius:50%;
+  background:radial-gradient(circle at 42% 30%,#1c3f80,#0d2250);border:3px solid #e8c45f;box-shadow:0 5px 14px #0006;}
+.sic .panel{position:absolute;border-radius:20px;background:radial-gradient(ellipse at 50% 0%,#17386f,#0c1f49);
+  border:4px solid #e8c45f;box-shadow:0 10px 28px #0008,inset 0 0 0 2px #0a1b44;}
+.sic .pesca{position:absolute;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  border-radius:16px;border:3px solid #f0d886;background:linear-gradient(180deg,#ffe694,#f0c357 52%,#d59a34);
+  color:#2a1803;font:700 38px/1 "Cinzel",serif;letter-spacing:.02em;cursor:pointer;
+  box-shadow:0 5px 0 #7a4d12,inset 0 1px 0 #fff8;}
+.sic .pesca:disabled{opacity:.6;cursor:default;box-shadow:0 3px 0 #7a4d12;}
+.sic .pesca small{font:italic 400 18px/1 "Lora",serif;margin-top:7px;opacity:.9;letter-spacing:0}
+.sic .usc{position:absolute;text-align:center;color:#17284c;}
+.sic .usc b{display:block;font:700 40px/1 "Cinzel",serif;color:#15284f;letter-spacing:.04em}
+.sic .usc em{display:block;font:italic 400 21px/1.2 "Lora",serif;color:#3c4a6a;margin-top:8px}
+.sic .chip{position:absolute;border-radius:16px;background:linear-gradient(180deg,#fffdf4,#efe4c8);
+  border:3px solid #cdae6a;display:flex;align-items:center;gap:14px;padding:0 18px;box-shadow:0 5px 12px #0004;}
+.sic .chip .av{width:92px;height:92px;flex:none;border-radius:50%;object-fit:cover;}
+.sic .chip .lbl{font:700 26px/1 "Cinzel",serif;letter-spacing:.02em}
+.sic .chip .sub{font:italic 400 17px/1.25 "Lora",serif;color:#6a5a38;margin-top:3px}
+.sic .win{position:absolute;inset:0;display:grid;place-items:center;background:rgba(6,20,54,.74);z-index:30;}
+.sic .win .card{padding:44px 90px;border-radius:26px;background:radial-gradient(ellipse at 50% 25%,#1c3f80,#0c1f49);
+  border:5px solid #e8c45f;text-align:center;box-shadow:0 16px 46px #000b;}
+.sic .win h2{margin:0;font:700 70px/1 "Cinzel",serif;background:linear-gradient(180deg,#fff6c8,#ffe08a 50%,#e4ad4b);
+  -webkit-background-clip:text;background-clip:text;color:transparent;}
 `;
-
-function laneGeom(trackLen: number) {
-  const left = 432, right = 1180 - 26, top = 196, gap = 12, h = 120;
-  const cellsW = right - left;
-  return { left, right, top, gap, h, cellsW, cellW: cellsW / trackLen };
-}
 
 export function CorsaSiciliaMonitor({ displayCode, host = false }: { displayCode: string; host?: boolean }) {
   const st = useSicTable(displayCode, 700);
+  const mazzo = useMazzo();
   const [dim, setDim] = useState({ w: typeof window !== 'undefined' ? window.innerWidth : 1280, h: typeof window !== 'undefined' ? window.innerHeight : 800 });
   useEffect(() => { const r = () => setDim({ w: window.innerWidth, h: window.innerHeight }); window.addEventListener('resize', r); return () => window.removeEventListener('resize', r); }, []);
   const [busy, setBusy] = useState(false);
   const t = st?.table;
-  const scale = Math.min(dim.w / 1680, dim.h / 945);
+  const scale = Math.min(dim.w / STAGE_W, dim.h / STAGE_H);
 
   const draw = useCallback(async () => {
     if (!t || busy || t.phase !== 'racing' || t.winner) return;
@@ -160,91 +200,111 @@ export function CorsaSiciliaMonitor({ displayCode, host = false }: { displayCode
     finally { setTimeout(() => setBusy(false), 650); }   // blocca il doppio-click durante l'animazione
   }, [t, busy, displayCode]);
 
-  if (!t) return <div className="sic"><style>{SIC_CSS}</style><div style={{ color: '#ffe9a6', fontSize: 30 }}>Carico il tavolo…</div></div>;
-  const g = laneGeom(t.trackLen);
-  const playUrl = `${ORIGIN}gestione/casino?sicplay=${t.displayCode}`;
+  if (!t) return <div className="sic"><style>{SIC_CSS}</style><div style={{ color: '#ffe9a6', font: '400 30px "Cinzel",serif' }}>Carico il tavolo…</div></div>;
+  const N = t.trackLen;
   const canDraw = host && t.phase === 'racing' && !t.winner && !busy;
   const bySuit = (s: Suit) => t.players.filter(p => p.suit === s);
+  const chipLeft = [108, 466, 852, 1240];   // 4 card giocatore in basso
 
   return (
     <div className="sic"><style>{SIC_CSS}</style>
       <div className="st" style={{ transform: `scale(${scale})` }}>
-        <div className="maj" />
-        <div className="giro"><span style={{ font: '400 15px/1 "Baskerville Casino",serif', letterSpacing: '.2em' }}>GIRO</span><b>{String(t.race).padStart(2, '0')}</b></div>
-        <div className="title">
-          <div className="banner">
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, marginBottom: 2 }}>
-              <img src={`${AB}casino/logo-idea-casino.png`} alt="IDEA EVENTI" style={{ height: 34, objectFit: 'contain' }} />
-            </div>
-            <h1>CORSA SICILIANA</h1>
-            <div className="sub">Quattro semi, quattro cavalli</div>
-          </div>
+
+        {/* GIRO (in alto a sinistra) */}
+        <div className="giro" style={{ left: 238, top: 15, width: 147, height: 111 }}>
+          <span>GIRO</span><b>{String(t.race).padStart(2, '0')}</b>
+        </div>
+
+        {/* Plancia titolo (art dipinta ritagliata dal mockup) */}
+        <img src={`${ASSET}crops/plancia-titolo.png`} alt="Corsa Siciliana — Idea Eventi" draggable={false}
+          style={{ position: 'absolute', left: 408, top: 12, width: 844, height: 'auto', pointerEvents: 'none' }} />
+
+        {/* Menu (decorativo, coerente col mockup) */}
+        <div className="menu" style={{ left: 1557, top: 12, width: 88, height: 87 }}>
+          <div style={{ width: 40 }}>{[0, 1, 2].map(i => <div key={i} style={{ height: 4, borderRadius: 2, background: '#e8c45f', margin: '5px 0' }} />)}</div>
         </div>
 
         {/* 4 corsie */}
         {SUITS.map((s, i) => {
-          const top = g.top + i * (g.h + 16);
+          const cy = LANES_Y[i];
           const pos = t.positions[s];
-          const horseLeft = g.left + (pos <= 0 ? -34 : (pos - 0.5) * g.cellW);
           const m = SUIT_META[s];
+          const hx = pos <= 0 ? CELLS_L - 18 : cellCenter(pos, N);
           return (
             <div key={s}>
-              <div className="medal" style={{ position: 'absolute', left: 150, top: top + 14 }}><SuitIcon suit={s} size={54} /></div>
-              <div className="lname" style={{ position: 'absolute', left: 150 + 102, top: top + 46, color: m.color }}>{m.label}</div>
-              <div className="lane" style={{ left: g.left, width: g.cellsW + 26, top }}>
-                {Array.from({ length: t.trackLen }).map((_, c) => (
-                  <div key={c} className={`cell${pos === c + 1 ? ' cur' : ''}`} style={{ ['--hl' as string]: `${m.glow}66` }}>{c + 1}</div>
-                ))}
-                <div className="fin" />
-              </div>
-              <div className="horse" style={{ left: horseLeft, top: top + g.h / 2 }}>
-                <div className="horseimg" style={{ filter: `drop-shadow(0 0 10px ${m.glow}) drop-shadow(0 4px 6px #0006)` }} />
+              {/* medaglione seme (ritaglio dipinto) */}
+              <img className="medal" src={`${ASSET}crops/medaglione-${s}.png`} alt="" draggable={false}
+                style={{ left: 63, top: cy - 54 }} />
+              {/* etichetta seme (dentro la capsula, sopra la pillola) */}
+              <div className="lname" style={{ left: 196, top: cy - 17, color: m.color }}>{m.label}</div>
+              {/* pillola corsia */}
+              <div className="lane-pill" style={{ left: PILL_L, top: cy - PILL_H / 2, width: PILL_W }} />
+              {/* divisore etichetta ↔ caselle */}
+              <div className="celldiv" style={{ left: CELLS_L, top: cy - PILL_H / 2 + 12, height: PILL_H - 24 }} />
+              {/* divisori + numeri caselle */}
+              {Array.from({ length: N }).map((_, c) => {
+                const cl = cellLeft(c + 1, N);
+                return (
+                  <div key={c}>
+                    {c > 0 && <div className="celldiv" style={{ left: cl, top: cy - PILL_H / 2 + 12, height: PILL_H - 24 }} />}
+                    <div className="cellnum" style={{ left: cl, top: cy - 20, width: cellW(N), height: 40, color: pos === c + 1 ? m.color : '#2b3c63' }}>{c + 1}</div>
+                  </div>
+                );
+              })}
+              {/* highlight casella corrente */}
+              {pos >= 1 && pos <= N && (
+                <div className="cellglow" style={{ left: cellLeft(pos, N) + 3, top: cy - PILL_H / 2 + 4, width: cellW(N) - 6, height: PILL_H - 8, background: `radial-gradient(ellipse at 50% 50%, ${m.glow}cc 0%, ${m.glow}44 55%, transparent 78%)` }} />
+              )}
+              {/* traguardo a scacchi */}
+              <div className="fin" style={{ left: FIN_L, top: cy - PILL_H / 2 }} />
+              {/* cavallo del seme */}
+              <div className="horse" style={{ left: hx, top: cy - 8, animationDelay: `${i * 0.3}s`, filter: pos >= 1 ? `drop-shadow(0 0 14px ${m.glow})` : 'none' }}>
+                <img src={`${ASSET}cavalli/${m.cavallo}`} alt={m.label} draggable={false} />
               </div>
             </div>
           );
         })}
 
-        {/* pannello mazzo + carta + pesca */}
-        <div className="panel">
-          <div style={{ display: 'flex', gap: 16, justifyContent: 'center' }}>
-            <CardBack w={150} />
-            {t.last ? <CardFace card={t.last} w={150} /> : <div style={{ width: 150, height: 228, borderRadius: 10, border: '3px dashed #f1d98c66', display: 'grid', placeItems: 'center', color: '#ffe9a6', font: '400 15px "Baskerville Casino",serif' }}>nessuna<br />carta</div>}
-          </div>
-          <div className="usc">
-            {t.last ? <>È USCITO <b>{SUIT_META[t.last.suit].label}</b><div style={{ font: '400 16px "Baskerville Casino",serif', opacity: .85 }}>Il cavallo {SUIT_META[t.last.suit].label.toLowerCase()} avanza di 1 casella</div></>
-              : <div style={{ font: '400 18px "Baskerville Casino",serif' }}>{t.phase === 'betting' ? 'Scegli i cavalli e avvia la corsa' : 'Pesca la prima carta'}</div>}
-          </div>
-          <button className="pesca" onClick={draw} disabled={!canDraw} title={host ? '' : 'Pescata riservata al conduttore (regia)'}>
-            {t.winner ? 'CORSA CONCLUSA' : 'PESCA UNA CARTA'}
-            <small>{host ? (t.phase === 'racing' ? 'Tocca per far avanzare' : 'Avvia la corsa dalla regia') : 'Riservato al conduttore'} · mazzo {t.deckLeft}</small>
-          </button>
+        {/* Pannello mazzo + carta corrente */}
+        <div className="panel" style={{ left: 1195, top: 208, width: 463, height: 330, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 26 }}>
+          <CardBack h={300} />
+          {t.last ? <CardFace suit={t.last.suit} value={t.last.value} mazzo={mazzo} h={300} />
+            : <div style={{ width: 189, height: 300, borderRadius: 12, border: '3px dashed #e8c45f66', display: 'grid', placeItems: 'center', color: '#ffe9a6', font: 'italic 400 18px "Lora",serif', textAlign: 'center' }}>in attesa<br />di pescata</div>}
         </div>
 
-        {/* striscia giocatori per seme */}
-        <div className="strip">
-          {SUITS.map(s => { const list = bySuit(s); const first = list[0]; const m = SUIT_META[s]; return (
-            <div className="chip" key={s}>
-              {first?.avatarUrl ? <img className="av" src={first.avatarUrl} alt="" /> : <div className="av" style={{ display: 'grid', placeItems: 'center', color: '#ffe9a6', font: '700 26px serif' }}>{first ? first.nickname.slice(0, 1).toUpperCase() : ''}</div>}
+        {/* "È USCITO …" */}
+        <div className="usc" style={{ left: 1192, top: 552, width: 468 }}>
+          {t.last ? <><b>È USCITO {SUIT_META[t.last.suit].label}</b><em>Il cavallo {SUIT_META[t.last.suit].label[0] + SUIT_META[t.last.suit].label.slice(1).toLowerCase()} avanza di 1 casella</em></>
+            : <em style={{ fontSize: 22 }}>{t.phase === 'betting' ? 'Scegli i cavalli, poi Via' : 'Pesca la prima carta'}</em>}
+        </div>
+
+        {/* Pulsante PESCA */}
+        <button className="pesca" onClick={draw} disabled={!canDraw} title={host ? '' : 'Pescata riservata al conduttore (regia)'}
+          style={{ left: 1213, top: 638, width: 444, height: 104 }}>
+          {t.winner ? 'CORSA CONCLUSA' : 'PESCA UNA CARTA'}
+          <small>{t.winner ? `in ${t.drawn} carte` : host ? (t.phase === 'racing' ? 'Tocca il mazzo per avanzare' : 'Avvia la corsa dalla regia') : 'Riservato al conduttore'} · mazzo {t.deckLeft}</small>
+        </button>
+
+        {/* Striscia giocatori per seme (ritratti dipinti) */}
+        {SUITS.map((s, i) => {
+          const m = SUIT_META[s]; const list = bySuit(s); const first = list[0];
+          return (
+            <div className="chip" key={s} style={{ left: chipLeft[i], top: 770, width: 350, height: 104 }}>
+              <img className="av" src={`${ASSET}crops/ritratto-${s}.png`} alt="" draggable={false} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="t" style={{ color: m.color, display: 'flex', alignItems: 'center', gap: 8 }}><SuitIcon suit={s} size={26} />{m.label}</div>
-                <div className="s">{list.length ? `${list.length} giocatore${list.length > 1 ? 'i' : ''}${first ? ' · ' + first.nickname : ''}` : 'Scegli il tuo cavallo dal telefono'}</div>
+                <div className="lbl" style={{ color: m.color }}>{m.label}</div>
+                <div className="sub">{list.length ? `${list.length} giocatore${list.length > 1 ? 'i' : ''}${first ? ' · ' + first.nickname : ''}` : <>Scegli il tuo cavallo<br />dal telefono</>}</div>
               </div>
             </div>
-          ); })}
-        </div>
-
-        {/* QR d'ingresso (piccolo, in alto a destra sotto il menu) */}
-        <div style={{ position: 'absolute', right: 40, top: 26, background: '#fff', padding: 5, borderRadius: 8, boxShadow: '0 3px 8px #0006' }}>
-          <QRCodeSVG value={playUrl} size={64} />
-          <div style={{ textAlign: 'center', font: '700 11px/1.2 "Baskerville Casino",serif', color: '#102c66', marginTop: 2 }}>{t.displayCode}</div>
-        </div>
+          );
+        })}
 
         {/* vincitore */}
         {t.phase === 'result' && t.winner && (
           <div className="win"><div className="card">
-            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}><SuitIcon suit={t.winner} size={90} /></div>
+            <img src={`${ASSET}crops/medaglione-${t.winner}.png`} alt="" style={{ width: 120, height: 120, marginBottom: 12 }} />
             <h2>VINCE {SUIT_META[t.winner].label}</h2>
-            <div style={{ color: '#ffe9a6', font: '400 22px "Baskerville Casino",serif', marginTop: 8 }}>in {t.drawn} carte · {bySuit(t.winner).length} hanno scelto bene</div>
+            <div style={{ color: '#ffe9a6', font: 'italic 400 24px "Lora",serif', marginTop: 10 }}>in {t.drawn} carte · {bySuit(t.winner).length} hanno scelto bene</div>
           </div></div>
         )}
       </div>
@@ -345,6 +405,10 @@ export function CorsaSiciliaRegia({ displayCode }: { displayCode: string }) {
                 style={{ width: 64, marginLeft: 8, padding: 8, borderRadius: 8, border: '1px solid #ffffff33', background: '#0a2a6a', color: '#ffe9a6', textAlign: 'center' }} />
             </label>
             <button disabled={busy} onClick={() => call('/gestione/casino/sicilia/suspend')} style={{ ...btnGhost, width: 'auto', padding: '8px 14px' }}>{t.suspended ? 'Riattiva' : 'Sospendi'}</button>
+          </div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'center', background: '#ffffff0e', borderRadius: 12, padding: 10 }}>
+            <QRCodeSVG value={`${ORIGIN}gestione/casino?sicplay=${t.displayCode}`} size={72} />
+            <div style={{ color: '#cfe0f5', fontSize: 13 }}>QR ingresso giocatori<br /><b style={{ color: '#ffe9a6', fontSize: 18 }}>{t.displayCode}</b></div>
           </div>
           <a href={`${ORIGIN}gestione/casino?sic=${t.displayCode}&host=1`} target="_blank" rel="noreferrer" style={{ ...btnGhost, textAlign: 'center', textDecoration: 'none', display: 'block' }}>🖥️ Apri il monitor 80″ (host) ↗</a>
         </div>
