@@ -6,7 +6,7 @@
 ──────────────────────────────────────────────────────────────────────────── */
 
 import { Router } from "express";
-import { and, eq, asc } from "drizzle-orm";
+import { and, eq, asc, sql } from "drizzle-orm";
 import {
   db,
   burracoSessionsTable,
@@ -16,8 +16,30 @@ import {
   type BurracoAssignment,
 } from "@workspace/db";
 import { emitToRoom } from "../socket.js";
+import { submitScoreOnce, type ScoreTx } from "./gestione-burraco-atomic-lib.js";
 
 const router = Router();
+
+/* Tipo della transazione Drizzle (parametro del callback di db.transaction). */
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/* Adapter ScoreTx sopra una transazione: il claim è un UPDATE CONDIZIONALE
+   (`WHERE submitted=false RETURNING`) e l'incremento dei totali è un UPDATE atomico
+   (`total_score = total_score + delta`), entrambi nella STESSA transazione. */
+const scoreTxOf = (tx: Tx): ScoreTx => ({
+  claim: async (aid, sA, sB) => {
+    const rows = await tx.update(burracoAssignmentsTable)
+      .set({ scoreA: sA, scoreB: sB, submitted: true })
+      .where(and(eq(burracoAssignmentsTable.id, aid), eq(burracoAssignmentsTable.submitted, false)))
+      .returning({ id: burracoAssignmentsTable.id });
+    return rows.length > 0;
+  },
+  addToPair: async (pairId, delta) => {
+    await tx.update(burracoPairsTable)
+      .set({ totalScore: sql`${burracoPairsTable.totalScore} + ${delta}` })
+      .where(eq(burracoPairsTable.id, pairId));
+  },
+});
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const makeCode = (n = 6) => Array.from({ length: n }, () => CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)]).join("");
@@ -143,9 +165,13 @@ router.post("/gestione/burraco/sessions/:id/generate-round", async (req, res): P
     pairAId: t.a, pairBId: t.b,
   }));
   if (bye) rows.push({ sessionId: id, roundNumber: nextRound, tableNumber: rows.length + 1, tableCode: makeCode(6), pairAId: bye.id, pairBId: null as unknown as string });
-  if (rows.length) await db.insert(burracoAssignmentsTable).values(rows);
+  // ATOMICO: inserimento assegnazioni + avanzamento sessione nella stessa transazione
+  // (niente round generato senza sessione avanzata, o viceversa — report §7c).
   const cfg = (session.config ?? {}) as Record<string, unknown>;
-  await db.update(burracoSessionsTable).set({ status: "playing", currentRound: nextRound, config: { ...cfg, roundStartedAt: new Date().toISOString(), paused: false }, updatedAt: new Date() }).where(eq(burracoSessionsTable.id, id));
+  await db.transaction(async (tx) => {
+    if (rows.length) await tx.insert(burracoAssignmentsTable).values(rows);
+    await tx.update(burracoSessionsTable).set({ status: "playing", currentRound: nextRound, config: { ...cfg, roundStartedAt: new Date().toISOString(), paused: false }, updatedAt: new Date() }).where(eq(burracoSessionsTable.id, id));
+  });
   const state = await broadcast(id);
   res.status(201).json({ ok: true, round: nextRound, tables: rows.length, byePair: bye?.id ?? null, state });
 });
@@ -157,20 +183,18 @@ router.post("/gestione/burraco/assignments/:assignmentId/score", async (req, res
   if (!Number.isFinite(scoreA) || !Number.isFinite(scoreB)) { res.status(400).json({ error: "Punteggi non validi" }); return; }
   const [a] = await db.select().from(burracoAssignmentsTable).where(eq(burracoAssignmentsTable.id, aid));
   if (!a) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
-  if (a.submitted) { res.status(409).json({ error: "Punteggio già inviato per questa manche" }); return; }
 
-  // Applica delta ai totali (idempotenza garantita da submitted).
-  await db.update(burracoAssignmentsTable).set({ scoreA: Math.round(scoreA), scoreB: Math.round(scoreB), submitted: true }).where(eq(burracoAssignmentsTable.id, aid));
-  if (a.pairAId) await addToPair(a.pairAId, Math.round(scoreA));
-  if (a.pairBId) await addToPair(a.pairBId, Math.round(scoreB));
+  // ATOMICO + IDEMPOTENTE in UNA transazione: il claim `WHERE submitted=false
+  // RETURNING` marca la manche UNA sola volta (niente TOCTOU) e, solo se ha marcato,
+  // applica i delta ai totali con UPDATE atomici. Due invii concorrenti → un solo
+  // conteggio; crash fra claim e addToPair → rollback, la manche NON resta marcata
+  // senza punteggi (report §7a).
+  const outcome = await db.transaction((tx) =>
+    submitScoreOnce(scoreTxOf(tx), { id: a.id, pairAId: a.pairAId, pairBId: a.pairBId }, scoreA, scoreB));
+  if (outcome === "already") { res.status(409).json({ error: "Punteggio già inviato per questa manche" }); return; }
   const state = await broadcast(a.sessionId);
   res.json({ ok: true, state });
 });
-
-async function addToPair(pairId: string, delta: number): Promise<void> {
-  const [p] = await db.select().from(burracoPairsTable).where(eq(burracoPairsTable.id, pairId));
-  if (p) await db.update(burracoPairsTable).set({ totalScore: p.totalScore + delta }).where(eq(burracoPairsTable.id, pairId));
-}
 
 // ── Impostazioni serata (turni totali, premi, pausa) — merge nel config jsonb ───
 router.post("/gestione/burraco/sessions/:id/config", async (req, res): Promise<void> => {
