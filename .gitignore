@@ -51,3 +51,4 @@ Thumbs.db
 .local/
 .replica/
 artifacts/ideagame/.h*/
+.claude/

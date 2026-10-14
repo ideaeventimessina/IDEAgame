@@ -80,6 +80,8 @@ export default function GestioneCasino() {
   if (tableCode) return <RouletteTableView displayCode={tableCode.toUpperCase()} />;
   if (seatCode) return <SeatController seatCode={seatCode.toUpperCase()} />;
   if (playerCode) return <PlayerView code={playerCode.toUpperCase()} />;
+  const gettone = params.get('g');  // PONTE SUITE: l'ospite arriva da {giocoUrl}?g=<gettone>
+  if (gettone) return <GuestEntry gettone={gettone} />;
   return <CasinoResolver code={code} />;
 }
 
@@ -126,6 +128,20 @@ function useCasinoState(sessionId: string, ms = 2000) {
     return () => { alive = false; clearInterval(t); };
   }, [sessionId, ms]);
   return state;
+}
+
+// ── PONTE SUITE: stato del legame della serata (QR unico + tasto SUITE) ──
+type SuiteLink = { linked: boolean; feedUrl: string | null; eventoId: string | null; nomeFesta: string | null; configurato: boolean };
+function useSuiteLink(sessionId: string | undefined, ms = 5000) {
+  const [link, setLink] = useState<SuiteLink | null>(null);
+  useEffect(() => {
+    if (!sessionId) return;
+    let alive = true;
+    const pull = () => fetch(`${API}/ponte/casino/suite/link/${sessionId}`).then(r => r.ok ? r.json() : null).then(d => { if (alive && d) setLink(d); }).catch(() => {});
+    pull(); const t = setInterval(pull, ms);
+    return () => { alive = false; clearInterval(t); };
+  }, [sessionId, ms]);
+  return link;
 }
 
 // ══════════════════ CO-BRANDING (IDEAGAME × IDEAEVENTI) ══════════════════
@@ -179,6 +195,7 @@ function CasinoWordmark({ size = 40 }: { size?: number }) {
 // ══════════════════ TV (pubblica, maxi-schermo) ══════════════════
 function TvView({ sessionId }: { sessionId: string }) {
   const state = useCasinoState(sessionId, 1500);
+  const suiteLink = useSuiteLink(sessionId);   // PONTE SUITE: QR unico sul maxi-schermo
   // Zoom responsivo come le altre TV: riempie il maxi-schermo senza rompere il mobile.
   const [vw, setVw] = useState(typeof window !== 'undefined' ? window.innerWidth : 1280);
   useEffect(() => { const r = () => setVw(window.innerWidth); window.addEventListener('resize', r); return () => window.removeEventListener('resize', r); }, []);
@@ -197,17 +214,26 @@ function TvView({ sessionId }: { sessionId: string }) {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px,0.9fr) 2fr', gap: 'clamp(16px,2vw,34px)', marginTop: 'clamp(14px,2vw,28px)', flex: 1, minHeight: 0 }}>
-        {/* Colonna sinistra: QR giocatori SEMPRE disponibile + cassa */}
+        {/* Colonna sinistra: QR giocatori (nascosto se legati a una festa Suite) + cassa */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'clamp(14px,1.6vw,24px)' }}>
-          <div style={{ background: '#ffffff0a', border: `1px solid ${GOLD}33`, borderRadius: 24, padding: 'clamp(16px,1.8vw,28px)', textAlign: 'center' }}>
-            <div style={{ fontSize: 'clamp(14px,1.3vw,20px)', fontWeight: 800, letterSpacing: '0.08em', color: GOLD, textTransform: 'uppercase' }}>Entra & gioca</div>
-            <div style={{ fontSize: 'clamp(11px,1vw,15px)', opacity: 0.55, marginBottom: 12 }}>inquadra, scatta il selfie, ricevi 500 fiche</div>
-            <motion.div animate={{ boxShadow: [`0 0 0px ${GOLD}00`, `0 0 40px ${GOLD}55`, `0 0 0px ${GOLD}00`] }} transition={{ duration: 2.6, repeat: Infinity }}
-              style={{ background: '#fff', display: 'inline-block', padding: 'clamp(8px,1vw,14px)', borderRadius: 16 }}>
-              <QRCodeSVG value={joinUrl} size={Math.min(240, Math.max(130, vw / 6))} />
-            </motion.div>
-            <div style={{ fontSize: 'clamp(22px,2.4vw,40px)', fontWeight: 900, letterSpacing: '0.25em', color: GOLD, marginTop: 10 }}>{state.session.joinCode}</div>
-          </div>
+          {suiteLink?.linked ? (
+            /* QR UNICO: la serata è legata alla Suite → sul maxi-schermo niente secondo
+               QR, l'ospite entra dal QR della Suite (già in sala). */
+            <div style={{ background: '#ffffff0a', border: `1px solid ${GOLD}33`, borderRadius: 24, padding: 'clamp(16px,1.8vw,28px)', textAlign: 'center' }}>
+              <div style={{ fontSize: 'clamp(14px,1.3vw,20px)', fontWeight: 800, letterSpacing: '0.08em', color: GOLD, textTransform: 'uppercase' }}>📸 Entra dalla Suite</div>
+              <div style={{ fontSize: 'clamp(12px,1.1vw,17px)', opacity: 0.7, marginTop: 10, lineHeight: 1.4 }}>Inquadra il QR della festa <b style={{ color: GOLD }}>{suiteLink.nomeFesta || ''}</b> e tocca <b style={{ color: GOLD }}>CASINÒ</b>: entri con le tue fiche.</div>
+            </div>
+          ) : (
+            <div style={{ background: '#ffffff0a', border: `1px solid ${GOLD}33`, borderRadius: 24, padding: 'clamp(16px,1.8vw,28px)', textAlign: 'center' }}>
+              <div style={{ fontSize: 'clamp(14px,1.3vw,20px)', fontWeight: 800, letterSpacing: '0.08em', color: GOLD, textTransform: 'uppercase' }}>Entra & gioca</div>
+              <div style={{ fontSize: 'clamp(11px,1vw,15px)', opacity: 0.55, marginBottom: 12 }}>inquadra, scatta il selfie, ricevi 500 fiche</div>
+              <motion.div animate={{ boxShadow: [`0 0 0px ${GOLD}00`, `0 0 40px ${GOLD}55`, `0 0 0px ${GOLD}00`] }} transition={{ duration: 2.6, repeat: Infinity }}
+                style={{ background: '#fff', display: 'inline-block', padding: 'clamp(8px,1vw,14px)', borderRadius: 16 }}>
+                <QRCodeSVG value={joinUrl} size={Math.min(240, Math.max(130, vw / 6))} />
+              </motion.div>
+              <div style={{ fontSize: 'clamp(22px,2.4vw,40px)', fontWeight: 900, letterSpacing: '0.25em', color: GOLD, marginTop: 10 }}>{state.session.joinCode}</div>
+            </div>
+          )}
           <div style={{ background: '#ffffff0a', borderRadius: 24, padding: 'clamp(14px,1.6vw,24px)', textAlign: 'center' }}>
             <div style={{ fontSize: 'clamp(11px,1vw,15px)', opacity: 0.5, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Fiche in gioco</div>
             <div style={{ fontSize: 'clamp(40px,4.4vw,80px)', fontWeight: 900, color: GOLD, fontVariantNumeric: 'tabular-nums', lineHeight: 1.05 }}><AnimatedNumber value={state.cassaTotale} /></div>
@@ -331,6 +357,8 @@ const REGIA_CSS = `
 
 export function MasterView({ sessionId }: { sessionId: string }) {
   const state = useCasinoState(sessionId);
+  const suiteLink = useSuiteLink(sessionId);          // PONTE SUITE: legame serata↔festa
+  const [showSuite, setShowSuite] = useState(false);  // modale "collega a una festa"
   const [busy, setBusy] = useState(false);
   const [showDealerQr, setShowDealerQr] = useState(false);
   const [gts, setGts] = useState<GameTableState['table'][]>([]);
@@ -382,9 +410,23 @@ export function MasterView({ sessionId }: { sessionId: string }) {
             <div className="fiches-s">{state.players.length} giocatori · Credito iniziale {state.startFish}</div>
             <a className="gbtn" href={tvUrl} target="_blank" rel="noreferrer" style={{ marginTop: 18 }}>🖥️ Apri TV e classifica ↗</a>
             <div className="divorn" />
-            <div className="qrlbl">QR iscrizione giocatori</div>
-            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}><div className="qrbox"><QRCodeSVG value={`${ORIGIN}gestione/casino?code=${state.session.joinCode}`} size={132} /></div></div>
-            <div className="code">{state.session.joinCode}</div>
+            {suiteLink?.linked ? (
+              /* QR UNICO: serata legata a una festa Suite → niente secondo QR, si entra
+                 dal QR della Suite. Qui mostro solo lo stato e il modo per scollegare. */
+              <>
+                <div className="qrlbl">Ingresso dal QR di <b style={{ color: '#f3c95f' }}>IDEAphoto Suite</b></div>
+                <div style={{ textAlign: 'center', marginTop: 10, font: '700 20px/1.3 var(--serif)', color: '#ffe9a6' }}>📸 {suiteLink.nomeFesta || 'Festa collegata'}</div>
+                <div style={{ textAlign: 'center', marginTop: 6, font: '400 14px/1.4 var(--serif)', color: '#9c8a5e' }}>L'ospite scansiona UN SOLO QR: quello della Suite. Da lì arriva al casinò con la base delle fiche.</div>
+                <button className="ghost" style={{ marginTop: 12 }} onClick={() => setShowSuite(true)}>🔗 Gestisci collegamento</button>
+              </>
+            ) : (
+              <>
+                <div className="qrlbl">QR iscrizione giocatori</div>
+                <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}><div className="qrbox"><QRCodeSVG value={`${ORIGIN}gestione/casino?code=${state.session.joinCode}`} size={132} /></div></div>
+                <div className="code">{state.session.joinCode}</div>
+                {suiteLink?.configurato && <button className="ghost" style={{ marginTop: 14 }} onClick={() => setShowSuite(true)}>🔗 Collega a una festa Suite</button>}
+              </>
+            )}
             <div className="regcode">🔑 Codice regia (per rientrare): <b>{state.session.masterCode}</b></div>
           </div>
         </div>
@@ -491,6 +533,88 @@ export function MasterView({ sessionId }: { sessionId: string }) {
 
         <div className="footer">❧&nbsp;&nbsp;IDEA EVENTI CASINÒ · Pannello di controllo&nbsp;&nbsp;❧</div>
       </main>
+      {showSuite && <SuiteBindModal sessionId={sessionId} link={suiteLink} onClose={() => setShowSuite(false)} />}
+    </div>
+  );
+}
+
+// ══════════════════ PONTE SUITE — collega la regia a una festa ══════════════════
+// Il proprietario apre la regia e lega la serata casinò a una festa di IDEAphoto
+// Suite. Da quel momento il tasto CASINÒ compare nel feed della Suite e il casinò
+// NON mostra più il proprio QR (un solo QR in tutta la serata). La chiave sta sul
+// server: il browser chiama i nostri proxy, mai la Suite direttamente.
+type SuiteFesta = { eventoId: string; nome: string; data?: string; feedUrl?: string | null; fichesIniziali?: number; collegato?: boolean };
+function SuiteBindModal({ sessionId, link, onClose }: { sessionId: string; link: SuiteLink | null; onClose: () => void }) {
+  const [feste, setFeste] = useState<SuiteFesta[] | null>(null);
+  const [msg, setMsg] = useState('');
+  const [busy, setBusy] = useState(false);
+  const giocoUrl = `${ORIGIN}gestione/casino`;   // la Suite ci aggiunge ?g=<gettone>
+
+  const carica = useCallback(() => {
+    setMsg('');
+    fetch(`${API}/ponte/casino/suite/feste`).then(async r => {
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { setMsg(d?.dettaglio || 'Non riesco a leggere le feste.'); setFeste([]); return; }
+      setFeste(Array.isArray(d?.feste) ? d.feste : []);
+    }).catch(() => { setMsg('Suite irraggiungibile.'); setFeste([]); });
+  }, []);
+  useEffect(() => { carica(); }, [carica]);
+
+  const collega = async (f: SuiteFesta) => {
+    setBusy(true); setMsg('');
+    try {
+      const r = await fetch(`${API}/ponte/casino/suite/collega`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId, eventoId: f.eventoId, giocoUrl, feedUrl: f.feedUrl ?? null, nome: f.nome }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { setMsg(d?.dettaglio || 'Collegamento rifiutato.'); return; }
+      onClose();
+    } finally { setBusy(false); }
+  };
+  const slega = async () => {
+    setBusy(true); setMsg('');
+    try {
+      const r = await fetch(`${API}/ponte/casino/suite/slega`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { setMsg(d?.dettaglio || 'Scollegamento rifiutato.'); return; }
+      onClose();
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: '#000a', display: 'grid', placeItems: 'center', zIndex: 50, padding: 20 }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 480, maxHeight: '86vh', overflow: 'auto', background: 'linear-gradient(160deg,#141209,#0a0a07 55%,#07070a)', border: `2px solid #b98b38`, borderRadius: 16, padding: 22, color: '#f4ead3', fontFamily: "'Baskerville Casino',Georgia,serif" }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+          <div style={{ font: '700 24px/1 inherit', color: '#ffe9a6' }}>Collega a una festa Suite</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#c8a862', fontSize: 26, cursor: 'pointer', lineHeight: 1 }}>×</button>
+        </div>
+        <div style={{ font: '400 14px/1.45 inherit', color: '#9c8a5e', marginBottom: 14 }}>
+          Un solo QR in tutta la serata: quello della Suite. Collegando, il tasto CASINÒ compare nel feed e l'ospite arriva qui con la base delle fiche.
+        </div>
+
+        {link?.linked && (
+          <div style={{ background: '#1d7a3722', border: '1px solid #2bd24a55', borderRadius: 12, padding: 14, marginBottom: 14 }}>
+            <div style={{ font: '700 18px/1 inherit', color: '#8ef0a5' }}>✓ Collegata · {link.nomeFesta || 'festa Suite'}</div>
+            <button onClick={slega} disabled={busy} style={{ marginTop: 12, ...btn('#ffffff22'), width: '100%', fontFamily: 'inherit' }}>Scollega questa serata</button>
+          </div>
+        )}
+
+        {feste === null && <div style={{ opacity: 0.6, padding: 20, textAlign: 'center' }}>Carico le feste…</div>}
+        {msg && <div style={{ color: '#ffb4a0', font: '400 14px/1.4 inherit', marginBottom: 12 }}>{msg} <button onClick={carica} style={{ background: 'none', border: 'none', color: '#f3c95f', textDecoration: 'underline', cursor: 'pointer' }}>riprova</button></div>}
+        {feste && feste.length === 0 && !msg && <div style={{ opacity: 0.6, padding: 16, textAlign: 'center' }}>Nessuna festa col casinò acceso.</div>}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {(feste ?? []).map(f => (
+            <div key={f.eventoId} style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#17130b', border: '1px solid #6e5320', borderRadius: 12, padding: 12 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ font: '700 18px/1.2 inherit', color: '#f4ead3', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.nome}</div>
+                <div style={{ font: '400 13px/1 inherit', color: '#b9a06a', marginTop: 4 }}>{f.data || ''}{f.fichesIniziali != null ? ` · base ${f.fichesIniziali} fiche` : ''}</div>
+              </div>
+              {f.collegato
+                ? <span style={{ font: '700 13px/1 inherit', color: '#9c8a5e' }}>già collegata</span>
+                : <button onClick={() => collega(f)} disabled={busy} style={{ ...btn(GOLD), fontFamily: 'inherit', flex: 'none' }}>Collega</button>}
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -715,7 +839,50 @@ function QuickAmount({ onPay, onTake }: { onPay: (n: number) => void; onTake: (n
 }
 
 // ══════════════════ GIOCATORE — LOGIN con selfie ══════════════════
-function JoinView({ sessionId }: { sessionId: string }) {
+// ══════════════════ PONTE SUITE — ACCOGLIENZA OSPITE ══════════════════
+// L'ospite arriva da {giocoUrl}?g=<gettone>. Regole del contratto:
+//  · il gettone NON deve MAI essere letto dal browser → lo tolgo subito dall'URL
+//    (replaceState) e lo mando al NOSTRO server, che lo riscatta server-to-server;
+//  · stesso ospite = stesso account (il server ritrova il giocatore dal playerId);
+//  · se la Suite passa il nome, entra dritto; se è null (privacy), lo chiedo io.
+function GuestEntry({ gettone }: { gettone: string }) {
+  const [stato, setStato] = useState<'carico' | 'nome' | 'errore'>('carico');
+  const [pending, setPending] = useState<{ sessionId: string; token: string } | null>(null);
+  const [feedUrl, setFeedUrl] = useState<string | null>(null);
+  const fatto = useRef(false);
+
+  useEffect(() => {
+    if (fatto.current) return; fatto.current = true;
+    // 1) togli il gettone dalla barra (resta solo /gestione/casino)
+    try { window.history.replaceState(null, '', ORIGIN + 'gestione/casino'); } catch { /* */ }
+    // 2) riscatto server-to-server
+    (async () => {
+      try {
+        const r = await fetch(`${API}/ponte/casino/guest`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ gettone }) });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && d?.ready && d?.playerCode) { window.location.replace(`${ORIGIN}gestione/casino?player=${d.playerCode}`); return; }
+        if (r.ok && d?.needName && d?.pendingToken && d?.sessionId) { setPending({ sessionId: d.sessionId, token: d.pendingToken }); setFeedUrl(d.feedUrl ?? null); setStato('nome'); return; }
+        // 410/404/401 → se la Suite ci ha dato il feed, rimanda lì (ne chiede un altro)
+        if (d?.feedUrl) { window.location.replace(d.feedUrl); return; }
+        setStato('errore');
+      } catch { setStato('errore'); }
+    })();
+  }, [gettone]);
+
+  if (stato === 'nome' && pending) return <JoinView sessionId={pending.sessionId} suitePending={pending.token} feedUrl={feedUrl} />;
+  if (stato === 'errore') return (
+    <Center>
+      <div style={{ textAlign: 'center', maxWidth: 340 }}>
+        <CasinoWordmark size={26} />
+        <div style={{ marginTop: 16, opacity: 0.8 }}>Questo accesso non è più valido.</div>
+        <div style={{ marginTop: 8, opacity: 0.55, fontSize: 14 }}>Torna al QR della festa e tocca di nuovo <b style={{ color: GOLD }}>CASINÒ</b> per entrare.</div>
+      </div>
+    </Center>
+  );
+  return <Center>Ti faccio entrare al casinò… 🎰</Center>;
+}
+
+function JoinView({ sessionId, suitePending, feedUrl }: { sessionId: string; suitePending?: string; feedUrl?: string | null }) {
   const [nick, setNick] = useState('');
   const [photo, setPhoto] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -726,8 +893,13 @@ function JoinView({ sessionId }: { sessionId: string }) {
     if (!nick.trim()) return;
     setBusy(true);
     try {
-      const p = await api(`/gestione/casino/sessions/${sessionId}/players`, { nickname: nick, photo });
-      if (p?.playerCode) window.location.href = `${ORIGIN}gestione/casino?player=${p.playerCode}`;
+      // PONTE SUITE: se arriviamo da un riscatto senza nome (privacy), il giocatore
+      // lo creiamo noi legandolo al playerId Suite (base fiche una volta sola).
+      const p = suitePending
+        ? await api(`/ponte/casino/guest/join`, { sessionId, pendingToken: suitePending, nickname: nick, photo })
+        : await api(`/gestione/casino/sessions/${sessionId}/players`, { nickname: nick, photo });
+      if (p?.playerCode) { window.location.href = `${ORIGIN}gestione/casino?player=${p.playerCode}`; return; }
+      if (suitePending && feedUrl) { window.location.href = feedUrl; return; } // gettone scaduto → torna al feed
     } finally { setBusy(false); }
   };
   return (
@@ -772,6 +944,7 @@ export function PlayerView({ code }: { code: string }) {
   // ── Tavoli interattivi: il giocatore sceglie dal SUO telefono dove sedersi
   //    (niente QR per postazione). Un solo QR d'ingresso -> qui scegli il tavolo. ──
   const sid = data?.sessionId;
+  const suiteLink = useSuiteLink(sid);   // PONTE SUITE: tasto per tornare al feed
   const [tbls, setTbls] = useState<{ roulette: any[]; bj: any[]; horse: any[] }>({ roulette: [], bj: [], horse: [] });
   useEffect(() => {
     if (!sid) return;
@@ -797,6 +970,15 @@ export function PlayerView({ code }: { code: string }) {
   return (
     <div style={{ minHeight: '100vh', background: BG, color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, padding: 20, fontFamily: "'Outfit',system-ui,sans-serif" }}>
       <BrandBar h={20} dim={0.7} />
+      {/* PONTE SUITE: un solo tocco per tornare al feed della festa (nessun gettone) */}
+      {suiteLink?.feedUrl && (
+        <motion.a whileTap={{ scale: 0.97 }} href={suiteLink.feedUrl}
+          style={{ width: '100%', maxWidth: 360, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, textDecoration: 'none',
+            background: `linear-gradient(180deg,#ffe694,#f0c357 50%,#d59a34 52%,#eab74a)`, color: '#231503', fontWeight: 900, fontSize: 18,
+            padding: '16px 18px', borderRadius: 16, boxShadow: `0 3px 0 #7a4d12,0 8px 18px #0008`, border: '1px solid #f3dea0' }}>
+          <span style={{ fontSize: 22 }}>📸</span> Torna alla Suite ↗
+        </motion.a>
+      )}
       <PlayerAvatar nickname={p.nickname} avatarUrl={p.avatarUrl} size={88} ring={GOLD} />
       <div style={{ fontSize: 26, fontWeight: 900, marginTop: -4 }}>{p.nickname}</div>
       <motion.div key={p.fishBalance} initial={{ scale: 1.14 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 300, damping: 18 }}

@@ -12,6 +12,7 @@ import gamesRouter from "./games";
 import eventsRouter from "./events";
 import eventsByCodeRouter from "./events-by-code";
 import ponteIdeaeventiRouter from "./ponte-ideaeventi";
+import ponteCasinoRouter from "./ponte-casino";
 import teamsRouter from "./teams";
 import playersRouter from "./players";
 import scoresRouter from "./scores";
@@ -126,5 +127,9 @@ router.use(liveSessionsRouter);
 /* IL PONTE COL GESTIONALE IDEAEVENTI — 7/9/2026. Si identifica con una
    chiave condivisa, non con una sessione: chi chiama è un programma. */
 router.use(ponteIdeaeventiRouter);
+
+/* IL PONTE CON "IDEAphoto Suite" — CASINÒ. IDEAgame è CLIENT: chiama la Suite
+   (feste/collega/riscatta) con CASINO_PONTE_KEY tenuta sul server. */
+router.use(ponteCasinoRouter);
 
 export default router;
