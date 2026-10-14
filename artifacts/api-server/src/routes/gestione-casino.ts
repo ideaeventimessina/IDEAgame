@@ -462,7 +462,7 @@ router.post("/gestione/casino/table/spin", async (req, res): Promise<void> => {
   if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
   const table = found.table;
   if (table.phase !== "betting") { res.status(409).json({ error: "Giro già in corso" }); return; }
-  const r = Math.floor(Math.random() * 37); // 0–36, zero singolo europeo
+  const r = randomInt(37); // 0–36, zero singolo europeo — RNG crittografico (node:crypto)
   table.phase = "result";
   table.result = { number: r, at: new Date().toISOString() };
   table.history = [r, ...table.history].slice(0, 20);
