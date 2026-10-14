@@ -131,6 +131,7 @@ export default function GestioneLockdown() {
   if (q.get('contenuti') !== null) return <AdminContenuti />;
   if (q.get('penalita') !== null) return <AdminPenalita />;
   if (q.get('registro') !== null) return <AdminRegistro />;
+  if (q.get('crea') !== null) return <AdminCrea />;
   return <MonitorCasa />;
 }
 
@@ -1062,6 +1063,70 @@ function AdminRegistro() {
           <div className="rg-mb cancel">Annulla</div>
           <div className="rg-mb ok">Conferma</div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── ADMIN · CREA PARTITA (console host) ──────────────────────────────────────
+   Replica del mockup 08, pannello "17 CREA PARTITA · PANNELLO AMMINISTRATORE".
+   Palco fisso 512×512. Setup partita: nome, preset (Originale/Famiglia), durata
+   (Normale/A tempo), soglia Master, QR di accesso. Il QR è REALE (qrcode.react),
+   non illustrativo (03-SCHERMATE: nessun QR disegnato per accessi veri). Badge
+   "17" omesso. DATI MOCK (?crea=CODE imposta solo il codice del QR). */
+
+const CSS_CREA = `
+.ad .cr-warm{left:330px;top:-20px;width:230px;height:200px;pointer-events:none;
+  background:radial-gradient(closest-side,rgba(255,185,90,.2),rgba(255,185,90,0) 70%);}
+.ad .cr-lbl{position:absolute;font:400 12.5px/1 "Baskerville Lockdown",serif;color:#c3ccd4;}
+.ad .cr-fld{position:absolute;display:flex;align-items:center;padding:0 14px;border-radius:9px;background:#0b141d;
+  box-shadow:inset 0 0 0 1px rgba(90,110,130,.42);font:400 15px/1 "Baskerville Lockdown",serif;color:#eaf0f5;}
+.ad .cr-seg{position:absolute;height:38px;display:grid;place-items:center;border-radius:9px;
+  font:400 14px/1 "Baskerville Lockdown",serif;color:#c3ccd4;background:#0b141d;box-shadow:inset 0 0 0 1px rgba(90,110,130,.4);}
+.ad .cr-seg.on{color:#ffe7a6;background:linear-gradient(180deg,#1b1406,#110c04);box-shadow:inset 0 0 0 1.5px rgba(232,200,121,.85);}
+.ad .cr-qr{position:absolute;left:316px;top:166px;width:172px;height:172px;border-radius:12px;background:#fff;display:grid;place-items:center;
+  box-shadow:0 4px 14px rgba(0,0,0,.5),inset 0 0 0 1px rgba(232,200,121,.4);}
+.ad .cr-cap{position:absolute;left:312px;top:348px;width:184px;text-align:center;font:400 12px/1.4 "Baskerville Lockdown",serif;color:#aab6bf;}
+.ad .cr-btn{position:absolute;left:24px;top:428px;width:464px;height:50px;border-radius:11px;display:grid;place-items:center;
+  background:linear-gradient(180deg,#e9c877,#caa23f);color:#2a1d06;font:700 18px/1 "Baskerville Lockdown",serif;letter-spacing:.02em;
+  box-shadow:0 4px 12px rgba(0,0,0,.45),inset 0 0 0 1px rgba(255,235,180,.6);}
+`;
+
+function AdminCrea() {
+  const scale = useScale(512, 512);
+  const code = new URLSearchParams(window.location.search).get('crea') || 'LOCK24';
+  const joinUrl = `${ORIGIN}gestione/lockdown/join?casa=${encodeURIComponent(code)}`;
+  return (
+    <div className="lkd"><style>{CSS + CSS_ADMIN + CSS_CREA}</style>
+      <div className="ad" style={{ transform: `scale(${scale})` }}>
+        <div className="a cr-warm" />
+        {/* header */}
+        <img className="a" src={`${LK}logo-lockdown-t.png`} alt="LOCKDOWN" style={{ left: 181, top: 6, width: 150, height: 38 }} />
+        <div className="a ad-by">by IDEAeventi</div>
+        <div className="a ad-h1">CREA PARTITA</div>
+        <div className="a ad-h2">PANNELLO AMMINISTRATORE</div>
+
+        {/* form */}
+        <div className="a cr-lbl" style={{ left: 30, top: 162 }}>Nome della partita</div>
+        <div className="a cr-fld" style={{ left: 28, top: 180, width: 274, height: 36 }}>Casa di Jonny</div>
+
+        <div className="a cr-lbl" style={{ left: 30, top: 234 }}>Preset di gioco</div>
+        <div className="a cr-seg on" style={{ left: 28, top: 250, width: 134 }}>Originale</div>
+        <div className="a cr-seg" style={{ left: 168, top: 250, width: 134 }}>Famiglia</div>
+
+        <div className="a cr-lbl" style={{ left: 30, top: 304 }}>Durata della stanza</div>
+        <div className="a cr-seg on" style={{ left: 28, top: 320, width: 134 }}>Normale</div>
+        <div className="a cr-seg" style={{ left: 168, top: 320, width: 134 }}>A tempo</div>
+
+        <div className="a cr-lbl" style={{ left: 30, top: 386 }}>Soglia Master (punti)</div>
+        <div className="a cr-fld" style={{ left: 174, top: 370, width: 128, height: 36, justifyContent: 'center' }}>1500</div>
+
+        {/* QR reale */}
+        <div className="a cr-qr"><QRCodeSVG value={joinUrl} size={150} /></div>
+        <div className="a cr-cap">Scansiona questo QR con i dispositivi dei giocatori per unirsi alla partita.</div>
+
+        {/* CTA */}
+        <div className="a cr-btn">Crea e mostra QR</div>
       </div>
     </div>
   );

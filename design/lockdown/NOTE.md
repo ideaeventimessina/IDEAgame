@@ -30,8 +30,17 @@ Pacchetto: `/private/tmp/idea_pkg/IDEA-EVENTI/02-lockdown/` (28 viste su 5 tavol
 | 21 CONTENUTI (`?contenuti`) | 2 | **FATTO (questa sessione)** | editor stanze, 10 nomi reali |
 | 19 PENALITÀ (`?penalita`) | 2 | **FATTO (questa sessione)** | economia 80/50/50/0 spec-corretta |
 | 22 PAUSA E REGISTRO (`?registro`) | 2 | **FATTO (questa sessione)** | pausa+timer, log eventi, annulla con motivo |
+| 17 CREA PARTITA (`?crea`) | 2 | **FATTO (questa sessione)** | setup + QR REALE (non illustrativo) |
 | Telefono (05/06/09) | 3 | DA FARE | vive in Home; vedi DEVIATIONS |
-| Admin stati residui (08) | 3 | DA FARE | crea(17)/colpo(18)/riconn(20) — reference ritagliati per 17 |
+| Admin stati residui (08) | 3 | DA FARE | colpo(18)/riconn-sedato(20) — reference ritagliati |
+
+### 17 CREA PARTITA — confronto per zone (giro g1, --blur 4, palco 512×512)
+| Zona | percettivo | spostamento | note |
+|---|---|---|---|
+| header | 41.3% | — | allineato; porticato/lampada dipinti (bagliore) + font |
+| form | 7.9% | x-2 y0 | praticamente pixel-aligned |
+| qr | 60.7% | — | DIVERGE VOLUTAMENTE: QR reale (qrcode.react) ≠ QR dipinto illustrativo |
+| cta | 46.2% | — | allineato; tono oro/font diversi dal dipinto |
 
 ### 22 PAUSA E REGISTRO — confronto per zone (giro g1, --blur 4, palco 512×512)
 | Zona | percettivo | spostamento | note |
