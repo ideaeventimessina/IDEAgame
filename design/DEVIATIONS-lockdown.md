@@ -40,6 +40,26 @@ prevalgono sui dettagli illustrativi. Qui ogni scostamento con il motivo.
 7. **La console non conosce la spia** (nessun dato spia nel componente): coerente con
    01-SPECIFICA (Master non vede la spia prima della rivelazione).
 
+## Pannello 21 CONTENUTI
+1. **Nomi stanze reali.** 03-SCHERMATE: «l'editor della tavola 08 inventa nomi di
+   stanze: sostituirli tutti con i dieci nomi del catalogo reale». La lista "Stanze
+   della casa (10)" usa `ROOM_CATALOG` (Cucina, 10 Sfumature, Biblioteca, Palestra,
+   Studio, Salone, Cinema, Balcone, Gabinetto, Ufficio) al posto degli inventati
+   (Atrio, Giardino, Cantina, Mansarda, Camera degli ospiti…). "Cinema" resta la #7.
+2. **Cinema = storytelling**, 20 parole, 300s (già corretto nel mockup): mantenuto.
+3. **Proiettore dipinto non replicato**: reso come bagliore radiale (`ad-glow`) per
+   un pannello admin nitido; la pittura decorativa non è UI. Logo reale + 'IDEAeventi'.
+4. **Badge "21"** di catalogo omesso.
+
+## Monitor Casa/Sfida/Finale (priorità 1) — verifica
+Viste preesistenti CONFERMATE fedeli ai pannelli 13/14/16: le pitture (house.png,
+kitchen.png, finale.png) sono ritagli dei rispettivi pannelli; layout, pill stanze,
+fascia giocatori, barra MASTER e dati mock corrispondono. Unico scostamento noto: il
+palco è 744×456 (casa/sfida) / 744×448 (finale), mentre i pannelli sono 768×512 —
+scelta dell'autore precedente, invisibile a schermo (nessun riferimento affiancato),
+non rifatta per non regredire viste funzionanti. Il logo nei monitor usa una fascia
+di mascheramento che combacia col proprio sfondo (il box non emerge).
+
 ## Salute (ambiente)
 Gli errori api/auth/me 500, api/home/music-config 500 e websocket socket.io NON sono
 della vista (che non fa fetch): derivano dal guscio app globale senza api-server nel

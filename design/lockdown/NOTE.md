@@ -23,12 +23,21 @@ Pacchetto: `/private/tmp/idea_pkg/IDEA-EVENTI/02-lockdown/` (28 viste su 5 tavol
 ## Stato per vista
 | Vista | Priorità | Stato | Note |
 |---|---|---|---|
-| 13 MONITOR CASA (`?casa`) | 1 | preesistente | da riverificare vs tavola 07 aggiornata |
-| 14 MONITOR SFIDA (`?sfida`) | 1 | preesistente | idem |
+| 13 MONITOR CASA (`?casa`) | 1 | preesistente, VERIFICATO fedele | pittura corretta (house.png = villa pannello 13), layout/dati ok; stage 744×456 vs pannello 768×512 (vedi DEVIATIONS) |
+| 14 MONITOR SFIDA (`?sfida`) | 1 | preesistente, VERIFICATO fedele | kitchen.png = pannello 14; layout/dati ok |
 | 16 FINALE (`?finale`) | 1 | preesistente pixel-faithful | ok |
 | 15 REGIA MASTER (`?regia`) | 2 | **FATTO (questa sessione)** | confronto per zone sotto |
+| 21 CONTENUTI (`?contenuti`) | 2 | **FATTO (questa sessione)** | editor stanze, 10 nomi reali |
 | Telefono (05/06/09) | 3 | DA FARE | vive in Home; vedi DEVIATIONS |
-| Admin stati (08) | 3 | DA FARE | crea/penalità/contenuti/pausa |
+| Admin stati residui (08) | 3 | DA FARE | crea(17)/colpo(18)/penalità(19)/riconn(20)/registro(22) — reference già ritagliati |
+
+### 21 CONTENUTI — confronto per zone (giro g2, --blur 4, palco 512×512)
+| Zona | percettivo | spostamento | note |
+|---|---|---|---|
+| header | 27.8% | — | allineato; diff = proiettore dipinto (reso come bagliore) + font |
+| stanze | 13.0% | x4 y8 | allineato; 10 nomi reali al posto di quelli inventati (correzione) |
+| editor | 7.4% | x2 y6 | allineato; Cinema 20 parole/300s (corretto) |
+altezza 512=512 (+0). Salute: stessi 4 errori ambientali (no api-server).
 
 ## 15 REGIA MASTER — confronto per zone (giro g3, --blur 4, palco 768×512)
 Mockup DIPINTO + font serif diverso (Libre Baskerville) → la soglia 6% non è

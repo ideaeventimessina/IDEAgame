@@ -128,8 +128,15 @@ export default function GestioneLockdown() {
   if (q.get('finale') !== null) return <MonitorFinale />;
   if (q.get('sfida') !== null) return <MonitorSfida />;
   if (q.get('regia') !== null) return <RegiaMaster />;
+  if (q.get('contenuti') !== null) return <AdminContenuti />;
   return <MonitorCasa />;
 }
+
+// Catalogo reale delle 10 stanze (ordine del catalogo server), condiviso dalle viste admin.
+const ROOM_CATALOG = [
+  'Cucina', '10 Sfumature', 'Biblioteca', 'Palestra', 'Studio',
+  'Salone', 'Cinema', 'Balcone', 'Gabinetto', 'Ufficio',
+];
 
 function MonitorCasa() {
   const scale = useScale(744, 456);
@@ -759,6 +766,115 @@ function RegiaMaster() {
           <button className="r-btn gold"><IBolt />Colpo di scena</button>
           <button className="r-btn red"><IMinus />Penalità</button>
           <button className="r-btn slate"><IPause />Pausa</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── ADMIN · CONTENUTI (console host, tablet/desktop) ─────────────────────────
+   Replica del mockup 08, pannello "21 CONTENUTI · PANNELLO AMMINISTRATORE".
+   Palco fisso 512×512 scalato. Editor versionato delle stanze (bozza/approvato).
+
+   CORREZIONI dal pacchetto (03-SCHERMATE): l'editor del mockup inventa nomi di
+   stanze (Atrio, Giardino, Cantina, Mansarda…). Qui la lista usa i DIECI nomi
+   reali del catalogo (ROOM_CATALOG). Cinema = 20 parole, 300s (corretto nel
+   mockup). Badge "21" di catalogo omesso. Nessun backend: DATI MOCK. ?contenuti. */
+
+const CSS_ADMIN = `
+.lkd .ad{position:relative;width:512px;height:512px;flex:none;background:#020407;transform-origin:center center;
+  color:#dfe6ee;font-family:"Baskerville Lockdown",Georgia,serif;overflow:hidden;}
+.lkd .ad .a{position:absolute;}
+/* bagliore proiettore (eco del dipinto, top-destra) */
+.ad .ad-glow{left:300px;top:-60px;width:320px;height:260px;pointer-events:none;
+  background:radial-gradient(closest-side,rgba(240,170,70,.22),rgba(240,170,70,0) 72%);}
+/* header */
+.ad .ad-h1{left:0;top:66px;width:512px;text-align:center;font:700 26px/1 "Baskerville Lockdown",serif;letter-spacing:.06em;color:#f3e6bf;}
+.ad .ad-h2{left:0;top:100px;width:512px;text-align:center;font:400 12px/1 "Baskerville Lockdown",serif;letter-spacing:.14em;color:#9a8c63;}
+.ad .ad-by{left:156px;top:45px;width:200px;text-align:center;font:700 8px/1 "Baskerville Lockdown",serif;letter-spacing:.24em;color:#d8b96a;}
+/* card generica */
+.ad .card{border-radius:12px;background:linear-gradient(180deg,rgba(11,20,28,.94),rgba(6,12,18,.96));
+  box-shadow:inset 0 0 0 1px rgba(90,110,130,.3),0 6px 18px rgba(0,0,0,.45);}
+/* lista stanze (sinistra) */
+.ad .ad-left{left:16px;top:128px;width:142px;height:330px;}
+.ad .ad-ltt{position:absolute;left:14px;top:13px;font:700 11.5px/1 "Baskerville Lockdown",serif;letter-spacing:.02em;color:#e7dcc0;}
+.ad .ad-ldv{position:absolute;left:12px;top:33px;width:118px;height:1px;background:rgba(90,110,130,.3);}
+.ad .ad-room{position:absolute;left:8px;width:126px;height:26px;display:flex;align-items:center;gap:8px;padding:0 7px;border-radius:7px;white-space:nowrap;
+  font:400 12px/1 "Baskerville Lockdown",serif;color:#cfd8e0;}
+.ad .ad-room .n{flex:none;width:18px;height:18px;border-radius:50%;display:grid;place-items:center;
+  font:700 9px/1 "Baskerville Lockdown",serif;color:#aeb9c2;box-shadow:inset 0 0 0 1.4px rgba(120,135,148,.6);}
+.ad .ad-room.on{color:#ffe7a6;box-shadow:inset 0 0 0 1.5px rgba(232,200,121,.85);background:rgba(28,22,8,.6);}
+.ad .ad-room.on .n{color:#ffe7a6;box-shadow:inset 0 0 0 1.4px rgba(232,200,121,.85);}
+/* editor (destra) */
+.ad .ad-right{left:170px;top:128px;width:326px;height:330px;}
+.ad .ad-ett{position:absolute;left:18px;top:14px;font:700 15px/1 "Baskerville Lockdown",serif;color:#eef0ee;}
+.ad .ad-echip{position:absolute;left:18px;top:40px;display:flex;align-items:center;gap:9px;font:700 14px/1 "Baskerville Lockdown",serif;color:#eadfbf;}
+.ad .ad-echip .n{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:11px;color:#ffe7a6;box-shadow:inset 0 0 0 1.5px rgba(232,200,121,.7);}
+.ad .ad-edv{position:absolute;left:16px;top:70px;width:294px;height:1px;background:rgba(90,110,130,.26);}
+.ad .ad-lbl{position:absolute;font:400 10.5px/1 "Baskerville Lockdown",serif;letter-spacing:.02em;color:#9aa7b2;}
+.ad .ad-fld{position:absolute;display:flex;align-items:center;padding:0 11px;border-radius:7px;
+  background:#0b141d;box-shadow:inset 0 0 0 1px rgba(90,110,130,.4);
+  font:400 13px/1 "Baskerville Lockdown",serif;color:#eaf0f5;}
+.ad .ad-ta{position:absolute;padding:9px 11px;border-radius:7px;background:#0b141d;box-shadow:inset 0 0 0 1px rgba(90,110,130,.4);
+  font:400 12.5px/1.3 "Baskerville Lockdown",serif;color:#dbe6ef;}
+.ad .ad-seg{position:absolute;display:flex;align-items:center;justify-content:center;height:34px;border-radius:8px;
+  font:400 13px/1 "Baskerville Lockdown",serif;color:#c3cdd6;box-shadow:inset 0 0 0 1px rgba(90,110,130,.4);background:#0b141d;}
+.ad .ad-seg.on{color:#ffe7a6;background:linear-gradient(180deg,#1b1406,#110c04);box-shadow:inset 0 0 0 1.5px rgba(232,200,121,.85);}
+.ad .ad-tog{position:absolute;width:46px;height:24px;border-radius:13px;background:#0e1822;box-shadow:inset 0 0 0 1px rgba(90,110,130,.5);}
+.ad .ad-tog>i{position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#aab4bd;}
+.ad .ad-note{position:absolute;font:400 11px/1 "Baskerville Lockdown",serif;color:#7f8b95;}
+`;
+
+function AdminContenuti() {
+  const scale = useScale(512, 512);
+  const selected = 6; // indice (0-based) di "Cinema" nel catalogo reale
+  return (
+    <div className="lkd"><style>{CSS + CSS_ADMIN}</style>
+      <div className="ad" style={{ transform: `scale(${scale})` }}>
+        <div className="a ad-glow" />
+        {/* header */}
+        <img className="a" src={`${LK}logo-lockdown-t.png`} alt="LOCKDOWN" style={{ left: 181, top: 6, width: 150, height: 38 }} />
+        <div className="a ad-by">by IDEAeventi</div>
+        <div className="a ad-h1">CONTENUTI</div>
+        <div className="a ad-h2">PANNELLO AMMINISTRATORE</div>
+
+        {/* lista stanze (10 reali) */}
+        <div className="a card ad-left">
+          <div className="ad-ltt">Stanze della casa (10)</div>
+          <div className="ad-ldv" />
+          {ROOM_CATALOG.map((r, i) => (
+            <div className={`ad-room${i === selected ? ' on' : ''}`} key={r} style={{ top: 44 + i * 28 }}>
+              <span className="n">{i + 1}</span>{r}
+            </div>
+          ))}
+        </div>
+
+        {/* editor stanza */}
+        <div className="a card ad-right">
+          <div className="ad-ett">Modifica stanza</div>
+          <div className="ad-echip"><span className="n">7</span>Cinema</div>
+          <div className="ad-edv" />
+
+          <div className="ad-lbl" style={{ left: 18, top: 80 }}>Titolo stanza</div>
+          <div className="ad-fld" style={{ left: 18, top: 95, width: 116, height: 30 }}>Cinema</div>
+          <div className="ad-lbl" style={{ left: 144, top: 81, fontSize: 9 }}>Limite parole</div>
+          <div className="ad-fld" style={{ left: 144, top: 95, width: 52, height: 30, justifyContent: 'center' }}>20</div>
+          <div className="ad-lbl" style={{ left: 214, top: 81, fontSize: 9 }}>Durata (secondi)</div>
+          <div className="ad-fld" style={{ left: 212, top: 95, width: 88, height: 30, justifyContent: 'center' }}>300</div>
+
+          <div className="ad-lbl" style={{ left: 18, top: 138 }}>Contenuto</div>
+          <div className="ad-ta" style={{ left: 18, top: 153, width: 290, height: 56 }}>
+            Descrivi una scena di un film senza nominare il titolo.
+          </div>
+
+          <div className="ad-lbl" style={{ left: 18, top: 224 }}>Stato contenuto</div>
+          <div className="ad-seg on" style={{ left: 18, top: 239, width: 92 }}>Originale</div>
+          <div className="ad-seg" style={{ left: 118, top: 239, width: 92 }}>Proposto</div>
+          <div className="ad-seg" style={{ left: 218, top: 239, width: 92 }}>Approvato</div>
+
+          <div className="ad-lbl" style={{ left: 18, top: 290, fontSize: 12, color: '#c6cfd7' }}>Contenuto Adulto (18+)</div>
+          <div className="ad-tog" style={{ left: 264, top: 286 }}><i /></div>
+          <div className="ad-note" style={{ left: 18, top: 308 }}>Non disponibile con il preset Famiglia.</div>
         </div>
       </div>
     </div>
