@@ -7007,6 +7007,7 @@ function FreestyleBoard({ payload, onReveal, players, onScore }: {
   onScore: (pid: string, pts: number) => Promise<void>;
 }) {
   const [awarded, setAwarded] = useState<string|null>(null);
+  const micValidated = Array.isArray(payload.validatedPlayers) ? (payload.validatedPlayers as string[]) : [];
   const pts = Number(payload.points ?? 200);
   const trackIdx = Number(payload.roundIndex ?? 0) % FREESTYLE_TRACKS.length;
   const trackUrl = FREESTYLE_TRACKS[trackIdx] ?? FREESTYLE_TRACKS[0];
@@ -7050,6 +7051,17 @@ function FreestyleBoard({ payload, onReveal, players, onScore }: {
         <div className="text-lg text-white/55">Improvvisa un freestyle su questa parola — {fsTimeLimit} secondi!</div>
       )}
       <AudioPlayer src={trackUrl} label="Avvia base musicale" color="#FB923C"/>
+      {/* Chi ha ACCESO IL MICROFONO e rappato davvero (validazione volume/durata lato
+          telefono, confermata dal server) → pallino 🎤 verde, così l'host vede chi ha
+          performato prima di assegnare il "migliore". */}
+      {micValidated.length > 0 && (
+        <div className="flex flex-wrap items-center justify-center gap-2 text-sm font-bold" style={{color:'#4ade80'}}>
+          <span className="text-white/50">🎤 Hanno rappato al microfono:</span>
+          {players.filter(p => micValidated.includes(p.id)).map(p => (
+            <span key={p.id} className="rounded-full px-3 py-1" style={{background:'rgba(74,222,128,0.14)',border:'1px solid rgba(74,222,128,0.5)'}}>{p.nickname} ✓</span>
+          ))}
+        </div>
+      )}
       <div className="text-base text-white/50">Chi ha rappato meglio? Assegna i punti ({pts}pt):</div>
       <div className="flex flex-wrap justify-center gap-3">
         {players.map(p => (
@@ -7058,8 +7070,10 @@ function FreestyleBoard({ payload, onReveal, players, onScore }: {
             className="rounded-2xl px-5 py-3 text-sm font-black transition-all disabled:opacity-50"
             style={awarded===p.id
               ? {background:'linear-gradient(135deg,#FB923C,#ea580c)',color:'#fff',boxShadow:'0 0 30px rgba(251,146,60,0.6)'}
-              : {background:`linear-gradient(135deg,${p.avatarColor},${p.avatarColor}cc)`,color:'#000'}}>
-            {p.nickname} {awarded===p.id && '✓'}
+              : micValidated.includes(p.id)
+                ? {background:`linear-gradient(135deg,${p.avatarColor},${p.avatarColor}cc)`,color:'#000',boxShadow:'0 0 0 2px rgba(74,222,128,0.7)'}
+                : {background:`linear-gradient(135deg,${p.avatarColor},${p.avatarColor}cc)`,color:'#000'}}>
+            {micValidated.includes(p.id) && '🎤 '}{p.nickname} {awarded===p.id && '✓'}
           </button>
         ))}
         <button disabled={!!awarded} onClick={() => onReveal()}

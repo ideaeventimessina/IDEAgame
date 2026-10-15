@@ -5336,6 +5336,55 @@ router.post("/home/sessions/:id/score", async (req, res): Promise<void> => {
   res.json({ ok: true, score: scoreResult?.score ?? null });
 });
 
+// ── POST /home/sessions/:id/freestyle/validate ────────────────────────────────
+// BUG FREESTYLE (Andrea "non valida davvero accendendo il microfono"): prima il
+// telefono apriva (a volte) solo il riconoscimento vocale e accendeva un pallino
+// LOCALE, senza MAI avvisare il server → la validazione non si rifletteva da nessuna
+// parte. Ora il telefono accende il microfono VERO (getUserMedia + Web Audio) e, quando
+// rileva voce sostenuta per abbastanza tempo sulla parola del round, chiama questo
+// endpoint. Il server registra il giocatore come "ha rappato davvero" nel roundPayload
+// (validatedPlayers) e ribombarda lo stato: la TV mostra la spunta ✓ accanto a chi ha
+// validato col microfono. I validatedPlayers si azzerano a ogni round (il payload viene
+// sostituito da /next), quindi non serve pulizia esplicita.
+router.post("/home/sessions/:id/freestyle/validate", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+
+  const payload = (session.roundPayload ?? {}) as Record<string, unknown>;
+  if (payload["mode"] !== "home-freestyle") {
+    res.status(409).json({ error: "Non in modalità freestyle" }); return;
+  }
+
+  const { playerId } = req.body as { playerId?: string };
+  if (!playerId) { res.status(400).json({ error: "playerId obbligatorio" }); return; }
+
+  // Anti-cheat timer: rifiuta validazioni oltre la finestra del round (+3s di grazia).
+  const rsa = payload["roundStartedAt"] as string | null;
+  const tl  = Number(payload["timeLimit"] ?? 0);
+  if (rsa && tl > 0 && (Date.now() - new Date(rsa).getTime()) > (tl + 3) * 1000) {
+    res.status(409).json({ error: "Tempo scaduto" }); return;
+  }
+
+  // Il giocatore deve esistere nella sessione.
+  const players = await getPlayers(id);
+  const player = players.find(p => p.id === playerId);
+  if (!player) { res.status(404).json({ error: "Giocatore non trovato" }); return; }
+
+  const prev = Array.isArray(payload["validatedPlayers"]) ? (payload["validatedPlayers"] as string[]) : [];
+  if (prev.includes(playerId)) { res.json({ ok: true, alreadyValidated: true }); return; } // idempotente
+
+  const newPayload = { ...payload, validatedPlayers: [...prev, playerId] };
+  const [updated] = await db.update(homeSessionsTable)
+    .set({ roundPayload: newPayload })
+    .where(eq(homeSessionsTable.id, id)).returning();
+  if (updated) emitHomeState(id, updated, players);
+  emitToRoom(homeRoom(id), "home:freestyle_validated", { playerId, nickname: player.nickname });
+  res.json({ ok: true, validated: true });
+});
+
 // ── POST /home/sessions/:id/flip — flip carta (gioco-coppie) ──────────────────
 router.post("/home/sessions/:id/flip", async (req, res): Promise<void> => {
   const id = String(req.params["id"]);
