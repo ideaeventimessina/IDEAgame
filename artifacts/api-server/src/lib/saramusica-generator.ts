@@ -2,15 +2,10 @@
 
 import OpenAI from "openai";
 import { logger } from "./logger.js";
+import { shuffleArr, shuffleRoundAnswers } from "./saramusica-shuffle.js";
 
-function shuffleArr<T>(arr: T[]): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j]!, a[i]!];
-  }
-  return a;
-}
+// Riesportato per i consumatori (home.ts) che lo importavano da qui.
+export { shuffleRoundAnswers };
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -132,6 +127,7 @@ function r(theme: string, idx: number, raw: RawRound): MusicRound {
     youtubeClip: raw.yt ? { youtubeId: raw.yt.id, startSecond: raw.yt.s, durationSeconds: raw.yt.d, clipType: raw.yt.ct } : undefined,
   };
 }
+
 
 // ── Fallback Bank ─────────────────────────────────────────────────────────────
 
@@ -294,7 +290,8 @@ export function generateSaraMusicaFallback(themeId: string, count: number, diffi
       question: last.question.startsWith("FINALE") ? last.question : `FINALE DOPPIO! ${last.question}`,
     };
   }
-  return adjusted;
+  // Rimescola le risposte: altrimenti la giusta resterebbe sempre "A" (vedi shuffleRoundAnswers).
+  return adjusted.map(shuffleRoundAnswers);
 }
 
 // ── AI generator ──────────────────────────────────────────────────────────────
@@ -443,7 +440,8 @@ export async function generateSaraMusicaRounds(themeId: string, count: number, d
 
     const withClips = chosen.filter(r => r.youtubeClip?.youtubeId).length;
     logger.info({ themeId, count, difficulty, generated: chosen.length, withClips }, "[JONNY_SARAMUSICA_AI] success");
-    if (chosen.length >= Math.min(count, 4)) return chosen;
+    // Rimescola anche i round AI: non dipendere dall'ordine deciso dal modello.
+    if (chosen.length >= Math.min(count, 4)) return chosen.map(shuffleRoundAnswers);
     throw new Error("Troppi pochi round unici");
   } catch (err) {
     logger.warn({ err, themeId, count, difficulty }, "[JONNY_SARAMUSICA_AI] fallback al banco");

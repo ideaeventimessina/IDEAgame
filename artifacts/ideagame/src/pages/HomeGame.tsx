@@ -25,6 +25,7 @@ import { JonnyAvatar } from '@/components/JonnyAvatar';
 import { useEventSocket, getSocket } from '@/hooks/useEventSocket';
 import { RISATE_MISSIONS, YOGA_POSES, type RisateState } from '@/data/risate-missions';
 import { FreestyleBeat, playTabooBeep } from '@/audio/FreestyleBeat';
+import { computeFitScale } from '@/lib/fitScale';
 import {
   type KaraokeHomeState, type KaraokePerformanceResult, type KaraokeAward,
   POSITIVE_REACTIONS, NEGATIVE_REACTIONS, DURATION_OPTIONS,
@@ -172,6 +173,22 @@ interface WheelGame {
 // Giochi a PUNTEGGIO AUTOMATICO (a risposta/individuali: funzionano anche in pochi).
 // Tutti gli altri sono da fare CON TANTI OSPITI (performance + pubblico che giudica/vota).
 const AUTO_SCORE_GAMES = new Set(['quizzone', 'saramusica', 'gioco-coppie']);
+
+// BUG MUSICA (Andrea "musica non garantita per ogni gioco"): i giochi che passano dal
+// FLOW universale (quizzone, saramusica) emettono un `home:round` ma — a differenza del
+// ballo — nessun ramo faceva ripartire il loop del gioco, quindi restava in play il loop
+// della LOBBY per tutta la partita (traccia sbagliata). Mappa mode→slug audio: lo slug
+// corrisponde alla cartella Suno già committata (artifacts/ideagame/public/audio/
+// jonny-world/<slug>/round_loop.mp3); se il file manca, l'AudioManager garantisce
+// comunque il bed procedurale. Si usa il MODE del round (sempre fresco in d.payload),
+// non la closure `session` (stale). Esclusi: ballo (video YouTube, gestito a parte),
+// adult (AdultOnlyBoard pilota la musica per livello), karaoke (canzone/video),
+// e i bypass che già avviano il proprio loop a game_started.
+const ROUND_MODE_AUDIO_SLUG: Record<string, string> = {
+  'home-quiz':      'quizzone',
+  'home-quizzone':  'quizzone',
+  'home-saramusica':'saramusica',
+};
 const gameKind = (slug: string): 'auto' | 'crowd' => AUTO_SCORE_GAMES.has(slug) ? 'auto' : 'crowd';
 const GAME_KIND_BADGE: Record<'auto' | 'crowd', { label: string; emoji: string; color: string }> = {
   auto:  { label: 'Punteggio automatico', emoji: '🤖', color: '#4ADE80' },
@@ -656,17 +673,19 @@ export default function HomeGame() {
   const [wordbackTimeoutOverlay, setWordbackTimeoutOverlay] = useState<{ reason: string; guesserNickname: string; word: string; bonusNicknames: string[]; bonusPoints: number } | null>(null);
   const [wordbackWrongOverlay, setWordbackWrongOverlay] = useState<{ guesserNickname: string; wrongAttempts: number; remainingAttempts: number } | null>(null);
   // Reset wordback overlays when round changes
-  useEffect(() => { setWordbackTimeoutOverlay(null); setWordbackWrongOverlay(null); }, [session?.currentRound]);
+  // BUG PAROLE (Andrea "resta sempre bloccato"): dopo un timeout/3-errori il server ora
+  // ruota la coppia cambiando roundPayload.mode/roundIndex MA non session.currentRound,
+  // quindi questo effetto va agganciato anche a mode+roundIndex, altrimenti l'overlay
+  // "TEMPO SCADUTO / in attesa…" resterebbe appiccicato sulla nuova fase di booking.
+  useEffect(() => { setWordbackTimeoutOverlay(null); setWordbackWrongOverlay(null); }, [
+    session?.currentRound,
+    (session?.roundPayload as Record<string, unknown>)?.mode,
+    (session?.roundPayload as Record<string, unknown>)?.roundIndex,
+  ]);
   const [spinning, setSpinning] = useState(false);
-  // Zoom responsivo per il MAXI-SCHERMO: su TV grandi i tabelloni si ingrandiscono
-  // così si usa lo spazio (prima testi sperduti). 1.0 su laptop → fino a ~1.5 su TV.
-  const [vw, setVw] = useState(() => (typeof window !== 'undefined' ? window.innerWidth : 1280));
-  useEffect(() => {
-    const h = () => setVw(window.innerWidth);
-    window.addEventListener('resize', h);
-    return () => window.removeEventListener('resize', h);
-  }, []);
-  const tvZoom = Math.min(1.5, Math.max(1, vw / 1180));
+  // Il riempimento del maxi-schermo (prima `tvZoom` sulla sola larghezza, causa dei
+  // tasti tagliati in basso sulle TV) è ora gestito da <AutoFitBoard> che scala il
+  // tabellone su larghezza E altezza con transform:scale → vedi RoundBoard.
   const [wheelSelected, setWheelSelected] = useState<string | null>(null);
   const [postSpinModal, setPostSpinModal] = useState(false);
   const [postGameCountdown, setPostGameCountdown] = useState<number>(5);
@@ -1042,6 +1061,14 @@ export default function HomeGame() {
           _log('[HomeAudioFlow] home:round home-ballo — switching to ballo audio');
           void AudioManager.playLoop('sfida-ballo', 'round_loop');
         }
+      } else if (ROUND_MODE_AUDIO_SLUG[roundMode]) {
+        // Giochi del flow (quizzone/saramusica): ora fanno partire il LORO loop invece
+        // di restare sulla musica della lobby. playLoop è idempotente sullo stesso
+        // slug/type, quindi i round successivi non ricreano l'elemento audio.
+        const slug = ROUND_MODE_AUDIO_SLUG[roundMode]!;
+        _log('[HomeAudioFlow] home:round', roundMode, '— switching to', slug, 'round_loop');
+        AudioManager.stopLoop(true);
+        void AudioManager.playLoop(slug, 'round_loop');
       }
     });
     const u5 = on<{ session: HomeSession; players: HomePlayer[]; gameSlug: string }>('home:game_ended', (d) => {
@@ -1472,20 +1499,34 @@ export default function HomeGame() {
   // The host then clicks "PROSSIMA SFIDA" (ballo-stage-next) or "FINE BALLO" (end-game).
   const balloRoundEndedRef = useRef(false);
   useEffect(() => { balloRoundEndedRef.current = false; }, [session?.id, session?.currentRound]);
+  // BUG BALLO (Andrea "i giocatori non scelgono MAI"): prima questo backup si basava
+  // sul timer GLOBALE `timeLeft`, che però parte in fase 'preparing' e non viene mai
+  // riallineato alla manche. Quando l'host premeva VIA, `timeLeft` era già 0 e il
+  // backup chiudeva la manche NELL'ISTANTE in cui iniziava → mappa energie vuota,
+  // nessuno balla, risultato a 0. Fix radice: il backup si aggancia al `danceEndsAt`
+  // REALE della manche (lo stesso che usa il server) e scatta DOPO il timer del
+  // server (grazia +0.5s), restando solo una rete di sicurezza, mai una chiusura
+  // anticipata. Durante preparing/get_ready danceEndsAt è null → non parte nulla.
   useEffect(() => {
-    if (timeLeft !== 0) return;
     if (String(session?.roundPayload?.mode ?? '') !== 'home-ballo') return;
-    const balloPhase = String((session?.roundPayload as Record<string,unknown>)?.balloPhase ?? 'dancing');
-    if (balloPhase !== 'dancing') return; // skip if already in result/booking
-    if (balloRoundEndedRef.current) return;
-    balloRoundEndedRef.current = true;
+    const rp = session?.roundPayload as Record<string, unknown> | undefined;
+    if (String(rp?.balloPhase ?? '') !== 'dancing') return;
+    const endsRaw = rp?.danceEndsAt ? String(rp.danceEndsAt) : '';
+    const danceEndsAt = endsRaw ? new Date(endsRaw).getTime() : 0;
+    if (!danceEndsAt || Number.isNaN(danceEndsAt)) return;
     const sid = session?.id;
     if (!sid) return;
-    // Backup client: il server chiude già la manche col suo timer; questo è
-    // idempotente (finish-manche non fa nulla se non siamo più in 'dancing').
-    void fetch(`/api/home/sessions/${sid}/ballo/finish-manche`, { method: 'POST', credentials: 'include' });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timeLeft, (session?.roundPayload as Record<string,unknown>)?.balloPhase, session?.roundPayload?.mode, session?.id]);
+    const fire = () => {
+      if (balloRoundEndedRef.current) return;
+      balloRoundEndedRef.current = true;
+      void fetch(`/api/home/sessions/${sid}/ballo/finish-manche`, { method: 'POST', credentials: 'include' });
+    };
+    const ms = danceEndsAt - Date.now();
+    if (ms <= 0) { fire(); return; }
+    // +0.5s: lasciamo chiudere PRIMA il timer autorevole del server; questo è backup.
+    const t = setTimeout(fire, ms + 500);
+    return () => clearTimeout(t);
+  }, [session?.id, (session?.roundPayload as Record<string,unknown>)?.balloPhase, (session?.roundPayload as Record<string,unknown>)?.danceEndsAt, session?.roundPayload?.mode]);
 
   const endGame = async () => {
     if (!session) return;
@@ -2100,9 +2141,10 @@ export default function HomeGame() {
               </div>
             </div>
 
-            {/* Content — zoom responsivo: i tabelloni riempiono il maxi-schermo */}
-            <div className="flex flex-1 items-center justify-center overflow-auto px-6 py-3"
-              style={{ zoom: tvZoom } as unknown as React.CSSProperties}>
+            {/* Content — fit-to-screen: il tabellone RIEMPIE il maxi-schermo senza
+                mai tagliare i tasti in basso (vedi AutoFitBoard). */}
+            <div className="relative flex flex-1 overflow-hidden px-6 py-3">
+              <AutoFitBoard>
               <GameBoardErrorBoundary
                 key={session.currentRound}
                 gameSlug={session.gameSlug ?? ''}
@@ -2147,6 +2189,7 @@ export default function HomeGame() {
                   // Socket broadcastState reconciles with authoritative server state
                 }}/>
               </GameBoardErrorBoundary>
+              </AutoFitBoard>
             </div>
 
             {/* Score bar */}
@@ -2433,6 +2476,57 @@ class GameBoardErrorBoundary extends Component<GBEBProps, GBEBState> {
     }
     return this.props.children;
   }
+}
+
+// ── AutoFitBoard ────────────────────────────────────────────────────────────────
+// BUG TV SMART (Andrea): sui browser delle TV i tasti in basso sparivano perché il
+// tabellone veniva INGRANDITO con `zoom: tvZoom` calcolato SOLO sulla larghezza
+// (fino a 1.5x su 1920px). Ingrandito del 50% su un box centrato con overflow, il
+// fondo del tabellone (dove stanno i pulsanti del gioco) finiva fuori schermo e,
+// non essendoci scroll col telecomando, i tasti diventavano irraggiungibili.
+//
+// Fix alla radice: si abbandona `zoom` (non standard, resa incoerente sui browser TV
+// Tizen/WebOS) e si scala il tabellone con `transform: scale()` (supportato ovunque)
+// calcolando il fattore sul MIN fra larghezza e ALTEZZA disponibili → il contenuto
+// RIENTRA SEMPRE nel box visibile in entrambe le dimensioni. Il tabellone è disegnato
+// su una tela larga DESIGN_W e scalato per riempire la TV senza mai tagliare il fondo.
+const BOARD_DESIGN_WIDTH = 1180;
+function AutoFitBoard({ children, maxScale = 1.5, minScale = 0.3 }: {
+  children: ReactNode; maxScale?: number; minScale?: number;
+}) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+  useEffect(() => {
+    const box = boxRef.current, inner = innerRef.current;
+    if (!box || !inner) return;
+    let raf = 0;
+    const recompute = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const bw = box.clientWidth, bh = box.clientHeight;
+        // Dimensioni naturali: transform:scale NON altera scroll/clientHeight,
+        // quindi misuriamo l'altezza vera (non scalata) → nessun loop di feedback.
+        const nw = inner.scrollWidth || BOARD_DESIGN_WIDTH;
+        const nh = inner.scrollHeight;
+        if (!bw || !bh || !nh) return;
+        const s = computeFitScale(bw, bh, nw, nh, { minScale, maxScale });
+        setScale(prev => Math.abs(prev - s) > 0.004 ? s : prev);
+      });
+    };
+    const ro = new ResizeObserver(recompute);
+    ro.observe(box); ro.observe(inner);
+    recompute();
+    return () => { ro.disconnect(); cancelAnimationFrame(raf); };
+  }, [maxScale, minScale]);
+  return (
+    <div ref={boxRef} className="relative flex h-full w-full items-center justify-center overflow-hidden">
+      <div ref={innerRef}
+        style={{ width: BOARD_DESIGN_WIDTH, flex: '0 0 auto', transform: `scale(${scale})`, transformOrigin: 'center center' }}>
+        {children}
+      </div>
+    </div>
+  );
 }
 
 // ── RoundBoard ────────────────────────────────────────────────────────────────
@@ -6913,6 +7007,7 @@ function FreestyleBoard({ payload, onReveal, players, onScore }: {
   onScore: (pid: string, pts: number) => Promise<void>;
 }) {
   const [awarded, setAwarded] = useState<string|null>(null);
+  const micValidated = Array.isArray(payload.validatedPlayers) ? (payload.validatedPlayers as string[]) : [];
   const pts = Number(payload.points ?? 200);
   const trackIdx = Number(payload.roundIndex ?? 0) % FREESTYLE_TRACKS.length;
   const trackUrl = FREESTYLE_TRACKS[trackIdx] ?? FREESTYLE_TRACKS[0];
@@ -6956,6 +7051,17 @@ function FreestyleBoard({ payload, onReveal, players, onScore }: {
         <div className="text-lg text-white/55">Improvvisa un freestyle su questa parola — {fsTimeLimit} secondi!</div>
       )}
       <AudioPlayer src={trackUrl} label="Avvia base musicale" color="#FB923C"/>
+      {/* Chi ha ACCESO IL MICROFONO e rappato davvero (validazione volume/durata lato
+          telefono, confermata dal server) → pallino 🎤 verde, così l'host vede chi ha
+          performato prima di assegnare il "migliore". */}
+      {micValidated.length > 0 && (
+        <div className="flex flex-wrap items-center justify-center gap-2 text-sm font-bold" style={{color:'#4ade80'}}>
+          <span className="text-white/50">🎤 Hanno rappato al microfono:</span>
+          {players.filter(p => micValidated.includes(p.id)).map(p => (
+            <span key={p.id} className="rounded-full px-3 py-1" style={{background:'rgba(74,222,128,0.14)',border:'1px solid rgba(74,222,128,0.5)'}}>{p.nickname} ✓</span>
+          ))}
+        </div>
+      )}
       <div className="text-base text-white/50">Chi ha rappato meglio? Assegna i punti ({pts}pt):</div>
       <div className="flex flex-wrap justify-center gap-3">
         {players.map(p => (
@@ -6964,8 +7070,10 @@ function FreestyleBoard({ payload, onReveal, players, onScore }: {
             className="rounded-2xl px-5 py-3 text-sm font-black transition-all disabled:opacity-50"
             style={awarded===p.id
               ? {background:'linear-gradient(135deg,#FB923C,#ea580c)',color:'#fff',boxShadow:'0 0 30px rgba(251,146,60,0.6)'}
-              : {background:`linear-gradient(135deg,${p.avatarColor},${p.avatarColor}cc)`,color:'#000'}}>
-            {p.nickname} {awarded===p.id && '✓'}
+              : micValidated.includes(p.id)
+                ? {background:`linear-gradient(135deg,${p.avatarColor},${p.avatarColor}cc)`,color:'#000',boxShadow:'0 0 0 2px rgba(74,222,128,0.7)'}
+                : {background:`linear-gradient(135deg,${p.avatarColor},${p.avatarColor}cc)`,color:'#000'}}>
+            {micValidated.includes(p.id) && '🎤 '}{p.nickname} {awarded===p.id && '✓'}
           </button>
         ))}
         <button disabled={!!awarded} onClick={() => onReveal()}

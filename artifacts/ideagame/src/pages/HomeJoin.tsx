@@ -1754,7 +1754,7 @@ function PhoneController({
     if (mode === 'home-wordback-setup') return <WordBackSetupController payload={p} player={player} session={session}/>;
     if (mode === 'home-wordback' || mode === 'home-wordback-booking')   return <WordBackController payload={p} timeLeft={timeLeft} player={player} sessionId={session.id} emit={emit} wordbackSolved={wordbackSolved ?? false} wordbackTimedOut={wordbackTimedOut ?? false}/>;
     if (mode === 'home-karaoke')    return <KaraokeController payload={p} sessionId={session.id}/>;
-    if (mode === 'home-freestyle')  return <FreestyleController payload={p} timeLeft={timeLeft}/>;
+    if (mode === 'home-freestyle')  return <FreestyleController payload={p} timeLeft={timeLeft} sessionId={session.id} playerId={player.id}/>;
     // New Karaoke Live / Freestyle Battle v3 — detected from gameConfig
     const ks = session.gameConfig?.karaokeHomeState as KaraokeHomeState | undefined;
     if (session.gameSlug === 'karaoke-battle' && ks?.version === 3) {
@@ -5753,73 +5753,146 @@ function KaraokeController({ payload, sessionId: _sessionId }: {
 
 // ── FreestyleController ───────────────────────────────────────────────────────
 
-function FreestyleController({ payload, timeLeft }: { payload: Record<string,unknown>; timeLeft: number | null }) {
+// BUG FREESTYLE (Andrea "non valida davvero accendendo il microfono del giocatore"):
+// prima questo controller NON riceveva sessionId/playerId, apriva SOLO il riconoscimento
+// vocale (assente su iPhone) e accendeva un pallino LOCALE senza mai avvisare il server.
+// Ora accende il MICROFONO VERO (getUserMedia + Web Audio AnalyserNode), misura la voce
+// sostenuta (volume × durata) e, appena il giocatore ha rappato abbastanza, chiama
+// /freestyle/validate → la validazione si riflette sul server e sulla TV. Il
+// riconoscimento vocale resta solo come scorciatoia opzionale dove esiste (non su iOS).
+function FreestyleController({ payload, timeLeft, sessionId, playerId }: {
+  payload: Record<string,unknown>; timeLeft: number | null; sessionId: string; playerId: string;
+}) {
   const targetWord = String(payload.word ?? '').toLowerCase().trim();
-  const [recognized, setRecognized] = useState(false);
-  const [listening, setListening] = useState(false);
+  const [micActive, setMicActive] = useState(false);
+  const [micLevel, setMicLevel] = useState(0);
+  const [validated, setValidated] = useState(false);
+  const [wordHeard, setWordHeard] = useState(false);
   const [micError, setMicError] = useState('');
+
+  const streamRef = useRef<MediaStream | null>(null);
+  const ctxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const lastTsRef = useRef<number>(0);
+  const voiceMsRef = useRef<number>(0);      // ms cumulati di voce sostenuta sopra soglia
+  const validatedRef = useRef(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
 
-  const startListening = useCallback(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const w = window as any;
-    const SR = w.SpeechRecognition ?? w.webkitSpeechRecognition;
-    if (!SR) { setMicError('Il tuo browser non supporta il riconoscimento vocale'); return; }
-    const r = new SR();
-    r.lang = 'it-IT';
-    r.continuous = true;
-    r.interimResults = true;
-    r.onresult = (ev: { resultIndex: number; results: { transcript: string; isFinal: boolean }[][] }) => {
-      for (let i = ev.resultIndex; i < ev.results.length; i++) {
-        const transcript = (ev.results[i]![0]?.transcript ?? '').toLowerCase();
-        if (targetWord && transcript.includes(targetWord)) setRecognized(true);
-      }
-    };
-    r.onend = () => { try { r.start(); } catch { setListening(false); } };
-    r.onerror = (ev: { error: string }) => {
-      if (ev.error !== 'aborted' && ev.error !== 'no-speech') {
-        setMicError(`Errore: ${ev.error}`); setListening(false);
-      }
-    };
-    recognitionRef.current = r;
-    r.start();
-    setListening(true);
-  }, [targetWord]);
+  const VOLUME_THRESHOLD = 20;     // su 100: soglia "sta rappando/parlando forte"
+  const REQUIRED_VOICE_MS = 3000;  // voce sostenuta richiesta per validare la performance
 
-  const stopListening = useCallback(() => {
-    recognitionRef.current?.stop();
+  const sendValidation = useCallback(() => {
+    if (validatedRef.current) return;
+    validatedRef.current = true;
+    setValidated(true);
+    void fetch(`/api/home/sessions/${sessionId}/freestyle/validate`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      credentials: 'include', body: JSON.stringify({ playerId }),
+    }).catch(() => { /* lo stato autorevole arriva comunque via socket */ });
+  }, [sessionId, playerId]);
+
+  const stopMic = useCallback(() => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = null;
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    streamRef.current = null;
+    void ctxRef.current?.close().catch(() => { /* già chiuso */ });
+    ctxRef.current = null; analyserRef.current = null;
+    try { recognitionRef.current?.stop?.(); } catch { /* noop */ }
     recognitionRef.current = null;
-    setListening(false);
+    setMicActive(false); setMicLevel(0);
   }, []);
 
-  useEffect(() => () => recognitionRef.current?.stop(), []);
+  const startMic = useCallback(async () => {
+    if (micActive) return;
+    setMicError('');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const ctx = new AudioContext();
+      const src = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      src.connect(analyser);
+      streamRef.current = stream; ctxRef.current = ctx; analyserRef.current = analyser;
+      setMicActive(true);
+      const buf = new Uint8Array(analyser.frequencyBinCount);
+      lastTsRef.current = performance.now();
+      const tick = () => {
+        analyser.getByteFrequencyData(buf);
+        const avg = buf.reduce((a, b) => a + b, 0) / buf.length;
+        const level = Math.round((avg / 255) * 100);
+        setMicLevel(level);
+        const now = performance.now();
+        const dt = now - lastTsRef.current; lastTsRef.current = now;
+        if (level >= VOLUME_THRESHOLD) {
+          voiceMsRef.current += dt;
+          if (voiceMsRef.current >= REQUIRED_VOICE_MS) sendValidation();
+        }
+        rafRef.current = requestAnimationFrame(tick);
+      };
+      rafRef.current = requestAnimationFrame(tick);
 
-  // Reset when word changes
-  useEffect(() => { setRecognized(false); }, [targetWord]);
+      // Scorciatoia OPZIONALE: dove esiste il riconoscimento vocale (NON su iPhone), se
+      // sente la parola valida subito. Su iOS non c'è → non blocca nulla, resta la
+      // validazione volume/durata come segnale PRIMARIO.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const w = window as any;
+      const SR = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+      if (SR) {
+        try {
+          const r = new SR();
+          r.lang = 'it-IT'; r.continuous = true; r.interimResults = true;
+          r.onresult = (ev: { resultIndex: number; results: { transcript: string }[][] }) => {
+            for (let i = ev.resultIndex; i < ev.results.length; i++) {
+              const t = (ev.results[i]![0]?.transcript ?? '').toLowerCase();
+              if (targetWord && t.includes(targetWord)) { setWordHeard(true); sendValidation(); }
+            }
+          };
+          r.onend = () => { try { r.start(); } catch { /* chiuso */ } };
+          r.onerror = () => { /* ignora: il volume/durata basta */ };
+          recognitionRef.current = r;
+          r.start();
+        } catch { /* SR non utilizzabile: va bene lo stesso */ }
+      }
+    } catch { setMicError('Microfono non disponibile — controlla i permessi'); }
+  }, [micActive, targetWord, sendValidation]);
+
+  useEffect(() => () => stopMic(), [stopMic]);
+  // Reset a ogni nuova parola/round.
+  useEffect(() => {
+    validatedRef.current = false; voiceMsRef.current = 0;
+    setValidated(false); setWordHeard(false);
+  }, [targetWord, payload.roundIndex]);
+
+  const micColor = micLevel > 60 ? '#22c55e' : micLevel > 30 ? '#eab308' : '#FB923C';
+  const progressPct = Math.min(100, Math.round((voiceMsRef.current / REQUIRED_VOICE_MS) * 100));
 
   return (
     <div className="flex flex-col items-center gap-5 py-4 text-center">
       <div className="text-6xl">🎙️</div>
       <div className="text-xl font-black text-white">FREESTYLE RAP</div>
 
-      {/* Word chip — illuminates when recognized */}
+      {/* Word chip — illuminates when validated */}
       <motion.div
-        animate={recognized ? { scale: [1, 1.15, 1], boxShadow: ['0 0 0px #FB923C', '0 0 40px #FB923C', '0 0 20px #FB923C'] } : {}}
+        animate={validated ? { scale: [1, 1.15, 1], boxShadow: ['0 0 0px #FB923C', '0 0 40px #FB923C', '0 0 20px #FB923C'] } : {}}
         transition={{ duration: 0.5 }}
         className="rounded-2xl px-6 py-4 w-full"
         style={{
-          background: recognized ? 'rgba(251,146,60,0.28)' : 'rgba(251,146,60,0.12)',
-          border: `2px solid ${recognized ? '#FB923C' : 'rgba(251,146,60,0.45)'}`,
-          boxShadow: recognized ? '0 0 50px rgba(251,146,60,0.5)' : '0 0 30px rgba(251,146,60,0.2)',
+          background: validated ? 'rgba(74,222,128,0.22)' : 'rgba(251,146,60,0.12)',
+          border: `2px solid ${validated ? '#4ade80' : 'rgba(251,146,60,0.45)'}`,
+          boxShadow: validated ? '0 0 50px rgba(74,222,128,0.5)' : '0 0 30px rgba(251,146,60,0.2)',
         }}>
         <div className="text-xs font-black uppercase tracking-widest mb-2" style={{color:'rgba(251,146,60,0.8)'}}>LA PAROLA</div>
-        <div className="text-4xl font-black" style={{color:'#FB923C'}}>
+        <div className="text-4xl font-black" style={{color: validated ? '#4ade80' : '#FB923C'}}>
           {String(payload.word ?? '?')}
-          {recognized && <span className="ml-2 text-green-400">✓</span>}
+          {validated && <span className="ml-2 text-green-400">✓</span>}
         </div>
-        {recognized && (
-          <div className="mt-1 text-xs font-bold text-green-400 animate-pulse">🎉 Parola riconosciuta!</div>
+        {validated && (
+          <div className="mt-1 text-xs font-bold text-green-400 animate-pulse">
+            🎉 {wordHeard ? 'Parola riconosciuta!' : 'Freestyle validato!'}
+          </div>
         )}
       </motion.div>
 
@@ -5832,20 +5905,37 @@ function FreestyleController({ payload, timeLeft }: { payload: Record<string,unk
         </div>
       )}
 
-      {/* Mic button */}
-      {!listening ? (
-        <button onClick={startListening}
+      {/* Mic button + live level + validation progress */}
+      {!micActive ? (
+        <button onClick={() => void startMic()}
           className="flex items-center gap-2 rounded-2xl px-6 py-3 text-sm font-black"
           style={{background:'linear-gradient(135deg,#FB923C,#ea580c)',color:'#fff',boxShadow:'0 0 24px rgba(251,146,60,0.45)'}}>
           <Mic className="h-4 w-4"/> Attiva il microfono
         </button>
       ) : (
-        <motion.button onClick={stopListening}
-          animate={{ scale: [1, 1.04, 1] }} transition={{ repeat: IS_LOW_POWER ? 0 : Infinity, duration: 1.2 }}
-          className="flex items-center gap-2 rounded-2xl px-6 py-3 text-sm font-black bg-red-500 text-white shadow-lg shadow-red-500/40">
-          <span className="h-2 w-2 rounded-full bg-white animate-pulse" />
-          🎙️ In ascolto… (tocca per stop)
-        </motion.button>
+        <div className="w-full space-y-2">
+          <div className="flex items-center justify-between text-xs font-bold" style={{color:'#FB923C'}}>
+            <span className="flex items-center gap-1"><Mic className="h-3 w-3"/> Microfono attivo</span>
+            <span className="tabular-nums">{micLevel}%</span>
+          </div>
+          <div className="relative h-8 w-full overflow-hidden rounded-full bg-white/10">
+            <motion.div className="absolute inset-y-0 left-0 rounded-full"
+              animate={{ width: `${micLevel}%` }} transition={{ duration: 0.08 }}
+              style={{ background: micColor, boxShadow: `0 0 12px ${micColor}80` }} />
+            <div className="absolute inset-0 flex items-center justify-center text-xs font-black text-white">
+              {validated ? '✓ Validato!' : micLevel > 40 ? '🔥 Dai tutto!' : '🎤 Rappa più forte!'}
+            </div>
+          </div>
+          {/* Barra "quanto manca a validare" (voce sostenuta) */}
+          {!validated && (
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+              <div className="h-full rounded-full transition-all" style={{ width: `${progressPct}%`, background: '#4ade80' }} />
+            </div>
+          )}
+          <button onClick={stopMic} className="text-xs text-white/30 hover:text-white/60 transition-colors mt-1">
+            Disattiva mic
+          </button>
+        </div>
       )}
       {micError && <div className="text-xs text-red-400">{micError}</div>}
 
@@ -5947,6 +6037,53 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
     && state.currentBattle?.playerId === playerId
     && !(state.currentBattle?.battleLocked ?? false);
   const battleId = `${state.currentBattle?.playerId ?? ''}:${state.currentBattle?.startedAt ?? ''}`;
+  // Il riconoscimento vocale (che identifica QUALE parola) esiste solo su Chrome/Android,
+  // NON su iPhone (tutti i browser iOS sono WebKit senza SpeechRecognition). Prima, su
+  // iPhone, l'effetto usciva subito e il microfono del rapper NON si accendeva mai →
+  // Andrea "non valida accendendo il microfono". Teniamo traccia della disponibilità per
+  // mostrare testo onesto e, in ogni caso, accendiamo un microfono VERO col misuratore.
+  const hasBattleSR = typeof window !== 'undefined' && !!(
+    (window as unknown as Record<string, unknown>).SpeechRecognition
+    ?? (window as unknown as Record<string, unknown>).webkitSpeechRecognition
+  );
+  const [battleMicLevel, setBattleMicLevel] = useState(0);
+  const [battleMicOn, setBattleMicOn] = useState(false);
+  // Microfono VERO (getUserMedia + Web Audio) mentre il rapper è sul palco: dà il
+  // misuratore di livello su OGNI telefono (iPhone compresi), così "il mic si attiva"
+  // davvero. Dove c'è SR la spunta delle parole resta automatica (effetto sotto);
+  // dove non c'è, le parole le confermano gli spettatori (tap) — testo onesto in UI.
+  useEffect(() => {
+    if (!amRapperBattling) { setBattleMicOn(false); setBattleMicLevel(0); return; }
+    let stream: MediaStream | null = null;
+    let ctx: AudioContext | null = null;
+    let raf = 0; let cancelled = false;
+    void (async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
+        ctx = new AudioContext();
+        const analyser = ctx.createAnalyser(); analyser.fftSize = 256;
+        ctx.createMediaStreamSource(stream).connect(analyser);
+        const buf = new Uint8Array(analyser.frequencyBinCount);
+        setBattleMicOn(true);
+        const tick = () => {
+          analyser.getByteFrequencyData(buf);
+          const avg = buf.reduce((a, b) => a + b, 0) / buf.length;
+          setBattleMicLevel(Math.round((avg / 255) * 100));
+          raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+      } catch { /* permesso negato: resta la conferma del pubblico */ }
+    })();
+    return () => {
+      cancelled = true;
+      if (raf) cancelAnimationFrame(raf);
+      stream?.getTracks().forEach(t => t.stop());
+      void ctx?.close().catch(() => { /* già chiuso */ });
+      setBattleMicOn(false); setBattleMicLevel(0);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [amRapperBattling, battleId]);
   useEffect(() => {
     if (!amRapperBattling) return;
     const SR = (window as unknown as Record<string, unknown>).SpeechRecognition
@@ -6112,7 +6249,23 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
           <div className="flex flex-col h-full gap-4 px-4 py-5">
             <div className="text-center shrink-0">
               <div className="text-xs font-black uppercase tracking-widest text-amber-400 mb-1">🎙️ Sei sul palco!</div>
-              <div className="text-xs text-white/40">Rappa le parole <b className="text-white/70">dentro le frasi</b> — il mic le spunta da solo</div>
+              <div className="text-xs text-white/40">
+                {hasBattleSR
+                  ? <>Rappa le parole <b className="text-white/70">dentro le frasi</b> — il mic le spunta da solo</>
+                  : <>Rappa le parole <b className="text-white/70">dentro le frasi</b> — il pubblico le conferma</>}
+              </div>
+            </div>
+            {/* Misuratore microfono REALE: prova che il mic è acceso su ogni telefono. */}
+            <div className="shrink-0 space-y-1">
+              <div className="flex items-center justify-between text-[11px] font-bold text-amber-400/80">
+                <span className="flex items-center gap-1"><Mic className="h-3 w-3"/> {battleMicOn ? 'Microfono attivo' : 'Attivazione microfono…'}</span>
+                <span className="tabular-nums">{battleMicLevel}%</span>
+              </div>
+              <div className="relative h-5 w-full overflow-hidden rounded-full bg-white/10">
+                <motion.div className="absolute inset-y-0 left-0 rounded-full"
+                  animate={{ width: `${battleMicLevel}%` }} transition={{ duration: 0.08 }}
+                  style={{ background: battleMicLevel > 60 ? '#22c55e' : battleMicLevel > 30 ? '#eab308' : '#F59E0B' }} />
+              </div>
             </div>
             {micError && (
               <div className="shrink-0 rounded-xl px-3 py-2 text-center text-sm font-black"
