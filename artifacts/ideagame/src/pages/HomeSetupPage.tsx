@@ -105,6 +105,72 @@ function GoldButton({ label, onClick, disabled, loading, width }: { label: strin
   );
 }
 
+/* ── Componenti a LIVELLO DI MODULO (NON dentro il render: altrimenti si rismontano
+      a ogni tasto e gli input perdono il focus). ───────────────────────────────── */
+const SETUP_INPUT_STYLE: React.CSSProperties = {
+  width: '100%', height: 44, padding: '0 14px', borderRadius: 12,
+  background: 'rgba(255,255,255,0.06)', border: '1.5px solid rgba(255,255,255,0.14)',
+  color: '#F7F3E8', fontFamily: "'Outfit',system-ui,sans-serif", fontSize: 15, fontWeight: 600, outline: 'none',
+};
+function FieldRow({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center" style={{ gap: 12 }}>
+      <div className="flex items-center" style={{ width: 150, gap: 9, color: '#F7F3E8' }}>
+        <span style={{ color: '#E6B85C' }}>{icon}</span>
+        <span className="font-bold" style={{ fontSize: 15 }}>{label}</span>
+      </div>
+      <div className="flex-1">{children}</div>
+    </div>
+  );
+}
+function GameCard({ g, active, locked, onToggle }: { g: GameDef; active: boolean; locked: boolean; onToggle: () => void }) {
+  const { Icon } = g;
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      disabled={locked}
+      className="group relative flex h-full flex-col justify-end overflow-hidden rounded-xl text-left transition-transform active:scale-[0.99]"
+      style={{ padding: 12, background: g.tint, border: `1.5px solid ${active ? g.border : 'rgba(255,255,255,0.1)'}`, boxShadow: active ? `0 0 16px ${g.border}` : 'none', opacity: locked ? 0.85 : 1, cursor: locked ? 'not-allowed' : 'pointer' }}
+    >
+      <span className="absolute" style={{ top: 10, left: 12, color: '#F7F3E8', opacity: 0.95 }}>
+        {g.adult ? (
+          <span className="grid place-items-center rounded-full font-black" style={{ width: 30, height: 30, border: '2px solid #F0556B', color: '#F0556B', fontSize: 11 }}>18+</span>
+        ) : (
+          <Icon size={26} strokeWidth={2} />
+        )}
+      </span>
+      <span
+        className="absolute grid place-items-center rounded-md"
+        style={{
+          top: 10, right: 10, width: 22, height: 22,
+          background: active ? 'linear-gradient(180deg,#FCE08B,#E6B85C)' : 'rgba(0,0,0,0.35)',
+          border: active ? 'none' : '1.5px solid rgba(255,255,255,0.4)', color: '#241803',
+        }}
+      >
+        {active ? <Check size={15} strokeWidth={3} /> : null}
+        {locked ? <Lock size={12} style={{ color: 'rgba(255,255,255,0.7)' }} /> : null}
+      </span>
+      <div className="font-extrabold" style={{ fontFamily: "'Outfit',system-ui,sans-serif", fontSize: 16, color: '#F7F3E8', lineHeight: 1.05 }}>
+        {g.label}
+      </div>
+      <div style={{ fontSize: 11.5, color: 'rgba(247,243,232,0.72)', marginTop: 3, lineHeight: 1.2, whiteSpace: 'pre-line' }}>{g.desc}</div>
+    </button>
+  );
+}
+function DeviceRow({ icon, title, sub, right }: { icon: React.ReactNode; title: string; sub: string; right: React.ReactNode }) {
+  return (
+    <div className="flex items-center" style={{ gap: 14, padding: '12px 4px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+      <span className="grid place-items-center shrink-0" style={{ width: 40, color: '#E6B85C' }}>{icon}</span>
+      <div className="flex-1">
+        <div className="font-bold" style={{ fontSize: 16, color: '#F7F3E8' }}>{title}</div>
+        <div style={{ fontSize: 12.5, color: 'rgba(247,243,232,0.6)' }}>{sub}</div>
+      </div>
+      <div className="shrink-0">{right}</div>
+    </div>
+  );
+}
+
 export default function HomeSetupPage() {
   const [, navigate] = useLocation();
   const mode = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('mode') : null;
@@ -207,22 +273,6 @@ export default function HomeSetupPage() {
   const badgeNum = step === 2 ? '04' : '03';
 
   /* ── pannelli ── */
-  const FieldRow = ({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) => (
-    <div className="flex items-center" style={{ gap: 12 }}>
-      <div className="flex items-center" style={{ width: 150, gap: 9, color: '#F7F3E8' }}>
-        <span style={{ color: '#E6B85C' }}>{icon}</span>
-        <span className="font-bold" style={{ fontSize: 15 }}>{label}</span>
-      </div>
-      <div className="flex-1">{children}</div>
-    </div>
-  );
-
-  const inputStyle: React.CSSProperties = {
-    width: '100%', height: 44, padding: '0 14px', borderRadius: 12,
-    background: 'rgba(255,255,255,0.06)', border: '1.5px solid rgba(255,255,255,0.14)',
-    color: '#F7F3E8', fontFamily: "'Outfit',system-ui,sans-serif", fontSize: 15, fontWeight: 600, outline: 'none',
-  };
-
   const Step1 = (
     <div className="flex flex-col" style={{ gap: 14 }}>
       <div
@@ -238,7 +288,7 @@ export default function HomeSetupPage() {
         <div className="flex flex-col" style={{ gap: 12 }}>
           <FieldRow icon={<Pencil size={18} strokeWidth={2.2} />} label="Nome serata">
             <div className="relative">
-              <input value={eventName} onChange={(e) => setEventName(e.target.value.slice(0, 40))} placeholder="Es. Compleanno di Giulia" style={inputStyle} />
+              <input value={eventName} onChange={(e) => setEventName(e.target.value.slice(0, 40))} placeholder="Es. Compleanno di Giulia" style={SETUP_INPUT_STYLE} />
               {eventName && (
                 <button type="button" aria-label="Cancella" onClick={() => setEventName('')} className="absolute" style={{ right: 10, top: '50%', transform: 'translateY(-50%)', color: 'rgba(247,243,232,0.5)' }}>
                   <X size={17} />
@@ -247,11 +297,11 @@ export default function HomeSetupPage() {
             </div>
           </FieldRow>
           <FieldRow icon={<User size={18} strokeWidth={2.2} />} label="Conduttore">
-            <input value={hostName} onChange={(e) => setHostName(e.target.value.slice(0, 30))} placeholder="Il tuo nome" style={inputStyle} />
+            <input value={hostName} onChange={(e) => setHostName(e.target.value.slice(0, 30))} placeholder="Il tuo nome" style={SETUP_INPUT_STYLE} />
           </FieldRow>
           <FieldRow icon={<Users size={18} strokeWidth={2.2} />} label="Pubblico">
             <div className="relative">
-              <select value={audience} onChange={(e) => setAudience(e.target.value)} style={{ ...inputStyle, appearance: 'none', cursor: 'pointer' }}>
+              <select value={audience} onChange={(e) => setAudience(e.target.value)} style={{ ...SETUP_INPUT_STYLE, appearance: 'none', cursor: 'pointer' }}>
                 {AUDIENCES.map((a) => <option key={a} value={a} style={{ color: '#111' }}>{a}</option>)}
               </select>
               <ChevronDown size={18} className="pointer-events-none absolute" style={{ right: 12, top: '50%', transform: 'translateY(-50%)', color: 'rgba(247,243,232,0.6)' }} />
@@ -259,7 +309,7 @@ export default function HomeSetupPage() {
           </FieldRow>
           {isLive && (
             <FieldRow icon={<Check size={18} strokeWidth={2.2} />} label="Codice Live">
-              <input value={liveCode} onChange={(e) => setLiveCode(e.target.value.toUpperCase())} placeholder="LIVE-XXXX-XXXX (opzionale)" style={inputStyle} />
+              <input value={liveCode} onChange={(e) => setLiveCode(e.target.value.toUpperCase())} placeholder="LIVE-XXXX-XXXX (opzionale)" style={SETUP_INPUT_STYLE} />
             </FieldRow>
           )}
         </div>
@@ -269,44 +319,6 @@ export default function HomeSetupPage() {
       </div>
     </div>
   );
-
-  const GameCard = ({ g }: { g: GameDef }) => {
-    const locked = !!g.adult && isFamily;
-    const active = selectedGames.includes(g.slug);
-    const { Icon } = g;
-    return (
-      <button
-        type="button"
-        onClick={() => toggleGame(g.slug)}
-        disabled={locked}
-        className="group relative flex h-full flex-col justify-end overflow-hidden rounded-xl text-left transition-transform active:scale-[0.99]"
-        style={{ padding: 12, background: g.tint, border: `1.5px solid ${active ? g.border : 'rgba(255,255,255,0.1)'}`, boxShadow: active ? `0 0 16px ${g.border}` : 'none', opacity: locked ? 0.85 : 1, cursor: locked ? 'not-allowed' : 'pointer' }}
-      >
-        <span className="absolute" style={{ top: 10, left: 12, color: '#F7F3E8', opacity: 0.95 }}>
-          {g.adult ? (
-            <span className="grid place-items-center rounded-full font-black" style={{ width: 30, height: 30, border: '2px solid #F0556B', color: '#F0556B', fontSize: 11 }}>18+</span>
-          ) : (
-            <Icon size={26} strokeWidth={2} />
-          )}
-        </span>
-        <span
-          className="absolute grid place-items-center rounded-md"
-          style={{
-            top: 10, right: 10, width: 22, height: 22,
-            background: active ? 'linear-gradient(180deg,#FCE08B,#E6B85C)' : 'rgba(0,0,0,0.35)',
-            border: active ? 'none' : '1.5px solid rgba(255,255,255,0.4)', color: '#241803',
-          }}
-        >
-          {active ? <Check size={15} strokeWidth={3} /> : null}
-          {locked ? <Lock size={12} style={{ color: 'rgba(255,255,255,0.7)' }} /> : null}
-        </span>
-        <div className="font-extrabold" style={{ fontFamily: "'Outfit',system-ui,sans-serif", fontSize: 16, color: '#F7F3E8', lineHeight: 1.05 }}>
-          {g.label}
-        </div>
-        <div style={{ fontSize: 11.5, color: 'rgba(247,243,232,0.72)', marginTop: 3, lineHeight: 1.2, whiteSpace: 'pre-line' }}>{g.desc}</div>
-      </button>
-    );
-  };
 
   const Step2 = (
     <div className="flex flex-1 flex-col" style={{ gap: 10 }}>
@@ -319,7 +331,7 @@ export default function HomeSetupPage() {
         </div>
       </div>
       <div className="grid flex-1" style={{ gridTemplateColumns: 'repeat(4,1fr)', gridTemplateRows: '1fr 1fr', gap: 10 }}>
-        {visibleGames.map((g) => <GameCard key={g.slug} g={g} />)}
+        {visibleGames.map((g) => <GameCard key={g.slug} g={g} active={selectedGames.includes(g.slug)} locked={!!g.adult && isFamily} onToggle={() => toggleGame(g.slug)} />)}
       </div>
       <div className="flex items-center justify-between rounded-xl" style={{ padding: '10px 14px', background: 'rgba(13,13,25,0.72)', border: '1.5px solid rgba(255,255,255,0.12)' }}>
         <div className="flex items-center" style={{ gap: 10, color: '#F7F3E8' }}>
@@ -332,16 +344,6 @@ export default function HomeSetupPage() {
   );
 
   const okChip = <CheckCircle2 size={24} style={{ color: '#34D27A' }} />;
-  const DeviceRow = ({ icon, title, sub, right }: { icon: React.ReactNode; title: string; sub: string; right: React.ReactNode }) => (
-    <div className="flex items-center" style={{ gap: 14, padding: '12px 4px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-      <span className="grid place-items-center shrink-0" style={{ width: 40, color: '#E6B85C' }}>{icon}</span>
-      <div className="flex-1">
-        <div className="font-bold" style={{ fontSize: 16, color: '#F7F3E8' }}>{title}</div>
-        <div style={{ fontSize: 12.5, color: 'rgba(247,243,232,0.6)' }}>{sub}</div>
-      </div>
-      <div className="shrink-0">{right}</div>
-    </div>
-  );
 
   const Step3 = (
     <div className="flex flex-col" style={{ gap: 14 }}>
