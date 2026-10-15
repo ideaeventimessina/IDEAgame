@@ -37,6 +37,31 @@ interface HomePlayer {
 
 const AVATAR_COLORS = ['#F5B642','#A855F7','#EC4899','#34D399','#60A5FA','#F87171','#FB923C','#22D3EE'];
 
+// Nomi leggibili dei giochi (niente slug grezzi "gioco coppie" nei pill lobby).
+// Solo PRESENTAZIONE: il valore resta lo slug server, qui si mappa l'etichetta.
+const GAME_LABELS: Record<string, string> = {
+  'quizzone':            'Quizzone',
+  'gioco-coppie':        'Coppie',
+  'saramusica':          'SaraMusica',
+  'percorso-risate':     'Percorso',
+  'sfida-ballo':         'Ballo',
+  'parola-alle-spalle':  'Parola',
+  'karaoke-battle':      'Karaoke',
+  'freestyle-battle':    'Freestyle',
+  'adult-only':          'Adult 18+',
+};
+function gameLabel(slug: string): string {
+  return GAME_LABELS[slug] ?? slug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+const DURATION_LABELS: Record<string, string> = {
+  short:  'Corta',
+  normal: 'Normale',
+  long:   'Lunga',
+};
+function durationLabel(v: string): string {
+  return DURATION_LABELS[v] ?? v;
+}
+
 // ── Background — same SceneBg kept from original ──────────────────────────────
 function SceneBg({ pulse }: { pulse: boolean }) {
   return (
@@ -676,10 +701,10 @@ export default function HomeLobbyPage() {
         {/* Left: metadata pills */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <Pill label="Host" value={session.hostName} color="rgba(245,182,66,0.5)"/>
-          <Pill label="Durata" value={matchDuration} color="rgba(168,85,247,0.5)"/>
+          <Pill label="Durata" value={durationLabel(matchDuration)} color="rgba(168,85,247,0.5)"/>
           <Pill label="Max" value={`${session.maxPlayers} giocatori`} color="rgba(168,85,247,0.5)"/>
           {selectedGames.slice(0,4).map(g => (
-            <Pill key={g} label="" value={g.replace(/-/g,' ')} color="rgba(255,255,255,0.2)"/>
+            <Pill key={g} label="" value={gameLabel(g)} color="rgba(255,255,255,0.2)"/>
           ))}
           {selectedGames.length > 4 && (
             <Pill label="" value={`+${selectedGames.length - 4}`} color="rgba(255,255,255,0.2)"/>
