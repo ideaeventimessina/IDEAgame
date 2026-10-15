@@ -2,15 +2,10 @@
 
 import OpenAI from "openai";
 import { logger } from "./logger.js";
+import { shuffleArr, shuffleRoundAnswers } from "./saramusica-shuffle.js";
 
-function shuffleArr<T>(arr: T[]): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j]!, a[i]!];
-  }
-  return a;
-}
+// Riesportato per i consumatori (home.ts) che lo importavano da qui.
+export { shuffleRoundAnswers };
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -133,22 +128,6 @@ function r(theme: string, idx: number, raw: RawRound): MusicRound {
   };
 }
 
-/**
- * BUG SARAMUSICA (Andrea "praticamente ingiocabile"): nel banco ogni round è scritto con
- * `c: 0`, cioè la risposta giusta è SEMPRE il primo pulsante ("A"), e nessun percorso
- * mescolava le risposte → quiz banalmente indovinabile a ogni domanda. Questo helper
- * rimescola l'ordine delle risposte e rimappa `correctAnswerIndex` di conseguenza.
- * Salta i round senza vera scelta multipla (es. singing_duel: nessun array di risposte).
- */
-export function shuffleRoundAnswers(round: MusicRound): MusicRound {
-  const answers = round.answers;
-  if (!Array.isArray(answers) || answers.length < 2) return round;
-  const correctValue = answers[round.correctAnswerIndex];
-  if (correctValue === undefined) return round;
-  const shuffled = shuffleArr(answers);
-  const newIndex = shuffled.indexOf(correctValue);
-  return { ...round, answers: shuffled, correctAnswerIndex: newIndex >= 0 ? newIndex : 0 };
-}
 
 // ── Fallback Bank ─────────────────────────────────────────────────────────────
 

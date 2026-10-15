@@ -25,6 +25,7 @@ import { JonnyAvatar } from '@/components/JonnyAvatar';
 import { useEventSocket, getSocket } from '@/hooks/useEventSocket';
 import { RISATE_MISSIONS, YOGA_POSES, type RisateState } from '@/data/risate-missions';
 import { FreestyleBeat, playTabooBeep } from '@/audio/FreestyleBeat';
+import { computeFitScale } from '@/lib/fitScale';
 import {
   type KaraokeHomeState, type KaraokePerformanceResult, type KaraokeAward,
   POSITIVE_REACTIONS, NEGATIVE_REACTIONS, DURATION_OPTIONS,
@@ -2509,8 +2510,7 @@ function AutoFitBoard({ children, maxScale = 1.5, minScale = 0.3 }: {
         const nw = inner.scrollWidth || BOARD_DESIGN_WIDTH;
         const nh = inner.scrollHeight;
         if (!bw || !bh || !nh) return;
-        const fit = Math.min(bw / nw, bh / nh);
-        const s = Math.max(minScale, Math.min(maxScale, fit));
+        const s = computeFitScale(bw, bh, nw, nh, { minScale, maxScale });
         setScale(prev => Math.abs(prev - s) > 0.004 ? s : prev);
       });
     };
