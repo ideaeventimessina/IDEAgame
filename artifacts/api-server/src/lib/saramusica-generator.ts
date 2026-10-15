@@ -133,6 +133,23 @@ function r(theme: string, idx: number, raw: RawRound): MusicRound {
   };
 }
 
+/**
+ * BUG SARAMUSICA (Andrea "praticamente ingiocabile"): nel banco ogni round è scritto con
+ * `c: 0`, cioè la risposta giusta è SEMPRE il primo pulsante ("A"), e nessun percorso
+ * mescolava le risposte → quiz banalmente indovinabile a ogni domanda. Questo helper
+ * rimescola l'ordine delle risposte e rimappa `correctAnswerIndex` di conseguenza.
+ * Salta i round senza vera scelta multipla (es. singing_duel: nessun array di risposte).
+ */
+export function shuffleRoundAnswers(round: MusicRound): MusicRound {
+  const answers = round.answers;
+  if (!Array.isArray(answers) || answers.length < 2) return round;
+  const correctValue = answers[round.correctAnswerIndex];
+  if (correctValue === undefined) return round;
+  const shuffled = shuffleArr(answers);
+  const newIndex = shuffled.indexOf(correctValue);
+  return { ...round, answers: shuffled, correctAnswerIndex: newIndex >= 0 ? newIndex : 0 };
+}
+
 // ── Fallback Bank ─────────────────────────────────────────────────────────────
 
 const BANK: Record<string, MusicRound[]> = {
@@ -294,7 +311,8 @@ export function generateSaraMusicaFallback(themeId: string, count: number, diffi
       question: last.question.startsWith("FINALE") ? last.question : `FINALE DOPPIO! ${last.question}`,
     };
   }
-  return adjusted;
+  // Rimescola le risposte: altrimenti la giusta resterebbe sempre "A" (vedi shuffleRoundAnswers).
+  return adjusted.map(shuffleRoundAnswers);
 }
 
 // ── AI generator ──────────────────────────────────────────────────────────────
@@ -443,7 +461,8 @@ export async function generateSaraMusicaRounds(themeId: string, count: number, d
 
     const withClips = chosen.filter(r => r.youtubeClip?.youtubeId).length;
     logger.info({ themeId, count, difficulty, generated: chosen.length, withClips }, "[JONNY_SARAMUSICA_AI] success");
-    if (chosen.length >= Math.min(count, 4)) return chosen;
+    // Rimescola anche i round AI: non dipendere dall'ordine deciso dal modello.
+    if (chosen.length >= Math.min(count, 4)) return chosen.map(shuffleRoundAnswers);
     throw new Error("Troppi pochi round unici");
   } catch (err) {
     logger.warn({ err, themeId, count, difficulty }, "[JONNY_SARAMUSICA_AI] fallback al banco");

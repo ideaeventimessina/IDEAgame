@@ -24,7 +24,7 @@ import multer from "multer";
 import OpenAI from "openai";
 import { createBlankKaraokeState, FREESTYLE_BEATS, type FreestyleBeat } from "../lib/karaoke-home-engine.js";
 import { generateQuiz, generateQuizAsync, quizQuestionKey, QUIZ_THEMES, QuizThemeUnavailableError } from "../lib/quiz-generator.js";
-import { generateSaraMusicaRounds, generateSaraMusicaFallback, smRoundKey, SM_THEMES, type MusicRound } from "../lib/saramusica-generator.js";
+import { generateSaraMusicaRounds, generateSaraMusicaFallback, shuffleRoundAnswers, smRoundKey, SM_THEMES, type MusicRound } from "../lib/saramusica-generator.js";
 import { cachedWikiImage } from "../lib/image-cache.js";
 import { pickBalloSongs } from "../lib/ballo-library.js";
 import { getGroupUsed, addGroupUsed } from "../lib/group-content.js";
@@ -109,12 +109,35 @@ function redactHomeSession<T>(session: T): T {
   if (!session || typeof session !== "object") return session;
   const s = session as Record<string, unknown>;
   const rp = s["roundPayload"];
-  if (rp && typeof rp === "object" && "favorites" in (rp as Record<string, unknown>)) {
-    const rpCopy = { ...(rp as Record<string, unknown>) };
-    delete rpCopy["favorites"];
-    return { ...s, roundPayload: rpCopy } as T;
+  if (!rp || typeof rp !== "object") return session;
+  const rpObj = rp as Record<string, unknown>;
+  let rpCopy: Record<string, unknown> | null = null;
+  const ensureCopy = (): Record<string, unknown> => {
+    if (!rpCopy) rpCopy = { ...rpObj };
+    return rpCopy;
+  };
+
+  // Preferiti dell'adult: pesano la bottiglia sul server, mai visibili ai client.
+  if ("favorites" in rpObj) { delete ensureCopy()["favorites"]; }
+
+  // BUG SARAMUSICA RC2 (Andrea): `correctAnswerIndex` di OGNI domanda veniva spedito a
+  // tutti i telefoni dentro `rounds[]`, rendendo il quiz barabile (basta guardare lo
+  // stato). Lo rimuoviamo dai round trasmessi: la risposta giusta arriva comunque, ma
+  // SOLO al reveal via `revealData.correctAnswerIndex` (il server resta la fonte dei
+  // punteggi). Il testo delle risposte resta, serve a disegnare i pulsanti.
+  if (rpObj["mode"] === "home-saramusica" && Array.isArray(rpObj["rounds"])) {
+    const safeRounds = (rpObj["rounds"] as unknown[]).map(r => {
+      if (r && typeof r === "object" && "correctAnswerIndex" in (r as Record<string, unknown>)) {
+        const rc = { ...(r as Record<string, unknown>) };
+        delete rc["correctAnswerIndex"];
+        return rc;
+      }
+      return r;
+    });
+    ensureCopy()["rounds"] = safeRounds;
   }
-  return session;
+
+  return rpCopy ? ({ ...s, roundPayload: rpCopy } as T) : session;
 }
 
 function emitHomeState(sessionId: string, session: unknown, players: unknown): void {
@@ -1924,12 +1947,31 @@ router.post("/home/sessions/:id/saramusica/select-count", async (req, res): Prom
           return { youtubeId: hit.videoId, startSecond, durationSeconds: 15 };
         } catch { return null; }
       };
-      // DEMO: IA spenta e nessun resolver clip → round solo dal banco. Full: come prima.
-      const rounds = sessionTier(session) === "demo"
-        ? generateSaraMusicaFallback(themeId, roundCount, smDifficulty).filter(r => !usedSM.includes(smRoundKey(r)))
-        : await generateSaraMusicaRounds(themeId, roundCount, smDifficulty, { resolveClip, exclude: usedSM });
+      // DEMO: IA (a pagamento) spenta → round dal banco. MA le clip YouTube si risolvono
+      // comunque (è ricerca, non l'LLM): prima la demo restava senza musica (RC3).
+      let rounds: MusicRound[];
+      if (sessionTier(session) === "demo") {
+        rounds = generateSaraMusicaFallback(themeId, roundCount, smDifficulty)
+          .filter(r => !usedSM.includes(smRoundKey(r)));
+        // RC4b: se l'anti-ripetizione svuota il banco, ricadi sul banco PIENO. Mai 0 round,
+        // altrimenti il tabellone resta su "Sara'Musica in caricamento…" per sempre.
+        if (rounds.length < Math.min(roundCount, 4)) {
+          rounds = generateSaraMusicaFallback(themeId, roundCount, smDifficulty);
+        }
+        // RC3: risolvi le clip reali anche in demo → il "music quiz" ha davvero la musica.
+        await Promise.all(rounds.map(async r => {
+          if (r.youtubeClip?.youtubeId || !r.songTitle) return;
+          try {
+            const clip = await resolveClip(r.songTitle, r.artist);
+            if (clip?.youtubeId) r.youtubeClip = { youtubeId: clip.youtubeId, startSecond: clip.startSecond, durationSeconds: clip.durationSeconds, clipType: r.type === "guess_artist" ? "artist_guess" : "chorus_guess" };
+          } catch { /* resta round testuale */ }
+        }));
+      } else {
+        rounds = await generateSaraMusicaRounds(themeId, roundCount, smDifficulty, { resolveClip, exclude: usedSM });
+      }
       // Inietta round "sagoma → indovina il cantante" se ci sono sagome caricate.
-      const silRounds = await buildSilhouetteRounds(themeId, roundCount >= 10 ? 2 : 1);
+      // shuffleRoundAnswers: anche le sagome avevano la risposta giusta fissa (RC1).
+      const silRounds = (await buildSilhouetteRounds(themeId, roundCount >= 10 ? 2 : 1)).map(shuffleRoundAnswers);
       if (silRounds.length > 0) {
         // Distribuisce le sagome nel percorso invece di ammucchiarle in fondo.
         const step = Math.max(1, Math.floor(rounds.length / (silRounds.length + 1)));
@@ -1977,7 +2019,29 @@ router.post("/home/sessions/:id/saramusica/select-count", async (req, res): Prom
         }, 1000);
       }, 1000);
     } catch (err) {
-      logger.error({ err, sessionId: id }, "[SaraMusicaHome] generate failed");
+      // RC4a: prima qui ci si limitava a loggare → la sessione restava BLOCCATA in
+      // "generating" per sempre (telefono fermo su "Johhy prepara il quiz"). Ora si
+      // recupera con round garantiti dal banco e si va comunque in gioco.
+      logger.error({ err, sessionId: id }, "[SaraMusicaHome] generate failed — recupero dal banco");
+      try {
+        const sessR = await getSession(id);
+        const rpR = (sessR?.roundPayload ?? {}) as Record<string, unknown>;
+        if (!sessR || rpR["mode"] !== "home-saramusica" || rpR["phase"] === "question") return;
+        const recovery = generateSaraMusicaFallback(themeId, roundCount, smDifficulty);
+        if (recovery.length === 0) return;
+        const firstQ = recovery[0] as MusicRound | undefined;
+        const firstEndsAt = Date.now() + (firstQ?.timeLimit ?? 20) * 1000;
+        await smUpdate(id, {
+          ...rpR, rounds: recovery, phase: "question", currentIndex: 0, countdownValue: null,
+          questionStartedAt: new Date().toISOString(), questionEndsAt: new Date(firstEndsAt).toISOString(),
+          currentClueIndex: 0, allAnsweredForCurrent: false, answeredCount: 0, revealData: null, rankingData: null, totalRounds: roundCount,
+        });
+        scheduleSmAutoReveal(id, 0, firstEndsAt);
+        await db.update(homeSessionsTable).set({ totalRounds: roundCount, currentRound: 0 }).where(eq(homeSessionsTable.id, id));
+        logger.info({ sessionId: id }, "[SaraMusicaHome] recupero dal banco riuscito");
+      } catch (err2) {
+        logger.error({ err: err2, sessionId: id }, "[SaraMusicaHome] anche il recupero è fallito");
+      }
     }
   }, 3000);
 });
@@ -4626,6 +4690,29 @@ async function enterWordBackBookingPhase(
   wordbackBookingTimers.set(sessionId, timer);
 }
 
+/**
+ * BUG PAROLE (Andrea "resta sempre bloccato"): la rotazione alla manche successiva era
+ * schedulata SOLO dopo una risposta CORRETTA. Le chiusure per TIMEOUT e per 3 ERRORI
+ * chiudevano il round (closeWordBackRoundFailed → closed=true) ma NON schedulavano mai
+ * `enterWordBackBookingPhase`, lasciando la sessione congelata in `home-wordback` con
+ * overlay "in attesa del prossimo round" per sempre (e nel tabù i round NON risolti sono
+ * la norma). Questo helper replica, per i percorsi di fallimento, la stessa rotazione
+ * del percorso corretto. Va chiamato SOLO dal path che ha effettivamente chiuso il round
+ * (gli altri vedono `closed` e tornano prima), quindi non raddoppia mai la rotazione.
+ */
+function scheduleWordBackRotation(
+  sessionId: string,
+  cfg: Record<string, unknown>,
+  roundIndex: number,
+  prevPair: { guesserId: string; suggesterId: string },
+  delayMs = 3000,
+): void {
+  const preloadedRounds = (cfg["preloadedRounds"] as RoundPayload[] | undefined) ?? [];
+  setTimeout(() => {
+    void enterWordBackBookingPhase(sessionId, roundIndex + 1, preloadedRounds, cfg, prevPair);
+  }, delayMs);
+}
+
 /** Auto-select pair after timer expiry; respects any partial bookings already made. */
 async function autoSelectWordBackPair(
   sessionId: string,
@@ -4993,6 +5080,8 @@ router.post("/home/sessions/:id/wordback-correct", async (req, res): Promise<voi
         bonusPoints: 50,
       });
       await broadcastState(id);
+      // Sblocco: ruota verso la manche successiva (prima mancava → freeze).
+      scheduleWordBackRotation(id, (session.gameConfig ?? {}) as Record<string, unknown>, roundIndex, { guesserId, suggesterId });
       res.status(409).json({ error: "round_closed", reason: "timer_expired" }); return;
     }
   }
@@ -5036,6 +5125,8 @@ router.post("/home/sessions/:id/wordback-correct", async (req, res): Promise<voi
         bonusPoints: 50,
       });
       await broadcastState(id);
+      // Sblocco: ruota verso la manche successiva (prima mancava → freeze).
+      scheduleWordBackRotation(id, (session.gameConfig ?? {}) as Record<string, unknown>, roundIndex, { guesserId, suggesterId });
       res.status(422).json({
         correct: false,
         wrongAttempts,
@@ -5165,6 +5256,9 @@ router.post("/home/sessions/:id/wordback-timeout", async (req, res): Promise<voi
   });
 
   await broadcastState(id);
+  // Sblocco: ruota verso la manche successiva (prima mancava → la sessione restava
+  // congelata in home-wordback con l'overlay "in attesa" per sempre).
+  scheduleWordBackRotation(id, (session.gameConfig ?? {}) as Record<string, unknown>, roundIndex, { guesserId, suggesterId });
   res.json({ ok: true, bonusPlayerIds, bonusPoints: 50 });
 });
 
