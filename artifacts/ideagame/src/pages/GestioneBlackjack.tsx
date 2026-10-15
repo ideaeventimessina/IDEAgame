@@ -28,7 +28,7 @@ type BjTbl = {
   seats: Record<string, BjSeatState>;
   dealer: { cards: BjCard[]; total: number | null; hidden: boolean };
   activeSeat: number | null; turnEndsAt: string | null; betEndsAt: string | null;
-  minBet: number; maxBet: number; step: number; timeout: number; betSeconds: number; soft17: boolean; suspended: boolean;
+  minBet: number; maxBet: number; step: number; timeout: number; betSeconds: number; soft17Hit: boolean; suspended: boolean;
   history: BjHist[];
 };
 type BjState = { table: BjTbl; sessionId: string; seatNo: number | null };
@@ -901,7 +901,7 @@ export function BlackjackRegia({ displayCode }: { displayCode: string }) {
               <Setting label="Min puntata" value={t.minBet} step={5} disabled={closed || busy} onChange={v => call('/gestione/casino/bj/settings', { minBet: v })} />
               <Setting label="Max puntata" value={t.maxBet} step={50} disabled={closed || busy} onChange={v => call('/gestione/casino/bj/settings', { maxBet: v })} />
               <Setting label="Timeout turno (s)" value={t.timeout} step={5} disabled={busy} onChange={v => call('/gestione/casino/bj/settings', { timeout: v })} />
-              <div className="set"><span>Banco sta su</span><select value={t.soft17 ? 'h' : 's'} disabled={closed || busy} onChange={e => call('/gestione/casino/bj/settings', { soft17Hit: e.target.value === 'h' })}><option value="s">Soft 17 (sta)</option><option value="h">Soft 17 (pesca)</option></select></div>
+              <div className="set"><span>Banco sta su</span><select value={t.soft17Hit ? 'h' : 's'} disabled={closed || busy} onChange={e => call('/gestione/casino/bj/settings', { soft17Hit: e.target.value === 'h' })}><option value="s">Soft 17 (sta)</option><option value="h">Soft 17 (pesca)</option></select></div>
               <div style={{ marginTop: 20 }}>{primary()}</div>
             </div>
           </>
