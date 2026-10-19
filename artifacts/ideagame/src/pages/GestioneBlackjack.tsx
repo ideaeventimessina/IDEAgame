@@ -658,35 +658,48 @@ function outcomeBadge(o: string | null): { t: string; cls: string } {
 /* ── Monitor ATTESA / PUNTATE (fase waiting/betting) — palco fisso 744×407 fedele al mockup "07 MONITOR ATTESA" ── */
 const MON3_CSS = BJ_FONT + CARD_CSS + `
 .bjm3{position:fixed;inset:0;overflow:hidden;background:#02120a;display:flex;align-items:center;justify-content:center;color:#fff;font-family:"Baskerville Casino",Georgia,serif;}
-.bjm3 .stage{position:relative;width:744px;height:407px;flex:none;transform-origin:center center;border-radius:18px;overflow:hidden;
+.bjm3 .stage{position:relative;width:836px;height:470px;flex:none;transform-origin:center center;border-radius:16px;overflow:hidden;
   background:
-    radial-gradient(ellipse 66% 46% at 50% -4%,#020a05 0%,#04140a 36%,rgba(5,24,12,0) 62%),
-    radial-gradient(ellipse 122% 86% at 50% 52%,#0b7330 0%,#065a22 38%,#033d15 68%,#01240b 100%);
-  box-shadow:inset 0 0 0 3px #0a2a16,inset 0 0 0 7px #bd922f,inset 0 0 0 9px #0a2a16,inset 0 0 80px #000a;}
-.bjm3 .logo{position:absolute;left:6px;top:4px;width:167px;height:101px;object-fit:fill;filter:drop-shadow(0 2px 6px #000a);}
-.bjm3 .title{position:absolute;left:150px;width:470px;top:12px;text-align:center;font:700 58px/1 "Baskerville Casino",serif;letter-spacing:.015em;background:linear-gradient(180deg,#fff6c8,#ffe08a 45%,#e9b24f);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 2px 1px #000a);}
-.bjm3 .qrbox{position:absolute;left:100px;top:107px;width:146px;height:146px;background:#fff;border-radius:8px;padding:8px;box-sizing:border-box;box-shadow:0 2px 8px #0009;}
+    radial-gradient(60% 42% at 50% 100%, rgba(255,255,255,.05), transparent 70%),
+    radial-gradient(120% 100% at 50% 6%, #0e8a3a 0%, #0a6e2c 34%, #075523 60%, #063f19 82%, #04300f 100%);
+  box-shadow:inset 0 0 0 4px #0a2a16, inset 0 0 0 7px #c79a35, inset 0 0 0 9px #0a2a16, inset 0 0 90px #00210d;}
+.bjm3 .stage::before{content:"";position:absolute;inset:0;pointer-events:none;background:
+  radial-gradient(34% 46% at 100% 0%, rgba(4,20,10,.75) 0%, rgba(4,18,9,0) 62%),
+  radial-gradient(30% 46% at 0% 100%, rgba(4,20,10,.6) 0%, rgba(4,18,9,0) 62%),
+  radial-gradient(30% 46% at 100% 100%, rgba(4,20,10,.6) 0%, rgba(4,18,9,0) 62%);}
+.bjm3 .logo{position:absolute;left:16px;top:40px;height:104px;width:auto;object-fit:contain;filter:drop-shadow(0 2px 6px #000a);z-index:5;}
+.bjm3 .title{position:absolute;left:180px;right:92px;top:52px;text-align:center;z-index:5;
+  font:700 62px/1 "Baskerville Casino",serif;letter-spacing:.01em;
+  background:linear-gradient(180deg,#fff7d0 0%,#ffe690 36%,#eab44f 66%,#c6861f 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-stroke:1px #6a4a16;
+  text-shadow:0 1px 0 #7a551b,0 2px 0 #553912,0 4px 6px #000b;}
+.bjm3 .orn{position:absolute;top:70px;z-index:6;color:#e3c173;font:400 34px/1 "Baskerville Casino",serif;opacity:.8;text-shadow:0 1px 2px #000a;}
+.bjm3 .orn.l{left:228px;transform:scaleX(-1);}
+.bjm3 .orn.r{right:110px;}
+.bjm3 .qrbox{position:absolute;left:108px;top:176px;width:150px;height:150px;background:#fff;border-radius:10px;padding:9px;box-sizing:border-box;z-index:5;box-shadow:0 3px 10px #0009,0 0 0 2px #debb60;}
 .bjm3 .qrbox svg{display:block;width:100%;height:100%;}
-.bjm3 .scan{position:absolute;left:256px;top:118px;width:182px;text-align:center;color:#f3e7c2;font:700 21px/1.25 "Baskerville Casino",serif;}
-.bjm3 .codelbl{position:absolute;left:256px;top:208px;width:182px;text-align:center;color:#e8c879;font:400 13px/1 "Baskerville Casino",serif;letter-spacing:.16em;}
-.bjm3 .codepill{position:absolute;left:290px;top:226px;width:118px;text-align:center;padding:7px 0;border:2px solid #debb60;border-radius:11px;background:radial-gradient(ellipse at 50% 50%,#083016,#04200c);color:#ffe9a6;font:700 26px/1 "Baskerville Casino",serif;letter-spacing:.08em;box-shadow:0 0 10px #e8c87955,inset 0 1px 2px #fff3;}
-.bjm3 .tavolo{position:absolute;left:520px;top:106px;width:184px;text-align:center;padding:9px 0;border:3px solid #e8cd7a;border-radius:14px;background:radial-gradient(ellipse at 50% 50%,#06330f,#02220c);color:#ffe3a0;font:700 30px/1 "Baskerville Casino",serif;text-shadow:0 1px 1px #000a;box-shadow:0 0 14px #e8c87944,inset 0 0 10px #0009;}
-.bjm3 .players{position:absolute;left:510px;top:160px;width:200px;display:flex;flex-direction:column;align-items:center;gap:3px;}
-.bjm3 .players .prow{display:flex;align-items:center;gap:13px;}
-.bjm3 .players .pn{font:700 34px/1 "Baskerville Casino",serif;color:#fff;}
-.bjm3 .players .pl{font:400 15px/1 "Baskerville Casino",serif;color:#e8c879;}
-.bjm3 .status{position:absolute;left:510px;top:224px;width:200px;text-align:center;padding:10px 0;border:3px solid #4ade80;border-radius:14px;background:linear-gradient(180deg,#05240d,#01160a);color:#eafff0;font:700 24px/1 "Baskerville Casino",serif;box-shadow:0 0 16px #4ade8077,inset 0 0 10px #0009;}
-.bjm3 .status.wait{border-color:#e0b24a;color:#ffe3a0;box-shadow:0 0 16px #e0b24a66,inset 0 0 10px #0009;}
-.bjm3 .wseats{position:absolute;left:6px;right:6px;bottom:7px;display:flex;gap:5px;}
-.bjm3 .ws{position:relative;flex:1 1 0;height:116px;border-radius:12px;border:2px solid #7c6632;background:linear-gradient(162deg,#0e2c1b,#06160d);display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:16px;box-shadow:inset 0 1px 0 #ffffff10,inset 0 0 0 1px #4a3c1a;}
-.bjm3 .ws.free{border-color:#5a4a26;opacity:.9;}
-.bjm3 .wsnum{position:absolute;top:-11px;left:50%;transform:translateX(-50%);width:24px;height:24px;border-radius:50%;background:radial-gradient(circle at 40% 30%,#1d1708,#0b0b07);border:2px solid #e6c268;color:#ffe9a6;display:grid;place-items:center;font:700 12px/1 serif;z-index:2;box-shadow:0 2px 4px #0008;}
-.bjm3 .wsnm{font:700 16px/1 "Baskerville Casino",serif;color:#fff;margin-top:7px;}
-.bjm3 .wscr{font:400 14px/1 "Baskerville Casino",serif;color:#ffe9a6;margin-top:4px;}
-.bjm3 .wsfree{color:#8aa08c;font:400 15px/1 "Baskerville Casino",serif;margin-top:12px;}
+.bjm3 .scan{position:absolute;left:276px;top:186px;width:190px;z-index:5;color:#f4ead3;font:700 24px/1.28 "Baskerville Casino",serif;}
+.bjm3 .codelbl{position:absolute;left:276px;top:292px;width:190px;text-align:center;z-index:5;color:#e8c879;font:400 13px/1 "Baskerville Casino",serif;letter-spacing:.2em;}
+.bjm3 .codepill{position:absolute;left:300px;top:308px;width:142px;text-align:center;padding:8px 0;z-index:5;border:2px solid #debb60;border-radius:12px;background:radial-gradient(ellipse at 50% 50%,#083016,#04200c);color:#ffe9a6;font:700 28px/1 "Baskerville Casino",serif;letter-spacing:.1em;box-shadow:0 0 12px #e8c87944,inset 0 1px 3px #fff3;}
+.bjm3 .tavolo{position:absolute;left:556px;top:174px;width:220px;box-sizing:border-box;text-align:center;padding:11px 10px;z-index:5;border:3px solid #e8cd7a;border-radius:15px;background:radial-gradient(ellipse at 50% 50%,#06330f,#02220c);color:#ffe7ac;font:700 28px/1 "Baskerville Casino",serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 1px #000a;box-shadow:0 0 16px #e8c87933,inset 0 0 12px #0009;}
+.bjm3 .ginfo{position:absolute;left:556px;top:232px;width:220px;text-align:center;z-index:5;}
+.bjm3 .ginfo .cnt{display:inline-flex;align-items:center;gap:12px;color:#ffe3a0;font:700 34px/1 "Baskerville Casino",serif;}
+.bjm3 .ginfo .lb{color:#e8c879;font:400 16px/1 "Baskerville Casino",serif;margin-top:3px;}
+.bjm3 .ginfo svg{width:40px;height:40px;fill:#e8c879;}
+.bjm3 .status{position:absolute;left:548px;top:304px;width:236px;box-sizing:border-box;text-align:center;padding:11px 0;z-index:5;border:3px solid #52e08a;border-radius:15px;background:linear-gradient(180deg,#05270e,#01160a);color:#eafff0;font:700 26px/1 "Baskerville Casino",serif;box-shadow:0 0 18px #52e08a66,inset 0 0 12px #0009;}
+.bjm3 .status.wait{border-color:#e0b24a;color:#ffe3a0;box-shadow:0 0 18px #e0b24a55,inset 0 0 12px #0009;}
+.bjm3 .seats{position:absolute;left:12px;right:12px;bottom:10px;height:112px;display:flex;gap:6px;z-index:5;}
+.bjm3 .seat{position:relative;flex:1 1 0;border-radius:13px;border:2px solid #7c6632;background:linear-gradient(162deg,#0f2e1c,#06160d);display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:15px;box-shadow:inset 0 1px 0 #ffffff12,inset 0 0 0 1px #4a3c1a;}
+.bjm3 .seat.free{border-color:#55492a;}
+.bjm3 .snum{position:absolute;top:-11px;left:50%;transform:translateX(-50%);width:24px;height:24px;border-radius:50%;background:radial-gradient(circle at 40% 30%,#1d1708,#0b0b07);border:2px solid #e6c268;color:#ffe9a6;display:grid;place-items:center;font:700 13px/1 serif;z-index:2;box-shadow:0 2px 4px #0008;}
+.bjm3 .avr{width:56px;height:56px;border-radius:50%;border:2px solid #d9b85a;display:grid;place-items:center;overflow:hidden;background:radial-gradient(circle at 50% 35%,#163a26,#07160e);}
+.bjm3 .avr.free{border-color:#4e5a50;}
+.bjm3 .seat .nm{font:700 17px/1 "Baskerville Casino",serif;color:#fff;margin-top:8px;max-width:96%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.bjm3 .seat .cr{font:700 15px/1 "Baskerville Casino",serif;color:#ffe9a6;margin-top:4px;}
+.bjm3 .seat .lib{font:400 16px/1 "Baskerville Casino",serif;color:#86b596;margin-top:13px;}
 `;
 function BjWaitStage({ t, dim, playUrl }: { t: BjTbl; dim: { w: number; h: number }; playUrl: string }) {
-  const scale = Math.min(dim.w / 744, dim.h / 407);
+  const scale = Math.min(dim.w / 836, dim.h / 470);
   const nos = seatOrder(t);
   const occupied = nos.filter(no => t.seats[String(no)]?.playerId).length;
   const betting = t.phase === 'betting';
@@ -694,23 +707,25 @@ function BjWaitStage({ t, dim, playUrl }: { t: BjTbl; dim: { w: number; h: numbe
     <div className="bjm3"><style>{MON3_CSS}</style>
       <div className="stage" style={{ transform: `scale(${scale})` }}>
         <img className="logo" src={`${AB}casino/logo-idea-casino.png`} alt="IDEA EVENTI CASINÒ" />
+        <span className="orn l">❧</span>
         <div className="title">BLACKJACK</div>
-        <div className="qrbox"><QRCodeSVG value={playUrl} size={130} /></div>
+        <span className="orn r">❧</span>
+        <div className="qrbox"><QRCodeSVG value={playUrl} size={132} /></div>
         <div className="scan">Scansiona<br />e gioca dal<br />tuo telefono</div>
         <div className="codelbl">CODICE TAVOLO</div>
         <div className="codepill">{t.displayCode}</div>
         <div className="tavolo">{t.name}</div>
-        <div className="players"><div className="prow"><PeopleIcon /><span className="pn">{occupied} / {nos.length}</span></div><div className="pl">giocatori</div></div>
+        <div className="ginfo"><span className="cnt"><PeopleIcon /> {occupied} / {nos.length}</span><div className="lb">giocatori</div></div>
         <div className={`status${betting ? '' : ' wait'}`}>{betting ? 'Puntate aperte' : 'In attesa'}</div>
-        <div className="wseats">
+        <div className="seats">
           {nos.map(no => {
             const s = t.seats[String(no)]!;
-            if (!s.playerId) return <div key={no} className="ws free"><div className="wsnum">{no}</div><Avatar size={44} /><div className="wsfree">Libero</div></div>;
+            if (!s.playerId) return <div key={no} className="seat free"><div className="snum">{no}</div><div className="avr free"><Avatar size={52} /></div><div className="lib">Libero</div></div>;
             return (
-              <div key={no} className="ws"><div className="wsnum">{no}</div>
-                <Avatar url={s.avatarUrl} name={s.nickname} size={46} />
-                <div className="wsnm">{s.nickname}</div>
-                <div className="wscr">{String(s.balance ?? 0).replace(/\B(?=(\d{3})+(?!\d))/g, '.')}</div>
+              <div key={no} className="seat"><div className="snum">{no}</div>
+                <div className="avr"><Avatar url={s.avatarUrl} name={s.nickname} size={52} /></div>
+                <div className="nm">{s.nickname}</div>
+                <div className="cr">{String(s.balance ?? 0).replace(/\B(?=(\d{3})+(?!\d))/g, '.')}</div>
               </div>
             );
           })}
