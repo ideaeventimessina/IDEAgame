@@ -170,7 +170,7 @@ const SIC_CSS = SIC_FONT + `
   border:4px solid #e8c45f;box-shadow:0 10px 28px #0008,inset 0 0 0 2px #0a1b44;}
 .sic .pesca{position:absolute;display:flex;flex-direction:column;align-items:center;justify-content:center;
   border-radius:16px;border:3px solid #f0d886;background:linear-gradient(180deg,#ffe694,#f0c357 52%,#d59a34);
-  color:#2a1803;font:700 38px/1 "Cinzel",serif;letter-spacing:.02em;cursor:pointer;
+  color:#2a1803;font:700 36px/1 "Cinzel",serif;letter-spacing:.02em;cursor:pointer;padding:0 14px;text-align:center;
   box-shadow:0 5px 0 #7a4d12,inset 0 1px 0 #fff8;}
 .sic .pesca:disabled{opacity:.6;cursor:default;box-shadow:0 3px 0 #7a4d12;}
 .sic .pesca small{font:italic 400 18px/1 "Lora",serif;margin-top:7px;opacity:.9;letter-spacing:0}
@@ -198,16 +198,30 @@ export function CorsaSiciliaMonitor({ displayCode, host = false }: { displayCode
   const t = st?.table;
   const scale = Math.min(dim.w / STAGE_W, dim.h / STAGE_H);
 
+  // Monitor TOUCH: il conduttore comanda la gara DIRETTAMENTE dall'80" (via → pesca →
+  // nuova corsa). Nessun gate "host": gli schermi sono touch e devono sempre funzionare.
   const draw = useCallback(async () => {
     if (!t || busy || t.phase !== 'racing' || t.winner) return;
     setBusy(true);
     try { await api('/gestione/casino/sicilia/draw', { displayCode, token: `${t.race}:${t.drawn}:${Date.now()}` }); }
     finally { setTimeout(() => setBusy(false), 650); }   // blocca il doppio-click durante l'animazione
   }, [t, busy, displayCode]);
+  const startRace = useCallback(async () => {
+    if (!t || busy || t.phase !== 'betting') return;
+    setBusy(true);
+    try { await api('/gestione/casino/sicilia/start', { displayCode }); }
+    finally { setTimeout(() => setBusy(false), 400); }
+  }, [t, busy, displayCode]);
+  const openBets = useCallback(async () => {
+    if (!t || busy) return;
+    setBusy(true);
+    try { await api('/gestione/casino/sicilia/open', { displayCode }); }
+    finally { setTimeout(() => setBusy(false), 400); }
+  }, [t, busy, displayCode]);
 
   if (!t) return <div className="sic"><style>{SIC_CSS}</style><div style={{ color: '#ffe9a6', font: '400 30px "Cinzel",serif' }}>Carico il tavolo…</div></div>;
   const N = t.trackLen;
-  const canDraw = host && t.phase === 'racing' && !t.winner && !busy;
+  void host;   // il gate host è stato rimosso: il monitor è sempre operabile da touch
   const bySuit = (s: Suit) => t.players.filter(p => p.suit === s);
   const chipLeft = [108, 466, 852, 1240];   // 4 card giocatore in basso
 
@@ -293,11 +307,17 @@ export function CorsaSiciliaMonitor({ displayCode, host = false }: { displayCode
             : <em style={{ fontSize: 22 }}>{t.phase === 'betting' ? 'Puntate aperte — punta dal telefono' : 'Pesca la prima carta'}</em>}
         </div>
 
-        {/* Pulsante PESCA */}
-        <button className="pesca" onClick={draw} disabled={!canDraw} title={host ? '' : 'Pescata riservata al conduttore (regia)'}
+        {/* Pulsante AZIONE (monitor touch: Via → Pesca → Nuova corsa, sempre operabile) */}
+        <button className="pesca"
+          onClick={t.phase === 'betting' ? startRace : t.phase === 'result' ? openBets : draw}
+          disabled={busy}
           style={{ left: 1213, top: 638, width: 444, height: 104 }}>
-          {t.winner ? 'CORSA CONCLUSA' : 'PESCA UNA CARTA'}
-          <small>{t.winner ? `in ${t.drawn} carte` : host ? (t.phase === 'racing' ? 'Tocca il mazzo per avanzare' : 'Avvia la corsa dalla regia') : 'Riservato al conduttore'} · mazzo {t.deckLeft}</small>
+          {t.phase === 'betting' ? '▶ AVVIA LA CORSA' : t.phase === 'result' ? '↻ NUOVA CORSA' : 'PESCA UNA CARTA'}
+          <small>{t.phase === 'betting'
+            ? `chiudi le puntate e parti · piatto ${t.pot?.total ?? 0}`
+            : t.phase === 'result'
+              ? 'riapri le puntate per un nuovo giro'
+              : `tocca per avanzare · mazzo ${t.deckLeft}`}</small>
         </button>
 
         {/* Striscia giocatori per seme (ritratti dipinti) */}
