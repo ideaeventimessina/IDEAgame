@@ -4120,7 +4120,8 @@ type LockdownChallenge = {
   imageUrl?: string;
   words?: string[];
   ingredient?: string;
-  submissions?: LockdownSubmission[];
+  /** Il server le salva come MAPPA playerId→submission; teniamo anche l'array per retrocompatibilità. */
+  submissions?: LockdownSubmission[] | Record<string, LockdownSubmission>;
   /** CUOCO / CANTANTE: scelta in sospeso + opzioni offerte. */
   awaitingIngredientFrom?: string;
   ingredientOptions?: string[];
@@ -4434,7 +4435,13 @@ function LockdownBoard({ session, players }: { session: HomeSession; players: Ho
       <div className="grid w-full grid-cols-2 gap-2 md:grid-cols-3">
         {activePlayers.map(pl => {
           const c = lockdownChar(pl.characterId);
-          const sub = ch?.submissions?.find(s => s.playerId === pl.id);
+          // Il server salva le submission come MAPPA { [playerId]: {...} } (lockdown-engine),
+          // non come array: chiamare .find() su un oggetto rompe la stanza
+          // ("A?.submissions?.find is not a function"). Gestiamo entrambe le forme.
+          const subsRaw = ch?.submissions as LockdownSubmission[] | Record<string, LockdownSubmission> | undefined;
+          const sub = Array.isArray(subsRaw)
+            ? subsRaw.find(s => s.playerId === pl.id)
+            : subsRaw?.[pl.id];
           const isWinner = !!winnerSel[pl.id];
           const broke = pl.isBroke ?? pl.lockEuro <= 0;
           const votes = voteCounts[pl.id] ?? 0;
