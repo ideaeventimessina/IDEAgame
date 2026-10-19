@@ -28,20 +28,25 @@ export function StageFit({
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // Misura il VIEWPORT reale (non il genitore: con minHeight:100dvh può crescere
+    // oltre lo schermo e falsare la scala -> interfaccia "zoomata"/instabile).
     const compute = () => {
-      const host = ref.current?.parentElement;
-      const vw = host?.clientWidth ?? window.innerWidth;
-      const vh = host?.clientHeight ?? window.innerHeight;
-      if (reflowAt && vw < reflowAt) {
-        setReflow(true);
-        return;
-      }
+      const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+      const vw = vv?.width ?? window.innerWidth;
+      const vh = vv?.height ?? window.innerHeight;
+      if (reflowAt && vw < reflowAt) { setReflow(true); return; }
       setReflow(false);
       setScale(Math.min(vw / designW, vh / designH));
     };
     compute();
+    const raf = requestAnimationFrame(compute);        // ricalcola dopo il layout/font
     window.addEventListener('resize', compute);
-    return () => window.removeEventListener('resize', compute);
+    window.visualViewport?.addEventListener('resize', compute);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', compute);
+      window.visualViewport?.removeEventListener('resize', compute);
+    };
   }, [designW, designH, reflowAt]);
 
   if (reflow) {
@@ -56,7 +61,7 @@ export function StageFit({
     <div
       ref={ref}
       style={{
-        position: 'absolute',
+        position: 'fixed',   // àncora al viewport: palco sempre centrato e scalato sullo schermo visibile
         inset: 0,
         display: 'grid',
         placeItems: 'center',
