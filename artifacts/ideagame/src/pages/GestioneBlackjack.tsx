@@ -550,41 +550,43 @@ function dealerVisibleTotal(d: { cards: BjCard[]; total: number | null; hidden: 
 /* ── Monitor PARTITA (fase playing/dealer) — palco fisso 744×407 fedele al mockup ── */
 const MON2_CSS = BJ_FONT + CARD_CSS + `
 .bjm2{position:fixed;inset:0;overflow:hidden;background:#02120a;display:flex;align-items:center;justify-content:center;color:#fff;font-family:"Baskerville Casino",Georgia,serif;}
-.bjm2 .stage{position:relative;width:744px;height:407px;flex:none;transform-origin:center center;border-radius:18px;overflow:hidden;
+.bjm2 .stage{position:relative;width:836px;height:470px;flex:none;transform-origin:center center;border-radius:16px;overflow:hidden;
   background:
-    radial-gradient(ellipse 66% 46% at 50% -4%,#020a05 0%,#04140a 36%,rgba(5,24,12,0) 62%),
-    radial-gradient(ellipse 122% 86% at 50% 52%,#0b7330 0%,#065a22 38%,#033d15 68%,#01240b 100%);
-  box-shadow:inset 0 0 0 3px #0a2a16,inset 0 0 0 7px #bd922f,inset 0 0 0 9px #0a2a16,inset 0 0 80px #000a;}
-.bjm2 .logo{position:absolute;left:6px;top:4px;width:167px;height:101px;object-fit:fill;filter:drop-shadow(0 2px 6px #000a);}
-.bjm2 .archwrap{position:absolute;left:50%;top:0;transform:translateX(-50%);width:490px;height:54px;overflow:hidden;pointer-events:none;}
-.bjm2 .arch{position:relative;width:478px;height:160px;margin:0 auto;border-radius:50%;border:2px solid #d9b65d;box-shadow:0 0 0 1px #6b4a17,0 5px 14px #e8c87933,inset 0 4px 10px #e8c87922;}
-.bjm2 .arch::before{content:"";position:absolute;inset:6px;border-radius:50%;border:1px solid #9c7a30;}
-.bjm2 .banco{position:absolute;left:50%;top:3px;transform:translateX(-50%);padding:3px 22px;border:2px solid #debb60;border-radius:13px;background:radial-gradient(ellipse at 50% 50%,#083016,#04200c);color:#f5de93;font:700 15px/1 "Baskerville Casino",serif;letter-spacing:.24em;box-shadow:0 0 10px #e8c87955,inset 0 1px 2px #fff3;z-index:3;}
-.bjm2 .dup{position:absolute;left:309px;top:36px;z-index:2;}
-.bjm2 .dback{position:absolute;left:387px;top:30px;width:52px;height:80px;border-radius:7px;overflow:hidden;box-shadow:0 3px 8px #000b,inset 0 0 0 1px #0007;z-index:2;}
+    radial-gradient(60% 42% at 50% 100%, rgba(255,255,255,.05), transparent 70%),
+    radial-gradient(120% 100% at 50% 6%, #0e8a3a 0%, #0a6e2c 34%, #075523 60%, #063f19 82%, #04300f 100%);
+  box-shadow:inset 0 0 0 4px #0a2a16, inset 0 0 0 7px #c79a35, inset 0 0 0 9px #0a2a16, inset 0 0 90px #00210d;}
+.bjm2 .stage::before{content:"";position:absolute;inset:0;pointer-events:none;background:
+  radial-gradient(34% 46% at 100% 0%, rgba(4,20,10,.7),transparent 62%),
+  radial-gradient(30% 46% at 0% 100%, rgba(4,20,10,.55),transparent 62%),
+  radial-gradient(30% 46% at 100% 100%, rgba(4,20,10,.55),transparent 62%);}
+.bjm2 .logo{position:absolute;left:16px;top:34px;height:92px;width:auto;object-fit:contain;filter:drop-shadow(0 2px 6px #000a);z-index:5;}
+.bjm2 .arch{position:absolute;left:50%;top:-104px;transform:translateX(-50%);width:430px;height:170px;border-radius:50%;border:2px solid #d9b65d;box-shadow:0 5px 14px #e8c87926,inset 0 -6px 12px #e8c87918;z-index:1;}
+.bjm2 .banco{position:absolute;left:50%;top:10px;transform:translateX(-50%);padding:5px 26px;border:2px solid #debb60;border-radius:13px;background:radial-gradient(ellipse at 50% 50%,#083016,#04200c);color:#f5de93;font:700 16px/1 "Baskerville Casino",serif;letter-spacing:.26em;z-index:3;box-shadow:0 0 10px #e8c87955,inset 0 1px 2px #fff3;}
+.bjm2 .dtot{position:absolute;left:330px;top:52px;z-index:3;}
+.bjm2 .dcards{position:absolute;left:388px;top:40px;display:flex;gap:6px;z-index:2;}
+.bjm2 .dback{width:46px;height:65px;border-radius:7px;overflow:hidden;box-shadow:0 3px 8px #000b,inset 0 0 0 1px #0007;border:1px solid #c9a24a;flex:none;}
 .bjm2 .dback img{width:100%;height:100%;object-fit:cover;display:block;}
-.bjm2 .dtot{position:absolute;left:255px;top:55px;z-index:3;}
-.bjm2 .phone2{position:absolute;right:40px;top:31px;text-align:right;color:#ecd7a0;font:400 14px/1.3 "Baskerville Casino",serif;}
-.bjm2 .phicon{position:absolute;right:9px;top:33px;width:23px;height:45px;border:2px solid #e6c268;border-radius:5px;box-shadow:inset 0 0 5px #e8c87944;}
-.bjm2 .phicon::after{content:"";position:absolute;left:50%;bottom:3px;transform:translateX(-50%);width:9px;height:2px;border-radius:2px;background:#e6c268;}
-.bjm2 .turnbar{position:absolute;left:50%;top:124px;transform:translateX(-50%);padding:6px 24px;border:3px solid #e8cd7a;border-radius:16px;background:linear-gradient(180deg,#05240d,#01160a);box-shadow:0 0 15px #e8c87944,inset 0 0 12px #0009;white-space:nowrap;z-index:2;}
-.bjm2 .turnbar span{font:700 26px/1 "Baskerville Casino",serif;letter-spacing:.01em;background:linear-gradient(180deg,#fff4c6,#ffe091 48%,#e4ad4c);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 1px 0 #0008);}
-.bjm2 .flour{position:absolute;top:135px;height:22px;z-index:1;opacity:.9;}
-.bjm2 .flour.l{left:50%;margin-left:-212px;}
-.bjm2 .flour.r{left:50%;margin-left:183px;transform:scaleX(-1);}
-.bjm2 .seats2{position:absolute;left:4px;right:4px;top:169px;display:flex;gap:5px;}
-.bjm2 .st{position:relative;flex:1 1 0;height:231px;border-radius:12px;border:2px solid #356a41;background:linear-gradient(162deg,#0e2c1b,#06160d);box-shadow:inset 0 1px 0 #ffffff12,0 4px 10px #0007;display:flex;flex-direction:column;align-items:center;}
-.bjm2 .st.active{border-color:#5de78d;box-shadow:0 0 18px #4ade80cc,inset 0 0 16px #4ade8033;}
+.bjm2 .phone2{position:absolute;right:44px;top:40px;text-align:right;color:#ecd7a0;font:400 15px/1.3 "Baskerville Casino",serif;z-index:5;}
+.bjm2 .phicon{position:absolute;right:12px;top:40px;width:25px;height:48px;border:2px solid #e6c268;border-radius:6px;box-shadow:inset 0 0 5px #e8c87944;z-index:5;}
+.bjm2 .phicon::after{content:"";position:absolute;left:50%;bottom:4px;transform:translateX(-50%);width:10px;height:2px;border-radius:2px;background:#e6c268;}
+.bjm2 .turnbar{position:absolute;left:50%;top:126px;transform:translateX(-50%);padding:7px 30px;border:3px solid #e8cd7a;border-radius:16px;background:linear-gradient(180deg,#05240d,#01160a);box-shadow:0 0 15px #e8c87933,inset 0 0 12px #0009;white-space:nowrap;z-index:3;}
+.bjm2 .turnbar span{font:700 27px/1 "Baskerville Casino",serif;letter-spacing:.01em;background:linear-gradient(180deg,#fff4c6,#ffe091 48%,#e4ad4c);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 1px 0 #0008);}
+.bjm2 .orn{position:absolute;top:130px;z-index:2;color:#e3c173;font:400 30px/1 "Baskerville Casino",serif;opacity:.75;text-shadow:0 1px 2px #000a;}
+.bjm2 .orn.l{left:198px;transform:scaleX(-1);}
+.bjm2 .orn.r{right:198px;}
+.bjm2 .seats2{position:absolute;left:6px;right:6px;top:176px;bottom:10px;display:flex;gap:6px;z-index:4;}
+.bjm2 .st{position:relative;flex:1 1 0;border-radius:12px;border:2px solid #356a41;background:linear-gradient(162deg,#0e2c1b,#06160d);box-shadow:inset 0 1px 0 #ffffff12,0 4px 10px #0007;display:flex;flex-direction:column;align-items:center;}
+.bjm2 .st.active{border-color:#5de78d;box-shadow:0 0 20px #4ade80cc,inset 0 0 16px #4ade8033;}
 .bjm2 .snum{position:absolute;top:-13px;left:50%;transform:translateX(-50%);width:26px;height:26px;border-radius:50%;background:radial-gradient(circle at 40% 30%,#1d1708,#0b0b07);border:2px solid #e6c268;color:#ffe9a6;display:grid;place-items:center;font:700 13px/1 serif;z-index:3;box-shadow:0 2px 4px #0008;}
-.bjm2 .scards2{display:flex;justify-content:center;align-items:flex-end;margin-top:16px;height:68px;}
-.bjm2 .stot2{margin-top:-9px;z-index:2;position:relative;}
-.bjm2 .sav{margin-top:7px;}
-.bjm2 .snm{font:700 15px/1 "Baskerville Casino",serif;color:#fff;margin-top:6px;}
-.bjm2 .smeta{font:400 11px/1.4 "Baskerville Casino",serif;color:#cedbc9;text-align:center;margin-top:2px;}
+.bjm2 .scards2{display:flex;justify-content:center;align-items:flex-end;margin-top:18px;height:70px;}
+.bjm2 .stot2{margin-top:-10px;z-index:2;position:relative;}
+.bjm2 .sav{margin-top:9px;}
+.bjm2 .snm{font:700 16px/1 "Baskerville Casino",serif;color:#fff;margin-top:7px;max-width:94%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.bjm2 .smeta{font:400 12px/1.5 "Baskerville Casino",serif;color:#cedbc9;text-align:center;margin-top:3px;}
 .bjm2 .smeta b{color:#ffe9a6;font-weight:700;}
 `;
 function BjPlayStage({ t, turnCd, dim }: { t: BjTbl; turnCd: number; dim: { w: number; h: number } }) {
-  const scale = Math.min(dim.w / 744, dim.h / 407);
+  const scale = Math.min(dim.w / 836, dim.h / 470);
   const nos = seatOrder(t);
   const up = t.dealer.cards[0];
   const activeName = t.activeSeat != null ? (t.seats[String(t.activeSeat)]?.nickname ?? `Posto ${t.activeSeat}`) : null;
@@ -593,20 +595,22 @@ function BjPlayStage({ t, turnCd, dim }: { t: BjTbl; turnCd: number; dim: { w: n
       <div className="stage" style={{ transform: `scale(${scale})` }}>
         <img className="logo" src={`${AB}casino/logo-idea-casino.png`} alt="IDEA EVENTI CASINÒ" />
         {/* BANCO: arco oro + pill + carte + totale */}
-        <div className="archwrap"><div className="arch" /></div>
+        <div className="arch" />
         <div className="banco">BANCO</div>
         <div className="dtot"><Total v={dealerVisibleTotal(t.dealer)} size={16} /></div>
-        {up && <div className="dup"><Card c={up} w={46} /></div>}
-        {t.dealer.hidden
-          ? <div className="dback"><img src={`${AB}bj/card-back.png`} alt="" /></div>
-          : t.dealer.cards.slice(1).map((c, i) => <div key={i} className="dback" style={{ left: 387 + i * 56, borderRadius: 7, overflow: 'visible' }}><Card c={c} w={52} /></div>)}
+        <div className="dcards">
+          {up && <Card c={up} w={46} />}
+          {t.dealer.hidden
+            ? <div className="dback"><img src={`${AB}bj/card-back.png`} alt="" /></div>
+            : t.dealer.cards.slice(1).map((c, i) => <Card key={i} c={c} w={46} />)}
+        </div>
         {/* smartphone */}
         <div className="phone2">Gioca dal tuo<br />smartphone</div>
         <div className="phicon" />
         {/* turno */}
-        <img className="flour l" src={`${AB}casino/flourish-l.png`} alt="" />
-        <img className="flour r" src={`${AB}casino/flourish-l.png`} alt="" />
+        <span className="orn l">❧</span>
         <div className="turnbar"><span>{t.phase === 'dealer' || activeName == null ? 'Il banco gioca…' : <>Turno di {activeName} · {fmtTime(turnCd)}</>}</span></div>
+        <span className="orn r">❧</span>
         {/* postazioni */}
         <div className="seats2">
           {nos.map(no => {
@@ -621,7 +625,7 @@ function BjPlayStage({ t, turnCd, dim }: { t: BjTbl; turnCd: number; dim: { w: n
                     : <Card back w={34} />}
                 </div>
                 {s.total != null && <div className="stot2"><Total v={s.total} bust={s.status === 'bust'} size={13} /></div>}
-                <div className="sav"><Avatar url={s.avatarUrl} name={s.nickname} size={46} /></div>
+                <div className="sav"><Avatar url={s.avatarUrl} name={s.nickname} size={50} /></div>
                 <div className="snm">{s.nickname ?? 'Libero'}</div>
                 <div className="smeta">Puntata {s.bet || '—'}<br />Credito <b>{String(s.balance ?? 0).replace(/\B(?=(\d{3})+(?!\d))/g, '.')}</b></div>
               </div>
