@@ -34,6 +34,8 @@ const DEFAULT_START_FISH = 500;
 /* ── Atomicità dei soldi ──────────────────────────────────────────────────────
    Tipo della transazione Drizzle (parametro del callback di db.transaction). */
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+/* Esito di un endpoint eseguito dentro mutateSession: status HTTP + corpo JSON. */
+type EpResult = { status: number; body: unknown };
 
 /* Movimento ATOMICO di fiche dentro una transazione: UPDATE condizionale in SQL
    (`fish_balance = fish_balance + delta`, niente read-modify-write JS) + riga di
@@ -939,30 +941,59 @@ router.post("/gestione/casino/bj/double", async (req, res): Promise<void> => {
    CORSA SICILIANA — 4 cavalli, uno per seme (coppe/denari/spade/bastoni). Si pesca
    una carta dal mazzo siciliano (40 carte, 10 per seme): avanza di UNA casella SOLO
    il cavallo di quel seme (il valore non conta). Primo al traguardo vince. L'esito
-   deriva dalle CARTE estratte, non da un ordine pre-deciso. Nessuna quota/saldo: i
-   giocatori SCELGONO un cavallo dal telefono (tifo), senza escrow sulle fiche.
-   ════════════════════════════════════════════════════════════════════════════ */
+   deriva dalle CARTE estratte, non da un ordine pre-deciso. Economia come gli altri
+   tavoli: posti ILLIMITATI, i giocatori PUNTANO fiche su 1 dei 4 semi (escrow
+   immediato). Vince SOLO il primo cavallo al traguardo: chi ha azzeccato incassa
+   ×SICILIA_QUOTA (puntata inclusa), tutto il resto resta al banco.
+   VARIANTE opzionale "cavallo del Banco": N carte Banco mescolate nel mazzo fanno
+   correre un 5° cavallo della casa; se arriva primo, il banco incassa TUTTE le
+   puntate (nessun payout). Più carte Banco = banco vince più spesso = più margine. */
 type Suit = "coppe" | "denari" | "spade" | "bastoni";
 const SUITS: Suit[] = ["coppe", "denari", "spade", "bastoni"];
-type SiciliaCard = { suit: Suit; value: number };
-type SiciliaBet = { playerId: string; suit: Suit; at: string };
-type SiciliaHist = { race: number; at: string; winner: Suit | null; cards: number; players: number; pickedWinner: number };
+const SICILIA_QUOTA = 3;                // paga ×3 la puntata (puntata inclusa) sul seme vincente
+type SiciliaCardSuit = Suit | "banco";
+type SiciliaCard = { suit: SiciliaCardSuit; value: number };
+type SiciliaWinner = Suit | "banco";
+type SiciliaBet = { playerId: string; suit: Suit; amount: number; at: string };
+type SiciliaHist = { race: number; at: string; winner: SiciliaWinner | null; cards: number; players: number; pickedWinner: number; pot: number };
 type SiciliaTable = {
   id: string; type: "sicilia"; name: string; displayCode: string;
   phase: "betting" | "racing" | "result";
   race: number; trackLen: number;
   deck: SiciliaCard[]; drawn: number;
   positions: Record<Suit, number>;
-  last: SiciliaCard | null; winner: Suit | null;
+  bancoEnabled: boolean; bancoCards: number; bancoPos: number;   // variante cavallo del Banco
+  last: SiciliaCard | null; winner: SiciliaWinner | null;
   lastToken: string | null;            // anti doppio-click: stesso token ⇒ stessa pescata
-  bets: SiciliaBet[]; known: string[];
+  bets: SiciliaBet[]; known: string[]; settled: boolean;         // settled: payout della corsa già liquidato
   suspended: boolean; history: SiciliaHist[];
 };
-function buildSiciliaDeck(): SiciliaCard[] {
+function buildSiciliaDeck(bancoCards = 0): SiciliaCard[] {
   const deck: SiciliaCard[] = [];
   for (const suit of SUITS) for (let v = 1; v <= 10; v++) deck.push({ suit, value: v });
+  for (let i = 0; i < bancoCards; i++) deck.push({ suit: "banco", value: 0 });
   for (let i = deck.length - 1; i > 0; i--) { const j = randomInt(i + 1); const t = deck[i]!; deck[i] = deck[j]!; deck[j] = t; }
   return deck;
+}
+/* Trova un tavolo sicilia dentro un cfg (clone di mutateSession) e normalizza i
+   campi nuovi sui tavoli creati prima di questa feature (retrocompatibilità jsonb). */
+function findSiciliaInCfg(cfg: CasinoConfig, code: string): SiciliaTable | null {
+  const up = (code || "").toUpperCase();
+  for (const t of Object.values(cfg.siciliaTables ?? {}) as SiciliaTable[]) {
+    if (t.displayCode === up) {
+      t.bancoEnabled ??= false; t.bancoCards ??= 6; t.bancoPos ??= 0; t.settled ??= false;
+      return t;
+    }
+  }
+  return null;
+}
+/* Rimborsa le puntate NON ancora liquidate (es. riapertura puntate a corsa non corsa). */
+async function refundSiciliaBets(tx: Tx, sessionId: string, t: SiciliaTable): Promise<void> {
+  for (const b of t.bets) {
+    const amt = Number(b.amount) || 0;
+    if (amt > 0) await moveFish(tx, sessionId, { playerId: b.playerId, delta: amt, kind: "sicilia_refund", tableId: null });
+  }
+  t.bets = [];
 }
 const zeroPos = (): Record<Suit, number> => ({ coppe: 0, denari: 0, spade: 0, bastoni: 0 });
 async function findSiciliaTable(code: string): Promise<{ sessionId: string; table: SiciliaTable } | null> {
@@ -983,14 +1014,18 @@ async function siciliaState(sessionId: string, table: SiciliaTable) {
   const players = ids.length ? await db.select().from(casinoPlayersTable).where(inArray(casinoPlayersTable.id, ids)) : [];
   const [sess] = await db.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, sessionId));
   const avatars = ((sess?.config ?? {}) as CasinoConfig).playerAvatars ?? {};
-  const betOf = new Map(table.bets.map(b => [b.playerId, b.suit]));
-  const plist = players.map(p => ({ id: p.id, nickname: p.nickname, avatarUrl: avatars[p.id] ?? null, balance: p.fishBalance, suit: betOf.get(p.id) ?? null })).sort((a, b) => b.balance - a.balance);
+  const betOf = new Map(table.bets.map(b => [b.playerId, b]));
+  const plist = players.map(p => { const b = betOf.get(p.id); return { id: p.id, nickname: p.nickname, avatarUrl: avatars[p.id] ?? null, balance: p.fishBalance, suit: b?.suit ?? null, stake: Number(b?.amount) || 0 }; }).sort((a, b) => b.balance - a.balance);
+  const pot: Record<Suit, number> & { total: number } = { coppe: 0, denari: 0, spade: 0, bastoni: 0, total: 0 };
+  for (const b of table.bets) { const amt = Number(b.amount) || 0; pot[b.suit] += amt; pot.total += amt; }
   return {
     table: {
       id: table.id, name: table.name, displayCode: table.displayCode, type: "sicilia",
       phase: table.phase, race: table.race, trackLen: table.trackLen,
       positions: table.positions, last: table.last, winner: table.winner,
       drawn: table.drawn, deckLeft: table.deck.length - table.drawn,
+      bancoEnabled: table.bancoEnabled ?? false, bancoCards: table.bancoCards ?? 6, bancoPos: table.bancoPos ?? 0,
+      quota: SICILIA_QUOTA, pot,
       players: plist, suspended: table.suspended, history: table.history.slice(0, 20),
     },
     sessionId,
@@ -1004,8 +1039,9 @@ router.post("/gestione/casino/sessions/:id/sicilia-tables", async (req, res): Pr
   const b = req.body as { name?: string; trackLen?: number };
   const table: SiciliaTable = {
     id: makeCode(8), type: "sicilia", name: (b.name || "Corsa Siciliana").slice(0, 40), displayCode: makeCode(6),
-    phase: "betting", race: 1, trackLen: clampLen(b.trackLen), deck: buildSiciliaDeck(), drawn: 0,
-    positions: zeroPos(), last: null, winner: null, lastToken: null, bets: [], known: [], suspended: false, history: [],
+    phase: "betting", race: 1, trackLen: clampLen(b.trackLen), deck: buildSiciliaDeck(0), drawn: 0,
+    positions: zeroPos(), bancoEnabled: false, bancoCards: 6, bancoPos: 0,
+    last: null, winner: null, lastToken: null, bets: [], known: [], settled: false, suspended: false, history: [],
   };
   await saveSiciliaTable(id, table);
   res.json(await siciliaState(id, table));
@@ -1025,13 +1061,19 @@ router.get("/gestione/casino/sicilia/:code", async (req, res): Promise<void> => 
 router.post("/gestione/casino/sicilia/open", async (req, res): Promise<void> => {
   const found = await findSiciliaTable((req.body?.displayCode || "").toUpperCase());
   if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
-  const t = found.table;
-  if (t.suspended) { res.status(409).json({ error: "Tavolo sospeso" }); return; }
-  if (t.phase === "result") t.race += 1;
-  t.phase = "betting"; t.deck = buildSiciliaDeck(); t.drawn = 0; t.positions = zeroPos();
-  t.last = null; t.winner = null; t.lastToken = null; t.bets = [];
-  await saveSiciliaTable(found.sessionId, t);
-  res.json(await siciliaState(found.sessionId, t));
+  const out = await mutateSession<EpResult>(found.sessionId, async (tx, cfg) => {
+    const t = findSiciliaInCfg(cfg, found.table.displayCode);
+    if (!t) return { save: false, result: { status: 404, body: { error: "Tavolo non trovato" } } };
+    if (t.suspended) return { save: false, result: { status: 409, body: { error: "Tavolo sospeso" } } };
+    if (!t.settled && t.bets.length) await refundSiciliaBets(tx, found.sessionId, t);  // rimborsa le puntate di una corsa non liquidata
+    if (t.phase === "result") t.race += 1;
+    t.phase = "betting"; t.deck = buildSiciliaDeck(t.bancoEnabled ? t.bancoCards : 0); t.drawn = 0; t.positions = zeroPos();
+    t.bancoPos = 0; t.last = null; t.winner = null; t.lastToken = null; t.bets = []; t.settled = false;
+    return { save: true, result: { status: 200, body: null } };
+  });
+  if (out.status !== 200) { res.status(out.status).json(out.body); return; }
+  const fresh = await findSiciliaTable(found.table.displayCode);
+  res.json(await siciliaState(found.sessionId, fresh!.table));
 });
 router.post("/gestione/casino/sicilia/start", async (req, res): Promise<void> => {
   const found = await findSiciliaTable((req.body?.displayCode || "").toUpperCase());
@@ -1048,22 +1090,46 @@ router.post("/gestione/casino/sicilia/start", async (req, res): Promise<void> =>
 router.post("/gestione/casino/sicilia/draw", async (req, res): Promise<void> => {
   const found = await findSiciliaTable((req.body?.displayCode || "").toUpperCase());
   if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
-  const t = found.table;
   const token = String(req.body?.token ?? "");
-  if (token && t.lastToken === token) { res.json(await siciliaState(found.sessionId, t)); return; }  // idempotente
-  if (t.phase !== "racing") { res.status(409).json({ error: "La corsa non è in svolgimento" }); return; }
-  if (t.winner) { res.json(await siciliaState(found.sessionId, t)); return; }
-  if (t.drawn >= t.deck.length) { res.status(409).json({ error: "Mazzo esaurito" }); return; }
-  const card = t.deck[t.drawn]!; t.drawn += 1; t.last = card; t.lastToken = token || `d${t.drawn}`;
-  t.positions[card.suit] = Math.min(t.trackLen, t.positions[card.suit] + 1);
-  if (t.positions[card.suit] >= t.trackLen) {
-    t.winner = card.suit; t.phase = "result";
-    const picked = t.bets.filter(b => b.suit === card.suit).length;
-    t.history.unshift({ race: t.race, at: new Date().toISOString(), winner: card.suit, cards: t.drawn, players: t.bets.length, pickedWinner: picked });
-    t.history = t.history.slice(0, 50);
-  }
-  await saveSiciliaTable(found.sessionId, t);
-  res.json(await siciliaState(found.sessionId, t));
+  const out = await mutateSession<EpResult>(found.sessionId, async (tx, cfg) => {
+    const t = findSiciliaInCfg(cfg, found.table.displayCode);
+    if (!t) return { save: false, result: { status: 404, body: { error: "Tavolo non trovato" } } };
+    if (token && t.lastToken === token) return { save: false, result: { status: 200, body: null } };   // idempotente: nessuna nuova pescata
+    if (t.phase !== "racing") return { save: false, result: { status: 409, body: { error: "La corsa non è in svolgimento" } } };
+    if (t.winner) return { save: false, result: { status: 200, body: null } };
+    if (t.drawn >= t.deck.length) return { save: false, result: { status: 409, body: { error: "Mazzo esaurito" } } };
+    const card = t.deck[t.drawn]!; t.drawn += 1; t.last = card; t.lastToken = token || `d${t.drawn}`;
+    const pot = t.bets.reduce((s, b) => s + (Number(b.amount) || 0), 0);
+    if (card.suit === "banco") {
+      t.bancoPos = Math.min(t.trackLen, (t.bancoPos ?? 0) + 1);
+      if (t.bancoPos >= t.trackLen) {
+        // Il cavallo del Banco arriva primo: la casa incassa TUTTE le puntate (già in escrow), nessun payout.
+        t.winner = "banco"; t.phase = "result"; t.settled = true;
+        t.history.unshift({ race: t.race, at: new Date().toISOString(), winner: "banco", cards: t.drawn, players: t.bets.length, pickedWinner: 0, pot });
+        t.history = t.history.slice(0, 50);
+      }
+    } else {
+      t.positions[card.suit] = Math.min(t.trackLen, t.positions[card.suit] + 1);
+      if (t.positions[card.suit] >= t.trackLen) {
+        const winSuit = card.suit;
+        t.winner = winSuit; t.phase = "result";
+        if (!t.settled) {   // paga ×quota (puntata inclusa) a chi ha azzeccato; le altre puntate restano al banco
+          for (const b of t.bets) {
+            const amt = Number(b.amount) || 0;
+            if (b.suit === winSuit && amt > 0) await moveFish(tx, found.sessionId, { playerId: b.playerId, delta: amt * SICILIA_QUOTA, kind: "sicilia_win", tableId: null });
+          }
+          t.settled = true;
+        }
+        const picked = t.bets.filter(b => b.suit === winSuit).length;
+        t.history.unshift({ race: t.race, at: new Date().toISOString(), winner: winSuit, cards: t.drawn, players: t.bets.length, pickedWinner: picked, pot });
+        t.history = t.history.slice(0, 50);
+      }
+    }
+    return { save: true, result: { status: 200, body: null } };
+  });
+  if (out.status !== 200) { res.status(out.status).json(out.body); return; }
+  const fresh = await findSiciliaTable(found.table.displayCode);
+  res.json(await siciliaState(found.sessionId, fresh!.table));
 });
 router.post("/gestione/casino/sicilia/settings", async (req, res): Promise<void> => {
   const found = await findSiciliaTable((req.body?.displayCode || "").toUpperCase());
@@ -1071,7 +1137,11 @@ router.post("/gestione/casino/sicilia/settings", async (req, res): Promise<void>
   const t = found.table;
   if (t.phase === "racing") { res.status(409).json({ error: "Corsa in corso" }); return; }
   if (req.body?.name) t.name = String(req.body.name).slice(0, 40);
-  if (req.body?.trackLen != null) { t.trackLen = clampLen(req.body.trackLen); t.positions = zeroPos(); }
+  if (req.body?.trackLen != null) { t.trackLen = clampLen(req.body.trackLen); t.positions = zeroPos(); t.bancoPos = 0; }
+  if (req.body?.bancoEnabled != null) t.bancoEnabled = !!req.body.bancoEnabled;
+  if (req.body?.bancoCards != null) t.bancoCards = Math.max(1, Math.min(15, Math.round(Number(req.body.bancoCards) || 6)));
+  // In fase puntate ricostruisco il mazzo per riflettere la variante (le puntate restano valide: sono sui semi)
+  if (t.phase === "betting") { t.deck = buildSiciliaDeck(t.bancoEnabled ? t.bancoCards : 0); t.drawn = 0; t.positions = zeroPos(); t.bancoPos = 0; t.last = null; }
   await saveSiciliaTable(found.sessionId, t);
   res.json(await siciliaState(found.sessionId, t));
 });
@@ -1085,26 +1155,47 @@ router.post("/gestione/casino/sicilia/suspend", async (req, res): Promise<void> 
 router.post("/gestione/casino/sicilia/bet", async (req, res): Promise<void> => {
   const found = await findSiciliaTable((req.body?.displayCode || "").toUpperCase());
   if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
-  const t = found.table;
-  if (t.phase === "result") { res.status(409).json({ error: "Corsa conclusa" }); return; }
   const suit = String(req.body?.suit ?? "") as Suit;
   if (!SUITS.includes(suit)) { res.status(400).json({ error: "Seme non valido" }); return; }
+  const amount = Math.round(Number(req.body?.amount ?? 0));
+  if (!Number.isFinite(amount) || amount <= 0 || amount % 10 !== 0) { res.status(400).json({ error: "Puntata non valida (multipli di 10)" }); return; }
   const [player] = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.playerCode, String(req.body?.playerCode ?? "")));
   if (!player || player.sessionId !== found.sessionId) { res.status(404).json({ error: "Giocatore non trovato" }); return; }
-  t.bets = t.bets.filter(b => b.playerId !== player.id);
-  t.bets.push({ playerId: player.id, suit, at: new Date().toISOString() });
-  if (!t.known.includes(player.id)) t.known.push(player.id);
-  await saveSiciliaTable(found.sessionId, t);
-  res.json(await siciliaState(found.sessionId, t));
+  const out = await mutateSession<EpResult>(found.sessionId, async (tx, cfg) => {
+    const t = findSiciliaInCfg(cfg, found.table.displayCode);
+    if (!t) return { save: false, result: { status: 404, body: { error: "Tavolo non trovato" } } };
+    if (t.phase !== "betting") return { save: false, result: { status: 409, body: { error: "Puntate chiuse" } } };
+    const existing = t.bets.find(b => b.playerId === player.id);
+    if (existing && existing.suit !== suit) return { save: false, result: { status: 409, body: { error: "Hai già puntato su un altro seme" } } };
+    const bal = await moveFish(tx, found.sessionId, { playerId: player.id, delta: -amount, kind: "sicilia_bet", tableId: null, requireFunds: true });
+    if (bal == null) return { save: false, result: { status: 402, body: { error: "Fiche insufficienti" } } };
+    if (existing) existing.amount = (Number(existing.amount) || 0) + amount;
+    else t.bets.push({ playerId: player.id, suit, amount, at: new Date().toISOString() });
+    if (!t.known.includes(player.id)) t.known.push(player.id);
+    return { save: true, result: { status: 200, body: null } };
+  });
+  if (out.status !== 200) { res.status(out.status).json(out.body); return; }
+  const fresh = await findSiciliaTable(found.table.displayCode);
+  res.json(await siciliaState(found.sessionId, fresh!.table));
 });
 router.post("/gestione/casino/sicilia/unbet", async (req, res): Promise<void> => {
   const found = await findSiciliaTable((req.body?.displayCode || "").toUpperCase());
   if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
-  const t = found.table;
   const [player] = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.playerCode, String(req.body?.playerCode ?? "")));
-  if (player) t.bets = t.bets.filter(b => b.playerId !== player.id);
-  await saveSiciliaTable(found.sessionId, t);
-  res.json(await siciliaState(found.sessionId, t));
+  if (!player) { res.status(404).json({ error: "Giocatore non trovato" }); return; }
+  const out = await mutateSession<EpResult>(found.sessionId, async (tx, cfg) => {
+    const t = findSiciliaInCfg(cfg, found.table.displayCode);
+    if (!t) return { save: false, result: { status: 404, body: { error: "Tavolo non trovato" } } };
+    if (t.phase !== "betting") return { save: false, result: { status: 409, body: { error: "Puntate chiuse" } } };
+    const b = t.bets.find(x => x.playerId === player.id);
+    const amt = Number(b?.amount) || 0;
+    if (amt > 0) await moveFish(tx, found.sessionId, { playerId: player.id, delta: amt, kind: "sicilia_refund", tableId: null });
+    t.bets = t.bets.filter(x => x.playerId !== player.id);
+    return { save: true, result: { status: 200, body: null } };
+  });
+  if (out.status !== 200) { res.status(out.status).json(out.body); return; }
+  const fresh = await findSiciliaTable(found.table.displayCode);
+  res.json(await siciliaState(found.sessionId, fresh!.table));
 });
 
 /* ═══ IPPODROMO SPRINT ──────────────────────────────────────────────────────────

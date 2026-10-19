@@ -37,13 +37,18 @@ const ATLAS_SIZE: Record<Suit, { w: number; h: number }> = {
   spade: { w: 1536, h: 1024 }, bastoni: { w: 1536, h: 1024 },
 };
 
-type SiciliaCard = { suit: Suit; value: number };
-type SicPlayer = { id: string; nickname: string; avatarUrl: string | null; balance: number; suit: Suit | null };
-type SicHist = { race: number; at: string; winner: Suit | null; cards: number; players: number; pickedWinner: number };
+type SicCardSuit = Suit | 'banco';
+type SiciliaCard = { suit: SicCardSuit; value: number };
+type SicWinner = Suit | 'banco';
+type SicPlayer = { id: string; nickname: string; avatarUrl: string | null; balance: number; suit: Suit | null; stake: number };
+type SicHist = { race: number; at: string; winner: SicWinner | null; cards: number; players: number; pickedWinner: number; pot: number };
+type SicPot = Record<Suit, number> & { total: number };
 type SicTbl = {
   id: string; name: string; displayCode: string; type: 'sicilia';
   phase: 'betting' | 'racing' | 'result'; race: number; trackLen: number;
-  positions: Record<Suit, number>; last: SiciliaCard | null; winner: Suit | null;
+  positions: Record<Suit, number>; last: SiciliaCard | null; winner: SicWinner | null;
+  bancoEnabled: boolean; bancoCards: number; bancoPos: number;
+  quota: number; pot: SicPot;
   drawn: number; deckLeft: number; players: SicPlayer[]; suspended: boolean; history: SicHist[];
 };
 type SicState = { table: SicTbl; sessionId: string };
@@ -224,6 +229,12 @@ export function CorsaSiciliaMonitor({ displayCode, host = false }: { displayCode
           <div style={{ width: 40 }}>{[0, 1, 2].map(i => <div key={i} style={{ height: 4, borderRadius: 2, background: '#e8c45f', margin: '5px 0' }} />)}</div>
         </div>
 
+        {/* Piatto totale + cavallo del Banco (sopra il pannello mazzo) */}
+        <div style={{ position: 'absolute', left: 1195, top: 150, width: 463, textAlign: 'center', color: '#ffe9a6', font: '700 28px "Cinzel",serif' }}>
+          PIATTO {t.pot?.total ?? 0} · ×{t.quota ?? 3}
+          {t.bancoEnabled && <span style={{ color: '#ffd27a', fontSize: 24 }}>{'  ·  '}🏦 {t.bancoPos}/{N}</span>}
+        </div>
+
         {/* 4 corsie */}
         {SUITS.map((s, i) => {
           const cy = LANES_Y[i];
@@ -268,14 +279,18 @@ export function CorsaSiciliaMonitor({ displayCode, host = false }: { displayCode
         {/* Pannello mazzo + carta corrente */}
         <div className="panel" style={{ left: 1195, top: 208, width: 463, height: 330, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 26 }}>
           <CardBack h={300} />
-          {t.last ? <CardFace suit={t.last.suit} value={t.last.value} mazzo={mazzo} h={300} />
+          {t.last ? (t.last.suit === 'banco'
+            ? <div style={{ width: 189, height: 300, borderRadius: 12, border: '3px solid #e8c45f', display: 'grid', placeItems: 'center', background: 'linear-gradient(160deg,#143b86,#0a2a6a)', color: '#ffe9a6', font: '700 30px "Cinzel",serif', textAlign: 'center', gap: 8 }}><span style={{ fontSize: 64 }}>🏦</span>BANCO</div>
+            : <CardFace suit={t.last.suit as Suit} value={t.last.value} mazzo={mazzo} h={300} />)
             : <div style={{ width: 189, height: 300, borderRadius: 12, border: '3px dashed #e8c45f66', display: 'grid', placeItems: 'center', color: '#ffe9a6', font: 'italic 400 18px "Lora",serif', textAlign: 'center' }}>in attesa<br />di pescata</div>}
         </div>
 
         {/* "È USCITO …" */}
         <div className="usc" style={{ left: 1192, top: 552, width: 468 }}>
-          {t.last ? <><b>È USCITO {SUIT_META[t.last.suit].label}</b><em>Il cavallo {SUIT_META[t.last.suit].label[0] + SUIT_META[t.last.suit].label.slice(1).toLowerCase()} avanza di 1 casella</em></>
-            : <em style={{ fontSize: 22 }}>{t.phase === 'betting' ? 'Scegli i cavalli, poi Via' : 'Pesca la prima carta'}</em>}
+          {t.last ? (t.last.suit === 'banco'
+            ? <><b>È USCITO BANCO</b><em>Il cavallo del Banco avanza di 1 casella</em></>
+            : <><b>È USCITO {SUIT_META[t.last.suit as Suit].label}</b><em>Il cavallo {SUIT_META[t.last.suit as Suit].label[0] + SUIT_META[t.last.suit as Suit].label.slice(1).toLowerCase()} avanza di 1 casella</em></>)
+            : <em style={{ fontSize: 22 }}>{t.phase === 'betting' ? 'Puntate aperte — punta dal telefono' : 'Pesca la prima carta'}</em>}
         </div>
 
         {/* Pulsante PESCA */}
@@ -302,9 +317,9 @@ export function CorsaSiciliaMonitor({ displayCode, host = false }: { displayCode
         {/* vincitore */}
         {t.phase === 'result' && t.winner && (
           <div className="win"><div className="card">
-            <img src={`${ASSET}crops/medaglione-${t.winner}.png`} alt="" style={{ width: 120, height: 120, marginBottom: 12 }} />
-            <h2>VINCE {SUIT_META[t.winner].label}</h2>
-            <div style={{ color: '#ffe9a6', font: 'italic 400 24px "Lora",serif', marginTop: 10 }}>in {t.drawn} carte · {bySuit(t.winner).length} hanno scelto bene</div>
+            {t.winner === 'banco'
+              ? <><div style={{ fontSize: 110, marginBottom: 6 }}>🏦</div><h2>VINCE IL BANCO</h2><div style={{ color: '#ffe9a6', font: 'italic 400 24px "Lora",serif', marginTop: 10 }}>in {t.drawn} carte · le puntate vanno alla casa</div></>
+              : <><img src={`${ASSET}crops/medaglione-${t.winner}.png`} alt="" style={{ width: 120, height: 120, marginBottom: 12 }} /><h2>VINCE {SUIT_META[t.winner as Suit].label}</h2><div style={{ color: '#ffe9a6', font: 'italic 400 24px "Lora",serif', marginTop: 10 }}>in {t.drawn} carte · {bySuit(t.winner as Suit).length} hanno vinto ×{t.quota ?? 3}</div></>}
           </div></div>
         )}
       </div>
@@ -326,38 +341,74 @@ const PHONE_CSS = FONT + `
 .sicp .panel{border-radius:16px;border:2px solid #f1d98c55;background:#ffffff0e;padding:16px;text-align:center;}
 .sicp .big{font:700 34px/1 "Baskerville Casino",serif;color:#ffe9a6;}
 `;
+const SIC_CHIPS = [10, 50, 100, 250];   // multipli di 10 (vincolo backend)
 export function CorsaSiciliaPhone({ displayCode }: { displayCode: string }) {
   const [playerCode] = useState<string>(() => { try { return localStorage.getItem('casino_player') || ''; } catch { return ''; } });
   const [me, setMe] = useState<{ id: string; nickname: string } | null>(null);
   const st = useSicTable(displayCode, 900);
   const t = st?.table;
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [sel, setSel] = useState<Suit | null>(null);
+  const [chip, setChip] = useState(50);
   useEffect(() => { if (!playerCode) { setMe(null); return; } fetch(`${API}/gestione/casino/player/${playerCode}`).then(r => r.ok ? r.json() : null).then(d => { if (d?.player) setMe({ id: d.player.id, nickname: d.player.nickname }); }).catch(() => {}); }, [playerCode, t?.race]);
-  const mine = t && me ? (t.players.find(p => p.id === me.id)?.suit ?? null) : null;
-  const pick = async (suit: Suit) => { setBusy(true); try { await api('/gestione/casino/sicilia/bet', { displayCode, playerCode, suit }); } finally { setBusy(false); } };
+  const meRow = t && me ? (t.players.find(p => p.id === me.id) ?? null) : null;
+  const mine = meRow?.suit ?? null;
+  const stake = meRow?.stake ?? 0;
+  const balance = meRow?.balance ?? 0;
+  const quota = t?.quota ?? 3;
+  const betSuit: Suit | null = mine ?? sel;
+  const bet = async () => { if (!betSuit) return; setBusy(true); setErr(''); try { const r = await api('/gestione/casino/sicilia/bet', { displayCode, playerCode, suit: betSuit, amount: chip }); if (r?.error) setErr(r.error); } finally { setBusy(false); } };
+  const unbet = async () => { setBusy(true); setErr(''); try { await api('/gestione/casino/sicilia/unbet', { displayCode, playerCode }); setSel(null); } finally { setBusy(false); } };
 
   const Shell = (c: React.ReactNode) => <div className="sicp"><style>{PHONE_CSS}</style><div className="wrap"><div style={{ textAlign: 'center' }}><div style={{ font: '700 20px/1 "Baskerville Casino",serif', color: '#ffe9a6', letterSpacing: '.08em' }}>CORSA SICILIANA</div></div>{c}</div></div>;
-  if (!playerCode || !me) return Shell(<div className="panel" style={{ marginTop: 30 }}><div className="h1">Entra alla serata</div><div className="h2">Scansiona il QR del casinò e accedi, poi scegli il tuo cavallo.</div></div>);
+  if (!playerCode || !me) return Shell(<div className="panel" style={{ marginTop: 30 }}><div className="h1">Entra alla serata</div><div className="h2">Scansiona il QR del casinò e accedi, poi siediti al tavolo e punta.</div></div>);
   if (!t) return Shell(<div className="h2" style={{ marginTop: 40 }}>Carico il tavolo…</div>);
 
   if (t.phase === 'result' && t.winner) {
-    const won = mine === t.winner;
-    return Shell(<>
-      <div className="panel"><div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}><SuitIcon suit={t.winner} size={64} /></div><div className="big">Vince {SUIT_META[t.winner].label}</div><div className="h2" style={{ marginTop: 6 }}>{mine ? (won ? '🎉 Hai scelto bene!' : `Avevi scelto ${SUIT_META[mine].label}`) : 'Non avevi scelto'}</div></div>
-    </>);
+    const bancoWon = t.winner === 'banco';
+    const won = !bancoWon && mine === t.winner;
+    const prize = won ? stake * quota : 0;
+    return Shell(
+      <div className="panel">
+        {bancoWon
+          ? <><div className="big">Vince il Banco 🏦</div><div className="h2" style={{ marginTop: 6 }}>Il cavallo del Banco è arrivato primo: le puntate vanno alla casa.</div></>
+          : <><div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}><SuitIcon suit={t.winner as Suit} size={64} /></div><div className="big">Vince {SUIT_META[t.winner as Suit].label}</div></>}
+        <div className="h2" style={{ marginTop: 8 }}>
+          {stake > 0 ? (won ? `🎉 Hai vinto ${prize} fiche!` : `Hai perso ${stake} fiche`) : (mine ? `Avevi puntato su ${SUIT_META[mine].label}` : 'Non avevi puntato')}
+        </div>
+        <div className="h2" style={{ marginTop: 6 }}>Le tue fiche: <b style={{ color: '#ffe9a6' }}>{balance}</b></div>
+      </div>
+    );
   }
+
+  const racing = t.phase === 'racing';
+  const gold: React.CSSProperties = { marginTop: 4, padding: '14px', borderRadius: 14, border: 0, background: 'linear-gradient(180deg,#ffe9a6,#d9a63a)', color: '#2a1c04', font: '700 18px "Baskerville Casino",serif', cursor: 'pointer', width: '100%' };
+  const ghost: React.CSSProperties = { marginTop: 10, padding: '10px', borderRadius: 12, border: '1px solid #ffffff33', background: 'transparent', color: '#cfe0f5', cursor: 'pointer', width: '100%' };
   return Shell(<>
-    <div className="h1">{mine ? 'Il tuo cavallo' : 'Scegli il tuo cavallo'}</div>
-    <div className="h2">{t.phase === 'racing' ? 'La corsa è iniziata — tifa per il tuo seme!' : 'Scegli un seme prima del via'}</div>
+    <div className="h1">{mine ? 'La tua puntata' : 'Punta sul tuo cavallo'}</div>
+    <div className="h2">{racing ? 'Corsa in corso — tifa per il tuo seme!' : 'Scegli un seme, poi punta le fiche'}</div>
+    <div className="h2">Le tue fiche: <b style={{ color: '#ffe9a6' }}>{balance}</b>{t.bancoEnabled ? ' · 🏦 c’è il cavallo del Banco' : ''}</div>
     <div className="suits">
-      {SUITS.map(s => { const m = SUIT_META[s]; return (
-        <button key={s} className={`suit${mine === s ? ' sel' : ''}`} disabled={busy} onClick={() => pick(s)}>
+      {SUITS.map(s => { const m = SUIT_META[s]; const active = betSuit === s; const locked = !!mine && mine !== s; return (
+        <button key={s} className={`suit${active ? ' sel' : ''}`} disabled={busy || racing || locked} onClick={() => setSel(s)}>
           <span className="medal"><SuitIcon suit={s} size={34} /></span>
-          <span style={{ flex: 1 }}><span className="nm" style={{ color: m.glow }}>{m.label}</span><br /><span className="h2" style={{ fontSize: 12 }}>casella {t.positions[s]}/{t.trackLen}</span></span>
+          <span style={{ flex: 1 }}><span className="nm" style={{ color: m.glow }}>{m.label}</span><br /><span className="h2" style={{ fontSize: 12 }}>casella {t.positions[s]}/{t.trackLen} · piatto {t.pot?.[s] ?? 0}</span></span>
         </button>
       ); })}
     </div>
-    {mine && <div className="panel"><div className="h2">Hai scelto</div><div className="big" style={{ color: SUIT_META[mine].glow, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}><SuitIcon suit={mine} size={34} />{SUIT_META[mine].label}</div></div>}
+    {!racing && betSuit && <>
+      <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+        {SIC_CHIPS.map(c => <button key={c} onClick={() => setChip(c)} style={{ padding: '10px 16px', borderRadius: 12, border: `2px solid ${chip === c ? '#f1d98c' : '#ffffff22'}`, background: chip === c ? '#ffffff18' : '#ffffff0e', color: '#fff', font: '700 18px "Baskerville Casino",serif', cursor: 'pointer' }}>{c}</button>)}
+      </div>
+      <button disabled={busy || balance < chip} onClick={bet} style={gold}>Punta {chip} su {SUIT_META[betSuit].label}</button>
+    </>}
+    {err && <div className="h2" style={{ color: '#ffb4b4' }}>{err}</div>}
+    {mine && stake > 0 && <div className="panel">
+      <div className="h2">Hai puntato (vinci ×{quota})</div>
+      <div className="big" style={{ color: SUIT_META[mine].glow, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}><SuitIcon suit={mine} size={34} />{stake} su {SUIT_META[mine].label}</div>
+      {!racing && <button disabled={busy} onClick={unbet} style={ghost}>Annulla puntata</button>}
+    </div>}
   </>);
 }
 
@@ -379,16 +430,25 @@ export function CorsaSiciliaRegia({ displayCode }: { displayCode: string }) {
           <div style={{ font: '700 32px/1 "Baskerville Casino",serif', color: '#ffe9a6', marginTop: 4 }}>Regia · Corsa Siciliana</div>
           <div style={{ color: '#cfe0f5' }}>{t.name} · <b style={{ color: '#ffe9a6' }}>{t.displayCode}</b> · Giro {t.race}</div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
           {SUITS.map(s => (
             <div key={s} style={{ borderRadius: 12, border: `2px solid ${m(s).glow}66`, background: '#ffffff0e', padding: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
               <SuitIcon suit={s} size={34} />
-              <div style={{ flex: 1 }}><div style={{ font: '700 18px/1 "Baskerville Casino",serif', color: m(s).glow }}>{m(s).label}</div><div style={{ color: '#cfe0f5', fontSize: 13 }}>casella {t.positions[s]} / {t.trackLen}</div></div>
+              <div style={{ flex: 1 }}><div style={{ font: '700 18px/1 "Baskerville Casino",serif', color: m(s).glow }}>{m(s).label}</div><div style={{ color: '#cfe0f5', fontSize: 13 }}>casella {t.positions[s]} / {t.trackLen} · piatto {t.pot?.[s] ?? 0}</div></div>
               {t.winner === s && <span style={{ color: '#ffe08a', fontWeight: 700 }}>🏁</span>}
             </div>
           ))}
         </div>
-        {t.last && <div style={{ textAlign: 'center', marginBottom: 12, color: '#cfe0f5' }}>Ultima carta: <b style={{ color: '#fff' }}>{t.last.value} di {m(t.last.suit).label}</b> · mazzo {t.deckLeft}</div>}
+        {t.bancoEnabled && (
+          <div style={{ borderRadius: 12, border: '2px solid #ffe08a66', background: '#ffffff0e', padding: 12, display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+            <span style={{ fontSize: 30 }}>🏦</span>
+            <div style={{ flex: 1 }}><div style={{ font: '700 18px/1 "Baskerville Casino",serif', color: '#ffe08a' }}>Cavallo del Banco</div><div style={{ color: '#cfe0f5', fontSize: 13 }}>casella {t.bancoPos} / {t.trackLen} · {t.bancoCards} carte Banco nel mazzo</div></div>
+            {t.winner === 'banco' && <span style={{ color: '#ffe08a', fontWeight: 700 }}>🏁</span>}
+          </div>
+        )}
+        <div style={{ textAlign: 'center', marginBottom: 10, color: '#cfe0f5' }}>Piatto totale: <b style={{ color: '#ffe9a6' }}>{t.pot?.total ?? 0}</b> fiche · quota ×{t.quota ?? 3}</div>
+        {t.winner && <div style={{ textAlign: 'center', marginBottom: 10, font: '700 22px "Baskerville Casino",serif', color: '#ffe08a' }}>🏁 {t.winner === 'banco' ? 'Vince il BANCO — tutte le puntate alla casa' : `Vince ${m(t.winner as Suit).label}`}</div>}
+        {t.last && <div style={{ textAlign: 'center', marginBottom: 12, color: '#cfe0f5' }}>Ultima carta: <b style={{ color: '#fff' }}>{t.last.suit === 'banco' ? '🏦 Banco' : `${t.last.value} di ${m(t.last.suit as Suit).label}`}</b> · mazzo {t.deckLeft}</div>}
 
         <div style={{ display: 'grid', gap: 10 }}>
           {t.phase === 'racing' && !t.winner && (
@@ -405,6 +465,17 @@ export function CorsaSiciliaRegia({ displayCode }: { displayCode: string }) {
                 style={{ width: 64, marginLeft: 8, padding: 8, borderRadius: 8, border: '1px solid #ffffff33', background: '#0a2a6a', color: '#ffe9a6', textAlign: 'center' }} />
             </label>
             <button disabled={busy} onClick={() => call('/gestione/casino/sicilia/suspend')} style={{ ...btnGhost, width: 'auto', padding: '8px 14px' }}>{t.suspended ? 'Riattiva' : 'Sospendi'}</button>
+          </div>
+          <div style={{ display: 'flex', gap: 14, alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', background: '#ffffff0e', borderRadius: 12, padding: 10 }}>
+            <label style={{ color: '#cfe0f5', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+              <input type="checkbox" checked={!!t.bancoEnabled} disabled={t.phase !== 'betting' || busy} onChange={e => call('/gestione/casino/sicilia/settings', { bancoEnabled: e.target.checked })} />
+              🏦 Cavallo del Banco
+            </label>
+            {t.bancoEnabled && <label style={{ color: '#cfe0f5' }}>Carte Banco
+              <input type="number" min={1} max={15} defaultValue={t.bancoCards} disabled={t.phase !== 'betting' || busy} onBlur={e => call('/gestione/casino/sicilia/settings', { bancoCards: +e.target.value })}
+                style={{ width: 56, marginLeft: 8, padding: 8, borderRadius: 8, border: '1px solid #ffffff33', background: '#0a2a6a', color: '#ffe9a6', textAlign: 'center' }} />
+            </label>}
+            <span style={{ color: '#8fa9d6', fontSize: 12 }}>più carte = banco vince più spesso</span>
           </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'center', background: '#ffffff0e', borderRadius: 12, padding: 10 }}>
             <QRCodeSVG value={`${ORIGIN}gestione/casino?sicplay=${t.displayCode}`} size={72} />
