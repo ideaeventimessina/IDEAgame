@@ -16,6 +16,7 @@ import StageFit from '@/components/StageFit';
 
 const LIVE_DEST = '/home-setup?mode=live';
 const LIVE_ROLES = ['super_admin', 'tenant_owner', 'game_manager', 'entertainer'] as const;
+const API = (import.meta.env.BASE_URL as string || '/') + 'api';
 
 function useIsNarrow(bp = 760) {
   const [narrow, setNarrow] = useState(
@@ -121,6 +122,20 @@ export default function ModeSelect() {
     navigate(route);
   };
 
+  // Burraco/Casinò: NON mandare a /gestione/<kind> senza codice (vicolo cieco
+  // "Nessun codice"). Come la pagina /gestione: crea la serata e apri la regia.
+  // Se la creazione fallisce, ripiego su /gestione (hub crea + "Hai un codice? Entra").
+  const createAndGo = async (kind: 'casino' | 'burraco') => {
+    AudioManager.resumeContext();
+    try {
+      const name = kind === 'casino' ? 'IDEACASINO' : 'Serata Burraco';
+      const r = await fetch(`${API}/gestione/${kind}/sessions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ name }) });
+      const s = await r.json().catch(() => null);
+      if (r.ok && s?.masterCode) { navigate(`/gestione/${kind}?code=${s.masterCode}`); return; }
+      navigate('/gestione');
+    } catch { navigate('/gestione'); }
+  };
+
   // flusso login Live preservato
   const goLive = () => {
     AudioManager.resumeContext();
@@ -144,9 +159,9 @@ export default function ModeSelect() {
     { id: 'lockdown', title: 'Lockdown', desc: 'Gioca a distanza\ncon i tuoi amici', Icon: Lock,
       tint: 'linear-gradient(150deg, rgba(34,62,140,0.55) 0%, rgba(10,12,30,0.94) 64%)', border: 'rgba(96,126,232,0.5)', onClick: () => go('/home-setup?mode=lockdown') },
     { id: 'burraco', title: 'Burraco', desc: 'Il classico intramontabile\nin versione digitale', Icon: Spade,
-      tint: 'linear-gradient(150deg, rgba(20,96,64,0.55) 0%, rgba(8,20,16,0.94) 64%)', border: 'rgba(64,204,146,0.5)', onClick: () => go('/gestione/burraco') },
+      tint: 'linear-gradient(150deg, rgba(20,96,64,0.55) 0%, rgba(8,20,16,0.94) 64%)', border: 'rgba(64,204,146,0.5)', onClick: () => void createAndGo('burraco') },
     { id: 'casino', title: 'Casinò', desc: 'Sfide e giochi\ndi società', Icon: Crown,
-      tint: 'linear-gradient(150deg, rgba(96,44,156,0.55) 0%, rgba(14,8,30,0.94) 64%)', border: 'rgba(176,112,232,0.5)', onClick: () => go('/gestione/casino') },
+      tint: 'linear-gradient(150deg, rgba(96,44,156,0.55) 0%, rgba(14,8,30,0.94) 64%)', border: 'rgba(176,112,232,0.5)', onClick: () => void createAndGo('casino') },
   ];
 
   const Title = (

@@ -162,10 +162,12 @@ function CasinoResolver({ code }: { code: string }) {
   const [res, setRes] = useState<{ role: string; sessionId: string; tableId?: string } | null>(null);
   const [err, setErr] = useState('');
   useEffect(() => {
-    if (!code) { setErr('Nessun codice'); return; }
+    // Niente codice (es. tasto Casinò che punta a /gestione/casino) → NON lasciare un
+    // vicolo cieco "Nessun codice": porta all'hub Gestione (crea serata + "Hai un codice? Entra").
+    if (!code) { try { window.location.replace(((import.meta.env.BASE_URL as string) || '/') + 'gestione'); } catch { /* */ } return; }
     fetch(`${API}/gestione/casino/resolve/${code}`).then(r => r.ok ? r.json() : Promise.reject()).then(setRes).catch(() => setErr('Serata non trovata'));
   }, [code]);
-  if (err) return <Center>{err}</Center>;
+  if (err) return <Center><div style={{ textAlign: 'center' }}>{err}<br /><button onClick={() => { window.location.href = ((import.meta.env.BASE_URL as string) || '/') + 'gestione'; }} style={{ marginTop: 16, padding: '10px 18px', borderRadius: 10, border: '1px solid #F5B64266', background: '#F5B64222', color: '#F5B642', cursor: 'pointer', font: '700 15px system-ui' }}>Vai a Gestione</button></div></Center>;
   if (!res) return <Center>Carico…</Center>;
   if (res.role === 'master') return <MasterView sessionId={res.sessionId} />;
   if (res.role === 'tv') return <TvView sessionId={res.sessionId} />;
