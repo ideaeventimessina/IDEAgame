@@ -159,7 +159,7 @@ export default function ModeSelect() {
   );
 
   const header = (
-    <ShellHeader num="02" label="MODALITÀ" onPlayers={() => navigate('/home/join')} onSettings={() => navigate('/home-setup')} onProfile={() => navigate('/home-setup')} />
+    <ShellHeader num="02" label="MODALITÀ" onPlayers={() => navigate('/home/join')} onSettings={() => navigate('/home-setup')} onProfile={() => navigate('/login')} />
   );
 
   const bigsR = bigs;

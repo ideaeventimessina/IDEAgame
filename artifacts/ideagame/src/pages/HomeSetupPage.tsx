@@ -393,7 +393,7 @@ export default function HomeSetupPage() {
   );
 
   const header = (
-    <ShellHeader num={badgeNum} label={badge} onPlayers={() => navigate('/home/join')} onSettings={() => navigate('/mode-select')} onProfile={() => navigate('/mode-select')} />
+    <ShellHeader num={badgeNum} label={badge} onPlayers={() => navigate('/home/join')} onSettings={() => navigate('/mode-select')} onProfile={() => navigate('/login')} />
   );
 
   const errorBar = error ? (

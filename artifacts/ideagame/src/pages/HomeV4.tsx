@@ -124,7 +124,7 @@ function MobileHome({ navigate }: { navigate: (to: string) => void }) {
         label="HOME"
         onPlayers={() => navigate('/home/join')}
         onSettings={() => navigate('/mode-select')}
-        onProfile={() => navigate('/mode-select')}
+        onProfile={() => navigate('/login')}
       />
       <main
         className="flex flex-1 flex-col items-center"
@@ -178,7 +178,7 @@ export default function HomeV4() {
           label="HOME"
           onPlayers={() => navigate('/home/join')}
           onSettings={() => navigate('/mode-select')}
-          onProfile={() => navigate('/mode-select')}
+          onProfile={() => navigate('/login')}
         />
 
         <main className="relative flex flex-1 items-stretch" style={{ padding: '0 16px 6px', overflow: 'visible' }}>
