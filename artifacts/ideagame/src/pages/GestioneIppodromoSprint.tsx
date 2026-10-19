@@ -13,10 +13,10 @@
 
    MONITOR (metodo mockup-replica): palco FISSO 1672×941 scalato con transform:scale;
    clean-plate `stadio-pulito.png` come fondo dipinto; titolo/logo ORIGINALE dagli asset;
-   RIG ANIMATO in codice su canvas (porting fedele di demo/public/horse-rig.js, pivot e
-   contratto stati invariati); testi/numeri dinamici in codice (Cinzel/Lora). Le corse
-   scorrono con camera laterale che segue il gruppo; ostacoli e traguardo in coordinate
-   world. Il rig è grafica 2D stilizzata: NON è fotorealistico.
+   CAVALLI REALISTICI: sprite di galoppo a 6 frame (ui/horse-gallop.png) disegnato su
+   canvas al frame giusto, tinta manto per corsia, nuvola di polvere dietro gli zoccoli;
+   testi/numeri dinamici in codice (Cinzel/Lora). Le corse scorrono con camera laterale
+   che segue il gruppo; ostacoli e traguardo in coordinate world.
    ════════════════════════════════════════════════════════════════════════════ */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -73,41 +73,42 @@ function useSprint(code: string, ms = 350): SprintState | null {
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
-   RIG 2D — porting fedele di demo/public/horse-rig.js. Unità locali spazio-cavallo;
-   il renderer possiede la traslazione. Ombra a terra mentre il root salta; coda a
-   pendolo; 4 zampe articolate; sella/fantino col colore della corsia. Pivot invariati.
+   CAVALLO REALISTICO — sprite di galoppo a 6 frame (ui/horse-gallop.png, 1476×194 =
+   6 × 246×194, cavallo+fantino fotografici) disegnato su canvas al frame giusto.
+   Tinta del manto per corsia con ctx.filter; ombra a terra neutra; salto estratto
+   dal contratto stati (invariato). Rimpiazza il vecchio rig vettoriale stilizzato.
+   La nuvola di polvere dietro gli zoccoli (nel renderer) copre le zampe posteriori
+   e aggiunge senso di velocità.
    ════════════════════════════════════════════════════════════════════════════ */
-function drawHorse(
-  ctx: CanvasRenderingContext2D,
-  { x, y, scale = 1, color = '#e74747', phase = 0, jump = 0, moving = true, id = 1 }:
-    { x: number; y: number; scale?: number; color?: string; phase?: number; jump?: number; moving?: boolean; id?: number },
+const SPR_FW = 246, SPR_FH = 194, SPR_FRAMES = 6;
+// tinta manto per corsia (horseId 1..6): stessi filtri validati nel mock della gara
+const HORSE_FILT = [
+  'saturate(1.25) hue-rotate(-8deg)',
+  'brightness(.72) saturate(.85)',
+  'sepia(.4) saturate(1.5) hue-rotate(-14deg) brightness(1.05)',
+  'sepia(.25) saturate(1.3) brightness(1.1)',
+  'brightness(.86) saturate(1.1)',
+  'saturate(1.35) hue-rotate(4deg) brightness(.95)',
+];
+function drawHorseSprite(
+  ctx: CanvasRenderingContext2D, img: HTMLImageElement,
+  { x, y, scale = 1, frame = 0, jump = 0, filter = '' }:
+    { x: number; y: number; scale?: number; frame?: number; jump?: number; filter?: string },
 ) {
-  ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-  const stroke = (pts: number[][], width: number, col: string) => { ctx.strokeStyle = col; ctx.lineWidth = width; ctx.beginPath(); pts.forEach(([a, b], i) => i ? ctx.lineTo(a!, b!) : ctx.moveTo(a!, b!)); ctx.stroke(); };
-  const oval = (cx: number, cy: number, rx: number, ry: number, col: string) => { ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); ctx.fill(); };
-  const coat = ['#855039', '#b2764c', '#704836', '#a66b40', '#69443b', '#9d6242'][id - 1]!;
-  ctx.globalAlpha = .2; oval(0, 8, 43 * (1 - jump * .25), 7, '#07160e'); ctx.globalAlpha = 1; ctx.translate(0, -jump * 48);
-  const p = moving ? phase : 0, bob = moving ? Math.sin(p * 2) * 1.6 : 0; ctx.translate(0, bob);
-  stroke([[-34, -34], [-48, -32 + Math.sin(p) * 4], [-57, -14 + Math.sin(p + .7) * 5]], 8, '#302521');
-  for (let i = 0; i < 4; i++) {
-    const front = i >= 2, far = i % 2 === 0, hipX = front ? 24 : -24, hipY = -31;
-    const angle = moving ? Math.sin(p + (front ? Math.PI : 0) + (far ? Math.PI : 0)) * .75 : 0;
-    const thigh = jump > .1 ? (front ? -1.1 : 1.25) : angle;
-    const kneeX = hipX + Math.sin(thigh) * 23, kneeY = hipY + Math.cos(thigh) * 23;
-    const shin = jump > .1 ? (front ? 1.8 : -1.5) : -angle * .7;
-    const footX = kneeX + Math.sin(shin) * 22, footY = kneeY + Math.cos(shin) * 22;
-    stroke([[hipX, hipY], [kneeX, kneeY], [footX, footY]], far ? 7 : 8, far ? '#594032' : coat); stroke([[footX - 3, footY + 1], [footX + 5, footY + 1]], 6, '#211e20');
-  }
-  oval(-1, -39, 36, 18, coat); oval(29, -40, 14, 20, coat);
-  stroke([[26, -44], [36, -67], [46, -72]], 18, coat); oval(47, -70, 17, 10, coat); oval(59, -67, 8, 7, coat);
-  ctx.fillStyle = coat; ctx.beginPath(); ctx.moveTo(39, -76); ctx.lineTo(39, -89); ctx.lineTo(47, -77); ctx.fill();
-  stroke([[28, -47], [27, -62], [35, -77]], 7, '#302521'); oval(52, -73, 1.8, 1.8, '#131618');
-  stroke([[37, -77], [43, -61], [61, -63]], 2, '#e8c06b'); stroke([[60, -65], [15, -49]], 1.5, '#e8c06b');
-  ctx.fillStyle = color; ctx.beginPath(); ctx.roundRect(-18, -54, 35, 29, 5); ctx.fill(); ctx.strokeStyle = '#e8c06b'; ctx.lineWidth = 2; ctx.stroke();
-  ctx.fillStyle = '#fff7e7'; ctx.font = 'bold 17px system-ui'; ctx.textAlign = 'center'; ctx.fillText(String(id), 0, -32);
-  ctx.save(); ctx.translate(-2, -57); ctx.rotate(jump > 0 ? .2 : -.05 + Math.sin(p) * .04);
-  stroke([[0, 0], [-5, 15], [13, 18]], 7, '#f1eee2'); stroke([[0, 0], [11, -17]], 13, color); oval(16, -29, 7, 8, '#eab485');
-  ctx.fillStyle = color; ctx.beginPath(); ctx.arc(16, -33, 8, Math.PI, Math.PI * 2); ctx.fill(); stroke([[10, -18], [25, -8], [34, -7]], 5, color); stroke([[34, -7], [44, -9]], 3, '#eab485'); ctx.restore(); ctx.restore();
+  const w = SPR_FW * scale, h = SPR_FH * scale;
+  const jy = jump * 54 * scale;
+  // ombra a terra, prima e fuori dal filtro così resta neutra
+  ctx.save();
+  ctx.globalAlpha = 0.26 * (1 - jump * 0.45); ctx.fillStyle = '#06140c';
+  ctx.beginPath(); ctx.ellipse(x, y + 2, w * 0.3, h * 0.045, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  // frame dello sprite: zoccoli ≈ base del frame → li ancoro a y (linea di terra)
+  const sx = (((frame % SPR_FRAMES) + SPR_FRAMES) % SPR_FRAMES) * SPR_FW;
+  const dx = Math.round(x - w * 0.6), dy = Math.round(y - h * 0.985 - jy);
+  ctx.save();
+  if (filter) { try { ctx.filter = filter; } catch { /* ctx.filter non supportato: manto neutro */ } }
+  ctx.drawImage(img, sx, 0, SPR_FW, SPR_FH, dx, dy, w, h);
+  ctx.restore();   // ripristina anche ctx.filter a 'none'
 }
 
 /* ── Scena pista su canvas (6 corsie, cancello, 4 ostacoli, traguardo, camera) ─── */
@@ -145,6 +146,7 @@ function SprintTrack({ t }: { t: SprintTbl }) {
     const ctx = canvas.getContext('2d'); if (!ctx) return;
     const reduced = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
     const bg = new Image(); let imgOk = false; bg.onload = () => { imgOk = true; }; bg.src = `${ASSET}scenario/stadio-pulito.png`;
+    const horseImg = new Image(); let horseOk = false; horseImg.onload = () => { horseOk = true; }; horseImg.src = `${ASSET}ui/horse-gallop.png`;
     let raf = 0, phase = 0, lastFrame = performance.now();
 
     const render = (now: number) => {
@@ -211,15 +213,21 @@ function SprintTrack({ t }: { t: SprintTbl }) {
           ctx.fillStyle = '#2e6b2e'; ctx.beginPath(); ctx.roundRect(x - 15, yc - 18, 30, 12, 5); ctx.fill();
           ctx.strokeStyle = '#d6e9c0'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x - 15, yc + 18); ctx.lineTo(x - 15, yc - 6); ctx.moveTo(x + 15, yc + 18); ctx.lineTo(x + 15, yc - 6); ctx.stroke();
         }
-        // cavallo (rig) con salto e galoppo
+        // cavallo (sprite realistico) con salto e galoppo
         const pos = posOf(s);
         const ju = (simMs - s.jumpAt) / 1100; const jump = ju >= 0 && ju <= 1 ? Math.sin(Math.PI * ju) : 0;
         const hx = screenX(pos);
-        // sbuffo di polvere dietro il cavallo al galoppo (non in salto)
-        if (racing && s.finish === null && jump < 0.05 && !reduced) {
-          for (let d = 0; d < 3; d++) { const px = hx - 28 - d * 14 - (now / 40 % 14); ctx.fillStyle = `rgba(120,88,55,${0.15 - d * 0.045})`; ctx.beginPath(); ctx.arc(px, yc + 16, 9 + d * 5, 0, Math.PI * 2); ctx.fill(); }
+        const moving = racing && s.finish === null;
+        const feetY = yc + 14;
+        // nuvola di polvere dietro gli zoccoli (non in salto): copre le zampe posteriori + velocità
+        if (moving && jump < 0.05 && !reduced) {
+          const drift = (now / 40) % 16;
+          for (let d = 0; d < 4; d++) { const px = hx - 34 - d * 15 - drift; ctx.fillStyle = `rgba(210,188,150,${0.26 - d * 0.055})`; ctx.beginPath(); ctx.arc(px, feetY + 2, 11 + d * 6, 0, Math.PI * 2); ctx.fill(); }
         }
-        drawHorse(ctx, { x: hx, y: yc + 10, scale: .92, color: s.color, phase: phase * (.55 + s.speed / 18) + i * .7, jump, moving: racing && s.finish === null, id: s.horseId });
+        // galoppo a 6 frame, cadenza ∝ velocità; da fermo frame 0
+        const stride = phase * (1.0 + s.speed / 16) + i * 2.1;
+        const frame = moving && !reduced ? Math.floor(stride) : 0;
+        drawHorseSprite(ctx, horseImg, { x: hx, y: feetY, scale: horseOk ? 0.64 : 0, frame, jump, filter: HORSE_FILT[(s.horseId - 1) % 6] });
         // pastiglia corsia a sinistra (leggibilità di chi è in ciascuna corsia)
         ctx.fillStyle = s.color; ctx.beginPath(); ctx.roundRect(8, yc - 14, 28, 28, 7); ctx.fill();
         ctx.fillStyle = '#fff'; ctx.font = '800 16px CinzelS,serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(s.horseId), 22, yc); ctx.textBaseline = 'alphabetic';
