@@ -116,6 +116,25 @@ const LANE_TOP = 506, LANE_H = 68;                 // banda corse dentro la terr
 const laneY = (i: number) => LANE_TOP + i * LANE_H + LANE_H / 2;
 const PX_PER_M = 4.2, LEFT_PAD = 150, GATE_M = -6;
 
+/* PARALLASSE del clean-plate (fix "sfondo fermo"): la camera segue il gruppo e ora il
+   fondo DIPINTO scorre con la camera, a velocità diverse per piano. Si riusano le stesse
+   bande di pixel di stadio-pulito.png, così il look resta identico ma SI MUOVE:
+     • FONDO LONTANO (cielo+colline+tribune+siepe, righe 0..410): un'unica copia INGRANDITA
+       spostata a sinistra; il margine FAR_M nasconde i bordi → nessuna giunta, nessun doppione.
+     • PRIMO PIANO (staccionata bianca+luci+terra battuta, righe 410..941): a PIENA velocità
+       in tiling → i pali e la terra "sfilano"; grana uniforme e pali ripetitivi = giunta invisibile.
+   Le tacche-distanza, la polvere e gli ostacoli restano in coordinate world (già a piena
+   velocità): sono il segnale forte di corsa in primo piano. */
+// FAR_F basso + FAR_M capiente: su gara da 600 m (cam max ~510) il fondo lontano deriva
+// dolcemente per tutta la corsa senza mai esaurire il margine (niente blocco, niente giunta).
+const FAR_H = 410, FAR_F = 0.08, FAR_M = 185;
+const NEAR_Y = 410, NEAR_F = 1.0;
+/* polvere sulla terra in coordinate world (mn = metri normalizzati 0..1), stabile per sessione */
+const SPECKS = Array.from({ length: 200 }, () => ({
+  mn: Math.random(), lane: Math.floor(Math.random() * 6),
+  dy: (Math.random() - 0.5) * LANE_H * 0.8, r: Math.random() * 2 + 0.6, a: Math.random() * 0.22 + 0.05,
+}));
+
 function SprintTrack({ t }: { t: SprintTbl }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const stRef = useRef<{ t: SprintTbl; recv: number }>({ t, recv: performance.now() });
@@ -125,8 +144,8 @@ function SprintTrack({ t }: { t: SprintTbl }) {
     const canvas = canvasRef.current; if (!canvas) return;
     const ctx = canvas.getContext('2d'); if (!ctx) return;
     const reduced = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const bg = new Image(); let imgOk = false; bg.onload = () => { imgOk = true; }; bg.src = `${ASSET}scenario/stadio-pulito.png`;
     let raf = 0, phase = 0, lastFrame = performance.now();
-    const hurdleXWorld = () => stRef.current.t.rules.hurdles;
 
     const render = (now: number) => {
       raf = requestAnimationFrame(render);
@@ -135,6 +154,7 @@ function SprintTrack({ t }: { t: SprintTbl }) {
       const racing = cur.status === 'race';
       const elapsed = racing ? Math.min(400, now - recv) : 0;           // estrapolazione fra i poll
       const simMs = cur.raceMs + elapsed;
+      const len = cur.rules.length;
       ctx.clearRect(0, 0, STAGE_W, STAGE_H);
       phase += racing && !reduced ? dt / 70 : 0;
 
@@ -144,14 +164,36 @@ function SprintTrack({ t }: { t: SprintTbl }) {
       const cam = Math.max(0, lead - 90);
       const screenX = (m: number) => LEFT_PAD + (m - cam) * PX_PER_M;
 
+      // ── FONDO IN PARALLASSE (il clean-plate dipinto che scorre) ──
+      if (imgOk) {
+        const farPan = Math.min(FAR_M, cam * FAR_F * PX_PER_M);
+        ctx.drawImage(bg, 0, 0, STAGE_W, FAR_H, -FAR_M - farPan, 0, STAGE_W + 2 * FAR_M, FAR_H);
+        const nH = STAGE_H - NEAR_Y;
+        let off = -((cam * NEAR_F * PX_PER_M) % STAGE_W); if (off > 0) off -= STAGE_W;
+        for (let x = off - STAGE_W; x < STAGE_W + 1; x += STAGE_W) ctx.drawImage(bg, 0, NEAR_Y, STAGE_W, nH, Math.round(x), NEAR_Y, STAGE_W, nH);
+      }
+
       // ombra banda corsie (molto leggera: la terra del clean-plate resta visibile)
       for (let i = 0; i < 6; i++) {
         const yc = laneY(i);
-        ctx.fillStyle = i % 2 ? 'rgba(0,0,0,0.10)' : 'rgba(255,240,200,0.045)';
+        ctx.fillStyle = i % 2 ? 'rgba(0,0,0,0.12)' : 'rgba(255,240,200,0.04)';
         ctx.fillRect(0, yc - LANE_H / 2, STAGE_W, LANE_H);
-        ctx.strokeStyle = 'rgba(217,191,127,0.28)'; ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(217,191,127,0.22)'; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(0, yc + LANE_H / 2); ctx.lineTo(STAGE_W, yc + LANE_H / 2); ctx.stroke();
       }
+
+      // tacche di distanza (coordinate world → scorrono a piena velocità = senso di corsa)
+      const startM = Math.floor(cam / 10) * 10;
+      for (let m = startM; m < cam + STAGE_W / PX_PER_M + 10; m += 10) {
+        const x = screenX(m); if (x < -10 || x > STAGE_W + 10) continue;
+        const major = m % 50 === 0;
+        ctx.strokeStyle = major ? 'rgba(255,245,215,0.26)' : 'rgba(255,245,215,0.10)'; ctx.lineWidth = major ? 2 : 1;
+        ctx.beginPath(); ctx.moveTo(x, LANE_TOP - 2); ctx.lineTo(x, LANE_TOP + 6 * LANE_H); ctx.stroke();
+        if (major && m > 0 && m < len) { ctx.fillStyle = 'rgba(20,30,22,0.5)'; ctx.fillRect(x - 17, LANE_TOP - 22, 34, 16); ctx.fillStyle = '#f2e3b0'; ctx.font = '700 12px CinzelS,serif'; ctx.textAlign = 'center'; ctx.fillText(`${m}m`, x, LANE_TOP - 10); }
+      }
+      // polvere sulla terra (world) — altro riferimento che "sfila"
+      if (!reduced) for (const sp of SPECKS) { const mm = sp.mn * (len + 120) - 30; const x = screenX(mm); if (x < -5 || x > STAGE_W + 5) continue; const yc = laneY(sp.lane) + sp.dy; ctx.fillStyle = `rgba(60,38,22,${sp.a})`; ctx.beginPath(); ctx.arc(x, yc, sp.r, 0, Math.PI * 2); ctx.fill(); }
+
       // cancello di partenza (visibile solo prima/entro i primi metri)
       const gateX = screenX(GATE_M);
       if (gateX > -40 && gateX < STAGE_W + 40 && cur.status !== 'results') {
@@ -163,7 +205,7 @@ function SprintTrack({ t }: { t: SprintTbl }) {
       for (let i = 0; i < 6; i++) {
         const yc = laneY(i), s = cur.seats[i]!;
         // ostacoli (siepe) in coordinate world
-        for (const ob of hurdleXWorld()) {
+        for (const ob of cur.rules.hurdles) {
           const x = screenX(ob); if (x < -70 || x > STAGE_W + 70) continue;
           ctx.fillStyle = '#1f3a1e'; ctx.beginPath(); ctx.roundRect(x - 13, yc - 2, 26, 20, 4); ctx.fill();
           ctx.fillStyle = '#2e6b2e'; ctx.beginPath(); ctx.roundRect(x - 15, yc - 18, 30, 12, 5); ctx.fill();
@@ -171,12 +213,19 @@ function SprintTrack({ t }: { t: SprintTbl }) {
         }
         // cavallo (rig) con salto e galoppo
         const pos = posOf(s);
-        const u = (simMs - s.jumpAt) / cur.rules.jumpCooldownMs; void u;
         const ju = (simMs - s.jumpAt) / 1100; const jump = ju >= 0 && ju <= 1 ? Math.sin(Math.PI * ju) : 0;
-        drawHorse(ctx, { x: screenX(pos), y: yc + 10, scale: .92, color: s.color, phase: phase * (.55 + s.speed / 18) + i * .7, jump, moving: racing && s.finish === null, id: s.horseId });
+        const hx = screenX(pos);
+        // sbuffo di polvere dietro il cavallo al galoppo (non in salto)
+        if (racing && s.finish === null && jump < 0.05 && !reduced) {
+          for (let d = 0; d < 3; d++) { const px = hx - 28 - d * 14 - (now / 40 % 14); ctx.fillStyle = `rgba(120,88,55,${0.15 - d * 0.045})`; ctx.beginPath(); ctx.arc(px, yc + 16, 9 + d * 5, 0, Math.PI * 2); ctx.fill(); }
+        }
+        drawHorse(ctx, { x: hx, y: yc + 10, scale: .92, color: s.color, phase: phase * (.55 + s.speed / 18) + i * .7, jump, moving: racing && s.finish === null, id: s.horseId });
+        // pastiglia corsia a sinistra (leggibilità di chi è in ciascuna corsia)
+        ctx.fillStyle = s.color; ctx.beginPath(); ctx.roundRect(8, yc - 14, 28, 28, 7); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.font = '800 16px CinzelS,serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(s.horseId), 22, yc); ctx.textBaseline = 'alphabetic';
       }
       // traguardo a scacchi (appare quando entra in camera)
-      const finish = screenX(cur.rules.length);
+      const finish = screenX(len);
       if (finish >= -30 && finish <= STAGE_W + 30) {
         const top = LANE_TOP - 24, h = 6 * LANE_H + 24;
         for (let row = 0; row < Math.ceil(h / 22); row++) for (let col = 0; col < 2; col++) { ctx.fillStyle = (row + col) % 2 ? '#101914' : '#f7eccf'; ctx.fillRect(finish + col * 11, top + row * 22, 11, 22); }
@@ -187,7 +236,7 @@ function SprintTrack({ t }: { t: SprintTbl }) {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  return <canvas ref={canvasRef} width={STAGE_W} height={STAGE_H} style={{ position: 'absolute', inset: 0, width: STAGE_W, height: STAGE_H }} aria-label="Pista a sei corsie con cavalli animati" />;
+  return <canvas ref={canvasRef} width={STAGE_W} height={STAGE_H} style={{ position: 'absolute', inset: 0, width: STAGE_W, height: STAGE_H }} aria-label="Pista a sei corsie con cavalli animati e sfondo in parallasse" />;
 }
 
 /* ════════════════════════════════════════════════ MONITOR 80″ ═══════════════ */
