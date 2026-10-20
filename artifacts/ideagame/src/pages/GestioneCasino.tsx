@@ -545,8 +545,7 @@ export function MasterView({ sessionId }: { sessionId: string }) {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="nm">🂡 {t.name}</div>
                     <div className="cd">Codice {t.displayCode}</div>
-                    <a className="lnk" href={`${ORIGIN}gestione/casino?bj=${t.displayCode}`} target="_blank" rel="noreferrer">🖥️ 80″ ↗</a>
-                    <a className="lnk" style={{ marginLeft: 10 }} href={`${ORIGIN}gestione/casino?bjregia=${t.displayCode}`} target="_blank" rel="noreferrer">🎛️ Regia ↗</a>
+                    <a className="lnk" href={`${ORIGIN}gestione/casino?bj=${t.displayCode}`} target="_blank" rel="noreferrer">🖥️ Apri sull'80″ touch ↗</a>
                   </div>
                 </div>
               ))}
@@ -567,8 +566,7 @@ export function MasterView({ sessionId }: { sessionId: string }) {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="nm">🏇 {t.name}</div>
                     <div className="cd">Codice {t.displayCode} · gara interattiva</div>
-                    <a className="lnk" href={`${ORIGIN}gestione/casino?sprint=${t.displayCode}&host=1`} target="_blank" rel="noreferrer">🖥️ 80″ ↗</a>
-                    <a className="lnk" style={{ marginLeft: 10 }} href={`${ORIGIN}gestione/casino?sprintregia=${t.displayCode}`} target="_blank" rel="noreferrer">🎛️ Regia ↗</a>
+                    <a className="lnk" href={`${ORIGIN}gestione/casino?sprint=${t.displayCode}`} target="_blank" rel="noreferrer">🖥️ Apri sull'80″ touch ↗</a>
                   </div>
                 </div>
               ))}

@@ -287,12 +287,21 @@ const MON_CSS = FONT_CSS + `
 .ms .rank .r{display:flex;align-items:center;gap:12px;background:#ffffff0c;border:1px solid #caa84f55;border-radius:10px;padding:8px 14px;color:#f6e7bf;font:700 20px/1 "CinzelS",serif}
 .ms .rank .r .pt{margin-left:auto;color:#f0ca68}
 .ms .paused{position:absolute;inset:0;display:grid;place-items:center;background:rgba(4,18,12,.6);z-index:15;font:800 70px/1 "CinzelS",serif;color:#ffe3a0;text-shadow:0 3px 14px #000}
+/* barra comandi TOUCH: il monitor 80" si pilota col dito, nessuna regia */
+.ms .ctl{position:absolute;bottom:26px;left:50%;transform:translateX(-50%);display:flex;gap:22px;z-index:30}
+.ms .ctl.corner{left:auto;right:30px;transform:none}
+.ms .ctl button{min-width:280px;padding:26px 48px;border-radius:22px;border:none;cursor:pointer;font:800 44px/1 "CinzelS",serif;color:#231503;background:linear-gradient(180deg,#ffe694,#f0c357 52%,#d59a34);box-shadow:0 7px 0 #7a4d12;touch-action:manipulation;display:flex;align-items:center;gap:16px}
+.ms .ctl button.sec{min-width:0;background:#06160fe6;color:#ffe3a0;border:2px solid #caa84f;box-shadow:0 6px 0 #0007}
+.ms .ctl button:disabled{opacity:.5;box-shadow:none}
+.ms .ctl .hint{align-self:center;font:700 22px/1.2 "CinzelS",serif;color:#ffe3a0;text-shadow:0 2px 8px #000;max-width:360px}
 `;
 
 export function IppodromoSprintMonitor({ displayCode, host = false }: { displayCode: string; host?: boolean }) {
   const st = useSprint(displayCode, 300);
   const [dim, setDim] = useState({ w: typeof window !== 'undefined' ? window.innerWidth : 1280, h: typeof window !== 'undefined' ? window.innerHeight : 800 });
   useEffect(() => { const r = () => setDim({ w: window.innerWidth, h: window.innerHeight }); window.addEventListener('resize', r); return () => window.removeEventListener('resize', r); }, []);
+  const [busy, setBusy] = useState(false);
+  const call = async (path: string) => { setBusy(true); try { await api(path, { displayCode }); } finally { setBusy(false); } };
   const t = st?.table;
   const scale = Math.min(dim.w / STAGE_W, dim.h / STAGE_H);
   void host;
@@ -301,6 +310,10 @@ export function IppodromoSprintMonitor({ displayCode, host = false }: { displayC
   const leader = [...t.seats].sort((a, b) => (a.rank ?? 9) - (b.rank ?? 9))[0];
   const leadDist = leader ? Math.min(t.rules.length, Math.floor(leader.position)) : 0;
   const ordered = [...t.seats].sort((a, b) => (a.rank ?? 9) - (b.rank ?? 9));
+  // comandi touch (specchio della regia, che ora non serve più)
+  const seated = t.seats.filter(s => s.playerId);
+  const allReady = seated.length > 0 && seated.every(s => s.ready);
+  const waitPilots = seated.length > 0 && !allReady;
 
   return (
     <div className="ms"><style>{MON_CSS}</style>
@@ -369,6 +382,26 @@ export function IppodromoSprintMonitor({ displayCode, host = false }: { displayC
               ))}
             </div>
           </div></div>
+        )}
+
+        {/* COMANDI TOUCH — tutto dal monitor 80", nessuna regia */}
+        {t.status === 'lobby' && (
+          <div className="ctl">
+            {waitPilots && <span className="hint">In attesa che i piloti tocchino «Sono pronto»</span>}
+            <button disabled={busy} onClick={() => call('/gestione/casino/sprint/start')}>🏁 VIA!</button>
+          </div>
+        )}
+        {(t.status === 'race' || t.status === 'countdown') && (
+          <div className="ctl corner"><button className="sec" disabled={busy} onClick={() => call('/gestione/casino/sprint/pause')}>⏸ Pausa</button></div>
+        )}
+        {t.status === 'paused' && (
+          <div className="ctl">
+            <button disabled={busy} onClick={() => call('/gestione/casino/sprint/resume')}>▶ RIPRENDI</button>
+            <button className="sec" disabled={busy} onClick={() => call('/gestione/casino/sprint/reset')}>↻ Nuova gara</button>
+          </div>
+        )}
+        {t.status === 'results' && (
+          <div className="ctl"><button disabled={busy} onClick={() => call('/gestione/casino/sprint/reset')}>↻ NUOVA GARA</button></div>
         )}
       </div>
     </div>

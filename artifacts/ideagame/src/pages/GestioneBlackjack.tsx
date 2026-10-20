@@ -801,6 +801,31 @@ function BjResultStage({ t, dim }: { t: BjTbl; dim: { w: number; h: number } }) 
   );
 }
 
+/* ── Barra comandi TOUCH del monitor 80″ — pilota il tavolo col dito, niente regia ──
+   Attesa → "Apri puntate"; Puntate → "Distribuisci"; Risultati → "Nuova mano".
+   In gioco il banco gioca da solo (nessun tasto). Overlay fisso, non scala col palco. */
+function BjTouchBar({ t }: { t: BjTbl }) {
+  const [busy, setBusy] = useState(false);
+  const run = async (path: string) => { setBusy(true); try { await api(path, { displayCode: t.displayCode }); } finally { setBusy(false); } };
+  let label = '', path = '';
+  if (t.phase === 'waiting') { label = '▶ APRI PUNTATE'; path = '/gestione/casino/bj/open'; }
+  else if (t.phase === 'betting') { label = '🂠 DISTRIBUISCI'; path = '/gestione/casino/bj/deal'; }
+  else if (t.phase === 'result') { label = '↻ NUOVA MANO'; path = '/gestione/casino/bj/open'; }
+  else return null; // playing/dealer: automatico
+  const canAct = !(t.suspended && t.phase !== 'betting'); // su tavolo sospeso non si riapre
+  return (
+    <div style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 50 }}>
+      <button onClick={() => run(path)} disabled={busy || !canAct}
+        style={{ minWidth: 320, padding: '22px 48px', borderRadius: 18, border: 'none', cursor: 'pointer',
+          fontFamily: '"Baskerville Casino",Georgia,serif', fontWeight: 800, fontSize: 32, color: '#231503',
+          background: 'linear-gradient(180deg,#ffe694,#f0c357 52%,#d59a34)', boxShadow: '0 6px 0 #7a4d12',
+          opacity: busy || !canAct ? 0.5 : 1, touchAction: 'manipulation' }}>
+        {t.suspended && t.phase !== 'betting' ? '⏸ Tavolo sospeso' : label}
+      </button>
+    </div>
+  );
+}
+
 export function BlackjackMonitor({ displayCode }: { displayCode: string }) {
   const st = useBjTable(displayCode, 900);
   const [dim, setDim] = useState({ w: window.innerWidth, h: window.innerHeight });
@@ -819,11 +844,10 @@ export function BlackjackMonitor({ displayCode }: { displayCode: string }) {
   const playUrl = `${ORIGIN}gestione/casino?bjplay=${t.displayCode}`;
 
   // Fase di gioco: palco fisso 744×407 fedele al mockup "08 MONITOR PARTITA"
-  if (t.phase === 'playing' || t.phase === 'dealer') return <BjPlayStage t={t} turnCd={turnCd} dim={dim} />;
-  // Risultati: palco fisso 744×407 fedele al mockup "17 MONITOR RISULTATI"
-  if (t.phase === 'result') return <BjResultStage t={t} dim={dim} />;
-  // Attesa / puntate: palco fisso 744×407 fedele al mockup "07 MONITOR ATTESA"
-  return <BjWaitStage t={t} dim={dim} playUrl={playUrl} />;
+  const stage = (t.phase === 'playing' || t.phase === 'dealer') ? <BjPlayStage t={t} turnCd={turnCd} dim={dim} />
+    : t.phase === 'result' ? <BjResultStage t={t} dim={dim} />      // Risultati "17 MONITOR RISULTATI"
+      : <BjWaitStage t={t} dim={dim} playUrl={playUrl} />;           // Attesa/puntate "07 MONITOR ATTESA"
+  return <>{stage}<BjTouchBar t={t} /></>;
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -1029,9 +1053,8 @@ export function BlackjackTablesView({ sessionId }: { sessionId: string }) {
             <h2>{tb.name}</h2>
             <div style={{ color: '#cbd8c9', margin: '4px 0 10px' }}>{tb.occupied} / {tb.seatsN} posti · <span className={`pill${tb.phase !== 'betting' ? ' b' : ''}`}>{tb.phase === 'betting' ? 'Puntate aperte' : tb.phase === 'waiting' ? 'In attesa' : tb.phase === 'result' ? 'Completata' : 'In gioco'}</span></div>
             <div className="acts">
-              <button onClick={() => open(`${ORIGIN}gestione/casino?bjregia=${tb.displayCode}`)}>👁<span>Regia</span></button>
-              <button onClick={() => open(`${ORIGIN}gestione/casino?bj=${tb.displayCode}`)}>🖥<span>Monitor</span></button>
-              <button onClick={() => setQr(`${ORIGIN}gestione/casino?bjplay=${tb.displayCode}`)}>🔳<span>QR</span></button>
+              <button onClick={() => open(`${ORIGIN}gestione/casino?bj=${tb.displayCode}`)}>🖥<span>Monitor 80″ touch</span></button>
+              <button onClick={() => setQr(`${ORIGIN}gestione/casino?bjplay=${tb.displayCode}`)}>🔳<span>QR giocatori</span></button>
             </div>
           </div>
         ))}
