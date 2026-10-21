@@ -105,6 +105,7 @@ type CasinoConfig = {
   bjTables?: Record<string, BjTable>;
   siciliaTables?: Record<string, SiciliaTable>;
   sprintTables?: Record<string, SprintTable>;
+  poolTables?: Record<string, PoolTable>;
 };
 const cfgOf = (session: { config?: unknown }): CasinoConfig => (session?.config ?? {}) as CasinoConfig;
 async function patchConfig(id: string, patch: Partial<CasinoConfig>): Promise<void> {
@@ -1507,6 +1508,204 @@ router.post("/gestione/casino/sprint/input", async (req, res): Promise<void> => 
     return { save: true, result: { status: 200, body: { ok: true } } };
   });
   res.status(out.status).json(out.body ?? { ok: true });
+});
+
+/* ═══ BILIARDO CLUB (type "pool") ───────────────────────────────────────────────
+   8-ball "casino veloce": 2 giocatori, al meglio di 3 rack. Ogni palla imbucata
+   accredita FISH automaticamente (palla + bonus rack + bonus partita). Server
+   AUTOREVOLE su turno/identità/fish; la FISICA gira sul monitor (80" fidato) che
+   riporta l'esito del tiro con /pool/resolve. Il telefono invia la mira con
+   /pool/shoot → pendingShot che il monitor gioca. Niente regia: tutto da touch+telefoni.
+   Stato in config.poolTables (jsonb, niente migrazioni, come Sprint/Sicilia).
+   Coordinate bilie in PIXEL del tavolo dipinto (stesse del monitor). */
+type PoolSeat = { playerId: string | null };
+type PoolBall = { id: number; x: number; y: number; in: boolean };
+type PoolShot = { by: 0 | 1; angle: number; power: number; spinX: number; spinY: number; id: string; seq: number };
+type PoolTable = {
+  id: string; type: "pool"; name: string; displayCode: string;
+  seats: { "1": PoolSeat; "2": PoolSeat };
+  turn: 0 | 1; rack: number; wins: [number, number];
+  balls: PoolBall[];
+  pending: PoolShot | null; shotSeq: number; seen: string[];
+  winner: 0 | 1 | null; suspended: boolean;
+};
+const POOL_FISH_BALL = 10, POOL_BONUS_RACK = 100, POOL_BONUS_MATCH = 300, POOL_WIN_RACKS = 2;
+// geometria (px del tavolo dipinto 1536×1024) — IDENTICA al monitor
+const POOL_BR = 23, POOL_BX0 = 132, POOL_BX1 = 1404, POOL_BY0 = 200, POOL_BY1 = 784;
+function freshRack(): PoolBall[] {
+  const balls: PoolBall[] = [];
+  const dx = POOL_BR * Math.sqrt(3) * 1.03, dz = POOL_BR * 2 * 1.03, apexX = 1000, midY = (POOL_BY0 + POOL_BY1) / 2;
+  const order = [[11], [7, 14], [2, 8, 15], [9, 10, 3, 1], [5, 13, 4, 6, 12]];
+  for (let r = 0; r < 5; r++) for (let j = 0; j < order[r]!.length; j++) balls.push({ id: order[r]![j]!, x: apexX + r * dx, y: midY + (j - r / 2) * dz, in: true });
+  balls.push({ id: 0, x: POOL_BX0 + 150, y: midY, in: true });
+  return balls;
+}
+function poolSeatsFilled(t: PoolTable): number { return (t.seats["1"].playerId ? 1 : 0) + (t.seats["2"].playerId ? 1 : 0); }
+async function findPoolTable(code: string): Promise<{ sessionId: string; table: PoolTable } | null> {
+  const up = (code || "").toUpperCase();
+  const rows = await db.select({ id: casinoSessionsTable.id, config: casinoSessionsTable.config }).from(casinoSessionsTable);
+  for (const r of rows) { const cfg = (r.config ?? {}) as CasinoConfig; for (const t of Object.values(cfg.poolTables ?? {})) if (t.displayCode === up) return { sessionId: r.id, table: t }; }
+  return null;
+}
+async function savePoolTable(sessionId: string, table: PoolTable): Promise<void> {
+  await db.transaction(async (tx) => {
+    const [s] = await tx.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, sessionId)).for("update");
+    const cur = (s?.config ?? {}) as CasinoConfig;
+    await tx.update(casinoSessionsTable).set({ config: { ...cur, poolTables: { ...(cur.poolTables ?? {}), [table.id]: table } } }).where(eq(casinoSessionsTable.id, sessionId));
+  });
+}
+async function poolState(sessionId: string, table: PoolTable) {
+  const ids = (["1", "2"] as const).map((n) => table.seats[n].playerId).filter((x): x is string => !!x);
+  const players = ids.length ? await db.select().from(casinoPlayersTable).where(inArray(casinoPlayersTable.id, ids)) : [];
+  const [sess] = await db.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, sessionId));
+  const avatars = ((sess?.config ?? {}) as CasinoConfig).playerAvatars ?? {};
+  const byId = new Map(players.map((p) => [p.id, p]));
+  const seat = (n: "1" | "2") => { const pid = table.seats[n].playerId; const p = pid ? byId.get(pid) : null; return { playerId: pid, nickname: p?.nickname ?? null, avatarUrl: pid ? (avatars[pid] ?? null) : null, fish: p?.fishBalance ?? 0 }; };
+  const filled = poolSeatsFilled(table);
+  const status = table.winner != null ? "finished" : filled < 2 ? "lobby" : "playing";
+  return {
+    table: {
+      id: table.id, name: table.name, displayCode: table.displayCode, type: "pool",
+      status, turn: table.turn, rack: table.rack, wins: table.wins, winner: table.winner,
+      seats: { 0: seat("1"), 1: seat("2") }, balls: table.balls,
+      pending: table.pending, suspended: table.suspended, winRacks: POOL_WIN_RACKS, serverTime: Date.now(),
+    }, sessionId,
+  };
+}
+async function resolvePoolPlayer(sessionId: string, playerCode: string) {
+  const [player] = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.playerCode, String(playerCode ?? "").toUpperCase().trim()));
+  return player && player.sessionId === sessionId ? player : null;
+}
+const poolOk = { status: 200 as const };
+/* creazione / elenco */
+router.post("/gestione/casino/sessions/:id/pool-tables", async (req, res): Promise<void> => {
+  const { id } = req.params;
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const b = req.body as { name?: string };
+  const table: PoolTable = {
+    id: makeCode(8), type: "pool", name: (b.name || "Biliardo Club").slice(0, 40), displayCode: makeCode(6),
+    seats: { "1": { playerId: null }, "2": { playerId: null } }, turn: 0, rack: 1, wins: [0, 0],
+    balls: freshRack(), pending: null, shotSeq: 0, seen: [], winner: null, suspended: false,
+  };
+  await savePoolTable(id, table);
+  res.json(await poolState(id, table));
+});
+router.get("/gestione/casino/sessions/:id/pool-tables", async (req, res): Promise<void> => {
+  const { id } = req.params;
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const [s] = await db.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, id));
+  const tables = Object.values(((s?.config ?? {}) as CasinoConfig).poolTables ?? {}).map((t) => ({ id: t.id, name: t.name, displayCode: t.displayCode, rack: t.rack, suspended: t.suspended, players: poolSeatsFilled(t) }));
+  res.json({ tables });
+});
+router.get("/gestione/casino/pool/:code", async (req, res): Promise<void> => {
+  const found = await findPoolTable(req.params.code || "");
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  res.json(await poolState(found.sessionId, found.table));
+});
+/* telefono: entra in un posto (max 2, esclusivo) */
+router.post("/gestione/casino/pool/join", async (req, res): Promise<void> => {
+  const found = await findPoolTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const player = await resolvePoolPlayer(found.sessionId, req.body?.playerCode);
+  if (!player) { res.status(404).json({ error: "Accedi prima come giocatore della serata" }); return; }
+  const out = await mutateSession<{ status: number; body?: unknown }>(found.sessionId, async (_tx, cfg) => {
+    const t = cfg.poolTables?.[found.table.id]; if (!t) return { save: false, result: { status: 404, body: { error: "Tavolo non trovato" } } };
+    if (t.seats["1"].playerId === player.id || t.seats["2"].playerId === player.id) return { save: false, result: { status: 200, body: { ok: true } } };
+    const free = !t.seats["1"].playerId ? "1" : !t.seats["2"].playerId ? "2" : null;
+    if (!free) return { save: false, result: { status: 409, body: { error: "Tavolo pieno (2 giocatori)" } } };
+    t.seats[free as "1" | "2"] = { playerId: player.id };
+    return { save: true, result: { status: 200, body: { ok: true } } };
+  });
+  if (out.status !== 200) { res.status(out.status).json(out.body); return; }
+  const fr = await findPoolTable(found.table.displayCode);
+  res.json({ ...(await poolState(found.sessionId, fr!.table)), you: { playerId: player.id } });
+});
+router.post("/gestione/casino/pool/leave", async (req, res): Promise<void> => {
+  const found = await findPoolTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const player = await resolvePoolPlayer(found.sessionId, req.body?.playerCode);
+  if (!player) { res.status(404).json({ error: "Giocatore non trovato" }); return; }
+  await mutateSession<null>(found.sessionId, async (_tx, cfg) => {
+    const t = cfg.poolTables?.[found.table.id]; if (!t) return { save: false, result: null };
+    for (const n of ["1", "2"] as const) if (t.seats[n].playerId === player.id) t.seats[n] = { playerId: null };
+    return { save: true, result: null };
+  });
+  const fr = await findPoolTable(found.table.displayCode); res.json(await poolState(found.sessionId, fr!.table));
+});
+/* telefono: invia la mira (solo chi è di turno) → pendingShot che il monitor gioca */
+router.post("/gestione/casino/pool/shoot", async (req, res): Promise<void> => {
+  const found = await findPoolTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const player = await resolvePoolPlayer(found.sessionId, req.body?.playerCode);
+  if (!player) { res.status(404).json({ error: "Giocatore non trovato" }); return; }
+  const angle = Number(req.body?.angle), power = Math.max(0, Math.min(1, Number(req.body?.power)));
+  const spinX = Math.max(-0.8, Math.min(0.8, Number(req.body?.spinX) || 0)), spinY = Math.max(-0.8, Math.min(0.8, Number(req.body?.spinY) || 0));
+  const commandId = String(req.body?.commandId || makeCode(10));
+  if (!Number.isFinite(angle) || !Number.isFinite(power) || power <= 0.02) { res.status(400).json({ error: "Tiro non valido" }); return; }
+  const out = await mutateSession<{ status: number; body?: unknown }>(found.sessionId, async (_tx, cfg) => {
+    const t = cfg.poolTables?.[found.table.id]; if (!t) return { save: false, result: { status: 404, body: { error: "Tavolo non trovato" } } };
+    if (t.winner != null || poolSeatsFilled(t) < 2) return { save: false, result: { status: 409, body: { error: "Partita non in corso" } } };
+    const mySeat = t.seats["1"].playerId === player.id ? 0 : t.seats["2"].playerId === player.id ? 1 : null;
+    if (mySeat == null) return { save: false, result: { status: 403, body: { error: "Non sei a questo tavolo" } } };
+    if (mySeat !== t.turn) return { save: false, result: { status: 409, body: { error: "Non è il tuo turno" } } };
+    if (t.pending) return { save: false, result: { status: 409, body: { error: "Tiro già in corso" } } };
+    if (t.seen.includes(commandId)) return { save: false, result: { status: 200, body: { ok: true } } };
+    t.pending = { by: t.turn, angle, power, spinX, spinY, id: commandId, seq: ++t.shotSeq };
+    return { save: true, result: { status: 200, body: { ok: true } } };
+  });
+  res.status(out.status).json(out.body ?? { ok: true });
+});
+/* monitor: riporta l'esito del tiro (fisica sul monitor) → accredita fish + turno/rack */
+router.post("/gestione/casino/pool/resolve", async (req, res): Promise<void> => {
+  const found = await findPoolTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const shotId = String(req.body?.shotId || "");
+  const pocketed = Array.isArray(req.body?.pocketed) ? (req.body.pocketed as unknown[]).map(Number).filter((n) => Number.isFinite(n)) : [];
+  const scratch = pocketed.includes(0);
+  const rawBalls = Array.isArray(req.body?.balls) ? (req.body.balls as { id: number; x: number; y: number; in: boolean }[]) : null;
+  const out = await mutateSession<{ status: number; body?: unknown }>(found.sessionId, async (tx, cfg) => {
+    const t = cfg.poolTables?.[found.table.id]; if (!t) return { save: false, result: { status: 404, body: { error: "Tavolo non trovato" } } };
+    if (shotId && t.seen.includes(shotId)) return { save: false, result: { status: 200, body: { ok: true, dup: true } } };
+    if (t.winner != null) return { save: false, result: { status: 409, body: { error: "Partita conclusa" } } };
+    const by = t.turn, pid = t.seats[by === 0 ? "1" : "2"].playerId;
+    let gained = 0; for (const b of pocketed) if (b !== 0) gained += POOL_FISH_BALL;
+    if (pid && gained > 0) await moveFish(tx, found.sessionId, { playerId: pid, delta: gained, kind: "pool_pot", tableId: null });
+    // snapshot bilie dal monitor (validato minimale: dentro i limiti)
+    if (rawBalls) t.balls = rawBalls.map((b) => ({ id: Math.round(b.id), x: Math.max(0, Math.min(1536, +b.x || 0)), y: Math.max(0, Math.min(1024, +b.y || 0)), in: !!b.in }));
+    const objLeft = t.balls.some((b) => b.in && b.id !== 0);
+    if (!objLeft) { // rack svuotato → vince chi ha tirato
+      if (pid) await moveFish(tx, found.sessionId, { playerId: pid, delta: POOL_BONUS_RACK, kind: "pool_rack", tableId: null });
+      t.wins[by]++;
+      if (t.wins[by] >= POOL_WIN_RACKS) { if (pid) await moveFish(tx, found.sessionId, { playerId: pid, delta: POOL_BONUS_MATCH, kind: "pool_match", tableId: null }); t.winner = by; }
+      else { t.rack++; t.balls = freshRack(); t.turn = (1 - by) as 0 | 1; }
+    } else {
+      const scored = gained > 0 && !scratch;
+      t.turn = (scored ? by : 1 - by) as 0 | 1;
+    }
+    t.pending = null;
+    if (shotId) { t.seen.push(shotId); if (t.seen.length > 500) t.seen = t.seen.slice(-200); }
+    return { save: true, result: { status: 200, body: { ok: true } } };
+  });
+  if (out.status !== 200) { res.status(out.status).json(out.body); return; }
+  const fr = await findPoolTable(found.table.displayCode);
+  res.json(await poolState(found.sessionId, fr!.table));
+});
+/* monitor touch: nuova partita (rivincita) / sospendi */
+router.post("/gestione/casino/pool/new", async (req, res): Promise<void> => {
+  const found = await findPoolTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  await mutateSession<null>(found.sessionId, async (_tx, cfg) => {
+    const t = cfg.poolTables?.[found.table.id]; if (!t) return { save: false, result: null };
+    t.rack = 1; t.wins = [0, 0]; t.winner = null; t.turn = 0; t.balls = freshRack(); t.pending = null;
+    return { save: true, result: null };
+  });
+  const fr = await findPoolTable(found.table.displayCode); res.json(await poolState(found.sessionId, fr!.table));
+});
+router.post("/gestione/casino/pool/suspend", async (req, res): Promise<void> => {
+  const found = await findPoolTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  await mutateSession<null>(found.sessionId, async (_tx, cfg) => { const t = cfg.poolTables?.[found.table.id]; if (t) t.suspended = !t.suspended; return { save: !!cfg.poolTables?.[found.table.id], result: null }; });
+  const fr = await findPoolTable(found.table.displayCode); res.json(await poolState(found.sessionId, fr!.table));
 });
 
 export default router;
