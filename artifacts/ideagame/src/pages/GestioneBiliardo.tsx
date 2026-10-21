@@ -317,9 +317,9 @@ export function BiliardoPhone({ displayCode }: { displayCode: string }) {
   const [ang, setAng] = useState(0);
   const cvRef = useRef<HTMLCanvasElement | null>(null);
   const t = st?.table;
-  const me = t ? (t.seats[0].playerId && isMine(t.seats[0].playerId) ? 0 : t.seats[1].playerId && isMine(t.seats[1].playerId) ? 1 : null) : null;
-  function isMine(_pid: string | null) { return mineRef.current.has(_pid || ''); }
   const mineRef = useRef<Set<string>>(new Set());
+  const isMine = (pid: string | null) => mineRef.current.has(pid || '');
+  const me: 0 | 1 | null = t ? (t.seats[0].playerId && isMine(t.seats[0].playerId) ? 0 : t.seats[1].playerId && isMine(t.seats[1].playerId) ? 1 : null) : null;
 
   const join = useCallback(async () => {
     setBusy(true); setErr('');
