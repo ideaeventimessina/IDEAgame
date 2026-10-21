@@ -5774,13 +5774,13 @@ function AdultOnlyBoard({ payload, session, players }: {
     // (SVG) a rotazione 0 guarda a DESTRA (0°), quindi rotate(landAngle) lo fa puntare esatto
     // sul giocatore. +1440 = 4 giri di effetto. (Non si usa più spinFinalAngle del server, che
     // non teneva conto né dell'offset −90 né dell'orientamento dell'emoji.)
-    // +BOTTLE_EMOJI_OFFSET allinea il COLLO/tappo dell'emoji 🍾 (che a rotazione 0 guarda in
-    // alto-sinistra, ≈ −130°) all'asse di puntamento, così la punta cade sul giocatore scelto.
-    const BOTTLE_EMOJI_OFFSET = 130;
+    // Puntatore SVG: a rotazione 0 la punta (tappo) guarda a DESTRA (0°). I giocatori sono a
+    // (i*360/N − 90). Quindi rotate(landAngle) fa puntare la bottiglia ESATTO sul giocatore,
+    // indipendentemente dal device (niente emoji → niente differenze di font fra Mac e TV).
     const Nspin = Math.max(1, activePlayers.length);
     const selIdx = selectedPlayerId ? activePlayers.indexOf(selectedPlayerId) : -1;
     const landAngle = (selIdx >= 0 ? selIdx : 0) * 360 / Nspin - 90;
-    const spinTarget = 1440 + ((((landAngle + BOTTLE_EMOJI_OFFSET) % 360) + 360) % 360);
+    const spinTarget = 1440 + (((landAngle % 360) + 360) % 360);
     const t1 = setTimeout(() => setBottleTargetAngle(spinTarget), 80);
     if (spinRevealCalledRef.current) return;
     const elapsed = spinStartedAt ? Date.now() - new Date(spinStartedAt).getTime() : spinDurationMs;
@@ -5962,18 +5962,39 @@ function AdultOnlyBoard({ payload, session, players }: {
             );
           })}
 
-          {/* Bottiglia 🍾 — ruota verso il giocatore scelto. La rotazione finale (bottleTargetAngle)
-              include l'offset che allinea il collo/tappo dell'emoji all'asse di puntamento, così la
-              PUNTA cade esatta sul giocatore (vedi calcolo in alto). */}
+          {/* Bottiglia = puntatore SVG (vera bottiglia di champagne, punta/tappo a DESTRA a rotazione
+              0). rotate(landAngle) la fa puntare ESATTO sul giocatore su QUALUNQUE dispositivo. */}
           <div className="absolute" style={{
             left: CENTER, top: CENTER,
             transform: `translate(-50%, -50%) rotate(${bottleTargetAngle}deg)`,
             transformOrigin: 'center center',
             transition: `transform ${(spinDurationMs / 1000).toFixed(1)}s cubic-bezier(0.17, 0.67, 0.12, 0.99)`,
-            fontSize: 'clamp(120px, 13vw, 220px)', lineHeight: 1,
             filter: `drop-shadow(0 0 48px ${AC}cc) drop-shadow(0 0 20px ${AC}88)`,
             userSelect: 'none',
-          }}>🍾</div>
+          }}>
+            <svg width={Math.round(R * 1.95)} height={Math.round(R * 1.95 * 80 / 240)} viewBox="0 0 240 80" style={{ display: 'block', overflow: 'visible' }}>
+              <defs>
+                <linearGradient id="bottleGlass" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stopColor="#4a8a53" /><stop offset="0.5" stopColor="#245c2e" /><stop offset="1" stopColor="#123619" />
+                </linearGradient>
+                <linearGradient id="bottleFoil" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0" stopColor="#b9842a" /><stop offset="0.5" stopColor="#ffe9a6" /><stop offset="1" stopColor="#b9842a" />
+                </linearGradient>
+              </defs>
+              {/* corpo (fondo a sinistra) → spalla */}
+              <path d="M12 22 Q4 22 4 31 L4 49 Q4 58 12 58 L120 58 Q152 58 164 46 L164 34 Q152 22 120 22 Z" fill="url(#bottleGlass)" stroke="#0e2a16" strokeWidth="2" />
+              {/* etichetta oro */}
+              <rect x="30" y="27" width="66" height="26" rx="4" fill="url(#bottleFoil)" opacity="0.95" />
+              {/* collo */}
+              <path d="M164 32 L196 34 L196 46 L164 48 Z" fill="url(#bottleGlass)" stroke="#0e2a16" strokeWidth="2" />
+              {/* foil oro + tappo (la PUNTA, a destra) */}
+              <rect x="192" y="31" width="16" height="18" rx="3" fill="url(#bottleFoil)" stroke="#6a4a16" strokeWidth="1.5" />
+              <rect x="206" y="29" width="22" height="22" rx="7" fill="#dcc08f" stroke="#8a5a2a" strokeWidth="2" />
+              <ellipse cx="229" cy="40" rx="4" ry="9" fill="#c79a5e" />
+              {/* riflesso */}
+              <path d="M18 29 L150 27" stroke="#ffffff99" strokeWidth="4" strokeLinecap="round" />
+            </svg>
+          </div>
 
           <div className="absolute rounded-full"
             style={{ width: 12, height: 12, left: CENTER - 6, top: CENTER - 6, background: AC, boxShadow: `0 0 12px ${AC}` }}/>
