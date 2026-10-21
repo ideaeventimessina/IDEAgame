@@ -828,7 +828,7 @@ function DealerView({ dealerCode }: { dealerCode: string }) {
   const others = data.allPlayers.filter(p => p.tableId !== data.table.id);
 
   return (
-    <div style={{ minHeight: '100vh', background: BG, color: '#fff', padding: 16, fontFamily: "'Outfit',system-ui,sans-serif" }}>
+    <div style={{ height: '100%', overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: BG, color: '#fff', padding: '16px 16px 48px', fontFamily: "'Outfit',system-ui,sans-serif" }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
         <div><div style={{ fontWeight: 900, fontSize: 20 }}>{data.table.name}</div><div style={{ opacity: 0.5, fontSize: 13 }}>{data.sessionName} · Dealer</div></div>
         <BrandBar h={20} dim={0.75} />
@@ -1056,7 +1056,7 @@ export function PlayerView({ code }: { code: string }) {
   const pending = p.pendingBet ?? 0;
 
   return (
-    <div style={{ minHeight: '100vh', background: BG, color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, padding: 20, fontFamily: "'Outfit',system-ui,sans-serif" }}>
+    <div style={{ height: '100%', overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: BG, color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, padding: '20px 20px 48px', fontFamily: "'Outfit',system-ui,sans-serif" }}>
       <BrandBar h={20} dim={0.7} />
       {/* PONTE SUITE: un solo tocco per tornare al feed della festa (nessun gettone) */}
       {suiteLink?.feedUrl && (
@@ -1639,6 +1639,7 @@ function SeatController({ seatCode }: { seatCode: string }) {
   const [err, setErr] = useState('');
   const [chip, setChip] = useState(25);
   const [msg, setMsg] = useState('');
+  const [revealNow, setRevealNow] = useState(false);  // rivelazione telefono sincronizzata col monitor
   const playerCode = useMemo(() => { try { return localStorage.getItem('casino_player') ?? ''; } catch { return ''; } }, []);
 
   const claim = useCallback(async () => {
@@ -1654,6 +1655,19 @@ function SeatController({ seatCode }: { seatCode: string }) {
     const pull = () => fetch(`${API}/gestione/casino/table/${seatCode}`).then(r => r.ok ? r.json() : null).then(d => { if (alive && d) setSt(d); }).catch(() => {});
     pull(); const t = setInterval(pull, 900); return () => { alive = false; clearInterval(t); };
   }, [seatCode]);
+
+  // Il NUMERO si rivela sul telefono solo quando la ruota ha finito di girare sullo schermo:
+  // il monitor (RouletteTableView) svela a ~6,2s dall'estrazione. Ritardo = at + 6,8s così il
+  // telefono non anticipa MAI l'80".
+  const resultAt = st?.table.phase !== 'betting' ? st?.table.result?.at ?? null : null;
+  useEffect(() => {
+    if (!resultAt) { setRevealNow(false); return; }
+    const due = Date.parse(resultAt) + 6800 - Date.now();
+    if (due <= 0) { setRevealNow(true); return; }
+    setRevealNow(false);
+    const to = setTimeout(() => setRevealNow(true), due);
+    return () => clearTimeout(to);
+  }, [resultAt]);
 
   const myBalance = useMemo(() => {
     if (!st || !me) return me?.fishBalance ?? 0;
@@ -1681,10 +1695,22 @@ function SeatController({ seatCode }: { seatCode: string }) {
   if (err) return <Center>{err}</Center>;
   if (!st || !me) return <Center>Mi siedo al tavolo…</Center>;
   const t = st.table;
-  const feltS = Math.max(22, Math.min(30, (typeof window !== 'undefined' ? window.innerWidth : 360) / 14));
+  // Tappeto RUOTATO in verticale: così entra tutto nel telefono (il tappeto è lungo e stretto;
+  // la ruota resta sull'80"). La cella si dimensiona perché il lato CORTO del tappeto stia nella
+  // larghezza schermo. feltW/feltH = ingombro reale, usati per riservare lo spazio dopo rotate.
+  const vw = typeof window !== 'undefined' ? window.innerWidth : 360;
+  const feltS = Math.min(42, Math.max(24, (vw - 40) / 5.7));
+  const feltBorder = Math.max(3, feltS * 0.12);
+  const feltW = feltS * 15.04 + 2 * feltBorder;   // lato lungo (diventa l'altezza dopo rotate 90°)
+  const feltH = feltS * 5.58 + 2 * feltBorder;    // lato corto (diventa la larghezza)
+  const leave = async () => {
+    if (!window.confirm('Abbandonare il tavolo? Se hai puntate in questa manche le PERDI (non vengono rimborsate).')) return;
+    try { await api('/gestione/casino/table/leave', { seatCode, playerCode }); } catch { /* */ }
+    window.location.href = ORIGIN + 'gestione/casino?player=' + encodeURIComponent(playerCode);
+  };
 
   return (
-    <div style={{ minHeight: '100vh', background: BG, color: '#fff', fontFamily: "'Outfit',system-ui,sans-serif", padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div style={{ height: '100%', overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: BG, color: '#fff', fontFamily: "'Outfit',system-ui,sans-serif", padding: '14px 14px 48px', display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ width: 26, height: 26, borderRadius: '50%', background: seatColor(Number(me.seatNo)), display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 14 }}>{me.seatNo}</span>
@@ -1703,17 +1729,32 @@ function SeatController({ seatCode }: { seatCode: string }) {
             ))}
           </div>
           {msg && <div style={{ color: '#f87171', textAlign: 'center', fontWeight: 700 }}>{msg}</div>}
-          <div style={{ overflowX: 'auto', display: 'flex', justifyContent: 'center', paddingBottom: 4 }}>
-            <RouletteFelt betsBySpot={Object.fromEntries(Object.entries(groupBets(t.bets)).map(([k, v]) => [k, v]))} onPlace={place} s={feltS} />
+          {/* Tappeto ruotato 90° = verticale: entra tutto nel telefono, si scorre in lungo */}
+          <div style={{ display: 'flex', justifyContent: 'center', margin: '2px 0 8px' }}>
+            <div style={{ position: 'relative', width: feltH, height: feltW }}>
+              <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%) rotate(90deg)' }}>
+                <RouletteFelt betsBySpot={Object.fromEntries(Object.entries(groupBets(t.bets)).map(([k, v]) => [k, v]))} onPlace={place} s={feltS} />
+              </div>
+            </div>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#ffffff0a', borderRadius: 12, padding: '10px 14px' }}>
             <div>Sul tappeto: <b style={{ color: GOLD }}>{myTotal}</b> fiche <span style={{ opacity: 0.5 }}>({myBets.length})</span></div>
             <button onClick={undo} disabled={myBets.length === 0} style={{ ...btn('#ffffff22'), opacity: myBets.length === 0 ? 0.4 : 1 }}>↶ Annulla</button>
           </div>
         </>
+      ) : !revealNow ? (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, marginTop: 30 }}>
+          <div style={{ fontSize: 54 }}>🎡</div>
+          <div style={{ fontSize: 22, fontWeight: 900, textAlign: 'center' }}>La ruota sta girando…</div>
+          <div style={{ opacity: 0.6, textAlign: 'center' }}>Guarda lo schermo! Il numero appare qui tra un attimo.</div>
+        </div>
       ) : (
         <ResultPanel t={t} myBets={myBets} myBalance={myBalance} />
       )}
+
+      <button onClick={leave} style={{ marginTop: 'auto', alignSelf: 'center', padding: '12px 22px', borderRadius: 12, border: '1px solid #ffffff22', background: '#ffffff0c', color: '#f87171', fontWeight: 800, fontSize: 14, cursor: 'pointer' }}>
+        ⎋ Abbandona il tavolo
+      </button>
     </div>
   );
 }

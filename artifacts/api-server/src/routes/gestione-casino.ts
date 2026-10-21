@@ -549,6 +549,26 @@ router.post("/gestione/casino/table/next", async (req, res): Promise<void> => {
   res.json({ ok: true });
 });
 
+// ── Abbandona tavolo (telefono): libera il posto. Le puntate del giro restano
+//    SCALATE e NON vengono rimborsate (chi esce durante la manche perde la posta). ──
+router.post("/gestione/casino/table/leave", async (req, res): Promise<void> => {
+  const seatCode = String(req.body?.seatCode ?? "").toUpperCase().trim();
+  const found = await findGameTable(seatCode);
+  if (!found || !found.seatNo) { res.status(404).json({ error: "Postazione non trovata" }); return; }
+  const seatNo = found.seatNo, tableId = found.table.id;
+  await mutateSession<null>(found.sessionId, async (_tx, cfg) => {
+    const table = cfg.gameTables?.[tableId]; if (!table) return { save: false, result: null };
+    const seat = table.seats[seatNo]; if (!seat) return { save: false, result: null };
+    seat.playerId = null;                                   // libera il posto
+    table.bets = table.bets.filter(b => String(b.seatNo) !== String(seatNo)); // puntate perse (già scalate, nessun rimborso)
+    return { save: true, result: null };
+  });
+  const fr = await findGameTable(found.table.displayCode);
+  if (fr) await broadcastTable(found.sessionId, fr.table);
+  await broadcast(found.sessionId);
+  res.json({ ok: true });
+});
+
 /* ═══ BLACKJACK ───────────────────────────────────────────────────────────────
    Tavolo interattivo 80" (sola lettura) + gioco dal telefono di ogni giocatore.
    Motore server-autorevole: 6 mazzi mescolati con RNG sicuro, banco pesca ≤16 e
