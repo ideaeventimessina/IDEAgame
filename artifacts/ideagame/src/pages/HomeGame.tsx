@@ -5774,10 +5774,13 @@ function AdultOnlyBoard({ payload, session, players }: {
     // (SVG) a rotazione 0 guarda a DESTRA (0°), quindi rotate(landAngle) lo fa puntare esatto
     // sul giocatore. +1440 = 4 giri di effetto. (Non si usa più spinFinalAngle del server, che
     // non teneva conto né dell'offset −90 né dell'orientamento dell'emoji.)
+    // +BOTTLE_EMOJI_OFFSET allinea il COLLO/tappo dell'emoji 🍾 (che a rotazione 0 guarda in
+    // alto-sinistra, ≈ −130°) all'asse di puntamento, così la punta cade sul giocatore scelto.
+    const BOTTLE_EMOJI_OFFSET = 130;
     const Nspin = Math.max(1, activePlayers.length);
     const selIdx = selectedPlayerId ? activePlayers.indexOf(selectedPlayerId) : -1;
     const landAngle = (selIdx >= 0 ? selIdx : 0) * 360 / Nspin - 90;
-    const spinTarget = 1440 + (((landAngle % 360) + 360) % 360);
+    const spinTarget = 1440 + ((((landAngle + BOTTLE_EMOJI_OFFSET) % 360) + 360) % 360);
     const t1 = setTimeout(() => setBottleTargetAngle(spinTarget), 80);
     if (spinRevealCalledRef.current) return;
     const elapsed = spinStartedAt ? Date.now() - new Date(spinStartedAt).getTime() : spinDurationMs;
@@ -5959,31 +5962,18 @@ function AdultOnlyBoard({ payload, session, players }: {
             );
           })}
 
-          {/* Bottiglia = puntatore SVG DETERMINISTICO: a rotazione 0 la punta guarda a DESTRA
-              (0°), così rotate(landAngle) la fa puntare ESATTO sul giocatore scelto. Niente
-              emoji (il suo orientamento cambia da sistema a sistema e faceva puntare sul vicino). */}
+          {/* Bottiglia 🍾 — ruota verso il giocatore scelto. La rotazione finale (bottleTargetAngle)
+              include l'offset che allinea il collo/tappo dell'emoji all'asse di puntamento, così la
+              PUNTA cade esatta sul giocatore (vedi calcolo in alto). */}
           <div className="absolute" style={{
             left: CENTER, top: CENTER,
             transform: `translate(-50%, -50%) rotate(${bottleTargetAngle}deg)`,
             transformOrigin: 'center center',
             transition: `transform ${(spinDurationMs / 1000).toFixed(1)}s cubic-bezier(0.17, 0.67, 0.12, 0.99)`,
+            fontSize: 'clamp(120px, 13vw, 220px)', lineHeight: 1,
             filter: `drop-shadow(0 0 48px ${AC}cc) drop-shadow(0 0 20px ${AC}88)`,
             userSelect: 'none',
-          }}>
-            <svg width={Math.round(R * 1.85)} height={Math.round(R * 1.85 * 72 / 240)} viewBox="0 0 240 72" style={{ display: 'block', overflow: 'visible' }}>
-              <defs>
-                <linearGradient id="bottleBody" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0" stopColor={AC} /><stop offset="0.5" stopColor="#fff6d2" /><stop offset="1" stopColor={AC} />
-                </linearGradient>
-              </defs>
-              {/* corpo (sinistra) → spalla → collo → tappo (punta a DESTRA) */}
-              <path d="M8 20 Q8 13 18 12 L150 10 Q170 10 178 24 L178 48 Q170 62 150 62 L18 60 Q8 59 8 52 Z" fill="url(#bottleBody)" stroke="#6a4a16" strokeWidth="2" />
-              <rect x="178" y="27" width="32" height="18" rx="4" fill="url(#bottleBody)" stroke="#6a4a16" strokeWidth="2" />
-              <rect x="208" y="23" width="18" height="26" rx="5" fill="#2a1b0a" stroke="#6a4a16" strokeWidth="2" />
-              <circle cx="230" cy="36" r="6" fill={AC} />
-              <path d="M22 22 L150 20" stroke="#ffffffbb" strokeWidth="5" strokeLinecap="round" />
-            </svg>
-          </div>
+          }}>🍾</div>
 
           <div className="absolute rounded-full"
             style={{ width: 12, height: 12, left: CENTER - 6, top: CENTER - 6, background: AC, boxShadow: `0 0 12px ${AC}` }}/>
