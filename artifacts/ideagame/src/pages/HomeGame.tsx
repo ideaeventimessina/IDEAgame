@@ -5980,11 +5980,14 @@ function AdultOnlyBoard({ payload, session, players }: {
                 <linearGradient id="bottleFoil" x1="0" y1="0" x2="1" y2="0">
                   <stop offset="0" stopColor="#b9842a" /><stop offset="0.5" stopColor="#ffe9a6" /><stop offset="1" stopColor="#b9842a" />
                 </linearGradient>
+                <clipPath id="bottleLabel"><rect x="24" y="26" width="84" height="28" rx="5" /></clipPath>
               </defs>
               {/* corpo (fondo a sinistra) → spalla */}
               <path d="M12 22 Q4 22 4 31 L4 49 Q4 58 12 58 L120 58 Q152 58 164 46 L164 34 Q152 22 120 22 Z" fill="url(#bottleGlass)" stroke="#0e2a16" strokeWidth="2" />
-              {/* etichetta oro */}
-              <rect x="30" y="27" width="66" height="26" rx="4" fill="url(#bottleFoil)" opacity="0.95" />
+              {/* etichetta scura + logo IDEA EVENTI + cornice oro */}
+              <rect x="24" y="26" width="84" height="28" rx="5" fill="#0c0a08" />
+              <image href="/ideaeventi-logo.png" x="24" y="26" width="84" height="28" preserveAspectRatio="xMidYMid meet" clipPath="url(#bottleLabel)" />
+              <rect x="24" y="26" width="84" height="28" rx="5" fill="none" stroke="url(#bottleFoil)" strokeWidth="2.5" />
               {/* collo */}
               <path d="M164 32 L196 34 L196 46 L164 48 Z" fill="url(#bottleGlass)" stroke="#0e2a16" strokeWidth="2" />
               {/* foil oro + tappo (la PUNTA, a destra) */}
