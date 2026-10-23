@@ -14,10 +14,20 @@ const router: IRouter = Router();
 const UPLOAD_DIR = path.join(process.cwd(), "uploads", "jonny-poses");
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
+// L'estensione la decide il tipo ammesso, non il nome scelto da chi carica:
+// un "pagina.html" dichiarato image/png finirebbe servito come pagina web.
+const ESTENSIONE_PER_TIPO: Record<string, string> = {
+  "image/jpeg": ".jpg",
+  "image/png": ".png",
+  "image/webp": ".webp",
+  "image/gif": ".gif",
+  "image/svg+xml": ".svg",
+};
+
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
   filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname) || ".jpg";
+    const ext = ESTENSIONE_PER_TIPO[file.mimetype] ?? ".jpg";
     const name = `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
     cb(null, name);
   },
@@ -37,6 +47,10 @@ router.get("/jonny-poses/files/:filename", (req: Request, res: Response): void =
   const filename = path.basename(String(req.params["filename"] ?? ""));
   const filepath = path.join(UPLOAD_DIR, filename);
   if (!fs.existsSync(filepath)) { res.status(404).json({ error: "Not found" }); return; }
+  // Un SVG puo' contenere script: in un <img> non gira comunque, ma aperto da
+  // solo girerebbe sul nostro dominio. "sandbox" lo isola.
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'");
   res.sendFile(filepath);
 });
 
