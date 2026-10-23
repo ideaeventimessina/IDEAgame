@@ -7,7 +7,7 @@
     "codegen": "orval --config ./orval.config.ts && echo 'export * from \"./generated/api\";' > ../api-zod/src/index.ts && pnpm -w run typecheck:libs"
   },
   "devDependencies": {
-    "orval": "^8.5.2"
+    "orval": "^8.44.0"
   },
   "author": "Andrea Gentile (C.f GNTNDR88S28F158M)"
 }
