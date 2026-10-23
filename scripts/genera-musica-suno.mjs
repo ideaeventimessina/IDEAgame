@@ -54,6 +54,14 @@ const SCENES = [
   { slug: 'saramusica',         type: 'lobby_loop', title: 'SaraMusica',                 style: 'jazzy musical quiz swing, brushed drums, upright bass, vibraphone, classy, loopable, no vocals' },
   { slug: 'parola-alle-spalle', type: 'lobby_loop', title: 'Parola alle Spalle',         style: 'quirky curious detective groove, muted guitar, marimba, cheeky, loopable, no vocals' },
   { slug: 'freestyle-battle',   type: 'lobby_loop', title: 'Freestyle Battle',           style: 'boom-bap hip hop instrumental, fat 808 bass, vinyl crackle, headnod groove, loopable, no vocals' },
+  // ── Lockdown (escape-room / heist): sottofondo stanze + tensione in gioco ──
+  { slug: 'lockdown', type: 'lobby_loop', title: 'Lockdown — Stanza',  style: 'dark suspenseful escape-room ambient, low ominous drones, distant ticking clock, faint heartbeat, eerie tension, mysterious, loopable, no vocals' },
+  { slug: 'lockdown', type: 'round_loop', title: 'Lockdown — In gioco', style: 'driving tense thriller heist underscore, pulsing low bass, urgent ticking percussion, rising suspense strings, adrenaline, loopable, no vocals' },
+  // ── Casinò: lounge elegante in attesa + tensione al tavolo ──
+  { slug: 'casino', type: 'lobby_loop', title: 'Casinò — Lounge',  style: 'classy casino lounge jazz, swing brushed drums, warm upright bass, smooth vibraphone, elegant nighttime, loopable, no vocals' },
+  { slug: 'casino', type: 'round_loop', title: 'Casinò — Tavolo', style: 'suspenseful casino table underscore, soft tension strings, anticipation pulse, elegant and tense, loopable, no vocals' },
+  // ── Burraco: circolo carte, conviviale ──
+  { slug: 'burraco', type: 'lobby_loop', title: 'Burraco — Circolo', style: 'relaxed italian card-club lounge, warm nylon guitar, soft swing rhythm, mellow upright bass, convivial cozy evening, loopable, no vocals' },
 ];
 
 /** Adult: una traccia PER LIVELLO, dal sensuale-soft all'esplicito-intenso.

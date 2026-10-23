@@ -20,6 +20,7 @@
    ════════════════════════════════════════════════════════════════════════════ */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTableMusic } from '@/audio/useTableMusic';
 import { QRCodeSVG } from 'qrcode.react';
 
 const BASE = (import.meta.env.BASE_URL as string) || '/';
@@ -297,6 +298,7 @@ const MON_CSS = FONT_CSS + `
 `;
 
 export function IppodromoSprintMonitor({ displayCode, host = false }: { displayCode: string; host?: boolean }) {
+  useTableMusic('casino', 'lobby_loop');
   const st = useSprint(displayCode, 300);
   const [dim, setDim] = useState({ w: typeof window !== 'undefined' ? window.innerWidth : 1280, h: typeof window !== 'undefined' ? window.innerHeight : 800 });
   useEffect(() => { const r = () => setDim({ w: window.innerWidth, h: window.innerHeight }); window.addEventListener('resize', r); return () => window.removeEventListener('resize', r); }, []);

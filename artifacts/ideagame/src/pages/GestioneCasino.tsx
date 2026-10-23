@@ -11,6 +11,7 @@
    Sync via polling 2s. ─────────────────────────────────────────────────────── */
 
 import { Fragment, useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useTableMusic } from '@/audio/useTableMusic';
 import { motion, AnimatePresence, useMotionValue, animate } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
 import { PlayerAvatar, fileToAvatarDataUrl } from '../components/PlayerAvatar';
@@ -1448,6 +1449,7 @@ const RT_CSS = `
 `;
 
 export function RouletteTableView({ displayCode }: { displayCode: string }) {
+  useTableMusic('casino', 'lobby_loop');
   const [st, setSt] = useState<GameTableState | null>(null);
   const [dim, setDim] = useState({ w: typeof window !== 'undefined' ? window.innerWidth : 1280, h: typeof window !== 'undefined' ? window.innerHeight : 800 });
   const spinning = useRef(false);

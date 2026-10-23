@@ -20,6 +20,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { QRCodeSVG } from 'qrcode.react';
+import { useTableMusic } from '@/audio/useTableMusic';
 
 const BASE = (import.meta.env.BASE_URL as string) || '/';
 const API = BASE + 'api';
@@ -69,6 +70,7 @@ function ballTexture(n: number): THREE.CanvasTexture {
 
 /* ════════════════════════════════════════════════ MONITOR 80" ═══════════════ */
 export function BiliardoMonitor({ displayCode }: { displayCode: string }) {
+  useTableMusic('casino', 'lobby_loop');
   const st = usePool(displayCode, 400);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const stateRef = useRef<PoolState | null>(null);

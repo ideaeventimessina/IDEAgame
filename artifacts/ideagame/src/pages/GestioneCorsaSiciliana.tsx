@@ -15,6 +15,7 @@
    ════════════════════════════════════════════════════════════════════════════ */
 
 import { useCallback, useEffect, useState } from 'react';
+import { useTableMusic } from '@/audio/useTableMusic';
 import { QRCodeSVG } from 'qrcode.react';
 
 const BASE = (import.meta.env.BASE_URL as string) || '/';
@@ -190,6 +191,7 @@ const SIC_CSS = SIC_FONT + `
 `;
 
 export function CorsaSiciliaMonitor({ displayCode, host = false }: { displayCode: string; host?: boolean }) {
+  useTableMusic('casino', 'lobby_loop');
   const st = useSicTable(displayCode, 700);
   const mazzo = useMazzo();
   const [dim, setDim] = useState({ w: typeof window !== 'undefined' ? window.innerWidth : 1280, h: typeof window !== 'undefined' ? window.innerHeight : 800 });

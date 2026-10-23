@@ -8,6 +8,7 @@
    Sync via polling 2s. ─────────────────────────────────────────────────────── */
 
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { useTableMusic } from '@/audio/useTableMusic';
 import { motion, AnimatePresence } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -53,6 +54,7 @@ const api = (path: string, body?: unknown, method = 'POST') =>
   fetch(`${API}${path}`, { method, headers: { 'Content-Type': 'application/json' }, body: method === 'GET' ? undefined : JSON.stringify(body ?? {}) }).then(r => r.json());
 
 export default function GestioneBurraco() {
+  useTableMusic('burraco', 'lobby_loop');
   const params = new URLSearchParams(window.location.search);
   const tableCode = params.get('table');
   const code = params.get('code') ?? '';

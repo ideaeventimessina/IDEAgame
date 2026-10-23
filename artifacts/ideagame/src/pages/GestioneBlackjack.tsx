@@ -11,6 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
+import { useTableMusic } from '@/audio/useTableMusic';
 
 const API = ((import.meta.env.BASE_URL as string) || '/') + 'api';
 const ORIGIN = window.location.origin + ((import.meta.env.BASE_URL as string) || '/');
@@ -827,6 +828,7 @@ function BjTouchBar({ t }: { t: BjTbl }) {
 }
 
 export function BlackjackMonitor({ displayCode }: { displayCode: string }) {
+  useTableMusic('casino', 'lobby_loop');
   const st = useBjTable(displayCode, 900);
   const [dim, setDim] = useState({ w: window.innerWidth, h: window.innerHeight });
   useEffect(() => { const r = () => setDim({ w: window.innerWidth, h: window.innerHeight }); window.addEventListener('resize', r); return () => window.removeEventListener('resize', r); }, []);

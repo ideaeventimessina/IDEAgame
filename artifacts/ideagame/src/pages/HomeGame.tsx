@@ -188,6 +188,8 @@ const ROUND_MODE_AUDIO_SLUG: Record<string, string> = {
   'home-quiz':      'quizzone',
   'home-quizzone':  'quizzone',
   'home-saramusica':'saramusica',
+  'home-lockdown':  'lockdown',
+  'lockdown':       'lockdown',
 };
 const gameKind = (slug: string): 'auto' | 'crowd' => AUTO_SCORE_GAMES.has(slug) ? 'auto' : 'crowd';
 const GAME_KIND_BADGE: Record<'auto' | 'crowd', { label: string; emoji: string; color: string }> = {
@@ -1464,6 +1466,15 @@ export default function HomeGame() {
     void selectGame('lockdown');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lockdownRoom, phase, session?.gameSlug]);
+
+  // Musica DEDICATA della stanza Lockdown (prima mancava del tutto): ambient inquietante
+  // in attesa, tensione urgente quando il gioco è in corso. File: audio/jonny-world/lockdown/.
+  useEffect(() => {
+    if (!lockdownRoom || isMuted) return;
+    const inGame = session?.gameSlug === 'lockdown' && phase === 'playing';
+    AudioManager.stopLoop(true);
+    void AudioManager.playLoop('lockdown', inGame ? 'round_loop' : 'lobby_loop');
+  }, [lockdownRoom, phase, session?.gameSlug, isMuted]);
 
   const nextRound = async () => {
     if (!session) return;
