@@ -29,6 +29,7 @@ import { GameFlowPhone } from '@/components/GameFlowPhone';
 import { PlayerAvatar, fileToAvatarDataUrl } from '@/components/PlayerAvatar';
 import PressToTalkAnswer, { type AnswerResult } from '@/components/PressToTalkAnswer';
 import { IS_LOW_POWER } from '@/hooks/useLowPower';
+import { ScreenFit } from '@/components/ScreenFit';
 
 // Gate verbose logs in production
 const _log: typeof console.log = import.meta.env.DEV ? console.log.bind(console) : () => {};
@@ -1327,8 +1328,11 @@ function HomeJoinInner() {
         {/* ── PLAYING ── */}
         {phase === 'playing' && player && session && (
           <motion.div key="playing" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
-            className="relative z-10 flex w-full max-w-sm flex-col gap-4">
+            className="relative z-10 mx-auto flex h-dvh w-full max-w-sm flex-col gap-2 px-3 pt-3"
+            style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}>
 
+            {/* Intestazione (timer/round/punti/debug) — altezza fissa in cima */}
+            <div className="flex shrink-0 flex-col gap-2">
             {/* Header */}
             <div className="flex items-center justify-between rounded-2xl px-4 py-3"
               style={{background:'rgba(0,0,0,0.5)',backdropFilter:'blur(14px)',border:'1px solid rgba(255,255,255,0.08)'}}>
@@ -1432,7 +1436,11 @@ function HomeJoinInner() {
               );
             })()}
 
-            {/* Game controller */}
+            </div>{/* fine intestazione fissa */}
+
+            {/* Corpo-gioco — scalato per entrare SEMPRE in una schermata (mai pulsanti tagliati) */}
+            <ScreenFit style={{ flex: 1, minHeight: 0 }} pad={2}>
+            <div style={{ width: 'min(calc(100vw - 24px), 24rem)' }}>
             <PhoneController
               session={session}
               player={player}
@@ -1466,6 +1474,8 @@ function HomeJoinInner() {
               wordbackSolved={wordbackSolved}
               wordbackTimedOut={wordbackTimedOut}
             />
+            </div>
+            </ScreenFit>
           </motion.div>
         )}
 

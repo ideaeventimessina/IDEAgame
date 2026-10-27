@@ -21,6 +21,7 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { QRCodeSVG } from 'qrcode.react';
 import { useTableMusic } from '@/audio/useTableMusic';
+import { ScreenFit } from '@/components/ScreenFit';
 
 const BASE = (import.meta.env.BASE_URL as string) || '/';
 const API = BASE + 'api';
@@ -294,8 +295,8 @@ function PlayerPanel({ seat, side, active, wins }: { seat?: Seat; side: 'l' | 'r
 /* ════════════════════════════════════════════════ TELEFONO ══════════════════ */
 const PHONE_CSS = `
 @font-face{font-family:"CinzelB";src:url(${ASSET}Cinzel-Variable.ttf) format("truetype");font-weight:400 900;font-display:swap}
-.bp{position:fixed;inset:0;overflow:auto;color:#eafff2;font-family:"CinzelB",Georgia,serif;background:radial-gradient(ellipse 150% 80% at 50% 0%,#0f3a26,#07251a 60%,#041a12);display:flex;flex-direction:column;align-items:center}
-.bp .wrap{width:100%;max-width:460px;min-height:100%;display:flex;flex-direction:column;padding:16px 16px 28px;gap:14px}
+.bp{position:fixed;inset:0;overflow:hidden;color:#eafff2;font-family:"CinzelB",Georgia,serif;background:radial-gradient(ellipse 150% 80% at 50% 0%,#0f3a26,#07251a 60%,#041a12);display:flex;flex-direction:column;align-items:center}
+.bp .wrap{width:100%;max-width:460px;display:flex;flex-direction:column;padding:16px 16px 28px;gap:14px}
 .bp .brand{text-align:center;font:800 24px/1 "CinzelB",serif;color:#f0ca68;letter-spacing:.06em;margin-top:6px}
 .bp .brand small{display:block;color:#bfe6cf;font:600 13px/1 "CinzelB",serif;letter-spacing:.26em;margin-top:5px}
 .bp .h2{text-align:center;color:#bfe6cf;font-size:15px}
@@ -373,7 +374,7 @@ export function BiliardoPhone({ displayCode }: { displayCode: string }) {
     finally { setBusy(false); }
   };
 
-  const Shell = (inner: React.ReactNode) => (<div className="bp"><style>{PHONE_CSS}</style><div className="wrap"><div className="brand">BILIARDO CLUB<small>IDEA EVENTI</small></div>{err && <div className="note" style={{ color: '#ff9b9b' }}>{err}</div>}{inner}</div></div>);
+  const Shell = (inner: React.ReactNode) => (<div className="bp"><style>{PHONE_CSS}</style><ScreenFit><div className="wrap"><div className="brand">BILIARDO CLUB<small>IDEA EVENTI</small></div>{err && <div className="note" style={{ color: '#ff9b9b' }}>{err}</div>}{inner}</div></ScreenFit></div>);
 
   if (!t) return Shell(<div className="h2" style={{ marginTop: 20 }}>Carico il tavolo…</div>);
   if (me == null) return Shell(<>

@@ -11,6 +11,7 @@ import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useTableMusic } from '@/audio/useTableMusic';
 import { motion, AnimatePresence } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
+import { ScreenFit } from '@/components/ScreenFit';
 
 /* ── Palette (dal mockup) ── */
 const GOLD = '#E8B24C';
@@ -573,7 +574,8 @@ function BurracoTV({ sessionId }: { sessionId: string }) {
   const state = useBurracoState(sessionId, 1500);
   if (!state) return <Center>Carico…</Center>;
   return (
-    <div style={{ minHeight: '100vh', background: APP_BG, color: '#fff', padding: 'clamp(16px,3vw,44px)', fontFamily: "'Outfit',system-ui,sans-serif" }}>
+    <ScreenFit style={{ background: APP_BG, color: '#fff', fontFamily: "'Outfit',system-ui,sans-serif" }} pad={20}>
+    <div style={{ width: 'min(calc(100vw - 40px), 1100px)', padding: 'clamp(8px,2vh,24px) 0' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28, gap: 16, flexWrap: 'wrap' }}>
         <div><div style={{ width: 230, maxWidth: '60vw' }}><BurracoLogo h={90} /></div></div>
         <div style={{ textAlign: 'right' }}>
@@ -595,6 +597,7 @@ function BurracoTV({ sessionId }: { sessionId: string }) {
         {state.standings.length === 0 && <Center>In attesa delle coppie…</Center>}
       </div>
     </div>
+    </ScreenFit>
   );
 }
 
@@ -610,7 +613,8 @@ function BurracoTable({ code }: { code: string }) {
   if (!data) return <Center>Carico tavolo…</Center>;
   if (done) return <Center><div style={{ textAlign: 'center' }}><div style={{ fontSize: 64 }}>✅</div><div style={{ fontSize: 24, fontWeight: 900, color: GOLD }}>Punteggio inviato!</div><div style={{ color: MUTED, marginTop: 8 }}>Guarda la classifica sullo schermo</div></div></Center>;
   return (
-    <div style={{ minHeight: '100vh', background: APP_BG, color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 18, padding: 20, fontFamily: "'Outfit',system-ui,sans-serif" }}>
+    <ScreenFit style={{ background: APP_BG, color: '#fff', fontFamily: "'Outfit',system-ui,sans-serif" }} pad={16}>
+    <div style={{ width: 'min(calc(100vw - 32px), 420px)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18, padding: '8px 0' }}>
       <div style={{ width: 200 }}><BurracoLogo h={80} /></div>
       <div style={{ color: MUTED }}>{data.sessionName} · Turno {data.round} · Tavolo {data.assignment.tableNumber}</div>
       <ScoreField color="#60A5FA" label={pairLabel(data.pairA ?? undefined)} value={sa} onChange={setSa} />
@@ -618,6 +622,7 @@ function BurracoTable({ code }: { code: string }) {
       {data.pairB ? <ScoreField color="#F472B6" label={pairLabel(data.pairB)} value={sb} onChange={setSb} /> : <div style={{ color: MUTED }}>Coppia in riposo</div>}
       <motion.button whileTap={{ scale: 0.96 }} onClick={submit} disabled={busy || sa === '' || (!!data.pairB && sb === '')} style={{ ...goldBtnStyle, width: '100%', maxWidth: 360, padding: 18, fontSize: 20, justifyContent: 'center' }}>{busy ? '…' : 'Invia punteggio'}</motion.button>
     </div>
+    </ScreenFit>
   );
 }
 

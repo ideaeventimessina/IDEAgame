@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useTableMusic } from '@/audio/useTableMusic';
+import { ScreenFit } from '@/components/ScreenFit';
 
 const API = ((import.meta.env.BASE_URL as string) || '/') + 'api';
 const ORIGIN = window.location.origin + ((import.meta.env.BASE_URL as string) || '/');
@@ -122,9 +123,9 @@ function Avatar({ url, name, size = 54 }: { url?: string | null; name?: string |
    TELEFONO
    ════════════════════════════════════════════════════════════════════════════ */
 const PHONE_CSS = BJ_FONT + CARD_CSS + `
-.bjp{position:fixed;inset:0;overflow:auto;color:#fff;font-family:"Baskerville Casino",Georgia,serif;
+.bjp{position:fixed;inset:0;overflow:hidden;color:#fff;font-family:"Baskerville Casino",Georgia,serif;
   background:radial-gradient(ellipse 150% 80% at 50% 6%,#0a5a26 0%,#063f18 45%,#02220c 100%);display:flex;flex-direction:column;align-items:center;}
-.bjp .wrap{width:100%;max-width:460px;min-height:100%;display:flex;flex-direction:column;}
+.bjp .wrap{width:100%;max-width:460px;display:flex;flex-direction:column;}
 .bjp .content{display:flex;flex-direction:column;padding:4px 16px 22px;gap:12px;flex:1;}
 /* ── header: barra di stato + duomo di marmo + arco oro + wordmark ── */
 .bjp .head{position:relative;text-align:center;}
@@ -348,7 +349,7 @@ export function BlackjackPhone({ displayCode }: { displayCode: string }) {
   const unbet = async () => { setBusy(true); try { await api('/gestione/casino/bj/unbet', { seatCode: myCode, playerCode }); } finally { setBusy(false); } };
   const act = async (kind: 'hit' | 'stand' | 'double') => { setBusy(true); setErr(''); try { const r = await api(`/gestione/casino/bj/${kind}`, { seatCode: myCode, playerCode }); if (r?.error) setErr(r.error); setConfirmDbl(false); } finally { setBusy(false); } };
 
-  const Shell = (children: React.ReactNode) => <div className="bjp"><style>{PHONE_CSS}</style><div className="wrap"><BlackjackHeader /><div className="content">{children}</div></div></div>;
+  const Shell = (children: React.ReactNode) => <div className="bjp"><style>{PHONE_CSS}</style><ScreenFit><div className="wrap"><BlackjackHeader /><div className="content">{children}</div></div></ScreenFit></div>;
 
   // 01 ACCESSO
   if (!me) return Shell(

@@ -12,6 +12,7 @@ import { useLocation, useParams } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, Users, Loader2 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import { ScreenFit } from '@/components/ScreenFit';
 
 const BASE = (import.meta.env.BASE_URL as string) ?? '/';
 function pub(path: string) {
@@ -272,12 +273,13 @@ export default function HomeLobbyPage() {
 
   return (
     <div className="fixed inset-0 overflow-hidden"
-      style={{ background: '#030010', fontFamily: "'Outfit','Space Grotesk','Arial Black',sans-serif" }}>
+      style={{ background: '#030010', fontFamily: "'Outfit','Space Grotesk','Arial Black',sans-serif",
+        display: 'flex', flexDirection: 'column' }}>
       <SceneBg pulse={joinPulse}/>
 
       {/* ── TOP BAR — minimal, non-distracting ─────────────────────────────── */}
       <div className="relative z-10 flex items-center justify-between"
-        style={{ padding: 'clamp(10px,1.5vh,18px) clamp(16px,2.5vw,32px) 0' }}>
+        style={{ flexShrink: 0, padding: 'clamp(10px,1.5vh,18px) clamp(16px,2.5vw,32px) 0' }}>
 
         {/* Left controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -477,13 +479,11 @@ export default function HomeLobbyPage() {
         </div>
       </div>
 
-      {/* ── HERO SECTION ────────────────────────────────────────────────────── */}
-      <div className="relative z-10 flex flex-col items-center"
+      {/* ── HERO SECTION — scalata per entrare SEMPRE in una schermata ───────── */}
+      <ScreenFit className="relative z-10" style={{ flex: 1, minHeight: 0 }} pad={10}>
+      <div className="flex flex-col items-center"
         style={{
           paddingTop: 'clamp(6px,1vh,12px)',
-          paddingBottom: 'clamp(60px,8vh,90px)',
-          height: 'calc(100% - clamp(50px,8vh,76px))',
-          justifyContent: 'center',
           gap: 'clamp(6px,1.2vh,14px)',
         }}>
 
@@ -687,14 +687,15 @@ export default function HomeLobbyPage() {
           📷 Apri la fotocamera e inquadra il QR
         </div>
       </div>
+      </ScreenFit>
 
-      {/* ── FOOTER — room metadata pills + CTA ──────────────────────────────── */}
+      {/* ── FOOTER — room metadata pills + CTA (in flusso, mai sovrapposto) ──── */}
       <div style={{
-        position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 20,
+        flexShrink: 0, position: 'relative', zIndex: 20,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: 'clamp(10px,1.6vh,18px) clamp(16px,2.5vw,32px)',
         borderTop: '1px solid rgba(255,255,255,0.06)',
-        background: 'linear-gradient(0deg,rgba(3,0,16,0.92) 0%,transparent 100%)',
+        background: 'linear-gradient(0deg,rgba(3,0,16,0.92) 0%,rgba(3,0,16,0.55) 100%)',
         gap: 12,
         flexWrap: 'wrap',
       }}>

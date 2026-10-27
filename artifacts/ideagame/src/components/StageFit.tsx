@@ -1,6 +1,6 @@
 /* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 
 /**
  * Palco a dimensioni fisse (metodo "schermata fissa" della skill mockup-replica):
@@ -26,8 +26,9 @@ export function StageFit({
   const [scale, setScale] = useState(1);
   const [reflow, setReflow] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     // Misura il VIEWPORT reale (non il genitore: con minHeight:100dvh può crescere
     // oltre lo schermo e falsare la scala -> interfaccia "zoomata"/instabile).
     const compute = () => {
@@ -36,14 +37,22 @@ export function StageFit({
       const vh = vv?.height ?? window.innerHeight;
       if (reflowAt && vw < reflowAt) { setReflow(true); return; }
       setReflow(false);
-      setScale(Math.min(vw / designW, vh / designH));
+      // Altezza REALE del contenuto (≥ designH): se il palco cresce — un campo in
+      // più, un testo più lungo, un viewport basso — scaliamo su quella e NON
+      // tagliamo mai in basso. offsetHeight/scrollHeight non risentono del transform.
+      const contentH = Math.max(designH, innerRef.current?.scrollHeight ?? designH);
+      const next = Math.min(vw / designW, vh / contentH);
+      setScale(prev => (Math.abs(prev - next) > 0.004 ? next : prev));
     };
     compute();
     const raf = requestAnimationFrame(compute);        // ricalcola dopo il layout/font
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(compute) : null;
+    if (ro && innerRef.current) ro.observe(innerRef.current);
     window.addEventListener('resize', compute);
     window.visualViewport?.addEventListener('resize', compute);
     return () => {
       cancelAnimationFrame(raf);
+      ro?.disconnect();
       window.removeEventListener('resize', compute);
       window.visualViewport?.removeEventListener('resize', compute);
     };
@@ -69,9 +78,11 @@ export function StageFit({
       }}
     >
       <div
+        ref={innerRef}
         style={{
           width: designW,
-          height: designH,
+          minHeight: designH,
+          height: 'auto',
           transform: `scale(${scale})`,
           transformOrigin: 'center center',
           flexShrink: 0,

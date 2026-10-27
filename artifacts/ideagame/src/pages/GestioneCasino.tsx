@@ -19,6 +19,7 @@ import { BlackjackPhone, BlackjackMonitor, BlackjackRegia, BlackjackTablesView }
 import { CorsaSiciliaMonitor, CorsaSiciliaPhone, CorsaSiciliaRegia } from './GestioneCorsaSiciliana';
 import { IppodromoSprintMonitor, IppodromoSprintPhone, IppodromoSprintRegia } from './GestioneIppodromoSprint';
 import { BiliardoMonitor, BiliardoPhone } from './GestioneBiliardo';
+import { ScreenFit } from '@/components/ScreenFit';
 
 // Numero che "sale" con un tween quando cambia (cassa, saldi). Niente dipendenze.
 function AnimatedNumber({ value }: { value: number }) {
@@ -1057,7 +1058,8 @@ export function PlayerView({ code }: { code: string }) {
   const pending = p.pendingBet ?? 0;
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: BG, color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, padding: '20px 20px 48px', fontFamily: "'Outfit',system-ui,sans-serif" }}>
+    <ScreenFit style={{ background: BG, color: '#fff', fontFamily: "'Outfit',system-ui,sans-serif" }} pad={14}>
+    <div style={{ width: 'min(calc(100vw - 28px), 440px)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, padding: '6px 0' }}>
       <BrandBar h={20} dim={0.7} />
       {/* PONTE SUITE: un solo tocco per tornare al feed della festa (nessun gettone) */}
       {suiteLink?.feedUrl && (
@@ -1128,6 +1130,7 @@ export function PlayerView({ code }: { code: string }) {
       <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: '0.25em', color: GOLD }}>{p.playerCode}</div>
       <div style={{ opacity: 0.5, fontSize: 13, textAlign: 'center', maxWidth: 300 }}>Mostra questo QR al dealer per puntare, ricevere o consegnare le fiche</div>
     </div>
+    </ScreenFit>
   );
 }
 

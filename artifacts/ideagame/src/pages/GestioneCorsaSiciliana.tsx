@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTableMusic } from '@/audio/useTableMusic';
 import { QRCodeSVG } from 'qrcode.react';
+import { ScreenFit } from '@/components/ScreenFit';
 
 const BASE = (import.meta.env.BASE_URL as string) || '/';
 const API = BASE + 'api';
@@ -444,9 +445,9 @@ export function CorsaSiciliaRegia({ displayCode }: { displayCode: string }) {
   if (!t) return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#0a2a6a', color: '#ffe9a6', fontFamily: 'Georgia' }}>Carico…</div>;
   const m = (s: Suit) => SUIT_META[s];
   return (
-    <div style={{ minHeight: '100vh', background: 'radial-gradient(ellipse 120% 90% at 50% 0%,#1f4a9c,#0a2a6a)', color: '#fff', fontFamily: '"Baskerville Casino",Georgia,serif', padding: 24, boxSizing: 'border-box' }}>
+    <ScreenFit style={{ background: 'radial-gradient(ellipse 120% 90% at 50% 0%,#1f4a9c,#0a2a6a)', color: '#fff', fontFamily: '"Baskerville Casino",Georgia,serif' }} pad={16}>
       <style>{FONT}</style>
-      <div style={{ maxWidth: 680, margin: '0 auto' }}>
+      <div style={{ width: 'min(calc(100vw - 32px),680px)', padding: '6px 0' }}>
         <div style={{ textAlign: 'center', marginBottom: 14 }}>
           <img src={`${B}casino/logo-idea-casino.png`} alt="" style={{ height: 56 }} />
           <div style={{ font: '700 32px/1 "Baskerville Casino",serif', color: '#ffe9a6', marginTop: 4 }}>Regia · Corsa Siciliana</div>
@@ -506,7 +507,7 @@ export function CorsaSiciliaRegia({ displayCode }: { displayCode: string }) {
           <a href={`${ORIGIN}gestione/casino?sic=${t.displayCode}&host=1`} target="_blank" rel="noreferrer" style={{ ...btnGhost, textAlign: 'center', textDecoration: 'none', display: 'block' }}>🖥️ Apri il monitor 80″ (host) ↗</a>
         </div>
       </div>
-    </div>
+    </ScreenFit>
   );
 }
 const btnG: React.CSSProperties = { padding: 16, borderRadius: 12, border: '1px solid #bff0cf', background: 'linear-gradient(180deg,#39d46b,#139a3e 52%,#0c7a33)', color: '#04210e', font: '700 20px "Baskerville Casino",serif', cursor: 'pointer' };

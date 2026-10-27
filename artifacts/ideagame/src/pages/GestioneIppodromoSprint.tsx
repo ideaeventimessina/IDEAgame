@@ -22,6 +22,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTableMusic } from '@/audio/useTableMusic';
 import { QRCodeSVG } from 'qrcode.react';
+import { ScreenFit } from '@/components/ScreenFit';
 
 const BASE = (import.meta.env.BASE_URL as string) || '/';
 const API = BASE + 'api';
@@ -578,9 +579,9 @@ export function IppodromoSprintRegia({ displayCode }: { displayCode: string }) {
   const occupied = t.seats.filter(s => s.playerId).length;
 
   return (
-    <div style={{ minHeight: '100vh', background: 'radial-gradient(ellipse 120% 90% at 50% 0%,#0f3a26,#041a12)', color: '#eafff2', fontFamily: '"LoraS",Georgia,serif', padding: 20, boxSizing: 'border-box' }}>
+    <ScreenFit style={{ background: 'radial-gradient(ellipse 120% 90% at 50% 0%,#0f3a26,#041a12)', color: '#eafff2', fontFamily: '"LoraS",Georgia,serif' }} pad={16}>
       <style>{FONT_CSS}</style>
-      <div style={{ maxWidth: 760, margin: '0 auto' }}>
+      <div style={{ width: 'min(calc(100vw - 32px),760px)', padding: '6px 0' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
           <img src={`${ASSET}logo/idea-eventi-negativo-originale.png`} alt="Idea Eventi" style={{ height: 50 }} />
           <div style={{ flex: 1 }}>
@@ -638,7 +639,7 @@ export function IppodromoSprintRegia({ displayCode }: { displayCode: string }) {
           <a href={`${ORIGIN}gestione/casino?sprint=${t.displayCode}&host=1`} target="_blank" rel="noreferrer" style={{ ...ghost, textAlign: 'center', textDecoration: 'none', display: 'block' }}>🖥️ Apri il monitor 80″ ↗</a>
         </div>
       </div>
-    </div>
+    </ScreenFit>
   );
 }
 const chip: React.CSSProperties = { padding: '8px 12px', borderRadius: 10, background: '#ffffff0c', border: '1px solid #caa84f33' };
