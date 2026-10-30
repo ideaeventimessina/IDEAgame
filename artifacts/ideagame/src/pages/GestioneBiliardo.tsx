@@ -34,6 +34,9 @@ const api = (path: string, body?: unknown) =>
 const CW = 1536, CH = 1024, BR = 23, BX0 = 132, BX1 = 1404, BY0 = 200, BY1 = 784, CAP = 42;
 const POCKETS: [number, number][] = [[164, 103], [770, 116], [1372, 85], [177, 926], [768, 937], [1363, 930]];
 const DT = 1 / 240, DECEL = 900, E_CUSH = 0.75, E_BALL = 0.94, MAXV = 2400, STOPV = 8;
+/* EFFETTO (spin): follow/draw al contatto, effetto laterale su sponda, curva (swerve), throw sulla bilia colpita */
+const SPIN_FOLLOW = 0.62, SPIN_SIDE = 0.40, SPIN_CURVE = 0.5, SPIN_SLIDE = 0.85, SPIN_THROW = 0.06;
+const SPIN_EDGE = 0.8;   // intensità dell'effetto al bordo della bilia (9 punti) — stesso clamp del server
 const COLORS: Record<number, string> = { 1: '#f2c21b', 2: '#1f4ea8', 3: '#cf2a1c', 4: '#5c2d86', 5: '#e07a1e', 6: '#157a3e', 7: '#7c2420', 8: '#121416', 9: '#f2c21b', 10: '#1f4ea8', 11: '#cf2a1c', 12: '#5c2d86', 13: '#e07a1e', 14: '#157a3e', 15: '#7c2420' };
 
 type Ball = { id: number; x: number; y: number; in: boolean };
@@ -100,12 +103,13 @@ export function BiliardoMonitor({ displayCode }: { displayCode: string }) {
 
     const ballGeo = new THREE.SphereGeometry(BR, 48, 32);
     const meshes = new Map<number, THREE.Mesh>();
-    type B = { id: number; x: number; y: number; vx: number; vy: number; in: boolean };
+    // spinF: follow(+)/draw(−) · spinS: effetto laterale dx(+)/sx(−) · slide: finestra in cui l'effetto è vivo · hx/hy: heading pre-urto
+    type B = { id: number; x: number; y: number; vx: number; vy: number; in: boolean; spinF: number; spinS: number; slide: number; hx: number; hy: number };
     const balls: B[] = [];
     for (let n = 0; n <= 15; n++) {
       const mat = new THREE.MeshPhysicalMaterial({ map: ballTexture(n), roughness: 0.13, clearcoat: 1, clearcoatRoughness: 0.07, metalness: 0, envMapIntensity: 1.15 });
       const m = new THREE.Mesh(ballGeo, mat); m.castShadow = true; m.rotation.x = -Math.PI / 2; m.visible = false; scene.add(m); meshes.set(n, m);
-      balls.push({ id: n, x: 0, y: 0, vx: 0, vy: 0, in: false });
+      balls.push({ id: n, x: 0, y: 0, vx: 0, vy: 0, in: false, spinF: 0, spinS: 0, slide: 0, hx: 1, hy: 0 });
     }
     // stecca + guida mira
     const woodMat = new THREE.MeshStandardMaterial({ color: '#d9b071', roughness: 0.45 });
@@ -126,18 +130,40 @@ export function BiliardoMonitor({ displayCode }: { displayCode: string }) {
     }
     function physStep(dt: number) {
       for (const b of balls) { if (!b.in) continue;
-        const sp = Math.hypot(b.vx, b.vy); if (sp > 0) { const ns = Math.max(0, sp - DECEL * dt), k = ns / sp; b.vx *= k; b.vy *= k; }
+        const sp = Math.hypot(b.vx, b.vy);
+        if (b.id === 0 && sp > 1) {                               // solo la battente porta l'effetto
+          b.hx = b.vx / sp; b.hy = b.vy / sp;                     // heading aggiornato (serve a follow/draw al contatto)
+          if (b.slide > 0) {                                      // effetto laterale → curva, solo durante lo scivolamento
+            b.slide = Math.max(0, b.slide - dt);
+            const c = b.spinS * SPIN_CURVE * dt;
+            b.vx += -b.hy * c * sp; b.vy += b.hx * c * sp;
+          }
+        }
+        if (sp > 0) { const ns = Math.max(0, sp - DECEL * dt), k = ns / sp; b.vx *= k; b.vy *= k; }
         b.x += b.vx * dt; b.y += b.vy * dt;
         for (const [px, py] of POCKETS) if (Math.hypot(b.x - px, b.y - py) < CAP) { b.in = false; pocketedThisShot.current.push(b.id); break; }
         if (!b.in) continue;
-        if (b.x < BX0) { b.x = BX0; b.vx = Math.abs(b.vx) * E_CUSH; } else if (b.x > BX1) { b.x = BX1; b.vx = -Math.abs(b.vx) * E_CUSH; }
-        if (b.y < BY0) { b.y = BY0; b.vy = Math.abs(b.vy) * E_CUSH; } else if (b.y > BY1) { b.y = BY1; b.vy = -Math.abs(b.vy) * E_CUSH; }
+        // sponde: con effetto laterale la battente cambia angolo di rimbalzo
+        if (b.x < BX0) { b.x = BX0; b.vx = Math.abs(b.vx) * E_CUSH; if (b.id === 0) { b.vy += b.spinS * SPIN_SIDE * Math.abs(b.vx); b.spinS *= 0.5; } }
+        else if (b.x > BX1) { b.x = BX1; b.vx = -Math.abs(b.vx) * E_CUSH; if (b.id === 0) { b.vy -= b.spinS * SPIN_SIDE * Math.abs(b.vx); b.spinS *= 0.5; } }
+        if (b.y < BY0) { b.y = BY0; b.vy = Math.abs(b.vy) * E_CUSH; if (b.id === 0) { b.vx -= b.spinS * SPIN_SIDE * Math.abs(b.vy); b.spinS *= 0.5; } }
+        else if (b.y > BY1) { b.y = BY1; b.vy = -Math.abs(b.vy) * E_CUSH; if (b.id === 0) { b.vx += b.spinS * SPIN_SIDE * Math.abs(b.vy); b.spinS *= 0.5; } }
       }
       for (let i = 0; i < balls.length; i++) { const a = balls[i]!; if (!a.in) continue;
         for (let j = i + 1; j < balls.length; j++) { const b = balls[j]!; if (!b.in) continue;
           const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy), mn = 2 * BR;
           if (d > 0 && d < mn) { const nx = dx / d, ny = dy / d, ov = (mn - d) / 2; a.x -= nx * ov; a.y -= ny * ov; b.x += nx * ov; b.y += ny * ov;
-            const av = a.vx * nx + a.vy * ny, bv = b.vx * nx + b.vy * ny; if (bv - av < 0) { const im = (av - bv) * E_BALL; a.vx -= im * nx; a.vy -= im * ny; b.vx += im * nx; b.vy += im * ny; } }
+            const av = a.vx * nx + a.vy * ny, bv = b.vx * nx + b.vy * ny;
+            if (bv - av < 0) { const im = (av - bv) * E_BALL; a.vx -= im * nx; a.vy -= im * ny; b.vx += im * nx; b.vy += im * ny;
+              // effetto al contatto battente↔bilia: follow/draw lungo l'heading + throw sulla colpita
+              const cue = a.id === 0 ? a : b.id === 0 ? b : null, obj = a.id === 0 ? b : b.id === 0 ? a : null;
+              if (cue && (cue.spinF !== 0 || cue.spinS !== 0)) {
+                const closing = Math.abs(av - bv);
+                cue.vx += cue.hx * cue.spinF * SPIN_FOLLOW * closing; cue.vy += cue.hy * cue.spinF * SPIN_FOLLOW * closing;
+                if (obj) { const tt = cue.spinS * SPIN_THROW, co = Math.cos(tt), si = Math.sin(tt), ox = obj.vx, oy = obj.vy; obj.vx = ox * co - oy * si; obj.vy = ox * si + oy * co; }
+                cue.spinF = 0; cue.spinS *= 0.3; cue.slide = 0;
+              }
+            } }
         } }
     }
     function syncMeshes(dt: number) {
@@ -149,9 +175,10 @@ export function BiliardoMonitor({ displayCode }: { displayCode: string }) {
     let simulating = false;
     const pocketedThisShot = { current: [] as number[] };
     let playedSeq = -1, resolving = false, shotBy: 0 | 1 = 0;
-    function startShot(angle: number, power: number, by: 0 | 1) {
+    function startShot(angle: number, power: number, by: 0 | 1, spinX = 0, spinY = 0) {
       syncFromServer(); const cb = cueBall(); if (!cb.in) { cb.in = true; cb.x = BX0 + 150; cb.y = (BY0 + BY1) / 2; }
       cb.vx = Math.cos(angle) * MAXV * power; cb.vy = Math.sin(angle) * MAXV * power;
+      cb.spinF = spinY; cb.spinS = spinX; cb.slide = SPIN_SLIDE; cb.hx = Math.cos(angle); cb.hy = Math.sin(angle);
       pocketedThisShot.current = []; shotBy = by; simulating = true;
       cueGrp.visible = aim.visible = ghost.visible = false; setAimPow(null);
     }
@@ -195,7 +222,7 @@ export function BiliardoMonitor({ displayCode }: { displayCode: string }) {
       const t = stateRef.current?.table;
       if (t && !inited) { syncFromServer(); inited = true; }
       // avvia un tiro inviato dal telefono (pending nuovo non ancora giocato)
-      if (t?.pending && t.pending.seq > playedSeq && !simulating && !resolving && !moving()) { playedSeq = t.pending.seq; startShot(t.pending.angle, t.pending.power, t.pending.by); }
+      if (t?.pending && t.pending.seq > playedSeq && !simulating && !resolving && !moving()) { playedSeq = t.pending.seq; startShot(t.pending.angle, t.pending.power, t.pending.by, t.pending.spinX || 0, t.pending.spinY || 0); }
       // quando fermo e nessun tiro in corso, allinea alle posizioni del server
       if (t && !simulating && !resolving && !moving() && !aiming) syncFromServer();
       while (acc >= DT) { if (simulating && moving()) physStep(DT); acc -= DT; }
@@ -309,7 +336,59 @@ const PHONE_CSS = `
 .bp .seatbtn{width:100%;padding:16px;border-radius:14px;border:2px solid #caa84f66;background:#ffffff0c;color:#eafff2;font:700 18px/1 "CinzelB",serif;cursor:pointer}
 .bp .big{font:800 40px/1 "CinzelB",serif;color:#f6e7bf;text-align:center}
 .bp .note{text-align:center;border-radius:14px;padding:14px;font:700 18px/1.3 "CinzelB",serif;background:#ffffff0c;color:#bfe6cf}
+.bp .spinrow{display:flex;align-items:center;gap:16px;justify-content:center}
+.bp .pick9{width:116px;height:116px;flex:none;border-radius:50%;position:relative;background:radial-gradient(circle at 38% 32%,#fff,#f3ecd6 58%,#d2c8aa);border:2px solid #caa84f88;box-shadow:inset 0 3px 10px #0003,0 2px 6px #0006}
+.bp .p9{position:absolute;width:30px;height:30px;border-radius:50%;transform:translate(-50%,-50%);border:2px solid transparent;background:#8a7a5522;cursor:pointer;padding:0;transition:transform .1s,box-shadow .1s,background .1s}
+.bp .p9::after{content:"";position:absolute;inset:0;margin:auto;width:7px;height:7px;border-radius:50%;background:#7a6a44aa}
+.bp .p9:active{transform:translate(-50%,-50%) scale(.9)}
+.bp .p9.sel{background:radial-gradient(circle at 38% 32%,#ff7a5f,#c0392b);border-color:#fff;box-shadow:0 1px 6px #0009,0 0 0 3px #ffffff55}
+.bp .p9.sel::after{background:#fff}
+.bp .spinhint{font:700 13px/1.4 "CinzelB",serif;color:#cdbf86;text-align:left;max-width:156px}
+.bp .spinhint b{color:#f6e7bf;display:block;font-size:15px;margin-bottom:3px}
 `;
+
+/* I 9 punti d'attacco sulla bilia (come una stecca da biliardo vera): riga alta = colpo
+   alto (follow), centrale = pieno, bassa = colpo basso (draw); colonne = effetto sx/centro/dx.
+   cx/cy sono la posizione in % sulla faccia della bilia; sx/sy l'effetto inviato (−0.8..0.8). */
+const GRID9 = [
+  { cx: 26, cy: 26, sx: -SPIN_EDGE, sy: SPIN_EDGE }, { cx: 50, cy: 22, sx: 0, sy: SPIN_EDGE }, { cx: 74, cy: 26, sx: SPIN_EDGE, sy: SPIN_EDGE },
+  { cx: 22, cy: 50, sx: -SPIN_EDGE, sy: 0 }, { cx: 50, cy: 50, sx: 0, sy: 0 }, { cx: 78, cy: 50, sx: SPIN_EDGE, sy: 0 },
+  { cx: 26, cy: 74, sx: -SPIN_EDGE, sy: -SPIN_EDGE }, { cx: 50, cy: 78, sx: 0, sy: -SPIN_EDGE }, { cx: 74, cy: 74, sx: SPIN_EDGE, sy: -SPIN_EDGE },
+];
+
+/* Traccia la corsa della battente con la STESSA fisica del monitor (physStep): decelerazione,
+   curva da effetto laterale durante lo scivolamento, rimbalzo di sponda con l'english. Si ferma
+   alla prima palla colpita (restituendo dove va la bilia oggetto) o in buca. spinY (follow/draw)
+   non piega la corsa prima del contatto — è fedele: agisce solo DOPO l'urto. */
+type TracePt = { x: number; y: number };
+function traceCue(cue: { x: number; y: number }, balls: Ball[], angle: number, power: number, spinX: number) {
+  let x = cue.x, y = cue.y;
+  let vx = Math.cos(angle) * MAXV * power, vy = Math.sin(angle) * MAXV * power;
+  let spinS = spinX, slide = SPIN_SLIDE;
+  const path: TracePt[] = [{ x, y }];
+  const others = balls.filter(b => b.in && b.id !== 0);
+  let contact: { x: number; y: number; dir: TracePt } | null = null;
+  let potted = false;
+  for (let step = 0; step < 1600; step++) {
+    let sp = Math.hypot(vx, vy);
+    if (sp < STOPV) break;
+    const hx = vx / sp, hy = vy / sp;
+    if (slide > 0) { slide = Math.max(0, slide - DT); const c = spinS * SPIN_CURVE * DT; vx += -hy * c * sp; vy += hx * c * sp; }
+    sp = Math.hypot(vx, vy); const ns = Math.max(0, sp - DECEL * DT), k = sp > 0 ? ns / sp : 0; vx *= k; vy *= k;
+    x += vx * DT; y += vy * DT;
+    for (const [px, py] of POCKETS) if (Math.hypot(x - px, y - py) < CAP) { potted = true; break; }
+    if (potted) { path.push({ x, y }); break; }
+    let hit: Ball | null = null, hd = 1e9;
+    for (const o of others) { const d = Math.hypot(o.x - x, o.y - y); if (d < 2 * BR && d < hd) { hd = d; hit = o; } }
+    if (hit) { const dx = hit.x - x, dy = hit.y - y, d = Math.hypot(dx, dy) || 1; contact = { x, y, dir: { x: dx / d, y: dy / d } }; path.push({ x, y }); break; }
+    if (x < BX0) { x = BX0; vx = Math.abs(vx) * E_CUSH; vy += spinS * SPIN_SIDE * Math.abs(vx); spinS *= 0.5; }
+    else if (x > BX1) { x = BX1; vx = -Math.abs(vx) * E_CUSH; vy -= spinS * SPIN_SIDE * Math.abs(vx); spinS *= 0.5; }
+    if (y < BY0) { y = BY0; vy = Math.abs(vy) * E_CUSH; vx -= spinS * SPIN_SIDE * Math.abs(vy); spinS *= 0.5; }
+    else if (y > BY1) { y = BY1; vy = -Math.abs(vy) * E_CUSH; vx += spinS * SPIN_SIDE * Math.abs(vy); spinS *= 0.5; }
+    path.push({ x, y });
+  }
+  return { path, contact, potted };
+}
 
 export function BiliardoPhone({ displayCode }: { displayCode: string }) {
   const st = usePool(displayCode, 600);
@@ -318,6 +397,7 @@ export function BiliardoPhone({ displayCode }: { displayCode: string }) {
   const [err, setErr] = useState('');
   const [power, setPower] = useState(0.6);
   const [ang, setAng] = useState(0);
+  const [spin, setSpin] = useState({ x: 0, y: 0 });   // x: effetto laterale dx(+)/sx(−) · y: follow(+)/draw(−)
   const cvRef = useRef<HTMLCanvasElement | null>(null);
   const t = st?.table;
   const mineRef = useRef<Set<string>>(new Set());
@@ -350,10 +430,25 @@ export function BiliardoPhone({ displayCode }: { displayCode: string }) {
         if (b.id !== 0) { ctx.fillStyle = b.id >= 9 ? '#fff' : '#fff'; ctx.beginPath(); ctx.arc(b.x, b.y, BR * 0.5, 0, 7); ctx.fillStyle = '#fbf7ea'; ctx.fill(); ctx.fillStyle = '#14110c'; ctx.font = `bold ${BR}px Arial`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(b.id), b.x, b.y + 1); }
       }
       const cue = t.balls.find(b => b.id === 0 && b.in);
-      if (cue && me === t.turn) { ctx.strokeStyle = '#eef3e0'; ctx.lineWidth = 4; ctx.setLineDash([14, 10]); ctx.beginPath(); ctx.moveTo(cue.x, cue.y); ctx.lineTo(cue.x + Math.cos(ang) * 420, cue.y + Math.sin(ang) * 420); ctx.stroke(); ctx.setLineDash([]); }
+      if (cue && me === t.turn) {
+        const { path, contact, potted } = traceCue(cue, t.balls, ang, power, spin.x);
+        // corsa della bianca: piega con l'effetto laterale, rimbalza di sponda, si ferma sulla palla
+        ctx.setLineDash([16, 12]); ctx.lineWidth = 6; ctx.lineJoin = 'round'; ctx.strokeStyle = '#eef3e0';
+        ctx.shadowColor = '#eef3e0aa'; ctx.shadowBlur = 10;
+        ctx.beginPath(); ctx.moveTo(path[0]!.x, path[0]!.y); for (const p of path) ctx.lineTo(p.x, p.y); ctx.stroke();
+        ctx.shadowBlur = 0; ctx.setLineDash([]);
+        if (contact) {
+          ctx.beginPath(); ctx.arc(contact.x, contact.y, BR, 0, 7); ctx.lineWidth = 5; ctx.strokeStyle = '#ffe49a'; ctx.stroke();          // bilia fantasma
+          ctx.setLineDash([12, 9]); ctx.lineWidth = 6; ctx.strokeStyle = '#caa24a';                                                        // dove parte la palla colpita
+          ctx.beginPath(); ctx.moveTo(contact.x, contact.y); ctx.lineTo(contact.x + contact.dir.x * 260, contact.y + contact.dir.y * 260); ctx.stroke(); ctx.setLineDash([]);
+          if (Math.abs(spin.y) > 0.3) { ctx.beginPath(); ctx.arc(contact.x, contact.y, BR + 7, 0, 7); ctx.lineWidth = 4; ctx.strokeStyle = spin.y > 0 ? '#6fe0a0' : '#ff9b6f'; ctx.stroke(); } // follow(verde)/draw(rosso)
+        } else if (potted) {
+          const end = path[path.length - 1]!; ctx.beginPath(); ctx.arc(end.x, end.y, BR + 9, 0, 7); ctx.lineWidth = 5; ctx.strokeStyle = '#6fe0a0'; ctx.stroke();
+        }
+      }
     };
     img.onload = draw; draw();
-  }, [t, ang, me]);
+  }, [t, ang, me, power, spin.x, spin.y]);
 
   // mira trascinando sul mini-tavolo
   useEffect(() => {
@@ -368,9 +463,16 @@ export function BiliardoPhone({ displayCode }: { displayCode: string }) {
     return () => { cv.removeEventListener('pointerdown', onMove); cv.removeEventListener('pointermove', onMove); };
   }, [st]);
 
+  const spinLabel = () => {
+    const p: string[] = [];
+    if (spin.y > 0.25) p.push('colpo alto (avanti)'); else if (spin.y < -0.25) p.push('colpo basso (arretra)');
+    if (spin.x > 0.25) p.push('effetto destro'); else if (spin.x < -0.25) p.push('effetto sinistro');
+    return p.length ? p.join(' · ') : 'colpo pieno (centro)';
+  };
+
   const shoot = async () => {
     setBusy(true); setErr('');
-    try { const r = await api('/gestione/casino/pool/shoot', { displayCode, playerCode, angle: ang, power, spinX: 0, spinY: 0, commandId: `${displayCode}-${Date.now()}` }); if (r?.error) setErr(r.error); }
+    try { const r = await api('/gestione/casino/pool/shoot', { displayCode, playerCode, angle: ang, power, spinX: spin.x, spinY: spin.y, commandId: `${displayCode}-${Date.now()}` }); if (r?.error) setErr(r.error); }
     finally { setBusy(false); }
   };
 
@@ -393,6 +495,17 @@ export function BiliardoPhone({ displayCode }: { displayCode: string }) {
     <canvas ref={cvRef} />
     <div className="lab">POTENZA {Math.round(power * 100)}%</div>
     <input className="slider" type="range" min={5} max={100} value={Math.round(power * 100)} onChange={e => setPower(+e.target.value / 100)} />
+    <div className="lab">EFFETTO — tocca dove colpire la bilia</div>
+    <div className="spinrow">
+      <div className="pick9">
+        {GRID9.map((g, i) => {
+          const sel = Math.abs(spin.x - g.sx) < 0.01 && Math.abs(spin.y - g.sy) < 0.01;
+          return <button key={i} type="button" className={`p9${sel ? ' sel' : ''}`} style={{ left: `${g.cx}%`, top: `${g.cy}%` }}
+            onClick={() => setSpin({ x: g.sx, y: g.sy })} aria-label={`punto ${i + 1}`} />;
+        })}
+      </div>
+      <div className="spinhint"><b>{spinLabel()}</b>La linea sul tavolo mostra dove va la bianca: curva con l'effetto e rimbalza di sponda fino alla palla.</div>
+    </div>
     <button className="cta" disabled={!myTurn || busy} onClick={shoot}>TIRA</button>
     <div className="h2">🐟 {t.seats[me].fish} fish · rack {t.wins[0]}–{t.wins[1]}</div>
   </>);
