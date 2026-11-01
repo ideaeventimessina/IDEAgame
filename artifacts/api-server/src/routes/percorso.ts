@@ -17,6 +17,7 @@ import type { PercorsoState, PercorsoStepInState, PercorsoTeam, RisateState, Ris
 import { type AuthedRequest, requireAuth } from "../middlewares/auth";
 import { emitToEvent } from "../socket";
 import { uploadBufferToStorage } from "../lib/objectStorage";
+import { immagineDaIdeax } from "../lib/ideax.js";
 import { logAiUsage, imageCostUsd } from "@workspace/integrations-openai-ai-server";
 import {
   createBlankRisateState, advancePhase as advanceRisatePhase,
@@ -246,6 +247,10 @@ function buildImagePrompt(title: string, description: string, challengeType: str
 }
 
 async function callOpenAIImage(prompt: string, attribution: { tenantId: string | null; userId: string | null }): Promise<Buffer> {
+  /* Prima prova il motore di casa (ideax): se è acceso costa zero. Se è spento o non risponde, null e si prosegue con OpenAI. */
+  const daIdeax = await immagineDaIdeax(prompt, "1:1");
+  if (daIdeax) return Buffer.from(daIdeax, "base64");
+
   /* Endpoint ufficiale OpenAI + chiave diretta: la spesa va su OpenAI. */
   const baseUrl = "https://api.openai.com/v1";
   const apiKey = process.env.OPENAI_API_KEY;

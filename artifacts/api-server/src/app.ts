@@ -30,6 +30,8 @@ app.use(
   }),
 );
 app.use(cors({ origin: true, credentials: true }));
+// Il ponte ideax riceve risultati con immagini in base64: a quella rotta serve un body grande (prima del limite globale).
+app.use("/api/ponte/ideax", express.json({ limit: "60mb" }));
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
 

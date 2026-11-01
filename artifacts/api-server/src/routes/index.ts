@@ -13,6 +13,7 @@ import eventsRouter from "./events";
 import eventsByCodeRouter from "./events-by-code";
 import ponteIdeaeventiRouter from "./ponte-ideaeventi";
 import ponteCasinoRouter from "./ponte-casino";
+import ponteIdeaxRouter from "./ponte-ideax.js";
 import teamsRouter from "./teams";
 import playersRouter from "./players";
 import scoresRouter from "./scores";
@@ -131,5 +132,9 @@ router.use(ponteIdeaeventiRouter);
 /* IL PONTE CON "IDEAphoto Suite" — CASINÒ. IDEAgame è CLIENT: chiama la Suite
    (feste/collega/riscatta) con CASINO_PONTE_KEY tenuta sul server. */
 router.use(ponteCasinoRouter);
+
+/* IL PONTE CON ideax — il motore di casa (PC di Andrea). IDEAgame mette i lavori
+   (immagini, musica, voce) in coda; ideax passa a prenderli. Chiave IDEAX_KEY. */
+router.use(ponteIdeaxRouter);
 
 export default router;
