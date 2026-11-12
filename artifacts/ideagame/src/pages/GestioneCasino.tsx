@@ -16,6 +16,7 @@ import { motion, AnimatePresence, useMotionValue, animate } from 'framer-motion'
 import { QRCodeSVG } from 'qrcode.react';
 import { PlayerAvatar, fileToAvatarDataUrl } from '../components/PlayerAvatar';
 import { BlackjackPhone, BlackjackMonitor, BlackjackRegia, BlackjackTablesView, BlackjackDealer } from './GestioneBlackjack';
+import { LightDealerView, LightDealerBind } from './GestioneDealerLeggero';
 import { CorsaSiciliaMonitor, CorsaSiciliaPhone, CorsaSiciliaRegia } from './GestioneCorsaSiciliana';
 import { IppodromoSprintMonitor, IppodromoSprintPhone, IppodromoSprintRegia } from './GestioneIppodromoSprint';
 import { SetteMezzoMonitor, SetteMezzoPhone, SetteMezzoRegia, SetteMezzoTablesView, SetteMezzoDealer } from './GestioneSetteMezzo';
@@ -129,6 +130,8 @@ export default function GestioneCasino() {
   if (sic) return <CorsaSiciliaMonitor displayCode={sic.toUpperCase()} host={sicHost} />;
   if (sicPlay) return <CorsaSiciliaPhone displayCode={sicPlay.toUpperCase()} />;
   if (sicRegia) return <CorsaSiciliaRegia displayCode={sicRegia.toUpperCase()} />;
+  const sicDealer = params.get('sicdealer'); // telefono DEALER leggero Corsa Siciliana
+  if (sicDealer) return <LightDealerView kind="sicilia" dealerCode={sicDealer.toUpperCase()} />;
   const wall = params.get('wall'); // PONTE SUITE: classifica fish per il wall condiviso (split)
   if (wall) return <WallClassifica sessionId={wall} />;
   const sprint = params.get('sprint');        // monitor 80" Ippodromo Sprint
@@ -137,10 +140,14 @@ export default function GestioneCasino() {
   if (sprint) return <IppodromoSprintMonitor displayCode={sprint.toUpperCase()} host={sicHost} />;
   if (sprintPlay) return <IppodromoSprintPhone displayCode={sprintPlay.toUpperCase()} />;
   if (sprintRegia) return <IppodromoSprintRegia displayCode={sprintRegia.toUpperCase()} />;
+  const sprintDealer = params.get('sprintdealer'); // telefono DEALER leggero Sprint
+  if (sprintDealer) return <LightDealerView kind="sprint" dealerCode={sprintDealer.toUpperCase()} />;
   const pool = params.get('pool');            // monitor 80" Biliardo Club (touch)
   const poolPlay = params.get('poolplay');     // telefono giocatore Biliardo
+  const poolDealer = params.get('pooldealer'); // telefono DEALER leggero Biliardo
   if (pool) return <BiliardoMonitor displayCode={pool.toUpperCase()} />;
   if (poolPlay) return <BiliardoPhone displayCode={poolPlay.toUpperCase()} />;
+  if (poolDealer) return <LightDealerView kind="pool" dealerCode={poolDealer.toUpperCase()} />;
 
   const sm = params.get('sm');             // monitor 80" Sette e Mezzo
   const smPlay = params.get('smplay');      // telefono giocatore Sette e Mezzo
@@ -444,7 +451,7 @@ export function MasterView({ sessionId }: { sessionId: string }) {
   const [bjts, setBjts] = useState<{ id: string; name: string; displayCode: string }[]>([]);
   const [sts, setSts] = useState<{ id: string; name: string; displayCode: string }[]>([]);
   const [sprts, setSprts] = useState<{ id: string; name: string; displayCode: string }[]>([]);
-  const [pts, setPts] = useState<{ id: string; name: string; displayCode: string }[]>([]);
+  const [pts, setPts] = useState<{ id: string; name: string; displayCode: string; hasDealer?: boolean }[]>([]);
   const [smts, setSmts] = useState<{ id: string; name: string; displayCode: string }[]>([]);
   const [dim, setDim] = useState({ w: typeof window !== 'undefined' ? window.innerWidth : 1280, h: typeof window !== 'undefined' ? window.innerHeight : 800 });
   useEffect(() => { const r = () => setDim({ w: window.innerWidth, h: window.innerHeight }); window.addEventListener('resize', r); return () => window.removeEventListener('resize', r); }, []);
@@ -606,8 +613,9 @@ export function MasterView({ sessionId }: { sessionId: string }) {
                   <img className="thumb" src={`${AB}biliardo/logo-originale.png`} alt="" />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="nm">🎱 {t.name}</div>
-                    <div className="cd">Codice {t.displayCode} · 2 giocatori · fish a palla</div>
+                    <div className="cd">Codice {t.displayCode} · 2 giocatori · segnapunti</div>
                     <a className="lnk" href={`${ORIGIN}gestione/casino?pool=${t.displayCode}`} target="_blank" rel="noreferrer">🖥️ Apri sull'80″ touch ↗</a>
+                    <div style={{ marginTop: 10 }}><LightDealerBind kind="pool" sessionId={sessionId} tableId={t.id} hasDealer={!!t.hasDealer} origin={ORIGIN} /></div>
                   </div>
                 </div>
               ))}

@@ -834,7 +834,7 @@ export function SetteMezzoDealer({ dealerCode }: { dealerCode: string }) {
                       const w = !!winners[s.playerId!];
                       return (
                         <div key={s.playerId} className={`pl${w ? ' win' : ''}`}>
-                          <Avatar url={s.avatarUrl} name={s.nickname} size={40} />
+                          <Avatar url={s.avatarUrl} name={s.nickname} size={62} />
                           <div className="mid"><div className="nm">{s.nickname ?? '—'}</div><div className="bet"><span className="mchip" />{s.bet}</div></div>
                           <div className="wl">
                             <button className={`win${w ? ' on' : ''}`} onClick={() => setWinners(p => ({ ...p, [s.playerId!]: true }))}>Vince</button>
@@ -866,7 +866,7 @@ export function SetteMezzoDealer({ dealerCode }: { dealerCode: string }) {
           <div className="plist">
             {seated.length === 0 ? <div className="sub" style={{ margin: 0 }}>Nessun giocatore seduto.</div> : seated.map(s => (
               <div key={s.playerId} className="pl">
-                <Avatar url={s.avatarUrl} name={s.nickname} size={38} />
+                <Avatar url={s.avatarUrl} name={s.nickname} size={56} />
                 <div className="mid"><div className="nm">{s.nickname ?? '—'}</div><div className="bal">Saldo {grp(s.balance ?? 0)}</div>
                   <div className="tx">
                     <button className="up" disabled={busy} onClick={() => tx(s.playerId!, 25)}>+25</button>

@@ -23,6 +23,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTableMusic } from '@/audio/useTableMusic';
 import { QRCodeSVG } from 'qrcode.react';
 import { ScreenFit } from '@/components/ScreenFit';
+import { LightDealerBind } from './GestioneDealerLeggero';
 
 const BASE = (import.meta.env.BASE_URL as string) || '/';
 const API = BASE + 'api';
@@ -52,7 +53,7 @@ type SprintRules = { length: number; hurdles: number[]; sprintCost: number; jump
 type SprintTbl = {
   id: string; name: string; displayCode: string; type: 'sprint';
   status: 'lobby' | 'countdown' | 'race' | 'paused' | 'results';
-  race: number; countdown: number; raceMs: number; serverTime: number; suspended: boolean;
+  race: number; countdown: number; raceMs: number; serverTime: number; suspended: boolean; hasDealer?: boolean;
   seats: Seat[]; results: ResultRow[] | null; history: unknown[]; rules: SprintRules;
 };
 type SprintState = { table: SprintTbl; sessionId: string };
@@ -636,6 +637,7 @@ export function IppodromoSprintRegia({ displayCode }: { displayCode: string }) {
             <div style={{ color: '#bfe6cf', fontSize: 13 }}>QR ingresso piloti<br /><b style={{ color: '#f0ca68', fontSize: 18 }}>{t.displayCode}</b></div>
             <button disabled={busy} onClick={() => call('/gestione/casino/sprint/suspend')} style={{ ...ghost, marginLeft: 'auto', width: 'auto', padding: '10px 14px' }}>{t.suspended ? 'Riattiva' : 'Sospendi'}</button>
           </div>
+          <LightDealerBind kind="sprint" sessionId={st!.sessionId} tableId={t.id} hasDealer={!!t.hasDealer} origin={ORIGIN} />
           <a href={`${ORIGIN}gestione/casino?sprint=${t.displayCode}&host=1`} target="_blank" rel="noreferrer" style={{ ...ghost, textAlign: 'center', textDecoration: 'none', display: 'block' }}>🖥️ Apri il monitor 80″ ↗</a>
         </div>
       </div>

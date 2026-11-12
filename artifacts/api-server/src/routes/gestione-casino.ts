@@ -1619,6 +1619,7 @@ type SiciliaTable = {
   last: SiciliaCard | null; winner: SiciliaWinner | null;
   lastToken: string | null;            // anti doppio-click: stesso token ⇒ stessa pescata
   bets: SiciliaBet[]; known: string[]; settled: boolean;         // settled: payout della corsa già liquidato
+  dealerCode?: string | null;   // dealer LEGGERO: legato dalla regia, vede le puntate + accredita/preleva fish
   suspended: boolean; history: SiciliaHist[];
 };
 function buildSiciliaDeck(bancoCards = 0): SiciliaCard[] {
@@ -1649,10 +1650,13 @@ async function refundSiciliaBets(tx: Tx, sessionId: string, t: SiciliaTable): Pr
   t.bets = [];
 }
 const zeroPos = (): Record<Suit, number> => ({ coppe: 0, denari: 0, spade: 0, bastoni: 0 });
-async function findSiciliaTable(code: string): Promise<{ sessionId: string; table: SiciliaTable } | null> {
+async function findSiciliaTable(code: string): Promise<{ sessionId: string; table: SiciliaTable; isDealer?: boolean } | null> {
   const up = (code || "").toUpperCase();
   const rows = await db.select({ id: casinoSessionsTable.id, config: casinoSessionsTable.config }).from(casinoSessionsTable);
-  for (const r of rows) { const cfg = (r.config ?? {}) as CasinoConfig; for (const t of Object.values(cfg.siciliaTables ?? {})) if (t.displayCode === up) return { sessionId: r.id, table: t }; }
+  for (const r of rows) { const cfg = (r.config ?? {}) as CasinoConfig; for (const t of Object.values(cfg.siciliaTables ?? {})) {
+    if (t.displayCode === up) return { sessionId: r.id, table: t };
+    if (t.dealerCode && t.dealerCode === up) return { sessionId: r.id, table: t, isDealer: true };
+  } }
   return null;
 }
 async function saveSiciliaTable(sessionId: string, table: SiciliaTable): Promise<void> {
@@ -1679,7 +1683,7 @@ async function siciliaState(sessionId: string, table: SiciliaTable) {
       drawn: table.drawn, deckLeft: table.deck.length - table.drawn,
       bancoEnabled: table.bancoEnabled ?? false, bancoCards: table.bancoCards ?? 6, bancoPos: table.bancoPos ?? 0,
       quota: SICILIA_QUOTA, pot,
-      players: plist, suspended: table.suspended, history: table.history.slice(0, 20),
+      players: plist, suspended: table.suspended, hasDealer: !!table.dealerCode, history: table.history.slice(0, 20),
     },
     sessionId,
   };
@@ -1875,6 +1879,7 @@ type SprintTable = {
   seats: Record<string, SprintSeat>;                 // "1".."6" → pilota + pronto
   inputs: SprintInput[];                             // log azioni (sprint/jump) con tempo di gara agganciato alla griglia
   seq: number; seen: string[];                       // seq monotono + idempotenza commandId
+  dealerCode?: string | null;   // dealer LEGGERO: legato dalla regia, vede i piloti + accredita/preleva fish
   suspended: boolean; history: SprintHist[];
 };
 const SPRINT_SEATS = ["1", "2", "3", "4", "5", "6"];
@@ -1883,10 +1888,13 @@ function freshSprintSeats(prev?: Record<string, SprintSeat>): Record<string, Spr
   for (const n of SPRINT_SEATS) seats[n] = { playerId: prev?.[n]?.playerId ?? null, ready: false };
   return seats;
 }
-async function findSprintTable(code: string): Promise<{ sessionId: string; table: SprintTable } | null> {
+async function findSprintTable(code: string): Promise<{ sessionId: string; table: SprintTable; isDealer?: boolean } | null> {
   const up = (code || "").toUpperCase();
   const rows = await db.select({ id: casinoSessionsTable.id, config: casinoSessionsTable.config }).from(casinoSessionsTable);
-  for (const r of rows) { const cfg = (r.config ?? {}) as CasinoConfig; for (const t of Object.values(cfg.sprintTables ?? {})) if (t.displayCode === up) return { sessionId: r.id, table: t }; }
+  for (const r of rows) { const cfg = (r.config ?? {}) as CasinoConfig; for (const t of Object.values(cfg.sprintTables ?? {})) {
+    if (t.displayCode === up) return { sessionId: r.id, table: t };
+    if (t.dealerCode && t.dealerCode === up) return { sessionId: r.id, table: t, isDealer: true };
+  } }
   return null;
 }
 async function saveSprintTable(sessionId: string, table: SprintTable): Promise<void> {
@@ -1919,6 +1927,7 @@ async function sprintState(sessionId: string, table: SprintTable) {
   const [sess] = await db.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, sessionId));
   const avatars = ((sess?.config ?? {}) as CasinoConfig).playerAvatars ?? {};
   const nameById = new Map(players.map((p) => [p.id, p.nickname]));
+  const balById = new Map(players.map((p) => [p.id, p.fishBalance]));
   const race = projectRace(pilotsOf(table, nameById), table.inputs, clk.raceMs);
   // Corsa conclusa durante la ricostruzione ma non ancora persistita: salda una volta (idempotente).
   if (!table.finished && (clk.phase === "race") && race.status === "results") {
@@ -1940,6 +1949,7 @@ async function sprintState(sessionId: string, table: SprintTable) {
     return {
       horseId: hid, name: meta[0], color: meta[1],
       playerId: pid, nickname: pid ? (nameById.get(pid) ?? null) : null, avatarUrl: pid ? (avatars[pid] ?? null) : null,
+      balance: pid ? (balById.get(pid) ?? null) : null,
       ready: seat.ready, cpu: !pid,
       position: h.position, speed: h.speed, energy: h.energy, finish: h.finish,
       sprintUntil: h.sprintUntil, jumpAt: h.jumpAt, lastSprint: h.lastSprint, lastJump: h.lastJump,
@@ -1953,7 +1963,7 @@ async function sprintState(sessionId: string, table: SprintTable) {
     table: {
       id: table.id, name: table.name, displayCode: table.displayCode, type: "sprint",
       status, race: table.race, countdown: Math.ceil(clk.countdown / 1000), raceMs: clk.raceMs,
-      serverTime: now, suspended: table.suspended,
+      serverTime: now, suspended: table.suspended, hasDealer: !!table.dealerCode,
       seats: seats.map((s) => ({ ...s, rank: rank.get(s.horseId) ?? null })),
       results: table.finished ? table.results : (status === "results" ? race.results : null),
       history: table.history.slice(0, 20),
@@ -2179,6 +2189,7 @@ type PoolTable = {
   turn: 0 | 1; rack: number; wins: [number, number];
   balls: PoolBall[];
   pending: PoolShot | null; shotSeq: number; seen: string[];
+  dealerCode?: string | null;   // dealer LEGGERO: legato dalla regia/plancia, vede i 2 giocatori + accredita/preleva fish
   winner: 0 | 1 | null; suspended: boolean;
 };
 const POOL_FISH_BALL = 10, POOL_BONUS_RACK = 100, POOL_BONUS_MATCH = 300, POOL_WIN_RACKS = 2;
@@ -2193,10 +2204,13 @@ function freshRack(): PoolBall[] {
   return balls;
 }
 function poolSeatsFilled(t: PoolTable): number { return (t.seats["1"].playerId ? 1 : 0) + (t.seats["2"].playerId ? 1 : 0); }
-async function findPoolTable(code: string): Promise<{ sessionId: string; table: PoolTable } | null> {
+async function findPoolTable(code: string): Promise<{ sessionId: string; table: PoolTable; isDealer?: boolean } | null> {
   const up = (code || "").toUpperCase();
   const rows = await db.select({ id: casinoSessionsTable.id, config: casinoSessionsTable.config }).from(casinoSessionsTable);
-  for (const r of rows) { const cfg = (r.config ?? {}) as CasinoConfig; for (const t of Object.values(cfg.poolTables ?? {})) if (t.displayCode === up) return { sessionId: r.id, table: t }; }
+  for (const r of rows) { const cfg = (r.config ?? {}) as CasinoConfig; for (const t of Object.values(cfg.poolTables ?? {})) {
+    if (t.displayCode === up) return { sessionId: r.id, table: t };
+    if (t.dealerCode && t.dealerCode === up) return { sessionId: r.id, table: t, isDealer: true };
+  } }
   return null;
 }
 async function savePoolTable(sessionId: string, table: PoolTable): Promise<void> {
@@ -2220,7 +2234,7 @@ async function poolState(sessionId: string, table: PoolTable) {
       id: table.id, name: table.name, displayCode: table.displayCode, type: "pool",
       status, turn: table.turn, rack: table.rack, wins: table.wins, winner: table.winner,
       seats: { 0: seat("1"), 1: seat("2") }, balls: table.balls,
-      pending: table.pending, suspended: table.suspended, winRacks: POOL_WIN_RACKS, serverTime: Date.now(),
+      pending: table.pending, suspended: table.suspended, hasDealer: !!table.dealerCode, winRacks: POOL_WIN_RACKS, serverTime: Date.now(),
     }, sessionId,
   };
 }
@@ -2246,7 +2260,7 @@ router.get("/gestione/casino/sessions/:id/pool-tables", async (req, res): Promis
   const { id } = req.params;
   if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
   const [s] = await db.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, id));
-  const tables = Object.values(((s?.config ?? {}) as CasinoConfig).poolTables ?? {}).map((t) => ({ id: t.id, name: t.name, displayCode: t.displayCode, rack: t.rack, suspended: t.suspended, players: poolSeatsFilled(t) }));
+  const tables = Object.values(((s?.config ?? {}) as CasinoConfig).poolTables ?? {}).map((t) => ({ id: t.id, name: t.name, displayCode: t.displayCode, rack: t.rack, suspended: t.suspended, players: poolSeatsFilled(t), hasDealer: !!t.dealerCode }));
   res.json({ tables });
 });
 router.get("/gestione/casino/pool/:code", async (req, res): Promise<void> => {
@@ -2358,6 +2372,70 @@ router.post("/gestione/casino/pool/suspend", async (req, res): Promise<void> => 
   if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
   await mutateSession<null>(found.sessionId, async (_tx, cfg) => { const t = cfg.poolTables?.[found.table.id]; if (t) t.suspended = !t.suspended; return { save: !!cfg.poolTables?.[found.table.id], result: null }; });
   const fr = await findPoolTable(found.table.displayCode); res.json(await poolState(found.sessionId, fr!.table));
+});
+
+/* ════════════════════════════════════════════════════════════════════════════
+   DEALER LEGGERO — Corsa Siciliana / Sprint / Biliardo
+   Il mazziere è legato dalla regia (o dalla plancia) e dal suo telefono VEDE le
+   puntate/giocatori di quel tavolo e accredita/preleva fish a mano. NON tocca la
+   partita (carte/gara restano digitali): è il "leggero sul resto". Stesso ledger
+   del banco dealer (dealer_pay/dealer_take, atomico anti-scoperto).
+   ════════════════════════════════════════════════════════════════════════════ */
+// Lega/slega un dealer leggero a un tavolo Corsa Siciliana.
+router.post("/gestione/casino/sessions/:id/sicilia-tables/:tableId/dealer", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]); const tableId = String(req.params["tableId"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const assign = req.body?.assign !== false;
+  const out = await mutateSession<{ status: number; body: Record<string, unknown> }>(id, async (_tx, cfg) => {
+    const t = cfg.siciliaTables?.[tableId];
+    if (!t) return { save: false, result: { status: 404, body: { error: "Tavolo non trovato" } } };
+    t.dealerCode = assign ? (t.dealerCode || makeCode(6)) : null;
+    return { save: true, result: { status: 200, body: { ok: true, dealerCode: t.dealerCode } } };
+  });
+  res.status(out.status).json(out.body);
+});
+// Lega/slega un dealer leggero a un tavolo Ippodromo Sprint.
+router.post("/gestione/casino/sessions/:id/sprint-tables/:tableId/dealer", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]); const tableId = String(req.params["tableId"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const assign = req.body?.assign !== false;
+  const out = await mutateSession<{ status: number; body: Record<string, unknown> }>(id, async (_tx, cfg) => {
+    const t = cfg.sprintTables?.[tableId];
+    if (!t) return { save: false, result: { status: 404, body: { error: "Tavolo non trovato" } } };
+    t.dealerCode = assign ? (t.dealerCode || makeCode(6)) : null;
+    return { save: true, result: { status: 200, body: { ok: true, dealerCode: t.dealerCode } } };
+  });
+  res.status(out.status).json(out.body);
+});
+// Lega/slega un dealer leggero a un tavolo Biliardo.
+router.post("/gestione/casino/sessions/:id/pool-tables/:tableId/dealer", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]); const tableId = String(req.params["tableId"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const assign = req.body?.assign !== false;
+  const out = await mutateSession<{ status: number; body: Record<string, unknown> }>(id, async (_tx, cfg) => {
+    const t = cfg.poolTables?.[tableId];
+    if (!t) return { save: false, result: { status: 404, body: { error: "Tavolo non trovato" } } };
+    t.dealerCode = assign ? (t.dealerCode || makeCode(6)) : null;
+    return { save: true, result: { status: 200, body: { ok: true, dealerCode: t.dealerCode } } };
+  });
+  res.status(out.status).json(out.body);
+});
+// Dealer leggero: accredita/preleva fish a un giocatore (atomico, guard anti-scoperto).
+// Vale per Siciliana/Sprint/Biliardo: il dealerCode identifica il tavolo in uno dei tre bucket.
+router.post("/gestione/casino/light-dealer-tx", async (req, res): Promise<void> => {
+  const dealerCode = String(req.body?.dealerCode ?? "").toUpperCase().trim();
+  const delta = Math.round(Number(req.body?.delta));
+  if (!Number.isFinite(delta) || delta === 0) { res.status(400).json({ error: "Importo non valido" }); return; }
+  const found = await findSiciliaTable(dealerCode) ?? await findSprintTable(dealerCode) ?? await findPoolTable(dealerCode);
+  if (!found || !found.isDealer) { res.status(403).json({ error: "Dealer non autorizzato" }); return; }
+  const playerId = String(req.body?.playerId ?? "");
+  if (!isUUID(playerId)) { res.status(400).json({ error: "Giocatore non valido" }); return; }
+  const [player] = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.id, playerId));
+  if (!player || player.sessionId !== found.sessionId) { res.status(404).json({ error: "Giocatore non trovato in questa serata" }); return; }
+  const newBalance = await db.transaction((tx) => moveFish(tx, found.sessionId, { playerId, delta, kind: delta > 0 ? "dealer_pay" : "dealer_take", tableId: null, requireFunds: true }));
+  if (newBalance == null) { res.status(409).json({ error: "Fish insufficienti", balance: player.fishBalance }); return; }
+  await broadcast(found.sessionId);
+  res.json({ ok: true, balance: newBalance });
 });
 
 export default router;

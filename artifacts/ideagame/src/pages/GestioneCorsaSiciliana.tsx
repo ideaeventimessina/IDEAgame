@@ -18,6 +18,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTableMusic } from '@/audio/useTableMusic';
 import { QRCodeSVG } from 'qrcode.react';
 import { ScreenFit } from '@/components/ScreenFit';
+import { LightDealerBind } from './GestioneDealerLeggero';
 
 const BASE = (import.meta.env.BASE_URL as string) || '/';
 const API = BASE + 'api';
@@ -51,7 +52,7 @@ type SicTbl = {
   positions: Record<Suit, number>; last: SiciliaCard | null; winner: SicWinner | null;
   bancoEnabled: boolean; bancoCards: number; bancoPos: number;
   quota: number; pot: SicPot;
-  drawn: number; deckLeft: number; players: SicPlayer[]; suspended: boolean; history: SicHist[];
+  drawn: number; deckLeft: number; players: SicPlayer[]; suspended: boolean; hasDealer?: boolean; history: SicHist[];
 };
 type SicState = { table: SicTbl; sessionId: string };
 
@@ -504,6 +505,7 @@ export function CorsaSiciliaRegia({ displayCode }: { displayCode: string }) {
             <QRCodeSVG value={`${ORIGIN}gestione/casino?sicplay=${t.displayCode}`} size={72} />
             <div style={{ color: '#cfe0f5', fontSize: 13 }}>QR ingresso giocatori<br /><b style={{ color: '#ffe9a6', fontSize: 18 }}>{t.displayCode}</b></div>
           </div>
+          <LightDealerBind kind="sicilia" sessionId={st!.sessionId} tableId={t.id} hasDealer={!!t.hasDealer} origin={ORIGIN} />
           <a href={`${ORIGIN}gestione/casino?sic=${t.displayCode}&host=1`} target="_blank" rel="noreferrer" style={{ ...btnGhost, textAlign: 'center', textDecoration: 'none', display: 'block' }}>🖥️ Apri il monitor 80″ (host) ↗</a>
         </div>
       </div>
