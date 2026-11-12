@@ -13,4 +13,8 @@ export default defineConfig({
   dbCredentials: {
     url: process.env.DATABASE_URL,
   },
+  // Tabelle gestite DALL'APP a runtime (create table if not exists in artifacts/api-server/src/lib/ideax.ts):
+  // Drizzle NON le conosce, quindi senza questo filtro ogni publish proporrebbe di DROPparle (perdita dati).
+  // Le escludiamo dal diff delle migrazioni così restano intatte.
+  tablesFilter: ["!ideax_lavori", "!ideax_contatto"],
 });
