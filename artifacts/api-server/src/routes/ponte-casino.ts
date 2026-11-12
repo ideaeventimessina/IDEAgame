@@ -48,7 +48,7 @@ type SuiteState = {
   nomeFesta?: string | null;
   collegatoAt?: string;
   players?: SuitePlayerMap;   // playerId Suite → { casinoPlayerId, baseGranted }
-  pending?: Record<string, { playerId: string; fichesIniziali: number; feedUrl: string | null; avatarUrl: string | null; at: string }>;
+  pending?: Record<string, { playerId: string; fichesIniziali: number; feedUrl: string | null; avatarUrl: string | null; nickname?: string | null; at: string }>;
 };
 type CasinoConfigLite = { suite?: SuiteState; playerAvatars?: Record<string, string> } & Record<string, unknown>;
 
@@ -254,16 +254,19 @@ router.post("/ponte/casino/guest", async (req, res): Promise<void> => {
   const nickname = nicknameDaSuite(data.nome);
   const avatarUrl = data.avatarUrl ? String(data.avatarUrl) : null;
 
-  // PRIVACY: nome presente ⇒ entra dritto. Nome null ⇒ pending, glielo chiediamo noi.
-  if (!nickname) {
+  // SEGNAPUNTI: il dealer riconosce l'ospite dalla FACCIA, quindi il selfie è
+  // obbligatorio. Entra dritto SOLO se la Suite ci dà già nome E foto; altrimenti
+  // (nome mancante O foto mancante) lo mandiamo allo step nome+selfie.
+  if (!nickname || !avatarUrl) {
     const token = randomBytes(18).toString("base64url");
     const now = Date.now();
     const pending = Object.fromEntries(
       Object.entries(suite.pending ?? {}).filter(([, v]) => now - Date.parse(v.at) < 10 * 60 * 1000),
     );
-    pending[token] = { playerId, fichesIniziali: fish, feedUrl: suite.feedUrl ?? data.feedUrl ?? null, avatarUrl, at: new Date().toISOString() };
+    pending[token] = { playerId, fichesIniziali: fish, feedUrl: suite.feedUrl ?? data.feedUrl ?? null, avatarUrl, nickname: nickname ?? null, at: new Date().toISOString() };
     await patchSuite(sessionId, { pending });
-    res.json({ ready: false, needName: true, pendingToken: token, sessionId, feedUrl: suite.feedUrl ?? data.feedUrl ?? null });
+    // needSelfie = nome già noto ma manca la foto ⇒ chiediamo SOLO il selfie.
+    res.json({ ready: false, needName: !nickname, needSelfie: !!nickname && !avatarUrl, prefillNickname: nickname ?? null, pendingToken: token, sessionId, feedUrl: suite.feedUrl ?? data.feedUrl ?? null });
     return;
   }
 

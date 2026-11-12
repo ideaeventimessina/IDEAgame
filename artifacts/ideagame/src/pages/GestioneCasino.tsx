@@ -1000,7 +1000,7 @@ function QuickAmount({ onPay, onTake }: { onPay: (n: number) => void; onTake: (n
 //  · se la Suite passa il nome, entra dritto; se è null (privacy), lo chiedo io.
 function GuestEntry({ gettone }: { gettone: string }) {
   const [stato, setStato] = useState<'carico' | 'nome' | 'errore'>('carico');
-  const [pending, setPending] = useState<{ sessionId: string; token: string } | null>(null);
+  const [pending, setPending] = useState<{ sessionId: string; token: string; prefill?: string | null } | null>(null);
   const [feedUrl, setFeedUrl] = useState<string | null>(null);
   const fatto = useRef(false);
 
@@ -1014,7 +1014,7 @@ function GuestEntry({ gettone }: { gettone: string }) {
         const r = await fetch(`${API}/ponte/casino/guest`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ gettone }) });
         const d = await r.json().catch(() => ({}));
         if (r.ok && d?.ready && d?.playerCode) { window.location.replace(`${ORIGIN}gestione/casino?player=${d.playerCode}`); return; }
-        if (r.ok && d?.needName && d?.pendingToken && d?.sessionId) { setPending({ sessionId: d.sessionId, token: d.pendingToken }); setFeedUrl(d.feedUrl ?? null); setStato('nome'); return; }
+        if (r.ok && (d?.needName || d?.needSelfie) && d?.pendingToken && d?.sessionId) { setPending({ sessionId: d.sessionId, token: d.pendingToken, prefill: d.prefillNickname ?? null }); setFeedUrl(d.feedUrl ?? null); setStato('nome'); return; }
         // 410/404/401 → se la Suite ci ha dato il feed, rimanda lì (ne chiede un altro)
         if (d?.feedUrl) { window.location.replace(d.feedUrl); return; }
         setStato('errore');
@@ -1022,7 +1022,7 @@ function GuestEntry({ gettone }: { gettone: string }) {
     })();
   }, [gettone]);
 
-  if (stato === 'nome' && pending) return <JoinView sessionId={pending.sessionId} suitePending={pending.token} feedUrl={feedUrl} />;
+  if (stato === 'nome' && pending) return <JoinView sessionId={pending.sessionId} suitePending={pending.token} feedUrl={feedUrl} prefillNick={pending.prefill ?? ''} />;
   if (stato === 'errore') return (
     <Center>
       <div style={{ textAlign: 'center', maxWidth: 340 }}>
@@ -1035,8 +1035,8 @@ function GuestEntry({ gettone }: { gettone: string }) {
   return <Center>Ti faccio entrare al casinò… 🎰</Center>;
 }
 
-function JoinView({ sessionId, suitePending, feedUrl }: { sessionId: string; suitePending?: string; feedUrl?: string | null }) {
-  const [nick, setNick] = useState('');
+function JoinView({ sessionId, suitePending, feedUrl, prefillNick }: { sessionId: string; suitePending?: string; feedUrl?: string | null; prefillNick?: string }) {
+  const [nick, setNick] = useState(prefillNick ?? '');
   const [photo, setPhoto] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);

@@ -2442,4 +2442,76 @@ router.post("/gestione/casino/light-dealer-tx", async (req, res): Promise<void> 
   res.json({ ok: true, balance: newBalance });
 });
 
+/* ════════════════════════════════════════════════════════════════════════════
+   DEALER UNIVERSALE — galleria facce della serata + filtro "a questo tavolo"
+   Un dealerCode (di QUALUNQUE tavolo: roulette/bj/7½/siciliana/sprint/biliardo)
+   identifica la serata. Il dealer vede TUTTE le facce degli ospiti entrati e
+   assegna/toglie PUNTI a mano; sa quali sono "a questo tavolo" (filtro/badge).
+   ════════════════════════════════════════════════════════════════════════════ */
+type DealerCtx = { sessionId: string; tableName: string; kind: string; atTable: Set<string> };
+/* Risolve la serata + i giocatori "a questo tavolo" da un dealerCode, scansionando
+   tutti i bucket dei tavoli. Ritorna null se il codice non è di nessun dealer. */
+async function resolveDealer(code: string): Promise<DealerCtx | null> {
+  const up = (code || "").toUpperCase().trim();
+  if (!up) return null;
+  const rows = await db.select({ id: casinoSessionsTable.id, config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.status, "active"));
+  for (const r of rows) {
+    const cfg = (r.config ?? {}) as CasinoConfig;
+    for (const t of Object.values(cfg.gameTables ?? {})) if (t.dealerCode === up) {
+      const at = new Set<string>();
+      for (const s of Object.values(t.seats)) if (s.playerId) at.add(s.playerId);
+      for (const b of t.bets) if (b.playerId) at.add(b.playerId);
+      return { sessionId: r.id, tableName: t.name, kind: "roulette", atTable: at };
+    }
+    for (const t of Object.values(cfg.bjTables ?? {})) if (t.dealerCode === up) {
+      const at = new Set<string>(); for (const s of Object.values(t.seats)) if (s.playerId) at.add(s.playerId);
+      return { sessionId: r.id, tableName: t.name, kind: "blackjack", atTable: at };
+    }
+    for (const t of Object.values(cfg.smTables ?? {})) if (t.dealerCode === up) {
+      const at = new Set<string>(); for (const s of Object.values(t.seats)) if (s.playerId) at.add(s.playerId);
+      return { sessionId: r.id, tableName: t.name, kind: "settemezzo", atTable: at };
+    }
+    for (const t of Object.values(cfg.siciliaTables ?? {})) if (t.dealerCode === up) {
+      const at = new Set<string>([...(t.known ?? []), ...t.bets.map(b => b.playerId)]);
+      return { sessionId: r.id, tableName: t.name, kind: "sicilia", atTable: at };
+    }
+    for (const t of Object.values(cfg.sprintTables ?? {})) if (t.dealerCode === up) {
+      const at = new Set<string>(); for (const s of Object.values(t.seats)) if (s.playerId) at.add(s.playerId);
+      return { sessionId: r.id, tableName: t.name, kind: "sprint", atTable: at };
+    }
+    for (const t of Object.values(cfg.poolTables ?? {})) if (t.dealerCode === up) {
+      const at = new Set<string>(); for (const n of ["1", "2"] as const) { const pid = t.seats[n]?.playerId; if (pid) at.add(pid); }
+      return { sessionId: r.id, tableName: t.name, kind: "pool", atTable: at };
+    }
+  }
+  return null;
+}
+// Galleria: tutti gli ospiti della serata (foto+nome+punti) + chi è a questo tavolo.
+router.get("/gestione/casino/dealer-roster/:dealerCode", async (req, res): Promise<void> => {
+  const ctx = await resolveDealer(String(req.params["dealerCode"] ?? ""));
+  if (!ctx) { res.status(404).json({ error: "Dealer non trovato" }); return; }
+  const [sess] = await db.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, ctx.sessionId));
+  const avatars = ((sess?.config ?? {}) as CasinoConfig).playerAvatars ?? {};
+  const players = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.sessionId, ctx.sessionId));
+  const list = players
+    .map(p => ({ id: p.id, nickname: p.nickname, avatarUrl: avatars[p.id] ?? null, balance: p.fishBalance, atTable: ctx.atTable.has(p.id) }))
+    .sort((a, b) => Number(b.atTable) - Number(a.atTable) || b.balance - a.balance);
+  res.json({ ok: true, tableName: ctx.tableName, kind: ctx.kind, atTableCount: ctx.atTable.size, players: list });
+});
+// Assegna/toglie PUNTI a mano a un ospite qualsiasi della serata del dealer.
+router.post("/gestione/casino/dealer-tx-any", async (req, res): Promise<void> => {
+  const ctx = await resolveDealer(String(req.body?.dealerCode ?? ""));
+  if (!ctx) { res.status(403).json({ error: "Dealer non autorizzato" }); return; }
+  const delta = Math.round(Number(req.body?.delta));
+  if (!Number.isFinite(delta) || delta === 0) { res.status(400).json({ error: "Importo non valido" }); return; }
+  const playerId = String(req.body?.playerId ?? "");
+  if (!isUUID(playerId)) { res.status(400).json({ error: "Giocatore non valido" }); return; }
+  const [player] = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.id, playerId));
+  if (!player || player.sessionId !== ctx.sessionId) { res.status(404).json({ error: "Giocatore non trovato in questa serata" }); return; }
+  const newBalance = await db.transaction((tx) => moveFish(tx, ctx.sessionId, { playerId, delta, kind: delta > 0 ? "dealer_pay" : "dealer_take", tableId: null, requireFunds: true }));
+  if (newBalance == null) { res.status(409).json({ error: "Punti insufficienti", balance: player.fishBalance }); return; }
+  await broadcast(ctx.sessionId);
+  res.json({ ok: true, balance: newBalance });
+});
+
 export default router;
