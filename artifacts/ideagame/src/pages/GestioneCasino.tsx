@@ -1738,9 +1738,10 @@ function SeatController({ seatCode }: { seatCode: string }) {
   // larghezza schermo. feltW/feltH = ingombro reale, usati per riservare lo spazio dopo rotate.
   const vw = typeof window !== 'undefined' ? window.innerWidth : 360;
   const vh = typeof window !== 'undefined' ? window.innerHeight : 640;
-  // Tappeto ORIZZONTALE vero (numeri dritti): la cella si dimensiona perché l'intero tappeto
-  // (15 colonne) entri in larghezza E in altezza senza scroll. In verticale → overlay "gira il telefono".
-  const feltS = Math.min(54, Math.max(20, Math.min((vw - 26) / 15.7, (vh * 0.56) / 5.8)));
+  // Tappeto ORIZZONTALE vero (numeri dritti): la cella si dimensiona perché l'intero tappeto entri
+  // SENZA scroll sia in larghezza (~15,3·s con le colonne esterne) sia in altezza (~6,6·s per 5 righe,
+  // meno ~198px di intestazione+fiches+riepilogo). In verticale → overlay "gira il telefono".
+  const feltS = Math.max(16, Math.min(46, (vw - 24) / 15.3, (vh - 198) / 6.7));
   const leave = async () => {
     if (!window.confirm('Abbandonare il tavolo? Se hai puntate in questa manche le PERDI (non vengono rimborsate).')) return;
     try { await api('/gestione/casino/table/leave', { seatCode, playerCode }); } catch { /* */ }
@@ -1769,8 +1770,9 @@ function SeatController({ seatCode }: { seatCode: string }) {
             ))}
           </div>
           {msg && <div style={{ color: '#f87171', textAlign: 'center', fontWeight: 700 }}>{msg}</div>}
-          {/* Tappeto ORIZZONTALE (numeri dritti) — in verticale compare l'overlay "gira il telefono" */}
-          <div style={{ display: 'flex', justifyContent: 'center', margin: '2px 0 8px', overflowX: 'auto' }}>
+          {/* Tappeto ORIZZONTALE (numeri dritti) — in verticale compare l'overlay "gira il telefono".
+              flexShrink:0 così il flex a colonna NON lo schiaccia (con overflow il min-height diventa 0). */}
+          <div style={{ display: 'flex', justifyContent: 'center', margin: '2px 0 8px', overflowX: 'auto', flexShrink: 0 }}>
             <RouletteFelt betsBySpot={Object.fromEntries(Object.entries(groupBets(t.bets)).map(([k, v]) => [k, v]))} onPlace={place} s={feltS} />
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#ffffff0a', borderRadius: 12, padding: '10px 14px' }}>
