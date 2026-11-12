@@ -31,6 +31,7 @@ type BjTbl = {
   dealer: { cards: BjCard[]; total: number | null; hidden: boolean };
   activeSeat: number | null; turnEndsAt: string | null; betEndsAt: string | null;
   minBet: number; maxBet: number; step: number; timeout: number; betSeconds: number; soft17Hit: boolean; suspended: boolean;
+  hasDealer?: boolean; mode?: 'digital' | 'hybrid';
   history: BjHist[];
 };
 type BjState = { table: BjTbl; sessionId: string; seatNo: number | null };
@@ -511,7 +512,7 @@ export function BlackjackPhone({ displayCode }: { displayCode: string }) {
           <div className="credit" style={{ fontSize: 30 }}><span className="mchip drop" />{mySeat!.bet}</div>
           <div className="lbl" style={{ marginTop: 6 }}>{mySeat!.bet} crediti riservati · Disponibili {grp(myBalance)}</div>
         </div>
-        <div className="panel" style={{ padding: 12 }}><div className="note"><IconHourglass />In attesa della distribuzione{t.betEndsAt ? ` · ${fmtTime(betCd)}` : ''}</div></div>
+        <div className="panel" style={{ padding: 12 }}><div className="note"><IconHourglass />{t.mode === 'hybrid' ? 'Il mazziere distribuisce le carte vere' : 'In attesa della distribuzione'}{t.betEndsAt ? ` · ${fmtTime(betCd)}` : ''}</div></div>
         {err && <div className="err">{err}</div>}
         <button className="gbtn ghost" disabled={busy} onClick={unbet}>✎ Modifica puntata</button>
       </>
@@ -722,7 +723,7 @@ function BjWaitStage({ t, dim, playUrl }: { t: BjTbl; dim: { w: number; h: numbe
         <div className="codepill">{t.displayCode}</div>
         <div className="tavolo">{t.name}</div>
         <div className="ginfo"><span className="cnt"><PeopleIcon /> {occupied} / {nos.length}</span><div className="lb">giocatori</div></div>
-        <div className={`status${betting ? '' : ' wait'}`}>{betting ? 'Puntate aperte' : 'In attesa'}</div>
+        <div className={`status${betting ? '' : ' wait'}`}>{betting ? (t.mode === 'hybrid' ? '🃏 Carte fisiche · punta dal telefono' : 'Puntate aperte') : (t.mode === 'hybrid' ? '🃏 Il mazziere distribuisce' : 'In attesa')}</div>
         <div className="seats">
           {nos.map(no => {
             const s = t.seats[String(no)]!;
@@ -809,6 +810,7 @@ function BjResultStage({ t, dim }: { t: BjTbl; dim: { w: number; h: number } }) 
 function BjTouchBar({ t }: { t: BjTbl }) {
   const [busy, setBusy] = useState(false);
   const run = async (path: string) => { setBusy(true); try { await api(path, { displayCode: t.displayCode }); } finally { setBusy(false); } };
+  if (t.mode === 'hybrid') return null; // carte fisiche: comanda il mazziere dal telefono
   let label = '', path = '';
   if (t.phase === 'waiting') { label = '▶ APRI PUNTATE'; path = '/gestione/casino/bj/open'; }
   else if (t.phase === 'betting') { label = '🂠 DISTRIBUISCI'; path = '/gestione/casino/bj/deal'; }
@@ -838,7 +840,7 @@ export function BlackjackMonitor({ displayCode }: { displayCode: string }) {
   useEffect(() => {
     const t = st?.table; if (!t) return;
     const now = Date.now();
-    if (t.phase === 'betting' && t.betEndsAt && now > Date.parse(t.betEndsAt) && Object.values(t.seats).some(s => s.bet > 0) && now - lastAuto.current > 1500) { lastAuto.current = now; api('/gestione/casino/bj/deal', { displayCode }); }
+    if (t.mode !== 'hybrid' && t.phase === 'betting' && t.betEndsAt && now > Date.parse(t.betEndsAt) && Object.values(t.seats).some(s => s.bet > 0) && now - lastAuto.current > 1500) { lastAuto.current = now; api('/gestione/casino/bj/deal', { displayCode }); }
     if (t.phase === 'playing' && t.turnEndsAt && now > Date.parse(t.turnEndsAt) + 1200 && t.activeSeat != null && now - lastAuto.current > 1500) { lastAuto.current = now; fetch(`${API}/gestione/casino/bj/${displayCode}`); }
   }, [st, displayCode]);
   const turnCd = useCountdown(st?.table.phase === 'playing' ? st.table.turnEndsAt : null);
@@ -887,7 +889,14 @@ export function BlackjackRegia({ displayCode }: { displayCode: string }) {
   const [busy, setBusy] = useState(false);
   const [showHist, setShowHist] = useState(false);
   const [showQr, setShowQr] = useState(false);
+  const [showDealer, setShowDealer] = useState(false);
+  const [dealerCode, setDealerCode] = useState<string | null>(null);
   const call = async (path: string, body: Record<string, unknown>) => { setBusy(true); try { await api(path, { displayCode, ...body }); } finally { setBusy(false); } };
+  const bindDealer = async (assign: boolean) => {
+    const sid = st?.sessionId, tid = st?.table.id;
+    if (!sid || !tid) return; setBusy(true);
+    try { const r = await api(`/gestione/casino/sessions/${sid}/bj-tables/${tid}/dealer`, { assign }); setDealerCode(assign ? (r?.dealerCode ?? null) : null); } finally { setBusy(false); }
+  };
   const exportHist = () => {
     const t = st?.table; if (!t) return;
     const rows = [['mano', 'ora', 'banco', 'posto', 'giocatore', 'puntata', 'totale', 'esito', 'profitto']];
@@ -905,6 +914,7 @@ export function BlackjackRegia({ displayCode }: { displayCode: string }) {
   const lastHist = t.history[0];
 
   const primary = () => {
+    if (t.mode === 'hybrid') return <div className="gbtn" style={{ textAlign: 'center', background: 'linear-gradient(160deg,#0d2a19,#061710)', color: '#9fe0b4', border: '2px solid #c6992f', cursor: 'default' }}>🃏 Carte fisiche · comanda il mazziere dal suo telefono</div>;
     if (t.phase === 'betting') return <button className="gbtn" disabled={busy} onClick={() => call('/gestione/casino/bj/deal', {})}>🂠 Chiudi puntate e distribuisci</button>;
     if (t.phase === 'playing' || t.phase === 'dealer') return <button className="gbtn" disabled>Mano in corso…</button>;
     return <button className="gbtn" disabled={busy || t.suspended} onClick={() => call('/gestione/casino/bj/open', {})}>▸ {t.phase === 'result' ? 'Nuova mano' : 'Apri puntate'}</button>;
@@ -965,6 +975,7 @@ export function BlackjackRegia({ displayCode }: { displayCode: string }) {
             <>
               <button className="fbtn" onClick={() => window.open(`${ORIGIN}gestione/casino?bj=${t.displayCode}`, '_blank')}>🖥 Apri monitor</button>
               <button className="fbtn" onClick={() => setShowQr(true)}>🔳 Mostra QR</button>
+              <button className="fbtn" style={{ borderColor: t.hasDealer ? '#4ade80' : '#b98b38', color: t.hasDealer ? '#9fe0b4' : '#ffe9a6' }} onClick={() => setShowDealer(true)}>👔 Mazziere{t.hasDealer ? ' ✓' : ''}</button>
               <button className="fbtn" onClick={() => setShowHist(true)}>≡ Storico mani</button>
               <button className="fbtn" style={{ borderColor: t.suspended ? '#4ade80' : '#8a2f2f', color: t.suspended ? '#9fe0b4' : '#ff9b9b' }} disabled={busy} onClick={() => call('/gestione/casino/bj/suspend', { suspended: !t.suspended })}>{t.suspended ? '▶ Riattiva' : '⏸ Sospendi'}</button>
             </>
@@ -977,6 +988,37 @@ export function BlackjackRegia({ displayCode }: { displayCode: string }) {
               <div style={{ background: '#fff', padding: 18, borderRadius: 12, display: 'inline-block' }}><QRCodeSVG value={`${ORIGIN}gestione/casino?bjplay=${t.displayCode}`} size={300} /></div>
               <div style={{ color: '#ffe9a6', marginTop: 14, fontSize: 24 }}>Scansiona e gioca dal telefono</div>
               <div style={{ color: '#cbd8c9', fontSize: 20, marginTop: 4 }}>Codice tavolo: <b style={{ color: '#ffe9a6' }}>{t.displayCode}</b></div>
+            </div>
+          </div>
+        )}
+
+        {showDealer && (
+          <div style={{ position: 'absolute', inset: 0, background: '#000b', display: 'grid', placeItems: 'center' }} onClick={() => setShowDealer(false)}>
+            <div className="panel" style={{ width: 620, textAlign: 'center', padding: 28 }} onClick={e => e.stopPropagation()}>
+              <div style={{ color: '#ffe9a6', fontSize: 28, marginBottom: 6 }}>👔 Mazziere al tavolo</div>
+              {!t.hasDealer && !dealerCode ? (
+                <>
+                  <div style={{ color: '#cbd8c9', fontSize: 19, margin: '8px 24px 18px', lineHeight: 1.4 }}>Lega un mazziere: comanda il tavolo dal suo telefono. Può giocare col <b style={{ color: '#ffe9a6' }}>mazzo digitale</b> o con <b style={{ color: '#ffe9a6' }}>carte fisiche</b> (segna lui gli esiti e paga).</div>
+                  <button className="gbtn" disabled={busy} onClick={() => bindDealer(true)}>👤 Assegna un mazziere</button>
+                </>
+              ) : (
+                <>
+                  {dealerCode ? (
+                    <>
+                      <div style={{ background: '#fff', padding: 18, borderRadius: 12, display: 'inline-block' }}><QRCodeSVG value={`${ORIGIN}gestione/casino?bjdealer=${dealerCode}`} size={260} /></div>
+                      <div style={{ color: '#ffe9a6', marginTop: 14, fontSize: 22 }}>Telefono del mazziere</div>
+                      <div style={{ color: '#cbd8c9', fontSize: 18, marginTop: 4 }}>Inquadra il QR col telefono del mazziere</div>
+                    </>
+                  ) : (
+                    <div style={{ color: '#9fe0b4', fontSize: 20, margin: '18px 0' }}>Mazziere legato ✓<br /><span style={{ color: '#cbd8c9', fontSize: 16 }}>premi "Mostra QR mazziere" per rivederne il link</span></div>
+                  )}
+                  <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 18 }}>
+                    {!dealerCode && <button className="fbtn" disabled={busy} onClick={() => bindDealer(true)}>🔳 Mostra QR mazziere</button>}
+                    <button className="fbtn" style={{ borderColor: '#8a2f2f', color: '#ff9b9b' }} disabled={busy} onClick={() => { bindDealer(false); }}>✕ Slega mazziere</button>
+                  </div>
+                </>
+              )}
+              <div><button className="fbtn" style={{ marginTop: 16 }} onClick={() => setShowDealer(false)}>Chiudi</button></div>
             </div>
           </div>
         )}
@@ -1006,6 +1048,140 @@ function Setting({ label, value, step, disabled, onChange }: { label: string; va
         <button className="fbtn" style={{ padding: '6px 14px', flex: 'none' }} disabled={disabled} onClick={() => onChange(Math.max(step, value - step))}>−</button>
         <b style={{ color: '#ffe9a6', minWidth: 60, textAlign: 'center' }}>{value}</b>
         <button className="fbtn" style={{ padding: '6px 14px', flex: 'none' }} disabled={disabled} onClick={() => onChange(value + step)}>+</button>
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   MAZZIERE — ?bjdealer=DEALERCODE  (telefono del mazziere, carte FISICHE)
+   Specchio del 7½: toggle Digitale/Carte fisiche, apre la mano, segna l'esito di
+   ogni giocatore (Vince 1:1 / BJ 3:2 / Pari / Perde) e paga; +/− fish a mano.
+   ════════════════════════════════════════════════════════════════════════════ */
+const BJ_DEALER_CSS = BJ_FONT + `
+.bjd{position:fixed;inset:0;overflow:auto;background:radial-gradient(ellipse at 50% 0%,#0a3d1c,#02190c 70%);color:#ede8d8;font-family:"Baskerville Casino",Georgia,serif;}
+.bjd .wrap{max-width:540px;margin:0 auto;padding:14px 14px 40px;}
+.bjd h1{font:700 22px/1.1 "Baskerville Casino",serif;color:#ffe9a6;text-align:center;margin:6px 0 2px;}
+.bjd .sub{text-align:center;color:#bfe6cc;font-size:13px;margin-bottom:12px;}
+.bjd .modebar{display:flex;gap:8px;margin-bottom:12px;}
+.bjd .modebar button{flex:1;padding:11px;border-radius:12px;border:2px solid #6e5320;background:#121511;color:#cbd8c9;font:700 14px/1.2 "Baskerville Casino",serif;cursor:pointer;}
+.bjd .modebar button.on{background:linear-gradient(180deg,#ffe694,#d59a34);color:#231503;border-color:#f3dea0;}
+.bjd .gbtn{display:block;width:100%;box-sizing:border-box;padding:15px;border-radius:13px;border:1px solid #f3dea0;background:linear-gradient(180deg,#ffe694,#f0c357 48%,#d59a34 52%,#eab74a);color:#231503;font:700 18px/1 "Baskerville Casino",serif;cursor:pointer;box-shadow:0 3px 0 #7a4d12,0 6px 14px #0007;margin-bottom:12px;}
+.bjd .gbtn.pay{background:linear-gradient(180deg,#5fe08a,#1aa64b 52%,#0c7a33);color:#07240f;border-color:#9fe8b8;box-shadow:0 3px 0 #0a5a28,0 6px 14px #0007;}
+.bjd .gbtn:disabled{opacity:.5;cursor:default;}
+.bjd .card{background:linear-gradient(160deg,#0d2a19,#061710);border:2px solid #c6992f;border-radius:16px;padding:14px;margin-bottom:12px;}
+.bjd .hint{color:#9fe0b4;font-size:12px;text-align:center;margin:2px 0 10px;}
+.bjd .plist{display:flex;flex-direction:column;gap:10px;}
+.bjd .pl{display:flex;align-items:center;gap:11px;background:linear-gradient(160deg,#0d2a19,#061710);border:2px solid #6e5320;border-radius:14px;padding:10px 12px;}
+.bjd .pl .nm{font:700 16px/1.1 "Baskerville Casino",serif;color:#fff;}
+.bjd .pl .bal{color:#9fc8a8;font-size:12px;}
+.bjd .pl .mid{flex:1;min-width:0;}
+.bjd .pl .bet{display:inline-flex;align-items:center;gap:5px;color:#ffe9a6;font:700 15px/1 "Baskerville Casino",serif;background:#0c0c08;border:2px solid #c9972f;border-radius:999px;padding:3px 10px;margin-top:3px;}
+.bjd .ob{display:grid;grid-template-columns:1fr 1fr;gap:5px;min-width:150px;}
+.bjd .ob button{padding:7px 4px;border-radius:9px;border:2px solid #4a4a44;background:#161915;color:#cbd8c9;font:700 12px/1.05 "Baskerville Casino",serif;cursor:pointer;}
+.bjd .ob button.win.on{background:linear-gradient(180deg,#5fe08a,#1aa64b);color:#07240f;border-color:#9fe8b8;}
+.bjd .ob button.bj.on{background:linear-gradient(180deg,#ffe694,#e3a948);color:#231503;border-color:#f3dea0;}
+.bjd .ob button.push.on{background:linear-gradient(180deg,#8fd0ff,#2f82c4);color:#05233b;border-color:#bfe2ff;}
+.bjd .ob button.lose.on{background:#2a0a0a;color:#ff9b9b;border-color:#8a2f2f;}
+.bjd .tx{display:flex;gap:6px;margin-top:8px;}
+.bjd .tx button{flex:1;padding:9px 2px;border-radius:9px;border:2px solid #6e5320;background:#0b1a10;font:700 14px/1 "Baskerville Casino",serif;cursor:pointer;}
+.bjd .tx button.up{color:#8ee6a8;}
+.bjd .tx button.down{color:#ff9b9b;}
+.bjd .outl{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #ffffff12;}
+.bjd .outl:last-child{border-bottom:none;}
+.bjd .outl .oc{font:700 14px/1 "Baskerville Casino",serif;padding:3px 10px;border-radius:999px;}
+.bjd .outl .oc.win{background:linear-gradient(180deg,#ffe694,#e3a948);color:#231503;}
+.bjd .outl .oc.lose{background:#2a0a0a;border:1px solid #8a2f2f;color:#ff9b9b;}
+`;
+type BjOutMark = 'win' | 'blackjack' | 'push' | 'lose';
+export function BlackjackDealer({ dealerCode }: { dealerCode: string }) {
+  const st = useBjTable(dealerCode, 1000);
+  const [busy, setBusy] = useState(false);
+  const [marks, setMarks] = useState<Record<string, BjOutMark>>({});
+  const call = useCallback(async (path: string, body: Record<string, unknown>) => { setBusy(true); try { return await api(path, { dealerCode, ...body }); } finally { setBusy(false); } }, [dealerCode]);
+  const t = st?.table;
+  if (!t) return <div className="bjd"><style>{BJ_DEALER_CSS}</style><div className="wrap"><h1>Mazziere Blackjack</h1><div className="sub">Carico…</div></div></div>;
+  const seated = seatOrder(t).map(no => t.seats[String(no)]!).filter(s => s.playerId);
+  const betting = seated.filter(s => s.bet > 0);
+  const hybrid = t.mode === 'hybrid';
+  const settle = async () => {
+    const outcomes: Record<string, BjOutMark> = {};
+    for (const s of betting) if (s.playerId) outcomes[s.playerId] = marks[s.playerId] ?? 'lose';
+    await call('/gestione/casino/bj/dealer-settle', { outcomes });
+    setMarks({});
+  };
+  const tx = (playerId: string, delta: number) => call('/gestione/casino/bj/dealer-tx', { playerId, delta });
+  const mark = (id: string, m: BjOutMark) => setMarks(p => ({ ...p, [id]: m }));
+  return (
+    <div className="bjd"><style>{BJ_DEALER_CSS}</style>
+      <div className="wrap">
+        <h1>Mazziere · {t.name}</h1>
+        <div className="sub">Mano #{t.round} · {hybrid ? (t.phase === 'betting' ? 'puntate aperte' : t.phase === 'result' ? 'mano conclusa' : 'pronto') : 'tavolo digitale (gioca da solo)'}</div>
+
+        <div className="modebar">
+          <button className={!hybrid ? 'on' : ''} disabled={busy || t.phase === 'playing'} onClick={() => call('/gestione/casino/bj/dealer-mode', { mode: 'digital' })}>🖥 Digitale</button>
+          <button className={hybrid ? 'on' : ''} disabled={busy} onClick={() => call('/gestione/casino/bj/dealer-mode', { mode: 'hybrid' })}>🃏 Carte fisiche</button>
+        </div>
+
+        {hybrid ? (
+          <>
+            {t.phase !== 'betting' && <button className="gbtn" disabled={busy || t.suspended} onClick={() => call('/gestione/casino/bj/dealer-open', {})}>▸ {t.phase === 'result' ? 'Nuova mano' : 'Apri mano (puntate)'}</button>}
+            {t.phase === 'betting' && (
+              <div className="card">
+                <div className="hint">Distribuisci le carte vere, poi segna l'esito di ciascuno e paga.</div>
+                {betting.length === 0 ? <div className="sub" style={{ margin: 0 }}>Nessuna puntata ancora. Attendi che i giocatori puntino.</div> : (
+                  <div className="plist">
+                    {betting.map(s => {
+                      const m = marks[s.playerId!] ?? 'lose';
+                      return (
+                        <div key={s.playerId} className="pl">
+                          <Avatar url={s.avatarUrl} name={s.nickname} size={40} />
+                          <div className="mid"><div className="nm">{s.nickname ?? '—'}</div><div className="bet">🂠 {s.bet}</div></div>
+                          <div className="ob">
+                            <button className={`win${m === 'win' ? ' on' : ''}`} onClick={() => mark(s.playerId!, 'win')}>Vince 1:1</button>
+                            <button className={`bj${m === 'blackjack' ? ' on' : ''}`} onClick={() => mark(s.playerId!, 'blackjack')}>BJ 3:2</button>
+                            <button className={`push${m === 'push' ? ' on' : ''}`} onClick={() => mark(s.playerId!, 'push')}>Pari</button>
+                            <button className={`lose${m === 'lose' ? ' on' : ''}`} onClick={() => mark(s.playerId!, 'lose')}>Perde</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {betting.length > 0 && <button className="gbtn pay" style={{ marginTop: 12, marginBottom: 0 }} disabled={busy} onClick={settle}>💰 Paga gli esiti</button>}
+              </div>
+            )}
+            {t.phase === 'result' && t.history[0] && (
+              <div className="card">
+                <div className="hint">Esito mano #{t.history[0].hand}</div>
+                {t.history[0].results.map((r, i) => (
+                  <div key={i} className="outl"><span className="nm" style={{ fontSize: 15 }}>{r.nickname}</span><span className={`oc ${r.profit > 0 ? 'win' : 'lose'}`}>{r.profit > 0 ? `+${r.profit}` : 'perso'}</span></div>
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="card"><div className="hint">Il tavolo è in modalità digitale: distribuisce le carte e paga da solo. Da qui puoi solo accreditare/prelevare fish.</div></div>
+        )}
+
+        <div className="card">
+          <div className="hint">Accredita o togli fish a mano (tutti i giocatori seduti)</div>
+          <div className="plist">
+            {seated.length === 0 ? <div className="sub" style={{ margin: 0 }}>Nessun giocatore seduto.</div> : seated.map(s => (
+              <div key={s.playerId} className="pl">
+                <Avatar url={s.avatarUrl} name={s.nickname} size={38} />
+                <div className="mid"><div className="nm">{s.nickname ?? '—'}</div><div className="bal">Saldo {grp(s.balance ?? 0)}</div>
+                  <div className="tx">
+                    <button className="up" disabled={busy} onClick={() => tx(s.playerId!, 25)}>+25</button>
+                    <button className="up" disabled={busy} onClick={() => tx(s.playerId!, 100)}>+100</button>
+                    <button className="down" disabled={busy} onClick={() => tx(s.playerId!, -25)}>−25</button>
+                    <button className="down" disabled={busy} onClick={() => tx(s.playerId!, -100)}>−100</button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -15,7 +15,7 @@ import { useTableMusic } from '@/audio/useTableMusic';
 import { motion, AnimatePresence, useMotionValue, animate } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
 import { PlayerAvatar, fileToAvatarDataUrl } from '../components/PlayerAvatar';
-import { BlackjackPhone, BlackjackMonitor, BlackjackRegia, BlackjackTablesView } from './GestioneBlackjack';
+import { BlackjackPhone, BlackjackMonitor, BlackjackRegia, BlackjackTablesView, BlackjackDealer } from './GestioneBlackjack';
 import { CorsaSiciliaMonitor, CorsaSiciliaPhone, CorsaSiciliaRegia } from './GestioneCorsaSiciliana';
 import { IppodromoSprintMonitor, IppodromoSprintPhone, IppodromoSprintRegia } from './GestioneIppodromoSprint';
 import { SetteMezzoMonitor, SetteMezzoPhone, SetteMezzoRegia, SetteMezzoTablesView, SetteMezzoDealer } from './GestioneSetteMezzo';
@@ -116,9 +116,11 @@ export default function GestioneCasino() {
   const bjPlay = params.get('bjplay');    // telefono giocatore blackjack
   const bjRegia = params.get('bjregia');  // regia di un tavolo blackjack
   const bjTables = params.get('bjtables'); // hub elenco/crea tavoli blackjack
+  const bjDealer = params.get('bjdealer'); // telefono MAZZIERE blackjack (carte fisiche / digitale)
   if (bj) return <BlackjackMonitor displayCode={bj.toUpperCase()} />;
   if (bjPlay) return <BlackjackPhone displayCode={bjPlay.toUpperCase()} />;
   if (bjRegia) return <BlackjackRegia displayCode={bjRegia.toUpperCase()} />;
+  if (bjDealer) return <BlackjackDealer dealerCode={bjDealer.toUpperCase()} />;
   if (bjTables) return <BlackjackTablesView sessionId={bjTables} />;
   const sic = params.get('sic');          // monitor 80" Corsa Siciliana
   const sicPlay = params.get('sicplay');   // telefono giocatore Corsa Siciliana
