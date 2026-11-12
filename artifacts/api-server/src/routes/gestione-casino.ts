@@ -95,6 +95,7 @@ type GameTable = {
   bets: RouletteBet[];
   result: { number: number; at: string } | null;
   history: number[];
+  dealerCode?: string | null;           // se valorizzato: un dealer comanda questo tavolo dal suo telefono (null = gioco autonomo/80")
 };
 type CasinoConfig = {
   startFish?: number;
@@ -361,13 +362,14 @@ router.post("/gestione/casino/sessions/:id/end", async (req, res): Promise<void>
 // RED / PAYOUT / betWins / creditFor / HORSE_MULT: quote e esito INVARIATI, spostati
 // in gestione-casino-atomic-lib (testabili). Qui restano solo le rotte.
 // Trova il tavolo (e la sessione) a partire dal codice display o dal codice di una sedia.
-async function findGameTable(code: string): Promise<{ sessionId: string; table: GameTable; seatNo?: string } | null> {
+async function findGameTable(code: string): Promise<{ sessionId: string; table: GameTable; seatNo?: string; isDealer?: boolean } | null> {
   const c = code.toUpperCase().trim();
   const sessions = await db.select({ id: casinoSessionsTable.id, config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.status, "active"));
   for (const s of sessions) {
     const tables = ((s.config ?? {}) as CasinoConfig).gameTables ?? {};
     for (const t of Object.values(tables)) {
       if (t.displayCode === c) return { sessionId: s.id, table: t };
+      if (t.dealerCode && t.dealerCode === c) return { sessionId: s.id, table: t, isDealer: true };
       const seatNo = Object.keys(t.seats).find(n => t.seats[n]!.code === c);
       if (seatNo) return { sessionId: s.id, table: t, seatNo };
     }
@@ -395,7 +397,9 @@ async function tableState(sessionId: string, table: GameTable) {
   }));
   const betsBySeat: Record<string, number> = {};
   for (const b of table.bets) betsBySeat[b.seatNo] = (betsBySeat[b.seatNo] ?? 0) + b.amount;
-  return { table: { ...table, seats }, betsBySeat };
+  // Il codice di comando del dealer NON si espone mai a display/sedie: solo il flag "c'è un dealer".
+  const { dealerCode, ...pub } = table;
+  return { table: { ...pub, seats }, betsBySeat, hasDealer: !!dealerCode };
 }
 function tableRoom(code: string) { return `casino:table:${code}`; }
 async function broadcastTable(sessionId: string, table: GameTable) {
@@ -432,7 +436,7 @@ router.get("/gestione/casino/table/:code", async (req, res): Promise<void> => {
   const found = await findGameTable(String(req.params["code"]));
   if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
   const st = await tableState(found.sessionId, found.table);
-  res.json({ ...st, sessionId: found.sessionId, seatNo: found.seatNo ?? null });
+  res.json({ ...st, sessionId: found.sessionId, seatNo: found.seatNo ?? null, isDealer: !!found.isDealer });
 });
 
 // ── Il giocatore si siede a una postazione (scan QR sedia) ──────────────────────
@@ -567,6 +571,68 @@ router.post("/gestione/casino/table/leave", async (req, res): Promise<void> => {
   if (fr) await broadcastTable(found.sessionId, fr.table);
   await broadcast(found.sessionId);
   res.json({ ok: true });
+});
+
+// ── Regia: lega/slega un DEALER a un tavolo roulette (gli dà il comando dal suo telefono) ──
+router.post("/gestione/casino/sessions/:id/game-tables/:tableId/dealer", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]); const tableId = String(req.params["tableId"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const assign = req.body?.assign !== false; // default: assegna
+  const out = await mutateSession<{ status: number; body: Record<string, unknown>; table?: GameTable }>(id, async (_tx, cfg) => {
+    const table = cfg.gameTables?.[tableId];
+    if (!table) return { save: false, result: { status: 404, body: { error: "Tavolo non trovato" } } };
+    // Riusa il codice se già assegnato (QR stabile); altrimenti ne genera uno nuovo. assign=false → slega.
+    table.dealerCode = assign ? (table.dealerCode || makeCode(6)) : null;
+    return { save: true, result: { status: 200, body: { ok: true, dealerCode: table.dealerCode }, table } };
+  });
+  if (out.status !== 200) { res.status(out.status).json(out.body); return; }
+  if (out.table) await broadcastTable(id, out.table);
+  res.json(out.body);
+});
+
+// ── Dealer risolve il giro: number dato = IBRIDO (ruota fisica, il dealer scrive il numero uscito);
+//    number assente = DIGITALE (RNG). Paga i vincitori come /spin. Idempotente (solo in "betting"). ──
+router.post("/gestione/casino/table/dealer-settle", async (req, res): Promise<void> => {
+  const dealerCode = String(req.body?.dealerCode ?? "").toUpperCase().trim();
+  const found = await findGameTable(dealerCode);
+  if (!found || !found.isDealer) { res.status(403).json({ error: "Dealer non autorizzato" }); return; }
+  const hasNum = req.body?.number != null && req.body?.number !== "";
+  const num = Math.round(Number(req.body?.number));
+  if (hasNum && (!Number.isFinite(num) || num < 0 || num > 36)) { res.status(400).json({ error: "Numero non valido (0–36)" }); return; }
+  const tableId = found.table.id;
+  const out = await mutateSession<{ status: number; body: Record<string, unknown>; table?: GameTable }>(found.sessionId, async (tx, cfg) => {
+    const table = cfg.gameTables?.[tableId];
+    if (!table) return { save: false, result: { status: 404, body: { error: "Tavolo non trovato" } } };
+    if (table.dealerCode !== dealerCode) return { save: false, result: { status: 403, body: { error: "Dealer non autorizzato" } } };
+    if (!rouletteCanSpin(table.phase)) return { save: false, result: { status: 200, body: { ok: true, number: table.result?.number ?? null, alreadySpun: true }, table } };
+    const r = hasNum ? num : randomInt(37);
+    table.phase = "result"; table.result = { number: r, at: new Date().toISOString() }; table.history = [r, ...table.history].slice(0, 20);
+    await payAll(fishTxOf(tx, found.sessionId), rouletteWinMoves(table.bets, r));
+    return { save: true, result: { status: 200, body: { ok: true, number: r }, table } };
+  });
+  if (out.status !== 200) { res.status(out.status).json(out.body); return; }
+  if (out.table) await broadcastTable(found.sessionId, out.table);
+  await broadcast(found.sessionId);
+  res.json(out.body);
+});
+
+// ── Dealer del tavolo: accredita/toglie fish a un giocatore (autorizzato dal codice del tavolo) ──
+router.post("/gestione/casino/table/dealer-tx", async (req, res): Promise<void> => {
+  const dealerCode = String(req.body?.dealerCode ?? "").toUpperCase().trim();
+  const delta = Math.round(Number(req.body?.delta));
+  if (!Number.isFinite(delta) || delta === 0) { res.status(400).json({ error: "Importo non valido" }); return; }
+  const found = await findGameTable(dealerCode);
+  if (!found || !found.isDealer) { res.status(403).json({ error: "Dealer non autorizzato" }); return; }
+  const playerId = String(req.body?.playerId ?? "");
+  if (!isUUID(playerId)) { res.status(400).json({ error: "Giocatore non valido" }); return; }
+  const [player] = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.id, playerId));
+  if (!player || player.sessionId !== found.sessionId) { res.status(404).json({ error: "Giocatore non trovato in questa serata" }); return; }
+  const newBalance = await db.transaction((tx) => moveFish(tx, found.sessionId, { playerId, delta, kind: delta > 0 ? "dealer_pay" : "dealer_take", tableId: null, requireFunds: true }));
+  if (newBalance == null) { res.status(409).json({ error: "Fish insufficienti", balance: player.fishBalance }); return; }
+  const fr2 = await findGameTable(found.table.displayCode);
+  if (fr2) await broadcastTable(found.sessionId, fr2.table);
+  await broadcast(found.sessionId);
+  res.json({ ok: true, balance: newBalance });
 });
 
 /* ═══ BLACKJACK ───────────────────────────────────────────────────────────────

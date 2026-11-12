@@ -138,6 +138,8 @@ export default function GestioneCasino() {
   const poolPlay = params.get('poolplay');     // telefono giocatore Biliardo
   if (pool) return <BiliardoMonitor displayCode={pool.toUpperCase()} />;
   if (poolPlay) return <BiliardoPhone displayCode={poolPlay.toUpperCase()} />;
+  const rdealer = params.get('rdealer');   // telefono DEALER che comanda un tavolo roulette
+  if (rdealer) return <RouletteDealerView dealerCode={rdealer.toUpperCase()} />;
   if (tableCode) return <RouletteTableView displayCode={tableCode.toUpperCase()} />;
   if (seatCode) return <SeatController seatCode={seatCode.toUpperCase()} />;
   if (playerCode) return <PlayerView code={playerCode.toUpperCase()} />;
@@ -159,9 +161,9 @@ const FELT_ROWS = [
 ];
 type SeatInfo = { code: string; playerId: string | null; nickname?: string | null; avatarUrl?: string | null; balance?: number | null };
 type GameTableState = {
-  table: { id: string; name: string; displayCode: string; phase: 'betting' | 'spinning' | 'result'; round: number; seats: Record<string, SeatInfo>; bets: { id: string; seatNo: number; playerId: string; kind: string; numbers: number[]; amount: number }[]; result: { number: number; at: string } | null; history: number[] };
+  table: { id: string; name: string; displayCode: string; phase: 'betting' | 'spinning' | 'result'; round: number; seats: Record<string, SeatInfo>; bets: { id: string; seatNo: number; playerId: string; kind: string; numbers: number[]; amount: number }[]; result: { number: number; at: string } | null; history: number[]; dealerCode?: string | null };
   betsBySeat: Record<string, number>;
-  sessionId?: string; seatNo?: string | null;
+  sessionId?: string; seatNo?: string | null; isDealer?: boolean; hasDealer?: boolean;
 };
 const spotOf = (kind: string, numbers: number[]) => kind === 'straight' ? `n:${numbers[0]}` : kind;
 
@@ -722,20 +724,44 @@ function GameTablesCard({ sessionId }: { sessionId: string }) {
       <button onClick={create} disabled={busy} style={{ ...btn(GOLD), width: '100%', marginBottom: 12 }}>+ Nuovo tavolo Roulette</button>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {tables.map(t => (
-          <div key={t.id} style={{ display: 'flex', gap: 12, alignItems: 'center', background: '#ffffff0a', borderRadius: 12, padding: 10 }}>
-            <div style={{ background: '#fff', padding: 4, borderRadius: 8 }}>
-              <QRCodeSVG value={`${ORIGIN}gestione/casino?table=${t.displayCode}`} size={56} />
+          <div key={t.id} style={{ display: 'flex', flexDirection: 'column', gap: 10, background: '#ffffff0a', borderRadius: 12, padding: 10 }}>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              <div style={{ background: '#fff', padding: 4, borderRadius: 8 }}>
+                <QRCodeSVG value={`${ORIGIN}gestione/casino?table=${t.displayCode}`} size={56} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 800 }}>🎡 {t.name}</div>
+                <div style={{ fontSize: 12, opacity: 0.5 }}>{Object.keys(t.seats).length} postazioni · codice {t.displayCode}</div>
+                <a href={`${ORIGIN}gestione/casino?table=${t.displayCode}`} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 4, color: GOLD, fontSize: 13, fontWeight: 800 }}>🖥️ Apri sul maxi-schermo ↗</a>
+              </div>
             </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 800 }}>🎡 {t.name}</div>
-              <div style={{ fontSize: 12, opacity: 0.5 }}>{Object.keys(t.seats).length} postazioni · codice {t.displayCode}</div>
-              <a href={`${ORIGIN}gestione/casino?table=${t.displayCode}`} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 4, color: GOLD, fontSize: 13, fontWeight: 800 }}>🖥️ Apri sul maxi-schermo ↗</a>
-            </div>
+            <DealerRow sessionId={sessionId} table={t} onChange={load} />
           </div>
         ))}
         {tables.length === 0 && <div style={{ opacity: 0.4 }}>Nessun tavolo. Crea una roulette e aprila sullo schermo 80″.</div>}
       </div>
     </Card>
+  );
+}
+
+// Regia: lega/slega un dealer a un tavolo roulette. Senza dealer il gioco resta autonomo (80").
+function DealerRow({ sessionId, table, onChange }: { sessionId: string; table: GameTableState['table']; onChange: () => void | Promise<unknown> }) {
+  const [busy, setBusy] = useState(false);
+  const dc = table.dealerCode;
+  const assign = async (a: boolean) => { setBusy(true); try { await api(`/gestione/casino/sessions/${sessionId}/game-tables/${table.id}/dealer`, { assign: a }); await onChange(); } finally { setBusy(false); } };
+  if (!dc) return (
+    <button onClick={() => assign(true)} disabled={busy} style={{ ...btn('#ffffff14'), width: '100%', fontSize: 13 }}>👤 Assegna un dealer a questo tavolo</button>
+  );
+  return (
+    <div style={{ display: 'flex', gap: 10, alignItems: 'center', background: `${GOLD}10`, border: `1px solid ${GOLD}33`, borderRadius: 10, padding: 8 }}>
+      <div style={{ background: '#fff', padding: 4, borderRadius: 8, flex: 'none' }}><QRCodeSVG value={`${ORIGIN}gestione/casino?rdealer=${dc}`} size={52} /></div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12, opacity: 0.7 }}>Dealer di questo tavolo</div>
+        <div style={{ fontWeight: 800, color: GOLD, letterSpacing: '0.08em' }}>comando {dc}</div>
+        <a href={`${ORIGIN}gestione/casino?rdealer=${dc}`} target="_blank" rel="noreferrer" style={{ color: GOLD, fontSize: 12, fontWeight: 800 }}>📱 Apri banco dealer ↗</a>
+      </div>
+      <button onClick={() => assign(false)} disabled={busy} style={{ ...btn('#ffffff14'), fontSize: 12, flex: 'none' }}>Slega</button>
+    </div>
   );
 }
 
@@ -1645,6 +1671,13 @@ function SeatController({ seatCode }: { seatCode: string }) {
   const [chip, setChip] = useState(25);
   const [msg, setMsg] = useState('');
   const [revealNow, setRevealNow] = useState(false);  // rivelazione telefono sincronizzata col monitor
+  const [portrait, setPortrait] = useState(() => typeof window !== 'undefined' ? window.innerHeight > window.innerWidth : false);
+  useEffect(() => {
+    const h = () => setPortrait(window.innerHeight > window.innerWidth);
+    const mq = window.matchMedia?.('(orientation: portrait)');
+    mq?.addEventListener?.('change', h); window.addEventListener('resize', h); window.addEventListener('orientationchange', h);
+    return () => { mq?.removeEventListener?.('change', h); window.removeEventListener('resize', h); window.removeEventListener('orientationchange', h); };
+  }, []);
   const playerCode = useMemo(() => { try { return localStorage.getItem('casino_player') ?? ''; } catch { return ''; } }, []);
 
   const claim = useCallback(async () => {
@@ -1704,10 +1737,10 @@ function SeatController({ seatCode }: { seatCode: string }) {
   // la ruota resta sull'80"). La cella si dimensiona perché il lato CORTO del tappeto stia nella
   // larghezza schermo. feltW/feltH = ingombro reale, usati per riservare lo spazio dopo rotate.
   const vw = typeof window !== 'undefined' ? window.innerWidth : 360;
-  const feltS = Math.min(42, Math.max(24, (vw - 40) / 5.7));
-  const feltBorder = Math.max(3, feltS * 0.12);
-  const feltW = feltS * 15.04 + 2 * feltBorder;   // lato lungo (diventa l'altezza dopo rotate 90°)
-  const feltH = feltS * 5.58 + 2 * feltBorder;    // lato corto (diventa la larghezza)
+  const vh = typeof window !== 'undefined' ? window.innerHeight : 640;
+  // Tappeto ORIZZONTALE vero (numeri dritti): la cella si dimensiona perché l'intero tappeto
+  // (15 colonne) entri in larghezza E in altezza senza scroll. In verticale → overlay "gira il telefono".
+  const feltS = Math.min(54, Math.max(20, Math.min((vw - 26) / 15.7, (vh * 0.56) / 5.8)));
   const leave = async () => {
     if (!window.confirm('Abbandonare il tavolo? Se hai puntate in questa manche le PERDI (non vengono rimborsate).')) return;
     try { await api('/gestione/casino/table/leave', { seatCode, playerCode }); } catch { /* */ }
@@ -1724,7 +1757,9 @@ function SeatController({ seatCode }: { seatCode: string }) {
         <div style={{ textAlign: 'right' }}><div style={{ fontSize: 11, opacity: 0.5 }}>fiche</div><div style={{ fontSize: 22, fontWeight: 900, color: GOLD }}><AnimatedNumber value={myBalance} /></div></div>
       </div>
 
-      {t.phase === 'betting' ? (
+      {t.phase === 'betting' ? (portrait ? (
+        <RotateHint />
+      ) : (
         <>
           <div style={{ fontSize: 12, opacity: 0.6, textAlign: 'center' }}>Scegli la fiche, poi tocca il tappeto per piazzarla</div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
@@ -1734,20 +1769,16 @@ function SeatController({ seatCode }: { seatCode: string }) {
             ))}
           </div>
           {msg && <div style={{ color: '#f87171', textAlign: 'center', fontWeight: 700 }}>{msg}</div>}
-          {/* Tappeto ruotato 90° = verticale: entra tutto nel telefono, si scorre in lungo */}
-          <div style={{ display: 'flex', justifyContent: 'center', margin: '2px 0 8px' }}>
-            <div style={{ position: 'relative', width: feltH, height: feltW }}>
-              <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%) rotate(90deg)' }}>
-                <RouletteFelt betsBySpot={Object.fromEntries(Object.entries(groupBets(t.bets)).map(([k, v]) => [k, v]))} onPlace={place} s={feltS} />
-              </div>
-            </div>
+          {/* Tappeto ORIZZONTALE (numeri dritti) — in verticale compare l'overlay "gira il telefono" */}
+          <div style={{ display: 'flex', justifyContent: 'center', margin: '2px 0 8px', overflowX: 'auto' }}>
+            <RouletteFelt betsBySpot={Object.fromEntries(Object.entries(groupBets(t.bets)).map(([k, v]) => [k, v]))} onPlace={place} s={feltS} />
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#ffffff0a', borderRadius: 12, padding: '10px 14px' }}>
             <div>Sul tappeto: <b style={{ color: GOLD }}>{myTotal}</b> fiche <span style={{ opacity: 0.5 }}>({myBets.length})</span></div>
             <button onClick={undo} disabled={myBets.length === 0} style={{ ...btn('#ffffff22'), opacity: myBets.length === 0 ? 0.4 : 1 }}>↶ Annulla</button>
           </div>
         </>
-      ) : !revealNow ? (
+      )) : !revealNow ? (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, marginTop: 30 }}>
           <div style={{ fontSize: 54 }}>🎡</div>
           <div style={{ fontSize: 22, fontWeight: 900, textAlign: 'center' }}>La ruota sta girando…</div>
@@ -1768,21 +1799,151 @@ function groupBets(bets: GameTableState['table']['bets']): Record<string, { seat
   for (const b of bets) { const k = spotOf(b.kind, b.numbers); (m[k] ??= []).push({ seatNo: b.seatNo, amount: b.amount }); }
   return m;
 }
+// Overlay: in verticale il tappeto non ci sta e si legge di traverso → invita a girare il telefono.
+function RotateHint() {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: '38px 20px', textAlign: 'center' }}>
+      <motion.div animate={{ rotate: [0, 90, 90, 0] }} transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut', times: [0, 0.35, 0.75, 1] }} style={{ fontSize: 60 }}>📱</motion.div>
+      <div style={{ fontSize: 22, fontWeight: 900 }}>Gira il telefono in orizzontale</div>
+      <div style={{ opacity: 0.6, maxWidth: 280 }}>Il tavolo della roulette è largo: in orizzontale ci sta tutto e leggi bene i numeri per puntare.</div>
+    </div>
+  );
+}
 function ResultPanel({ t, myBets, myBalance }: { t: GameTableState['table']; myBets: GameTableState['table']['bets']; myBalance: number }) {
   const r = t.result?.number ?? null;
-  const won = r == null ? 0 : myBets.reduce((a, b) => a + (spotWinsOutside(b.kind, r) || b.numbers.includes(r) ? b.amount * ((({ straight: 35, split: 17, red: 1, black: 1, even: 1, odd: 1, low: 1, high: 1, dozen1: 2, dozen2: 2, dozen3: 2, col1: 2, col2: 2, col3: 2 } as Record<string, number>)[b.kind] ?? 0) + 1) : 0), 0);
+  const won = r == null ? 0 : myBets.reduce((a, b) => a + betWinAmount(b, r), 0);
+  const played = myBets.length > 0;
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, marginTop: 20 }}>
-      <div style={{ opacity: 0.6 }}>È uscito</div>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, marginTop: 18 }}>
+      <div style={{ opacity: 0.6 }}>È uscito il numero</div>
       <motion.div initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 240, damping: 15 }}
         style={{ width: 120, height: 120, borderRadius: '50%', background: r != null ? numColor(r) : '#333', border: `4px solid ${GOLD}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 52, fontWeight: 900, boxShadow: `0 0 30px ${GOLD}66` }}>{r}</motion.div>
-      {myBets.length > 0 && (
-        won > 0
-          ? <div style={{ color: '#4ade80', fontWeight: 900, fontSize: 24, textAlign: 'center' }}>🎉 Hai vinto {won} fiche!</div>
-          : <div style={{ color: '#f87171', fontWeight: 900, fontSize: 20, textAlign: 'center' }}>Niente stavolta</div>
-      )}
+      {played && (won > 0 ? (
+        <motion.div initial={{ scale: 0.6 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 260, damping: 14 }} style={{ textAlign: 'center' }}>
+          <div style={{ color: '#4ade80', fontWeight: 900, fontSize: 34, letterSpacing: '0.04em' }}>HAI VINTO 🎉</div>
+          <div style={{ color: '#4ade80', fontWeight: 900, fontSize: 22 }}>+{won} fiche</div>
+        </motion.div>
+      ) : (
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ color: '#f87171', fontWeight: 900, fontSize: 34, letterSpacing: '0.04em' }}>HAI PERSO</div>
+          <div style={{ opacity: 0.55, fontSize: 15 }}>il {r} non era tra le tue puntate</div>
+        </div>
+      ))}
+      {!played && <div style={{ opacity: 0.5 }}>Non avevi puntato questo giro</div>}
       <div style={{ opacity: 0.5 }}>fiche ora: <b style={{ color: GOLD }}>{myBalance}</b></div>
-      <div style={{ opacity: 0.45, fontSize: 13, textAlign: 'center', marginTop: 10 }}>Aspetta il <b>nuovo giro</b> dal tavolo per puntare di nuovo</div>
+      <div style={{ opacity: 0.45, fontSize: 13, textAlign: 'center', marginTop: 6 }}>Aspetta il <b>nuovo giro</b> dal tavolo per puntare di nuovo</div>
+    </div>
+  );
+}
+
+// Moltiplicatori roulette (stessi del server): vincita = puntata × (mult + 1).
+const ROULETTE_MULT: Record<string, number> = { straight: 35, split: 17, red: 1, black: 1, even: 1, odd: 1, low: 1, high: 1, dozen1: 2, dozen2: 2, dozen3: 2, col1: 2, col2: 2, col3: 2 };
+function betWinAmount(b: { kind: string; numbers: number[]; amount: number }, r: number | null): number {
+  if (r == null) return 0;
+  const win = b.numbers.length ? b.numbers.includes(r) : spotWinsOutside(b.kind, r);
+  return win ? b.amount * ((ROULETTE_MULT[b.kind] ?? 0) + 1) : 0;
+}
+
+// ── Banco DEALER di un tavolo roulette (telefono): vede le puntate di ciascuno, gira la ruota
+//    (digitale, RNG) o scrive il numero uscito (ibrido, ruota fisica), e vede i pagamenti. ──
+function RouletteDealerView({ dealerCode }: { dealerCode: string }) {
+  const [st, setSt] = useState<GameTableState | null>(null);
+  const [err, setErr] = useState('');
+  const [num, setNum] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [sel, setSel] = useState<string | null>(null);   // seatNo aperto per accreditare/togliere fish
+  useEffect(() => {
+    let alive = true;
+    const pull = () => fetch(`${API}/gestione/casino/table/${dealerCode}`).then(r => r.ok ? r.json() : null)
+      .then(d => { if (!alive) return; if (d?.isDealer) { setSt(d); setErr(''); } else if (d) setErr('Questo codice non comanda nessun tavolo'); else setErr('Tavolo non trovato'); })
+      .catch(() => {});
+    pull(); const t = setInterval(pull, 1000); return () => { alive = false; clearInterval(t); };
+  }, [dealerCode]);
+
+  const settle = async (withNumber: boolean) => {
+    if (busy) return;
+    if (withNumber) { const n = Number(num); if (!Number.isInteger(n) || n < 0 || n > 36) { setErr('Scrivi il numero uscito (0–36)'); return; } }
+    setBusy(true); setErr('');
+    try { const r = await api(`/gestione/casino/table/dealer-settle`, withNumber ? { dealerCode, number: Number(num) } : { dealerCode }); if (r?.error) setErr(r.error); else setNum(''); } finally { setBusy(false); }
+  };
+  const nextRound = async () => { setBusy(true); try { await api(`/gestione/casino/table/next`, { displayCode: st?.table.displayCode }); } finally { setBusy(false); } };
+  const dealerTx = async (playerId: string, delta: number) => { setBusy(true); try { const r = await api(`/gestione/casino/table/dealer-tx`, { dealerCode, playerId, delta }); if (r?.error) setErr(r.error); } finally { setBusy(false); } };
+
+  if (err && !st) return <Center>{err}</Center>;
+  if (!st) return <Center>Carico il banco…</Center>;
+  const t = st.table;
+  const r = t.phase !== 'betting' ? t.result?.number ?? null : null;
+  const rows = Object.entries(t.seats).filter(([, s]) => s.playerId).map(([no, s]) => {
+    const bets = t.bets.filter(b => String(b.seatNo) === no);
+    const staked = bets.reduce((a, b) => a + b.amount, 0);
+    const won = r == null ? null : bets.reduce((a, b) => a + betWinAmount(b, r), 0);
+    return { no, s, staked, won, nBets: bets.length };
+  });
+  const totalStaked = rows.reduce((a, x) => a + x.staked, 0);
+  const totalWon = rows.reduce((a, x) => a + (x.won ?? 0), 0);
+
+  return (
+    <div style={{ minHeight: '100%', background: BG, color: '#fff', fontFamily: "'Outfit',system-ui,sans-serif", padding: '14px 14px 40px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div><div style={{ fontWeight: 900, fontSize: 20 }}>🎡 {t.name}</div><div style={{ opacity: 0.5, fontSize: 12 }}>Dealer · Giro #{t.round}</div></div>
+        <BrandBar h={18} dim={0.75} />
+      </div>
+      {err && <div style={{ textAlign: 'center', color: '#f87171', fontWeight: 800 }}>{err}</div>}
+
+      {/* Esito del giro */}
+      {r != null && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, background: `${GOLD}12`, border: `1px solid ${GOLD}44`, borderRadius: 16, padding: 14 }}>
+          <div style={{ width: 66, height: 66, borderRadius: '50%', background: numColor(r), border: `3px solid ${GOLD}`, display: 'grid', placeItems: 'center', fontSize: 30, fontWeight: 900, flex: 'none' }}>{r}</div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, opacity: 0.7 }}>È uscito il <b>{r}</b> · da pagare in totale</div>
+            <div style={{ fontSize: 26, fontWeight: 900, color: '#4ade80' }}>{totalWon} fiche</div>
+          </div>
+          <button onClick={nextRound} disabled={busy} style={{ ...btn(GOLD), flex: 'none' }}>↻ Nuovo giro</button>
+        </div>
+      )}
+
+      {/* Comandi quando le puntate sono aperte */}
+      {t.phase === 'betting' && (
+        <div style={{ background: '#ffffff0a', borderRadius: 16, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ fontSize: 13, opacity: 0.7, textAlign: 'center' }}>Puntato in totale: <b style={{ color: GOLD }}>{totalStaked}</b> fiche</div>
+          <div style={{ fontSize: 13, fontWeight: 800, textAlign: 'center' }}>Ruota fisica? Gira e scrivi il numero uscito:</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input value={num} onChange={e => setNum(e.target.value.replace(/[^0-9]/g, '').slice(0, 2))} inputMode="numeric" placeholder="0–36"
+              style={{ ...inp, textAlign: 'center', fontSize: 24, fontWeight: 900, letterSpacing: '0.1em' }} />
+            <button onClick={() => settle(true)} disabled={busy || num === ''} style={{ ...btn('#4ade80'), flex: 'none', opacity: busy || num === '' ? 0.5 : 1 }}>Conferma numero</button>
+          </div>
+          <div style={{ textAlign: 'center', opacity: 0.5, fontSize: 12 }}>— oppure —</div>
+          <button onClick={() => settle(false)} disabled={busy} style={{ ...btn('#ffffff18'), width: '100%' }}>🎲 Gira la ruota digitale (numero a caso)</button>
+        </div>
+      )}
+
+      {/* Giocatori seduti: puntata e, dopo l'estrazione, quanto ha vinto ciascuno */}
+      <div style={{ fontSize: 12, opacity: 0.5, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '2px 2px' }}>Giocatori al tavolo ({rows.length})</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {rows.length === 0 && <div style={{ opacity: 0.4, fontSize: 14 }}>Nessuno seduto. I giocatori inquadrano il QR della postazione.</div>}
+        {rows.map(({ no, s, staked, won }) => (
+          <div key={no} style={{ background: '#ffffff08', borderRadius: 12, padding: '10px 12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }} onClick={() => setSel(sel === no ? null : no)}>
+              <span style={{ width: 26, height: 26, borderRadius: '50%', background: seatColor(Number(no)), display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 13, flex: 'none' }}>{no}</span>
+              <PlayerAvatar nickname={s.nickname ?? '—'} avatarUrl={s.avatarUrl} size={34} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.nickname ?? 'Giocatore'}</div>
+                <div style={{ fontSize: 12, opacity: 0.6 }}>saldo {itFmt.format(s.balance ?? 0)} · puntato {staked}</div>
+              </div>
+              {r != null && (won! > 0
+                ? <span style={{ fontWeight: 900, color: '#4ade80', fontSize: 17 }}>+{won}</span>
+                : <span style={{ fontWeight: 900, color: '#f87171', fontSize: 15 }}>0</span>)}
+            </div>
+            {sel === no && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6, marginTop: 10 }}>
+                {[25, 100].map(n => <button key={'p' + n} onClick={() => dealerTx(s.playerId!, n)} disabled={busy} style={{ ...btn('#4ade80'), padding: 10, fontSize: 13 }}>+{n}</button>)}
+                {[25, 100].map(n => <button key={'m' + n} onClick={() => dealerTx(s.playerId!, -n)} disabled={busy} style={{ ...btn('#f87171'), padding: 10, fontSize: 13 }}>−{n}</button>)}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      <div style={{ opacity: 0.45, fontSize: 12, textAlign: 'center', marginTop: 4 }}>Tocca un giocatore per accreditargli o togliergli fiche a mano.</div>
     </div>
   );
 }
