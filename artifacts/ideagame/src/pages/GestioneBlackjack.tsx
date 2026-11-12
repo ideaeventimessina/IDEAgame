@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useTableMusic } from '@/audio/useTableMusic';
 import { ScreenFit } from '@/components/ScreenFit';
+import { CasPhone, Hero } from '../casino-ui/kit';
 
 const API = ((import.meta.env.BASE_URL as string) || '/') + 'api';
 const ORIGIN = window.location.origin + ((import.meta.env.BASE_URL as string) || '/');
@@ -351,196 +352,170 @@ export function BlackjackPhone({ displayCode }: { displayCode: string }) {
   const unbet = async () => { setBusy(true); try { await api('/gestione/casino/bj/unbet', { seatCode: myCode, playerCode }); } finally { setBusy(false); } };
   const act = async (kind: 'hit' | 'stand' | 'double') => { setBusy(true); setErr(''); try { const r = await api(`/gestione/casino/bj/${kind}`, { seatCode: myCode, playerCode }); if (r?.error) setErr(r.error); setConfirmDbl(false); } finally { setBusy(false); } };
 
-  const Shell = (children: React.ReactNode) => <div className="bjp"><style>{PHONE_CSS}</style><ScreenFit><div className="wrap"><BlackjackHeader /><div className="content">{children}</div></div></ScreenFit></div>;
-
-  // 01 ACCESSO
-  if (!me) return Shell(
-    <>
-      <div className="h1">Entra al tavolo</div>
-      <div className="h2">Inserisci il codice del tavolo<br />che ti ha fornito l'organizzazione</div>
-      <input type="text" value={tableCode} onChange={e => setTableCode(e.target.value)} placeholder="CODICE" />
-      <div className="lbl left">Il tuo nome</div>
-      <input type="text" className="name" value={nick} onChange={e => setNick(e.target.value)} placeholder="Come ti chiami" />
-      <div className="lbl">📸 Il tuo selfie (obbligatorio)</div>
-      <label className="photo" style={{ cursor: 'pointer' }}>
-        {photo ? <img src={photo} alt="" /> : <div className="ph">👤</div>}
-        <span className="cambadge" aria-hidden>
-          <svg width="16" height="14" viewBox="0 0 16 14" fill="#231503"><path d="M5.2 1.6 4.3 3H2a1.4 1.4 0 0 0-1.4 1.4v7A1.4 1.4 0 0 0 2 12.8h12a1.4 1.4 0 0 0 1.4-1.4v-7A1.4 1.4 0 0 0 14 3h-2.3l-.9-1.4z"/><circle cx="8" cy="7.6" r="2.7" fill="#d59a34"/></svg>
-        </span>
-        <input type="file" accept="image/*" capture="user" style={{ display: 'none' }} onChange={async e => { const f = e.target.files?.[0]; if (f) setPhoto(await fileToAvatar(f)); }} />
-      </label>
-      {!photo && <div className="h2" style={{ fontSize: 12, opacity: .7, margin: '2px 0 0' }}>Il dealer ti riconosce dalla faccia per darti i punti.</div>}
-      {err && <div className="err">{err}</div>}
-      <button className="gbtn" disabled={busy || !photo} style={{ opacity: (busy || !photo) ? .5 : 1 }} onClick={enroll}>Entra ›</button>
-    </>
+  const footer = <footer className="foot">IDEAeventi · Blackjack — avvicìnati a 21 senza sballare</footer>;
+  const Phone = (label: string, body: React.ReactNode, badge?: React.ReactNode) => (
+    <CasPhone eyebrow="Casinò · Giocatore" title="Blackjack" footer={footer}>
+      <Hero label={label} badge={badge} />
+      {body}
+    </CasPhone>
   );
 
-  if (!t) return Shell(<div className="h2" style={{ marginTop: 40 }}>Carico il tavolo…</div>);
-  if (t.suspended && mySeatNo == null) return Shell(<div className="panel" style={{ marginTop: 20 }}><div className="outcome push">Tavolo sospeso</div><div className="h2">Attendi la riapertura dalla regia.</div></div>);
+  // 01 ACCESSO (selfie obbligatorio)
+  if (!me) return Phone('Accesso',
+    <section className="panel">
+      <h2>Entra al tavolo</h2>
+      <p>Inserisci il codice del tavolo e scatta il selfie: al tavolo il dealer ti riconosce dalla faccia.</p>
+      <input className="field" value={tableCode} onChange={e => setTableCode(e.target.value)} placeholder="Codice tavolo" />
+      <input className="field" value={nick} onChange={e => setNick(e.target.value)} placeholder="Il tuo nome" />
+      <label style={{ display: 'flex', alignItems: 'center', gap: 14, margin: '2px 0 6px', cursor: 'pointer' }}>
+        {photo
+          ? <img src={photo} alt="" style={{ width: 76, height: 76, borderRadius: '50%', objectFit: 'cover', border: '3px solid #c1974d', flex: 'none' }} />
+          : <span style={{ width: 76, height: 76, borderRadius: '50%', display: 'grid', placeItems: 'center', border: '3px dashed #b19455', background: '#081b14', fontSize: 30, flex: 'none' }}>📸</span>}
+        <div><div style={{ fontWeight: 800 }}>Selfie obbligatorio</div><div style={{ color: 'var(--muted)', fontSize: 13 }}>{photo ? 'Tocca per rifarlo' : 'Tocca per scattare'}</div></div>
+        <input type="file" accept="image/*" capture="user" style={{ display: 'none' }} onChange={async e => { const f = e.target.files?.[0]; if (f) setPhoto(await fileToAvatar(f)); }} />
+      </label>
+      {err && <div className="err">{err}</div>}
+      <div className="actions"><button className="btn" disabled={busy || !photo} onClick={enroll}>Entra ›</button></div>
+    </section>
+  );
 
-  // 02 POSTO (lobby)
+  if (!t) return Phone('Attendi', <section className="panel"><p>Carico il tavolo…</p></section>);
+  if (t.suspended && mySeatNo == null) return Phone('Sospeso', <section className="panel"><h2>Tavolo sospeso</h2><p>Attendi la riapertura dalla regia.</p></section>);
+
+  // 02 SIEDITI AL TAVOLO
   if (mySeatNo == null) {
     const nos = seatOrder(t);
     const occupied = nos.filter(no => t.seats[String(no)]?.playerId).length;
     const full = occupied >= nos.length;
-    // posizioni fedeli al mockup: banco in alto, 7 posti attorno all'ovale
-    const SEAT_POS: Record<number, { left: string; top: string }> = {
-      1: { left: '86%', top: '27%' }, 2: { left: '80%', top: '82%' }, 3: { left: '92%', top: '57%' },
-      4: { left: '51%', top: '90%' }, 5: { left: '22%', top: '82%' }, 6: { left: '8%', top: '57%' }, 7: { left: '14%', top: '27%' },
-    };
-    const circ = (i: number, n: number) => { const a = (90 + (i / n) * 360) * Math.PI / 180; return { left: `${50 + 42 * Math.cos(a)}%`, top: `${50 + 44 * Math.sin(a)}%` }; };
-    return Shell(
-      <>
-        <div className="h1">{t.name}</div>
-        <div className="h2">{full ? 'Tavolo pieno — attendi un posto' : 'Scegli il tuo posto'}</div>
-        <div className="seatpick">
-          <div className="felt" />
-          <img className="tlogo" src={`${AB}casino/logo-idea-casino.png`} alt="" />
-          <div className="dealer"><Avatar size={50} /></div>
-          {nos.map((no, i) => {
+    return Phone('Accesso e posto',
+      <section className="panel">
+        <h2>Siediti al tavolo</h2>
+        {full && <p>Tavolo pieno — attendi che si liberi un posto.</p>}
+        <div className="list">
+          {nos.map(no => {
             const s = t.seats[String(no)]!; const occ = !!s.playerId; const sel = selSeat === no;
-            const style = { ...(SEAT_POS[no] ?? circ(i, nos.length)), ...(occ ? { opacity: .78 } : {}) };
             return (
-              <button key={no} className={`sbtn${occ ? ' occ' : ''}${sel ? ' sel' : ''}`} style={style} disabled={occ || busy}
-                onClick={() => setSelSeat(no)} title={occ ? (s.nickname ?? 'occupato') : `Posto ${no}`}>
-                {occ && s.avatarUrl ? <img className="ava" src={s.avatarUrl} alt="" />
-                  : sel && photo ? <img className="ava" src={photo} alt="" />
-                  : no}
-              </button>
+              <div key={no} className={`line${sel ? ' sel' : ''}`} style={{ cursor: occ ? 'default' : 'pointer', opacity: occ ? .7 : 1 }}
+                onClick={() => { if (!occ && !busy) setSelSeat(no); }}>
+                <strong>Posto {String(no).padStart(2, '0')}</strong>
+                <span>{occ ? (s.nickname ?? 'Occupato') : (sel ? 'Scelto ✓' : 'Libero')}</span>
+              </div>
             );
           })}
         </div>
-        <div className="panel"><div className="lbl">Il tuo credito</div><div className="credit"><span className="mchip" />{grp(myBalance)}</div></div>
         {err && <div className="err">{err}</div>}
-        <button className="gbtn" disabled={busy || selSeat == null} onClick={() => selSeat != null && takeSeat(selSeat)}>Conferma posto ›</button>
-      </>
+        <div className="actions"><button className="btn" disabled={busy || selSeat == null} onClick={() => selSeat != null && takeSeat(selSeat)}>{selSeat != null ? `Siediti al posto ${String(selSeat).padStart(2, '0')}` : 'Scegli un posto'}</button></div>
+      </section>,
+      `${grp(myBalance)} punti`
     );
   }
 
   const dealerUp = t.dealer.cards[0];
   const handPanel = (
-    <div className="hand">
-      <div className="handbox">
-        <div className="t">Le tue carte</div>
+    <div className="row" style={{ gap: 10, alignItems: 'stretch' }}>
+      <div className="tile center" style={{ flex: 1, padding: 14 }}>
+        <small className="eyebrow">Le tue carte</small>
         <div className="cards">{mySeat!.cards.map((c, i) => <Card key={i} c={c} w={52} />)}</div>
         <Total v={mySeat!.total} bust={mySeat!.status === 'bust'} />
       </div>
-      <div className="handbox">
-        <div className="t">Banco</div>
+      <div className="tile center" style={{ flex: 1, padding: 14 }}>
+        <small className="eyebrow">Banco</small>
         <div className="cards">{dealerUp && <Card c={dealerUp} w={52} />}{t.dealer.hidden && <Card back w={52} />}{!t.dealer.hidden && t.dealer.cards.slice(1).map((c, i) => <Card key={i} c={c} w={52} />)}</div>
         <Total v={t.dealer.hidden ? (dealerUp ? Number(dealerUp.r === 'A' ? 11 : SUIT[dealerUp.s] && isNaN(+dealerUp.r) ? 10 : +dealerUp.r) : null) : t.dealer.total} />
       </div>
     </div>
   );
 
-  // RISULTATO (06/13/14)
+  // ESITO
   if (t.phase === 'result') {
     const ol = outcomeLabel(mySeat!.outcome);
     const won = ol.cls === 'win' || ol.cls === 'bj';
     const profit = mySeat!.profit;
-    const sparks = won ? [{ left: '20%', top: '8%', d: '0s' }, { left: '82%', top: '14%', d: '.3s' }, { left: '12%', top: '62%', d: '.6s' }, { left: '88%', top: '66%', d: '.9s' }, { left: '50%', top: '2%', d: '.45s' }, { left: '66%', top: '78%', d: '.15s' }] : [];
-    return Shell(
-      <>
-        <div className="winrow">
-          {won && <Laurel />}
-          <div className={`outcome ${ol.cls} winout`}>{ol.t || '—'}</div>
-          {won && <Laurel flip />}
-          {sparks.map((s, i) => <span key={i} className="spark" style={{ left: s.left, top: s.top, animationDelay: s.d }} />)}
+    return Phone('Esito',
+      <section className="panel center">
+        <h2 style={{ color: won ? 'var(--green)' : 'var(--red)' }}>{ol.t || '—'}</h2>
+        <small className="eyebrow">Profitto</small>
+        <div className="metric" style={{ color: profit > 0 ? 'var(--green)' : profit < 0 ? 'var(--red)' : 'var(--gold)' }}>{profit > 0 ? '+' : ''}{profit}</div>
+        <div className="cards">{mySeat!.cards.map((c, i) => <Card key={i} c={c} w={52} />)}</div>
+        <div className="list" style={{ marginTop: 14, textAlign: 'left' }}>
+          <div className="line"><strong>Puntata</strong><span>{mySeat!.bet} punti</span></div>
+          <div className="line"><strong>Nuovo credito</strong><span>{grp(myBalance)} punti</span></div>
         </div>
-        {handPanel}
-        <div className="hand">
-          <div className="panel" style={{ flex: 1, padding: '9px 8px' }}><div className="lbl">Puntata</div><div className="credit" style={{ fontSize: 26, marginTop: 5 }}><span className="mchip" />{mySeat!.bet}</div></div>
-          <div className="panel" style={{ flex: 1, padding: '9px 8px' }}><div className="lbl">Profitto</div><div className="credit profit" style={{ fontSize: 26, marginTop: 5, color: profit > 0 ? '#5fe08a' : profit < 0 ? '#ff7a7a' : '#cfe8d6' }}><span className="mchip grn" />{profit > 0 ? '+' : ''}{profit}</div></div>
-        </div>
-        <div className="panel"><div className="lbl">Nuovo credito</div><div className="credit"><span className="mchip" />{grp(myBalance)}</div></div>
         {err && <div className="err">{err}</div>}
-        <button className="gbtn">Prossima mano ›</button>
-      </>
+        <div className="actions"><button className="btn ghost">Prossima mano</button></div>
+      </section>,
+      `${grp(myBalance)} punti`
     );
   }
 
-  // TURNO (04) / ATTESA (05)
+  // TURNO / ATTESA
   if (t.phase === 'playing' || t.phase === 'dealer') {
     const myTurn = t.phase === 'playing' && t.activeSeat === mySeatNo && mySeat!.status === 'playing';
     const activeSeat = t.activeSeat != null ? t.seats[String(t.activeSeat)] : null;
     const activeName = activeSeat?.nickname ?? (t.activeSeat != null ? `Posto ${t.activeSeat}` : '—');
     const canDouble = myTurn && mySeat!.cards.length === 2 && !mySeat!.doubled && myBalance >= mySeat!.bet;
-    const headSeat = activeSeat ?? mySeat!;
-    const headName = activeSeat?.nickname ?? me.nickname;
-    const headBal = headSeat.balance ?? myBalance;
-    const turnPct = t.timeout ? Math.max(0, Math.min(100, (turnCd / t.timeout) * 100)) : 0;
-    return Shell(
-      <>
-        <div className="prow">
-          <Avatar url={headSeat.avatarUrl} name={headName} size={52} />
-          <span className="pname">{headName}</span>
-          <span className="pcr">Credito<b>{grp(headBal)}</b></span>
-        </div>
-        <div className={`h1${myTurn ? ' turnpulse' : ''}`}>{myTurn ? 'È il tuo turno' : <>Turno di <span className="gold">{activeName}</span></>}</div>
+    return Phone(myTurn ? 'Il tuo turno' : 'Attesa',
+      <section className="panel">
+        <h2>{myTurn ? `Totale ${mySeat!.total ?? ''}` : <>Turno di <span style={{ color: 'var(--gold)' }}>{activeName}</span></>}</h2>
         {handPanel}
-        <div className="panel" style={{ padding: '10px 12px' }}><div className="lbl">Puntata corrente</div><div className="credit" style={{ fontSize: 26, marginTop: 4 }}><span className="mchip" />{mySeat!.bet}</div></div>
-        {myTurn
-          ? <div className="panel turnglow" style={{ padding: '10px 12px' }}><div className="lbl" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><IconClock />Tempo per giocare</div><div className="big" style={{ fontSize: 32, marginTop: 2 }}>{fmtTime(turnCd)}</div><div className="tbar"><i style={{ width: `${turnPct}%` }} /></div></div>
-          : mySeat!.status === 'stand' ? <div className="panel" style={{ padding: '12px' }}><div className="note"><IconHourglass />Hai scelto STAI</div><div className="notesub">Attendi il banco…</div></div>
-          : mySeat!.status === 'bust' ? <div className="panel" style={{ padding: '12px' }}><div className="note lose">Sei sballato</div><div className="notesub">Attendi la fine della mano</div></div>
-          : mySeat!.status === 'blackjack' ? <div className="panel" style={{ padding: '12px' }}><div className="note">Blackjack!</div><div className="notesub">Attendi la fine della mano</div></div>
-          : <div className="panel" style={{ padding: '12px' }}><div className="note"><IconHourglass />Attendi il tuo turno…</div></div>}
+        <div className="list"><div className="line"><strong>Puntata</strong><span>{mySeat!.bet} punti</span></div></div>
+        {myTurn ? <div className="status center">Tempo per giocare · {fmtTime(turnCd)}</div>
+          : mySeat!.status === 'stand' ? <div className="status">Hai scelto STAI · attendi il banco</div>
+          : mySeat!.status === 'bust' ? <div className="status lose">Sei sballato</div>
+          : mySeat!.status === 'blackjack' ? <div className="status">Blackjack! · attendi la fine della mano</div>
+          : <div className="status">Segui la mano sul tavolo.</div>}
         {err && <div className="err">{err}</div>}
         {confirmDbl ? (
-          <div className="panel">
-            <div className="h1" style={{ fontSize: 20 }}>Confermi il raddoppio?</div>
-            <div className="h2">Puntata da {mySeat!.bet} a {mySeat!.bet * 2} · Riceverai una sola carta</div>
-            <button className="gbtn" style={{ background: 'linear-gradient(#1aa64b,#0c7a33)', color: '#fff' }} disabled={busy} onClick={() => act('double')}>✓ Conferma {mySeat!.bet}</button>
-            <button className="gbtn ghost" style={{ marginTop: 8 }} onClick={() => setConfirmDbl(false)}>✕ Annulla</button>
-          </div>
+          <>
+            <div className="list"><div className="line"><strong>Raddoppio</strong><span>{mySeat!.bet} → {mySeat!.bet * 2} punti</span></div></div>
+            <div className="status">Riceverai una sola carta.</div>
+            <div className="actions"><button className="btn" disabled={busy} onClick={() => act('double')}>Conferma</button><button className="btn ghost" onClick={() => setConfirmDbl(false)}>Annulla</button></div>
+          </>
         ) : (
-          <div className="actions" style={{ marginTop: 'auto' }}>
-            <button className="act hit" disabled={!myTurn || busy} onClick={() => act('hit')}><IconCarta />CARTA</button>
-            <button className="act stand" disabled={!myTurn || busy} onClick={() => act('stand')}><IconStai />STAI</button>
-            <button className="act dbl" disabled={!canDouble || busy} onClick={() => setConfirmDbl(true)}><IconDbl />RADDOPPIA</button>
+          <div className="actions">
+            <button className="btn" disabled={!myTurn || busy} onClick={() => act('hit')}>Carta</button>
+            <button className="btn ghost" disabled={!myTurn || busy} onClick={() => act('stand')}>Stai</button>
+            <button className="btn ghost" disabled={!canDouble || busy} onClick={() => setConfirmDbl(true)}>Raddoppia</button>
           </div>
         )}
-      </>
+      </section>,
+      `${grp(myBalance)} punti`
     );
   }
 
-  // PUNTATA (03) / RICEVUTA (11) — fase betting
+  // PUNTATA CONFERMATA / CARTE FISICHE — fase betting
   if (mySeat!.status === 'bet') {
-    return Shell(
-      <>
-        <div className="h1">Puntata confermata</div>
-        {t.dealer.cards.length === 0 && <div className="h2">In attesa della distribuzione</div>}
-        <div className="panel">
-          <div className="credit" style={{ fontSize: 30 }}><span className="mchip drop" />{mySeat!.bet}</div>
-          <div className="lbl" style={{ marginTop: 6 }}>{mySeat!.bet} crediti riservati · Disponibili {grp(myBalance)}</div>
+    const hybrid = t.mode === 'hybrid';
+    return Phone(hybrid ? 'Carte fisiche' : 'Confermata',
+      <section className="panel">
+        <h2>{hybrid ? 'Dealer umano' : 'Puntata confermata'}</h2>
+        <div className="status">{hybrid ? 'La puntata è registrata. Il mazziere distribuisce le carte vere.' : `In attesa della distribuzione${t.betEndsAt ? ` · ${fmtTime(betCd)}` : ''}`}</div>
+        <div className="list">
+          <div className="line"><strong>Puntata</strong><span>{mySeat!.bet} punti</span></div>
+          <div className="line"><strong>Disponibili</strong><span>{grp(myBalance)} punti</span></div>
         </div>
-        <div className="panel" style={{ padding: 12 }}><div className="note"><IconHourglass />{t.mode === 'hybrid' ? 'Il mazziere distribuisce le carte vere' : 'In attesa della distribuzione'}{t.betEndsAt ? ` · ${fmtTime(betCd)}` : ''}</div></div>
         {err && <div className="err">{err}</div>}
-        <button className="gbtn ghost" disabled={busy} onClick={unbet}>✎ Modifica puntata</button>
-      </>
+        {!hybrid && <div className="actions"><button className="btn ghost" disabled={busy} onClick={unbet}>Ritira puntata</button></div>}
+      </section>,
+      `${grp(myBalance)} punti`
     );
   }
-  // scelta puntata
+
+  // SCELTA PUNTATA
   const chips = [10, 20, 50, 100].filter(c => c <= t.maxBet);
   const cur = chip || (mySeat!.bet || Math.max(t.minBet, chips[0] || t.minBet));
   const dec = () => setChip(Math.max(t.minBet, cur - t.step));
   const inc = () => setChip(Math.min(t.maxBet, Math.min(myBalance, cur + t.step)));
-  const betPct = t.betSeconds ? Math.max(0, Math.min(100, (betCd / t.betSeconds) * 100)) : 0;
-  return Shell(
-    <>
-      <div className="h1">Fai la tua puntata</div>
-      <div className="panel"><div className="lbl">Credito disponibile</div><div className="credit"><span className="mchip" />{grp(myBalance)}</div></div>
-      <div className="step"><button className="rnd" onClick={dec}>−</button><div className="stepval">{cur}</div><button className="rnd" onClick={inc}>+</button></div>
-      <div className="chips">{chips.map(c => (
-        <div key={c} className={`chipcol${cur === c ? ' sel' : ''}`} onClick={() => setChip(c)}>
-          <div className="chip" style={{ background: CHIP_BG[c] }}><b>{c}</b></div>
-          <div className="chiplbl">{c}</div>
-        </div>
-      ))}</div>
-      {t.betEndsAt && <div className="panel" style={{ padding: '10px 12px' }}><div className="lbl" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><IconClock />Tempo rimanente</div><div className="big" style={{ fontSize: 32, marginTop: 2 }}>{fmtTime(betCd)}</div><div className="tbar"><i style={{ width: `${betPct}%` }} /></div></div>}
+  return Phone('Punta',
+    <section className="panel">
+      <h2>Puntata</h2>
+      <div className="step"><button className="rnd" onClick={dec}>−</button><div className="val">{cur}</div><button className="rnd" onClick={inc}>+</button></div>
+      <div className="row" style={{ justifyContent: 'center' }}>{chips.map(c => <span key={c} className={`chip${cur === c ? ' sel' : ''}`} onClick={() => setChip(c)}>{c}</span>)}</div>
+      {t.betEndsAt && <div className="status center">Tempo rimanente · {fmtTime(betCd)}</div>}
       {err && <div className="err">{err}</div>}
-      <button className="gbtn" disabled={busy || cur > myBalance} onClick={() => placeBet(cur)}>Conferma puntata ›</button>
-    </>
+      <div className="actions"><button className="btn" disabled={busy || cur > myBalance} onClick={() => placeBet(cur)}>Conferma puntata</button></div>
+    </section>,
+    `${grp(myBalance)} punti`
   );
 }
 
