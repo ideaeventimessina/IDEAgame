@@ -244,6 +244,11 @@ router.post("/gestione/casino/sessions/:id/players", async (req, res): Promise<v
   if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
   const nickname = String(req.body?.nickname ?? "").trim().slice(0, 30);
   if (!nickname) { res.status(400).json({ error: "Nome obbligatorio" }); return; }
+  // SELFIE OBBLIGATORIO: il casinò è un segnapunti, il dealer riconosce l'ospite dalla FACCIA.
+  // Senza una foto valida non si entra (regola richiesta da Andrea, 2026-11-12).
+  const photo = typeof req.body?.photo === "string" ? String(req.body.photo) : "";
+  if (!photo.startsWith("data:image/")) { res.status(400).json({ error: "Serve la foto: scatta un selfie per entrare" }); return; }
+  if (photo.length > 400_000) { res.status(400).json({ error: "Foto troppo grande, riprova" }); return; }
   const tableId = req.body?.tableId && isUUID(String(req.body.tableId)) ? String(req.body.tableId) : null;
   let playerCode = makeCode(7);
   for (let i = 0; i < 6; i++) { const [p] = await db.select({ id: casinoPlayersTable.id }).from(casinoPlayersTable).where(eq(casinoPlayersTable.playerCode, playerCode)); if (!p) break; playerCode = makeCode(7); }
@@ -252,8 +257,7 @@ router.post("/gestione/casino/sessions/:id/players", async (req, res): Promise<v
   const startFish = (cfgOf(session ?? {}).startFish) ?? DEFAULT_START_FISH;
   const [player] = await db.insert(casinoPlayersTable).values({ sessionId: id, nickname, playerCode, tableId, fishBalance: startFish }).returning();
   // Selfie al login (riconoscibile al tavolo): dataURL ~256px salvato in config (come la Home).
-  const photo = typeof req.body?.photo === "string" ? String(req.body.photo) : "";
-  if (photo.startsWith("data:image/") && photo.length <= 400_000) {
+  {
     const cur = cfgOf(session ?? {});
     await patchConfig(id, { playerAvatars: { ...(cur.playerAvatars ?? {}), [player!.id]: photo } });
   }

@@ -333,13 +333,14 @@ export function BlackjackPhone({ displayCode }: { displayCode: string }) {
 
   const enroll = async () => {
     const code = tableCode.trim().toUpperCase(); if (!code || !nick.trim()) { setErr('Inserisci codice e nome'); return; }
+    if (!photo) { setErr('Scatta il selfie per entrare'); return; } // SELFIE OBBLIGATORIO
     setBusy(true); setErr('');
     try {
       const info = await fetch(`${API}/gestione/casino/bj/${code}`).then(r => r.ok ? r.json() : null);
       if (!info?.sessionId) { setErr('Tavolo non trovato'); return; }
       const p = await api(`/gestione/casino/sessions/${info.sessionId}/players`, { nickname: nick.trim(), tableId: null, photo });
       if (p?.id && p?.playerCode) { try { localStorage.setItem('casino_player', p.playerCode); } catch { /* */ } setPlayerCode(p.playerCode); setMe({ id: p.id, nickname: p.nickname, fishBalance: p.fishBalance }); }
-      else setErr('Accesso non riuscito');
+      else setErr(p?.error || 'Accesso non riuscito');
     } finally { setBusy(false); }
   };
   const takeSeat = async (no: number) => {
@@ -360,7 +361,7 @@ export function BlackjackPhone({ displayCode }: { displayCode: string }) {
       <input type="text" value={tableCode} onChange={e => setTableCode(e.target.value)} placeholder="CODICE" />
       <div className="lbl left">Il tuo nome</div>
       <input type="text" className="name" value={nick} onChange={e => setNick(e.target.value)} placeholder="Come ti chiami" />
-      <div className="lbl">La tua foto (opzionale)</div>
+      <div className="lbl">📸 Il tuo selfie (obbligatorio)</div>
       <label className="photo" style={{ cursor: 'pointer' }}>
         {photo ? <img src={photo} alt="" /> : <div className="ph">👤</div>}
         <span className="cambadge" aria-hidden>
@@ -368,8 +369,9 @@ export function BlackjackPhone({ displayCode }: { displayCode: string }) {
         </span>
         <input type="file" accept="image/*" capture="user" style={{ display: 'none' }} onChange={async e => { const f = e.target.files?.[0]; if (f) setPhoto(await fileToAvatar(f)); }} />
       </label>
+      {!photo && <div className="h2" style={{ fontSize: 12, opacity: .7, margin: '2px 0 0' }}>Il dealer ti riconosce dalla faccia per darti i punti.</div>}
       {err && <div className="err">{err}</div>}
-      <button className="gbtn" disabled={busy} onClick={enroll}>Entra ›</button>
+      <button className="gbtn" disabled={busy || !photo} style={{ opacity: (busy || !photo) ? .5 : 1 }} onClick={enroll}>Entra ›</button>
     </>
   );
 

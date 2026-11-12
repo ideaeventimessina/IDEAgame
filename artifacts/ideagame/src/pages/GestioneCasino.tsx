@@ -1041,10 +1041,12 @@ function JoinView({ sessionId, suitePending, feedUrl }: { sessionId: string; sui
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const pick = async (f?: File) => { if (!f) return; try { setPhoto(await fileToAvatarDataUrl(f)); } catch { /* ignora */ } };
+  const [err, setErr] = useState('');
+  const pick = async (f?: File) => { if (!f) return; try { setPhoto(await fileToAvatarDataUrl(f)); setErr(''); } catch { /* ignora */ } };
   const join = async () => {
-    if (!nick.trim()) return;
-    setBusy(true);
+    if (!nick.trim()) { setErr('Scrivi il tuo nome'); return; }
+    if (!photo) { setErr('Scatta il selfie per entrare'); return; } // SELFIE OBBLIGATORIO
+    setBusy(true); setErr('');
     try {
       // PONTE SUITE: se arriviamo da un riscatto senza nome (privacy), il giocatore
       // lo creiamo noi legandolo al playerId Suite (base fiche una volta sola).
@@ -1052,6 +1054,7 @@ function JoinView({ sessionId, suitePending, feedUrl }: { sessionId: string; sui
         ? await api(`/ponte/casino/guest/join`, { sessionId, pendingToken: suitePending, nickname: nick, photo })
         : await api(`/gestione/casino/sessions/${sessionId}/players`, { nickname: nick, photo });
       if (p?.playerCode) { window.location.href = `${ORIGIN}gestione/casino?player=${p.playerCode}`; return; }
+      if (p?.error) { setErr(p.error); return; }
       if (suitePending && feedUrl) { window.location.href = feedUrl; return; } // gettone scaduto → torna al feed
     } finally { setBusy(false); }
   };
@@ -1059,7 +1062,7 @@ function JoinView({ sessionId, suitePending, feedUrl }: { sessionId: string; sui
     <Center>
       <div style={{ textAlign: 'center', maxWidth: 360, width: '100%' }}>
         <CasinoWordmark size={30} />
-        <div style={{ opacity: 0.6, margin: '8px 0 20px', fontSize: 14 }}>Fai il tuo selfie e ricevi <b style={{ color: GOLD }}>500 fiche</b></div>
+        <div style={{ opacity: 0.6, margin: '8px 0 20px', fontSize: 14 }}>Scatta il selfie (obbligatorio) e ricevi <b style={{ color: GOLD }}>500 punti</b></div>
 
         <input ref={fileRef} type="file" accept="image/*" capture="user" style={{ display: 'none' }} onChange={e => pick(e.target.files?.[0])} />
         <motion.button whileTap={{ scale: 0.95 }} onClick={() => fileRef.current?.click()}
@@ -1069,8 +1072,9 @@ function JoinView({ sessionId, suitePending, feedUrl }: { sessionId: string; sui
         </motion.button>
 
         <input value={nick} onChange={e => setNick(e.target.value)} placeholder="Il tuo nome" onKeyDown={e => e.key === 'Enter' && join()} style={{ ...inp, width: '100%', textAlign: 'center', fontSize: 18, marginBottom: 12 }} />
-        <motion.button whileTap={{ scale: 0.97 }} onClick={join} disabled={busy} style={{ ...btn(GOLD), width: '100%', padding: 16, fontSize: 18 }}>{busy ? '…' : 'Entra al casinò 🎰'}</motion.button>
-        {!photo && <div style={{ fontSize: 12, opacity: 0.4, marginTop: 10 }}>Il selfie ti rende riconoscibile al tavolo (puoi anche saltarlo).</div>}
+        <motion.button whileTap={{ scale: 0.97 }} onClick={join} disabled={busy || !nick.trim() || !photo} style={{ ...btn(GOLD), width: '100%', padding: 16, fontSize: 18, opacity: (busy || !nick.trim() || !photo) ? 0.5 : 1 }}>{busy ? '…' : 'Entra al casinò 🎰'}</motion.button>
+        {err && <div style={{ color: '#ff9b9b', fontSize: 13, marginTop: 10 }}>{err}</div>}
+        {!photo && <div style={{ fontSize: 12, opacity: 0.55, marginTop: 10 }}>📸 Il selfie è obbligatorio: al tavolo il dealer ti riconosce dalla faccia.</div>}
       </div>
     </Center>
   );
