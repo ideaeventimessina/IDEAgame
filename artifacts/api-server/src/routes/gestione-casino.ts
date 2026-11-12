@@ -21,6 +21,7 @@ import {
   PAYOUT, bjOutcome, creditFor,
   rouletteWinMoves, alreadySettled, rouletteCanSpin,
   payAll, type FishTx, type FishMove,
+  type SmSuit, type SmCard, smHandTotal, smBust, smOutcome, smCreditFor,
 } from "./gestione-casino-atomic-lib.js";
 import {
   HORSES as SPRINT_HORSES, RULES as SPRINT_RULES, projectRace, snapToGrid,
@@ -107,6 +108,7 @@ type CasinoConfig = {
   siciliaTables?: Record<string, SiciliaTable>;
   sprintTables?: Record<string, SprintTable>;
   poolTables?: Record<string, PoolTable>;
+  smTables?: Record<string, SmTable>;
 };
 const cfgOf = (session: { config?: unknown }): CasinoConfig => (session?.config ?? {}) as CasinoConfig;
 async function patchConfig(id: string, patch: Partial<CasinoConfig>): Promise<void> {
@@ -1022,6 +1024,456 @@ router.post("/gestione/casino/bj/double", async (req, res): Promise<void> => {
     return { save: true, status: 200, body: { ok: true, balance: bal } };
   });
   res.status(out.status).json(out.body);
+});
+
+/* ═══ SETTE E MEZZO ───────────────────────────────────────────────────────────
+   Tavolo interattivo 80" + telefono di ogni giocatore. Motore server-autorevole:
+   mazzo SICILIANO da 40 carte mescolato con RNG sicuro. Punto = avvicinarsi a 7½
+   senza sballare; figure (fante/cavallo/re) = ½; matta = Re di Denari. Il giocatore
+   fa CARTA/STO; il banco pesca finché resta sotto la soglia e poi si ferma; pareggio
+   vince il banco. Vincita 1:1 (puntate intere ⇒ payout intero). Stato in config.smTables.
+   La MATTA e i valori stanno nell'atomic-lib (testabili). */
+type SmStatus = "empty" | "joined" | "bet" | "playing" | "stand" | "bust" | "done";
+type SmSeat = { code: string; playerId: string | null; bet: number; cards: SmCard[]; status: SmStatus; outcome: string | null; profit: number };
+type SmResultRow = { seatNo: number; nickname: string; bet: number; total: number; outcome: string; profit: number };
+type SmHistory = { hand: number; at: string; bancoTotal: number; bancoCards: SmCard[]; results: SmResultRow[] };
+type SmTable = {
+  id: string; type: "settemezzo"; name: string; displayCode: string;
+  phase: "waiting" | "betting" | "playing" | "result";
+  round: number;
+  seats: Record<string, SmSeat>;
+  banco: SmCard[]; shoe: SmCard[];
+  activeSeat: number | null; turnEndsAt: string | null; betEndsAt: string | null;
+  minBet: number; maxBet: number; step: number; timeout: number; betSeconds: number;
+  bancoStandAt: number;   // il banco pesca finché il punto è < soglia (default 5)
+  suspended: boolean;
+  settledHand?: number;   // mano già saldata (idempotenza)
+  dealerCode?: string | null;   // se valorizzato: un mazziere comanda il tavolo dal suo telefono
+  mode?: "digital" | "hybrid"; // digital = il motore distribuisce le carte; hybrid = carte FISICHE, il mazziere segna i vincitori
+  history: SmHistory[];
+};
+
+const SM_SUITS: SmSuit[] = ["coppe", "denari", "spade", "bastoni"];
+function freshSmDeck(): SmCard[] {
+  const cards: SmCard[] = [];
+  for (const s of SM_SUITS) for (let r = 1; r <= 10; r++) cards.push({ suit: s, rank: r });
+  for (let i = cards.length - 1; i > 0; i--) { const j = randomInt(i + 1); const t = cards[i]!; cards[i] = cards[j]!; cards[j] = t; }
+  return cards;
+}
+function drawSm(t: SmTable): SmCard { if (t.shoe.length === 0) t.shoe = freshSmDeck(); return t.shoe.shift()!; }
+
+async function findSmTable(code: string): Promise<{ sessionId: string; table: SmTable; seatNo?: number; isDealer?: boolean } | null> {
+  const c = code.toUpperCase().trim();
+  const sessions = await db.select().from(casinoSessionsTable).where(eq(casinoSessionsTable.status, "active"));
+  for (const s of sessions) {
+    const cfg = (s.config ?? {}) as CasinoConfig;
+    for (const t of Object.values(cfg.smTables ?? {})) {
+      if (t.displayCode === c) return { sessionId: s.id, table: t };
+      if (t.dealerCode && t.dealerCode === c) return { sessionId: s.id, table: t, isDealer: true };
+      for (const [no, seat] of Object.entries(t.seats)) if (seat.code === c) return { sessionId: s.id, table: t, seatNo: Number(no) };
+    }
+  }
+  return null;
+}
+async function saveSmTable(sessionId: string, table: SmTable): Promise<void> {
+  await db.transaction(async (tx) => {
+    const [s] = await tx.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, sessionId)).for("update");
+    const cur = (s?.config ?? {}) as CasinoConfig;
+    await tx.update(casinoSessionsTable).set({ config: { ...cur, smTables: { ...(cur.smTables ?? {}), [table.id]: table } } }).where(eq(casinoSessionsTable.id, sessionId));
+  });
+}
+// Stato ripulito per il client (niente shoe; il codice dealer non si espone mai).
+async function smState(sessionId: string, table: SmTable) {
+  const ids = Object.values(table.seats).map(s => s.playerId).filter((x): x is string => !!x);
+  const players = ids.length ? await db.select().from(casinoPlayersTable).where(inArray(casinoPlayersTable.id, ids)) : [];
+  const [sess] = await db.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, sessionId));
+  const avatars = ((sess?.config ?? {}) as CasinoConfig).playerAvatars ?? {};
+  const pMap = new Map(players.map(p => [p.id, p]));
+  const seats: Record<string, unknown> = {};
+  for (const [no, s] of Object.entries(table.seats)) {
+    const p = s.playerId ? pMap.get(s.playerId) : null;
+    seats[no] = { code: s.code, playerId: s.playerId, nickname: p?.nickname ?? null, avatarUrl: p ? (avatars[p.id] ?? null) : null,
+      balance: p?.fishBalance ?? null, bet: s.bet, cards: s.cards, total: s.cards.length ? smHandTotal(s.cards) : null,
+      status: s.status, outcome: s.outcome, profit: s.profit };
+  }
+  return {
+    table: {
+      id: table.id, name: table.name, displayCode: table.displayCode, type: "settemezzo",
+      phase: table.phase, round: table.round, seats,
+      banco: { cards: table.banco, total: table.banco.length ? smHandTotal(table.banco) : null },
+      activeSeat: table.activeSeat, turnEndsAt: table.turnEndsAt, betEndsAt: table.betEndsAt,
+      minBet: table.minBet, maxBet: table.maxBet, step: table.step, timeout: table.timeout, betSeconds: table.betSeconds,
+      bancoStandAt: table.bancoStandAt, suspended: table.suspended, hasDealer: !!table.dealerCode, mode: table.mode ?? "digital",
+      history: table.history.slice(0, 20),
+    },
+    sessionId,
+  };
+}
+// Prossima postazione che deve ancora giocare (ordine di posto).
+function nextSmActive(table: SmTable): number | null {
+  for (const no of Object.keys(table.seats).map(Number).sort((a, b) => a - b)) {
+    const s = table.seats[String(no)]!;
+    if (s.bet > 0 && s.status === "playing") return no;
+  }
+  return null;
+}
+// Chiude la mano: il banco pesca fino alla soglia, salda ogni posto, accredita, storicizza.
+// ATOMICO (accrediti via tx) + IDEMPOTENTE (settledHand === round ⇒ non ripaga).
+async function finishSmHand(tx: Tx, sessionId: string, table: SmTable): Promise<void> {
+  if (alreadySettled(table.settledHand, table.round)) return;
+  const alive = Object.values(table.seats).some(s => s.bet > 0 && s.status === "stand");
+  if (alive) {
+    for (let guard = 0; guard < 20; guard++) {
+      if (smHandTotal(table.banco) < table.bancoStandAt) { table.banco.push(drawSm(table)); continue; }
+      break;
+    }
+  }
+  const bancoTotal = smHandTotal(table.banco);
+  const bancoBust = smBust(table.banco);
+  const ids = Object.values(table.seats).map(s => s.playerId).filter((x): x is string => !!x);
+  const players = ids.length ? await tx.select().from(casinoPlayersTable).where(inArray(casinoPlayersTable.id, ids)) : [];
+  const pMap = new Map(players.map(p => [p.id, p]));
+  const results: SmResultRow[] = [];
+  for (const [no, s] of Object.entries(table.seats)) {
+    if (s.bet <= 0 || !s.playerId) continue;
+    const pBust = s.status === "bust" || smBust(s.cards);
+    const pTotal = smHandTotal(s.cards);
+    const outcome = smOutcome(pBust, pTotal, bancoBust, bancoTotal);
+    const credit = smCreditFor(outcome, s.bet);
+    s.outcome = outcome; s.profit = credit - s.bet; s.status = "done";
+    const p = pMap.get(s.playerId);
+    if (credit > 0 && p) {
+      const nb = await moveFish(tx, sessionId, { playerId: p.id, delta: credit, kind: "settemezzo_win", tableId: null });
+      if (nb != null) p.fishBalance = nb;
+    }
+    results.push({ seatNo: Number(no), nickname: p?.nickname ?? "—", bet: s.bet, total: pTotal, outcome, profit: s.profit });
+  }
+  table.history.unshift({ hand: table.round, at: new Date().toISOString(), bancoTotal, bancoCards: [...table.banco], results });
+  table.history = table.history.slice(0, 50);
+  table.settledHand = table.round;
+  table.activeSeat = null; table.turnEndsAt = null; table.phase = "result";
+}
+// Dopo un'azione: passa al prossimo giocatore o chiude la mano.
+async function advanceSm(tx: Tx, sessionId: string, table: SmTable): Promise<void> {
+  const nxt = nextSmActive(table);
+  if (nxt != null) { table.activeSeat = nxt; table.turnEndsAt = new Date(Date.now() + table.timeout * 1000).toISOString(); table.phase = "playing"; return; }
+  await finishSmHand(tx, sessionId, table);
+}
+
+/* ── Creazione / elenco (regia) ── */
+router.post("/gestione/casino/sessions/:id/sm-tables", async (req, res): Promise<void> => {
+  const { id } = req.params;
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const b = req.body as { name?: string; seats?: number; minBet?: number; maxBet?: number; step?: number; timeout?: number; betSeconds?: number; bancoStandAt?: number };
+  const seatsN = Math.min(7, Math.max(1, Math.round(Number(b.seats) || 7)));
+  const seats: Record<string, SmSeat> = {};
+  for (let i = 1; i <= seatsN; i++) seats[String(i)] = { code: makeCode(6), playerId: null, bet: 0, cards: [], status: "empty", outcome: null, profit: 0 };
+  const table: SmTable = {
+    id: makeCode(8), type: "settemezzo", name: (b.name || "Sette e Mezzo").slice(0, 40), displayCode: makeCode(6),
+    phase: "waiting", round: 1, seats, banco: [], shoe: freshSmDeck(), activeSeat: null, turnEndsAt: null, betEndsAt: null,
+    minBet: Math.max(1, Math.round(Number(b.minBet) || 10)), maxBet: Math.max(1, Math.round(Number(b.maxBet) || 500)),
+    step: Math.max(1, Math.round(Number(b.step) || 10)), timeout: Math.max(10, Math.round(Number(b.timeout) || 30)),
+    betSeconds: Math.max(10, Math.round(Number(b.betSeconds) || 30)),
+    bancoStandAt: Math.min(7, Math.max(4, Number(b.bancoStandAt) || 5)), suspended: false, dealerCode: null, mode: "digital", history: [],
+  };
+  await saveSmTable(id, table);
+  res.json(await smState(id, table));
+});
+router.get("/gestione/casino/sessions/:id/sm-tables", async (req, res): Promise<void> => {
+  const { id } = req.params;
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const [s] = await db.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, id));
+  const tables = Object.values(((s?.config ?? {}) as CasinoConfig).smTables ?? {}).map(t => ({
+    id: t.id, name: t.name, displayCode: t.displayCode, phase: t.phase, round: t.round, suspended: t.suspended,
+    seatsN: Object.keys(t.seats).length, occupied: Object.values(t.seats).filter(x => x.playerId).length,
+    minBet: t.minBet, maxBet: t.maxBet, timeout: t.timeout, hasDealer: !!t.dealerCode, mode: t.mode ?? "digital",
+  }));
+  res.json({ tables });
+});
+
+/* ── Stato tavolo (monitor 80" + telefono) ── */
+router.get("/gestione/casino/sm/:code", async (req, res): Promise<void> => {
+  const code = (req.params.code || "").toUpperCase();
+  const found = await findSmTable(code);
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  // Timeout turno lato server: scaduto ⇒ forza STO e avanza (chiusura + pagamenti atomici, idempotenti).
+  if (found.table.phase === "playing" && found.table.turnEndsAt && Date.now() > Date.parse(found.table.turnEndsAt) + 1500) {
+    const tableId = found.table.id;
+    await mutateSession<null>(found.sessionId, async (tx, cfg) => {
+      const t = cfg.smTables?.[tableId];
+      if (!t || !(t.phase === "playing" && t.turnEndsAt && Date.now() > Date.parse(t.turnEndsAt) + 1500)) return { save: false, result: null };
+      const no = t.activeSeat; if (no == null) return { save: false, result: null };
+      const s = t.seats[String(no)]; if (!s || s.status !== "playing") return { save: false, result: null };
+      s.status = "stand"; await advanceSm(tx, found.sessionId, t);
+      return { save: true, result: null };
+    });
+  }
+  const fresh = await findSmTable(code) ?? found;
+  const st = await smState(fresh.sessionId, fresh.table);
+  res.json({ ...st, seatNo: fresh.seatNo ?? null, isDealer: !!fresh.isDealer });
+});
+
+/* ── Regia: apri puntate / distribuisci / impostazioni / sospendi ── */
+router.post("/gestione/casino/sm/open", async (req, res): Promise<void> => {
+  const found = await findSmTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const t = found.table;
+  if (t.suspended) { res.status(409).json({ error: "Tavolo sospeso" }); return; }
+  if (t.phase === "result") t.round += 1;
+  if (t.shoe.length < 14) t.shoe = freshSmDeck(); // rimescola il mazzo siciliano quando è quasi finito
+  for (const s of Object.values(t.seats)) { s.bet = 0; s.cards = []; s.outcome = null; s.profit = 0; s.status = s.playerId ? "joined" : "empty"; }
+  t.banco = []; t.activeSeat = null; t.turnEndsAt = null;
+  t.phase = "betting"; t.betEndsAt = new Date(Date.now() + t.betSeconds * 1000).toISOString();
+  await saveSmTable(found.sessionId, t);
+  res.json({ ok: true });
+});
+router.post("/gestione/casino/sm/deal", async (req, res): Promise<void> => {
+  const loc = await findSmTable((req.body?.displayCode || "").toUpperCase());
+  if (!loc) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const tableId = loc.table.id;
+  const out = await mutateSession<{ status: number; body: Record<string, unknown> }>(loc.sessionId, async (tx, cfg) => {
+    const t = cfg.smTables?.[tableId];
+    if (!t) return { save: false, result: { status: 404, body: { error: "Tavolo non trovato" } } };
+    if (t.mode === "hybrid") return { save: false, result: { status: 409, body: { error: "Tavolo in modalità carte fisiche: il mazziere segna gli esiti" } } };
+    if (t.phase !== "betting") return { save: false, result: { status: 409, body: { error: "Non in fase puntate" } } };
+    // Come il blackjack: la mano parte anche senza puntate (il banco gioca da solo).
+    const participants = Object.entries(t.seats).filter(([, s]) => s.bet > 0 && s.playerId);
+    t.betEndsAt = null;
+    for (const [, s] of participants) { s.cards = [drawSm(t)]; s.status = "playing"; }
+    t.banco = [drawSm(t)];                 // una carta scoperta del banco (gioca per ultimo)
+    t.phase = "playing";
+    await advanceSm(tx, loc.sessionId, t); // primo giocatore, o chiusura se nessuno ha puntato
+    return { save: true, result: { status: 200, body: { ok: true } } };
+  });
+  res.status(out.status).json(out.body);
+});
+router.post("/gestione/casino/sm/settings", async (req, res): Promise<void> => {
+  const found = await findSmTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const t = found.table;
+  if (t.phase === "playing") { res.status(409).json({ error: "Mano in corso" }); return; }
+  const b = req.body as { minBet?: number; maxBet?: number; step?: number; timeout?: number; betSeconds?: number; bancoStandAt?: number };
+  if (b.minBet != null) t.minBet = Math.max(1, Math.round(b.minBet));
+  if (b.maxBet != null) t.maxBet = Math.max(t.minBet, Math.round(b.maxBet));
+  if (b.step != null) t.step = Math.max(1, Math.round(b.step));
+  if (b.timeout != null) t.timeout = Math.max(10, Math.round(b.timeout));
+  if (b.betSeconds != null) t.betSeconds = Math.max(10, Math.round(b.betSeconds));
+  if (b.bancoStandAt != null) t.bancoStandAt = Math.min(7, Math.max(4, Number(b.bancoStandAt)));
+  await saveSmTable(found.sessionId, t);
+  res.json({ ok: true });
+});
+router.post("/gestione/casino/sm/suspend", async (req, res): Promise<void> => {
+  const found = await findSmTable((req.body?.displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  found.table.suspended = !!req.body?.suspended;
+  await saveSmTable(found.sessionId, found.table);
+  res.json({ ok: true, suspended: found.table.suspended });
+});
+
+/* ── Telefono: scelta posto, puntata, azioni (CARTA / STO) ── */
+router.post("/gestione/casino/sm/join", async (req, res): Promise<void> => {
+  const { displayCode, seatNo, playerCode, playerId } = req.body as { displayCode?: string; seatNo?: number; playerCode?: string; playerId?: string };
+  const found = await findSmTable((displayCode || "").toUpperCase());
+  if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  const t = found.table;
+  if (t.suspended) { res.status(409).json({ error: "Tavolo sospeso" }); return; }
+  const no = String(Math.round(Number(seatNo)));
+  const seat = t.seats[no];
+  if (!seat) { res.status(400).json({ error: "Posto inesistente" }); return; }
+  const [player] = playerId && isUUID(playerId)
+    ? await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.id, playerId))
+    : await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.playerCode, (playerCode || "").toUpperCase()));
+  if (!player) { res.status(404).json({ error: "Giocatore non trovato" }); return; }
+  if (seat.playerId && seat.playerId !== player.id) { res.status(409).json({ error: "Posto occupato" }); return; }
+  for (const other of Object.values(t.seats)) if (other.playerId === player.id && other !== seat) { other.playerId = null; other.status = "empty"; other.bet = 0; other.cards = []; }
+  seat.playerId = player.id;
+  if (seat.status === "empty") seat.status = "joined";
+  await saveSmTable(found.sessionId, t);
+  res.json({ ok: true, seatNo: Number(no), seatCode: seat.code, player: { id: player.id, nickname: player.nickname, fishBalance: player.fishBalance } });
+});
+router.post("/gestione/casino/sm/bet", async (req, res): Promise<void> => {
+  const { seatCode, amount } = req.body as { seatCode?: string; amount?: number };
+  const loc = await findSmTable((seatCode || "").toUpperCase());
+  if (!loc || loc.seatNo == null) { res.status(404).json({ error: "Posto non trovato" }); return; }
+  const seatNo = loc.seatNo, tableId = loc.table.id;
+  const amt = Math.round(Number(amount));
+  const out = await mutateSession<{ status: number; body: Record<string, unknown> }>(loc.sessionId, async (tx, cfg) => {
+    const t = cfg.smTables?.[tableId];
+    if (!t) return { save: false, result: { status: 404, body: { error: "Posto non trovato" } } };
+    const seat = t.seats[String(seatNo)];
+    if (!seat) return { save: false, result: { status: 404, body: { error: "Posto non trovato" } } };
+    if (t.phase !== "betting") return { save: false, result: { status: 409, body: { error: "Puntate chiuse" } } };
+    if (!seat.playerId) return { save: false, result: { status: 409, body: { error: "Posto libero" } } };
+    if (!(amt > 0) || amt < t.minBet || amt > t.maxBet || amt % t.step !== 0) return { save: false, result: { status: 400, body: { error: `Puntata ${t.minBet}–${t.maxBet}, multipli di ${t.step}` } } };
+    const delta = seat.bet - amt; // >0 rimborso, <0 addebito differenziale
+    const bal = await moveFish(tx, loc.sessionId, { playerId: seat.playerId, delta, kind: "settemezzo_bet", tableId: null, requireFunds: true });
+    if (bal == null) return { save: false, result: { status: 409, body: { error: "Credito insufficiente" } } };
+    seat.bet = amt; seat.status = "bet";
+    return { save: true, result: { status: 200, body: { ok: true, balance: bal, reserved: amt } } };
+  });
+  res.status(out.status).json(out.body);
+});
+router.post("/gestione/casino/sm/unbet", async (req, res): Promise<void> => {
+  const loc = await findSmTable((req.body?.seatCode || "").toUpperCase());
+  if (!loc || loc.seatNo == null) { res.status(404).json({ error: "Posto non trovato" }); return; }
+  const seatNo = loc.seatNo, tableId = loc.table.id;
+  const out = await mutateSession<{ status: number; body: Record<string, unknown> }>(loc.sessionId, async (tx, cfg) => {
+    const t = cfg.smTables?.[tableId];
+    if (!t) return { save: false, result: { status: 404, body: { error: "Posto non trovato" } } };
+    const seat = t.seats[String(seatNo)];
+    if (!seat || t.phase !== "betting" || seat.bet <= 0 || !seat.playerId) return { save: false, result: { status: 409, body: { error: "Niente da annullare" } } };
+    await moveFish(tx, loc.sessionId, { playerId: seat.playerId, delta: seat.bet, kind: "settemezzo_unbet", tableId: null });
+    seat.bet = 0; seat.status = "joined";
+    return { save: true, result: { status: 200, body: { ok: true } } };
+  });
+  res.status(out.status).json(out.body);
+});
+// Azione del giocatore (carta/sto) ATOMICA: rivalida posto/fase/turno/proprietà sul fresco.
+async function smAction(
+  body: unknown,
+  act: (tx: Tx, sessionId: string, table: SmTable, seat: SmSeat) => Promise<{ save: boolean; status: number; body: Record<string, unknown> }>,
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const b = (body ?? {}) as { seatCode?: string; playerCode?: string };
+  const loc = await findSmTable((b.seatCode || "").toUpperCase());
+  if (!loc || loc.seatNo == null) return { status: 404, body: { error: "Posto non trovato" } };
+  const seatNo = loc.seatNo, tableId = loc.table.id;
+  return mutateSession(loc.sessionId, async (tx, cfg) => {
+    const table = cfg.smTables?.[tableId];
+    const seat = table?.seats[String(seatNo)];
+    if (!table || !seat) return { save: false, result: { status: 404, body: { error: "Posto non trovato" } } };
+    if (table.phase !== "playing") return { save: false, result: { status: 409, body: { error: "Non è fase di gioco" } } };
+    if (table.activeSeat !== seatNo) return { save: false, result: { status: 409, body: { error: "Non è il tuo turno" } } };
+    if (seat.status !== "playing") return { save: false, result: { status: 409, body: { error: "Turno concluso" } } };
+    if (b.playerCode) {
+      const [p] = await tx.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.playerCode, b.playerCode.toUpperCase()));
+      if (!p || p.id !== seat.playerId) return { save: false, result: { status: 403, body: { error: "Non autorizzato" } } };
+    }
+    const r = await act(tx, loc.sessionId, table, seat);
+    return { save: r.save, result: { status: r.status, body: r.body } };
+  });
+}
+router.post("/gestione/casino/sm/hit", async (req, res): Promise<void> => {
+  const out = await smAction(req.body, async (tx, sid, table, seat) => {
+    seat.cards.push(drawSm(table));
+    if (smBust(seat.cards)) seat.status = "bust";
+    await advanceSm(tx, sid, table);
+    return { save: true, status: 200, body: { ok: true } };
+  });
+  res.status(out.status).json(out.body);
+});
+router.post("/gestione/casino/sm/stand", async (req, res): Promise<void> => {
+  const out = await smAction(req.body, async (tx, sid, table, seat) => {
+    seat.status = "stand";
+    await advanceSm(tx, sid, table);
+    return { save: true, status: 200, body: { ok: true } };
+  });
+  res.status(out.status).json(out.body);
+});
+
+/* ── 7½ IBRIDO (carte FISICHE) — il mazziere comanda dal suo telefono ──────────
+   Flusso: la regia lega un mazziere al tavolo e lo mette in modalità "hybrid".
+   Il mazziere apre la mano (puntate), i giocatori puntano dal telefono, lui
+   distribuisce carte VERE sul tavolo, poi sul telefono segna chi ha vinto e paga
+   (vincita 1:1). Pareggi/perdite restano al banco (stake già scalato). Idempotente. */
+// Regia: lega/slega un mazziere al tavolo 7½ (gli dà il comando dal telefono).
+router.post("/gestione/casino/sessions/:id/sm-tables/:tableId/dealer", async (req, res): Promise<void> => {
+  const id = String(req.params["id"]); const tableId = String(req.params["tableId"]);
+  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const assign = req.body?.assign !== false;
+  const out = await mutateSession<{ status: number; body: Record<string, unknown> }>(id, async (_tx, cfg) => {
+    const t = cfg.smTables?.[tableId];
+    if (!t) return { save: false, result: { status: 404, body: { error: "Tavolo non trovato" } } };
+    t.dealerCode = assign ? (t.dealerCode || makeCode(6)) : null;
+    if (!assign) t.mode = "digital"; // slegando il mazziere il tavolo torna autonomo
+    return { save: true, result: { status: 200, body: { ok: true, dealerCode: t.dealerCode } } };
+  });
+  res.status(out.status).json(out.body);
+});
+// Mazziere: imposta la modalità del tavolo (digital = motore / hybrid = carte fisiche).
+router.post("/gestione/casino/sm/dealer-mode", async (req, res): Promise<void> => {
+  const dealerCode = String(req.body?.dealerCode ?? "").toUpperCase().trim();
+  const mode = req.body?.mode === "hybrid" ? "hybrid" : "digital";
+  const found = await findSmTable(dealerCode);
+  if (!found || !found.isDealer) { res.status(403).json({ error: "Mazziere non autorizzato" }); return; }
+  const tableId = found.table.id;
+  const out = await mutateSession<{ status: number; body: Record<string, unknown> }>(found.sessionId, async (_tx, cfg) => {
+    const t = cfg.smTables?.[tableId];
+    if (!t || t.dealerCode !== dealerCode) return { save: false, result: { status: 403, body: { error: "Mazziere non autorizzato" } } };
+    if (t.phase === "playing") return { save: false, result: { status: 409, body: { error: "Mano in corso" } } };
+    t.mode = mode;
+    // reset pulito al cambio modalità
+    for (const s of Object.values(t.seats)) { s.bet = 0; s.cards = []; s.outcome = null; s.profit = 0; s.status = s.playerId ? "joined" : "empty"; }
+    t.banco = []; t.activeSeat = null; t.turnEndsAt = null; t.betEndsAt = null; t.phase = "waiting";
+    return { save: true, result: { status: 200, body: { ok: true, mode } } };
+  });
+  res.status(out.status).json(out.body);
+});
+// Mazziere (hybrid): apre la fase puntate. I giocatori puntano dal telefono.
+router.post("/gestione/casino/sm/dealer-open", async (req, res): Promise<void> => {
+  const dealerCode = String(req.body?.dealerCode ?? "").toUpperCase().trim();
+  const found = await findSmTable(dealerCode);
+  if (!found || !found.isDealer) { res.status(403).json({ error: "Mazziere non autorizzato" }); return; }
+  const tableId = found.table.id;
+  const out = await mutateSession<{ status: number; body: Record<string, unknown> }>(found.sessionId, async (_tx, cfg) => {
+    const t = cfg.smTables?.[tableId];
+    if (!t || t.dealerCode !== dealerCode) return { save: false, result: { status: 403, body: { error: "Mazziere non autorizzato" } } };
+    if (t.suspended) return { save: false, result: { status: 409, body: { error: "Tavolo sospeso" } } };
+    if (t.phase === "result") t.round += 1;
+    t.mode = "hybrid";
+    for (const s of Object.values(t.seats)) { s.bet = 0; s.cards = []; s.outcome = null; s.profit = 0; s.status = s.playerId ? "joined" : "empty"; }
+    t.banco = []; t.activeSeat = null; t.turnEndsAt = null; t.betEndsAt = null; t.phase = "betting";
+    return { save: true, result: { status: 200, body: { ok: true } } };
+  });
+  res.status(out.status).json(out.body);
+});
+// Mazziere (hybrid): segna i vincitori (playerId[]) e paga 1:1. Idempotente per mano.
+router.post("/gestione/casino/sm/dealer-settle", async (req, res): Promise<void> => {
+  const dealerCode = String(req.body?.dealerCode ?? "").toUpperCase().trim();
+  const winners = Array.isArray(req.body?.winners) ? (req.body.winners as unknown[]).map(String) : [];
+  const found = await findSmTable(dealerCode);
+  if (!found || !found.isDealer) { res.status(403).json({ error: "Mazziere non autorizzato" }); return; }
+  const tableId = found.table.id;
+  const out = await mutateSession<{ status: number; body: Record<string, unknown> }>(found.sessionId, async (tx, cfg) => {
+    const t = cfg.smTables?.[tableId];
+    if (!t || t.dealerCode !== dealerCode) return { save: false, result: { status: 403, body: { error: "Mazziere non autorizzato" } } };
+    if (t.phase !== "betting") return { save: false, result: { status: 409, body: { error: "Apri prima una mano" } } };
+    if (alreadySettled(t.settledHand, t.round)) return { save: false, result: { status: 200, body: { ok: true, already: true } } };
+    const winSet = new Set(winners);
+    const results: SmResultRow[] = [];
+    const ids = Object.values(t.seats).map(s => s.playerId).filter((x): x is string => !!x);
+    const players = ids.length ? await tx.select().from(casinoPlayersTable).where(inArray(casinoPlayersTable.id, ids)) : [];
+    const pMap = new Map(players.map(p => [p.id, p]));
+    for (const [no, s] of Object.entries(t.seats)) {
+      if (s.bet <= 0 || !s.playerId) continue;
+      const won = winSet.has(s.playerId);
+      const credit = won ? s.bet * 2 : 0;
+      s.outcome = won ? "win" : "lose"; s.profit = credit - s.bet; s.status = "done";
+      if (credit > 0) await moveFish(tx, found.sessionId, { playerId: s.playerId, delta: credit, kind: "settemezzo_win", tableId: null });
+      results.push({ seatNo: Number(no), nickname: pMap.get(s.playerId)?.nickname ?? "—", bet: s.bet, total: 0, outcome: s.outcome, profit: s.profit });
+    }
+    t.history.unshift({ hand: t.round, at: new Date().toISOString(), bancoTotal: 0, bancoCards: [], results });
+    t.history = t.history.slice(0, 50);
+    t.settledHand = t.round; t.phase = "result";
+    return { save: true, result: { status: 200, body: { ok: true } } };
+  });
+  if (out.status === 200) await broadcast(found.sessionId);
+  res.status(out.status).json(out.body);
+});
+// Mazziere: accredita/toglie fish a un giocatore (atomico, guard anti-scoperto).
+router.post("/gestione/casino/sm/dealer-tx", async (req, res): Promise<void> => {
+  const dealerCode = String(req.body?.dealerCode ?? "").toUpperCase().trim();
+  const delta = Math.round(Number(req.body?.delta));
+  if (!Number.isFinite(delta) || delta === 0) { res.status(400).json({ error: "Importo non valido" }); return; }
+  const found = await findSmTable(dealerCode);
+  if (!found || !found.isDealer) { res.status(403).json({ error: "Mazziere non autorizzato" }); return; }
+  const playerId = String(req.body?.playerId ?? "");
+  if (!isUUID(playerId)) { res.status(400).json({ error: "Giocatore non valido" }); return; }
+  const [player] = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.id, playerId));
+  if (!player || player.sessionId !== found.sessionId) { res.status(404).json({ error: "Giocatore non trovato in questa serata" }); return; }
+  const newBalance = await db.transaction((tx) => moveFish(tx, found.sessionId, { playerId, delta, kind: delta > 0 ? "dealer_pay" : "dealer_take", tableId: null, requireFunds: true }));
+  if (newBalance == null) { res.status(409).json({ error: "Fish insufficienti", balance: player.fishBalance }); return; }
+  await broadcast(found.sessionId);
+  res.json({ ok: true, balance: newBalance });
 });
 
 /* ════════════════════════════════════════════════════════════════════════════

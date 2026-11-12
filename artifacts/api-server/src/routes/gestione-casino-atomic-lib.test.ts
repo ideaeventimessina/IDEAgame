@@ -172,3 +172,41 @@ test("save config serializzato (lock): due tavoli della stessa serata si preserv
   const clobbered = staleB["gameTables"] as Record<string, unknown>;
   assert.deepEqual(Object.keys(clobbered).sort(), ["T1"]);              // T2 perso
 });
+
+/* ── Sette e Mezzo: valori, matta, sballo ed esiti ──────────────────────────── */
+import { smHandTotal, smBust, smOutcome, smCreditFor, isMatta } from "./gestione-casino-atomic-lib.ts";
+const C = (suit: "coppe" | "denari" | "spade" | "bastoni", rank: number) => ({ suit, rank });
+
+test("7½: figure valgono ½, numeri il loro valore", () => {
+  assert.equal(smHandTotal([C("spade", 7)]), 7);
+  assert.equal(smHandTotal([C("coppe", 8)]), 0.5);   // fante
+  assert.equal(smHandTotal([C("bastoni", 9)]), 0.5); // cavallo
+  assert.equal(smHandTotal([C("spade", 10)]), 0.5);  // re (non di denari)
+  assert.equal(smHandTotal([C("spade", 7), C("coppe", 8)]), 7.5); // 7 + figura = 7½
+});
+test("7½: la matta è il Re di Denari e prende il valore migliore ≤ 7½", () => {
+  assert.equal(isMatta(C("denari", 10)), true);
+  assert.equal(isMatta(C("spade", 10)), false);
+  assert.equal(smHandTotal([C("denari", 10)]), 7);               // da sola vale 7 (max)
+  assert.equal(smHandTotal([C("spade", 5), C("denari", 10)]), 7); // 5 + matta: max valore ammesso ≤2,5 è 2 → 7
+  assert.equal(smHandTotal([C("coppe", 8), C("denari", 10)]), 7.5); // figura(½) + matta(7) = 7½
+});
+test("7½: matta con base alta non sballa (sceglie ½)", () => {
+  // base 7 + matta: l'unico valore che non sballa è ½ → 7½ esatto
+  assert.equal(smHandTotal([C("spade", 7), C("denari", 10)]), 7.5);
+  // base già 7½ (7 + figura) + matta → matta ½ ⇒ 8 ⇒ sballo
+  assert.equal(smBust([C("spade", 7), C("coppe", 9), C("denari", 10)]), true);
+});
+test("7½: sballo sopra 7½", () => {
+  assert.equal(smBust([C("spade", 7), C("coppe", 7)]), true); // 14
+  assert.equal(smBust([C("spade", 7), C("coppe", 8)]), false); // 7½ esatto
+});
+test("7½: esiti — pareggio vince il banco, banco sballa paga tutti", () => {
+  assert.equal(smOutcome(false, 7, false, 6), "win");     // 7 batte 6
+  assert.equal(smOutcome(false, 6, false, 7), "lose");    // 6 < 7
+  assert.equal(smOutcome(false, 6.5, false, 6.5), "lose");// pareggio → banco
+  assert.equal(smOutcome(true, 8, false, 4), "lose");     // giocatore sballato
+  assert.equal(smOutcome(false, 3, true, 9), "win");      // banco sballato
+  assert.equal(smCreditFor("win", 50), 100);              // 1:1 puntata inclusa
+  assert.equal(smCreditFor("lose", 50), 0);
+});

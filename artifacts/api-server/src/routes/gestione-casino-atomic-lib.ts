@@ -61,6 +61,49 @@ export function creditFor(outcome: string, bet: number): number {
 /* ── Ippodromo ── */
 export const HORSE_MULT = 6;
 
+/* ── Sette e Mezzo (mazzo siciliano 40 carte) ─────────────────────────────────
+   Punto: avvicinarsi a 7½ senza sballare. Carte 1–7 valgono il loro numero; le
+   figure (fante 8, cavallo 9, re 10) valgono ½. La MATTA è il RE DI DENARI: vale
+   il valore (½…7) che conviene di più al possessore (qui: il più alto che non
+   sballa). Il banco pesca finché resta sotto la soglia, poi si ferma. Pareggio →
+   vince il BANCO (è il suo margine, oltre a giocare per ultimo). Vincita 1:1
+   (accredito = puntata×2). Puntate intere ⇒ payout sempre intero. */
+export type SmSuit = "coppe" | "denari" | "spade" | "bastoni";
+export type SmCard = { suit: SmSuit; rank: number }; // rank 1..10 (1-7 pips, 8 fante, 9 cavallo, 10 re)
+/** La matta del 7½: Re di Denari (seme denari, rango 10). */
+export const isMatta = (c: SmCard): boolean => c.suit === "denari" && c.rank === 10;
+/** Valore "fisso" di una carta non-matta: 1–7 il numero, figure (8/9/10) = ½. */
+export function smCardValue(rank: number): number { return rank >= 1 && rank <= 7 ? rank : 0.5; }
+/** I valori che la matta può assumere a scelta del giocatore (½ e 1…7). */
+const MATTA_VALUES = [7, 6, 5, 4, 3, 2, 1, 0.5];
+/** Punto della mano: la matta prende il valore più alto che NON fa sballare (≤ 7½).
+    Se la base da sola supera già 7½, la matta vale ½ (minimo) e la mano è sballata. */
+export function smHandTotal(cards: ReadonlyArray<SmCard>): number {
+  let base = 0; let matte = 0;
+  for (const c of cards) { if (isMatta(c)) matte++; else base += smCardValue(c.rank); }
+  if (matte === 0) return base;
+  // Una sola matta esiste nel mazzo, ma restiamo generali: assegna a ciascuna il
+  // valore più alto che tiene il totale ≤ 7½; se impossibile, ½.
+  let total = base;
+  for (let i = 0; i < matte; i++) {
+    const pick = MATTA_VALUES.find(v => total + v <= 7.5) ?? 0.5;
+    total += pick;
+  }
+  return total;
+}
+export const SM_TARGET = 7.5;
+export const smBust = (cards: ReadonlyArray<SmCard>): boolean => smHandTotal(cards) > SM_TARGET;
+/** Esito della mano del giocatore contro il banco. Pareggio ⇒ vince il banco (lose). */
+export type SmOutcome = "win" | "lose";
+export function smOutcome(playerBust: boolean, playerTotal: number, bancoBust: boolean, bancoTotal: number): SmOutcome {
+  if (playerBust) return "lose";
+  if (bancoBust) return "win";
+  if (playerTotal > bancoTotal) return "win";
+  return "lose"; // player ≤ banco (pareggio incluso) → vince il banco
+}
+/** Accredito al vincitore (puntata inclusa): 1:1 ⇒ puntata×2. 0 se perde. */
+export function smCreditFor(outcome: SmOutcome, bet: number): number { return outcome === "win" ? bet * 2 : 0; }
+
 /* ════════════════════════════════════════════════════════════════════════════
    MECCANICA ATOMICA DEI SOLDI
    ════════════════════════════════════════════════════════════════════════════ */

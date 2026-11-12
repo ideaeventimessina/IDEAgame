@@ -18,6 +18,7 @@ import { PlayerAvatar, fileToAvatarDataUrl } from '../components/PlayerAvatar';
 import { BlackjackPhone, BlackjackMonitor, BlackjackRegia, BlackjackTablesView } from './GestioneBlackjack';
 import { CorsaSiciliaMonitor, CorsaSiciliaPhone, CorsaSiciliaRegia } from './GestioneCorsaSiciliana';
 import { IppodromoSprintMonitor, IppodromoSprintPhone, IppodromoSprintRegia } from './GestioneIppodromoSprint';
+import { SetteMezzoMonitor, SetteMezzoPhone, SetteMezzoRegia, SetteMezzoTablesView, SetteMezzoDealer } from './GestioneSetteMezzo';
 import { BiliardoMonitor, BiliardoPhone } from './GestioneBiliardo';
 import { ScreenFit } from '@/components/ScreenFit';
 
@@ -138,6 +139,17 @@ export default function GestioneCasino() {
   const poolPlay = params.get('poolplay');     // telefono giocatore Biliardo
   if (pool) return <BiliardoMonitor displayCode={pool.toUpperCase()} />;
   if (poolPlay) return <BiliardoPhone displayCode={poolPlay.toUpperCase()} />;
+
+  const sm = params.get('sm');             // monitor 80" Sette e Mezzo
+  const smPlay = params.get('smplay');      // telefono giocatore Sette e Mezzo
+  const smRegia = params.get('smregia');    // regia tavolo Sette e Mezzo
+  const smTables = params.get('smtables');  // hub elenco/crea tavoli Sette e Mezzo
+  const smDealer = params.get('smdealer');  // telefono MAZZIERE (carte fisiche / digitale)
+  if (sm) return <SetteMezzoMonitor displayCode={sm.toUpperCase()} />;
+  if (smPlay) return <SetteMezzoPhone displayCode={smPlay.toUpperCase()} />;
+  if (smRegia) return <SetteMezzoRegia displayCode={smRegia.toUpperCase()} />;
+  if (smTables) return <SetteMezzoTablesView sessionId={smTables} />;
+  if (smDealer) return <SetteMezzoDealer dealerCode={smDealer.toUpperCase()} />;
   const rdealer = params.get('rdealer');   // telefono DEALER che comanda un tavolo roulette
   if (rdealer) return <RouletteDealerView dealerCode={rdealer.toUpperCase()} />;
   if (tableCode) return <RouletteTableView displayCode={tableCode.toUpperCase()} />;
@@ -431,6 +443,7 @@ export function MasterView({ sessionId }: { sessionId: string }) {
   const [sts, setSts] = useState<{ id: string; name: string; displayCode: string }[]>([]);
   const [sprts, setSprts] = useState<{ id: string; name: string; displayCode: string }[]>([]);
   const [pts, setPts] = useState<{ id: string; name: string; displayCode: string }[]>([]);
+  const [smts, setSmts] = useState<{ id: string; name: string; displayCode: string }[]>([]);
   const [dim, setDim] = useState({ w: typeof window !== 'undefined' ? window.innerWidth : 1280, h: typeof window !== 'undefined' ? window.innerHeight : 800 });
   useEffect(() => { const r = () => setDim({ w: window.innerWidth, h: window.innerHeight }); window.addEventListener('resize', r); return () => window.removeEventListener('resize', r); }, []);
   const loadGts = useCallback(() => fetch(`${API}/gestione/casino/sessions/${sessionId}/game-tables`).then(r => r.ok ? r.json() : null).then(d => { if (d) setGts(d.tables); }).catch(() => {}), [sessionId]);
@@ -438,7 +451,8 @@ export function MasterView({ sessionId }: { sessionId: string }) {
   const loadSts = useCallback(() => fetch(`${API}/gestione/casino/sessions/${sessionId}/sicilia-tables`).then(r => r.ok ? r.json() : null).then(d => { if (d) setSts(d.tables); }).catch(() => {}), [sessionId]);
   const loadSprts = useCallback(() => fetch(`${API}/gestione/casino/sessions/${sessionId}/sprint-tables`).then(r => r.ok ? r.json() : null).then(d => { if (d) setSprts(d.tables); }).catch(() => {}), [sessionId]);
   const loadPts = useCallback(() => fetch(`${API}/gestione/casino/sessions/${sessionId}/pool-tables`).then(r => r.ok ? r.json() : null).then(d => { if (d) setPts(d.tables); }).catch(() => {}), [sessionId]);
-  useEffect(() => { const run = () => { loadGts(); loadBjts(); loadSts(); loadSprts(); loadPts(); }; run(); const t = setInterval(run, 3000); return () => clearInterval(t); }, [loadGts, loadBjts, loadSts, loadSprts, loadPts]);
+  const loadSmts = useCallback(() => fetch(`${API}/gestione/casino/sessions/${sessionId}/sm-tables`).then(r => r.ok ? r.json() : null).then(d => { if (d) setSmts(d.tables); }).catch(() => {}), [sessionId]);
+  useEffect(() => { const run = () => { loadGts(); loadBjts(); loadSts(); loadSprts(); loadPts(); loadSmts(); }; run(); const t = setInterval(run, 3000); return () => clearInterval(t); }, [loadGts, loadBjts, loadSts, loadSprts, loadPts, loadSmts]);
 
   const AB = (import.meta.env.BASE_URL as string) || '/';
   const addTable = async () => { setBusy(true); try { await api(`/gestione/casino/sessions/${sessionId}/tables`, {}); } finally { setBusy(false); } };
@@ -447,6 +461,7 @@ export function MasterView({ sessionId }: { sessionId: string }) {
   const addSicilia = async () => { setBusy(true); try { await api(`/gestione/casino/sessions/${sessionId}/sicilia-tables`, { name: 'Corsa Siciliana' }); await loadSts(); } finally { setBusy(false); } };
   const addSprint = async () => { setBusy(true); try { await api(`/gestione/casino/sessions/${sessionId}/sprint-tables`, { name: 'Ippodromo Sprint' }); await loadSprts(); } finally { setBusy(false); } };
   const addBiliardo = async () => { setBusy(true); try { await api(`/gestione/casino/sessions/${sessionId}/pool-tables`, { name: 'Biliardo Club' }); await loadPts(); } finally { setBusy(false); } };
+  const addSettemezzo = async () => { setBusy(true); try { await api(`/gestione/casino/sessions/${sessionId}/sm-tables`, { name: 'Sette e Mezzo' }); await loadSmts(); } finally { setBusy(false); } };
 
   if (!state) return <Center>Carico…</Center>;
   if (state.tables.length === 0) return <SetupWizard sessionId={sessionId} />;
@@ -540,6 +555,7 @@ export function MasterView({ sessionId }: { sessionId: string }) {
               <button className="gbtn sm" onClick={addSicilia} disabled={busy}>＋ Corsa Siciliana</button>
               <button className="gbtn sm" onClick={addSprint} disabled={busy}>＋ Ippodromo Sprint</button>
               <button className="gbtn sm" onClick={addBiliardo} disabled={busy}>＋ Biliardo Club</button>
+              <button className="gbtn sm" onClick={addSettemezzo} disabled={busy}>＋ Sette e Mezzo</button>
             </div>
             <div style={{ overflowY: 'auto', marginTop: 8 }}>
               {gts.map(g => (
@@ -593,7 +609,18 @@ export function MasterView({ sessionId }: { sessionId: string }) {
                   </div>
                 </div>
               ))}
-              {gts.length === 0 && bjts.length === 0 && sts.length === 0 && sprts.length === 0 && pts.length === 0 && <div style={{ color: '#9c8a5e', textAlign: 'center', marginTop: 40, font: '400 18px var(--serif)' }}>Crea un tavolo e aprilo sull'80″.</div>}
+              {smts.map(t => (
+                <div className="tile" key={t.id}>
+                  <img className="thumb" src={`${AB}corsa-siciliana/crops/ritratto-denari.png`} alt="" />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="nm">🃏 {t.name}</div>
+                    <div className="cd">Codice {t.displayCode} · carte siciliane · punto 7½</div>
+                    <a className="lnk" href={`${ORIGIN}gestione/casino?sm=${t.displayCode}`} target="_blank" rel="noreferrer">🖥️ 80″ ↗</a>
+                    <a className="lnk" style={{ marginLeft: 10 }} href={`${ORIGIN}gestione/casino?smregia=${t.displayCode}`} target="_blank" rel="noreferrer">🎛️ Regia ↗</a>
+                  </div>
+                </div>
+              ))}
+              {gts.length === 0 && bjts.length === 0 && sts.length === 0 && sprts.length === 0 && pts.length === 0 && smts.length === 0 && <div style={{ color: '#9c8a5e', textAlign: 'center', marginTop: 40, font: '400 18px var(--serif)' }}>Crea un tavolo e aprilo sull'80″.</div>}
             </div>
           </div>
         </div>
@@ -1061,11 +1088,11 @@ export function PlayerView({ code }: { code: string }) {
   //    (niente QR per postazione). Un solo QR d'ingresso -> qui scegli il tavolo. ──
   const sid = data?.sessionId;
   const suiteLink = useSuiteLink(sid);   // PONTE SUITE: tasto per tornare al feed
-  const [tbls, setTbls] = useState<{ roulette: any[]; bj: any[]; sicilia: any[]; sprint: any[]; pool: any[] }>({ roulette: [], bj: [], sicilia: [], sprint: [], pool: [] });
+  const [tbls, setTbls] = useState<{ roulette: any[]; bj: any[]; sicilia: any[]; sprint: any[]; pool: any[]; sm: any[] }>({ roulette: [], bj: [], sicilia: [], sprint: [], pool: [], sm: [] });
   useEffect(() => {
     if (!sid) return;
     const g = (path: string) => fetch(`${API}/gestione/casino/sessions/${sid}/${path}`).then(r => r.ok ? r.json() : { tables: [] }).catch(() => ({ tables: [] }));
-    const load = async () => { const [r, b, s, sp, po] = await Promise.all([g('game-tables'), g('bj-tables'), g('sicilia-tables'), g('sprint-tables'), g('pool-tables')]); setTbls({ roulette: r.tables ?? [], bj: b.tables ?? [], sicilia: s.tables ?? [], sprint: sp.tables ?? [], pool: po.tables ?? [] }); };
+    const load = async () => { const [r, b, s, sp, po, sm] = await Promise.all([g('game-tables'), g('bj-tables'), g('sicilia-tables'), g('sprint-tables'), g('pool-tables'), g('sm-tables')]); setTbls({ roulette: r.tables ?? [], bj: b.tables ?? [], sicilia: s.tables ?? [], sprint: sp.tables ?? [], pool: po.tables ?? [], sm: sm.tables ?? [] }); };
     load(); const t = setInterval(load, 3000); return () => clearInterval(t);
   }, [sid]);
 
@@ -1103,7 +1130,7 @@ export function PlayerView({ code }: { code: string }) {
       <div style={{ opacity: 0.5, marginTop: -6 }}>le tue fiche</div>
 
       {/* Siediti a un tavolo — scelta dal TELEFONO del giocatore (niente QR per postazione) */}
-      {(tbls.roulette.length + tbls.bj.length + tbls.sicilia.length + tbls.sprint.length + tbls.pool.length) > 0 && (
+      {(tbls.roulette.length + tbls.bj.length + tbls.sicilia.length + tbls.sprint.length + tbls.pool.length + tbls.sm.length) > 0 && (
         <div style={{ width: '100%', maxWidth: 360, background: '#ffffff0a', border: `1px solid ${GOLD}55`, borderRadius: 20, padding: 14 }}>
           <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 10, textAlign: 'center', color: GOLD }}>🎲 Siediti a un tavolo</div>
           {[
@@ -1112,6 +1139,7 @@ export function PlayerView({ code }: { code: string }) {
             ...tbls.sicilia.map((t) => ({ k: 's' + t.id, icon: '🏇', name: t.name, meta: `${t.players ?? 0} in gioco`, go: () => { window.location.href = `${ORIGIN}gestione/casino?sicplay=${t.displayCode}`; } })),
             ...tbls.sprint.map((t) => ({ k: 'sp' + t.id, icon: '🏇', name: t.name, meta: `${t.players ?? 0}/6 piloti · gara interattiva`, go: () => { window.location.href = `${ORIGIN}gestione/casino?sprintplay=${t.displayCode}`; } })),
             ...tbls.pool.map((t) => ({ k: 'po' + t.id, icon: '🎱', name: t.name, meta: `${t.players ?? 0}/2 giocatori · fish a palla`, go: () => { window.location.href = `${ORIGIN}gestione/casino?poolplay=${t.displayCode}`; } })),
+            ...tbls.sm.map((t) => ({ k: 'sm' + t.id, icon: '🃏', name: t.name, meta: t.occupied != null ? `${Math.max(0, (t.seatsN ?? 7) - t.occupied)} posti liberi · punto 7½` : 'sette e mezzo', go: () => { window.location.href = `${ORIGIN}gestione/casino?smplay=${t.displayCode}`; } })),
           ].map((row) => (
             <motion.button whileTap={{ scale: 0.97 }} key={row.k} onClick={row.go}
               style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', background: '#ffffff0a', border: '1px solid #ffffff18', borderRadius: 14, padding: '12px 14px', color: '#fff', cursor: 'pointer', marginBottom: 8 }}>
