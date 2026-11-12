@@ -1,0 +1,90 @@
+/* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
+
+/* ─── Kit UI Casinò IDEAeventi — design system condiviso (redesign 2026-11) ──────
+   Fedele a tokens.css del pacchetto approvato. TUTTO è scoped sotto `.cas` così
+   NON tocca il resto della piattaforma (niente body/header globali, come da brief).
+   I token restano variabili CSS; nei componenti si usano le classi, mai valori a mano. */
+
+@font-face { font-family: "Cinzel Cas"; src: url(/casino/cinzel-variable.ttf) format("truetype"); font-weight: 400 900; font-display: swap; }
+
+.cas {
+  --ink: #06110e; --surface: #10251d; --line: #625334; --gold: #e5c680;
+  --text: #fcf1d7; --muted: #bac9b9; --green: #82d5aa; --red: #ff9a92;
+  --pad: clamp(14px, 3vw, 42px);
+  position: fixed; inset: 0; overflow: auto;
+  background: radial-gradient(ellipse at 50% 0, #1c3c2f 0%, var(--ink) 70%);
+  color: var(--text); font: 15px system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.cas *, .cas *::before, .cas *::after { box-sizing: border-box; }
+.cas a { color: var(--gold); }
+
+/* Header ruolo */
+.cas .cashead { display: flex; align-items: center; gap: 24px; padding: 16px var(--pad); border-bottom: 1px solid var(--line); background: #071612; }
+.cas .cashead img { width: 108px; height: auto; }
+.cas .cashead > div { flex: 1; min-width: 0; }
+.cas.phone .cashead { max-width: 490px; margin: auto; }
+.cas.phone .cashead img { width: 74px; }
+
+/* Tipografia */
+.cas .eyebrow, .cas small.eyebrow { display: block; font-size: 11px; letter-spacing: .15em; text-transform: uppercase; color: var(--gold); font-weight: 750; }
+.cas h1, .cas h2, .cas h3 { font-family: "Cinzel Cas", Georgia, serif; line-height: 1.15; margin: 0 0 12px; }
+.cas h1 { font-size: clamp(23px, 3.5vw, 48px); color: var(--gold); }
+.cas .cashead h1 { font-size: clamp(21px, 2.8vw, 39px); margin: 5px 0 0; }
+.cas h2 { font-size: clamp(18px, 2vw, 29px); }
+.cas h3 { font-size: 19px; }
+.cas p { margin: 8px 0 15px; color: var(--muted); line-height: 1.5; }
+
+/* Main / contenitore */
+.cas .casmain { max-width: 1550px; margin: auto; padding: var(--pad); }
+.cas.phone .casmain { max-width: 490px; }
+
+/* Hero riga titolo-stato */
+.cas .hero { margin-bottom: 24px; }
+.cas .badge { display: inline-flex; align-items: center; white-space: nowrap; font-size: 12px; color: var(--green); border: 1px solid #4a795b; border-radius: 999px; padding: 7px 12px; background: #102c20; }
+
+/* Griglia / pannelli */
+.cas .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 16px; }
+.cas .grid.two { grid-template-columns: 2fr 1fr; }
+.cas .panel, .cas .tile { border: 1px solid var(--line); border-radius: 16px; padding: 22px; background: linear-gradient(145deg, #142f24, #0a1c15); min-width: 0; }
+.cas .panel h2 { color: var(--gold); }
+
+/* Righe utili */
+.cas .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cas .spread { justify-content: space-between; }
+.cas .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+.cas.phone .actions > * { flex: 1; }
+
+/* Pulsanti */
+.cas .btn, .cas button.btn { display: inline-flex; align-items: center; justify-content: center; text-align: center; min-height: 46px; padding: 10px 16px; border: 1px solid #b19455; border-radius: 9px; background: linear-gradient(#f5dea5, #c1974d); color: #102119; font: 800 14px system-ui, sans-serif; text-decoration: none; cursor: pointer; }
+.cas .btn.ghost { background: #142a22; color: var(--text); border-color: #6f7356; }
+.cas .btn:disabled, .cas .btn[aria-disabled=true] { opacity: .46; cursor: default; }
+
+/* Liste */
+.cas .list { display: grid; gap: 8px; }
+.cas .line { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; background: #091c15; border: 1px solid #405442; border-radius: 9px; }
+.cas .line strong { color: var(--text); }
+.cas .line span { color: var(--muted); text-align: right; }
+.cas .line.sel { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold) inset; }
+.cas .line.on { background: #102c20; border-color: #4a795b; }
+
+/* Metriche / carte / campi */
+.cas .metric { font: 750 clamp(27px, 4vw, 52px) "Cinzel Cas", Georgia, serif; color: var(--gold); margin: 9px 0; }
+.cas .cards { display: flex; justify-content: center; gap: 10px; margin: 14px 0; align-items: center; flex-wrap: wrap; }
+.cas .field { padding: 13px; border: 1px solid #566a57; border-radius: 8px; background: #081b14; margin: 6px 0 16px; color: var(--text); width: 100%; font: 15px system-ui, sans-serif; }
+.cas .field::placeholder { color: var(--muted); }
+.cas .chip { display: inline-grid; place-items: center; min-width: 44px; height: 44px; padding: 0 10px; border-radius: 100px; border: 4px dashed #f0d993; background: #784323; font-weight: 800; color: var(--text); cursor: pointer; }
+.cas .chip.sel { border-style: solid; box-shadow: 0 0 0 2px var(--gold); }
+
+/* Stati / avvisi */
+.cas .center { text-align: center; }
+.cas .status { border-left: 3px solid var(--gold); padding: 12px; background: #132d22; margin: 10px 0; color: var(--text); }
+.cas .status.lose { border-left-color: var(--red); }
+.cas .err { color: var(--red); font-size: 13px; margin: 8px 0 0; text-align: center; }
+.cas .qr { display: grid; place-items: center; background: #fff; border-radius: 10px; padding: 7px; }
+.cas .foot { padding: 15px var(--pad); color: var(--muted); font-size: 12px; text-align: center; }
+
+/* Stepper puntata */
+.cas .step { display: flex; align-items: center; justify-content: center; gap: 14px; margin: 12px 0; }
+.cas .step .rnd { width: 52px; height: 52px; border-radius: 50%; border: 1px solid #b19455; background: #142a22; color: var(--gold); font: 800 26px system-ui; cursor: pointer; }
+.cas .step .val { font: 750 34px "Cinzel Cas", serif; color: var(--gold); min-width: 90px; text-align: center; }
