@@ -48,7 +48,7 @@ const API = (import.meta.env.BASE_URL as string || '/') + 'api';
 const ORIGIN = window.location.origin + (import.meta.env.BASE_URL as string || '/');
 const GOLD = '#F5B642';
 const GOLD_GLOW = '#FFD040';
-const BG = 'radial-gradient(ellipse at top,#3d2a08,#0a0602 70%)';
+const BG = 'radial-gradient(ellipse at 50% 0%,#1c3c2f 0%,#06110e 70%)';
 
 type Player = { id: string; nickname: string; playerCode: string; fishBalance: number; tableId: string | null; avatarUrl?: string | null; pendingBet?: number };
 type Table = { id: string; tableNumber: number; name: string; dealerCode: string };
@@ -79,26 +79,26 @@ function WallClassifica({ sessionId }: { sessionId: string }) {
   const rows = data?.classifica ?? [];
   const medal = (r: number) => r === 1 ? '#f4d77a' : r === 2 ? '#d7dde6' : r === 3 ? '#d79a5a' : '#8a7a4e';
   return (
-    <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', color: '#fff', fontFamily: '"Cinzel","Baskerville Casino",Georgia,serif', background: 'radial-gradient(ellipse 120% 90% at 50% 0%,#15305f,#0a1f45 60%,#06152e 100%)', overflow: 'hidden' }}>
+    <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', color: '#fff', fontFamily: '"Cinzel","Baskerville Casino",Georgia,serif', background: 'radial-gradient(ellipse 120% 90% at 50% 0%,#1c3c2f,#0a2318 60%,#06110e 100%)', overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '3.2vh 4%', borderBottom: '2px solid #e8c45f55' }}>
         <img src={`${AB}casino/logo-idea-casino.png`} alt="IDEA EVENTI" style={{ height: '6.2vh', objectFit: 'contain' }} onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ font: '700 clamp(20px,3.4vh,42px)/1 "Cinzel",serif', background: 'linear-gradient(180deg,#fff6c8,#ffe08a 55%,#e4ad4b)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent', letterSpacing: '.03em' }}>CLASSIFICA FISH</div>
-          {data?.nomeFesta && <div style={{ color: '#bcd0ef', font: 'italic 400 clamp(12px,1.9vh,20px)/1.2 "Lora",serif', marginTop: 4 }}>{data.nomeFesta}</div>}
+          {data?.nomeFesta && <div style={{ color: '#bac9b9', font: 'italic 400 clamp(12px,1.9vh,20px)/1.2 "Lora",serif', marginTop: 4 }}>{data.nomeFesta}</div>}
         </div>
         <div style={{ textAlign: 'right' }}>
           <div style={{ color: '#ffe9a6', font: '700 clamp(18px,3vh,36px)/1 "Cinzel",serif' }}>{(data?.cassaTotale ?? 0).toLocaleString('it-IT')}</div>
-          <div style={{ color: '#9fb6d8', font: '400 clamp(10px,1.4vh,14px)/1 "Lora",serif' }}>fiche in gioco</div>
+          <div style={{ color: '#9fb6a0', font: '400 clamp(10px,1.4vh,14px)/1 "Lora",serif' }}>fiche in gioco</div>
         </div>
       </div>
       <div style={{ flex: 1, overflow: 'hidden', padding: '1.6vh 3% 2vh', display: 'flex', flexDirection: 'column', gap: '1.1vh' }}>
-        {rows.length === 0 && <div style={{ margin: 'auto', color: '#8ea6cc', font: 'italic 400 clamp(14px,2.2vh,22px) "Lora",serif' }}>In attesa dei giocatori…</div>}
+        {rows.length === 0 && <div style={{ margin: 'auto', color: '#8ea69a', font: 'italic 400 clamp(14px,2.2vh,22px) "Lora",serif' }}>In attesa dei giocatori…</div>}
         {rows.map(r => (
           <div key={r.rank} style={{ display: 'flex', alignItems: 'center', gap: '1.6vw', background: r.rank <= 3 ? '#ffffff14' : '#ffffff0a', border: `1px solid ${r.rank <= 3 ? medal(r.rank) + '88' : '#ffffff18'}`, borderRadius: 12, padding: '1vh 1.4vw' }}>
             <div style={{ width: 'clamp(30px,4.4vh,56px)', textAlign: 'center', font: '700 clamp(18px,3vh,38px)/1 "Cinzel",serif', color: medal(r.rank) }}>{r.rank}</div>
             {r.avatarUrl
               ? <img src={r.avatarUrl} alt="" style={{ width: 'clamp(34px,5.2vh,64px)', height: 'clamp(34px,5.2vh,64px)', borderRadius: '50%', objectFit: 'cover', border: `2px solid ${medal(r.rank)}` }} />
-              : <div style={{ width: 'clamp(34px,5.2vh,64px)', height: 'clamp(34px,5.2vh,64px)', borderRadius: '50%', background: '#1c3f80', border: `2px solid ${medal(r.rank)}`, display: 'grid', placeItems: 'center', font: '700 clamp(14px,2.4vh,26px) "Cinzel",serif', color: '#ffe9a6' }}>{r.nickname.slice(0, 1).toUpperCase()}</div>}
+              : <div style={{ width: 'clamp(34px,5.2vh,64px)', height: 'clamp(34px,5.2vh,64px)', borderRadius: '50%', background: '#143421', border: `2px solid ${medal(r.rank)}`, display: 'grid', placeItems: 'center', font: '700 clamp(14px,2.4vh,26px) "Cinzel",serif', color: '#ffe9a6' }}>{r.nickname.slice(0, 1).toUpperCase()}</div>}
             <div style={{ flex: 1, minWidth: 0, font: '700 clamp(15px,2.6vh,30px)/1.1 "Cinzel",serif', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.nickname}</div>
             <div style={{ font: '700 clamp(16px,2.8vh,34px)/1 "Cinzel",serif', color: '#ffe9a6' }}>{r.fish.toLocaleString('it-IT')}</div>
           </div>
@@ -832,27 +832,24 @@ function SetupWizard({ sessionId }: { sessionId: string }) {
   const [busy, setBusy] = useState(false);
   const AB = (import.meta.env.BASE_URL as string) || '/';
   const go = async () => { setBusy(true); try { await api(`/gestione/casino/sessions/${sessionId}/setup`, { dealers, startFish }); } finally { setBusy(false); } };
+  void AB;
   return (
-    <div className="setup-root">
-      <style>{`@font-face{font-family:"Baskerville Casino";font-weight:400;src:url(${AB}casino/libre-baskerville-latin-400-normal.woff2) format("woff2");font-display:block;}@font-face{font-family:"Baskerville Casino";font-weight:700;src:url(${AB}casino/libre-baskerville-latin-700-normal.woff2) format("woff2");font-display:block;}` + SETUP_CSS}</style>
-      <div className="wrap">
-        <img className="logo" src={`${AB}casino/logo-idea-casino.png`} alt="IDEA EVENTI CASINÒ" />
-        <div className="sub">Prepariamo la serata</div>
-        <div className="panel">
-          <div className="lbl">Quanti dealer (tavoli)?</div>
-          <div className="row">
-            {[1, 2, 3, 4, 5, 6].map(n => <button key={n} className={`opt${dealers === n ? ' sel' : ''}`} onClick={() => setDealers(n)}>{n}</button>)}
-          </div>
-          <div className="hint">Ognuno riceve un QR dealer per aprire il proprio banco.</div>
-          <div className="lbl" style={{ marginTop: 24 }}>Fiche iniziali per giocatore</div>
-          <div className="row">
-            {[300, 500, 1000, 2000].map(n => <button key={n} className={`opt sm${startFish === n ? ' sel' : ''}`} onClick={() => setStartFish(n)}>{n}</button>)}
-          </div>
-          <div className="hint">Ogni ospite parte con queste fiche appena fa il login.</div>
-        </div>
-        <button className="gbtn" onClick={go} disabled={busy}>{busy ? '…' : `Apri ${dealers} ${dealers === 1 ? 'tavolo' : 'tavoli'}`}</button>
-      </div>
-    </div>
+    <CasPhone eyebrow="Casinò · Regia" title="Prepara la serata" footer={<footer className="foot">IDEAeventi · Casinò</footer>}>
+      <Hero label="Configurazione" />
+      <section className="panel">
+        <h2>Dealer di cassa</h2>
+        <small className="eyebrow">Numero di dealer</small>
+        <div className="row" style={{ justifyContent: 'center', marginTop: 8 }}>{[1, 2, 3, 4, 5, 6].map(n => <span key={n} className={`chip${dealers === n ? ' sel' : ''}`} onClick={() => setDealers(n)}>{n}</span>)}</div>
+        <p>Ognuno riceve un QR dealer per aprire il proprio banco.</p>
+      </section>
+      <section className="panel">
+        <h2>Fiche iniziali</h2>
+        <small className="eyebrow">Per giocatore</small>
+        <div className="row" style={{ justifyContent: 'center', marginTop: 8 }}>{[300, 500, 1000, 2000].map(n => <span key={n} className={`chip${startFish === n ? ' sel' : ''}`} onClick={() => setStartFish(n)}>{n}</span>)}</div>
+        <p>Ogni ospite parte con questi punti all'ingresso.</p>
+        <div className="actions"><button className="btn" onClick={go} disabled={busy}>{busy ? '…' : `Apri ${dealers} ${dealers === 1 ? 'banco' : 'banchi'}`}</button></div>
+      </section>
+    </CasPhone>
   );
 }
 
