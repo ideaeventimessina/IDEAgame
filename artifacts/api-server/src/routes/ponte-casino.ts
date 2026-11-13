@@ -257,10 +257,12 @@ router.post("/ponte/casino/guest", async (req, res): Promise<void> => {
   const nickname = nicknameDaSuite(data.nome);
   const avatarUrl = data.avatarUrl ? String(data.avatarUrl) : null;
 
-  // SEGNAPUNTI: il dealer riconosce l'ospite dalla FACCIA, quindi il selfie è
-  // obbligatorio. Entra dritto SOLO se la Suite ci dà già nome E foto; altrimenti
-  // (nome mancante O foto mancante) lo mandiamo allo step nome+selfie.
-  if (!nickname || !avatarUrl) {
+  // SEGNAPUNTI: il dealer (e il tavolo 80") riconoscono l'ospite dalla FACCIA. L'avatar che manda
+  // la Suite è spesso una URL non caricabile dai device del dealer (privata/CORS) ⇒ l'ospite entrava
+  // ma la faccia NON si vedeva. Perciò scattiamo SEMPRE noi il selfie (data:image, sicuro ovunque):
+  // mandiamo ogni ospite Suite allo step selfie, col nome già prefillato dalla Suite. La foto della
+  // Suite resta solo come ripiego se l'ospite non scatta. (L'ospite che TORNA è gestito sopra.)
+  {
     const token = randomBytes(18).toString("base64url");
     const now = Date.now();
     const pending = Object.fromEntries(
@@ -268,16 +270,9 @@ router.post("/ponte/casino/guest", async (req, res): Promise<void> => {
     );
     pending[token] = { playerId, fichesIniziali: fish, feedUrl: suite.feedUrl ?? data.feedUrl ?? null, avatarUrl, nickname: nickname ?? null, at: new Date().toISOString() };
     await patchSuite(sessionId, { pending });
-    // needSelfie = nome già noto ma manca la foto ⇒ chiediamo SOLO il selfie.
-    res.json({ ready: false, needName: !nickname, needSelfie: !!nickname && !avatarUrl, prefillNickname: nickname ?? null, pendingToken: token, sessionId, feedUrl: suite.feedUrl ?? data.feedUrl ?? null });
+    res.json({ ready: false, needName: !nickname, needSelfie: true, prefillNickname: nickname ?? null, pendingToken: token, sessionId, feedUrl: suite.feedUrl ?? data.feedUrl ?? null });
     return;
   }
-
-  // Nome presente: crea il giocatore, concedi la base UNA volta, lega il playerId.
-  const player = await creaGiocatore(sessionId, nickname, fish);
-  if (avatarUrl) await patchAvatar(sessionId, player.id, avatarUrl);
-  await patchSuite(sessionId, { players: { ...players, [playerId]: { casinoPlayerId: player.id, baseGranted: true } } });
-  res.json({ ready: true, playerCode: player.playerCode, feedUrl: suite.feedUrl ?? data.feedUrl ?? null });
 });
 
 /** L'ospite senza nome ha scritto il suo nome/selfie: qui creiamo il giocatore,
@@ -306,6 +301,9 @@ router.post("/ponte/casino/guest/join", async (req, res): Promise<void> => {
     if (p) { res.json({ ready: true, playerCode: p.playerCode }); return; }
   }
 
+  // SELFIE OBBLIGATORIO per il nuovo giocatore (il dealer lo riconosce dalla faccia):
+  // serve un data:image NOSTRO, così si vede ovunque. L'ospite che torna è già uscito sopra.
+  if (!photo.startsWith("data:image/")) { err(res, 400, "input", "Serve la foto: scatta un selfie per entrare."); return; }
   // Base = quella della serata (config.startFish); se la base è già stata concessa a
   // questo playerId (ospite che torna), niente doppia base.
   const fish = baseGiaConcessa(players, pend.playerId) ? 0 : fichesInizialiSane(sess.config.startFish, 500);
