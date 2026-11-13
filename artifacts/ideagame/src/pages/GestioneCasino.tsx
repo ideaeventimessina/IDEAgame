@@ -383,7 +383,7 @@ const REGIA_CSS = `
 .regia-root{position:fixed;inset:0;background:#03140a;display:grid;place-items:center;overflow:hidden;color:#fff;
   --serif:"Baskerville Casino",Georgia,serif;--gold:#e5c680;--g1:#fff2bf;--g2:#e5c680;--g3:#c88a2c;--g4:#7a4d12;--cream:#f4ead3;}
 .regia-root *{box-sizing:border-box;margin:0;}
-.regia-root .stage{position:relative;width:1672px;height:941px;transform-origin:center center;font-family:var(--serif);
+.regia-root .stage{position:absolute;left:50%;top:50%;width:1672px;height:941px;transform-origin:center center;font-family:var(--serif);
   background:radial-gradient(ellipse 1200px 760px at 836px 300px,#0a5a25 0%,#043f17 44%,#022a0e 78%,#01210a 100%);}
 .regia-root .abs{position:absolute;}
 .regia-root .corner{position:absolute;pointer-events:none;}
@@ -483,7 +483,7 @@ export function MasterView({ sessionId }: { sessionId: string }) {
   return (
     <div className="regia-root">
       <style>{REGIA_CSS}</style>
-      <main className="stage" style={{ transform: `scale(${scale})` }}>
+      <main className="stage" style={{ transform: `translate(-50%,-50%) scale(${scale})` }}>
         {/* decori angoli */}
         <img className="corner" src={`${AB}casino/regia/corner-tr.png`} style={{ right: 0, top: 0, width: 186 }} alt="" />
         <img className="corner" src={`${AB}casino/regia/corner-bl.png`} style={{ left: 0, bottom: 0, width: 208 }} alt="" />
@@ -1453,7 +1453,7 @@ const RT_CSS = `
 .rt-root{position:fixed;inset:0;background:#080706;display:grid;place-items:center;overflow:hidden;color:#fff;
   --serif:"Baskerville Casino",Georgia,serif;--black:#080706;--felt-hi:#075c22;--felt:#034a19;--felt-lo:#01300e;--zero:#017422;--cell-green:#003c14;--red:#d20910;--red-lo:#b30309;--blk:#1b1b1a;--blk-lo:#0b0b0a;--gold:#f1c96c;--gold-hi:#ffefb5;--gold-lo:#c8893a;--gold-muted:#a8954f;--cream:#f4ead3;--line:2px;font-family:var(--serif);}
 .rt-root *{box-sizing:border-box;margin:0;padding:0;}
-.rt-root .stage{position:relative;width:1672px;height:941px;flex:none;transform-origin:center center;background:var(--black);overflow:hidden;}
+.rt-root .stage{position:absolute;left:50%;top:50%;width:1672px;height:941px;flex:none;transform-origin:center center;background:var(--black);overflow:hidden;}
 .rt-root .abs{position:absolute;}
 .rt-root .felt{left:-20px;top:13px;width:1682px;height:739px;border-top:3px solid var(--gold);border-right:3px solid var(--gold);border-bottom:3px solid var(--gold-muted);border-top-right-radius:70px;background:linear-gradient(90deg,#0b0906 0,#0b0906 300px,rgba(11,9,6,0) 470px),radial-gradient(ellipse 980px 640px at 1040px 230px,var(--felt-hi) 0%,var(--felt) 45%,var(--felt-lo) 82%,#012a0c 100%);box-shadow:inset 0 0 0 1px rgba(255,239,181,.08);}
 .rt-root .felt-line2{left:0;top:750px;width:1672px;height:1px;background:#bcb54b;opacity:.8;}
@@ -1603,7 +1603,7 @@ export function RouletteTableView({ displayCode }: { displayCode: string }) {
   return (
     <div className="rt-root">
       <style>{RT_CSS}</style>
-      <main className="stage" style={{ transform: `scale(${scale})` }}>
+      <main className="stage" style={{ transform: `translate(-50%,-50%) scale(${scale})` }}>
         <div className="abs felt" />
         <div className="abs felt-line2" />
 
