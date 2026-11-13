@@ -1124,81 +1124,66 @@ export function PlayerView({ code }: { code: string }) {
   const p = data.player;
   const pending = p.pendingBet ?? 0;
 
+  const tableRows = [
+    ...tbls.roulette.map((t) => ({ k: 'r' + t.id, icon: '🎡', name: t.name, meta: `${Object.values(t.seats ?? {}).filter((s: any) => !s.playerId).length} posti liberi`, go: () => sitRoulette(t.displayCode) })),
+    ...tbls.bj.map((t) => ({ k: 'b' + t.id, icon: '🂡', name: t.name, meta: t.occupied != null ? `${Math.max(0, (t.seatsN ?? 7) - t.occupied)} posti liberi` : 'blackjack', go: () => { window.location.href = `${ORIGIN}gestione/casino?bjplay=${t.displayCode}`; } })),
+    ...tbls.sicilia.map((t) => ({ k: 's' + t.id, icon: '🏇', name: t.name, meta: `${t.players ?? 0} in gioco`, go: () => { window.location.href = `${ORIGIN}gestione/casino?sicplay=${t.displayCode}`; } })),
+    ...tbls.sprint.map((t) => ({ k: 'sp' + t.id, icon: '🏇', name: t.name, meta: `${t.players ?? 0}/6 piloti`, go: () => { window.location.href = `${ORIGIN}gestione/casino?sprintplay=${t.displayCode}`; } })),
+    ...tbls.pool.map((t) => ({ k: 'po' + t.id, icon: '🎱', name: t.name, meta: `${t.players ?? 0}/2 giocatori`, go: () => { window.location.href = `${ORIGIN}gestione/casino?poolplay=${t.displayCode}`; } })),
+    ...tbls.sm.map((t) => ({ k: 'sm' + t.id, icon: '🃏', name: t.name, meta: t.occupied != null ? `${Math.max(0, (t.seatsN ?? 7) - t.occupied)} posti · 7½` : 'sette e mezzo', go: () => { window.location.href = `${ORIGIN}gestione/casino?smplay=${t.displayCode}`; } })),
+  ];
   return (
-    <ScreenFit style={{ background: BG, color: '#fff', fontFamily: "'Outfit',system-ui,sans-serif" }} pad={14}>
-    <div style={{ width: 'min(calc(100vw - 28px), 440px)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, padding: '6px 0' }}>
-      <BrandBar h={20} dim={0.7} />
-      {/* PONTE SUITE: un solo tocco per tornare al feed della festa (nessun gettone) */}
-      {suiteLink?.feedUrl && (
-        <motion.a whileTap={{ scale: 0.97 }} href={suiteLink.feedUrl}
-          style={{ width: '100%', maxWidth: 360, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, textDecoration: 'none',
-            background: `linear-gradient(180deg,#ffe694,#f0c357 50%,#d59a34 52%,#eab74a)`, color: '#231503', fontWeight: 900, fontSize: 18,
-            padding: '16px 18px', borderRadius: 16, boxShadow: `0 3px 0 #7a4d12,0 8px 18px #0008`, border: '1px solid #f3dea0' }}>
-          <span style={{ fontSize: 22 }}>📸</span> Torna alla Suite ↗
-        </motion.a>
-      )}
-      <PlayerAvatar nickname={p.nickname} avatarUrl={p.avatarUrl} size={88} ring={GOLD} />
-      <div style={{ fontSize: 26, fontWeight: 900, marginTop: -4 }}>{p.nickname}</div>
-      <motion.div key={p.fishBalance} initial={{ scale: 1.14 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 300, damping: 18 }}
-        style={{ fontSize: 'clamp(56px,18vw,110px)', fontWeight: 900, color: GOLD, lineHeight: 1, fontVariantNumeric: 'tabular-nums', textShadow: `0 0 30px ${GOLD}44` }}><AnimatedNumber value={p.fishBalance} /></motion.div>
-      <div style={{ opacity: 0.5, marginTop: -6 }}>le tue fiche</div>
+    <CasPhone eyebrow="Casinò · Giocatore" title="Le tue fiche" footer={<footer className="foot">IDEAeventi · Casinò</footer>}>
+      <Hero label="Portafoglio" badge={`${p.fishBalance} punti`} />
+      <section className="panel center">
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 6 }}><PlayerAvatar nickname={p.nickname} avatarUrl={p.avatarUrl} size={76} ring={GOLD} /></div>
+        <h2 style={{ marginBottom: 2 }}>Ciao {p.nickname}</h2>
+        <small className="eyebrow">Saldo</small>
+        <div className="metric"><AnimatedNumber value={p.fishBalance} /></div>
+        {suiteLink?.feedUrl && <div className="actions"><a className="btn" href={suiteLink.feedUrl} style={{ textDecoration: 'none' }}>📸 Torna alla Suite ↗</a></div>}
+      </section>
 
-      {/* Siediti a un tavolo — scelta dal TELEFONO del giocatore (niente QR per postazione) */}
-      {(tbls.roulette.length + tbls.bj.length + tbls.sicilia.length + tbls.sprint.length + tbls.pool.length + tbls.sm.length) > 0 && (
-        <div style={{ width: '100%', maxWidth: 360, background: '#ffffff0a', border: `1px solid ${GOLD}55`, borderRadius: 20, padding: 14 }}>
-          <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 10, textAlign: 'center', color: GOLD }}>🎲 Siediti a un tavolo</div>
-          {[
-            ...tbls.roulette.map((t) => ({ k: 'r' + t.id, icon: '🎡', name: t.name, meta: `${Object.values(t.seats ?? {}).filter((s: any) => !s.playerId).length} posti liberi`, go: () => sitRoulette(t.displayCode) })),
-            ...tbls.bj.map((t) => ({ k: 'b' + t.id, icon: '🂡', name: t.name, meta: t.occupied != null ? `${Math.max(0, (t.seatsN ?? 7) - t.occupied)} posti liberi` : 'blackjack', go: () => { window.location.href = `${ORIGIN}gestione/casino?bjplay=${t.displayCode}`; } })),
-            ...tbls.sicilia.map((t) => ({ k: 's' + t.id, icon: '🏇', name: t.name, meta: `${t.players ?? 0} in gioco`, go: () => { window.location.href = `${ORIGIN}gestione/casino?sicplay=${t.displayCode}`; } })),
-            ...tbls.sprint.map((t) => ({ k: 'sp' + t.id, icon: '🏇', name: t.name, meta: `${t.players ?? 0}/6 piloti · gara interattiva`, go: () => { window.location.href = `${ORIGIN}gestione/casino?sprintplay=${t.displayCode}`; } })),
-            ...tbls.pool.map((t) => ({ k: 'po' + t.id, icon: '🎱', name: t.name, meta: `${t.players ?? 0}/2 giocatori · fish a palla`, go: () => { window.location.href = `${ORIGIN}gestione/casino?poolplay=${t.displayCode}`; } })),
-            ...tbls.sm.map((t) => ({ k: 'sm' + t.id, icon: '🃏', name: t.name, meta: t.occupied != null ? `${Math.max(0, (t.seatsN ?? 7) - t.occupied)} posti liberi · punto 7½` : 'sette e mezzo', go: () => { window.location.href = `${ORIGIN}gestione/casino?smplay=${t.displayCode}`; } })),
-          ].map((row) => (
-            <motion.button whileTap={{ scale: 0.97 }} key={row.k} onClick={row.go}
-              style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', background: '#ffffff0a', border: '1px solid #ffffff18', borderRadius: 14, padding: '12px 14px', color: '#fff', cursor: 'pointer', marginBottom: 8 }}>
-              <span style={{ fontSize: 26 }}>{row.icon}</span>
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ display: 'block', fontWeight: 800, fontSize: 16 }}>{row.name}</span>
-                <span style={{ display: 'block', fontSize: 12, opacity: 0.6 }}>{row.meta}</span>
-              </span>
-              <span style={{ color: GOLD, fontWeight: 900 }}>Siediti ›</span>
-            </motion.button>
-          ))}
-        </div>
+      {tableRows.length > 0 && (
+        <section className="panel">
+          <h2>Siediti a un tavolo</h2>
+          <div className="list">
+            {tableRows.map((row) => (
+              <div key={row.k} className="line" style={{ cursor: 'pointer' }} onClick={row.go}>
+                <strong style={{ display: 'flex', alignItems: 'center', gap: 10 }}><span style={{ fontSize: 22 }}>{row.icon}</span>{row.name}</strong>
+                <span>{row.meta} ›</span>
+              </div>
+            ))}
+          </div>
+        </section>
       )}
 
-      {/* Puntata */}
-      <div style={{ width: '100%', maxWidth: 360, background: '#ffffff0a', border: `1px solid ${pending > 0 ? GOLD : '#ffffff18'}`, borderRadius: 20, padding: 16 }}>
+      <section className="panel">
         {pending > 0 ? (
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 13, opacity: 0.6 }}>Hai puntato</div>
-            <motion.div animate={{ scale: [1, 1.05, 1] }} transition={{ duration: 1.6, repeat: Infinity }} style={{ fontSize: 44, fontWeight: 900, color: GOLD }}>{pending}</motion.div>
-            <div style={{ fontSize: 13, opacity: 0.55, marginBottom: 10 }}>mostra il QR al dealer per giocarla</div>
-            <button onClick={() => placeBet(0)} disabled={sending} style={{ ...btn('#ffffff22'), width: '100%' }}>Annulla puntata</button>
+          <div className="center">
+            <small className="eyebrow">Hai puntato</small>
+            <div className="metric">{pending}</div>
+            <p>Mostra il QR al dealer per giocarla.</p>
+            <div className="actions"><button className="btn ghost" disabled={sending} onClick={() => placeBet(0)}>Annulla puntata</button></div>
           </div>
         ) : (
           <>
-            <div style={{ fontSize: 14, fontWeight: 800, opacity: 0.85, marginBottom: 10, textAlign: 'center' }}>Piazza la tua puntata</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, marginBottom: 10 }}>
-              {[25, 50, 100, 250].map(n => <motion.button whileTap={{ scale: 0.93 }} key={n} disabled={sending || n > p.fishBalance} onClick={() => placeBet(n)}
-                style={{ ...btn(GOLD), padding: 14, opacity: n > p.fishBalance ? 0.3 : 1 }}>{n}</motion.button>)}
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <input type="number" inputMode="numeric" value={betInput} onChange={e => setBetInput(e.target.value)} placeholder="importo" style={inp} />
-              <button disabled={sending || !betInput || Number(betInput) > p.fishBalance} onClick={() => placeBet(Number(betInput))} style={btn(GOLD)}>Punta</button>
+            <h2>Piazza la tua puntata</h2>
+            <div className="row" style={{ justifyContent: 'center' }}>{[25, 50, 100, 250].map(n => <span key={n} className="chip" style={{ opacity: n > p.fishBalance ? .35 : 1, pointerEvents: n > p.fishBalance ? 'none' : 'auto' }} onClick={() => !sending && placeBet(n)}>{n}</span>)}</div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <input className="field" style={{ margin: 0, flex: 1 }} type="number" inputMode="numeric" value={betInput} onChange={e => setBetInput(e.target.value)} placeholder="importo" />
+              <button className="btn" style={{ flex: 'none' }} disabled={sending || !betInput || Number(betInput) > p.fishBalance} onClick={() => placeBet(Number(betInput))}>Punta</button>
             </div>
           </>
         )}
-      </div>
+      </section>
 
-      <div style={{ background: '#fff', padding: 14, borderRadius: 16, marginTop: 6 }}>
-        <QRCodeSVG value={p.playerCode} size={168} />
-      </div>
-      <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: '0.25em', color: GOLD }}>{p.playerCode}</div>
-      <div style={{ opacity: 0.5, fontSize: 13, textAlign: 'center', maxWidth: 300 }}>Mostra questo QR al dealer per puntare, ricevere o consegnare le fiche</div>
-    </div>
-    </ScreenFit>
+      <section className="panel center">
+        <h2>Il tuo QR</h2>
+        <div style={{ background: '#fff', padding: 14, borderRadius: 16, display: 'inline-block' }}><QRCodeSVG value={p.playerCode} size={168} /></div>
+        <div style={{ fontSize: 20, fontWeight: 900, letterSpacing: '.2em', color: 'var(--gold)', marginTop: 8 }}>{p.playerCode}</div>
+        <p>Mostra questo QR al dealer per puntare, ricevere o consegnare i punti.</p>
+      </section>
+    </CasPhone>
   );
 }
 
