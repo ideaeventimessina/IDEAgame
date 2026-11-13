@@ -20,7 +20,7 @@
 .cas a { color: var(--gold); }
 
 /* Header ruolo */
-.cas .cashead { display: flex; align-items: center; gap: 24px; padding: 16px var(--pad); border-bottom: 1px solid var(--line); background: #071612; }
+.cas .cashead { display: flex; align-items: center; gap: 24px; padding: calc(16px + env(safe-area-inset-top)) calc(var(--pad) + env(safe-area-inset-right)) 16px calc(var(--pad) + env(safe-area-inset-left)); border-bottom: 1px solid var(--line); background: #071612; }
 .cas .cashead img { width: 108px; height: auto; }
 .cas .cashead > div { flex: 1; min-width: 0; }
 .cas.phone .cashead { max-width: 490px; margin: auto; }
@@ -36,7 +36,7 @@
 .cas p { margin: 8px 0 15px; color: var(--muted); line-height: 1.5; }
 
 /* Main / contenitore */
-.cas .casmain { max-width: 1550px; margin: auto; padding: var(--pad); }
+.cas .casmain { max-width: 1550px; margin: auto; padding: var(--pad) calc(var(--pad) + env(safe-area-inset-right)) calc(var(--pad) + env(safe-area-inset-bottom)) calc(var(--pad) + env(safe-area-inset-left)); }
 .cas.phone .casmain { max-width: 490px; }
 
 /* Hero riga titolo-stato */
@@ -71,7 +71,7 @@
 /* Metriche / carte / campi */
 .cas .metric { font: 750 clamp(27px, 4vw, 52px) "Cinzel Cas", Georgia, serif; color: var(--gold); margin: 9px 0; }
 .cas .cards { display: flex; justify-content: center; gap: 10px; margin: 14px 0; align-items: center; flex-wrap: wrap; }
-.cas .field { padding: 13px; border: 1px solid #566a57; border-radius: 8px; background: #081b14; margin: 6px 0 16px; color: var(--text); width: 100%; font: 15px system-ui, sans-serif; }
+.cas .field { padding: 13px; border: 1px solid #566a57; border-radius: 8px; background: #081b14; margin: 6px 0 16px; color: var(--text); width: 100%; font: 16px system-ui, sans-serif; }
 .cas .field::placeholder { color: var(--muted); }
 .cas .chip { display: inline-grid; place-items: center; min-width: 44px; height: 44px; padding: 0 10px; border-radius: 100px; border: 4px dashed #f0d993; background: #784323; font-weight: 800; color: var(--text); cursor: pointer; }
 .cas .chip.sel { border-style: solid; box-shadow: 0 0 0 2px var(--gold); }
@@ -82,7 +82,7 @@
 .cas .status.lose { border-left-color: var(--red); }
 .cas .err { color: var(--red); font-size: 13px; margin: 8px 0 0; text-align: center; }
 .cas .qr { display: grid; place-items: center; background: #fff; border-radius: 10px; padding: 7px; }
-.cas .foot { padding: 15px var(--pad); color: var(--muted); font-size: 12px; text-align: center; }
+.cas .foot { padding: 15px var(--pad) calc(15px + env(safe-area-inset-bottom)); color: var(--muted); font-size: 12px; text-align: center; }
 
 /* Corse: corsie con barra di avanzamento (telemetria regia/esito; la gara vera sta nel renderer) */
 .cas .track { display: grid; gap: 6px; padding: 12px 0; }
