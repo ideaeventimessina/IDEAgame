@@ -17,6 +17,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { PlayerAvatar, fileToAvatarDataUrl } from '../components/PlayerAvatar';
 import { BlackjackPhone, BlackjackMonitor, BlackjackRegia, BlackjackTablesView, BlackjackDealer } from './GestioneBlackjack';
 import { LightDealerView, LightDealerBind } from './GestioneDealerLeggero';
+import { CasPhone, Hero } from '../casino-ui/kit';
 import { CorsaSiciliaMonitor, CorsaSiciliaPhone, CorsaSiciliaRegia } from './GestioneCorsaSiciliana';
 import { IppodromoSprintMonitor, IppodromoSprintPhone, IppodromoSprintRegia } from './GestioneIppodromoSprint';
 import { SetteMezzoMonitor, SetteMezzoPhone, SetteMezzoRegia, SetteMezzoTablesView, SetteMezzoDealer } from './GestioneSetteMezzo';
@@ -1059,24 +1060,23 @@ function JoinView({ sessionId, suitePending, feedUrl, prefillNick }: { sessionId
     } finally { setBusy(false); }
   };
   return (
-    <Center>
-      <div style={{ textAlign: 'center', maxWidth: 360, width: '100%' }}>
-        <CasinoWordmark size={30} />
-        <div style={{ opacity: 0.6, margin: '8px 0 20px', fontSize: 14 }}>Scatta il selfie (obbligatorio) e ricevi <b style={{ color: GOLD }}>500 punti</b></div>
-
+    <CasPhone eyebrow="Casinò · Ingresso" title="La tua serata" footer={<footer className="foot">IDEAeventi · Casinò</footer>}>
+      <Hero label="Ingresso" badge="500 punti" />
+      <section className="panel">
+        <h2>Entra alla serata</h2>
+        <p>Scatta il selfie (obbligatorio) e scegli il nome: al tavolo il dealer ti riconosce dalla faccia e ti assegna i punti.</p>
+        <input className="field" value={nick} onChange={e => setNick(e.target.value)} placeholder="Come vuoi essere chiamato?" onKeyDown={e => e.key === 'Enter' && join()} />
         <input ref={fileRef} type="file" accept="image/*" capture="user" style={{ display: 'none' }} onChange={e => pick(e.target.files?.[0])} />
-        <motion.button whileTap={{ scale: 0.95 }} onClick={() => fileRef.current?.click()}
-          style={{ width: 150, height: 150, borderRadius: '50%', border: `3px dashed ${photo ? GOLD : '#ffffff33'}`, background: '#ffffff08', color: '#fff', cursor: 'pointer', overflow: 'hidden', margin: '0 auto 16px', display: 'block', padding: 0 }}>
-          {photo ? <img src={photo} alt="selfie" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            : <span style={{ fontSize: 40 }}>📸<div style={{ fontSize: 13, opacity: 0.7, marginTop: 4 }}>Scatta selfie</div></span>}
-        </motion.button>
-
-        <input value={nick} onChange={e => setNick(e.target.value)} placeholder="Il tuo nome" onKeyDown={e => e.key === 'Enter' && join()} style={{ ...inp, width: '100%', textAlign: 'center', fontSize: 18, marginBottom: 12 }} />
-        <motion.button whileTap={{ scale: 0.97 }} onClick={join} disabled={busy || !nick.trim() || !photo} style={{ ...btn(GOLD), width: '100%', padding: 16, fontSize: 18, opacity: (busy || !nick.trim() || !photo) ? 0.5 : 1 }}>{busy ? '…' : 'Entra al casinò 🎰'}</motion.button>
-        {err && <div style={{ color: '#ff9b9b', fontSize: 13, marginTop: 10 }}>{err}</div>}
-        {!photo && <div style={{ fontSize: 12, opacity: 0.55, marginTop: 10 }}>📸 Il selfie è obbligatorio: al tavolo il dealer ti riconosce dalla faccia.</div>}
-      </div>
-    </Center>
+        <label onClick={() => fileRef.current?.click()} style={{ display: 'flex', alignItems: 'center', gap: 14, margin: '2px 0 6px', cursor: 'pointer' }}>
+          {photo
+            ? <img src={photo} alt="selfie" style={{ width: 76, height: 76, borderRadius: '50%', objectFit: 'cover', border: '3px solid #c1974d', flex: 'none' }} />
+            : <span style={{ width: 76, height: 76, borderRadius: '50%', display: 'grid', placeItems: 'center', border: '3px dashed #b19455', background: '#081b14', fontSize: 30, flex: 'none' }}>📸</span>}
+          <div><div style={{ fontWeight: 800 }}>Selfie obbligatorio</div><div style={{ color: 'var(--muted)', fontSize: 13 }}>{photo ? 'Tocca per rifarlo' : 'Tocca per scattare'}</div></div>
+        </label>
+        {err && <div className="err">{err}</div>}
+        <div className="actions"><button className="btn" disabled={busy || !nick.trim() || !photo} onClick={join}>{busy ? '…' : 'Entra alla serata'}</button></div>
+      </section>
+    </CasPhone>
   );
 }
 
