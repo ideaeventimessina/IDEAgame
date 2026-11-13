@@ -830,9 +830,15 @@ function SetupWizard({ sessionId }: { sessionId: string }) {
   const [dealers, setDealers] = useState(3);
   const [startFish, setStartFish] = useState(500);
   const [busy, setBusy] = useState(false);
+  const [codice, setCodice] = useState('');
   const AB = (import.meta.env.BASE_URL as string) || '/';
   const go = async () => { setBusy(true); try { await api(`/gestione/casino/sessions/${sessionId}/setup`, { dealers, startFish }); } finally { setBusy(false); } };
-  void AB;
+  // Apri una partita GIÀ aperta digitando il codice in pagina (sul maxi-schermo touch la barra
+  // URL è scomoda): accetta il codice o un link incollato (ne estrae il code) e va alla regia.
+  const apriCodice = () => {
+    const c = codice.trim().toUpperCase().replace(/^.*CODE=/i, '').replace(/[^A-Z0-9]/g, '');
+    if (c) window.location.href = `${AB}gestione/casino?code=${c}`;
+  };
   return (
     <CasPhone eyebrow="Casinò · Regia" title="Prepara la serata" footer={<footer className="foot">IDEAeventi · Casinò</footer>}>
       <Hero label="Configurazione" />
@@ -848,6 +854,13 @@ function SetupWizard({ sessionId }: { sessionId: string }) {
         <div className="row" style={{ justifyContent: 'center', marginTop: 8 }}>{[300, 500, 1000, 2000].map(n => <span key={n} className={`chip${startFish === n ? ' sel' : ''}`} onClick={() => setStartFish(n)}>{n}</span>)}</div>
         <p>Ogni ospite parte con questi punti all'ingresso.</p>
         <div className="actions"><button className="btn" onClick={go} disabled={busy}>{busy ? '…' : `Apri ${dealers} ${dealers === 1 ? 'banco' : 'banchi'}`}</button></div>
+      </section>
+      <section className="panel">
+        <h2>Ho già una partita</h2>
+        <small className="eyebrow">Apri col codice</small>
+        <input className="field" value={codice} onChange={e => setCodice(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') apriCodice(); }} placeholder="Codice regia (o incolla il link)" autoCapitalize="characters" autoCorrect="off" spellCheck={false} />
+        <div className="actions"><button className="btn ghost" onClick={apriCodice} disabled={!codice.trim()}>Apri la partita →</button></div>
+        <p>Rientra in una serata già aperta: digita qui il codice regia invece di scriverlo nella barra dell'indirizzo.</p>
       </section>
     </CasPhone>
   );
