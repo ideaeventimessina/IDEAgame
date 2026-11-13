@@ -613,33 +613,33 @@ export function SetteMezzoMonitor({ displayCode }: { displayCode: string }) {
    REGIA (controllo mano) + ELENCO/CREA TAVOLI
    ════════════════════════════════════════════════════════════════════════════ */
 const REGIA_CSS = SM_FONT + CARD_CSS + `
-.smr{position:fixed;inset:0;overflow:auto;background:radial-gradient(ellipse at 50% 0%,#0a3d1c,#02190c 70%);color:#ede8d8;font-family:"Baskerville Casino",Georgia,serif;}
+.smr{position:fixed;inset:0;overflow:auto;background:radial-gradient(ellipse at 50% 0%,#1c3c2f 0%,#06110e 70%);color:#fcf1d7;font-family:"Baskerville Casino",Georgia,serif;}
 .smr .wrap{max-width:560px;margin:0 auto;padding:16px 16px 40px;}
-.smr h1{font:700 24px/1.1 "Baskerville Casino",serif;color:#ffe9a6;text-align:center;margin:8px 0 2px;}
-.smr .sub{text-align:center;color:#bfe6cc;font-size:13px;margin-bottom:14px;}
-.smr .card{background:linear-gradient(160deg,#0d2a19,#061710);border:2px solid #c6992f;border-radius:16px;padding:14px 16px;margin-bottom:14px;box-shadow:inset 0 0 0 1px #ffe9a614,0 4px 12px #0006;}
-.smr .card h2{font:700 16px/1 "Baskerville Casino",serif;color:#e8c879;margin:0 0 10px;letter-spacing:.04em;}
-.smr .gbtn{display:block;width:100%;box-sizing:border-box;padding:14px;border-radius:12px;border:1px solid #f3dea0;background:linear-gradient(180deg,#ffe694,#f0c357 48%,#d59a34 52%,#eab74a);color:#231503;font:700 18px/1 "Baskerville Casino",serif;cursor:pointer;box-shadow:0 3px 0 #7a4d12,0 6px 14px #0007;}
+.smr h1{font:700 24px/1.1 "Baskerville Casino",serif;color:#e5c680;text-align:center;margin:8px 0 2px;letter-spacing:.01em;}
+.smr .sub{text-align:center;color:#bac9b9;font-size:13px;margin-bottom:14px;}
+.smr .card{background:linear-gradient(160deg,#10251d,#0a1b14);border:1px solid #625334;border-radius:16px;padding:14px 16px;margin-bottom:14px;box-shadow:inset 0 0 0 1px #e5c68014,0 6px 16px #0007;}
+.smr .card h2{font:700 15px/1 "Baskerville Casino",serif;color:#e5c680;margin:0 0 10px;letter-spacing:.14em;text-transform:uppercase;}
+.smr .gbtn{display:block;width:100%;box-sizing:border-box;padding:14px;border-radius:12px;border:1px solid #e5c680;background:linear-gradient(180deg,#f0d79a,#e5c680 50%,#caa94f);color:#231503;font:700 18px/1 "Baskerville Casino",serif;cursor:pointer;box-shadow:0 3px 0 #7a5f1e,0 6px 14px #0007;}
 .smr .gbtn:disabled{opacity:.5;cursor:default;}
-.smr .fbtn{flex:1;padding:12px;border-radius:12px;border:2px solid #6e5320;background:#121511;color:#ffe9a6;font:700 15px/1 "Baskerville Casino",serif;cursor:pointer;}
+.smr .fbtn{flex:1;padding:12px;border-radius:12px;border:1px solid #625334;background:#0c1c15;color:#e5c680;font:700 15px/1 "Baskerville Casino",serif;cursor:pointer;}
 .smr .row{display:flex;gap:10px;}
 .smr .phase{display:inline-block;padding:3px 12px;border-radius:999px;font:700 13px/1.4 "Baskerville Casino",serif;letter-spacing:.06em;}
-.smr .phase.waiting{background:#1a2a20;color:#9fe0b4;border:1px solid #2a4a33;}
-.smr .phase.betting{background:#2a2410;color:#ffe9a6;border:1px solid #6e5320;}
-.smr .phase.playing{background:#10233a;color:#9fc8ff;border:1px solid #2a456e;}
-.smr .phase.result{background:#1b2a14;color:#cdf0b0;border:1px solid #42661f;}
-.smr .set{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid #ffffff12;}
+.smr .phase.waiting{background:#143024;color:#82d5aa;border:1px solid #2c5a41;}
+.smr .phase.betting{background:#2a2510;color:#e5c680;border:1px solid #625334;}
+.smr .phase.playing{background:#123427;color:#9fe3c0;border:1px solid #2c5a41;}
+.smr .phase.result{background:#17301d;color:#b7eccb;border:1px solid #2c5a41;}
+.smr .set{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid #ffffff10;}
 .smr .set:last-child{border-bottom:none;}
-.smr .set span{color:#cbd8c9;font-size:14px;}
+.smr .set span{color:#bac9b9;font-size:14px;}
 .smr .set .ctr{display:flex;align-items:center;gap:8px;}
-.smr .set .num{min-width:52px;text-align:center;color:#ffe9a6;font:700 17px/1 "Baskerville Casino",serif;}
-.smr .sbtn{width:34px;height:34px;border-radius:9px;border:2px solid #6e5320;background:#0b1a10;color:#ffe9a6;font:700 20px/1 serif;cursor:pointer;}
-.smr .set select{background:#0b1a10;border:2px solid #6e5320;color:#ffe9a6;border-radius:9px;padding:6px 8px;font:700 14px/1 "Baskerville Casino",serif;}
+.smr .set .num{min-width:52px;text-align:center;color:#e5c680;font:700 17px/1 "Baskerville Casino",serif;}
+.smr .sbtn{width:34px;height:34px;border-radius:9px;border:1px solid #625334;background:#0c1c15;color:#e5c680;font:700 20px/1 serif;cursor:pointer;}
+.smr .set select{background:#0c1c15;border:1px solid #625334;color:#e5c680;border-radius:9px;padding:6px 8px;font:700 14px/1 "Baskerville Casino",serif;}
 .smr .links{display:flex;gap:10px;flex-wrap:wrap;}
-.smr .lnk{flex:1;min-width:150px;display:flex;align-items:center;gap:10px;background:#0b1a10;border:1px solid #6e5320;border-radius:12px;padding:10px;}
+.smr .lnk{flex:1;min-width:150px;display:flex;align-items:center;gap:10px;background:#0c1c15;border:1px solid #625334;border-radius:12px;padding:10px;text-decoration:none;}
 .smr .lnk .qr{background:#fff;padding:5px;border-radius:7px;}
-.smr .lnk .lt{font:700 14px/1.3 "Baskerville Casino",serif;color:#ffe9a6;}
-.smr .lnk .lt small{display:block;color:#9fc8a8;font-weight:400;font-size:11px;}
+.smr .lnk .lt{font:700 14px/1.3 "Baskerville Casino",serif;color:#e5c680;}
+.smr .lnk .lt small{display:block;color:#bac9b9;font-weight:400;font-size:11px;}
 .smr .mini{display:flex;gap:6px;justify-content:center;align-items:flex-end;min-height:70px;margin:6px 0;}
 `;
 function Setting({ label, value, step, min = 0, disabled, onChange, fmt }: { label: string; value: number; step: number; min?: number; disabled?: boolean; onChange: (v: number) => void; fmt?: (v: number) => string }) {
@@ -739,39 +739,39 @@ export function SetteMezzoRegia({ displayCode }: { displayCode: string }) {
    distribuisce carte vere, poi segna i vincitori e paga 1:1. Può sempre
    accreditare/prelevare fish a mano. In modalità digitale vede la mano in corso. */
 const DEALER_CSS = SM_FONT + CARD_CSS + `
-.smd{position:fixed;inset:0;overflow:auto;background:radial-gradient(ellipse at 50% 0%,#0a3d1c,#02190c 70%);color:#ede8d8;font-family:"Baskerville Casino",Georgia,serif;}
+.smd{position:fixed;inset:0;overflow:auto;background:radial-gradient(ellipse at 50% 0%,#1c3c2f 0%,#06110e 70%);color:#fcf1d7;font-family:"Baskerville Casino",Georgia,serif;}
 .smd .wrap{max-width:520px;margin:0 auto;padding:14px 14px 40px;}
-.smd h1{font:700 22px/1.1 "Baskerville Casino",serif;color:#ffe9a6;text-align:center;margin:6px 0 2px;}
-.smd .sub{text-align:center;color:#bfe6cc;font-size:13px;margin-bottom:12px;}
+.smd h1{font:700 22px/1.1 "Baskerville Casino",serif;color:#e5c680;text-align:center;margin:6px 0 2px;}
+.smd .sub{text-align:center;color:#bac9b9;font-size:13px;margin-bottom:12px;}
 .smd .modebar{display:flex;gap:8px;margin-bottom:12px;}
-.smd .modebar button{flex:1;padding:11px;border-radius:12px;border:2px solid #6e5320;background:#121511;color:#cbd8c9;font:700 14px/1.2 "Baskerville Casino",serif;cursor:pointer;}
-.smd .modebar button.on{background:linear-gradient(180deg,#ffe694,#d59a34);color:#231503;border-color:#f3dea0;}
-.smd .gbtn{display:block;width:100%;box-sizing:border-box;padding:15px;border-radius:13px;border:1px solid #f3dea0;background:linear-gradient(180deg,#ffe694,#f0c357 48%,#d59a34 52%,#eab74a);color:#231503;font:700 18px/1 "Baskerville Casino",serif;cursor:pointer;box-shadow:0 3px 0 #7a4d12,0 6px 14px #0007;margin-bottom:12px;}
-.smd .gbtn.pay{background:linear-gradient(180deg,#5fe08a,#1aa64b 52%,#0c7a33);color:#07240f;border-color:#9fe8b8;box-shadow:0 3px 0 #0a5a28,0 6px 14px #0007;}
+.smd .modebar button{flex:1;padding:11px;border-radius:12px;border:1px solid #625334;background:#0c1c15;color:#bac9b9;font:700 14px/1.2 "Baskerville Casino",serif;cursor:pointer;}
+.smd .modebar button.on{background:linear-gradient(180deg,#f0d79a,#caa94f);color:#231503;border-color:#e5c680;}
+.smd .gbtn{display:block;width:100%;box-sizing:border-box;padding:15px;border-radius:13px;border:1px solid #e5c680;background:linear-gradient(180deg,#f0d79a,#e5c680 50%,#caa94f);color:#231503;font:700 18px/1 "Baskerville Casino",serif;cursor:pointer;box-shadow:0 3px 0 #7a5f1e,0 6px 14px #0007;margin-bottom:12px;}
+.smd .gbtn.pay{background:linear-gradient(180deg,#9ce6bb,#82d5aa 50%,#4fae7e);color:#07240f;border-color:#82d5aa;box-shadow:0 3px 0 #1a5a37,0 6px 14px #0007;}
 .smd .gbtn:disabled{opacity:.5;cursor:default;}
 .smd .plist{display:flex;flex-direction:column;gap:10px;}
-.smd .pl{display:flex;align-items:center;gap:11px;background:linear-gradient(160deg,#0d2a19,#061710);border:2px solid #6e5320;border-radius:14px;padding:10px 12px;}
-.smd .pl.win{border-color:#5fe08a;box-shadow:0 0 0 1px #5fe08a55,0 0 14px #1aa64b44;}
-.smd .pl .nm{font:700 16px/1.1 "Baskerville Casino",serif;color:#fff;}
-.smd .pl .bal{color:#9fc8a8;font-size:12px;}
+.smd .pl{display:flex;align-items:center;gap:11px;background:linear-gradient(160deg,#10251d,#0a1b14);border:1px solid #625334;border-radius:14px;padding:10px 12px;}
+.smd .pl.win{border-color:#82d5aa;box-shadow:0 0 0 1px #82d5aa55,0 0 14px #4fae7e44;}
+.smd .pl .nm{font:700 16px/1.1 "Baskerville Casino",serif;color:#fcf1d7;}
+.smd .pl .bal{color:#bac9b9;font-size:12px;}
 .smd .pl .mid{flex:1;min-width:0;}
-.smd .pl .bet{display:inline-flex;align-items:center;gap:5px;color:#ffe9a6;font:700 15px/1 "Baskerville Casino",serif;background:#0c0c08;border:2px solid #c9972f;border-radius:999px;padding:3px 10px;margin-top:3px;}
-.smd .pl .mchip{width:16px;height:16px;border-radius:50%;background:radial-gradient(circle at 38% 30%,#f26d6d,#c21118 60%,#8c0a10);}
+.smd .pl .bet{display:inline-flex;align-items:center;gap:5px;color:#e5c680;font:700 15px/1 "Baskerville Casino",serif;background:#0c1c15;border:1px solid #e5c680;border-radius:999px;padding:3px 10px;margin-top:3px;}
+.smd .pl .mchip{width:16px;height:16px;border-radius:50%;background:radial-gradient(circle at 38% 30%,#ffb0a8,#ff9a92 60%,#c65a53);}
 .smd .wl{display:flex;flex-direction:column;gap:5px;}
-.smd .wl button{padding:7px 12px;border-radius:10px;border:2px solid #4a4a44;background:#161915;color:#cbd8c9;font:700 13px/1 "Baskerville Casino",serif;cursor:pointer;min-width:70px;}
-.smd .wl button.win.on{background:linear-gradient(180deg,#5fe08a,#1aa64b);color:#07240f;border-color:#9fe8b8;}
-.smd .wl button.lose.on{background:#2a0a0a;color:#ff9b9b;border-color:#8a2f2f;}
+.smd .wl button{padding:7px 12px;border-radius:10px;border:1px solid #4a5a4a;background:#0c1c15;color:#bac9b9;font:700 13px/1 "Baskerville Casino",serif;cursor:pointer;min-width:70px;}
+.smd .wl button.win.on{background:linear-gradient(180deg,#9ce6bb,#4fae7e);color:#07240f;border-color:#82d5aa;}
+.smd .wl button.lose.on{background:#2a1010;color:#ff9a92;border-color:#7a3330;}
 .smd .tx{display:flex;gap:6px;margin-top:8px;}
-.smd .tx button{flex:1;padding:9px 2px;border-radius:9px;border:2px solid #6e5320;background:#0b1a10;font:700 14px/1 "Baskerville Casino",serif;cursor:pointer;}
-.smd .tx button.up{color:#8ee6a8;}
-.smd .tx button.down{color:#ff9b9b;}
-.smd .card{background:linear-gradient(160deg,#0d2a19,#061710);border:2px solid #c6992f;border-radius:16px;padding:14px;margin-bottom:12px;}
+.smd .tx button{flex:1;padding:9px 2px;border-radius:9px;border:1px solid #625334;background:#0c1c15;font:700 14px/1 "Baskerville Casino",serif;cursor:pointer;}
+.smd .tx button.up{color:#82d5aa;}
+.smd .tx button.down{color:#ff9a92;}
+.smd .card{background:linear-gradient(160deg,#10251d,#0a1b14);border:1px solid #625334;border-radius:16px;padding:14px;margin-bottom:12px;}
 .smd .outl{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #ffffff12;}
 .smd .outl:last-child{border-bottom:none;}
 .smd .outl .oc{font:700 14px/1 "Baskerville Casino",serif;padding:3px 10px;border-radius:999px;}
-.smd .outl .oc.win{background:linear-gradient(180deg,#ffe694,#e3a948);color:#231503;}
-.smd .outl .oc.lose{background:#2a0a0a;border:1px solid #8a2f2f;color:#ff9b9b;}
-.smd .hint{color:#9fe0b4;font-size:12px;text-align:center;margin:2px 0 10px;}
+.smd .outl .oc.win{background:linear-gradient(180deg,#f0d79a,#caa94f);color:#231503;}
+.smd .outl .oc.lose{background:#2a1010;border:1px solid #7a3330;color:#ff9a92;}
+.smd .hint{color:#82d5aa;font-size:12px;text-align:center;margin:2px 0 10px;}
 `;
 export function SetteMezzoDealer({ dealerCode }: { dealerCode: string }) {
   const [st, setSt] = useState<SmState | null>(null);

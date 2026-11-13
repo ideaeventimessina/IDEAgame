@@ -836,27 +836,27 @@ export function BlackjackMonitor({ displayCode }: { displayCode: string }) {
    REGIA (per tavolo) — canvas fisso 1600×900
    ════════════════════════════════════════════════════════════════════════════ */
 const REGIA_CSS = BJ_FONT + CARD_CSS + `
-.bjr{position:fixed;inset:0;overflow:auto;background:#02140a;display:flex;align-items:flex-start;justify-content:center;color:#fff;font-family:"Baskerville Casino",Georgia,serif;}
-.bjr .stage{position:relative;width:1600px;height:900px;flex:none;transform-origin:top center;background:radial-gradient(ellipse 120% 90% at 50% 10%,#0a5a26,#063f18 55%,#02260e);box-shadow:inset 0 0 0 8px #0a2a16,inset 0 0 0 11px #c9972f;padding:26px;box-sizing:border-box;}
+.bjr{position:fixed;inset:0;overflow:auto;background:#06110e;display:flex;align-items:flex-start;justify-content:center;color:#fcf1d7;font-family:"Baskerville Casino",Georgia,serif;}
+.bjr .stage{position:relative;width:1600px;height:900px;flex:none;transform-origin:top center;background:radial-gradient(ellipse 120% 90% at 50% 10%,#17402e,#0e2a1f 55%,#06110e);box-shadow:inset 0 0 0 8px #0a1a14,inset 0 0 0 11px #625334;padding:26px;box-sizing:border-box;}
 .bjr .logo{position:absolute;right:30px;top:20px;height:120px;}
-.bjr .title{font:700 44px/1 "Baskerville Casino",serif;color:#ffe9a6;}
-.bjr .pill{display:inline-flex;align-items:center;gap:10px;margin-top:12px;padding:10px 24px;border-radius:999px;border:2px solid #4ade80;color:#9fe0b4;font-size:22px;box-shadow:0 0 16px #4ade8055;}
-.bjr .pill.closed{border-color:#e0b24a;color:#ffe08a;box-shadow:0 0 16px #e0b24a55;}
-.bjr .code{position:absolute;right:30px;top:150px;color:#cbd8c9;font-size:20px;}
-.bjr .panel{position:absolute;border-radius:14px;background:linear-gradient(160deg,#0c2417,#06150d);border:2px solid #b98b38;box-shadow:inset 0 0 0 1px rgba(255,235,160,.1);padding:16px;box-sizing:border-box;}
+.bjr .title{font:700 44px/1 "Cinzel Cas","Baskerville Casino",serif;color:#e5c680;letter-spacing:.01em;}
+.bjr .pill{display:inline-flex;align-items:center;gap:10px;margin-top:12px;padding:10px 24px;border-radius:999px;border:1px solid #82d5aa;color:#82d5aa;font-size:22px;box-shadow:0 0 16px #82d5aa33;}
+.bjr .pill.closed{border-color:#e5c680;color:#e5c680;box-shadow:0 0 16px #e5c68033;}
+.bjr .code{position:absolute;right:30px;top:150px;color:#bac9b9;font-size:20px;}
+.bjr .panel{position:absolute;border-radius:14px;background:linear-gradient(160deg,#10251d,#0a1a14);border:1px solid #625334;box-shadow:inset 0 0 0 1px rgba(229,198,128,.08);padding:16px;box-sizing:border-box;}
 .bjr table{width:100%;border-collapse:collapse;font-size:19px;}
-.bjr th{color:#e8c879;text-align:left;font-weight:700;padding:8px 10px;border-bottom:1px solid #2f5a3a;}
+.bjr th{color:#e5c680;text-align:left;font-weight:700;padding:8px 10px;border-bottom:1px solid #2f5a3a;}
 .bjr td{padding:8px 10px;border-bottom:1px solid #16331f;}
 .bjr .dot{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:8px;}
 .bjr .set{display:flex;align-items:center;justify-content:space-between;margin:10px 0;}
-.bjr .set input,.bjr .set select{width:120px;padding:8px;border-radius:8px;border:1px solid #6e5320;background:#0b1a10;color:#ffe9a6;font:700 16px serif;text-align:center;}
-.bjr .gbtn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;box-sizing:border-box;padding:16px;border-radius:12px;border:1px solid #f3dea0;background:linear-gradient(180deg,#ffe694,#f0c357 48%,#d59a34 52%,#eab74a);color:#231503;font:700 22px/1 "Baskerville Casino",serif;cursor:pointer;box-shadow:0 3px 0 #7a4d12,inset 0 1px 0 #fff8;}
+.bjr .set input,.bjr .set select{width:120px;padding:8px;border-radius:8px;border:1px solid #625334;background:#0a1a14;color:#e5c680;font:700 16px serif;text-align:center;}
+.bjr .gbtn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;box-sizing:border-box;padding:16px;border-radius:12px;border:1px solid #efd9a0;background:linear-gradient(180deg,#efd9a0,#e5c680 52%,#caa44f);color:#2a2008;font:700 22px/1 "Cinzel Cas","Baskerville Casino",serif;cursor:pointer;box-shadow:0 3px 0 #5a4a1c,inset 0 1px 0 #fff8;}
 .bjr .gbtn:disabled{opacity:.5;}
 .bjr .foot{position:absolute;left:26px;right:26px;bottom:24px;display:flex;gap:16px;}
-.bjr .fbtn{flex:1;padding:14px;border-radius:12px;border:1px solid #6e5320;background:#0c0c08;color:#ffe9a6;font:700 20px serif;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;}
-.bjr .res.win{color:#7ef0a4;font-weight:700;}
-.bjr .res.lose{color:#ff9b9b;font-weight:700;}
-.bjr .res.push{color:#ffe08a;font-weight:700;}
+.bjr .fbtn{flex:1;padding:14px;border-radius:12px;border:1px solid #625334;background:#0a1a14;color:#e5c680;font:700 20px serif;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;}
+.bjr .res.win{color:#82d5aa;font-weight:700;}
+.bjr .res.lose{color:#ff9a92;font-weight:700;}
+.bjr .res.push{color:#e5c680;font-weight:700;}
 .bjr .mini{display:inline-flex;gap:3px;vertical-align:middle;}
 `;
 export function BlackjackRegia({ displayCode }: { displayCode: string }) {
@@ -1036,39 +1036,39 @@ function Setting({ label, value, step, disabled, onChange }: { label: string; va
    ogni giocatore (Vince 1:1 / BJ 3:2 / Pari / Perde) e paga; +/− fish a mano.
    ════════════════════════════════════════════════════════════════════════════ */
 const BJ_DEALER_CSS = BJ_FONT + `
-.bjd{position:fixed;inset:0;overflow:auto;background:radial-gradient(ellipse at 50% 0%,#0a3d1c,#02190c 70%);color:#ede8d8;font-family:"Baskerville Casino",Georgia,serif;}
+.bjd{position:fixed;inset:0;overflow:auto;background:radial-gradient(ellipse at 50% 0%,#17402e,#06110e 70%);color:#fcf1d7;font-family:"Baskerville Casino",Georgia,serif;}
 .bjd .wrap{max-width:540px;margin:0 auto;padding:14px 14px 40px;}
-.bjd h1{font:700 22px/1.1 "Baskerville Casino",serif;color:#ffe9a6;text-align:center;margin:6px 0 2px;}
-.bjd .sub{text-align:center;color:#bfe6cc;font-size:13px;margin-bottom:12px;}
+.bjd h1{font:700 22px/1.1 "Cinzel Cas","Baskerville Casino",serif;color:#e5c680;text-align:center;margin:6px 0 2px;}
+.bjd .sub{text-align:center;color:#bac9b9;font-size:13px;margin-bottom:12px;}
 .bjd .modebar{display:flex;gap:8px;margin-bottom:12px;}
-.bjd .modebar button{flex:1;padding:11px;border-radius:12px;border:2px solid #6e5320;background:#121511;color:#cbd8c9;font:700 14px/1.2 "Baskerville Casino",serif;cursor:pointer;}
-.bjd .modebar button.on{background:linear-gradient(180deg,#ffe694,#d59a34);color:#231503;border-color:#f3dea0;}
-.bjd .gbtn{display:block;width:100%;box-sizing:border-box;padding:15px;border-radius:13px;border:1px solid #f3dea0;background:linear-gradient(180deg,#ffe694,#f0c357 48%,#d59a34 52%,#eab74a);color:#231503;font:700 18px/1 "Baskerville Casino",serif;cursor:pointer;box-shadow:0 3px 0 #7a4d12,0 6px 14px #0007;margin-bottom:12px;}
-.bjd .gbtn.pay{background:linear-gradient(180deg,#5fe08a,#1aa64b 52%,#0c7a33);color:#07240f;border-color:#9fe8b8;box-shadow:0 3px 0 #0a5a28,0 6px 14px #0007;}
+.bjd .modebar button{flex:1;padding:11px;border-radius:12px;border:1px solid #625334;background:#10251d;color:#bac9b9;font:700 14px/1.2 "Baskerville Casino",serif;cursor:pointer;}
+.bjd .modebar button.on{background:linear-gradient(180deg,#efd9a0,#e5c680 52%,#caa44f);color:#2a2008;border-color:#efd9a0;}
+.bjd .gbtn{display:block;width:100%;box-sizing:border-box;padding:15px;border-radius:13px;border:1px solid #efd9a0;background:linear-gradient(180deg,#efd9a0,#e5c680 52%,#caa44f);color:#2a2008;font:700 18px/1 "Cinzel Cas","Baskerville Casino",serif;cursor:pointer;box-shadow:0 3px 0 #5a4a1c,0 6px 14px #0007;margin-bottom:12px;}
+.bjd .gbtn.pay{background:linear-gradient(180deg,#9fe8c0,#82d5aa 52%,#4fae82);color:#07240f;border-color:#9fe8c0;box-shadow:0 3px 0 #0a5a28,0 6px 14px #0007;}
 .bjd .gbtn:disabled{opacity:.5;cursor:default;}
-.bjd .card{background:linear-gradient(160deg,#0d2a19,#061710);border:2px solid #c6992f;border-radius:16px;padding:14px;margin-bottom:12px;}
-.bjd .hint{color:#9fe0b4;font-size:12px;text-align:center;margin:2px 0 10px;}
+.bjd .card{background:linear-gradient(160deg,#10251d,#0a1a14);border:1px solid #625334;border-radius:16px;padding:14px;margin-bottom:12px;}
+.bjd .hint{color:#82d5aa;font-size:12px;text-align:center;margin:2px 0 10px;}
 .bjd .plist{display:flex;flex-direction:column;gap:10px;}
-.bjd .pl{display:flex;align-items:center;gap:11px;background:linear-gradient(160deg,#0d2a19,#061710);border:2px solid #6e5320;border-radius:14px;padding:10px 12px;}
-.bjd .pl .nm{font:700 16px/1.1 "Baskerville Casino",serif;color:#fff;}
-.bjd .pl .bal{color:#9fc8a8;font-size:12px;}
+.bjd .pl{display:flex;align-items:center;gap:11px;background:linear-gradient(160deg,#10251d,#0a1a14);border:1px solid #625334;border-radius:14px;padding:10px 12px;}
+.bjd .pl .nm{font:700 16px/1.1 "Baskerville Casino",serif;color:#fcf1d7;}
+.bjd .pl .bal{color:#bac9b9;font-size:12px;}
 .bjd .pl .mid{flex:1;min-width:0;}
-.bjd .pl .bet{display:inline-flex;align-items:center;gap:5px;color:#ffe9a6;font:700 15px/1 "Baskerville Casino",serif;background:#0c0c08;border:2px solid #c9972f;border-radius:999px;padding:3px 10px;margin-top:3px;}
+.bjd .pl .bet{display:inline-flex;align-items:center;gap:5px;color:#e5c680;font:700 15px/1 "Baskerville Casino",serif;background:#0a1a14;border:1px solid #625334;border-radius:999px;padding:3px 10px;margin-top:3px;}
 .bjd .ob{display:grid;grid-template-columns:1fr 1fr;gap:5px;min-width:150px;}
-.bjd .ob button{padding:7px 4px;border-radius:9px;border:2px solid #4a4a44;background:#161915;color:#cbd8c9;font:700 12px/1.05 "Baskerville Casino",serif;cursor:pointer;}
-.bjd .ob button.win.on{background:linear-gradient(180deg,#5fe08a,#1aa64b);color:#07240f;border-color:#9fe8b8;}
-.bjd .ob button.bj.on{background:linear-gradient(180deg,#ffe694,#e3a948);color:#231503;border-color:#f3dea0;}
-.bjd .ob button.push.on{background:linear-gradient(180deg,#8fd0ff,#2f82c4);color:#05233b;border-color:#bfe2ff;}
-.bjd .ob button.lose.on{background:#2a0a0a;color:#ff9b9b;border-color:#8a2f2f;}
+.bjd .ob button{padding:7px 4px;border-radius:9px;border:1px solid #4a4a44;background:#0e1f18;color:#bac9b9;font:700 12px/1.05 "Baskerville Casino",serif;cursor:pointer;}
+.bjd .ob button.win.on{background:linear-gradient(180deg,#9fe8c0,#4fae82);color:#07240f;border-color:#9fe8c0;}
+.bjd .ob button.bj.on{background:linear-gradient(180deg,#efd9a0,#caa44f);color:#2a2008;border-color:#efd9a0;}
+.bjd .ob button.push.on{background:linear-gradient(180deg,#bac9b9,#8aa092);color:#0a1a14;border-color:#d4e0d4;}
+.bjd .ob button.lose.on{background:#3a1413;color:#ff9a92;border-color:#8a2f2f;}
 .bjd .tx{display:flex;gap:6px;margin-top:8px;}
-.bjd .tx button{flex:1;padding:9px 2px;border-radius:9px;border:2px solid #6e5320;background:#0b1a10;font:700 14px/1 "Baskerville Casino",serif;cursor:pointer;}
-.bjd .tx button.up{color:#8ee6a8;}
-.bjd .tx button.down{color:#ff9b9b;}
+.bjd .tx button{flex:1;padding:9px 2px;border-radius:9px;border:1px solid #625334;background:#0a1a14;font:700 14px/1 "Baskerville Casino",serif;cursor:pointer;}
+.bjd .tx button.up{color:#82d5aa;}
+.bjd .tx button.down{color:#ff9a92;}
 .bjd .outl{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #ffffff12;}
 .bjd .outl:last-child{border-bottom:none;}
 .bjd .outl .oc{font:700 14px/1 "Baskerville Casino",serif;padding:3px 10px;border-radius:999px;}
-.bjd .outl .oc.win{background:linear-gradient(180deg,#ffe694,#e3a948);color:#231503;}
-.bjd .outl .oc.lose{background:#2a0a0a;border:1px solid #8a2f2f;color:#ff9b9b;}
+.bjd .outl .oc.win{background:linear-gradient(180deg,#efd9a0,#caa44f);color:#2a2008;}
+.bjd .outl .oc.lose{background:#3a1413;border:1px solid #8a2f2f;color:#ff9a92;}
 `;
 type BjOutMark = 'win' | 'blackjack' | 'push' | 'lose';
 export function BlackjackDealer({ dealerCode }: { dealerCode: string }) {
@@ -1168,22 +1168,22 @@ export function BlackjackDealer({ dealerCode }: { dealerCode: string }) {
    ELENCO TAVOLI (hub regia) — ?bjtables=SESSIONID
    ════════════════════════════════════════════════════════════════════════════ */
 const HUB_CSS = BJ_FONT + `
-.bjh{position:fixed;inset:0;overflow:auto;color:#fff;font-family:"Baskerville Casino",Georgia,serif;background:radial-gradient(ellipse 120% 80% at 50% 0%,#0a5a26,#063f18 50%,#02220c);padding:28px;}
+.bjh{position:fixed;inset:0;overflow:auto;color:#fcf1d7;font-family:"Baskerville Casino",Georgia,serif;background:radial-gradient(ellipse 120% 80% at 50% 0%,#17402e,#0e2a1f 50%,#06110e);padding:28px;}
 .bjh .logo{height:110px;position:absolute;right:30px;top:20px;}
-.bjh h1{font:700 44px/1 "Baskerville Casino",serif;color:#ffe9a6;}
+.bjh h1{font:700 44px/1 "Cinzel Cas","Baskerville Casino",serif;color:#e5c680;}
 .bjh .row{display:flex;gap:22px;flex-wrap:wrap;margin-top:24px;align-items:flex-start;}
-.bjh .tcard{width:360px;border-radius:16px;background:linear-gradient(160deg,#0c2417,#06150d);border:2px solid #b98b38;padding:18px;}
-.bjh .tcard h2{margin:0 0 6px;font:700 30px/1 serif;color:#fff;}
-.bjh .pill{display:inline-block;padding:6px 16px;border-radius:999px;font-size:16px;border:2px solid #4ade80;color:#9fe0b4;}
-.bjh .pill.b{border-color:#e0b24a;color:#ffe08a;}
+.bjh .tcard{width:360px;border-radius:16px;background:linear-gradient(160deg,#10251d,#0a1a14);border:1px solid #625334;padding:18px;}
+.bjh .tcard h2{margin:0 0 6px;font:700 30px/1 "Cinzel Cas",serif;color:#fcf1d7;}
+.bjh .pill{display:inline-block;padding:6px 16px;border-radius:999px;font-size:16px;border:1px solid #82d5aa;color:#82d5aa;}
+.bjh .pill.b{border-color:#e5c680;color:#e5c680;}
 .bjh .acts{display:flex;gap:10px;margin-top:16px;}
-.bjh .acts button{flex:1;padding:12px;border-radius:10px;border:1px solid #6e5320;background:#0c0c08;color:#ffe9a6;font:700 16px serif;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;}
-.bjh .new{width:320px;border-radius:16px;background:linear-gradient(160deg,#0c2417,#06150d);border:2px solid #b98b38;padding:18px;}
-.bjh .new label{display:block;color:#e8c879;font-size:15px;margin:10px 0 4px;}
-.bjh .new input{width:100%;box-sizing:border-box;padding:10px;border-radius:8px;border:1px solid #6e5320;background:#0b1a10;color:#ffe9a6;font:700 17px serif;}
-.bjh .gbtn{width:100%;margin-top:16px;padding:14px;border-radius:10px;border:1px solid #f3dea0;background:linear-gradient(180deg,#ffe694,#f0c357 48%,#d59a34 52%,#eab74a);color:#231503;font:700 19px serif;cursor:pointer;}
+.bjh .acts button{flex:1;padding:12px;border-radius:10px;border:1px solid #625334;background:#0a1a14;color:#e5c680;font:700 16px serif;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;}
+.bjh .new{width:320px;border-radius:16px;background:linear-gradient(160deg,#10251d,#0a1a14);border:1px solid #625334;padding:18px;}
+.bjh .new label{display:block;color:#e5c680;font-size:15px;margin:10px 0 4px;}
+.bjh .new input{width:100%;box-sizing:border-box;padding:10px;border-radius:8px;border:1px solid #625334;background:#0a1a14;color:#e5c680;font:700 17px serif;}
+.bjh .gbtn{width:100%;margin-top:16px;padding:14px;border-radius:10px;border:1px solid #efd9a0;background:linear-gradient(180deg,#efd9a0,#e5c680 52%,#caa44f);color:#2a2008;font:700 19px "Cinzel Cas",serif;cursor:pointer;}
 .bjh .qr{position:fixed;inset:0;background:#000b;display:grid;place-items:center;}
-.bjh .qr .box{background:#06150d;border:2px solid #c9972f;border-radius:16px;padding:24px;text-align:center;}
+.bjh .qr .box{background:#10251d;border:1px solid #625334;border-radius:16px;padding:24px;text-align:center;}
 .bjh .qr .box .w{background:#fff;padding:16px;border-radius:12px;display:inline-block;}
 `;
 export function BlackjackTablesView({ sessionId }: { sessionId: string }) {
@@ -1215,7 +1215,7 @@ export function BlackjackTablesView({ sessionId }: { sessionId: string }) {
           </div>
         ))}
         <div className="new">
-          <h2 style={{ margin: 0, fontSize: 26, color: '#ffe9a6' }}>Nuovo tavolo</h2>
+          <h2 style={{ margin: 0, fontSize: 26, color: '#e5c680', fontFamily: '"Cinzel Cas",serif' }}>Nuovo tavolo</h2>
           <label>Nome tavolo</label><input value={name} onChange={e => setName(e.target.value)} placeholder={`Tavolo ${tables.length + 1}`} />
           <label>Puntata minima</label><input type="number" value={minBet} onChange={e => setMinBet(+e.target.value)} />
           <label>Puntata massima</label><input type="number" value={maxBet} onChange={e => setMaxBet(+e.target.value)} />

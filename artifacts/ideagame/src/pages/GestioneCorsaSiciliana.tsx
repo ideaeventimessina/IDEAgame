@@ -467,36 +467,36 @@ export function CorsaSiciliaRegia({ displayCode }: { displayCode: string }) {
   const [busy, setBusy] = useState(false);
   const call = async (path: string, body?: object) => { setBusy(true); try { await api(path, { displayCode, ...body }); } finally { setTimeout(() => setBusy(false), 500); } };
   const B = (import.meta.env.BASE_URL as string) || '/';
-  if (!t) return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#0a2a6a', color: '#ffe9a6', fontFamily: 'Georgia' }}>Carico…</div>;
+  if (!t) return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#06110e', color: '#e5c680', fontFamily: 'Georgia' }}>Carico…</div>;
   const m = (s: Suit) => SUIT_META[s];
   return (
-    <ScreenFit style={{ background: 'radial-gradient(ellipse 120% 90% at 50% 0%,#1f4a9c,#0a2a6a)', color: '#fff', fontFamily: '"Baskerville Casino",Georgia,serif' }} pad={16}>
+    <ScreenFit style={{ background: 'radial-gradient(ellipse 120% 90% at 50% 0%,#1c3c2f,#06110e 70%)', color: '#fcf1d7', fontFamily: '"Baskerville Casino",Georgia,serif' }} pad={16}>
       <style>{FONT}</style>
-      <div style={{ width: 'min(calc(100vw - 32px),680px)', padding: '6px 0' }}>
+      <div className="cas" style={{ width: 'min(calc(100vw - 32px),680px)', padding: '6px 0', background: 'transparent' }}>
         <div style={{ textAlign: 'center', marginBottom: 14 }}>
           <img src={`${B}casino/logo-idea-casino.png`} alt="" style={{ height: 56 }} />
-          <div style={{ font: '700 32px/1 "Baskerville Casino",serif', color: '#ffe9a6', marginTop: 4 }}>Regia · Corsa Siciliana</div>
-          <div style={{ color: '#cfe0f5' }}>{t.name} · <b style={{ color: '#ffe9a6' }}>{t.displayCode}</b> · Giro {t.race}</div>
+          <div style={{ font: '700 32px/1 "Baskerville Casino",serif', color: '#e5c680', marginTop: 4 }}>Regia · Corsa Siciliana</div>
+          <div style={{ color: '#bac9b9' }}>{t.name} · <b style={{ color: '#e5c680' }}>{t.displayCode}</b> · Giro {t.race}</div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
           {SUITS.map(s => (
-            <div key={s} style={{ borderRadius: 12, border: `2px solid ${m(s).glow}66`, background: '#ffffff0e', padding: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div key={s} style={{ borderRadius: 12, border: `2px solid ${m(s).glow}66`, background: 'rgba(98,83,52,.12)', padding: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
               <SuitIcon suit={s} size={34} />
-              <div style={{ flex: 1 }}><div style={{ font: '700 18px/1 "Baskerville Casino",serif', color: m(s).glow }}>{m(s).label}</div><div style={{ color: '#cfe0f5', fontSize: 13 }}>casella {t.positions[s]} / {t.trackLen} · piatto {t.pot?.[s] ?? 0}</div></div>
+              <div style={{ flex: 1 }}><div style={{ font: '700 18px/1 "Baskerville Casino",serif', color: m(s).glow }}>{m(s).label}</div><div style={{ color: '#bac9b9', fontSize: 13 }}>casella {t.positions[s]} / {t.trackLen} · piatto {t.pot?.[s] ?? 0}</div></div>
               {t.winner === s && <span style={{ color: '#ffe08a', fontWeight: 700 }}>🏁</span>}
             </div>
           ))}
         </div>
         {t.bancoEnabled && (
-          <div style={{ borderRadius: 12, border: '2px solid #ffe08a66', background: '#ffffff0e', padding: 12, display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+          <div style={{ borderRadius: 12, border: '2px solid #ffe08a66', background: 'rgba(98,83,52,.12)', padding: 12, display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
             <span style={{ fontSize: 30 }}>🏦</span>
-            <div style={{ flex: 1 }}><div style={{ font: '700 18px/1 "Baskerville Casino",serif', color: '#ffe08a' }}>Cavallo del Banco</div><div style={{ color: '#cfe0f5', fontSize: 13 }}>casella {t.bancoPos} / {t.trackLen} · {t.bancoCards} carte Banco nel mazzo</div></div>
+            <div style={{ flex: 1 }}><div style={{ font: '700 18px/1 "Baskerville Casino",serif', color: '#ffe08a' }}>Cavallo del Banco</div><div style={{ color: '#bac9b9', fontSize: 13 }}>casella {t.bancoPos} / {t.trackLen} · {t.bancoCards} carte Banco nel mazzo</div></div>
             {t.winner === 'banco' && <span style={{ color: '#ffe08a', fontWeight: 700 }}>🏁</span>}
           </div>
         )}
-        <div style={{ textAlign: 'center', marginBottom: 10, color: '#cfe0f5' }}>Piatto totale: <b style={{ color: '#ffe9a6' }}>{t.pot?.total ?? 0}</b> fiche · quota ×{t.quota ?? 3}</div>
+        <div style={{ textAlign: 'center', marginBottom: 10, color: '#bac9b9' }}>Piatto totale: <b style={{ color: '#e5c680' }}>{t.pot?.total ?? 0}</b> fiche · quota ×{t.quota ?? 3}</div>
         {t.winner && <div style={{ textAlign: 'center', marginBottom: 10, font: '700 22px "Baskerville Casino",serif', color: '#ffe08a' }}>🏁 {t.winner === 'banco' ? 'Vince il BANCO — tutte le puntate alla casa' : `Vince ${m(t.winner as Suit).label}`}</div>}
-        {t.last && <div style={{ textAlign: 'center', marginBottom: 12, color: '#cfe0f5' }}>Ultima carta: <b style={{ color: '#fff' }}>{t.last.suit === 'banco' ? '🏦 Banco' : `${t.last.value} di ${m(t.last.suit as Suit).label}`}</b> · mazzo {t.deckLeft}</div>}
+        {t.last && <div style={{ textAlign: 'center', marginBottom: 12, color: '#bac9b9' }}>Ultima carta: <b style={{ color: '#fff' }}>{t.last.suit === 'banco' ? '🏦 Banco' : `${t.last.value} di ${m(t.last.suit as Suit).label}`}</b> · mazzo {t.deckLeft}</div>}
 
         <div style={{ display: 'grid', gap: 10 }}>
           {t.phase === 'racing' && !t.winner && (
@@ -508,26 +508,26 @@ export function CorsaSiciliaRegia({ displayCode }: { displayCode: string }) {
           {t.phase === 'betting' && <button disabled={busy} onClick={() => call('/gestione/casino/sicilia/start')} style={btnG}>▶ Avvia la corsa (Via)</button>}
           {(t.phase === 'result' || t.phase === 'betting') && <button disabled={busy} onClick={() => call('/gestione/casino/sicilia/open')} style={btnGhost}>↻ Nuova corsa (apri puntate)</button>}
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'center', marginTop: 4 }}>
-            <label style={{ color: '#cfe0f5' }}>Caselle
+            <label style={{ color: '#bac9b9' }}>Caselle
               <input type="number" min={3} max={10} defaultValue={t.trackLen} disabled={t.phase === 'racing' || busy} onBlur={e => call('/gestione/casino/sicilia/settings', { trackLen: +e.target.value })}
-                style={{ width: 64, marginLeft: 8, padding: 8, borderRadius: 8, border: '1px solid #ffffff33', background: '#0a2a6a', color: '#ffe9a6', textAlign: 'center' }} />
+                style={{ width: 64, marginLeft: 8, padding: 8, borderRadius: 8, border: '1px solid rgba(98,83,52,.42)', background: '#10251d', color: '#e5c680', textAlign: 'center' }} />
             </label>
             <button disabled={busy} onClick={() => call('/gestione/casino/sicilia/suspend')} style={{ ...btnGhost, width: 'auto', padding: '8px 14px' }}>{t.suspended ? 'Riattiva' : 'Sospendi'}</button>
           </div>
-          <div style={{ display: 'flex', gap: 14, alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', background: '#ffffff0e', borderRadius: 12, padding: 10 }}>
-            <label style={{ color: '#cfe0f5', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+          <div style={{ display: 'flex', gap: 14, alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', background: 'rgba(98,83,52,.12)', borderRadius: 12, padding: 10 }}>
+            <label style={{ color: '#bac9b9', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
               <input type="checkbox" checked={!!t.bancoEnabled} disabled={t.phase !== 'betting' || busy} onChange={e => call('/gestione/casino/sicilia/settings', { bancoEnabled: e.target.checked })} />
               🏦 Cavallo del Banco
             </label>
-            {t.bancoEnabled && <label style={{ color: '#cfe0f5' }}>Carte Banco
+            {t.bancoEnabled && <label style={{ color: '#bac9b9' }}>Carte Banco
               <input type="number" min={1} max={15} defaultValue={t.bancoCards} disabled={t.phase !== 'betting' || busy} onBlur={e => call('/gestione/casino/sicilia/settings', { bancoCards: +e.target.value })}
-                style={{ width: 56, marginLeft: 8, padding: 8, borderRadius: 8, border: '1px solid #ffffff33', background: '#0a2a6a', color: '#ffe9a6', textAlign: 'center' }} />
+                style={{ width: 56, marginLeft: 8, padding: 8, borderRadius: 8, border: '1px solid rgba(98,83,52,.42)', background: '#10251d', color: '#e5c680', textAlign: 'center' }} />
             </label>}
-            <span style={{ color: '#8fa9d6', fontSize: 12 }}>più carte = banco vince più spesso</span>
+            <span style={{ color: '#9fb6a0', fontSize: 12 }}>più carte = banco vince più spesso</span>
           </div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'center', background: '#ffffff0e', borderRadius: 12, padding: 10 }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'center', background: 'rgba(98,83,52,.12)', borderRadius: 12, padding: 10 }}>
             <QRCodeSVG value={`${ORIGIN}gestione/casino?sicplay=${t.displayCode}`} size={72} />
-            <div style={{ color: '#cfe0f5', fontSize: 13 }}>QR ingresso giocatori<br /><b style={{ color: '#ffe9a6', fontSize: 18 }}>{t.displayCode}</b></div>
+            <div style={{ color: '#bac9b9', fontSize: 13 }}>QR ingresso giocatori<br /><b style={{ color: '#e5c680', fontSize: 18 }}>{t.displayCode}</b></div>
           </div>
           <LightDealerBind kind="sicilia" sessionId={st!.sessionId} tableId={t.id} hasDealer={!!t.hasDealer} origin={ORIGIN} />
           <a href={`${ORIGIN}gestione/casino?sic=${t.displayCode}&host=1`} target="_blank" rel="noreferrer" style={{ ...btnGhost, textAlign: 'center', textDecoration: 'none', display: 'block' }}>🖥️ Apri il monitor 80″ (host) ↗</a>

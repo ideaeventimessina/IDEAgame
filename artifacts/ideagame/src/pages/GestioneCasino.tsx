@@ -381,7 +381,7 @@ function BigRow({ p, i, vw }: { p: Player; i: number; vw: number }) {
 // ══════════════════ MASTER — REGIA (canvas fisso 1672×941, fedele al mockup) ══════
 const REGIA_CSS = `
 .regia-root{position:fixed;inset:0;background:#03140a;display:grid;place-items:center;overflow:hidden;color:#fff;
-  --serif:"Baskerville Casino",Georgia,serif;--gold:#f3c95f;--g1:#fff2bf;--g2:#f3c95f;--g3:#c88a2c;--g4:#7a4d12;--cream:#f4ead3;}
+  --serif:"Baskerville Casino",Georgia,serif;--gold:#e5c680;--g1:#fff2bf;--g2:#e5c680;--g3:#c88a2c;--g4:#7a4d12;--cream:#f4ead3;}
 .regia-root *{box-sizing:border-box;margin:0;}
 .regia-root .stage{position:relative;width:1672px;height:941px;transform-origin:center center;font-family:var(--serif);
   background:radial-gradient(ellipse 1200px 760px at 836px 300px,#0a5a25 0%,#043f17 44%,#022a0e 78%,#01210a 100%);}
@@ -389,19 +389,19 @@ const REGIA_CSS = `
 .regia-root .corner{position:absolute;pointer-events:none;}
 /* header */
 .regia-root .logo{left:42px;top:14px;height:104px;}
-.regia-root .vline{left:498px;top:30px;width:3px;height:74px;background:linear-gradient(#f3c95f,#8a5c18);opacity:.8;}
+.regia-root .vline{left:498px;top:30px;width:3px;height:74px;background:linear-gradient(#e5c680,#8a5c18);opacity:.8;}
 .regia-root .rtitle{left:525px;top:24px;font:700 58px/1 var(--serif);letter-spacing:.01em;
   background:linear-gradient(180deg,#fff6c8,#ffe08a 42%,#e9b24f 72%,#ffe594);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 2px 1px #000a);}
 .regia-root .rsub{left:528px;top:92px;font:400 22px/1 var(--serif);color:#e8c879;}
-.regia-root .live{right:40px;top:50px;display:flex;align-items:center;gap:14px;padding:12px 34px;border:2px solid #f3c95f;border-radius:30px;
-  background:radial-gradient(ellipse at 50% 50%,#06220f,#041a0b);box-shadow:0 0 16px rgba(243,201,95,.3),inset 0 0 12px #0008;}
+.regia-root .live{right:40px;top:50px;display:flex;align-items:center;gap:14px;padding:12px 34px;border:2px solid #e5c680;border-radius:30px;
+  background:radial-gradient(ellipse at 50% 50%,#06220f,#041a0b);box-shadow:0 0 16px rgba(229,198,128,.3),inset 0 0 12px #0008;}
 .regia-root .live b{font:700 24px/1 var(--serif);color:#ffe9a6;}
 .regia-root .dot{width:15px;height:15px;border-radius:50%;background:#2bd24a;box-shadow:0 0 12px #2bd24a;}
 /* pannelli */
 .regia-root .panel{position:absolute;top:135px;height:703px;border-radius:14px;
   background:linear-gradient(160deg,#141209 0%,#0a0a07 55%,#07070a 100%);
-  border:2px solid #b98b38;box-shadow:0 0 0 2px #3a2708,0 0 22px rgba(243,201,95,.12),inset 0 0 0 1px rgba(255,235,160,.14),inset 0 10px 40px #0008;}
-.regia-root .panel::before{content:"";position:absolute;inset:6px;border:1px solid rgba(243,201,95,.35);border-radius:9px;pointer-events:none;}
+  border:2px solid #b98b38;box-shadow:0 0 0 2px #3a2708,0 0 22px rgba(229,198,128,.12),inset 0 0 0 1px rgba(255,235,160,.14),inset 0 10px 40px #0008;}
+.regia-root .panel::before{content:"";position:absolute;inset:6px;border:1px solid rgba(229,198,128,.35);border-radius:9px;pointer-events:none;}
 .regia-root .phead{position:absolute;left:0;right:0;top:18px;display:flex;flex-direction:column;align-items:center;gap:5px;}
 .regia-root .phead .ht{display:flex;align-items:center;justify-content:center;gap:12px;font:700 23px/1 var(--serif);letter-spacing:.02em;color:#ffe9a6;text-shadow:0 1px 2px #000;white-space:nowrap;}
 .regia-root .phead small{font:400 15px/1 var(--serif);color:#c8a862;letter-spacing:0;}
@@ -418,7 +418,7 @@ const REGIA_CSS = `
 .regia-root .tile .thumb{width:84px;height:84px;border-radius:10px;object-fit:cover;flex:none;border:1px solid #6e5320;}
 .regia-root .tile .nm{font:700 24px/1 var(--serif);color:#f4ead3;}
 .regia-root .tile .cd{font:400 15px/1 var(--serif);color:#b9a06a;margin-top:6px;}
-.regia-root .tile .lnk{display:inline-flex;align-items:center;gap:6px;margin-top:10px;color:#f3c95f;font:700 16px/1 var(--serif);text-decoration:none;}
+.regia-root .tile .lnk{display:inline-flex;align-items:center;gap:6px;margin-top:10px;color:#e5c680;font:700 16px/1 var(--serif);text-decoration:none;}
 .regia-root .tile .big{position:absolute;right:16px;top:50%;transform:translateY(-50%);font:700 30px/1 var(--serif);color:#ffe9a6;}
 .regia-root .coins{width:104px;height:99px;object-fit:contain;margin:10px auto 0;display:block;}
 .regia-root .fiches{text-align:center;font:700 86px/1 var(--serif);color:#ffe49a;filter:drop-shadow(0 2px 2px #000a);}
@@ -427,17 +427,17 @@ const REGIA_CSS = `
 .regia-root .divorn{display:flex;align-items:center;justify-content:center;gap:12px;color:#8a6a2a;margin:16px 0 8px;}
 .regia-root .divorn::before,.regia-root .divorn::after{content:"";height:1px;width:64px;background:linear-gradient(90deg,transparent,#8a6a2a);}
 .regia-root .qrlbl{text-align:center;font:400 16px/1 var(--serif);color:#c8a862;}
-.regia-root .qrbox{background:#fff;padding:10px;border-radius:12px;box-shadow:0 0 0 2px #f3c95f,0 0 16px rgba(243,201,95,.4);}
+.regia-root .qrbox{background:#fff;padding:10px;border-radius:12px;box-shadow:0 0 0 2px #e5c680,0 0 16px rgba(229,198,128,.4);}
 .regia-root .code{text-align:center;font:700 30px/1 var(--serif);letter-spacing:.22em;color:#ffe9a6;margin-top:12px;}
 .regia-root .regcode{text-align:center;font:400 15px/1 var(--serif);color:#b9a06a;margin-top:12px;}
-.regia-root .regcode b{color:#f3c95f;letter-spacing:.14em;}
+.regia-root .regcode b{color:#e5c680;letter-spacing:.14em;}
 .regia-root .trophy{width:184px;display:block;margin:34px auto 0;}
 .regia-root .empty1{text-align:center;font:700 44px/1 var(--serif);color:#f4ead3;margin-top:24px;}
 .regia-root .empty2{text-align:center;font:400 20px/1.4 var(--serif);color:#9c8a5e;margin-top:20px;}
 .regia-root .footer{position:absolute;left:0;right:0;bottom:16px;text-align:center;font:700 20px/1 var(--serif);color:#c8a862;letter-spacing:.03em;}
 .regia-root .srow{display:flex;flex-direction:column;gap:5px;overflow-y:auto;margin-top:8px;}
 .regia-root .srank{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:9px;background:#ffffff08;}
-.regia-root .srank .n{width:26px;font:700 17px/1 var(--serif);color:#f3c95f;}
+.regia-root .srank .n{width:26px;font:700 17px/1 var(--serif);color:#e5c680;}
 .regia-root .srank .nm{flex:1;font:700 18px/1 var(--serif);color:#f4ead3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .regia-root .srank .v{font:700 19px/1 var(--serif);color:#ffe9a6;}
 `;
@@ -510,7 +510,7 @@ export function MasterView({ sessionId }: { sessionId: string }) {
               /* QR UNICO: serata legata a una festa Suite → niente secondo QR, si entra
                  dal QR della Suite. Qui mostro solo lo stato e il modo per scollegare. */
               <>
-                <div className="qrlbl">Ingresso dal QR di <b style={{ color: '#f3c95f' }}>IDEAphoto Suite</b></div>
+                <div className="qrlbl">Ingresso dal QR di <b style={{ color: '#e5c680' }}>IDEAphoto Suite</b></div>
                 <div style={{ textAlign: 'center', marginTop: 10, font: '700 20px/1.3 var(--serif)', color: '#ffe9a6' }}>📸 {suiteLink.nomeFesta || 'Festa collegata'}</div>
                 <div style={{ textAlign: 'center', marginTop: 6, font: '400 14px/1.4 var(--serif)', color: '#9c8a5e' }}>L'ospite scansiona UN SOLO QR: quello della Suite. Da lì arriva al casinò con la base delle fiche.</div>
                 <button className="ghost" style={{ marginTop: 12 }} onClick={() => setShowSuite(true)}>🔗 Gestisci collegamento</button>

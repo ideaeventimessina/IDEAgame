@@ -571,40 +571,40 @@ export function IppodromoSprintRegia({ displayCode }: { displayCode: string }) {
   const t = st?.table;
   const [busy, setBusy] = useState(false);
   const call = async (path: string, body?: object) => { setBusy(true); try { await api(path, { displayCode, ...body }); } finally { setTimeout(() => setBusy(false), 350); } };
-  if (!t) return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#07251a', color: '#f0ca68', fontFamily: 'Georgia' }}><style>{FONT_CSS}</style>Carico…</div>;
+  if (!t) return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#06110e', color: '#e5c680', fontFamily: 'Georgia' }}><style>{FONT_CSS}</style>Carico…</div>;
   const started = t.status !== 'lobby';
   const ordered = [...t.seats].sort((a, b) => (a.rank ?? 9) - (b.rank ?? 9));
   const allReady = t.seats.filter(s => s.playerId).every(s => s.ready);
   const occupied = t.seats.filter(s => s.playerId).length;
 
   return (
-    <ScreenFit style={{ background: 'radial-gradient(ellipse 120% 90% at 50% 0%,#0f3a26,#041a12)', color: '#eafff2', fontFamily: '"LoraS",Georgia,serif' }} pad={16}>
+    <ScreenFit style={{ background: 'radial-gradient(ellipse 120% 90% at 50% 0%,#17402c,#06110e)', color: '#fcf1d7', fontFamily: '"LoraS",Georgia,serif' }} pad={16}>
       <style>{FONT_CSS}</style>
       <div style={{ width: 'min(calc(100vw - 32px),760px)', padding: '6px 0' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
           <img src={`${ASSET}logo/idea-eventi-negativo-originale.png`} alt="Idea Eventi" style={{ height: 50 }} />
           <div style={{ flex: 1 }}>
-            <div style={{ font: '800 26px/1 CinzelS,serif', color: '#f0ca68' }}>Regia · Ippodromo Sprint</div>
-            <div style={{ color: '#bfe6cf' }}>{t.name} · <b style={{ color: '#f0ca68' }}>{t.displayCode}</b> · Gara {t.race}</div>
+            <div style={{ font: '800 26px/1 CinzelS,serif', color: '#e5c680' }}>Regia · Ippodromo Sprint</div>
+            <div style={{ color: '#bac9b9' }}>{t.name} · <b style={{ color: '#e5c680' }}>{t.displayCode}</b> · Gara {t.race}</div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <span style={{ padding: '6px 12px', borderRadius: 999, background: started ? '#6fe08a22' : '#ffffff12', color: started ? '#6fe08a' : '#bfe6cf', font: '700 13px CinzelS,serif' }}>PRIVATE HOST</span>
-            <div style={{ marginTop: 6, font: '700 16px CinzelS,serif', color: '#f6e7bf' }}>{started ? (t.status === 'paused' ? '⏸ In pausa' : t.status === 'results' ? '🏁 Conclusa' : t.status === 'countdown' ? `Via fra ${t.countdown}` : 'In corsa') : 'In lobby'} {t.status === 'race' ? `· ${(t.raceMs / 1000).toFixed(0)}s` : ''}</div>
+            <span style={{ padding: '6px 12px', borderRadius: 999, background: started ? '#82d5aa22' : '#ffffff10', color: started ? '#82d5aa' : '#bac9b9', font: '700 13px CinzelS,serif', border: '1px solid ' + (started ? '#82d5aa55' : '#62533455') }}>PRIVATE HOST</span>
+            <div style={{ marginTop: 6, font: '700 16px CinzelS,serif', color: '#fcf1d7' }}>{started ? (t.status === 'paused' ? '⏸ In pausa' : t.status === 'results' ? '🏁 Conclusa' : t.status === 'countdown' ? `Via fra ${t.countdown}` : 'In corsa') : 'In lobby'} {t.status === 'race' ? `· ${(t.raceMs / 1000).toFixed(0)}s` : ''}</div>
           </div>
         </div>
 
         {/* Tabella piloti / progresso / resistenza */}
-        <div style={{ borderRadius: 14, border: '1px solid #caa84f44', background: '#ffffff08', overflow: 'hidden', marginBottom: 14 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '32px 1fr 90px 90px 70px', gap: 8, padding: '10px 14px', font: '700 12px CinzelS,serif', letterSpacing: '.1em', color: '#bfe6cf', borderBottom: '1px solid #ffffff14' }}>
+        <div style={{ borderRadius: 14, border: '1px solid #625334', background: 'linear-gradient(180deg,#12291f,#0b1c14)', overflow: 'hidden', marginBottom: 14, boxShadow: 'inset 0 1px 0 #ffffff0c' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '32px 1fr 90px 90px 70px', gap: 8, padding: '10px 14px', font: '700 12px CinzelS,serif', letterSpacing: '.1em', color: '#e5c680', borderBottom: '1px solid #62533455' }}>
             <span>#</span><span>CAVALLO · PILOTA</span><span>PROGRESSO</span><span>ENERGIA</span><span>STATO</span>
           </div>
           {(started ? ordered : t.seats).map(s => (
             <div key={s.horseId} style={{ display: 'grid', gridTemplateColumns: '32px 1fr 90px 90px 70px', gap: 8, padding: '9px 14px', alignItems: 'center', borderBottom: '1px solid #ffffff0a' }}>
               <span style={{ width: 26, height: 26, borderRadius: 7, background: s.color, display: 'grid', placeItems: 'center', font: '800 14px CinzelS,serif', color: '#fff' }}>{s.horseId}</span>
-              <span><b style={{ color: '#f6e7bf' }}>{s.name}</b> <span style={{ color: '#bfe6cf', fontSize: 13 }}>· {s.nickname ?? (s.cpu ? 'CPU' : 'libero')}</span></span>
-              <span style={{ fontSize: 13, color: '#9fe0b6' }}>{Math.round(s.position / t.rules.length * 100)}%</span>
-              <span style={{ fontSize: 13, color: '#edc449' }}>{Math.round(s.energy)}%</span>
-              <span style={{ fontSize: 12, color: started ? (s.finish !== null ? '#6fe08a' : '#bfe6cf') : (s.playerId ? (s.ready ? '#6fe08a' : '#edc449') : '#8aa') }}>
+              <span><b style={{ color: '#fcf1d7' }}>{s.name}</b> <span style={{ color: '#bac9b9', fontSize: 13 }}>· {s.nickname ?? (s.cpu ? 'CPU' : 'libero')}</span></span>
+              <span style={{ fontSize: 13, color: '#82d5aa' }}>{Math.round(s.position / t.rules.length * 100)}%</span>
+              <span style={{ fontSize: 13, color: '#e5c680' }}>{Math.round(s.energy)}%</span>
+              <span style={{ fontSize: 12, color: started ? (s.finish !== null ? '#82d5aa' : '#bac9b9') : (s.playerId ? (s.ready ? '#82d5aa' : '#e5c680') : '#8aa') }}>
                 {started ? (s.finish !== null ? 'arrivato' : t.status === 'race' ? 'in corsa' : '—') : (s.playerId ? (s.ready ? 'Pronto' : 'attesa') : 'CPU')}
               </span>
             </div>
@@ -612,7 +612,7 @@ export function IppodromoSprintRegia({ displayCode }: { displayCode: string }) {
         </div>
 
         {/* Impostazioni gara (valori EFFETTIVI del motore, NON i mockup 140/270/410/540) */}
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14, color: '#bfe6cf', font: '600 14px CinzelS,serif' }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14, color: '#bac9b9', font: '600 14px CinzelS,serif' }}>
           <span style={chip}>🏁 {t.rules.length} m</span>
           <span style={chip}>⛼ {t.rules.hurdles.length} ostacoli</span>
           <span style={chip}>📍 {t.rules.hurdles.join(' / ')} m</span>
@@ -627,12 +627,12 @@ export function IppodromoSprintRegia({ displayCode }: { displayCode: string }) {
               🏁 AVVIA GARA {occupied > 0 && !allReady ? '· attendi i piloti pronti' : ''}
             </button>
           )}
-          {(t.status === 'race' || t.status === 'countdown') && <button disabled={busy} onClick={() => call('/gestione/casino/sprint/pause')} style={{ ...bigBtn, background: '#ffffff12', color: '#f6e7bf', boxShadow: 'none', border: '1px solid #caa84f66' }}>⏸ PAUSA</button>}
+          {(t.status === 'race' || t.status === 'countdown') && <button disabled={busy} onClick={() => call('/gestione/casino/sprint/pause')} style={{ ...bigBtn, background: '#ffffff12', color: '#fcf1d7', boxShadow: 'none', border: '1px solid #625334' }}>⏸ PAUSA</button>}
           {t.status === 'paused' && <button disabled={busy} onClick={() => call('/gestione/casino/sprint/resume')} style={bigBtn}>▶ RIPRENDI</button>}
-          {(t.status === 'results' || t.status === 'paused') && <button disabled={busy} onClick={() => call('/gestione/casino/sprint/reset')} style={{ ...bigBtn, background: '#ffffff12', color: '#f6e7bf', boxShadow: 'none', border: '1px solid #caa84f66' }}>↻ Nuova gara (conserva i piloti)</button>}
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', background: '#ffffff0c', borderRadius: 12, padding: 12 }}>
-            <QRCodeSVG value={`${ORIGIN}gestione/casino?sprintplay=${t.displayCode}`} size={78} />
-            <div style={{ color: '#bfe6cf', fontSize: 13 }}>QR ingresso piloti<br /><b style={{ color: '#f0ca68', fontSize: 18 }}>{t.displayCode}</b></div>
+          {(t.status === 'results' || t.status === 'paused') && <button disabled={busy} onClick={() => call('/gestione/casino/sprint/reset')} style={{ ...bigBtn, background: '#ffffff12', color: '#fcf1d7', boxShadow: 'none', border: '1px solid #625334' }}>↻ Nuova gara (conserva i piloti)</button>}
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', background: 'linear-gradient(180deg,#12291f,#0b1c14)', border: '1px solid #625334', borderRadius: 12, padding: 12 }}>
+            <div style={{ background: '#fff', padding: 6, borderRadius: 8, lineHeight: 0 }}><QRCodeSVG value={`${ORIGIN}gestione/casino?sprintplay=${t.displayCode}`} size={72} /></div>
+            <div style={{ color: '#bac9b9', fontSize: 13 }}>QR ingresso piloti<br /><b style={{ color: '#e5c680', fontSize: 18 }}>{t.displayCode}</b></div>
             <button disabled={busy} onClick={() => call('/gestione/casino/sprint/suspend')} style={{ ...ghost, marginLeft: 'auto', width: 'auto', padding: '10px 14px' }}>{t.suspended ? 'Riattiva' : 'Sospendi'}</button>
           </div>
           <LightDealerBind kind="sprint" sessionId={st!.sessionId} tableId={t.id} hasDealer={!!t.hasDealer} origin={ORIGIN} />
@@ -642,6 +642,6 @@ export function IppodromoSprintRegia({ displayCode }: { displayCode: string }) {
     </ScreenFit>
   );
 }
-const chip: React.CSSProperties = { padding: '8px 12px', borderRadius: 10, background: '#ffffff0c', border: '1px solid #caa84f33' };
-const bigBtn: React.CSSProperties = { padding: 18, borderRadius: 14, border: 'none', background: 'linear-gradient(180deg,#ffe694,#f0c357 52%,#d59a34)', color: '#231503', font: '800 22px CinzelS,serif', cursor: 'pointer', boxShadow: '0 4px 0 #7a4d12' };
-const ghost: React.CSSProperties = { padding: 12, borderRadius: 12, border: '1px solid #caa84f66', background: '#ffffff12', color: '#f0ca68', font: '700 15px CinzelS,serif', cursor: 'pointer', width: '100%' };
+const chip: React.CSSProperties = { padding: '8px 12px', borderRadius: 10, background: '#ffffff0a', border: '1px solid #625334' };
+const bigBtn: React.CSSProperties = { padding: 18, borderRadius: 14, border: '1px solid #f3dea0', background: 'linear-gradient(180deg,#ffe694,#e5c680 52%,#caa44e)', color: '#231503', font: '800 22px CinzelS,serif', cursor: 'pointer', boxShadow: '0 4px 0 #7a4d12' };
+const ghost: React.CSSProperties = { padding: 12, borderRadius: 12, border: '1px solid #625334', background: '#ffffff0a', color: '#e5c680', font: '700 15px CinzelS,serif', cursor: 'pointer', width: '100%' };
