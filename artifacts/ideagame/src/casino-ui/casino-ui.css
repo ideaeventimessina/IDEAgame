@@ -84,6 +84,24 @@
 .cas .qr { display: grid; place-items: center; background: #fff; border-radius: 10px; padding: 7px; }
 .cas .foot { padding: 15px var(--pad); color: var(--muted); font-size: 12px; text-align: center; }
 
+/* Corse: corsie con barra di avanzamento (telemetria regia/esito; la gara vera sta nel renderer) */
+.cas .track { display: grid; gap: 6px; padding: 12px 0; }
+.cas .lane { display: grid; grid-template-columns: 92px 1fr 48px; align-items: center; gap: 10px; text-align: left; }
+.cas .lane b { color: var(--text); font-weight: 750; }
+.cas .lane > div { height: 12px; background: #061910; border-radius: 10px; overflow: hidden; }
+.cas .lane i { display: block; height: 100%; background: linear-gradient(90deg, #46936d, #e4c27b); }
+.cas .lane > span { color: var(--muted); text-align: right; }
+@media (max-width: 560px) { .cas .lane { grid-template-columns: 74px 1fr 42px; } }
+
+/* Biliardo: mini-tavolo con bilie in overlay (il tiro vero sta nel renderer) */
+.cas .pool { position: relative; }
+.cas .pool > img:first-child { width: 100%; display: block; border-radius: 12px; }
+.cas .pool .ball { position: absolute; width: 7%; transform: translate(-50%, -50%); }
+
+/* Carta "digitale" fallback (stile mockup .playing) */
+.cas .playing { display: grid; place-items: center; background: #f8f0d8; border-radius: 8px; font: 800 22px Georgia, serif; color: #1a211a; box-shadow: 0 8px 15px #0007; }
+.cas .playing.red { color: #a61928; }
+
 /* Stepper puntata */
 .cas .step { display: flex; align-items: center; justify-content: center; gap: 14px; margin: 12px 0; }
 .cas .step .rnd { width: 52px; height: 52px; border-radius: 50%; border: 1px solid #b19455; background: #142a22; color: var(--gold); font: 800 26px system-ui; cursor: pointer; }

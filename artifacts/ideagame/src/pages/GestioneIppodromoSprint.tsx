@@ -24,6 +24,7 @@ import { useTableMusic } from '@/audio/useTableMusic';
 import { QRCodeSVG } from 'qrcode.react';
 import { ScreenFit } from '@/components/ScreenFit';
 import { LightDealerBind } from './GestioneDealerLeggero';
+import { CasPhone, Hero } from '../casino-ui/kit';
 
 const BASE = (import.meta.env.BASE_URL as string) || '/';
 const API = BASE + 'api';
@@ -467,104 +468,101 @@ export function IppodromoSprintPhone({ displayCode }: { displayCode: string }) {
   // pointerdown immediato: feedback locale subito, server conferma (nessun auto-fire)
   const input = (action: 'sprint' | 'jump') => { const commandId = `${me?.id}-${Date.now()}-${++seqRef.current}`; api('/gestione/casino/sprint/input', { displayCode, playerCode, action, commandId }).catch(() => {}); };
 
-  const Shell = (c: React.ReactNode) => (
-    <div className="sp"><style>{PHONE_CSS}</style><div className="wrap">
-      <div className="brand">IPPODROMO SPRINT<small>IDEA EVENTI</small></div>{c}
-    </div></div>
+  const r = t?.rules;
+  const Phone = (label: string, body: React.ReactNode, badge?: React.ReactNode) => (
+    <CasPhone eyebrow="Casinò · Pilota" title="Ippodromo Sprint" footer={<footer className="foot">IDEAeventi · Ippodromo Sprint — 6 cavalli, comandi dal vivo</footer>}>
+      <Hero label={label} badge={badge} />
+      {body}
+    </CasPhone>
   );
-  if (!playerCode || !me) return Shell(<div className="panel" style={{ marginTop: 30 }}><div className="h1">Entra alla serata</div><div className="h2" style={{ marginTop: 8 }}>Scansiona il QR del casinò e accedi, poi scegli il tuo cavallo.</div></div>);
-  if (!t) return Shell(<div className="h2" style={{ marginTop: 40 }}>Carico il tavolo…</div>);
+  if (!playerCode || !me) return Phone('Accesso', <section className="panel"><h2>Entra alla serata</h2><p>Scansiona il QR del casinò e accedi, poi scegli il tuo cavallo.</p></section>);
+  if (!t || !r) return Phone('Attendi', <section className="panel"><p>Carico il tavolo…</p></section>);
+  if (!online) return Phone('Offline', <section className="panel"><h2>Connessione persa</h2><div className="status lose">Comandi sospesi. Il cavallo continua al passo base; nessun gesto viene recuperato in ritardo.</div></section>);
 
-  if (!online) return Shell(
-    <div className="panel" style={{ marginTop: 20, textAlign: 'center' }}>
-      <div style={{ fontSize: 40 }}>📶✕</div>
-      <div className="h1" style={{ marginTop: 6 }}>Connessione persa</div>
-      <div className="h2" style={{ marginTop: 8 }}>Il cavallo continua al passo base. Nessun comando viene recuperato in ritardo.</div>
-    </div>
-  );
-
+  // ARRIVO
   if (t.status === 'results' && t.results) {
-    const my = mine ? t.results.find(r => r.horse === mine.horseId) : null;
-    return Shell(<>
-      <div className="h1">HAI CONCLUSO</div>
-      {my ? <>
-        <div style={{ textAlign: 'center' }}><div style={{ font: '900 70px/1 CinzelS,serif', color: '#f0ca68' }}>{my.place}°</div><div style={{ font: '700 20px/1 CinzelS,serif', color: '#f6e7bf', letterSpacing: '.2em' }}>POSTO</div></div>
-        <div className="panel">
-          <div className="stat"><span>⏱ Tempo</span><b style={{ color: '#f6e7bf' }}>{(my.time / 1000).toFixed(1)} s</b></div>
-          <div className="stat"><span>🪵 Salti</span><b style={{ color: '#f6e7bf' }}>{my.cleared} / 4</b></div>
-          <div className="stat"><span>★ Punti</span><b style={{ color: '#f0ca68' }}>{my.points}</b></div>
+    const my = mine ? t.results.find(x => x.horse === mine.horseId) : null;
+    return Phone('Arrivo',
+      <section className="panel center">
+        {my ? <>
+          <h2 style={{ color: 'var(--gold)' }}>{my.place}° posto</h2>
+          <small className="eyebrow">Tempo</small>
+          <div className="metric">{(my.time / 1000).toFixed(1)} s</div>
+          <div className="list" style={{ marginTop: 12, textAlign: 'left' }}>
+            <div className="line"><strong>Salti</strong><span>{my.cleared} / 4</span></div>
+            <div className="line"><strong>Punti</strong><span>{my.points}</span></div>
+          </div>
+        </> : <><h2>Gara conclusa</h2><p>Vince {t.results[0]?.name}. Non eri in gara questa volta.</p></>}
+        <div className="status">Attendi la prossima gara.</div>
+      </section>
+    );
+  }
+
+  // SCEGLI CAVALLO (lobby, senza cavallo)
+  if (!mine && t.status === 'lobby') {
+    return Phone('Scegli cavallo',
+      <section className="panel">
+        <h2>Scegli corsia</h2>
+        <div className="list">
+          {t.seats.map(s => { const taken = !!s.playerId;
+            return (
+              <div key={s.horseId} className="line" style={{ cursor: taken ? 'default' : 'pointer', opacity: taken ? .6 : 1 }} onClick={() => { if (!taken && !busy) pick(s.horseId); }}>
+                <strong style={{ display: 'flex', alignItems: 'center', gap: 10 }}><span style={{ width: 26, height: 26, borderRadius: 7, background: s.color, display: 'grid', placeItems: 'center', color: '#fff', font: '800 14px system-ui' }}>{s.horseId}</span>{s.name}</strong>
+                <span>{taken ? (s.nickname ?? 'Occupato') : 'Libero'}</span>
+              </div>
+            );
+          })}
         </div>
-      </> : <div className="panel"><div className="h2">Vince {t.results[0]?.name}. Non eri in gara questa volta.</div></div>}
-      <div className="h2">🏁 Attendi la prossima gara</div>
-    </>);
+      </section>
+    );
   }
 
-  // Scelta cavallo (lobby, senza cavallo)
-  if (!mine && (t.status === 'lobby')) {
-    return Shell(<>
-      <div className="h1">SCEGLI CAVALLO</div>
-      <div className="h2">Seleziona il cavallo e il suo pilota</div>
-      <div className="list">
-        {t.seats.map(s => {
-          const taken = !!s.playerId;
-          return (
-            <button key={s.horseId} className={`row${taken ? ' taken' : ''}`} disabled={busy || taken} onClick={() => pick(s.horseId)} style={{ borderColor: s.color + '66' }}>
-              <span className="num" style={{ background: s.color }}>{s.horseId}</span>
-              <span style={{ flex: 1, minWidth: 0 }}><span className="nm" style={{ color: s.color }}>{s.name}</span><span className="pl">{s.nickname ? `Pilota: ${s.nickname}` : 'Disponibile'}</span></span>
-              <span className="tag" style={{ background: taken ? '#ffffff14' : '#6fe08a22', color: taken ? '#bfe6cf' : '#6fe08a' }}>{taken ? 'Occupato' : 'Disponibile'}</span>
-            </button>
-          );
-        })}
-      </div>
-    </>);
-  }
-
-  // Pronto (lobby, con cavallo) — mockup 07
+  // PRONTO (lobby, con cavallo)
   if (mine && t.status === 'lobby') {
-    return Shell(<>
-      <div className="h1">PRONTO</div>
-      <div className="h2">Controlla la tua scelta e preparati alla gara</div>
-      <div className="panel" style={{ borderColor: mine.color }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span className="num" style={{ width: 44, height: 44, borderRadius: 10, background: mine.color, display: 'grid', placeItems: 'center', font: '800 24px CinzelS,serif', color: '#fff' }}>{mine.horseId}</span>
-          <div><div className="big" style={{ color: mine.color }}>{mine.name}</div><div className="h2" style={{ textAlign: 'left' }}>Pilota: {me.nickname}</div></div>
+    return Phone('Pronto',
+      <section className="panel">
+        <h2 style={{ color: mine.color }}>{mine.name}</h2>
+        <div className="list">
+          <div className="line"><strong>Corsia</strong><span>{String(mine.horseId).padStart(2, '0')}</span></div>
+          <div className="line"><strong>Distanza</strong><span>{r.length} m</span></div>
+          <div className="line"><strong>Pilota</strong><span>{me.nickname}</span></div>
         </div>
-      </div>
-      <div className="panel"><div style={{ display: 'flex', gap: 12, alignItems: 'center' }}><span style={{ color: '#f0ca68', fontSize: 26 }}>⚡</span><div><b style={{ color: '#f0ca68' }}>SPRINT</b><div className="h2" style={{ textAlign: 'left' }}>Aumenta la velocità e consuma energia.</div></div></div></div>
-      <div className="panel"><div style={{ display: 'flex', gap: 12, alignItems: 'center' }}><span style={{ color: '#79c7f6', fontSize: 26 }}>⛼</span><div><b style={{ color: '#79c7f6' }}>SALTA</b><div className="h2" style={{ textAlign: 'left' }}>Evita gli ostacoli.</div></div></div></div>
-      <button className="cta" disabled={busy} onClick={toggleReady} style={mine.ready ? { background: 'linear-gradient(180deg,#39d46b,#139a3e)', color: '#04210e' } : undefined}>{mine.ready ? 'Pronto ✓ — tocca per annullare' : 'Sono pronto'}</button>
-      <button className="row" style={{ justifyContent: 'center' }} disabled={busy} onClick={() => api('/gestione/casino/sprint/leave', { displayCode, playerCode })}>Cambia cavallo</button>
-    </>);
+        <p>⚡ Sprint: più veloce, consuma energia · ⛼ Salta: evita gli ostacoli.</p>
+        <div className="actions">
+          <button className="btn" disabled={busy} onClick={toggleReady} style={mine.ready ? { background: 'linear-gradient(#39d46b,#139a3e)', color: '#04210e', borderColor: '#9fe8b8' } : undefined}>{mine.ready ? 'Pronto ✓ (annulla)' : 'Sono pronto'}</button>
+          <button className="btn ghost" disabled={busy} onClick={() => api('/gestione/casino/sprint/leave', { displayCode, playerCode })}>Lascia posto</button>
+        </div>
+      </section>
+    );
   }
 
-  // Controller live (race/countdown/paused) — mockup 08
-  const r = t.rules;
+  // CONTROLLER LIVE (race/countdown/paused) — input dal vivo PRESERVATO
   const racing = t.status === 'race';
-  if (!mine) return Shell(<div className="panel" style={{ marginTop: 20 }}><div className="h1">Gara in corso</div><div className="h2" style={{ marginTop: 8 }}>Entrerai dalla prossima gara. Scegli un cavallo quando riapre la lobby.</div></div>);
+  if (!mine) return Phone('Gara', <section className="panel"><h2>Gara in corso</h2><p>Entrerai dalla prossima gara. Scegli un cavallo quando riapre la lobby.</p></section>);
   const dist = (r.hurdles[mine.nextHurdle] ?? Infinity) - mine.position;
   const near = dist > 0 && dist < 25;
   const canSprint = racing && mine.finish === null && mine.energy >= r.sprintCost;
   const canJump = racing && mine.finish === null && (t.raceMs - mine.lastJump) >= r.jumpCooldownMs;
-  return Shell(<>
-    <div className="panel" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 12 }}>
-      <span className="num" style={{ width: 40, height: 40, borderRadius: 9, background: mine.color, display: 'grid', placeItems: 'center', font: '800 22px CinzelS,serif', color: '#fff' }}>{mine.horseId}</span>
-      <div style={{ flex: 1 }}><div style={{ font: '800 20px/1 CinzelS,serif', color: mine.color }}>{mine.name}</div><div className="h2" style={{ textAlign: 'left' }}>{me.nickname}</div></div>
-      <div style={{ textAlign: 'right' }}><div style={{ font: '800 24px/1 CinzelS,serif', color: '#f6e7bf' }}>{mine.rank}/6</div><div className="h2">posizione</div></div>
-    </div>
-    <div>
-      <div className="stat"><span>Distanza percorsa</span><span style={{ color: '#f6e7bf' }}>{Math.floor(mine.position)} / {r.length} m</span></div>
-      <div className="energy"><i style={{ width: `${Math.max(0, Math.min(100, mine.energy))}%` }} /></div>
-      <div className="stat"><span>Energia</span><span style={{ color: '#f6e7bf' }}>{Math.floor(mine.energy)}%</span></div>
-    </div>
-    <div className={`cue ${near && racing ? 'now' : 'wait'}`}>
-      {t.status === 'countdown' ? `Partenza fra ${Math.max(1, t.countdown)}…` : t.status === 'paused' ? 'Gara in pausa' : near ? `⬆ SALTA ORA · ostacolo fra ${Math.max(0, dist).toFixed(1)} m` : Number.isFinite(dist) ? `Prossimo ostacolo fra ${Math.max(0, Math.ceil(dist))} m` : 'Ultimo rettilineo'}
-    </div>
-    <div className="ctrl">
-      <button className="sprint" disabled={!canSprint} onPointerDown={e => { e.preventDefault(); input('sprint'); }}><BoltIcon />SPRINT</button>
-      <button className="jump" disabled={!canJump} onPointerDown={e => { e.preventDefault(); input('jump'); }}><JumpIcon />SALTA</button>
-    </div>
-    <div className="stat"><span>Sprint massimo {r.maxSprintPerSec} tocchi/s</span><span style={{ color: online ? '#6fe08a' : '#e77' }}>● {online ? 'Connesso' : 'Offline'}</span></div>
-  </>);
+  const energyPct = Math.max(0, Math.min(100, mine.energy));
+  return Phone(racing ? 'Gara' : t.status === 'countdown' ? 'Partenza' : 'Pausa',
+    <section className="panel">
+      <h2 style={{ color: mine.color }}>{mine.name} · {mine.rank}°</h2>
+      <div style={{ height: 14, background: '#061910', borderRadius: 10, overflow: 'hidden', margin: '4px 0 8px' }}><i style={{ display: 'block', height: '100%', width: `${energyPct}%`, background: 'linear-gradient(90deg,#46936d,#e4c27b)' }} /></div>
+      <div className="list">
+        <div className="line"><strong>Energia</strong><span>{Math.floor(mine.energy)}%</span></div>
+        <div className="line"><strong>Distanza</strong><span>{Math.floor(mine.position)} / {r.length} m</span></div>
+      </div>
+      <div className={`status${near && racing ? '' : ''}`} style={near && racing ? { borderLeftColor: 'var(--green)', color: 'var(--green)' } : undefined}>
+        {t.status === 'countdown' ? `Partenza fra ${Math.max(1, t.countdown)}…` : t.status === 'paused' ? 'Gara in pausa' : near ? `⬆ SALTA ORA · ostacolo fra ${Math.max(0, dist).toFixed(1)} m` : Number.isFinite(dist) ? `Prossimo ostacolo fra ${Math.max(0, Math.ceil(dist))} m` : 'Ultimo rettilineo'}
+      </div>
+      <div className="actions" style={{ marginTop: 14 }}>
+        <button className="btn" style={{ minHeight: 76, fontSize: 20 }} disabled={!canSprint} onPointerDown={e => { e.preventDefault(); input('sprint'); }}>⚡ SPRINT</button>
+        <button className="btn ghost" style={{ minHeight: 76, fontSize: 20 }} disabled={!canJump} onPointerDown={e => { e.preventDefault(); input('jump'); }}>⛼ SALTA</button>
+      </div>
+      <div style={{ color: online ? 'var(--green)' : 'var(--red)', fontSize: 12, textAlign: 'center', marginTop: 8 }}>● {online ? 'Connesso' : 'Offline'} · max {r.maxSprintPerSec} tocchi/s</div>
+    </section>,
+    `${mine.rank}/6`
+  );
 }
 
 /* ════════════════════════════════════════════════ REGIA ═══════════════════ */

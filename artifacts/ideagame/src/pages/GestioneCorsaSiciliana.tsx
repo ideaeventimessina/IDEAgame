@@ -19,6 +19,7 @@ import { useTableMusic } from '@/audio/useTableMusic';
 import { QRCodeSVG } from 'qrcode.react';
 import { ScreenFit } from '@/components/ScreenFit';
 import { LightDealerBind } from './GestioneDealerLeggero';
+import { CasPhone, Hero } from '../casino-ui/kit';
 
 const BASE = (import.meta.env.BASE_URL as string) || '/';
 const API = BASE + 'api';
@@ -385,55 +386,78 @@ export function CorsaSiciliaPhone({ displayCode }: { displayCode: string }) {
   const bet = async () => { if (!betSuit) return; setBusy(true); setErr(''); try { const r = await api('/gestione/casino/sicilia/bet', { displayCode, playerCode, suit: betSuit, amount: chip }); if (r?.error) setErr(r.error); } finally { setBusy(false); } };
   const unbet = async () => { setBusy(true); setErr(''); try { await api('/gestione/casino/sicilia/unbet', { displayCode, playerCode }); setSel(null); } finally { setBusy(false); } };
 
-  const Shell = (c: React.ReactNode) => <div className="sicp"><style>{PHONE_CSS}</style><div className="wrap"><div style={{ textAlign: 'center' }}><div style={{ font: '700 20px/1 "Baskerville Casino",serif', color: '#ffe9a6', letterSpacing: '.08em' }}>CORSA SICILIANA</div></div>{c}</div></div>;
-  if (!playerCode || !me) return Shell(<div className="panel" style={{ marginTop: 30 }}><div className="h1">Entra alla serata</div><div className="h2">Scansiona il QR del casinò e accedi, poi siediti al tavolo e punta.</div></div>);
-  if (!t) return Shell(<div className="h2" style={{ marginTop: 40 }}>Carico il tavolo…</div>);
+  const Phone = (label: string, body: React.ReactNode, badge?: React.ReactNode) => (
+    <CasPhone eyebrow="Casinò · Giocatore" title="Corsa Siciliana" footer={<footer className="foot">IDEAeventi · Corsa Siciliana — 4 cavalli, vince chi arriva primo</footer>}>
+      <Hero label={label} badge={badge} />
+      {body}
+    </CasPhone>
+  );
+  if (!playerCode || !me) return Phone('Accesso', <section className="panel"><h2>Entra alla serata</h2><p>Scansiona il QR del casinò e accedi, poi torna qui per puntare sul tuo cavallo.</p></section>);
+  if (!t) return Phone('Attendi', <section className="panel"><p>Carico il tavolo…</p></section>);
 
+  // ESITO
   if (t.phase === 'result' && t.winner) {
     const bancoWon = t.winner === 'banco';
     const won = !bancoWon && mine === t.winner;
     const prize = won ? stake * quota : 0;
-    return Shell(
-      <div className="panel">
+    return Phone('Esito',
+      <section className="panel center">
         {bancoWon
-          ? <><div className="big">Vince il Banco 🏦</div><div className="h2" style={{ marginTop: 6 }}>Il cavallo del Banco è arrivato primo: le puntate vanno alla casa.</div></>
-          : <><div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}><SuitIcon suit={t.winner as Suit} size={64} /></div><div className="big">Vince {SUIT_META[t.winner as Suit].label}</div></>}
-        <div className="h2" style={{ marginTop: 8 }}>
-          {stake > 0 ? (won ? `🎉 Hai vinto ${prize} fiche!` : `Hai perso ${stake} fiche`) : (mine ? `Avevi puntato su ${SUIT_META[mine].label}` : 'Non avevi puntato')}
+          ? <h2 style={{ color: 'var(--gold)' }}>Vince il Banco 🏦</h2>
+          : <><div style={{ display: 'flex', justifyContent: 'center', marginBottom: 6 }}><SuitIcon suit={t.winner as Suit} size={56} /></div><h2 style={{ color: 'var(--green)' }}>Vince {SUIT_META[t.winner as Suit].label}</h2></>}
+        <div className="list" style={{ marginTop: 12, textAlign: 'left' }}>
+          <div className="line"><strong>La tua puntata</strong><span>{mine ? `${SUIT_META[mine].label} · ${stake} punti` : 'nessuna'}</span></div>
+          <div className="line"><strong>Esito</strong><span style={{ color: won ? 'var(--green)' : stake > 0 ? 'var(--red)' : 'var(--muted)' }}>{stake > 0 ? (won ? `+${prize}` : `−${stake}`) : '—'}</span></div>
+          <div className="line"><strong>Le tue fiche</strong><span>{balance} punti</span></div>
         </div>
-        <div className="h2" style={{ marginTop: 6 }}>Le tue fiche: <b style={{ color: '#ffe9a6' }}>{balance}</b></div>
-      </div>
+      </section>,
+      `${balance} punti`
     );
   }
 
   const racing = t.phase === 'racing';
-  const gold: React.CSSProperties = { marginTop: 4, padding: '14px', borderRadius: 14, border: 0, background: 'linear-gradient(180deg,#ffe9a6,#d9a63a)', color: '#2a1c04', font: '700 18px "Baskerville Casino",serif', cursor: 'pointer', width: '100%' };
-  const ghost: React.CSSProperties = { marginTop: 10, padding: '10px', borderRadius: 12, border: '1px solid #ffffff33', background: 'transparent', color: '#cfe0f5', cursor: 'pointer', width: '100%' };
-  return Shell(<>
-    <div className="h1">{mine ? 'La tua puntata' : 'Punta sul tuo cavallo'}</div>
-    <div className="h2">{racing ? 'Corsa in corso — tifa per il tuo seme!' : 'Scegli un seme, poi punta le fiche'}</div>
-    <div className="h2">Le tue fiche: <b style={{ color: '#ffe9a6' }}>{balance}</b>{t.bancoEnabled ? ' · 🏦 c’è il cavallo del Banco' : ''}</div>
-    <div className="suits">
-      {SUITS.map(s => { const m = SUIT_META[s]; const active = betSuit === s; const locked = !!mine && mine !== s; return (
-        <button key={s} className={`suit${active ? ' sel' : ''}`} disabled={busy || racing || locked} onClick={() => setSel(s)}>
-          <span className="medal"><SuitIcon suit={s} size={34} /></span>
-          <span style={{ flex: 1 }}><span className="nm" style={{ color: m.glow }}>{m.label}</span><br /><span className="h2" style={{ fontSize: 12 }}>casella {t.positions[s]}/{t.trackLen} · piatto {t.pot?.[s] ?? 0}</span></span>
-        </button>
-      ); })}
-    </div>
-    {!racing && betSuit && <>
-      <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
-        {SIC_CHIPS.map(c => <button key={c} onClick={() => setChip(c)} style={{ padding: '10px 16px', borderRadius: 12, border: `2px solid ${chip === c ? '#f1d98c' : '#ffffff22'}`, background: chip === c ? '#ffffff18' : '#ffffff0e', color: '#fff', font: '700 18px "Baskerville Casino",serif', cursor: 'pointer' }}>{c}</button>)}
+  // IN CORSA (telemetria; la gara vera gira sul monitor)
+  if (racing) {
+    return Phone('In corsa',
+      <section className="panel">
+        <h2>Gara in corso</h2>
+        <div className="track">
+          {SUITS.map(s => { const pct = Math.max(0, Math.min(100, Math.round((t.positions[s] / t.trackLen) * 100))); const m = SUIT_META[s];
+            return <div key={s} className="lane"><b style={{ color: m.glow }}>{m.label}</b><div><i style={{ width: `${pct}%` }} /></div><span>{pct}%</span></div>; })}
+        </div>
+        <div className="status">{mine ? `La tua puntata · ${stake} su ${SUIT_META[mine].label}` : 'Non hai puntato · tifa e guarda'}</div>
+      </section>,
+      `${balance} punti`
+    );
+  }
+
+  // PUNTA
+  return Phone('Punta',
+    <section className="panel">
+      <h2>Quattro cavalli</h2>
+      <p>Scegli un seme e punta · vinci ×{quota}{t.bancoEnabled ? ' · c’è il cavallo del Banco 🏦' : ''}.</p>
+      <div className="list">
+        {SUITS.map(s => { const m = SUIT_META[s]; const active = betSuit === s; const locked = !!mine && mine !== s;
+          return (
+            <div key={s} className={`line${active ? ' sel' : ''}`} style={{ cursor: locked ? 'default' : 'pointer', opacity: locked ? .5 : 1 }} onClick={() => { if (!locked && !busy) setSel(s); }}>
+              <strong style={{ display: 'flex', alignItems: 'center', gap: 10 }}><SuitIcon suit={s} size={26} />{m.label}</strong>
+              <span>{active ? 'Selezionato' : `casella ${t.positions[s]}/${t.trackLen}`}</span>
+            </div>
+          );
+        })}
       </div>
-      <button disabled={busy || balance < chip} onClick={bet} style={gold}>Punta {chip} su {SUIT_META[betSuit].label}</button>
-    </>}
-    {err && <div className="h2" style={{ color: '#ffb4b4' }}>{err}</div>}
-    {mine && stake > 0 && <div className="panel">
-      <div className="h2">Hai puntato (vinci ×{quota})</div>
-      <div className="big" style={{ color: SUIT_META[mine].glow, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}><SuitIcon suit={mine} size={34} />{stake} su {SUIT_META[mine].label}</div>
-      {!racing && <button disabled={busy} onClick={unbet} style={ghost}>Annulla puntata</button>}
-    </div>}
-  </>);
+      {betSuit && !mine && <>
+        <div className="row" style={{ justifyContent: 'center', marginTop: 12 }}>{SIC_CHIPS.map(c => <span key={c} className={`chip${chip === c ? ' sel' : ''}`} onClick={() => setChip(c)}>{c}</span>)}</div>
+        <div className="actions"><button className="btn" disabled={busy || balance < chip} onClick={bet}>Punta {chip} su {SUIT_META[betSuit].label}</button></div>
+      </>}
+      {mine && stake > 0 && <>
+        <div className="status">Hai puntato {stake} su {SUIT_META[mine].label} · vinci ×{quota}</div>
+        <div className="actions"><button className="btn ghost" disabled={busy} onClick={unbet}>Annulla puntata</button></div>
+      </>}
+      {err && <div className="err">{err}</div>}
+    </section>,
+    `${balance} punti`
+  );
 }
 
 /* ════════════════════════════════════════════════ REGIA ═══════════════════ */

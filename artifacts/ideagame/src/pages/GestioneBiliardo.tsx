@@ -22,6 +22,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { QRCodeSVG } from 'qrcode.react';
 import { useTableMusic } from '@/audio/useTableMusic';
 import { ScreenFit } from '@/components/ScreenFit';
+import { CasPhone, Hero } from '../casino-ui/kit';
 
 const BASE = (import.meta.env.BASE_URL as string) || '/';
 const API = BASE + 'api';
@@ -476,37 +477,59 @@ export function BiliardoPhone({ displayCode }: { displayCode: string }) {
     finally { setBusy(false); }
   };
 
-  const Shell = (inner: React.ReactNode) => (<div className="bp"><style>{PHONE_CSS}</style><ScreenFit><div className="wrap"><div className="brand">BILIARDO CLUB<small>IDEA EVENTI</small></div>{err && <div className="note" style={{ color: '#ff9b9b' }}>{err}</div>}{inner}</div></ScreenFit></div>);
+  const poolStyles = `.cas .poolcv{width:100%;height:auto;display:block;border-radius:12px;border:1px solid #405442;background:#0b2a1b}
+.cas .poolspin{position:relative;width:132px;height:132px;margin:10px auto 2px;border:1px solid #566a57;border-radius:12px;background:#081b14}
+.cas .p9{position:absolute;width:20px;height:20px;border-radius:50%;transform:translate(-50%,-50%);border:2px solid #6e5320;background:#142a22;cursor:pointer}
+.cas .p9.sel{background:var(--gold);border-color:#fff}
+.cas .prange{width:100%;accent-color:#e5c680}`;
+  const Phone = (label: string, body: React.ReactNode, badge?: React.ReactNode) => (
+    <CasPhone eyebrow="Casinò · Giocatore" title="Biliardo Club" footer={<footer className="foot">IDEAeventi · Biliardo Club — 8-ball, imbuca e incassa</footer>}>
+      <Hero label={label} badge={badge} />
+      {err && <div className="err">{err}</div>}
+      {body}
+    </CasPhone>
+  );
 
-  if (!t) return Shell(<div className="h2" style={{ marginTop: 20 }}>Carico il tavolo…</div>);
-  if (me == null) return Shell(<>
-    <div className="h2">Entra al tavolo ({((t.seats[0].playerId ? 1 : 0) + (t.seats[1].playerId ? 1 : 0))}/2)</div>
-    <button className="cta" disabled={busy} onClick={join}>Prendi un posto ›</button>
-    <div className="h2">Serve essere giocatori della serata (accesso dal QR della serata).</div>
-  </>);
-  if (t.status === 'finished') return Shell(<>
-    <div className="big">{t.winner === me ? 'HAI VINTO 🏆' : 'Hai perso'}</div>
-    <div className="h2">{t.seats[0].nickname ?? 'G1'} {t.wins[0]} — {t.wins[1]} {t.seats[1].nickname ?? 'G2'}</div>
-    <div className="note">🐟 I tuoi fish: <b>{t.seats[me].fish}</b></div>
-  </>);
+  if (!t) return Phone('Attendi', <section className="panel"><p>Carico il tavolo…</p></section>);
+  if (me == null) return Phone('Accesso',
+    <section className="panel">
+      <h2>Prendi un posto</h2>
+      <div className="list"><div className="line"><strong>Giocatori</strong><span>{(t.seats[0].playerId ? 1 : 0) + (t.seats[1].playerId ? 1 : 0)} / 2</span></div></div>
+      <p>Serve essere giocatori della serata (accesso dal QR della serata).</p>
+      <div className="actions"><button className="btn" disabled={busy} onClick={join}>Prendi un posto ›</button></div>
+    </section>
+  );
+  if (t.status === 'finished') return Phone('Esito',
+    <section className="panel center">
+      <h2 style={{ color: t.winner === me ? 'var(--green)' : 'var(--red)' }}>{t.winner === me ? 'Hai vinto 🏆' : 'Hai perso'}</h2>
+      <small className="eyebrow">Risultato</small>
+      <div className="metric">{t.wins[0]} – {t.wins[1]}</div>
+      <div className="list" style={{ marginTop: 12, textAlign: 'left' }}>
+        <div className="line"><strong>{t.seats[0].nickname ?? 'G1'}</strong><span>{t.wins[0]} rack</span></div>
+        <div className="line"><strong>{t.seats[1].nickname ?? 'G2'}</strong><span>{t.wins[1]} rack</span></div>
+        <div className="line"><strong>I tuoi punti</strong><span>{t.seats[me].fish}</span></div>
+      </div>
+    </section>,
+    `${t.seats[me].fish} punti`
+  );
   const myTurn = me === t.turn && t.status === 'playing' && !t.pending;
-  return Shell(<>
-    <div className="h2">{t.status === 'lobby' ? 'In attesa del secondo giocatore…' : myTurn ? 'È IL TUO TURNO — mira e tira' : t.pending ? 'Tiro in corso…' : `Turno di ${t.seats[t.turn].nickname ?? 'avversario'}`}</div>
-    <canvas ref={cvRef} />
-    <div className="lab">POTENZA {Math.round(power * 100)}%</div>
-    <input className="slider" type="range" min={5} max={100} value={Math.round(power * 100)} onChange={e => setPower(+e.target.value / 100)} />
-    <div className="lab">EFFETTO — tocca dove colpire la bilia</div>
-    <div className="spinrow">
-      <div className="pick9">
+  return Phone(myTurn ? 'Il tuo turno' : 'Attesa',
+    <section className="panel">
+      <style>{poolStyles}</style>
+      <h2>{t.status === 'lobby' ? 'In attesa del 2° giocatore' : myTurn ? 'Mira e tira' : t.pending ? 'Tiro in corso…' : `Turno di ${t.seats[t.turn].nickname ?? 'avversario'}`}</h2>
+      <canvas ref={cvRef} className="poolcv" />
+      <div className="row spread" style={{ marginTop: 10 }}><small className="eyebrow">Potenza</small><span>{Math.round(power * 100)}%</span></div>
+      <input className="prange" type="range" min={5} max={100} value={Math.round(power * 100)} onChange={e => setPower(+e.target.value / 100)} />
+      <small className="eyebrow" style={{ display: 'block', marginTop: 8 }}>Effetto — tocca dove colpire la bilia</small>
+      <div className="poolspin">
         {GRID9.map((g, i) => {
           const sel = Math.abs(spin.x - g.sx) < 0.01 && Math.abs(spin.y - g.sy) < 0.01;
-          return <button key={i} type="button" className={`p9${sel ? ' sel' : ''}`} style={{ left: `${g.cx}%`, top: `${g.cy}%` }}
-            onClick={() => setSpin({ x: g.sx, y: g.sy })} aria-label={`punto ${i + 1}`} />;
+          return <button key={i} type="button" className={`p9${sel ? ' sel' : ''}`} style={{ left: `${g.cx}%`, top: `${g.cy}%` }} onClick={() => setSpin({ x: g.sx, y: g.sy })} aria-label={`punto ${i + 1}`} />;
         })}
       </div>
-      <div className="spinhint"><b>{spinLabel()}</b>La linea sul tavolo mostra dove va la bianca: curva con l'effetto e rimbalza di sponda fino alla palla.</div>
-    </div>
-    <button className="cta" disabled={!myTurn || busy} onClick={shoot}>TIRA</button>
-    <div className="h2">🐟 {t.seats[me].fish} fish · rack {t.wins[0]}–{t.wins[1]}</div>
-  </>);
+      <div className="status">{spinLabel()} · la linea sul tavolo mostra dove va la bianca.</div>
+      <div className="actions"><button className="btn" disabled={!myTurn || busy} onClick={shoot}>Tira</button></div>
+    </section>,
+    `${t.seats[me].fish} punti · rack ${t.wins[0]}–${t.wins[1]}`
+  );
 }
