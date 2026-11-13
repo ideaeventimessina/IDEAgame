@@ -1793,12 +1793,13 @@ function SeatController({ seatCode }: { seatCode: string }) {
 
   return (
     <div style={{ height: '100%', overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: BG, color: '#fff', fontFamily: "'Outfit',system-ui,sans-serif", padding: '14px 14px 48px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ width: 26, height: 26, borderRadius: '50%', background: seatColor(Number(me.seatNo)), display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 14 }}>{me.seatNo}</span>
           <div><div style={{ fontWeight: 900 }}>{me.nickname}</div><div style={{ opacity: 0.5, fontSize: 12 }}>{t.name} · Giro #{t.round}</div></div>
         </div>
-        <div style={{ textAlign: 'right' }}><div style={{ fontSize: 11, opacity: 0.5 }}>fiche</div><div style={{ fontSize: 22, fontWeight: 900, color: GOLD }}><AnimatedNumber value={myBalance} /></div></div>
+        {/* In landscape-puntata il saldo vive nella colonna fiche a destra (qui lo coprirebbe). */}
+        {!(t.phase === 'betting' && !portrait) && <div style={{ textAlign: 'right' }}><div style={{ fontSize: 11, opacity: 0.5 }}>fiche</div><div style={{ fontSize: 22, fontWeight: 900, color: GOLD }}><AnimatedNumber value={myBalance} /></div></div>}
       </div>
 
       {t.phase === 'betting' ? (portrait ? (
@@ -1809,14 +1810,15 @@ function SeatController({ seatCode }: { seatCode: string }) {
           <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'auto' }}>
             <RouletteFelt betsBySpot={Object.fromEntries(Object.entries(groupBets(t.bets)).map(([k, v]) => [k, v]))} onPlace={place} s={feltS} />
           </div>
-          <div style={{ width: 88, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 7, alignItems: 'center', justifyContent: 'center', overflowY: 'auto', padding: '4px 0' }}>
+          <div style={{ width: 86, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center', justifyContent: 'center', overflowY: 'auto', padding: '2px 0' }}>
+            <div style={{ textAlign: 'center', lineHeight: 1.1 }}><div style={{ fontSize: 10, opacity: 0.5 }}>fiche</div><div style={{ fontSize: 18, fontWeight: 900, color: GOLD }}><AnimatedNumber value={myBalance} /></div></div>
             {[5, 25, 100, 500].map(c => (
               <motion.button whileTap={{ scale: 0.9 }} key={c} onClick={() => setChip(c)} disabled={c > myBalance}
-                style={{ width: 52, height: 52, flexShrink: 0, borderRadius: '50%', border: chip === c ? '3px solid #fff' : '2px solid #ffffff33', background: seatColor(Number(me.seatNo)), color: '#fff', fontWeight: 900, fontSize: 15, cursor: 'pointer', opacity: c > myBalance ? 0.3 : 1, boxShadow: chip === c ? `0 0 14px ${GOLD}` : 'none' }}>{c}</motion.button>
+                style={{ width: 48, height: 48, flexShrink: 0, borderRadius: '50%', border: chip === c ? '3px solid #fff' : '2px solid #ffffff33', background: seatColor(Number(me.seatNo)), color: '#fff', fontWeight: 900, fontSize: 14, cursor: 'pointer', opacity: c > myBalance ? 0.3 : 1, boxShadow: chip === c ? `0 0 12px ${GOLD}` : 'none' }}>{c}</motion.button>
             ))}
-            <div style={{ fontSize: 11, opacity: 0.6, textAlign: 'center', lineHeight: 1.25 }}>sul tappeto<br /><b style={{ color: GOLD, fontSize: 15 }}>{myTotal}</b> <span style={{ opacity: 0.6 }}>({myBets.length})</span></div>
-            <button onClick={undo} disabled={myBets.length === 0} style={{ ...btn('#ffffff22'), padding: '7px 12px', fontSize: 13, opacity: myBets.length === 0 ? 0.4 : 1 }}>↶ Annulla</button>
-            {msg && <div style={{ color: '#f87171', textAlign: 'center', fontWeight: 700, fontSize: 12 }}>{msg}</div>}
+            <div style={{ fontSize: 10, opacity: 0.6, textAlign: 'center', lineHeight: 1.2 }}>sul tappeto <b style={{ color: GOLD, fontSize: 14 }}>{myTotal}</b></div>
+            <button onClick={undo} disabled={myBets.length === 0} style={{ ...btn('#ffffff22'), padding: '6px 10px', fontSize: 12, opacity: myBets.length === 0 ? 0.4 : 1 }}>↶ Annulla</button>
+            {msg && <div style={{ color: '#f87171', textAlign: 'center', fontWeight: 700, fontSize: 11 }}>{msg}</div>}
           </div>
         </div>
       )) : !revealNow ? (
