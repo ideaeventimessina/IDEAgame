@@ -1103,6 +1103,19 @@ export function PlayerView({ code }: { code: string }) {
   // Memorizza il codice così, scansionando il QR di una sedia, il controller sa chi sei.
   useEffect(() => { try { localStorage.setItem('casino_player', code); } catch { /* */ } }, [code]);
 
+  // FALLBACK selfie: chi è entrato senza foto (es. serate vecchie) può aggiungerla qui.
+  const selfieRef = useRef<HTMLInputElement>(null);
+  const [savingSelfie, setSavingSelfie] = useState(false);
+  const addSelfie = async (f?: File) => {
+    if (!f) return;
+    setSavingSelfie(true);
+    try {
+      const photo = await fileToAvatarDataUrl(f);
+      const r = await api(`/gestione/casino/player/${code}/selfie`, { photo });
+      if (!r.ok) setErr(r.error || 'Foto non salvata'); else { setErr(''); pull(); }
+    } catch { setErr('Foto non valida'); } finally { setSavingSelfie(false); }
+  };
+
   const placeBet = async (amount: number) => {
     setSending(true);
     try { await api(`/gestione/casino/bet`, { playerCode: code, amount }); setBetInput(''); await pull(); }
@@ -1148,6 +1161,10 @@ export function PlayerView({ code }: { code: string }) {
       <Hero label="Portafoglio" badge={`${p.fishBalance} punti`} />
       <section className="panel center">
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 6 }}><PlayerAvatar nickname={p.nickname} avatarUrl={p.avatarUrl} size={76} ring={GOLD} /></div>
+        <input ref={selfieRef} type="file" accept="image/*" capture="user" style={{ display: 'none' }} onChange={e => addSelfie(e.target.files?.[0])} />
+        <div className="actions" style={{ justifyContent: 'center', marginTop: 0, marginBottom: 2 }}>
+          <button className="btn ghost" disabled={savingSelfie} onClick={() => selfieRef.current?.click()}>{savingSelfie ? 'Salvo…' : p.avatarUrl ? '📸 Rifai il selfie' : '📸 Aggiungi la tua foto'}</button>
+        </div>
         <h2 style={{ marginBottom: 2 }}>Ciao {p.nickname}</h2>
         <small className="eyebrow">Saldo</small>
         <div className="metric"><AnimatedNumber value={p.fishBalance} /></div>

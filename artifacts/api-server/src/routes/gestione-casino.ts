@@ -272,7 +272,21 @@ router.get("/gestione/casino/player/:playerCode", async (req, res): Promise<void
   const [player] = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.playerCode, code));
   if (!player) { res.status(404).json({ error: "Giocatore non trovato" }); return; }
   const [session] = await db.select().from(casinoSessionsTable).where(eq(casinoSessionsTable.id, player.sessionId));
-  res.json({ player, sessionName: session?.name ?? "", sessionId: player.sessionId });
+  const avatarUrl = (cfgOf(session ?? {}).playerAvatars ?? {})[player.id] ?? null;
+  res.json({ player: { ...player, avatarUrl }, sessionName: session?.name ?? "", sessionId: player.sessionId });
+});
+
+// ── FALLBACK selfie: il giocatore aggiunge/rifà la sua foto dal wallet (per chi è
+//    entrato senza, es. ospiti di serate vecchie). Salva in config.playerAvatars. ──
+router.post("/gestione/casino/player/:playerCode/selfie", async (req, res): Promise<void> => {
+  const code = String(req.params["playerCode"]).toUpperCase().trim();
+  const photo = typeof req.body?.["photo"] === "string" ? String(req.body["photo"]) : "";
+  if (!photo.startsWith("data:image/")) { res.status(400).json({ error: "Serve la foto: scatta un selfie" }); return; }
+  const [player] = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.playerCode, code));
+  if (!player) { res.status(404).json({ error: "Giocatore non trovato" }); return; }
+  const [session] = await db.select().from(casinoSessionsTable).where(eq(casinoSessionsTable.id, player.sessionId));
+  await patchConfig(player.sessionId, { playerAvatars: { ...(cfgOf(session ?? {}).playerAvatars ?? {}), [player.id]: photo } });
+  res.json({ ok: true });
 });
 
 // ── Vista Dealer (il suo tavolo) ────────────────────────────────────────────────
