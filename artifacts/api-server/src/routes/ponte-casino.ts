@@ -250,7 +250,10 @@ router.post("/ponte/casino/guest", async (req, res): Promise<void> => {
     // mappa orfana (giocatore sparito): ricade sul ramo "nuovo".
   }
 
-  const fish = fichesInizialiSane(data.fichesIniziali, 500);
+  // BASE FICHE = quella pattuita all'APERTURA della serata (config.startFish), NON
+  // quella che manda la Suite: la Suite non conosce la base del casinò e spesso manda
+  // 0/null ⇒ l'ospite entrava a 0. La base è una decisione del casinò, non della Suite.
+  const fish = fichesInizialiSane(sess.config.startFish, 500);
   const nickname = nicknameDaSuite(data.nome);
   const avatarUrl = data.avatarUrl ? String(data.avatarUrl) : null;
 
@@ -303,7 +306,9 @@ router.post("/ponte/casino/guest/join", async (req, res): Promise<void> => {
     if (p) { res.json({ ready: true, playerCode: p.playerCode }); return; }
   }
 
-  const fish = baseGiaConcessa(players, pend.playerId) ? 0 : fichesInizialiSane(pend.fichesIniziali, 500);
+  // Base = quella della serata (config.startFish); se la base è già stata concessa a
+  // questo playerId (ospite che torna), niente doppia base.
+  const fish = baseGiaConcessa(players, pend.playerId) ? 0 : fichesInizialiSane(sess.config.startFish, 500);
   const player = await creaGiocatore(sessionId, nickname, fish);
   const avatar = photo.startsWith("data:image/") && photo.length <= 400_000 ? photo : (pend.avatarUrl ?? "");
   if (avatar) await patchAvatar(sessionId, player.id, avatar);
