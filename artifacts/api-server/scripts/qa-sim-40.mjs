@@ -29,6 +29,11 @@ async function api(path, body, method = 'POST') {
   let j = null; try { j = await r.json(); } catch { /* */ }
   return { status: r.status, body: j };
 }
+// saldo corrente di un giocatore (per calcolare il delta netto dell'episodio ibrido)
+async function readBal(code) {
+  const r = await api(`/gestione/casino/player/${code}`, null, 'GET');
+  return r.body?.player?.fishBalance ?? 0;
+}
 const idOf = (res) => res.body?.table?.id ?? res.body?.id ?? res.body?.session?.id ?? null;
 const codeOf = (res) => res.body?.table?.displayCode ?? res.body?.displayCode ?? null;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -109,6 +114,7 @@ async function main() {
     await api('/gestione/casino/bj/dealer-mode', { dealerCode: bj.dealerCode, mode: 'hybrid' });
     await api('/gestione/casino/bj/dealer-open', { dealerCode: bj.dealerCode });
     const pA = players[0], pB = players[1];
+    const b0A = await readBal(pA.code), b0B = await readBal(pB.code); // saldo prima dell'episodio ibrido
     const jA = await api('/gestione/casino/bj/join', { displayCode: bj.code, seatNo: 1, playerCode: pA.code });
     const jB = await api('/gestione/casino/bj/join', { displayCode: bj.code, seatNo: 2, playerCode: pB.code });
     const sA = jA.body?.seatCode, sB = jB.body?.seatCode;
@@ -117,6 +123,9 @@ async function main() {
     // mazziere segna: A vince (bet×2), B perde
     const settle = await api('/gestione/casino/bj/dealer-settle', { dealerCode: bj.dealerCode, outcomes: { [pA.id]: 'win', [pB.id]: 'lose' } });
     (settle.status === 200 ? ok : bad)(`blackjack ibrido: puntate + esiti segnati + pagati (status ${settle.status})`);
+    await sleep(300); // l'atteso include ora il delta netto dell'episodio ibrido (puntata + pagamento)
+    pA.expected = (pA.expected ?? pA.bal0) + ((await readBal(pA.code)) - b0A);
+    pB.expected = (pB.expected ?? pB.bal0) + ((await readBal(pB.code)) - b0B);
   } else bad('blackjack: tavolo/dealer mancante per la prova ibrida');
 
   //    7½: stesso schema (vince/perde)
@@ -125,12 +134,16 @@ async function main() {
     await api('/gestione/casino/sm/dealer-mode', { dealerCode: sm.dealerCode, mode: 'hybrid' });
     await api('/gestione/casino/sm/dealer-open', { dealerCode: sm.dealerCode });
     const pC = players[8], pD = players[9];
+    const b0C = await readBal(pC.code), b0D = await readBal(pD.code); // saldo prima dell'episodio ibrido
     const jC = await api('/gestione/casino/sm/join', { displayCode: sm.code, seatNo: 1, playerCode: pC.code });
     const jD = await api('/gestione/casino/sm/join', { displayCode: sm.code, seatNo: 2, playerCode: pD.code });
     await api('/gestione/casino/sm/bet', { seatCode: jC.body?.seatCode, amount: 40, playerCode: pC.code });
     await api('/gestione/casino/sm/bet', { seatCode: jD.body?.seatCode, amount: 40, playerCode: pD.code });
     const settle = await api('/gestione/casino/sm/dealer-settle', { dealerCode: sm.dealerCode, winners: [pC.id] });
     (settle.status === 200 ? ok : bad)(`7½ ibrido: puntate + vincitori segnati + pagati (status ${settle.status})`);
+    await sleep(300);
+    pC.expected = (pC.expected ?? pC.bal0) + ((await readBal(pC.code)) - b0C);
+    pD.expected = (pD.expected ?? pD.bal0) + ((await readBal(pD.code)) - b0D);
   } else bad('7½: tavolo/dealer mancante per la prova ibrida');
 
   // 7) Verifica saldi (confronto con l'atteso dei movimenti a mano)
@@ -143,7 +156,7 @@ async function main() {
     checked++;
     if (bal !== p.expected) { mism++; if (mism <= 5) bad(`saldo ${p.nickname}: ${bal} ≠ atteso ${p.expected}`); }
   }
-  (mism === 0 ? ok : bad)(`saldi verificati: ${checked - mism}/${checked} coerenti coi movimenti a mano`);
+  (mism === 0 ? ok : bad)(`saldi verificati: ${checked - mism}/${checked} coerenti (punti a mano + pagamenti ibridi)`);
 
   // 8) Connessione a IDEAphotoSuite (solo con --suite e in prod)
   if (DO_SUITE) {
