@@ -104,8 +104,12 @@ export async function chiediIdeax<T = unknown>(tipo: TipoIdeax, dati: unknown, o
   }
 }
 
-/** Un'immagine da ideax (base64 PNG/JPEG) oppure null: chi chiama passa al suo fornitore di sempre (OpenAI). */
+/** Un'immagine da ideax (base64 PNG/JPEG) oppure null: chi chiama passa al suo fornitore di sempre (OpenAI).
+ *  STRATEGIA C: ideax è usato SOLO per preparare contenuti a casa (PC acceso). Durante gli eventi live
+ *  resta spento e si va diretti su OpenAI, così non si rischia mai il blocco da 90s sul maxi-schermo.
+ *  Per riaccenderlo in fase di preparazione: Secret `IDEAX_ABILITATO=1` (e il PC con ideax acceso). */
 export async function immagineDaIdeax(prompt: string, aspetto: "1:1" | "9:16" | "16:9" | "4:5"): Promise<string | null> {
+  if (process.env.IDEAX_ABILITATO !== "1") return null; // default spento: eventi live su OpenAI
   if (!(await ideaxSa("genera"))) return null;
   try {
     const r = await chiediIdeax<{ risultati?: { tipo: string; base64: string }[] }>("genera", { prompt, task: "image_generate", params: { aspect: aspetto } }, { attesaMs: 150_000 });
