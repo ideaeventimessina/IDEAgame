@@ -17,7 +17,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { PlayerAvatar, fileToAvatarDataUrl } from '../components/PlayerAvatar';
 import { BlackjackPhone, BlackjackMonitor, BlackjackRegia, BlackjackTablesView, BlackjackDealer } from './GestioneBlackjack';
 import { LightDealerView, LightDealerBind } from './GestioneDealerLeggero';
-import { CasPhone, Hero } from '../casino-ui/kit';
+import { CasPhone, Hero, useFullscreenOnFirstGesture } from '../casino-ui/kit';
 import { CorsaSiciliaMonitor, CorsaSiciliaPhone, CorsaSiciliaRegia } from './GestioneCorsaSiciliana';
 import { IppodromoSprintMonitor, IppodromoSprintPhone, IppodromoSprintRegia } from './GestioneIppodromoSprint';
 import { SetteMezzoMonitor, SetteMezzoPhone, SetteMezzoRegia, SetteMezzoTablesView, SetteMezzoDealer } from './GestioneSetteMezzo';
@@ -443,6 +443,7 @@ const REGIA_CSS = `
 `;
 
 export function MasterView({ sessionId }: { sessionId: string }) {
+  useFullscreenOnFirstGesture();
   const state = useCasinoState(sessionId);
   const suiteLink = useSuiteLink(sessionId);          // PONTE SUITE: legame serata↔festa
   const [showSuite, setShowSuite] = useState(false);  // modale "collega a una festa"
@@ -1515,6 +1516,7 @@ const RT_CSS = `
 `;
 
 export function RouletteTableView({ displayCode }: { displayCode: string }) {
+  useFullscreenOnFirstGesture();
   useTableMusic('casino', 'lobby_loop');
   const [st, setSt] = useState<GameTableState | null>(null);
   const [dim, setDim] = useState({ w: typeof window !== 'undefined' ? window.innerWidth : 1280, h: typeof window !== 'undefined' ? window.innerHeight : 800 });
@@ -1702,6 +1704,7 @@ export function RouletteTableView({ displayCode }: { displayCode: string }) {
 
 // ── Controller sedia (telefono): punta dal tuo saldo sul tappeto ────────────────
 function SeatController({ seatCode }: { seatCode: string }) {
+  useFullscreenOnFirstGesture();
   const [st, setSt] = useState<GameTableState | null>(null);
   const [me, setMe] = useState<{ seatNo: string; nickname: string; fishBalance: number } | null>(null);
   const [err, setErr] = useState('');
@@ -1778,7 +1781,10 @@ function SeatController({ seatCode }: { seatCode: string }) {
   // Tappeto ORIZZONTALE vero (numeri dritti): la cella si dimensiona perché l'intero tappeto entri
   // SENZA scroll sia in larghezza (~15,3·s con le colonne esterne) sia in altezza (~6,6·s per 5 righe,
   // meno ~198px di intestazione+fiches+riepilogo). In verticale → overlay "gira il telefono".
-  const feltS = Math.max(16, Math.min(46, (vw - 24) / 15.3, (vh - 198) / 6.7));
+  // Layout orizzontale: tappeto a SINISTRA grande quanto possibile, fiche in colonna a DESTRA.
+  // La cella si dimensiona per riempire l'altezza (vh − ~header 64) e la larghezza disponibile
+  // (vw − colonna fiche ~96 − margini). Max alzato: in landscape il tappeto può essere molto più grande.
+  const feltS = Math.max(16, Math.min(64, (vw - 150) / 15.3, (vh - 118) / 6.7));
   const leave = async () => {
     if (!window.confirm('Abbandonare il tavolo? Se hai puntate in questa manche le PERDI (non vengono rimborsate).')) return;
     try { await api('/gestione/casino/table/leave', { seatCode, playerCode }); } catch { /* */ }
@@ -1798,25 +1804,21 @@ function SeatController({ seatCode }: { seatCode: string }) {
       {t.phase === 'betting' ? (portrait ? (
         <RotateHint />
       ) : (
-        <>
-          <div style={{ fontSize: 12, opacity: 0.6, textAlign: 'center' }}>Scegli la fiche, poi tocca il tappeto per piazzarla</div>
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-            {[5, 25, 100, 500].map(c => (
-              <motion.button whileTap={{ scale: 0.9 }} key={c} onClick={() => setChip(c)} disabled={c > myBalance}
-                style={{ width: 54, height: 54, borderRadius: '50%', border: chip === c ? '3px solid #fff' : '2px solid #ffffff33', background: seatColor(Number(me.seatNo)), color: '#fff', fontWeight: 900, fontSize: 14, cursor: 'pointer', opacity: c > myBalance ? 0.3 : 1, boxShadow: chip === c ? `0 0 14px ${GOLD}` : 'none' }}>{c}</motion.button>
-            ))}
-          </div>
-          {msg && <div style={{ color: '#f87171', textAlign: 'center', fontWeight: 700 }}>{msg}</div>}
-          {/* Tappeto ORIZZONTALE (numeri dritti) — in verticale compare l'overlay "gira il telefono".
-              flexShrink:0 così il flex a colonna NON lo schiaccia (con overflow il min-height diventa 0). */}
-          <div style={{ display: 'flex', justifyContent: 'center', margin: '2px 0 8px', overflowX: 'auto', flexShrink: 0 }}>
+        // LANDSCAPE: tappeto grande a sinistra + fiche in colonna a destra (usa tutta l'altezza).
+        <div style={{ display: 'flex', gap: 10, flex: 1, minHeight: 0, alignItems: 'center' }}>
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'auto' }}>
             <RouletteFelt betsBySpot={Object.fromEntries(Object.entries(groupBets(t.bets)).map(([k, v]) => [k, v]))} onPlace={place} s={feltS} />
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#ffffff0a', borderRadius: 12, padding: '10px 14px' }}>
-            <div>Sul tappeto: <b style={{ color: GOLD }}>{myTotal}</b> fiche <span style={{ opacity: 0.5 }}>({myBets.length})</span></div>
-            <button onClick={undo} disabled={myBets.length === 0} style={{ ...btn('#ffffff22'), opacity: myBets.length === 0 ? 0.4 : 1 }}>↶ Annulla</button>
+          <div style={{ width: 88, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 7, alignItems: 'center', justifyContent: 'center', overflowY: 'auto', padding: '4px 0' }}>
+            {[5, 25, 100, 500].map(c => (
+              <motion.button whileTap={{ scale: 0.9 }} key={c} onClick={() => setChip(c)} disabled={c > myBalance}
+                style={{ width: 52, height: 52, flexShrink: 0, borderRadius: '50%', border: chip === c ? '3px solid #fff' : '2px solid #ffffff33', background: seatColor(Number(me.seatNo)), color: '#fff', fontWeight: 900, fontSize: 15, cursor: 'pointer', opacity: c > myBalance ? 0.3 : 1, boxShadow: chip === c ? `0 0 14px ${GOLD}` : 'none' }}>{c}</motion.button>
+            ))}
+            <div style={{ fontSize: 11, opacity: 0.6, textAlign: 'center', lineHeight: 1.25 }}>sul tappeto<br /><b style={{ color: GOLD, fontSize: 15 }}>{myTotal}</b> <span style={{ opacity: 0.6 }}>({myBets.length})</span></div>
+            <button onClick={undo} disabled={myBets.length === 0} style={{ ...btn('#ffffff22'), padding: '7px 12px', fontSize: 13, opacity: myBets.length === 0 ? 0.4 : 1 }}>↶ Annulla</button>
+            {msg && <div style={{ color: '#f87171', textAlign: 'center', fontWeight: 700, fontSize: 12 }}>{msg}</div>}
           </div>
-        </>
+        </div>
       )) : !revealNow ? (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, marginTop: 30 }}>
           <div style={{ fontSize: 54 }}>🎡</div>
