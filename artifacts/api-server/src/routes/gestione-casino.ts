@@ -2179,6 +2179,12 @@ router.post("/gestione/casino/sprint/input", async (req, res): Promise<void> => 
   if (act !== "sprint" && act !== "jump") { res.status(400).json({ error: "Comando sconosciuto" }); return; }
   const commandId = String(req.body?.commandId ?? "").slice(0, 100);
   const now = Date.now();
+  // Nomi piloti PRIMA della transazione: serve una sola connessione, rilasciata prima del
+  // lock. Farlo DENTRO mutateSession chiedeva una SECONDA connessione mentre la tx teneva
+  // già la sua → con molti tap simultanei in gara il pool andava in DEADLOCK (sprint rotto).
+  const preIds = SPRINT_SEATS.map((k) => found.table.seats[k]?.playerId).filter((x): x is string => !!x);
+  const preNames = preIds.length ? await db.select({ id: casinoPlayersTable.id, nickname: casinoPlayersTable.nickname }).from(casinoPlayersTable).where(inArray(casinoPlayersTable.id, preIds)) : [];
+  const nameById = new Map(preNames.map((p) => [p.id, p.nickname]));
   const out = await mutateSession<{ status: number; body?: unknown }>(found.sessionId, async (_tx, cfg) => {
     const t = cfg.sprintTables?.[found.table.id]; if (!t) return { save: false, result: { status: 404, body: { error: "Tavolo non trovato" } } };
     const n = SPRINT_SEATS.find((k) => t.seats[k]!.playerId === player.id);
@@ -2188,10 +2194,6 @@ router.post("/gestione/casino/sprint/input", async (req, res): Promise<void> => 
     const clk = sprintClock(t, now);
     if (clk.phase !== "race") return { save: false, result: { status: 409, body: { error: "Comando fuori fase" } } };
     const at = snapToGrid(clk.raceMs);
-    // Nomi piloti per la ricostruzione di validazione.
-    const ids = SPRINT_SEATS.map((k) => t.seats[k]!.playerId).filter((x): x is string => !!x);
-    const players = ids.length ? await db.select({ id: casinoPlayersTable.id, nickname: casinoPlayersTable.nickname }).from(casinoPlayersTable).where(inArray(casinoPlayersTable.id, ids)) : [];
-    const nameById = new Map(players.map((p) => [p.id, p.nickname]));
     const race = projectRace(pilotsOf(t, nameById), t.inputs, at);
     try { sprintEngineAction(race, act, horseId); }
     catch (e) { return { save: false, result: { status: 409, body: { error: (e as Error).message } } }; }
