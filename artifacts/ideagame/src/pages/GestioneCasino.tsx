@@ -1545,6 +1545,10 @@ export function RouletteTableView({ displayCode }: { displayCode: string }) {
   const prevRes = useRef<number | null>(null);
   const [revealN, setRevealN] = useState<number | null>(null); // numero svelato SOLO quando la pallina si ferma
   const revealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Saldi congelati durante il giro: il server accredita subito, ma sul monitor la vincita
+  // deve comparire SOLO col numero (revealN). In puntata fotografiamo i saldi; durante lo
+  // spin mostriamo quelli; a numero svelato tornano i saldi veri (contemporaneo al telefono).
+  const frozenSeatBals = useRef<Record<string, number>>({});
 
   useEffect(() => { const r = () => setDim({ w: window.innerWidth, h: window.innerHeight }); window.addEventListener('resize', r); return () => window.removeEventListener('resize', r); }, []);
   useEffect(() => {
@@ -1621,6 +1625,9 @@ export function RouletteTableView({ displayCode }: { displayCode: string }) {
   const winNum = (n: number) => revealN != null && revealN === n;
   const winOut = (kind: string) => revealN != null && spotWinsOutside(kind, revealN);
   const seats = t.seats;
+  // In puntata fotografa i saldi; durante lo spin li mostra congelati (vedi sopra).
+  if (t.phase === 'betting') { const snap: Record<string, number> = {}; for (const [no, s] of Object.entries(seats)) snap[no] = s.balance ?? 0; frozenSeatBals.current = snap; }
+  const seatBal = (no: string, live: number) => (t.phase !== 'betting' && revealN == null) ? (frozenSeatBals.current[no] ?? live) : live;
   const scale = Math.min(dim.w / 1672, dim.h / 941);
   const spin = async () => {
     if (spinning.current || t.phase !== 'betting') return;
@@ -1700,7 +1707,7 @@ export function RouletteTableView({ displayCode }: { displayCode: string }) {
                   <div className="av">{seat.avatarUrl ? <img src={seat.avatarUrl} alt="" /> : <div className="ini">{(seat.nickname ?? '?').charAt(0).toUpperCase()}</div>}</div>
                   <div className="name">{seat.nickname}</div>
                   <div className="lbl">{bet > 0 ? `PUNTA ${bet}` : 'CREDITO'}</div>
-                  <div className="cr">{itFmt.format(seat.balance ?? 0)}</div>
+                  <div className="cr">{itFmt.format(seatBal(no, seat.balance ?? 0))}</div>
                 </article>
               );
             }
@@ -1771,6 +1778,12 @@ function SeatController({ seatCode }: { seatCode: string }) {
   }, [st, me]);
   const myBets = useMemo(() => st && me ? st.table.bets.filter(b => String(b.seatNo) === me.seatNo) : [], [st, me]);
   const myTotal = myBets.reduce((a, b) => a + b.amount, 0);
+  // Il server accredita la vincita subito allo spin, ma il NUMERO si rivela ~6,8s dopo.
+  // Per non spoilerare il saldo prima del numero, congeliamo il saldo mostrato durante il
+  // giro e lo sblocchiamo esattamente a revealNow (contemporaneo al numero sul monitor).
+  const frozenBal = useRef(myBalance);
+  useEffect(() => { if (st?.table.phase === 'betting') frozenBal.current = myBalance; }, [st, myBalance]);
+  const shownBal = (st && st.table.phase !== 'betting' && !revealNow) ? frozenBal.current : myBalance;
 
   const place = async (kind: string, numbers: number[]) => {
     if (!me) return;
@@ -1816,7 +1829,7 @@ function SeatController({ seatCode }: { seatCode: string }) {
           <div><div style={{ fontWeight: 900 }}>{me.nickname}</div><div style={{ opacity: 0.5, fontSize: 12 }}>{t.name} · Giro #{t.round}</div></div>
         </div>
         {/* In landscape-puntata il saldo vive nella colonna fiche a destra (qui lo coprirebbe). */}
-        {!(t.phase === 'betting' && !portrait) && <div style={{ textAlign: 'right' }}><div style={{ fontSize: 11, opacity: 0.5 }}>fiche</div><div style={{ fontSize: 22, fontWeight: 900, color: GOLD }}><AnimatedNumber value={myBalance} /></div></div>}
+        {!(t.phase === 'betting' && !portrait) && <div style={{ textAlign: 'right' }}><div style={{ fontSize: 11, opacity: 0.5 }}>fiche</div><div style={{ fontSize: 22, fontWeight: 900, color: GOLD }}><AnimatedNumber value={shownBal} /></div></div>}
       </div>
 
       {t.phase === 'betting' ? (portrait ? (
