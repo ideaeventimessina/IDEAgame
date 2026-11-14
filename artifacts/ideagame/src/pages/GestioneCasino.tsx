@@ -18,6 +18,7 @@ import { PlayerAvatar, fileToAvatarDataUrl } from '../components/PlayerAvatar';
 import { BlackjackPhone, BlackjackMonitor, BlackjackRegia, BlackjackTablesView, BlackjackDealer } from './GestioneBlackjack';
 import { LightDealerView, LightDealerBind } from './GestioneDealerLeggero';
 import { CasPhone, Hero, useFullscreenOnFirstGesture } from '../casino-ui/kit';
+import { DealerFab } from '../casino-ui/DealerFab';
 import { CorsaSiciliaMonitor, CorsaSiciliaPhone, CorsaSiciliaRegia } from './GestioneCorsaSiciliana';
 import { IppodromoSprintMonitor, IppodromoSprintPhone, IppodromoSprintRegia } from './GestioneIppodromoSprint';
 import { SetteMezzoMonitor, SetteMezzoPhone, SetteMezzoRegia, SetteMezzoTablesView, SetteMezzoDealer } from './GestioneSetteMezzo';
@@ -1957,6 +1958,7 @@ function RouletteDealerView({ dealerCode }: { dealerCode: string }) {
 
   return (
     <div style={{ minHeight: '100%', background: BG, color: '#fff', fontFamily: "'Outfit',system-ui,sans-serif", padding: '14px 14px 40px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <DealerFab dealerCode={dealerCode} />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div><div style={{ fontWeight: 900, fontSize: 20 }}>🎡 {t.name}</div><div style={{ opacity: 0.5, fontSize: 12 }}>Dealer · Giro #{t.round}</div></div>
         <BrandBar h={18} dim={0.75} />

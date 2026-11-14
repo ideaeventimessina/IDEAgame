@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
+import { DealerFab } from '../casino-ui/DealerFab';
 
 const BASE = (import.meta.env.BASE_URL as string) || '/';
 const API = BASE + 'api';
@@ -75,6 +76,7 @@ export function DealerGallery({ dealerCode }: { dealerCode: string }) {
   const total = roster?.players.length ?? 0;
   return (
     <div className="dld"><style>{CSS}</style>
+      <DealerFab dealerCode={dealerCode} />
       <div className="wrap">
         <h1>Dealer · {roster?.tableName ?? 'Tavolo'}</h1>
         <div className="sub">Segnapunti · tocca la faccia e assegna i punti</div>

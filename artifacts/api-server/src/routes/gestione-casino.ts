@@ -561,15 +561,21 @@ router.post("/gestione/casino/table/spin", async (req, res): Promise<void> => {
   res.json(out.body);
 });
 
-// ── Nuovo giro: pulisce le puntate, tiene le sedie ──────────────────────────────
+// ── Nuovo giro: pulisce le puntate, LIBERA i posti di chi non ha puntato ─────────
+//    Auto-leave: chi era seduto ma NON ha piazzato nessuna puntata nel giro appena
+//    concluso lascia il posto (niente sedie-fantasma di chi non si scollega). Chi ha
+//    puntato resta. Così "ogni puntata va validata, altrimenti lasci il posto".
 router.post("/gestione/casino/table/next", async (req, res): Promise<void> => {
   const code = String(req.body?.displayCode ?? req.body?.seatCode ?? "").toUpperCase().trim();
   const found = await findGameTable(code);
   if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
   const table = found.table;
+  const betted = new Set(table.bets.map(b => String(b.seatNo)));
+  for (const [no, seat] of Object.entries(table.seats)) if (seat.playerId && !betted.has(no)) seat.playerId = null;
   table.phase = "betting"; table.bets = []; table.result = null; table.round += 1;
   await saveGameTable(found.sessionId, table);
   await broadcastTable(found.sessionId, table);
+  await broadcast(found.sessionId);
   res.json({ ok: true });
 });
 
@@ -870,7 +876,10 @@ router.post("/gestione/casino/bj/open", async (req, res): Promise<void> => {
   if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
   const t = found.table;
   if (t.suspended) { res.status(409).json({ error: "Tavolo sospeso" }); return; }
-  if (t.phase === "result") t.round += 1;
+  const completed = t.phase === "result";
+  if (completed) t.round += 1;
+  // AUTO-LEAVE: dopo una mano conclusa, chi NON ha puntato (bet 0) lascia il posto.
+  if (completed) for (const s of Object.values(t.seats)) if (s.playerId && (s.bet ?? 0) <= 0) s.playerId = null;
   if (t.shoe.length < 78) t.shoe = freshShoe(); // rimescola sotto il 25%
   for (const s of Object.values(t.seats)) { s.bet = 0; s.cards = []; s.outcome = null; s.profit = 0; s.doubled = false; s.status = s.playerId ? "joined" : "empty"; }
   t.dealer = []; t.hole = null; t.activeSeat = null; t.turnEndsAt = null;
@@ -1351,7 +1360,10 @@ router.post("/gestione/casino/sm/open", async (req, res): Promise<void> => {
   if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
   const t = found.table;
   if (t.suspended) { res.status(409).json({ error: "Tavolo sospeso" }); return; }
-  if (t.phase === "result") t.round += 1;
+  const completed = t.phase === "result";
+  if (completed) t.round += 1;
+  // AUTO-LEAVE: dopo una mano conclusa, chi NON ha puntato (bet 0) lascia il posto.
+  if (completed) for (const s of Object.values(t.seats)) if (s.playerId && (s.bet ?? 0) <= 0) s.playerId = null;
   if (t.shoe.length < 14) t.shoe = freshSmDeck(); // rimescola il mazzo siciliano quando è quasi finito
   for (const s of Object.values(t.seats)) { s.bet = 0; s.cards = []; s.outcome = null; s.profit = 0; s.status = s.playerId ? "joined" : "empty"; }
   t.banco = []; t.activeSeat = null; t.turnEndsAt = null;
@@ -2511,6 +2523,18 @@ router.get("/gestione/casino/dealer-roster/:dealerCode", async (req, res): Promi
     .map(p => ({ id: p.id, nickname: p.nickname, avatarUrl: avatars[p.id] ?? null, balance: p.fishBalance, atTable: ctx.atTable.has(p.id) }))
     .sort((a, b) => Number(b.atTable) - Number(a.atTable) || b.balance - a.balance);
   res.json({ ok: true, tableName: ctx.tableName, kind: ctx.kind, atTableCount: ctx.atTable.size, players: list });
+});
+// joinCode della serata da un QUALUNQUE dealerCode (tavoli config o dealer cassa):
+// serve al pulsante "QR nuovi giocatori" sulle schermate dealer.
+router.get("/gestione/casino/dealer-join/:dealerCode", async (req, res): Promise<void> => {
+  const code = String(req.params["dealerCode"] ?? "").toUpperCase().trim();
+  let sessionId: string | null = null;
+  const ctx = await resolveDealer(code);
+  if (ctx) sessionId = ctx.sessionId;
+  else { const [t] = await db.select({ sessionId: casinoTablesTable.sessionId }).from(casinoTablesTable).where(eq(casinoTablesTable.dealerCode, code)); if (t) sessionId = t.sessionId; }
+  if (!sessionId) { res.status(404).json({ error: "Dealer non trovato" }); return; }
+  const [sess] = await db.select({ joinCode: casinoSessionsTable.joinCode }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, sessionId));
+  res.json({ ok: true, joinCode: sess?.joinCode ?? null });
 });
 // Assegna/toglie PUNTI a mano a un ospite qualsiasi della serata del dealer.
 router.post("/gestione/casino/dealer-tx-any", async (req, res): Promise<void> => {

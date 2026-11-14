@@ -16,6 +16,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { useTableMusic } from '@/audio/useTableMusic';
 import { ScreenFit } from '@/components/ScreenFit';
 import { CasPhone, Hero } from '../casino-ui/kit';
+import { DealerFab } from '../casino-ui/DealerFab';
 
 const API = ((import.meta.env.BASE_URL as string) || '/') + 'api';
 const ORIGIN = window.location.origin + ((import.meta.env.BASE_URL as string) || '/');
@@ -794,6 +795,7 @@ export function SetteMezzoDealer({ dealerCode }: { dealerCode: string }) {
 
   return (
     <div className="smd"><style>{DEALER_CSS}</style>
+      <DealerFab dealerCode={dealerCode} />
       <div className="wrap">
         <h1>Mazziere · {t.name}</h1>
         <div className="sub">Mano #{t.round} · {hybrid ? (t.phase === 'betting' ? 'puntate aperte' : t.phase === 'result' ? 'mano conclusa' : 'pronto') : 'tavolo digitale (gioca da solo)'}</div>
