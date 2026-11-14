@@ -701,7 +701,9 @@ function BjWaitStage({ t, dim, playUrl }: { t: BjTbl; dim: { w: number; h: numbe
         <div className="codepill">{t.displayCode}</div>
         <div className="tavolo">{t.name}</div>
         <div className="ginfo"><span className="cnt"><PeopleIcon /> {occupied} / {nos.length}</span><div className="lb">giocatori</div></div>
-        <div className={`status${betting ? '' : ' wait'}`}>{betting ? (t.mode === 'hybrid' ? '🃏 Carte fisiche · punta dal telefono' : 'Puntate aperte') : (t.mode === 'hybrid' ? '🃏 Il mazziere distribuisce' : 'In attesa')}</div>
+        {/* La pillola di stato resta solo in modalità ibrida (lì non c'è il tasto touch che la direbbe già). */}
+        {t.mode === 'hybrid' && <div className={`status${betting ? '' : ' wait'}`}>{betting ? '🃏 Carte fisiche · punta dal telefono' : '🃏 Il mazziere distribuisce'}</div>}
+        <BjTouchBar t={t} />
         <div className="seats">
           {nos.map(no => {
             const s = t.seats[String(no)]!;
@@ -777,6 +779,7 @@ function BjResultStage({ t, dim }: { t: BjTbl; dim: { w: number; h: number } }) 
           })}
         </div>
         <div className="nextpill">La prossima mano inizierà a breve</div>
+        <BjTouchBar t={t} />
       </div>
     </div>
   );
@@ -795,11 +798,12 @@ function BjTouchBar({ t }: { t: BjTbl }) {
   else if (t.phase === 'result') { label = '↻ NUOVA MANO'; path = '/gestione/casino/bj/open'; }
   else return null; // playing/dealer: automatico
   const canAct = !(t.suspended && t.phase !== 'betting'); // su tavolo sospeso non si riapre
+  // Dentro il palco (scala col resto): a destra, SOPRA il rail delle facce — non copre né facce né QR.
   return (
-    <div style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 50 }}>
+    <div style={{ position: 'absolute', right: 20, bottom: 132, zIndex: 20 }}>
       <button onClick={() => run(path)} disabled={busy || !canAct}
-        style={{ minWidth: 320, padding: '22px 48px', borderRadius: 18, border: 'none', cursor: 'pointer',
-          fontFamily: '"Baskerville Casino",Georgia,serif', fontWeight: 800, fontSize: 32, color: '#231503',
+        style={{ minWidth: 264, padding: '16px 26px', borderRadius: 16, border: 'none', cursor: 'pointer',
+          fontFamily: '"Baskerville Casino",Georgia,serif', fontWeight: 800, fontSize: 25, color: '#231503', whiteSpace: 'nowrap',
           background: 'linear-gradient(180deg,#ffe694,#f0c357 52%,#d59a34)', boxShadow: '0 6px 0 #7a4d12',
           opacity: busy || !canAct ? 0.5 : 1, touchAction: 'manipulation' }}>
         {t.suspended && t.phase !== 'betting' ? '⏸ Tavolo sospeso' : label}
@@ -830,7 +834,8 @@ export function BlackjackMonitor({ displayCode }: { displayCode: string }) {
   const stage = (t.phase === 'playing' || t.phase === 'dealer') ? <BjPlayStage t={t} turnCd={turnCd} dim={dim} />
     : t.phase === 'result' ? <BjResultStage t={t} dim={dim} />      // Risultati "17 MONITOR RISULTATI"
       : <BjWaitStage t={t} dim={dim} playUrl={playUrl} />;           // Attesa/puntate "07 MONITOR ATTESA"
-  return <>{stage}<BjTouchBar t={t} /></>;
+  // La barra comandi touch ora vive DENTRO ogni palco (scala col resto, non copre le facce).
+  return stage;
 }
 
 /* ════════════════════════════════════════════════════════════════════════════

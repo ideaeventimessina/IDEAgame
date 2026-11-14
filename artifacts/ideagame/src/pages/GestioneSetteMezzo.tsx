@@ -522,6 +522,20 @@ const MON_CSS = SM_FONT + CARD_CSS + `
 .smm .hist .ht{color:#9fe0b4;font-size:11px;letter-spacing:.1em;}
 .smm .hist .hr{color:#e8f2ea;font-size:13px;}
 .smm .hist .hr b{color:#ffe9a6;}
+/* ── ATTESA/PUNTATE: stesso rail in basso di Roulette e Blackjack (facce + posti assegnati) ── */
+.smm .wqr{position:absolute;left:70px;top:252px;width:150px;height:150px;background:#fff;border-radius:10px;padding:9px;box-sizing:border-box;z-index:6;box-shadow:0 3px 10px #0009,0 0 0 2px #debb60;}
+.smm .wqr svg{display:block;width:100%;height:100%;}
+.smm .wscan{position:absolute;left:238px;top:266px;width:230px;z-index:6;color:#f4ead3;font:700 25px/1.28 "Baskerville Casino",serif;}
+.smm .wstatus{position:absolute;right:70px;top:302px;width:260px;box-sizing:border-box;text-align:center;padding:12px 0;z-index:6;border:3px solid #e0b24a;border-radius:15px;background:linear-gradient(180deg,#2a2510,#13100a);color:#ffe3a0;font:700 27px/1.15 "Baskerville Casino",serif;box-shadow:0 0 18px #e0b24a55,inset 0 0 12px #0009;}
+.smm .seats{position:absolute;left:14px;right:14px;bottom:14px;height:122px;display:flex;gap:7px;z-index:6;}
+.smm .seatc{position:relative;flex:1 1 0;border-radius:13px;border:2px solid #7c6632;background:linear-gradient(162deg,#0f2e1c,#06160d);display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:16px;box-shadow:inset 0 1px 0 #ffffff12,inset 0 0 0 1px #4a3c1a;}
+.smm .seatc.free{border-color:#55492a;}
+.smm .seatc .snum{position:absolute;top:-11px;left:50%;transform:translateX(-50%);width:24px;height:24px;border-radius:50%;background:radial-gradient(circle at 40% 30%,#1d1708,#0b0b07);border:2px solid #e6c268;color:#ffe9a6;display:grid;place-items:center;font:700 13px/1 serif;z-index:2;box-shadow:0 2px 4px #0008;}
+.smm .seatc .avr2{width:58px;height:58px;border-radius:50%;border:2px solid #d9b85a;display:grid;place-items:center;overflow:hidden;background:radial-gradient(circle at 50% 35%,#163a26,#07160e);}
+.smm .seatc .avr2.free{border-color:#4e5a50;}
+.smm .seatc .nm2{font:700 18px/1 "Baskerville Casino",serif;color:#fff;margin-top:9px;max-width:94%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.smm .seatc .cr2{font:700 16px/1 "Baskerville Casino",serif;color:#ffe9a6;margin-top:5px;}
+.smm .seatc .lib2{font:400 17px/1 "Baskerville Casino",serif;color:#86b596;margin-top:15px;}
 `;
 
 function SeatCardMon({ s, active, w }: { s: SmSeatState; active: boolean; w: number }) {
@@ -585,25 +599,48 @@ export function SetteMezzoMonitor({ displayCode }: { displayCode: string }) {
                 {t.banco.total != null && <Total v={t.banco.total} bust={t.banco.total > 7.5} size={18} />}</>}
           </div>
 
-          {nos.map((no, i) => {
-            const s = t.seats[String(no)]!;
-            const pos = POS[no] ?? circ(i, nos.length);
-            return <div key={no} className="seatcard-wrap" style={{ position: 'absolute', left: pos.left, top: pos.top }}>
-              <div style={{ position: 'absolute', transform: 'translate(-50%,-50%)' }}><SeatCardMon s={s} active={t.activeSeat === no && t.phase === 'playing'} w={190} /></div>
-            </div>;
-          })}
+          {banner ? (
+            /* ATTESA/PUNTATE: facce in basso con posti assegnati, identico a Roulette e Blackjack */
+            <>
+              <div className="wqr"><QRCodeSVG value={joinUrl} size={132} /></div>
+              <div className="wscan">Scansiona<br />e gioca dal<br />tuo telefono</div>
+              <div className="wstatus">{banner.big}</div>
+              <div className="seats">
+                {nos.map(no => {
+                  const s = t.seats[String(no)]!;
+                  if (!s.playerId) return <div key={no} className="seatc free"><div className="snum">{no}</div><div className="avr2 free"><Avatar size={54} /></div><div className="lib2">Libero</div></div>;
+                  return (
+                    <div key={no} className="seatc"><div className="snum">{no}</div>
+                      <div className="avr2"><Avatar url={s.avatarUrl} name={s.nickname} size={54} /></div>
+                      <div className="nm2">{s.nickname}</div>
+                      <div className="cr2">{grp(s.balance ?? 0)}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            /* MANO IN CORSO / ESITI: tavolo ovale con le carte in mano a ogni posto */
+            <>
+              {nos.map((no, i) => {
+                const s = t.seats[String(no)]!;
+                const pos = POS[no] ?? circ(i, nos.length);
+                return <div key={no} className="seatcard-wrap" style={{ position: 'absolute', left: pos.left, top: pos.top }}>
+                  <div style={{ position: 'absolute', transform: 'translate(-50%,-50%)' }}><SeatCardMon s={s} active={t.activeSeat === no && t.phase === 'playing'} w={190} /></div>
+                </div>;
+              })}
 
-          {banner && <div className="banner" style={{ top: '40%' }}><div className="big">{banner.big}</div><div className="sm2">{banner.sub}</div></div>}
+              <div className="joinbox">
+                <div className="qr"><QRCodeSVG value={joinUrl} size={74} /></div>
+                <div className="jt">Gioca dal telefono<small>{displayCode}</small></div>
+              </div>
 
-          <div className="joinbox">
-            <div className="qr"><QRCodeSVG value={joinUrl} size={74} /></div>
-            <div className="jt">Gioca dal telefono<small>{displayCode}</small></div>
-          </div>
-
-          {h0 && <div className="hist">
-            <div className="ht">ULTIMA MANO · banco {pt(h0.bancoTotal)}</div>
-            {h0.results.slice(0, 4).map((r, i) => <div key={i} className="hr">{r.nickname} · {pt(r.total)} · <b>{r.outcome === 'win' ? `+${r.profit}` : 'perso'}</b></div>)}
-          </div>}
+              {h0 && <div className="hist">
+                <div className="ht">ULTIMA MANO · banco {pt(h0.bancoTotal)}</div>
+                {h0.results.slice(0, 4).map((r, i) => <div key={i} className="hr">{r.nickname} · {pt(r.total)} · <b>{r.outcome === 'win' ? `+${r.profit}` : 'perso'}</b></div>)}
+              </div>}
+            </>
+          )}
         </div>
       </ScreenFit>
     </div>
