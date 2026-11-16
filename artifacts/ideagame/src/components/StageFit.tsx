@@ -72,20 +72,24 @@ export function StageFit({
       style={{
         position: 'fixed',   // àncora al viewport: palco sempre centrato e scalato sullo schermo visibile
         inset: 0,
-        display: 'grid',
-        placeItems: 'center',
         overflow: 'hidden',
       }}
     >
       <div
         ref={innerRef}
         style={{
+          // Centratura ASSOLUTA (non grid/flex): quando il palco è più largo del
+          // viewport (telefono in verticale) una traccia grid si allarga quanto il
+          // palco e lo spinge a destra, fuori schermo. Con left/top 50% + translate
+          // il centro del palco coincide sempre col centro dello schermo.
+          position: 'absolute',
+          left: '50%',
+          top: '50%',
           width: designW,
           minHeight: designH,
           height: 'auto',
-          transform: `scale(${scale})`,
+          transform: `translate(-50%, -50%) scale(${scale})`,
           transformOrigin: 'center center',
-          flexShrink: 0,
           display: 'flex',
           flexDirection: 'column',
         }}

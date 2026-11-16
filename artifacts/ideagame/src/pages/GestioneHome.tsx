@@ -52,6 +52,11 @@ export default function GestioneHome() {
     try {
       const rb = await fetch(`${API}/gestione/burraco/resolve/${c}`);
       if (rb.ok) { navigate(`/gestione/burraco?code=${c}`); return; }
+      // Codice di un TAVOLO Burraco (quello scritto sotto il QR): prima dava
+      // "Codice non trovato" e al tavolo non si riusciva a entrare senza QR.
+      const rt = await fetch(`${API}/gestione/burraco/table/${c}`);
+      if (rt.ok) { navigate(`/gestione/burraco?table=${c}`); return; }
+      if (rt.status === 409) { setErr('Questo tavolo è di un turno già chiuso: chiedi il nuovo codice'); return; }
       const rc = await fetch(`${API}/gestione/casino/resolve/${c}`);
       if (rc.ok) { navigate(`/gestione/casino?code=${c}`); return; }
       setErr('Codice non trovato');

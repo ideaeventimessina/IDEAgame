@@ -6,7 +6,7 @@
  * mockup 05-03 / 05-04. Il motore resta lo stesso: crea una sessione HOME
  * (e, in Live, la sessione Live collegata) e porta alla lobby.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
 import {
   Pencil, User, Users, ChevronDown, ChevronRight, ChevronLeft, Check, Lock,
@@ -184,6 +184,13 @@ export default function HomeSetupPage() {
     return n >= 1 && n <= 3 ? n : 1;
   })();
   const [step, setStep] = useState(initialStep);
+  // Telefono in verticale: palco stretto, senza la colonna di Jonny.
+  const [narrow, setNarrow] = useState(typeof window !== 'undefined' ? window.innerWidth < 620 : false);
+  useEffect(() => {
+    const on = () => setNarrow(window.innerWidth < 620);
+    window.addEventListener('resize', on);
+    return () => window.removeEventListener('resize', on);
+  }, []);
   const [eventName, setEventName] = useState(IN_PROVA ? 'Prova in showroom' : '');
   const [hostName, setHostName] = useState('');
   const [audience, setAudience] = useState('Famiglia');
@@ -330,7 +337,7 @@ export default function HomeSetupPage() {
           Scegli fino a 8 giochi. Ti consigliamo un mix per una serata ancora più divertente!
         </div>
       </div>
-      <div className="grid flex-1" style={{ gridTemplateColumns: 'repeat(4,1fr)', gridTemplateRows: '1fr 1fr', gap: 10 }}>
+      <div className="grid flex-1" style={narrow ? { gridTemplateColumns: 'repeat(2,1fr)', gridAutoRows: '104px', gap: 10 } : { gridTemplateColumns: 'repeat(4,1fr)', gridTemplateRows: '1fr 1fr', gap: 10 }}>
         {visibleGames.map((g) => <GameCard key={g.slug} g={g} active={selectedGames.includes(g.slug)} locked={!!g.adult && isFamily} onToggle={() => toggleGame(g.slug)} />)}
       </div>
       <div className="flex items-center justify-between rounded-xl" style={{ padding: '10px 14px', background: 'rgba(13,13,25,0.72)', border: '1.5px solid rgba(255,255,255,0.12)' }}>
@@ -410,7 +417,7 @@ export default function HomeSetupPage() {
 
   const body = (
     <>
-      <div style={{ paddingTop: 6 }}><Stepper step={step} /></div>
+      <div style={{ paddingTop: narrow ? 46 : 6 }}><Stepper step={step} /></div>
       {step === 2 ? (
         <main className="flex flex-1 flex-col" style={{ padding: '2px 16px 12px', gap: 6 }}>
           {errorBar}
@@ -418,10 +425,14 @@ export default function HomeSetupPage() {
         </main>
       ) : (
         <main className="relative flex flex-1" style={{ padding: '6px 16px 14px' }}>
-          <div className="grid w-full" style={{ gridTemplateColumns: '290px 1fr', columnGap: 10, alignItems: 'stretch' }}>
+          <div className="grid w-full" style={{ gridTemplateColumns: narrow ? '1fr' : '290px 1fr', columnGap: 10, alignItems: 'stretch' }}>
+            {/* Telefono in verticale: Jonny (290px) rubava metà palco e il modulo
+                restava minuscolo. Lì il modulo prende tutta la larghezza. */}
+            {!narrow && (
             <div className="relative flex h-full items-end justify-center" style={{ overflow: 'visible' }}>
               <img src="/jonny-master-nobg.png" alt="Johhy" style={{ height: 420, width: 'auto', maxWidth: 'none', objectFit: 'contain', objectPosition: 'bottom', filter: 'drop-shadow(0 16px 26px rgba(0,0,0,0.55))' }} draggable={false} />
             </div>
+            )}
             <div className="flex flex-col justify-start" style={{ gap: 10, paddingTop: 2 }}>
               {errorBar}
               {step === 1 ? Step1 : Step3}
@@ -434,7 +445,7 @@ export default function HomeSetupPage() {
 
   return (
     <ShowStage>
-      <StageFit designW={752} designH={500}>
+      <StageFit designW={narrow ? 440 : 752} designH={narrow ? 560 : 500}>
         {header}
         {backBtn}
         {body}

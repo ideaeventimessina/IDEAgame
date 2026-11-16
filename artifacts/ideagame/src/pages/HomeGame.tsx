@@ -629,6 +629,11 @@ export default function HomeGame() {
     }
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
   const [session, setSession] = useState<HomeSession | null>(null);
+  // Telefono (stretto o basso): layout compatto — QR in flusso, barre ridotte,
+  // tabellone ridisegnato in verticale. TV/PC restano identici.
+  const { compact: compactScreen, portrait: portraitScreen } = useCompactScreen();
+  const showSessionQR = !!session && !(session.gameSlug === 'karaoke-battle' &&
+    ((session.gameConfig as Record<string,unknown>)?.karaokeHomeState as {version?:number}|undefined)?.version === 3);
   const [players, setPlayers] = useState<HomePlayer[]>([]);
   const [loading, setLoading] = useState(false);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
@@ -1717,7 +1722,8 @@ export default function HomeGame() {
       )}
 
       {/* ── Global audio toggle — bottom-right ──────────────────────────────── */}
-      <div className="absolute bottom-5 right-5 z-50 flex flex-col items-end gap-2">
+      <div className={`absolute z-50 flex flex-col items-end gap-2 ${compactScreen ? 'right-2' : 'bottom-5 right-5'}`}
+        style={compactScreen ? { bottom: 'max(8px, env(safe-area-inset-bottom))' } : undefined}>
 
         {/* Grouped [Attiva audio] [Silenzio] toggle pair */}
         <div
@@ -1744,26 +1750,27 @@ export default function HomeGame() {
                 });
               }
             }}
-            className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-black transition-all duration-200 active:scale-95 select-none"
+            className={`flex items-center gap-1.5 text-sm font-black transition-all duration-200 active:scale-95 select-none ${compactScreen ? 'px-3 py-2.5' : 'px-4 py-2.5'}`}
             style={{
               color:      audioEnabled ? '#F5B642' : 'rgba(255,255,255,0.28)',
               background: audioEnabled ? 'rgba(245,182,66,0.18)' : 'transparent',
               borderRight: '1px solid rgba(245,182,66,0.20)',
             }}
           >
-            🎵 Attiva audio
+            🎵{!compactScreen && ' Attiva audio'}
           </button>
 
           {/* Silenzio */}
           <button
+            aria-label="Silenzio"
             onClick={() => setAudioEnabled(false)}
-            className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-black transition-all duration-200 active:scale-95 select-none"
+            className={`flex items-center gap-1.5 text-sm font-black transition-all duration-200 active:scale-95 select-none ${compactScreen ? 'px-3 py-2.5' : 'px-4 py-2.5'}`}
             style={{
               color:      !audioEnabled ? '#f87171' : 'rgba(255,255,255,0.28)',
               background: !audioEnabled ? 'rgba(239,68,68,0.18)' : 'transparent',
             }}
           >
-            🔇 Silenzio
+            🔇{!compactScreen && ' Silenzio'}
           </button>
         </div>
 
@@ -2080,15 +2087,15 @@ export default function HomeGame() {
         {/* ══ PLAYING ══ */}
         {phase === 'playing' && session && (
           <motion.div key="playing" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
-            className="relative z-10 flex flex-1 flex-col">
+            className="relative z-10 flex min-h-0 flex-1 flex-col">
 
-            {!(session.gameSlug === 'karaoke-battle' &&
-                ((session.gameConfig as Record<string,unknown>)?.karaokeHomeState as {version?:number}|undefined)?.version === 3
-              ) && <HomeSessionQROverlay joinCode={session.joinCode} />}
+            {/* Schermi grandi (TV/PC): QR flottante a sinistra. Su telefono il QR
+                flottante copriva il tabellone → lì va IN FLUSSO (vedi sotto). */}
+            {!compactScreen && showSessionQR && <HomeSessionQROverlay joinCode={session.joinCode} />}
             {/* Top bar */}
-            <div className="flex items-center justify-between px-6 py-3"
+            <div className="flex shrink-0 items-center justify-between gap-2 px-3 py-2 sm:px-6 sm:py-3"
               style={{background:'rgba(0,0,0,0.5)',backdropFilter:'blur(14px)',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
-              <div className="flex items-center gap-3">
+              <div className="flex shrink-0 items-center gap-3">
                 <JonnyAvatar mood={jonnyMood} size={40}/>
                 <div>
                   <div className="text-xs uppercase tracking-widest text-white/30">
@@ -2154,8 +2161,11 @@ export default function HomeGame() {
 
             {/* Content — fit-to-screen: il tabellone RIEMPIE il maxi-schermo senza
                 mai tagliare i tasti in basso (vedi AutoFitBoard). */}
-            <div className="relative flex flex-1 overflow-hidden px-6 py-3">
-              <AutoFitBoard>
+            <div className={`relative flex min-h-0 flex-1 overflow-hidden ${compactScreen ? (portraitScreen ? 'flex-col gap-2 px-2 py-2' : 'flex-row gap-2 px-2 py-1') : 'px-6 py-3'}`}>
+              {compactScreen && showSessionQR && <HomeSessionQRInline joinCode={session.joinCode} vertical={!portraitScreen} />}
+              <div className="relative min-h-0 min-w-0 flex-1">
+              <div className="absolute inset-0">
+              <AutoFitBoard designWidth={compactScreen && portraitScreen ? BOARD_DESIGN_WIDTH_PORTRAIT : BOARD_DESIGN_WIDTH}>
               <GameBoardErrorBoundary
                 key={session.currentRound}
                 gameSlug={session.gameSlug ?? ''}
@@ -2201,18 +2211,20 @@ export default function HomeGame() {
                 }}/>
               </GameBoardErrorBoundary>
               </AutoFitBoard>
+              </div>
+              </div>
             </div>
 
             {/* Score bar */}
-            <div className="flex shrink-0 items-center gap-3 overflow-x-auto px-6 py-3"
-              style={{background:'rgba(0,0,0,0.55)',backdropFilter:'blur(14px)',borderTop:'1px solid rgba(255,255,255,0.06)'}}>
+            <div className={`flex shrink-0 items-center overflow-x-auto ${compactScreen ? 'gap-2 py-1.5 pl-2 pr-28' : 'gap-3 px-6 py-3'}`}
+              style={{background:'rgba(0,0,0,0.55)',backdropFilter:'blur(14px)',borderTop:'1px solid rgba(255,255,255,0.06)',paddingBottom:compactScreen?'max(6px, env(safe-area-inset-bottom))':undefined}}>
               {[...players].sort((a,b)=>b.score-a.score).map((p,i)=>(
-                <div key={p.id} className="flex shrink-0 items-center gap-3 rounded-2xl px-5 py-3"
+                <div key={p.id} className={`flex shrink-0 items-center rounded-2xl ${compactScreen ? 'gap-2 px-2.5 py-1.5' : 'gap-3 px-5 py-3'}`}
                   style={{background:`linear-gradient(135deg,${AVATAR_RING[i%AVATAR_RING.length]}22,transparent)`,border:`1px solid ${AVATAR_RING[i%AVATAR_RING.length]}45`}}>
-                  <PlayerAvatar nickname={p.nickname} avatarColor={AVATAR_RING[i%AVATAR_RING.length]} avatarUrl={playerAvatars[p.id]} size={52} ring={`${AVATAR_RING[i%AVATAR_RING.length]}`} />
+                  <PlayerAvatar nickname={p.nickname} avatarColor={AVATAR_RING[i%AVATAR_RING.length]} avatarUrl={playerAvatars[p.id]} size={compactScreen ? 30 : 52} ring={`${AVATAR_RING[i%AVATAR_RING.length]}`} />
                   <div>
-                    <div className="text-2xl font-black text-white leading-tight">{p.nickname}</div>
-                    <div className="text-xl font-black leading-tight" style={{color:'#F5B642'}}>{p.score}pt</div>
+                    <div className={`${compactScreen ? 'text-sm' : 'text-2xl'} font-black text-white leading-tight`}>{p.nickname}</div>
+                    <div className={`${compactScreen ? 'text-xs' : 'text-xl'} font-black leading-tight`} style={{color:'#F5B642'}}>{p.score}pt</div>
                   </div>
                 </div>
               ))}
@@ -2502,8 +2514,31 @@ class GameBoardErrorBoundary extends Component<GBEBProps, GBEBState> {
 // RIENTRA SEMPRE nel box visibile in entrambe le dimensioni. Il tabellone è disegnato
 // su una tela larga DESIGN_W e scalato per riempire la TV senza mai tagliare il fondo.
 const BOARD_DESIGN_WIDTH = 1180;
-function AutoFitBoard({ children, maxScale = 1.5, minScale = 0.3 }: {
-  children: ReactNode; maxScale?: number; minScale?: number;
+// Telefono in verticale: una tela da 1180px scalata su ~390px rende tutto al 33%
+// (il tasto "Prossima" diventava 47×17px: impossibile da premere → partita ferma).
+// Su schermo stretto il tabellone si RIDISEGNA su una tela stretta: i contenuti si
+// impilano e restano leggibili/toccabili.
+const BOARD_DESIGN_WIDTH_PORTRAIT = 500;
+
+/** Schermo "da telefono": stretto (<700px) oppure basso (<500px, telefono sdraiato). */
+function useCompactScreen(): { compact: boolean; portrait: boolean } {
+  const read = () => {
+    if (typeof window === 'undefined') return { compact: false, portrait: false };
+    const w = window.innerWidth, h = window.innerHeight;
+    return { compact: w < 700 || h < 500, portrait: h >= w };
+  };
+  const [v, setV] = useState(read);
+  useEffect(() => {
+    const on = () => setV(prev => { const n = read(); return n.compact === prev.compact && n.portrait === prev.portrait ? prev : n; });
+    window.addEventListener('resize', on);
+    window.addEventListener('orientationchange', on);
+    return () => { window.removeEventListener('resize', on); window.removeEventListener('orientationchange', on); };
+  }, []);
+  return v;
+}
+
+function AutoFitBoard({ children, maxScale = 1.5, minScale = 0.3, designWidth = BOARD_DESIGN_WIDTH }: {
+  children: ReactNode; maxScale?: number; minScale?: number; designWidth?: number;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
@@ -2518,7 +2553,7 @@ function AutoFitBoard({ children, maxScale = 1.5, minScale = 0.3 }: {
         const bw = box.clientWidth, bh = box.clientHeight;
         // Dimensioni naturali: transform:scale NON altera scroll/clientHeight,
         // quindi misuriamo l'altezza vera (non scalata) → nessun loop di feedback.
-        const nw = inner.scrollWidth || BOARD_DESIGN_WIDTH;
+        const nw = inner.scrollWidth || designWidth;
         const nh = inner.scrollHeight;
         if (!bw || !bh || !nh) return;
         const s = computeFitScale(bw, bh, nw, nh, { minScale, maxScale });
@@ -2529,11 +2564,11 @@ function AutoFitBoard({ children, maxScale = 1.5, minScale = 0.3 }: {
     ro.observe(box); ro.observe(inner);
     recompute();
     return () => { ro.disconnect(); cancelAnimationFrame(raf); };
-  }, [maxScale, minScale]);
+  }, [maxScale, minScale, designWidth]);
   return (
     <div ref={boxRef} className="relative flex h-full w-full items-center justify-center overflow-hidden">
       <div ref={innerRef}
-        style={{ width: BOARD_DESIGN_WIDTH, flex: '0 0 auto', transform: `scale(${scale})`, transformOrigin: 'center center' }}>
+        style={{ width: designWidth, flex: '0 0 auto', transform: `scale(${scale})`, transformOrigin: 'center center' }}>
         {children}
       </div>
     </div>
@@ -8239,6 +8274,32 @@ function HomeSessionQROverlay({ joinCode }: { joinCode: string }) {
       </div>
       <div style={{ color: '#fff', fontSize: 15, textAlign: 'center', fontWeight: 900, letterSpacing: '0.12em', fontFamily: 'monospace' }}>
         {joinCode}
+      </div>
+    </div>
+  );
+}
+
+// Versione IN FLUSSO per telefono: occupa una striscia sua (sopra il tabellone in
+// verticale, a sinistra in orizzontale) e quindi non copre mai il gioco.
+function HomeSessionQRInline({ joinCode, vertical }: { joinCode: string; vertical: boolean }) {
+  const joinUrl = `${window.location.origin}/home/join?s=${joinCode}`;
+  return (
+    <div style={{
+      flex: '0 0 auto', alignSelf: 'center',
+      display: 'flex', flexDirection: vertical ? 'column' : 'row', alignItems: 'center', gap: vertical ? 4 : 10,
+      background: 'rgba(7,6,26,0.9)', border: '1px solid rgba(245,182,66,0.55)',
+      borderRadius: 12, padding: vertical ? '6px 8px' : '5px 12px 5px 5px',
+    }}>
+      <div style={{ background: '#fff', borderRadius: 7, padding: 4, lineHeight: 0 }}>
+        <QRCodeSVG value={joinUrl} size={vertical ? 64 : 48} bgColor="#ffffff" fgColor="#07061a" level="M" />
+      </div>
+      <div style={{ textAlign: vertical ? 'center' : 'left' }}>
+        <div style={{ color: '#F5B642', fontSize: 9, fontWeight: 900, letterSpacing: '0.05em', textTransform: 'uppercase', lineHeight: 1.25 }}>
+          Inquadra per giocare
+        </div>
+        <div style={{ color: '#fff', fontSize: vertical ? 12 : 15, fontWeight: 900, letterSpacing: '0.12em', fontFamily: 'monospace' }}>
+          {joinCode}
+        </div>
       </div>
     </div>
   );

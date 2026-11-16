@@ -223,8 +223,23 @@ html, body {
   height: 100%;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  /* Il DOCUMENTO resta bloccato (html/body overflow:hidden: niente rimbalzo né
+     barre del browser), ma #root è il contenitore di scorrimento VERTICALE.
+     Prima era overflow:hidden anche qui: ogni pagina più alta dello schermo
+     (regìa Burraco, /gestione, login, pannelli admin su telefono) veniva
+     TAGLIATA senza possibilità di scorrere → tasti in basso irraggiungibili
+     ("non ci fa andare avanti"). Le schermate a tutto schermo (h-dvh / fixed)
+     non eccedono, quindi per loro non cambia nulla. */
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  scrollbar-width: none;            /* nessuna barra visibile su TV/PC */
 }
+#root::-webkit-scrollbar { display: none; }
+/* Figlio diretto: mai schiacciato sotto il proprio contenuto (altrimenti il
+   contenuto centrato sborda in alto, dove non si può scorrere). */
+#root > * { flex-shrink: 0; }
 
 /* ── Ballo mode — iOS Shake to Undo mitigation ─────────────────────────────
    iOS "Annulla inserimento" popup is triggered by shaking when the undo stack

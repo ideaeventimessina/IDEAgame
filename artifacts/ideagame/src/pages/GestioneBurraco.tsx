@@ -144,6 +144,8 @@ function BurracoMaster({ sessionId }: { sessionId: string }) {
   useEffect(() => { const r = () => setNarrow(window.innerWidth < 900); window.addEventListener('resize', r); return () => window.removeEventListener('resize', r); }, []);
 
   const pairById = useMemo(() => Object.fromEntries((state?.pairs ?? []).map(p => [p.id, p])), [state]);
+  const [notice, setNotice] = useState('');
+  useEffect(() => { if (!notice) return; const t = setTimeout(() => setNotice(''), 4500); return () => clearTimeout(t); }, [notice]);
   if (!state) return <Center>Carico…</Center>;
 
   const cfg = state.session.config ?? {};
@@ -151,7 +153,16 @@ function BurracoMaster({ sessionId }: { sessionId: string }) {
   const allSubmitted = state.assignments.length > 0 && state.assignments.every(a => a.submitted || a.pairBId === null);
   const totalRounds = cfg.totalRounds ?? 4;
 
-  const genRound = async () => { await api(`/gestione/burraco/sessions/${sessionId}/generate-round`); };
+  // Prima l'errore del server ("Servono almeno 2 coppie") veniva ignorato: il tasto
+  // sembrava morto e la serata restava ferma. Ora l'errore si vede e, a turno
+  // generato, si viene portati direttamente ai tavoli.
+  const genRound = async () => {
+    try {
+      const r = await api(`/gestione/burraco/sessions/${sessionId}/generate-round`);
+      if (r?.ok) { setNotice(''); setSection('tavoli'); window.scrollTo({ top: 0 }); }
+      else setNotice(r?.error || 'Impossibile generare il turno');
+    } catch { setNotice('Connessione assente: riprova'); }
+  };
   const setConfig = async (patch: BConfig) => { await api(`/gestione/burraco/sessions/${sessionId}/config`, patch); };
 
   return (
@@ -165,10 +176,10 @@ function BurracoMaster({ sessionId }: { sessionId: string }) {
           const active = section === n.id;
           return (
             <button key={n.id} onClick={() => setSection(n.id)}
-              style={{ display: 'flex', alignItems: 'center', gap: 12, padding: narrow ? '8px 12px' : '11px 14px', borderRadius: 12, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 15, fontWeight: 700, whiteSpace: 'nowrap',
-                background: active ? 'rgba(52,211,153,0.14)' : 'transparent', color: active ? '#fff' : MUTED, boxShadow: active ? `inset 3px 0 0 ${GOLD}` : 'none' }}>
+              style={{ display: 'flex', flexDirection: narrow ? 'column' : 'row', alignItems: 'center', gap: narrow ? 3 : 12, padding: narrow ? '6px 9px' : '11px 14px', minWidth: narrow ? 56 : undefined, flexShrink: 0, borderRadius: 12, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: narrow ? 10.5 : 15, fontWeight: 700, whiteSpace: 'nowrap',
+                background: active ? 'rgba(52,211,153,0.14)' : 'transparent', color: active ? '#fff' : MUTED, boxShadow: active ? (narrow ? `inset 0 -3px 0 ${GOLD}` : `inset 3px 0 0 ${GOLD}`) : 'none' }}>
               <span style={{ color: active ? GREEN : 'currentColor', display: 'flex' }}><Icon name={n.icon} size={20} /></span>
-              {!narrow && n.label}
+              {narrow ? n.label.split(' ')[0] : n.label}
             </button>
           );
         })}
@@ -178,8 +189,9 @@ function BurracoMaster({ sessionId }: { sessionId: string }) {
       <main style={{ flex: 1, minWidth: 0, padding: 'clamp(14px,2vw,28px)', display: 'flex', flexDirection: 'column', gap: 20 }}>
         <Header state={state} onAddPair={() => setSection('iscritti')} section={section} />
         {section === 'panoramica' && <Panoramica state={state} pairById={pairById} round={round} totalRounds={totalRounds} allSubmitted={allSubmitted} cfg={cfg} genRound={genRound} setConfig={setConfig} onScore={setScoreFor} goClassifica={() => setSection('classifica')} goTavoli={() => setSection('tavoli')} />}
-        {section === 'iscritti' && <Iscritti sessionId={sessionId} pairs={state.pairs} />}
-        {section === 'tavoli' && <TavoliSezione state={state} pairById={pairById} round={round} onScore={setScoreFor} />}
+        {notice && <div role="alert" style={{ background: 'rgba(248,113,113,0.14)', border: '1px solid rgba(248,113,113,0.5)', color: '#fca5a5', borderRadius: 12, padding: '12px 16px', fontWeight: 800 }}>⚠️ {notice}</div>}
+        {section === 'iscritti' && <Iscritti sessionId={sessionId} pairs={state.pairs} round={round} genRound={genRound} goTavoli={() => setSection('tavoli')} />}
+        {section === 'tavoli' && <TavoliSezione state={state} pairById={pairById} round={round} onScore={setScoreFor} genRound={genRound} goIscritti={() => setSection('iscritti')} />}
         {section === 'turni' && <Turni round={round} totalRounds={totalRounds} allSubmitted={allSubmitted} genRound={genRound} setConfig={setConfig} />}
         {section === 'punteggi' && <Punteggi state={state} pairById={pairById} onScore={setScoreFor} />}
         {section === 'classifica' && <ClassificaPiena standings={state.standings} />}
@@ -207,7 +219,7 @@ function Header({ state, onAddPair, section }: { state: State; onAddPair: () => 
         </div>
         <div style={{ color: MUTED, marginTop: 4, fontSize: 16 }}>Torneo a coppie · Sala principale</div>
       </div>
-      {section !== 'impostazioni' && <GoldButton onClick={onAddPair}><Icon name="plus" size={18} /> Aggiungi coppia</GoldButton>}
+      {section !== 'impostazioni' && section !== 'iscritti' && <GoldButton onClick={onAddPair}><Icon name="plus" size={18} /> Aggiungi coppia</GoldButton>}
     </div>
   );
 }
@@ -381,17 +393,41 @@ function Attivita({ state, pairById }: { state: State; pairById: Record<string, 
 }
 
 /* ── ISCRITTI E COPPIE ── */
-function Iscritti({ sessionId, pairs }: { sessionId: string; pairs: Pair[] }) {
+function Iscritti({ sessionId, pairs, round, genRound, goTavoli }: { sessionId: string; pairs: Pair[]; round: number; genRound: () => Promise<void> | void; goTavoli: () => void }) {
   const [p1, setP1] = useState(''); const [p2, setP2] = useState(''); const [busy, setBusy] = useState(false);
-  const add = async () => { if (!p1.trim() && !p2.trim()) return; setBusy(true); try { await api(`/gestione/burraco/sessions/${sessionId}/pairs`, { player1: p1, player2: p2 }); setP1(''); setP2(''); } finally { setBusy(false); } };
+  const [err, setErr] = useState(''); const [starting, setStarting] = useState(false);
+  const first = useRef<HTMLInputElement>(null);
+  const add = async () => {
+    if (busy) return;
+    if (!p1.trim() && !p2.trim()) { setErr('Scrivi almeno un nome'); return; }
+    setBusy(true); setErr('');
+    try {
+      const r = await api(`/gestione/burraco/sessions/${sessionId}/pairs`, { player1: p1, player2: p2 });
+      if (r?.error) setErr(r.error); else { setP1(''); setP2(''); first.current?.focus(); }
+    } catch { setErr('Connessione assente: coppia non salvata, riprova'); }
+    finally { setBusy(false); }
+  };
   const del = async (id: string) => { await api(`/gestione/burraco/sessions/${sessionId}/pairs/${id}`, {}, 'DELETE'); };
+  const start = async () => { setStarting(true); try { await genRound(); } finally { setStarting(false); } };
+  const missing = Math.max(0, 2 - pairs.length);
   return (
     <Panel>
       <h2 style={{ fontSize: 22, fontWeight: 900, margin: '0 0 16px' }}>Iscritti e coppie ({pairs.length})</h2>
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-        <input value={p1} onChange={e => setP1(e.target.value)} placeholder="Giocatore 1" style={{ ...inp, flex: '1 1 160px' }} />
-        <input value={p2} onChange={e => setP2(e.target.value)} placeholder="Giocatore 2" style={{ ...inp, flex: '1 1 160px' }} onKeyDown={e => e.key === 'Enter' && add()} />
-        <GoldButton onClick={add} disabled={busy}><Icon name="plus" size={18} /> Aggiungi coppia</GoldButton>
+      <div style={{ display: 'flex', gap: 10, marginBottom: err ? 8 : 16, flexWrap: 'wrap' }}>
+        <input ref={first} value={p1} onChange={e => setP1(e.target.value)} placeholder="Giocatore 1" enterKeyHint="next" style={{ ...inp, fontSize: 16, flex: '1 1 160px' }} onKeyDown={e => e.key === 'Enter' && add()} />
+        <input value={p2} onChange={e => setP2(e.target.value)} placeholder="Giocatore 2" enterKeyHint="done" style={{ ...inp, fontSize: 16, flex: '1 1 160px' }} onKeyDown={e => e.key === 'Enter' && add()} />
+        <GoldButton onClick={add} disabled={busy}><Icon name="plus" size={18} /> {busy ? 'Salvo…' : 'Aggiungi coppia'}</GoldButton>
+      </div>
+      {err && <div role="alert" style={{ color: '#f87171', fontWeight: 700, marginBottom: 14 }}>{err}</div>}
+      {/* Passo successivo SEMPRE visibile: prima, inseriti i nomi, non c'era modo
+          evidente di andare avanti (il tasto era in fondo a un'altra sezione). */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16, padding: 14, borderRadius: 14, background: 'rgba(232,178,76,0.07)', border: `1px solid ${GOLD}44` }}>
+        <div style={{ flex: '1 1 180px', color: missing ? MUTED : '#fff', fontWeight: 700 }}>
+          {round > 0 ? `Turno ${round} in corso` : missing ? `Ancora ${missing} ${missing === 1 ? 'coppia' : 'coppie'} per poter iniziare` : `${pairs.length} coppie pronte: puoi iniziare`}
+        </div>
+        {round > 0
+          ? <button onClick={goTavoli} style={{ ...goldBtnStyle, flex: '1 1 200px', justifyContent: 'center', padding: 14, fontSize: 16 }}>Vai ai tavoli <Icon name="chevron" size={16} /></button>
+          : <button onClick={start} disabled={!!missing || starting} style={{ ...goldBtnStyle, flex: '1 1 200px', justifyContent: 'center', padding: 14, fontSize: 16, opacity: missing || starting ? 0.5 : 1 }}><Icon name="play" size={17} /> {starting ? 'Creo i tavoli…' : 'Inizia · Genera Turno 1'}</button>}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(100%,280px),1fr))', gap: 12 }}>
         {pairs.map((p, i) => (
@@ -408,18 +444,25 @@ function Iscritti({ sessionId, pairs }: { sessionId: string; pairs: Pair[] }) {
 }
 
 /* ── TAVOLI (tutti) ── */
-function TavoliSezione({ state, pairById, round, onScore }: { state: State; pairById: Record<string, Pair>; round: number; onScore: (a: Assignment) => void }) {
+function TavoliSezione({ state, pairById, round, onScore, genRound, goIscritti }: { state: State; pairById: Record<string, Pair>; round: number; onScore: (a: Assignment) => void; genRound: () => void; goIscritti: () => void }) {
   return (
     <Panel>
       <h2 style={{ fontSize: 22, fontWeight: 900, margin: '0 0 16px' }}>Tavoli {round > 0 ? `· Turno ${round}` : ''}</h2>
-      {round === 0 ? <Empty text="Genera un turno dalla sezione Turni." /> : (
+      {round === 0 ? (
+        <div>
+          <Empty text={state.pairs.length < 2 ? 'Servono almeno 2 coppie per creare i tavoli.' : 'Coppie pronte: genera il primo turno per creare tavoli e QR.'} />
+          {state.pairs.length < 2
+            ? <button onClick={goIscritti} style={{ ...goldBtnStyle, marginTop: 8 }}><Icon name="plus" size={17} /> Aggiungi coppie</button>
+            : <button onClick={genRound} style={{ ...goldBtnStyle, marginTop: 8, padding: 14, fontSize: 16 }}><Icon name="play" size={17} /> Genera Turno 1</button>}
+        </div>
+      ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,300px),1fr))', gap: 14 }}>
           {state.assignments.map(a => (
             <div key={a.id}>
               <TableCard a={a} pairById={pairById} onScore={onScore} />
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8, padding: '0 4px' }}>
                 <div style={{ background: '#fff', padding: 4, borderRadius: 8 }}><QRCodeSVG value={`${ORIGIN}gestione/burraco?table=${a.tableCode}`} size={48} /></div>
-                <div style={{ fontSize: 12, color: MUTED }}>codice {a.tableCode}<br /><a href={`${ORIGIN}gestione/burraco?table=${a.tableCode}`} target="_blank" rel="noreferrer" style={{ color: GOLD }}>apri tavolo ↗</a></div>
+                <div style={{ fontSize: 13, color: MUTED }}>codice <b style={{ color: '#fff', letterSpacing: '0.1em' }}>{a.tableCode}</b><br /><a href={`${ORIGIN}gestione/burraco?table=${a.tableCode}`} target="_blank" rel="noreferrer" style={{ color: GOLD }}>apri tavolo ↗</a></div>
               </div>
             </div>
           ))}
