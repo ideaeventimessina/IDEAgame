@@ -586,7 +586,9 @@ export function SetteMezzoMonitor({ displayCode }: { displayCode: string }) {
 
   return (
     <div className="smm"><style>{MON_CSS}</style>
-      <ScreenFit>
+      {/* maxScale alto: il palco 16:9 (1280×720) deve INGRANDIRSI per riempire la TV
+          come gli altri tavoli (roulette/blackjack/sprint), non solo rimpicciolirsi. */}
+      <ScreenFit maxScale={4}>
         <div className="stage">
           <img className="felt-logo" src={`${AB}casino/logo-idea-casino.png`} alt="" />
           <div className="title"><div className="word">SETTE E MEZZO</div><div className="sub">{t.name} · {hybrid ? '🃏 Carte fisiche col mazziere' : `Banco sta su ${pt(t.bancoStandAt)}`}{t.suspended ? ' · SOSPESO' : ''}</div></div>
