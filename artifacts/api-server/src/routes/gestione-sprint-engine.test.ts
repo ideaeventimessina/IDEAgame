@@ -39,7 +39,7 @@ test("sprint consuma energia, limita frequenza e cambia velocità", () => {
 test("salto reale ha altezza e recupero", () => {
   const s = running(); action(s, "jump", 1);
   assert.equal(jumpHeight(s.horses[0]!, s.time), 0);
-  assert.ok(jumpHeight(s.horses[0]!, s.time + 550) > 0.99);
+  assert.ok(jumpHeight(s.horses[0]!, s.time + 750) > 0.99);  // picco a jumpMs/2 = 750ms
   assert.throws(() => action(s, "jump", 1), /recupero/);
 });
 

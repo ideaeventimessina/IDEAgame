@@ -46,7 +46,9 @@ export const RULES = {
   sprintCooldownMs: 250,
   sprintCost: 8,
   regenPerSec: 12,
-  jumpMs: 1100,
+  jumpMs: 1500,          // arco salto più lungo (era 1100): la finestra "alto abbastanza"
+                         // dura di più → perdona reazione umana + latenza di rete. Validato
+                         // in simulazione completa: 4/4 ostacoli a reazione 0–450 ms.
   jumpCooldownMs: 1250,
   hitSlowMs: 1200,
   points: [100, 80, 60, 40, 20, 10] as number[],
@@ -187,10 +189,10 @@ export function step(s: RaceState, dt: number): void {
     const obstacle = RULES.hurdles[h.nextHurdle];
     if (obstacle !== undefined && old < obstacle && h.position >= obstacle) {
       const crossing = before + dt * (obstacle - old) / (h.position - old);
-      // Soglia 0.40 (non 0.48): l'arco resta sopra per u∈[0.13,0.87] ≈ 0,75 s, così un
-      // salto ben temporizzato non manca per il ritardo di rete di pochi decimi. Resta
-      // una prova d'abilità (saltare troppo presto/tardi fa comunque sbattere).
-      if (jumpHeight(h, crossing) >= 0.40) h.cleared++;
+      // Soglia 0.35 con arco 1500ms: il cavallo è "alto abbastanza" per ~0,9 s, così un
+      // salto toccato quando compare "SALTA ORA" va a segno nonostante reazione umana e
+      // latenza di rete. Resta abilità: saltare molto presto/tardi fa comunque sbattere.
+      if (jumpHeight(h, crossing) >= 0.35) h.cleared++;
       else { h.hits++; h.energy = Math.max(0, h.energy - 10); h.slowUntil = s.time + RULES.hitSlowMs; }
       h.nextHurdle++;
     }

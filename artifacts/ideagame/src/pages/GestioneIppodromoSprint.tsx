@@ -66,13 +66,23 @@ const FONT_CSS = `
 const api = (path: string, body?: unknown) =>
   fetch(`${API}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) }).then(r => r.json());
 
-function useSprint(code: string, ms = 350): SprintState | null {
+// Polling ADATTIVO: durante gara/partenza serve freschezza (la finestra di salto è
+// ~0,2 s: con un poll lento il cavallo la scavalca tra un aggiornamento e l'altro e il
+// salto arriva sempre tardi), fuori dalla corsa basta pigro. Niente setInterval fisso:
+// ri-schedulo in base allo stato appena ricevuto.
+function useSprint(code: string, idleMs = 450, raceMs = 150): SprintState | null {
   const [st, setSt] = useState<SprintState | null>(null);
   useEffect(() => {
-    let on = true;
-    const load = () => fetch(`${API}/gestione/casino/sprint/${code}`).then(r => r.ok ? r.json() : null).then(d => { if (on && d?.table) setSt(d); }).catch(() => {});
-    load(); const t = setInterval(load, ms); return () => { on = false; clearInterval(t); };
-  }, [code, ms]);
+    let on = true; let timer: ReturnType<typeof setTimeout>;
+    const tick = () => fetch(`${API}/gestione/casino/sprint/${code}`).then(r => r.ok ? r.json() : null).then(d => {
+      if (!on) return;
+      if (d?.table) setSt(d);
+      const live = d?.table?.status === 'race' || d?.table?.status === 'countdown';
+      timer = setTimeout(tick, live ? raceMs : idleMs);
+    }).catch(() => { if (on) timer = setTimeout(tick, idleMs); });
+    tick();
+    return () => { on = false; clearTimeout(timer); };
+  }, [code, idleMs, raceMs]);
   return st;
 }
 
@@ -461,6 +471,14 @@ export function IppodromoSprintPhone({ displayCode }: { displayCode: string }) {
   const seqRef = useRef(0);
   useEffect(() => { if (!playerCode) { setMe(null); return; } fetch(`${API}/gestione/casino/player/${playerCode}`).then(r => r.ok ? r.json() : null).then(d => { if (d?.player) setMe({ id: d.player.id, nickname: d.player.nickname }); }).catch(() => {}); }, [playerCode]);
   useEffect(() => { setOnline(!!st); }, [st]);
+  // Istante di arrivo dell'ultimo stato (poll ogni 400ms) + ticker veloce: servono a
+  // ESTRAPOLARE la posizione live anche per i COMANDI (prima solo l'animazione la usava),
+  // così "SALTA ORA" si accende quando il cavallo è davvero vicino all'ostacolo e non
+  // con 400ms di ritardo (a 10 m/s = 4 m) che facevano arrivare il salto sempre tardi.
+  const recvRef = useRef(performance.now());
+  useEffect(() => { recvRef.current = performance.now(); }, [st]);
+  const [, forceTick] = useState(0);
+  useEffect(() => { if (t?.status !== 'race') return; const id = setInterval(() => forceTick((x) => x + 1), 80); return () => clearInterval(id); }, [t?.status]);
 
   const mine = t && me ? t.seats.find(s => s.playerId === me.id) ?? null : null;
   const pick = async (horseId: number) => { setBusy(true); try { await api('/gestione/casino/sprint/join', { displayCode, playerCode, horseId }); } finally { setBusy(false); } };
@@ -539,16 +557,19 @@ export function IppodromoSprintPhone({ displayCode }: { displayCode: string }) {
   // CONTROLLER LIVE (race/countdown/paused) — input dal vivo PRESERVATO
   const racing = t.status === 'race';
   if (!mine) return Phone('Gara', <section className="panel"><h2>Gara in corso</h2><p>Entrerai dalla prossima gara. Scegli un cavallo quando riapre la lobby.</p></section>);
-  const dist = (r.hurdles[mine.nextHurdle] ?? Infinity) - mine.position;
-  // "SALTA ORA" ONESTO: il salto è un arco di ~1,1 s e il cavallo è alto abbastanza
-  // (sin(πu) ≥ 0.48) solo tra u≈0,16 e 0,84, cioè per un tap-to-crossing di ~0,18–0,82 s.
-  // Perciò l'hint va acceso in base al TEMPO all'ostacolo alla velocità ATTUALE, non a
-  // una distanza fissa (a 25 m / 10 m·s⁻¹ saltavi 2,5 s troppo presto e mancavi SEMPRE).
   const speedNow = mine.speed > 0.5 ? mine.speed : (r.baseSpeed ?? 10);
+  // POSIZIONE LIVE: estrapolata dalla posizione del poll + velocità × tempo trascorso,
+  // più un LEAD per la latenza (il tap deve viaggiare al server). Senza questo "SALTA ORA"
+  // usava la posizione vecchia di un poll (400ms ≈ 4m) e il salto arrivava sempre tardi.
+  const SPRINT_LEAD_MS = 220;
+  const liveExtraMs = racing && mine.finish === null ? Math.min(650, performance.now() - recvRef.current + SPRINT_LEAD_MS) : 0;
+  const livePos = mine.position + speedNow * liveExtraMs / 1000;
+  const dist = (r.hurdles[mine.nextHurdle] ?? Infinity) - livePos;
+  // "SALTA ORA" ONESTO: il salto è un arco di ~1,1 s e il cavallo è alto abbastanza solo
+  // tra u≈0,13 e 0,87 (soglia 0.40). Hint basato sul TEMPO all'ostacolo alla velocità
+  // attuale, non su una distanza fissa. Finestra verificata col motore reale (4/4 a
+  // latenza 0/150/300ms) — ora applicata alla posizione LIVE estrapolata.
   const secsToHurdle = dist > 0 && Number.isFinite(dist) ? dist / speedNow : Infinity;
-  // Finestra verificata col motore reale (sim: 4/4 ostacoli superati a latenza 0/150/300 ms):
-  // "SALTA ORA" acceso tra 0,30 e 0,75 s dall'ostacolo — toccando lì il cavallo è alto
-  // SOPRA la barriera quando la attraversa (è la stessa zona in cui salta la CPU, 0,4–0,7 s).
   const near = secsToHurdle > 0.30 && secsToHurdle < 0.75;
   const canSprint = racing && mine.finish === null && mine.energy >= r.sprintCost;
   const canJump = racing && mine.finish === null && (t.raceMs - mine.lastJump) >= r.jumpCooldownMs;
