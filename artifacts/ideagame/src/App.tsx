@@ -191,6 +191,9 @@ function Router() {
         <Route path="/gestione" component={GestioneHome} />
         <Route path="/gestione/burraco" component={GestioneBurraco} />
         <Route path="/gestione/casino" component={GestioneCasino} />
+        {/* Il QR del monitor Lockdown (pagina mock) puntava a /gestione/lockdown/join,
+            rotta mai registrata → link morto. Reindirizza al join reale della serata. */}
+        <Route path="/gestione/lockdown/join">{() => { const casa = new URLSearchParams(window.location.search).get('casa') || ''; window.location.replace('/home/join' + (casa ? ('?s=' + encodeURIComponent(casa)) : '')); return null; }}</Route>
         <Route path="/gestione/lockdown" component={GestioneLockdown} />
         <Route path="/live-dashboard">{() => { window.location.replace('/admin/show'); return null; }}</Route>
         <Route path="/admin/live">{() => { window.location.replace('/admin/show'); return null; }}</Route>

@@ -481,7 +481,7 @@ export function BiliardoPhone({ displayCode }: { displayCode: string }) {
 .cas .poolspin{position:relative;width:132px;height:132px;margin:10px auto 2px;border:1px solid #566a57;border-radius:12px;background:#081b14}
 .cas .p9{position:absolute;width:20px;height:20px;border-radius:50%;transform:translate(-50%,-50%);border:2px solid #6e5320;background:#142a22;cursor:pointer}
 .cas .p9.sel{background:var(--gold);border-color:#fff}
-.cas .prange{width:100%;accent-color:#e5c680}`;
+.cas .prange{width:100%;height:36px;accent-color:#e5c680;cursor:pointer;touch-action:none}`;
   const Phone = (label: string, body: React.ReactNode, badge?: React.ReactNode) => (
     <CasPhone eyebrow="Casinò · Giocatore" title="Biliardo Club" footer={<footer className="foot">IDEAeventi · Biliardo Club — 8-ball, imbuca e incassa</footer>}>
       <Hero label={label} badge={badge} />

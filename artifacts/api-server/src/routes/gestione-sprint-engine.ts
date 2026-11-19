@@ -187,7 +187,10 @@ export function step(s: RaceState, dt: number): void {
     const obstacle = RULES.hurdles[h.nextHurdle];
     if (obstacle !== undefined && old < obstacle && h.position >= obstacle) {
       const crossing = before + dt * (obstacle - old) / (h.position - old);
-      if (jumpHeight(h, crossing) >= 0.48) h.cleared++;
+      // Soglia 0.40 (non 0.48): l'arco resta sopra per u∈[0.13,0.87] ≈ 0,75 s, così un
+      // salto ben temporizzato non manca per il ritardo di rete di pochi decimi. Resta
+      // una prova d'abilità (saltare troppo presto/tardi fa comunque sbattere).
+      if (jumpHeight(h, crossing) >= 0.40) h.cleared++;
       else { h.hits++; h.energy = Math.max(0, h.energy - 10); h.slowUntil = s.time + RULES.hitSlowMs; }
       h.nextHurdle++;
     }

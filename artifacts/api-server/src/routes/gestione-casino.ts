@@ -1997,7 +1997,7 @@ async function sprintState(sessionId: string, table: SprintTable) {
       seats: seats.map((s) => ({ ...s, rank: rank.get(s.horseId) ?? null })),
       results: table.finished ? table.results : (status === "results" ? race.results : null),
       history: table.history.slice(0, 20),
-      rules: { length: SPRINT_RULES.length, hurdles: SPRINT_RULES.hurdles, sprintCost: SPRINT_RULES.sprintCost, jumpCooldownMs: SPRINT_RULES.jumpCooldownMs, sprintCooldownMs: SPRINT_RULES.sprintCooldownMs, maxSprintPerSec: 4 },
+      rules: { length: SPRINT_RULES.length, hurdles: SPRINT_RULES.hurdles, sprintCost: SPRINT_RULES.sprintCost, jumpCooldownMs: SPRINT_RULES.jumpCooldownMs, sprintCooldownMs: SPRINT_RULES.sprintCooldownMs, maxSprintPerSec: 4, baseSpeed: SPRINT_RULES.baseSpeed, jumpMs: SPRINT_RULES.jumpMs },
     },
     sessionId,
   };

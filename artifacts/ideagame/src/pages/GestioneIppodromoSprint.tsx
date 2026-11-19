@@ -50,7 +50,7 @@ type Seat = {
   nextHurdle: number; cleared: number; hits: number; rank: number | null;
 };
 type ResultRow = { horse: number; name: string; pilot: string; time: number; cleared: number; hits: number; place: number; points: number };
-type SprintRules = { length: number; hurdles: number[]; sprintCost: number; jumpCooldownMs: number; sprintCooldownMs: number; maxSprintPerSec: number };
+type SprintRules = { length: number; hurdles: number[]; sprintCost: number; jumpCooldownMs: number; sprintCooldownMs: number; maxSprintPerSec: number; baseSpeed?: number; jumpMs?: number };
 type SprintTbl = {
   id: string; name: string; displayCode: string; type: 'sprint';
   status: 'lobby' | 'countdown' | 'race' | 'paused' | 'results';
@@ -540,7 +540,16 @@ export function IppodromoSprintPhone({ displayCode }: { displayCode: string }) {
   const racing = t.status === 'race';
   if (!mine) return Phone('Gara', <section className="panel"><h2>Gara in corso</h2><p>Entrerai dalla prossima gara. Scegli un cavallo quando riapre la lobby.</p></section>);
   const dist = (r.hurdles[mine.nextHurdle] ?? Infinity) - mine.position;
-  const near = dist > 0 && dist < 25;
+  // "SALTA ORA" ONESTO: il salto è un arco di ~1,1 s e il cavallo è alto abbastanza
+  // (sin(πu) ≥ 0.48) solo tra u≈0,16 e 0,84, cioè per un tap-to-crossing di ~0,18–0,82 s.
+  // Perciò l'hint va acceso in base al TEMPO all'ostacolo alla velocità ATTUALE, non a
+  // una distanza fissa (a 25 m / 10 m·s⁻¹ saltavi 2,5 s troppo presto e mancavi SEMPRE).
+  const speedNow = mine.speed > 0.5 ? mine.speed : (r.baseSpeed ?? 10);
+  const secsToHurdle = dist > 0 && Number.isFinite(dist) ? dist / speedNow : Infinity;
+  // Finestra verificata col motore reale (sim: 4/4 ostacoli superati a latenza 0/150/300 ms):
+  // "SALTA ORA" acceso tra 0,30 e 0,75 s dall'ostacolo — toccando lì il cavallo è alto
+  // SOPRA la barriera quando la attraversa (è la stessa zona in cui salta la CPU, 0,4–0,7 s).
+  const near = secsToHurdle > 0.30 && secsToHurdle < 0.75;
   const canSprint = racing && mine.finish === null && mine.energy >= r.sprintCost;
   const canJump = racing && mine.finish === null && (t.raceMs - mine.lastJump) >= r.jumpCooldownMs;
   const energyPct = Math.max(0, Math.min(100, mine.energy));
