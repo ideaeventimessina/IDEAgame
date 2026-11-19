@@ -1120,8 +1120,9 @@ function HomeJoinInner() {
       {/* ── ROOT-LEVEL PREFLIGHT OVERLAYS ─────────────────────────────────────
            Fixed position — survive AnimatePresence phase transitions.
            preflightMsg: status text shown after join tapped.
-           preflightActive: red debug badge for 3 s (proof of execution).    ── */}
-      {preflightActive && (
+           preflightActive: red debug badge for 3 s (proof of execution).
+           Mostrato SOLO con ?debug=1: in produzione il giocatore non deve vederlo. ── */}
+      {preflightActive && new URLSearchParams(window.location.search).has('debug') && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none">
           <div className="rounded-xl px-4 py-2 text-sm font-black tracking-wide"
             style={{background:'#dc2626',color:'#fff',boxShadow:'0 0 20px rgba(220,38,38,0.7)'}}>
