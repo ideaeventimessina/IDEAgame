@@ -383,14 +383,26 @@ router.post("/gestione/casino/sessions/:id/end", async (req, res): Promise<void>
   res.json({ ok: true });
 });
 
+/** Cavallo: due numeri diversi vicini sul panno (stessa riga o stessa colonna), oppure 0 con 1, 2 o 3. */
+function cavalloValido(n: number[]): boolean {
+  if (n.length !== 2) return false;
+  const [a, b] = [Math.min(n[0]!, n[1]!), Math.max(n[0]!, n[1]!)];
+  if (a === b) return false;
+  if (a === 0) return b >= 1 && b <= 3;
+  return b - a === 3 || (b - a === 1 && a % 3 !== 0);
+}
+
 // ══════════════════ TAVOLI INTERATTIVI — ROULETTE ══════════════════════════════
 // RED / PAYOUT / betWins / creditFor / HORSE_MULT: quote e esito INVARIATI, spostati
 // in gestione-casino-atomic-lib (testabili). Qui restano solo le rotte.
 // Trova il tavolo (e la sessione) a partire dal codice display o dal codice di una sedia.
-async function findGameTable(code: string): Promise<{ sessionId: string; table: GameTable; seatNo?: string; isDealer?: boolean } | null> {
+// Le partite aperte da Jarvis (config.jarvis) si giocano SOLO dal ponte con la sua
+// chiave: dal codice del tavolo pubblico si possono guardare (GET), non manovrare.
+async function findGameTable(code: string, opts: { soloLettura?: boolean } = {}): Promise<{ sessionId: string; table: GameTable; seatNo?: string; isDealer?: boolean } | null> {
   const c = code.toUpperCase().trim();
   const sessions = await db.select({ id: casinoSessionsTable.id, config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.status, "active"));
   for (const s of sessions) {
+    if (!opts.soloLettura && (s.config as { jarvis?: unknown } | null)?.jarvis) continue;
     const tables = ((s.config ?? {}) as CasinoConfig).gameTables ?? {};
     for (const t of Object.values(tables)) {
       if (t.displayCode === c) return { sessionId: s.id, table: t };
@@ -458,7 +470,7 @@ router.get("/gestione/casino/sessions/:id/game-tables", async (req, res): Promis
 
 // ── Stato tavolo (display 80" + controller sedia) ───────────────────────────────
 router.get("/gestione/casino/table/:code", async (req, res): Promise<void> => {
-  const found = await findGameTable(String(req.params["code"]));
+  const found = await findGameTable(String(req.params["code"]), { soloLettura: true });
   if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
   const st = await tableState(found.sessionId, found.table);
   res.json({ ...st, sessionId: found.sessionId, seatNo: found.seatNo ?? null, isDealer: !!found.isDealer });
@@ -491,6 +503,11 @@ router.post("/gestione/casino/table/bet", async (req, res): Promise<void> => {
   if (!(kind in PAYOUT)) { res.status(400).json({ error: "Tipo puntata non valido" }); return; }
   if (!Number.isFinite(amount) || amount <= 0) { res.status(400).json({ error: "Importo non valido" }); return; }
   if ((kind === "straight" || kind === "split") && numbers.length === 0) { res.status(400).json({ error: "Scegli il numero" }); return; }
+  // Il pieno copre UN numero, il cavallo DUE numeri vicini: prima un "pieno" con
+  // 0..36 dentro vinceva sempre 35:1 (fiche create dal nulla).
+  if (kind === "straight" && numbers.length !== 1) { res.status(400).json({ error: "Il pieno si gioca su un solo numero" }); return; }
+  if (kind === "split" && !cavalloValido(numbers)) { res.status(400).json({ error: "Il cavallo si gioca su due numeri vicini" }); return; }
+  if (kind !== "straight" && kind !== "split") numbers.length = 0;
   const found = await findGameTable(seatCode);
   if (!found || !found.seatNo) { res.status(404).json({ error: "Postazione non trovata" }); return; }
   const seatNo = found.seatNo, tableId = found.table.id;
@@ -574,14 +591,24 @@ router.post("/gestione/casino/table/next", async (req, res): Promise<void> => {
   const code = String(req.body?.displayCode ?? req.body?.seatCode ?? "").toUpperCase().trim();
   const found = await findGameTable(code);
   if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
-  const table = found.table;
-  const betted = new Set(table.bets.map(b => String(b.seatNo)));
-  for (const [no, seat] of Object.entries(table.seats)) if (seat.playerId && !betted.has(no)) seat.playerId = null;
-  table.phase = "betting"; table.bets = []; table.result = null; table.round += 1;
-  await saveGameTable(found.sessionId, table);
-  await broadcastTable(found.sessionId, table);
+  const tableId = found.table.id;
+  // ATOMICO, sulla copia fresca del tavolo: prima leggeva il tavolo fuori dal lock
+  // e azzerava anche le puntate GIÀ scalate di un giro non ancora girato.
+  const out = await mutateSession<{ status: number; body: Record<string, unknown>; table?: GameTable }>(found.sessionId, async (_tx, cfg) => {
+    const table = cfg.gameTables?.[tableId];
+    if (!table) return { save: false, result: { status: 404, body: { error: "Tavolo non trovato" } } };
+    if (table.phase === "betting" && table.bets.length > 0) {
+      return { save: false, result: { status: 409, body: { error: "Ci sono puntate sul tavolo: gira prima la ruota" } } };
+    }
+    const betted = new Set(table.bets.map(b => String(b.seatNo)));
+    for (const [no, seat] of Object.entries(table.seats)) if (seat.playerId && !betted.has(no)) seat.playerId = null;
+    table.phase = "betting"; table.bets = []; table.result = null; table.round += 1;
+    return { save: true, result: { status: 200, body: { ok: true }, table } };
+  });
+  if (out.status !== 200) { res.status(out.status).json(out.body); return; }
+  if (out.table) await broadcastTable(found.sessionId, out.table);
   await broadcast(found.sessionId);
-  res.json({ ok: true });
+  res.json(out.body);
 });
 
 // ── Abbandona tavolo (telefono): libera il posto. Le puntate del giro restano

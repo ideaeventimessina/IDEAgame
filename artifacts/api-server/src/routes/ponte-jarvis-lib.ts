@@ -79,11 +79,15 @@ export function traduciPuntate(grezze: unknown):
     if (!(TIPI_PUNTATA as readonly string[]).includes(tipo)) {
       return { ok: false, error: `${dove}: tipo "${String(p["tipo"] ?? "")}" sconosciuto (ammessi: ${TIPI_PUNTATA.join(", ")}).` };
     }
-    const fiche = Number(p["fiche"]);
+    const fiche = typeof p["fiche"] === "number" ? p["fiche"] : typeof p["fiche"] === "string" && p["fiche"].trim() !== "" ? Number(p["fiche"]) : NaN;
     if (!Number.isInteger(fiche) || fiche <= 0 || fiche > MAX_FICHE_PUNTATA) {
       return { ok: false, error: `${dove}: "fiche" deve essere un intero fra 1 e ${MAX_FICHE_PUNTATA}.` };
     }
-    const v = p["valore"] == null || p["valore"] === "" ? null : Number(p["valore"]);
+    const grezzo = p["valore"];
+    const v = grezzo == null || grezzo === "" ? null
+      : typeof grezzo === "number" ? grezzo
+      : typeof grezzo === "string" && grezzo.trim() !== "" ? Number(grezzo)
+      : NaN; // [], true, oggetti: non sono numeri (prima [] diventava 0 e true 1)
     if (tipo === "numero") {
       if (v == null || !Number.isInteger(v) || v < 0 || v > 36) return { ok: false, error: `${dove}: "valore" deve essere un numero da 0 a 36.` };
       out.push({ tipo, valore: v, fiche, kind: "straight", numbers: [v] });

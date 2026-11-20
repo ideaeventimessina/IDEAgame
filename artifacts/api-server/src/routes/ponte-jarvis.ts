@@ -122,6 +122,14 @@ router.post("/ponte/jarvis/roulette/giro", async (req, res): Promise<void> => {
   const richiesta = typeof corpo["partita"] === "string" ? corpo["partita"].trim() : "";
   if (richiesta && !isUUID(richiesta)) { res.status(404).json({ error: "Partita non trovata." }); return; }
 
+  // Partita nuova con posta oltre le fiche iniziali: si rifiuta PRIMA di crearla
+  // (prima nasceva comunque una partita orfana da 1000 fiche).
+  const postaTotale = puntate.reduce((t, p) => t + p.fiche, 0);
+  if (!richiesta && postaTotale > SALDO_INIZIALE) {
+    res.status(409).json({ error: "Fiche insufficienti per queste puntate.", saldo: SALDO_INIZIALE, posta: postaTotale });
+    return;
+  }
+
   try {
     const partita = richiesta || (await nuovaPartita());
 
