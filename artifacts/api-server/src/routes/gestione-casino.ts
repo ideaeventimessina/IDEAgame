@@ -34,7 +34,7 @@ const DEFAULT_START_FISH = 500;
 
 /* ── Atomicità dei soldi ──────────────────────────────────────────────────────
    Tipo della transazione Drizzle (parametro del callback di db.transaction). */
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 /* Esito di un endpoint eseguito dentro mutateSession: status HTTP + corpo JSON. */
 type EpResult = { status: number; body: unknown };
 
@@ -43,7 +43,7 @@ type EpResult = { status: number; body: unknown };
    ledger nella STESSA transazione. Per le USCITE (`requireFunds`) l'UPDATE ha un
    WHERE che impedisce lo scoperto in modo atomico: se non tocca righe ritorna null
    e NON scrive ledger. Elimina lost-update e ledger disallineato (report §0a/§0b). */
-async function moveFish(tx: Tx, sessionId: string, move: FishMove): Promise<number | null> {
+export async function moveFish(tx: Tx, sessionId: string, move: FishMove): Promise<number | null> {
   const guard = move.requireFunds
     ? and(eq(casinoPlayersTable.id, move.playerId), sql`${casinoPlayersTable.fishBalance} + ${move.delta} >= 0`)
     : eq(casinoPlayersTable.id, move.playerId);
@@ -60,7 +60,7 @@ async function moveFish(tx: Tx, sessionId: string, move: FishMove): Promise<numb
   return balanceAfter;
 }
 /* Adapter FishTx (per i pagamenti in blocco della lib) legato a una tx + serata. */
-const fishTxOf = (tx: Tx, sessionId: string): FishTx => ({ pay: (m) => moveFish(tx, sessionId, m) });
+export const fishTxOf = (tx: Tx, sessionId: string): FishTx => ({ pay: (m) => moveFish(tx, sessionId, m) });
 
 /* Esegue una mutazione della serata in modo ATOMICO e SERIALIZZATO:
    db.transaction → SELECT … FOR UPDATE sulla riga della serata (lock) → rilettura
@@ -68,7 +68,7 @@ const fishTxOf = (tx: Tx, sessionId: string): FishTx => ({ pay: (m) => moveFish(
    riscrittura del config nella STESSA transazione (solo se `save`). Il lock di riga
    serializza le operazioni concorrenti sulla stessa serata: il read-modify-write
    dell'intero jsonb non può più sovrascrivere tavoli diversi (fix report §5/§0c). */
-async function mutateSession<T>(
+export async function mutateSession<T>(
   sessionId: string,
   fn: (tx: Tx, cfg: CasinoConfig) => Promise<{ save: boolean; result: T }>,
 ): Promise<T> {
@@ -87,9 +87,9 @@ async function mutateSession<T>(
 /* Tavoli da gioco interattivi (80" touch). Vista dall'alto. Pilota: roulette.
    Ogni postazione ha un codice (QR) che il giocatore scansiona per sedersi e
    puntare dal telefono sul tappeto condiviso, scalando dal suo saldo fiche. */
-type RouletteBet = { id: string; seatNo: number; playerId: string; kind: string; numbers: number[]; amount: number };
+export type RouletteBet = { id: string; seatNo: number; playerId: string; kind: string; numbers: number[]; amount: number };
 type GameSeat = { code: string; playerId: string | null };
-type GameTable = {
+export type GameTable = {
   id: string; type: "roulette"; name: string; displayCode: string;
   phase: "betting" | "spinning" | "result"; round: number;
   seats: Record<string, GameSeat>;      // seatNo → { code, playerId }
@@ -98,7 +98,7 @@ type GameTable = {
   history: number[];
   dealerCode?: string | null;           // se valorizzato: un dealer comanda questo tavolo dal suo telefono (null = gioco autonomo/80")
 };
-type CasinoConfig = {
+export type CasinoConfig = {
   startFish?: number;
   tvCode?: string;
   playerAvatars?: Record<string, string>;
@@ -109,6 +109,8 @@ type CasinoConfig = {
   sprintTables?: Record<string, SprintTable>;
   poolTables?: Record<string, PoolTable>;
   smTables?: Record<string, SmTable>;
+  /** Partita di roulette veloce aperta dal ponte Jarvis (vedi routes/ponte-jarvis.ts). */
+  jarvis?: { tableId: string; playerId: string; giri: number; ultimi: number[]; creata: string };
 };
 const cfgOf = (session: { config?: unknown }): CasinoConfig => (session?.config ?? {}) as CasinoConfig;
 async function patchConfig(id: string, patch: Partial<CasinoConfig>): Promise<void> {
@@ -121,7 +123,10 @@ async function patchConfig(id: string, patch: Partial<CasinoConfig>): Promise<vo
   });
 }
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-const makeCode = (n = 6) => Array.from({ length: n }, () => CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)]).join("");
+/* Codici master/dealer/giocatore/tavolo/TV: sono le CHIAVI d'accesso del casinò, quindi
+   RNG crittografico (node:crypto randomInt, uniforme sull'alfabeto) — non Math.random,
+   che è prevedibile. Stesso alfabeto, stessa lunghezza di prima. */
+export const makeCode = (n = 6) => Array.from({ length: n }, () => CODE_ALPHABET[randomInt(CODE_ALPHABET.length)]).join("");
 const isUUID = (s: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 const room = (id: string) => `casino:${id}`;
 
@@ -422,7 +427,7 @@ async function tableState(sessionId: string, table: GameTable) {
   return { table: { ...pub, seats }, betsBySeat, hasDealer: !!dealerCode };
 }
 function tableRoom(code: string) { return `casino:table:${code}`; }
-async function broadcastTable(sessionId: string, table: GameTable) {
+export async function broadcastTable(sessionId: string, table: GameTable) {
   const st = await tableState(sessionId, table);
   emitToRoom(tableRoom(table.displayCode), "casino:table", st);
   return st;

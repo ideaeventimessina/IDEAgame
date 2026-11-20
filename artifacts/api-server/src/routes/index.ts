@@ -14,6 +14,7 @@ import eventsByCodeRouter from "./events-by-code";
 import ponteIdeaeventiRouter from "./ponte-ideaeventi";
 import ponteCasinoRouter from "./ponte-casino";
 import ponteIdeaxRouter from "./ponte-ideax.js";
+import ponteJarvisRouter from "./ponte-jarvis.js";
 import teamsRouter from "./teams";
 import playersRouter from "./players";
 import scoresRouter from "./scores";
@@ -134,5 +135,9 @@ router.use(ponteCasinoRouter);
 /* IL PONTE CON ideax — il motore di casa (PC di Andrea). IDEAgame mette i lavori
    (immagini, musica, voce) in coda; ideax passa a prenderli. Chiave IDEAX_KEY. */
 router.use(ponteIdeaxRouter);
+
+/* IL PONTE CON JARVIS — 20/11/2026. Roulette veloce per l'assistente di Andrea:
+   chiave condivisa JARVIS_PONTE_KEY (X-Ponte-Key), nessuna sessione utente. */
+router.use(ponteJarvisRouter);
 
 export default router;
