@@ -8,6 +8,7 @@ import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { missionControlLoad, missionControlErrorReporter } from "./lib/mc-server";
+import { corsPerRichiesta } from "./lib/corsOrigini";
 
 const app: Express = express();
 
@@ -29,7 +30,7 @@ app.use(
     },
   }),
 );
-app.use(cors({ origin: true, credentials: true }));
+app.use(cors(corsPerRichiesta));
 // Il ponte ideax riceve risultati con immagini in base64: a quella rotta serve un body grande (prima del limite globale).
 app.use("/api/ponte/ideax", express.json({ limit: "60mb" }));
 app.use(express.json({ limit: "1mb" }));
