@@ -1,6 +1,7 @@
 /* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
 
 import { Router, type IRouter } from "express";
+import { timingSafeEqual } from "node:crypto";
 import { computeAiUsageAggregate, resolveAiUsagePeriod } from "../lib/ai-usage-aggregate";
 
 const router: IRouter = Router();
@@ -15,7 +16,11 @@ const router: IRouter = Router();
 router.get("/mission-control/ai-usage", async (req, res): Promise<void> => {
   const expected = process.env["MISSION_CONTROL_TOKEN"];
   const provided = req.header("X-Mission-Token");
-  if (!expected || !provided || provided !== expected) {
+  const ok =
+    !!expected && !!provided &&
+    Buffer.byteLength(provided) === Buffer.byteLength(expected) &&
+    timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
+  if (!ok) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }

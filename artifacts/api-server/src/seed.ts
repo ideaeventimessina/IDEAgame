@@ -19,7 +19,11 @@ async function main() {
   ]).returning();
 
   // Users
-  const pwd = await bcrypt.hash("ideagame", 10);
+  const seedPassword = process.env["SEED_PASSWORD"];
+  if (!seedPassword || seedPassword.length < 12) {
+    throw new Error("seed: serve SEED_PASSWORD (almeno 12 caratteri) per gli utenti di demo");
+  }
+  const pwd = await bcrypt.hash(seedPassword, 10);
   await db.insert(usersTable).values([
     { email: "admin@ideagame.app", name: "Marco Rossi", role: "super_admin", locale: "it", passwordHash: pwd, tenantId: null },
     { email: "owner@mango.events", name: "Giulia Conte", role: "tenant_owner", locale: "it", passwordHash: pwd, tenantId: mango!.id },

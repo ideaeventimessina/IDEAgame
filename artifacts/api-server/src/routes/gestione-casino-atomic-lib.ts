@@ -38,6 +38,17 @@ export function betWins(kind: string, numbers: number[], r: number): boolean {
   }
 }
 
+/** Accredito di UNA puntata roulette (puntata inclusa): stessa regola di
+ *  `rouletteWinMoves` — amount*(PAYOUT+1) se vince, 0 se perde. */
+export function rouletteCredit(kind: string, numbers: number[], amount: number, r: number): number {
+  return betWins(kind, numbers, r) ? amount * (PAYOUT[kind]! + 1) : 0;
+}
+/** Colore del numero uscito: 0 è verde, gli altri rosso/nero secondo RED. */
+export function rouletteColor(r: number): "red" | "black" | "green" {
+  if (r === 0) return "green";
+  return RED.has(r) ? "red" : "black";
+}
+
 /* ── Blackjack: esito della mano e accredito (invariati) ── */
 export type BjOutcome = "win" | "lose" | "push" | "blackjack" | "bust";
 /** Esito della mano del giocatore (identico alla logica originale di finishBjHand). */

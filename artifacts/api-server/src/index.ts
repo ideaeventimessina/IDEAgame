@@ -7,6 +7,7 @@ import { logger } from "./lib/logger";
 import { db, playersTable, tenantsTable, usersTable, eventsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
+import { randomBytes } from "node:crypto";
 
 // Keep the process alive on unhandled errors — log and continue rather than crash
 process.on("uncaughtException", (err) => {
@@ -42,12 +43,54 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-// On startup, ensure critical users exist (idempotent — safe to run every boot)
+// All'avvio: l'account proprietario esiste, e la sua password NON sta nel codice.
+// La password viene dal Secret IDEAGAME_OWNER_PASSWORD. Se l'account usa ancora la
+// vecchia password di fabbrica (che era scritta in questo repo pubblico), viene
+// sostituita con quella del Secret; senza Secret l'avviso finisce nel log.
+const OWNER_EMAIL = "ideaeventime@gmail.com";
+const PASSWORD_DI_FABBRICA = "ideagame"; // già pubblica: serve solo a riconoscerla
+
+// Ogni account che usa ancora la password di fabbrica (pubblicata su GitHub, anche
+// negli utenti di demo creati da seed.ts) viene chiuso: il proprietario passa alla
+// password del Secret, gli altri ricevono una password casuale che nessuno conosce
+// (per riaprirli serve impostare loro una password nuova).
+async function chiudiPasswordDiFabbrica(ownerPassword: string | undefined): Promise<void> {
+  const utenti = await db.select({ id: usersTable.id, email: usersTable.email, passwordHash: usersTable.passwordHash })
+    .from(usersTable).limit(500);
+  for (const u of utenti) {
+    if (!u.passwordHash || !(await bcrypt.compare(PASSWORD_DI_FABBRICA, u.passwordHash))) continue;
+    if (u.email === OWNER_EMAIL) {
+      if (ownerPassword && ownerPassword.length >= 12) {
+        await db.update(usersTable).set({ passwordHash: await bcrypt.hash(ownerPassword, 12) })
+          .where(eq(usersTable.id, u.id));
+        logger.warn("startup: password di fabbrica del proprietario sostituita con IDEAGAME_OWNER_PASSWORD");
+      } else {
+        logger.error("startup: il proprietario usa ancora la password di fabbrica, pubblicata su GitHub. Metti il Secret IDEAGAME_OWNER_PASSWORD (almeno 12 caratteri) e ripubblica.");
+      }
+      continue;
+    }
+    await db.update(usersTable)
+      .set({ passwordHash: await bcrypt.hash(randomBytes(32).toString("hex"), 12) })
+      .where(eq(usersTable.id, u.id));
+    logger.warn({ email: u.email }, "startup: account con password di fabbrica bloccato");
+  }
+}
+
 async function ensureUsers(): Promise<void> {
   try {
+    const ownerPassword = process.env["IDEAGAME_OWNER_PASSWORD"];
     const existing = await db.select().from(usersTable)
-      .where(eq(usersTable.email, "ideaeventime@gmail.com")).limit(1);
-    if (existing.length > 0) return;
+      .where(eq(usersTable.email, OWNER_EMAIL)).limit(1);
+
+    await chiudiPasswordDiFabbrica(ownerPassword);
+    if (existing.length > 0) {
+      return;
+    }
+
+    if (!ownerPassword || ownerPassword.length < 12) {
+      logger.error("startup: proprietario non creato — manca il Secret IDEAGAME_OWNER_PASSWORD (almeno 12 caratteri)");
+      return;
+    }
 
     // Create tenant
     const [tenant] = await db.insert(tenantsTable).values({
@@ -56,9 +99,9 @@ async function ensureUsers(): Promise<void> {
     }).returning();
 
     // Create user
-    const pwd = await bcrypt.hash("ideagame", 10);
+    const pwd = await bcrypt.hash(ownerPassword, 12);
     await db.insert(usersTable).values({
-      email: "ideaeventime@gmail.com", name: "IDEAeventime Owner",
+      email: OWNER_EMAIL, name: "IDEAeventime Owner",
       role: "tenant_owner", locale: "it", passwordHash: pwd, tenantId: tenant!.id,
     });
 
