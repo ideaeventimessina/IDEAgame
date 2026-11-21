@@ -41,6 +41,20 @@ export function redactHomeSession<T>(session: T): T {
     ensureCopy()["rounds"] = safeRounds;
   }
 
+  // Quizzone: stessa cosa per questions[].correctAnswerIndex (prima arrivava in
+  // chiaro a ogni telefono con GET e home:state). TV e telefoni usano solo
+  // revealData.correctAnswerIndex, che il server manda al momento del reveal.
+  if (rpObj["mode"] === "home-quizzone" && Array.isArray(rpObj["questions"])) {
+    ensureCopy()["questions"] = (rpObj["questions"] as unknown[]).map(q => {
+      if (q && typeof q === "object" && "correctAnswerIndex" in (q as Record<string, unknown>)) {
+        const qc = { ...(q as Record<string, unknown>) };
+        delete qc["correctAnswerIndex"];
+        return qc;
+      }
+      return q;
+    });
+  }
+
   return rpCopy ? ({ ...s, roundPayload: rpCopy } as T) : session;
 }
 

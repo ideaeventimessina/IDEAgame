@@ -6,6 +6,9 @@ import type { Server as HttpServer } from "node:http";
 import { db, playersTable, homeSessionsTable, homePlayersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "./lib/logger";
+import { creaGettoni, uguali, serataConGettoni } from "./lib/gettoni-home";
+import { limitaEnergia } from "./lib/regole-serata";
+import { stanzeVolume } from "./lib/regole-accessi";
 
 let _io: SocketServer | null = null;
 
@@ -66,7 +69,13 @@ export function clearBalloEnergies(sessionId: string): void {
  * Populated via "home:player_register" so we can remove booked players on
  * disconnect during the pre-game flow booking phase.
  */
-const homePlayerSockets = new Map<string, { sessionId: string; playerId: string }>();
+const homePlayerSockets = new Map<string, { sessionId: string; playerId: string; nickname?: string }>();
+const UUID_SOCK = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Il giocatore registrato su questo socket per la serata `sessionId` (null = nessuno). */
+function chiE(socketId: string, sessionId: unknown): { sessionId: string; playerId: string; nickname?: string } | null {
+  const reg = homePlayerSockets.get(socketId);
+  return reg && typeof sessionId === "string" && reg.sessionId === sessionId ? reg : null;
+}
 
 /**
  * Attach Socket.IO to the raw HTTP server.
@@ -139,13 +148,15 @@ export function initSocket(server: HttpServer): SocketServer {
       logger.info({ sid: socket.id, playerId, eventId }, "player:registered");
     });
 
-    // Volume relay: any client can set master volume for the whole show
+    // Volume relay: solo verso le stanze della PROPRIA serata (evento/home/live in
+    // cui il socket è entrato). Prima andava a TUTTI i socket del server: un
+    // telefono di una serata cambiava il volume di tutte le altre.
     socket.on("volume:set", (data: unknown) => {
       if (!data || typeof data !== "object") return;
       const d = data as Record<string, unknown>;
-      if (typeof d["volume"] === "number") {
+      if (typeof d["volume"] === "number" && Number.isFinite(d["volume"])) {
         const vol = Math.max(0, Math.min(1, d["volume"]));
-        _io!.emit("volume:set", { volume: vol });
+        for (const room of stanzeVolume(socket.rooms, socket.id)) socket.to(room).emit("volume:set", { volume: vol });
         logger.info({ volume: vol }, "audio:volume:set");
       }
     });
@@ -261,14 +272,32 @@ export function initHomeSocketHandlers(io: SocketServer): void {
       const d = data as Record<string, unknown>;
       const sessionId = typeof d["sessionId"] === "string" ? d["sessionId"] : null;
       const playerId = typeof d["playerId"] === "string" ? d["playerId"] : null;
-      if (!sessionId || !playerId) return;
-      homePlayerSockets.set(socket.id, { sessionId, playerId });
-      homePlayerToSocket.set(playerId, socket.id);
-      db.update(homePlayersTable)
-        .set({ isConnected: true })
-        .where(eq(homePlayersTable.id, playerId))
-        .catch((err) => logger.error({ err }, "home:player_register db update failed"));
-      logger.info({ sid: socket.id, sessionId, playerId }, "home:player:registered");
+      const playerToken = d["playerToken"];
+      if (!sessionId || !playerId || !UUID_SOCK.test(sessionId) || !UUID_SOCK.test(playerId)) return;
+      // L'identità si ottiene solo da un giocatore VERO della serata e, sulle serate
+      // con i gettoni, col SUO gettone: da qui in poi chat, energia del Ballo e
+      // allarmi partono a nome di questo giocatore e di nessun altro.
+      void (async () => {
+        try {
+          const [pl] = await db.select({ id: homePlayersTable.id, sessionId: homePlayersTable.sessionId, nickname: homePlayersTable.nickname })
+            .from(homePlayersTable).where(eq(homePlayersTable.id, playerId));
+          if (!pl || pl.sessionId !== sessionId) return;
+          const [sess] = await db.select({ gameConfig: homeSessionsTable.gameConfig }).from(homeSessionsTable).where(eq(homeSessionsTable.id, sessionId));
+          if (!sess) return;
+          if (serataConGettoni(sess.gameConfig)) {
+            const segreto = process.env["SESSION_SECRET"] ?? "";
+            if (!segreto || !uguali(playerToken, creaGettoni(segreto).giocatore(playerId))) {
+              socket.emit("home:register_error", { error: "Gettone del giocatore mancante o non valido" });
+              return;
+            }
+          }
+          homePlayerSockets.set(socket.id, { sessionId, playerId, nickname: pl.nickname });
+          homePlayerToSocket.set(playerId, socket.id);
+          void socket.join(`home:${sessionId}`);
+          await db.update(homePlayersTable).set({ isConnected: true }).where(eq(homePlayersTable.id, playerId));
+          logger.info({ sid: socket.id, sessionId, playerId }, "home:player:registered");
+        } catch (err) { logger.error({ err }, "home:player_register failed"); }
+      })();
     });
 
     socket.on("leave:home", (sessionId: string) => {
@@ -280,10 +309,13 @@ export function initHomeSocketHandlers(io: SocketServer): void {
       if (!data || typeof data !== "object") return;
       const d = data as Record<string, unknown>;
       const sessionId = d["sessionId"];
-      const playerId = d["playerId"];
-      const energy = d["energy"];
       const round = typeof d["round"] === "number" ? d["round"] : -1;
-      if (typeof sessionId !== "string" || typeof playerId !== "string" || typeof energy !== "number") return;
+      // Solo la PROPRIA energia (giocatore registrato col gettone) e con un tetto
+      // (il telefono manda 0..100): prima 999999 da un solo messaggio vinceva la manche.
+      const reg = chiE(socket.id, sessionId);
+      const energy = limitaEnergia(d["energy"]);
+      if (typeof sessionId !== "string" || !reg || energy === null) return;
+      const playerId = reg.playerId;
 
       logger.info({ sessionId, playerId, energy: Math.round(energy), round }, "[BalloTrace:server] received home:ballo_energy");
 
@@ -318,7 +350,8 @@ export function initHomeSocketHandlers(io: SocketServer): void {
       if (!data || typeof data !== "object") return;
       const d = data as Record<string, unknown>;
       const sessionId = typeof d["sessionId"] === "string" ? d["sessionId"] : null;
-      const playerId = typeof d["playerId"] === "string" ? d["playerId"] : null;
+      const reg = chiE(socket.id, sessionId);
+      const playerId = reg?.playerId ?? null;
       const sensorReady = typeof d["sensorReady"] === "boolean" ? d["sensorReady"] : false;
       if (!sessionId || !playerId) return;
       logger.info({ sessionId, playerId, sensorReady }, "[SensorReady] broadcasting to room");
@@ -346,7 +379,7 @@ export function initHomeSocketHandlers(io: SocketServer): void {
       const d = data as Record<string, unknown>;
       const sessionId = typeof d["sessionId"] === "string" ? d["sessionId"] : null;
       const round     = typeof d["round"]     === "number" ? d["round"]     : -1;
-      const voterId   = typeof d["voterId"]   === "string" ? d["voterId"]   : null;
+      const voterId   = chiE(socket.id, sessionId)?.playerId ?? null; // solo il proprio voto
       const dancerId  = typeof d["dancerId"]  === "string" ? d["dancerId"]  : null;
       const stars     = typeof d["stars"]     === "number" ? Math.max(1, Math.min(5, Math.round(d["stars"]))) : 3;
       if (!sessionId || !voterId || !dancerId || round < 0) return;
@@ -376,10 +409,11 @@ export function initHomeSocketHandlers(io: SocketServer): void {
       if (!data || typeof data !== "object") return;
       const d = data as Record<string, unknown>;
       const sessionId = typeof d["sessionId"] === "string" ? d["sessionId"] : null;
-      if (!sessionId) return;
+      const reg = chiE(socket.id, sessionId);
+      if (!sessionId || !reg) return; // solo un giocatore della serata, a nome proprio
       const alarm = {
-        playerId: typeof d["playerId"] === "string" ? d["playerId"] : "",
-        nickname: typeof d["nickname"] === "string" ? d["nickname"] : "",
+        playerId: reg.playerId,
+        nickname: reg.nickname ?? (typeof d["nickname"] === "string" ? d["nickname"] : ""),
         round: typeof d["round"] === "number" ? d["round"] : 0,
         timestamp: Date.now(),
       };
@@ -393,7 +427,7 @@ export function initHomeSocketHandlers(io: SocketServer): void {
       if (!data || typeof data !== "object") return;
       const d = data as Record<string, unknown>;
       const sessionId = typeof d["sessionId"] === "string" ? d["sessionId"] : null;
-      if (!sessionId) return;
+      if (!sessionId || !chiE(socket.id, sessionId)) return;
       emitToRoom(`home:${sessionId}`, "home:freestyle_taboo", { sessionId, ts: Date.now() });
     });
 
@@ -406,8 +440,11 @@ export function initHomeSocketHandlers(io: SocketServer): void {
       if (!data || typeof data !== "object") return;
       const d = data as Record<string, unknown>;
       const sessionId        = typeof d["sessionId"]        === "string" ? d["sessionId"]        : null;
-      const senderPlayerId   = typeof d["senderPlayerId"]   === "string" ? d["senderPlayerId"]   : null;
-      const senderNickname   = typeof d["senderNickname"]   === "string" ? d["senderNickname"]   : null;
+      // Mittente = il giocatore registrato su QUESTO socket (prima si fidava del
+      // payload: chiunque scriveva "da Anna").
+      const mittente         = chiE(socket.id, sessionId);
+      const senderPlayerId   = mittente?.playerId ?? null;
+      const senderNickname   = mittente ? (mittente.nickname ?? (typeof d["senderNickname"] === "string" ? d["senderNickname"] : null)) : null;
       const receiverPlayerId = typeof d["receiverPlayerId"] === "string" ? d["receiverPlayerId"] : null;
       const receiverNickname = typeof d["receiverNickname"] === "string" ? d["receiverNickname"] : null;
       const rawText          = typeof d["text"]             === "string" ? d["text"].trim()       : "";
@@ -498,7 +535,7 @@ export function initHomeSocketHandlers(io: SocketServer): void {
       const d = data as Record<string, unknown>;
       const sessionId  = typeof d["sessionId"]  === "string" ? d["sessionId"]  : null;
       const messageId  = typeof d["messageId"]  === "string" ? d["messageId"]  : null;
-      const playerId   = typeof d["playerId"]   === "string" ? d["playerId"]   : null;
+      const playerId   = chiE(socket.id, sessionId)?.playerId ?? null;
       const emoji      = typeof d["emoji"]      === "string" ? d["emoji"]      : null;
       const textReply  = typeof d["textReply"]  === "string" ? d["textReply"].trim().slice(0, 160) : null;
       if (!sessionId || !messageId || !playerId || !emoji) return;
@@ -559,7 +596,7 @@ export function initHomeSocketHandlers(io: SocketServer): void {
       if (!data || typeof data !== "object") return;
       const d = data as Record<string, unknown>;
       const sessionId = typeof d["sessionId"] === "string" ? d["sessionId"] : null;
-      const playerId  = typeof d["playerId"]  === "string" ? d["playerId"]  : null;
+      const playerId  = chiE(socket.id, sessionId)?.playerId ?? null;
       const messageId = typeof d["messageId"] === "string" ? d["messageId"] : null;
       if (!sessionId || !playerId || !messageId) return;
 
@@ -577,7 +614,7 @@ export function initHomeSocketHandlers(io: SocketServer): void {
       if (!data || typeof data !== "object") return;
       const d = data as Record<string, unknown>;
       const sessionId = typeof d["sessionId"] === "string" ? d["sessionId"] : null;
-      const playerId  = typeof d["playerId"]  === "string" ? d["playerId"]  : null;
+      const playerId  = chiE(socket.id, sessionId)?.playerId ?? null;
       const dnd       = d["dnd"] === true;
       if (!sessionId || !playerId) return;
 
@@ -604,7 +641,7 @@ export function initHomeSocketHandlers(io: SocketServer): void {
       if (!data || typeof data !== "object") return;
       const d = data as Record<string, unknown>;
       const sessionId = typeof d["sessionId"] === "string" ? d["sessionId"] : null;
-      const playerId  = typeof d["playerId"]  === "string" ? d["playerId"]  : null;
+      const playerId  = chiE(socket.id, sessionId)?.playerId ?? null; // solo la propria posta
       if (!sessionId || !playerId) return;
 
       const msgs = chatMessages.get(sessionId) ?? [];

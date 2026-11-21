@@ -10,7 +10,7 @@
    - Giocatore: login con selfie (+500 fiche), QR, e puntata che va sul suo tavolo.
    Sync via polling 2s. ─────────────────────────────────────────────────────── */
 
-import { ricordaRegiaCasino } from '@/lib/gettoni';
+import { ricordaRegiaCasino, headerRegiaCasino } from '@/lib/gettoni';
 import { Fragment, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useTableMusic } from '@/audio/useTableMusic';
 import { motion, AnimatePresence, useMotionValue, animate } from 'framer-motion';
@@ -685,18 +685,18 @@ function SuiteBindModal({ sessionId, link, onClose }: { sessionId: string; link:
 
   const carica = useCallback(() => {
     setMsg('');
-    fetch(`${API}/ponte/casino/suite/feste`).then(async r => {
+    fetch(`${API}/ponte/casino/suite/feste?sessionId=${encodeURIComponent(sessionId)}`, { headers: headerRegiaCasino(sessionId) }).then(async r => {
       const d = await r.json().catch(() => ({}));
       if (!r.ok) { setMsg(d?.dettaglio || 'Non riesco a leggere le feste.'); setFeste([]); return; }
       setFeste(Array.isArray(d?.feste) ? d.feste : []);
     }).catch(() => { setMsg('Suite irraggiungibile.'); setFeste([]); });
-  }, []);
+  }, [sessionId]);
   useEffect(() => { carica(); }, [carica]);
 
   const collega = async (f: SuiteFesta) => {
     setBusy(true); setMsg('');
     try {
-      const r = await fetch(`${API}/ponte/casino/suite/collega`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId, eventoId: f.eventoId, giocoUrl, feedUrl: f.feedUrl ?? null, nome: f.nome }) });
+      const r = await fetch(`${API}/ponte/casino/suite/collega`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headerRegiaCasino(sessionId) }, body: JSON.stringify({ sessionId, eventoId: f.eventoId, giocoUrl, feedUrl: f.feedUrl ?? null, nome: f.nome }) });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) { setMsg(d?.dettaglio || 'Collegamento rifiutato.'); return; }
       onClose();
@@ -705,7 +705,7 @@ function SuiteBindModal({ sessionId, link, onClose }: { sessionId: string; link:
   const slega = async () => {
     setBusy(true); setMsg('');
     try {
-      const r = await fetch(`${API}/ponte/casino/suite/slega`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId }) });
+      const r = await fetch(`${API}/ponte/casino/suite/slega`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headerRegiaCasino(sessionId) }, body: JSON.stringify({ sessionId }) });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) { setMsg(d?.dettaglio || 'Scollegamento rifiutato.'); return; }
       onClose();

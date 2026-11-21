@@ -12,10 +12,12 @@ export const playerJoinLimiter = rateLimit({
   skip: () => process.env["NODE_ENV"] === "test",
 });
 
-/** 10 login attempts per IP per 15 min */
+/** 10 login SBAGLIATI per IP ogni 15 min: i login riusciti non contano (prima lo
+ *  staff dello stesso locale, stesso IP/NAT, restava fuori dopo 10 accessi normali). */
 export const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
+  skipSuccessfulRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Troppi tentativi di login. Riprova più tardi." },

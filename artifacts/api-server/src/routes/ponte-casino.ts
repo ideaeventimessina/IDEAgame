@@ -34,6 +34,8 @@ import {
   type SuitePlayerMap,
 } from "./ponte-casino-lib";
 import { moveFish } from "./gestione-casino.js";
+import { codiceRegiaValido } from "../lib/casino-regia.js";
+import { festeSenzaGettoni } from "../lib/regole-accessi.js";
 import { iscriviConDotazione } from "./gestione-casino-atomic-lib.js";
 
 const router: IRouter = Router();
@@ -135,14 +137,26 @@ async function creaGiocatore(sessionId: string, nickname: string, fish: number):
 
 /* ════════════════ 1. LEGARE LA REGIA A UNA FESTA SUITE ════════════════════════ */
 
-/** Elenco delle feste Suite col casinò acceso (proxy sicuro: la chiave sta qui). */
-router.get("/ponte/casino/suite/feste", async (_req, res): Promise<void> => {
+/** Solo la regia della serata (codice regia nell'header x-master-code) lega,
+ *  slega o legge le feste Suite. Prima bastava l'UUID della serata, che è pubblico. */
+async function regiaDellaSerata(req: import("express").Request, res: import("express").Response, sessionId: string): Promise<boolean> {
+  if (!isUUID(sessionId)) { err(res, 400, "input", "sessionId non valido."); return false; }
+  const [s] = await db.select({ masterCode: casinoSessionsTable.masterCode }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, sessionId));
+  if (!s) { err(res, 404, "non_trovato", "Serata casinò inesistente."); return false; }
+  if (!codiceRegiaValido(req.header("x-master-code"), s.masterCode)) { err(res, 403, "regia", "Serve il codice regia della serata."); return false; }
+  return true;
+}
+
+/** Elenco delle feste Suite col casinò acceso (proxy sicuro: la chiave sta qui).
+ *  Solo per la regia (?sessionId= + x-master-code) e senza i gettoni degli ospiti. */
+router.get("/ponte/casino/suite/feste", async (req, res): Promise<void> => {
   if (configNonPronta(res)) return;
+  if (!(await regiaDellaSerata(req, res, String(req.query["sessionId"] ?? "").trim()))) return;
   try {
     const r = await chiamaSuiteGet("/api/ponte/casino/feste");
     if (!r.ok) { const m = erroreDaSuite(r.status); err(res, m.status, m.errore, "La Suite ha rifiutato l'elenco feste."); return; }
     const data = await r.json();
-    res.json(data);
+    res.json(festeSenzaGettoni(data));
   } catch {
     err(res, 502, "suite_irraggiungibile", "Non riesco a contattare la Suite.");
   }
@@ -157,7 +171,7 @@ router.post("/ponte/casino/suite/collega", async (req, res): Promise<void> => {
   const giocoUrl = String(b["giocoUrl"] ?? "").trim();
   const feedUrl = b["feedUrl"] != null ? String(b["feedUrl"]) : null;
   const nomeFesta = b["nome"] != null ? String(b["nome"]) : null;
-  if (!isUUID(sessionId)) { err(res, 400, "input", "sessionId non valido."); return; }
+  if (!(await regiaDellaSerata(req, res, sessionId))) return;
   if (!eventoId || !giocoUrl) { err(res, 400, "input", "Servono eventoId e giocoUrl."); return; }
   const sess = await loadSession(sessionId);
   if (!sess) { err(res, 404, "non_trovato", "Serata casinò inesistente."); return; }
@@ -177,7 +191,7 @@ router.post("/ponte/casino/suite/collega", async (req, res): Promise<void> => {
 router.post("/ponte/casino/suite/slega", async (req, res): Promise<void> => {
   if (configNonPronta(res)) return;
   const sessionId = String((req.body as Record<string, unknown>)?.["sessionId"] ?? "").trim();
-  if (!isUUID(sessionId)) { err(res, 400, "input", "sessionId non valido."); return; }
+  if (!(await regiaDellaSerata(req, res, sessionId))) return;
   const sess = await loadSession(sessionId);
   if (!sess) { err(res, 404, "non_trovato", "Serata casinò inesistente."); return; }
   const eventoId = sess.config.suite?.eventoId;

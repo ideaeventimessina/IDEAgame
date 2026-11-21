@@ -228,6 +228,9 @@ router.post("/live-sessions", requireAuth, async (req: AuthedRequest, res: Respo
         preloadedRounds: [],
         selectedGames: [],
         matchDuration: "normal",
+        // Creata dallo staff loggato (requireAuth): Full, come POST /home/sessions
+        // dello staff. Prima restava demo e karaoke/adult/lockdown rispondevano 403.
+        tier: "full",
       },
     }).returning();
     resolvedHomeSessionId = homeSession!.id;
@@ -342,12 +345,17 @@ router.post("/live-sessions/:id/command", async (req: Request, res: Response): P
   let stateUpdate: Partial<typeof liveRuntimeStateTable.$inferInsert> = {};
 
   if (command === "start_game") {
-    const { gameSlug } = payload as { gameSlug: string };
+    const gameSlug = (payload && typeof payload === "object") ? (payload as Record<string, unknown>)["gameSlug"] : undefined;
+    if (typeof gameSlug !== "string" || !gameSlug.trim()) { res.status(400).json({ error: "start_game richiede payload.gameSlug" }); return; }
     await db
       .update(liveSessionsTable)
       .set({ status: "active", currentGameSlug: gameSlug, currentPhase: "playing" })
       .where(eq(liveSessionsTable.id, session.id));
-    stateUpdate = { currentGameSlug: gameSlug, currentPhase: "playing", payload: (payload as Record<string, unknown>) ?? {} };
+    // Si UNISCE al payload esistente: il collegamento alla Home (homeSessionId)
+    // resta, altrimenti pausa/ripresa/add_time non arrivavano più alla Home.
+    const current = await getState(session.id);
+    const existing = (current?.payload as Record<string, unknown>) ?? {};
+    stateUpdate = { currentGameSlug: gameSlug, currentPhase: "playing", payload: { ...existing, ...(payload as Record<string, unknown>) } };
   } else if (command === "pause") {
     await db.update(liveSessionsTable).set({ status: "paused" }).where(eq(liveSessionsTable.id, session.id));
   } else if (command === "resume") {

@@ -8,7 +8,7 @@
  * Flusso: code → nickname → lobby → playing (controller per ogni gioco) → ended
  */
 
-import { ricordaPlayerHome } from '@/lib/gettoni';
+import { ricordaPlayerHome, gettonePlayerHome } from '@/lib/gettoni';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { SensorBridge } from '../lib/SensorBridge';
 import { useLocation } from 'wouter';
@@ -285,7 +285,7 @@ function HomeJoinInner() {
       // Without this, isConnected stays false after reconnect → quiz effectiveCount drops,
       // booking purge removes them, and host sees phantom disconnected players.
       if (playerRef.current?.id) {
-        emit('home:player_register', { sessionId: sid, playerId: playerRef.current.id });
+        emit('home:player_register', { sessionId: sid, playerId: playerRef.current.id, playerToken: gettonePlayerHome(sid) });
         _log('[PlayerIdentity] re-registered after reconnect', { sid, playerId: playerRef.current.id });
       }
     };
@@ -299,7 +299,7 @@ function HomeJoinInner() {
   // Register phone for home-flow booking/disconnect tracking
   useEffect(() => {
     if (!session?.id || !player?.id) return;
-    emit('home:player_register', { sessionId: session.id, playerId: player.id });
+    emit('home:player_register', { sessionId: session.id, playerId: player.id, playerToken: gettonePlayerHome(session.id) });
   }, [session?.id, player?.id, emit]);
 
   // ── forceResync ────────────────────────────────────────────────────────────
@@ -349,7 +349,7 @@ function HomeJoinInner() {
 
       // Re-join socket room + re-register player
       emit('join:home', sid);
-      emit('home:player_register', { sessionId: sid, playerId: pid });
+      emit('home:player_register', { sessionId: sid, playerId: pid, playerToken: gettonePlayerHome(sid) });
       _log('[HomeSync] socket rejoined');
       _log('[HomeSync] state replaced');
 

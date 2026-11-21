@@ -2,13 +2,14 @@
 
 import { Router, type IRouter, type Response } from "express";
 import bcrypt from "bcryptjs";
-import { eq, and, or } from "drizzle-orm";
+import { eq, and, or, sql } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import {
   ListUsersResponse, CreateUserBody,
   UpdateUserBody, UpdateUserResponse,
 } from "@workspace/api-zod";
 import { type AuthedRequest, requireAuth, requireRole } from "../middlewares/auth";
+import { controllaNuovaPassword } from "../lib/password-reset";
 
 const router: IRouter = Router();
 
@@ -29,6 +30,9 @@ router.post("/users", requireRole("super_admin", "tenant_owner"), async (req: Au
   if (me.role === "tenant_owner" && !TENANT_OWNER_ALLOWED_ROLES.has(parsed.data.role)) {
     res.status(403).json({ error: "Cannot assign this role" }); return;
   }
+  // Stessa regola del recupero password (min 10 caratteri): prima passava anche "a".
+  const erroreP = controllaNuovaPassword(parsed.data.password);
+  if (erroreP) { res.status(400).json({ error: erroreP }); return; }
   const tenantId = me.role === "super_admin" ? (parsed.data.tenantId ?? null) : me.tenantId;
   const passwordHash = await bcrypt.hash(parsed.data.password, 10);
   const [u] = await db.insert(usersTable).values({
@@ -63,9 +67,18 @@ router.patch("/users/:id", requireAuth, async (req: AuthedRequest, res: Response
   if (parsed.data.name) updates["name"] = parsed.data.name;
   if (parsed.data.locale) updates["locale"] = parsed.data.locale;
   if (parsed.data.role && me.role === "super_admin") updates["role"] = parsed.data.role;
-  if (parsed.data.password) updates["passwordHash"] = await bcrypt.hash(parsed.data.password, 10);
+  if (parsed.data.password) {
+    const erroreP = controllaNuovaPassword(parsed.data.password);
+    if (erroreP) { res.status(400).json({ error: erroreP }); return; }
+    updates["passwordHash"] = await bcrypt.hash(parsed.data.password, 10);
+  }
   const [u] = await db.update(usersTable).set(updates).where(eq(usersTable.id, id)).returning();
   if (!u) { res.status(404).json({ error: "Not found" }); return; }
+  // Password cambiata: cadono le sessioni aperte di quell'utente (resta solo quella
+  // di chi la sta cambiando per sé). Prima il vecchio cookie restava valido.
+  if (parsed.data.password) {
+    await db.execute(sql`DELETE FROM user_sessions WHERE sess->>'userId' = ${id} AND sid <> ${isSelf ? (req.sessionID ?? "") : ""}`);
+  }
   res.json(UpdateUserResponse.parse(stripPwd(u)));
 });
 

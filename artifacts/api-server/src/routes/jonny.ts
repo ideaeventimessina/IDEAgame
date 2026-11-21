@@ -15,6 +15,7 @@ import {
 import { type AuthedRequest, requireAuth } from "../middlewares/auth";
 import OpenAI from "openai";
 import { logAiUsage, textCostUsd } from "@workspace/integrations-openai-ai-server";
+import { stessoTenant, statoVoceValido, giaImportata, isUuid } from "../lib/regole-accessi";
 
 function getOpenAI(): OpenAI {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -23,6 +24,20 @@ function getOpenAI(): OpenAI {
 }
 
 const router: IRouter = Router();
+
+/* Generazioni e voci appartengono a un tenant: prima bastava conoscerne l'id per
+   leggerle, modificarle, importarle nel PROPRIO tenant o cancellarle. */
+async function generazioneDelTenant(user: { role: string; tenantId: string | null }, id: string) {
+  if (!isUuid(id)) return null;
+  const [gen] = await db.select().from(jonnyGenerationsTable).where(eq(jonnyGenerationsTable.id, id));
+  return gen && stessoTenant(user, gen.tenantId) ? gen : null;
+}
+async function voceDelTenant(user: { role: string; tenantId: string | null }, id: string) {
+  if (!isUuid(id)) return null;
+  const [item] = await db.select().from(jonnyGeneratedItemsTable).where(eq(jonnyGeneratedItemsTable.id, id));
+  if (!item) return null;
+  return (await generazioneDelTenant(user, item.generationId)) ? item : null;
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -242,6 +257,7 @@ Rispondi con un JSON con questa struttura radice:
 // List generations for current tenant
 router.get("/jonny/generations", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
   const user = req.user!;
+  if (user.role !== "super_admin" && !user.tenantId) { res.json([]); return; }
   const rows = await db.select().from(jonnyGenerationsTable)
     .where(user.tenantId
       ? eq(jonnyGenerationsTable.tenantId, user.tenantId)
@@ -255,8 +271,8 @@ router.get("/jonny/generations", requireAuth, async (req: AuthedRequest, res): P
 // Get single generation with its items
 router.get("/jonny/generations/:id", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
   const id = String(req.params["id"]);
-  const [gen] = await db.select().from(jonnyGenerationsTable).where(eq(jonnyGenerationsTable.id, id));
-  if (!gen) { res.status(404).json({ error: "Not found" }); return; }
+  const gen = await generazioneDelTenant(req.user!, id);
+  if (!gen) { res.status(404).json({ error: "Generazione non trovata" }); return; }
   const items = await db.select().from(jonnyGeneratedItemsTable)
     .where(eq(jonnyGeneratedItemsTable.generationId, id))
     .orderBy(jonnyGeneratedItemsTable.gameSlug);
@@ -370,11 +386,18 @@ router.post("/jonny/generations", requireAuth, async (req: AuthedRequest, res: R
 // Update item (edit payload or status)
 router.patch("/jonny/items/:id", requireAuth, async (req: AuthedRequest, res: Response): Promise<void> => {
   const id = String(req.params["id"]);
+  if (!(await voceDelTenant(req.user!, id))) { res.status(404).json({ error: "Voce non trovata" }); return; }
   const { payload, status, title } = req.body as { payload?: Record<string, unknown>; status?: string; title?: string };
+  if (status !== undefined && !statoVoceValido(status)) {
+    res.status(400).json({ error: "Stato non valido: usa draft, approved o rejected (imported lo mette l'import)." }); return;
+  }
+  if (title !== undefined && (typeof title !== "string" || !title.trim())) { res.status(400).json({ error: "Titolo non valido" }); return; }
+  if (payload !== undefined && (!payload || typeof payload !== "object" || Array.isArray(payload))) { res.status(400).json({ error: "Contenuto non valido" }); return; }
   const patch: Record<string, unknown> = {};
   if (payload !== undefined) patch["payload"] = payload;
   if (status !== undefined) patch["status"] = status;
-  if (title !== undefined) patch["title"] = title;
+  if (title !== undefined) patch["title"] = title.trim().slice(0, 200);
+  if (Object.keys(patch).length === 0) { res.status(400).json({ error: "Niente da modificare" }); return; }
   const [updated] = await db.update(jonnyGeneratedItemsTable).set(patch).where(eq(jonnyGeneratedItemsTable.id, id)).returning();
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
   res.json(updated);
@@ -384,8 +407,12 @@ router.patch("/jonny/items/:id", requireAuth, async (req: AuthedRequest, res: Re
 router.post("/jonny/items/:id/import", requireAuth, async (req: AuthedRequest, res: Response): Promise<void> => {
   const itemId = String(req.params["id"]);
   const user = req.user!;
-  const [item] = await db.select().from(jonnyGeneratedItemsTable).where(eq(jonnyGeneratedItemsTable.id, itemId));
-  if (!item) { res.status(404).json({ error: "Item not found" }); return; }
+  const item = await voceDelTenant(user, itemId);
+  if (!item) { res.status(404).json({ error: "Voce non trovata" }); return; }
+  // Già importata: si restituisce il set creato la prima volta, senza duplicarlo.
+  if (giaImportata(item)) {
+    res.json({ message: "Già importato", item, targetEntityId: item.targetEntityId, already: true }); return;
+  }
 
   const payload = item.payload as Record<string, unknown>;
   let targetEntityId: string | undefined;
@@ -634,6 +661,7 @@ router.post("/jonny/items/:id/import", requireAuth, async (req: AuthedRequest, r
 // Delete a generation
 router.delete("/jonny/generations/:id", requireAuth, async (req: AuthedRequest, res: Response): Promise<void> => {
   const id = String(req.params["id"]);
+  if (!(await generazioneDelTenant(req.user!, id))) { res.status(404).json({ error: "Generazione non trovata" }); return; }
   await db.delete(jonnyGenerationsTable).where(eq(jonnyGenerationsTable.id, id));
   res.status(204).end();
 });

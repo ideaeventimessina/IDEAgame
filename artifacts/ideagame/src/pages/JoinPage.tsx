@@ -7,6 +7,7 @@
  * poi naviga a /home/join?s=:code per il controller di gioco.
  */
 import { ricordaPlayerHome } from '@/lib/gettoni';
+import { nomeDaLink } from '@/lib/nome-link';
 import { useState, useEffect } from 'react';
 import { useLocation, useParams } from 'wouter';
 import { motion } from 'framer-motion';
@@ -40,7 +41,7 @@ export default function JoinPage() {
   const [session, setSession]   = useState<HomeSession | null>(null);
   const [players, setPlayers]   = useState<{ id: string }[]>([]);
   const [notFound, setNotFound] = useState(false);
-  const [nickname, setNickname] = useState('');
+  const [nickname, setNickname] = useState(() => (typeof window !== 'undefined' ? nomeDaLink(window.location.search) : ''));
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState('');
   const [avatarColor]           = useState(randomColor);

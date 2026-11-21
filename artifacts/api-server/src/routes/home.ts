@@ -33,7 +33,7 @@ import { uploadBufferToStorage } from "../lib/objectStorage.js";
 import { consumeLiveCode } from "../lib/live-codes.js";
 import { searchYouTube } from "./home-karaoke.js";
 import { BOTTLE_LEVELS, pickFromBank, assignSpectatorPowers, pickRandomTruth, pickRandomDare, generateAdultChallengesAI, ADULT_TRUTH_BANK, ADULT_DARE_BANK, type BottleChallenge, type BottleLevel } from "../lib/adult-generator.js";
-import { eq, and, or, lt, asc, desc, isNull, notInArray } from "drizzle-orm";
+import { eq, and, or, lt, asc, desc, isNull, notInArray, sql } from "drizzle-orm";
 import {
   db,
   homeSessionsTable,
@@ -77,6 +77,11 @@ import { createLockdownState } from "../lib/lockdown-engine.js";
 import { redactHomeSession } from "../lib/home-redact";
 import { creaGettoni, uguali, serataConGettoni, decidiPunteggio, SEGNO_GETTONI } from "../lib/gettoni-home";
 import { homeScoreLimiter, homeHostLimiter } from "../middlewares/rateLimit";
+import {
+  bloccataDopoFine, bloccatoInDemo, verificaGiocatore, hannoRispostoTutti, riempiConGiaViste,
+  vincitoreSolo, scadenzaMancheDaRiprendere, attiviAdult, registraRifiuti, sceltaTemaCoppie, decidiRientro,
+} from "../lib/regole-serata";
+import { mutaRoundPayload } from "../lib/round-payload-db";
 
 /* Gettoni d'organizzatore e dei giocatori (lib/gettoni-home.ts). */
 const gettoni = () => creaGettoni(process.env["SESSION_SECRET"] ?? "");
@@ -86,8 +91,42 @@ function hostOk(req: { header(n: string): string | undefined }, session: { id: s
 }
 const conGettoneGiocatore = <T extends { id: string }>(session: { gameConfig: unknown }, player: T) =>
   serataConGettoni(session.gameConfig) ? { ...player, playerToken: gettoni().giocatore(player.id) } : player;
+/** Il gettone x-player-token è proprio quello del giocatore `playerId`? */
+function gettoneGiocatoreOk(req: { header(n: string): string | undefined }, session: { gameConfig: unknown }, playerId: unknown): boolean {
+  if (!serataConGettoni(session.gameConfig)) return true;
+  return typeof playerId === "string" && uguali(req.header("x-player-token"), gettoni().giocatore(playerId));
+}
+/** Risposte, voti e conferme: solo un giocatore VERO della serata, col suo gettone
+ *  (lib/regole-serata.ts). Risponde lui con l'errore; true = si può proseguire. */
+async function giocatoreAmmesso(
+  req: { header(n: string): string | undefined },
+  res: { status(c: number): { json(b: unknown): unknown } },
+  session: { id: string; gameConfig: unknown },
+  playerId: unknown,
+): Promise<boolean> {
+  const players = await getPlayers(session.id);
+  const e = verificaGiocatore({
+    playerId, idSerata: players.map(p => p.id),
+    conGettoni: serataConGettoni(session.gameConfig),
+    gettoneValido: gettoneGiocatoreOk(req, session, playerId),
+  });
+  if (!e.ok) { res.status(e.status).json({ error: e.error }); return false; }
+  return true;
+}
 
 const router: IRouter = Router();
+
+/* Serata chiusa dall'organizzatore (/end): nessuna chiamata la riapre (end-game,
+   start, ready, select-game...). Restano letture, cancellazione e /end stesso. */
+router.use("/home/sessions/:id", async (req, res, next): Promise<void> => {
+  const id = String(req.params["id"]);
+  if (!isUUID(id) || ["GET", "HEAD", "OPTIONS", "DELETE"].includes(req.method)) { next(); return; }
+  try {
+    const [s] = await db.select({ status: homeSessionsTable.status }).from(homeSessionsTable).where(eq(homeSessionsTable.id, id));
+    if (s && bloccataDopoFine(s.status, req.method, req.path)) { res.status(409).json({ error: "Sessione terminata" }); return; }
+  } catch { /* in dubbio decide la rotta */ }
+  next();
+});
 
 // WordBack Jonny proposal-phase server timers (sessionId → timer)
 const wbJonnyTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -1269,28 +1308,33 @@ router.post("/home/sessions/:id/join", async (req, res): Promise<void> => {
   if (!nickname) { res.status(400).json({ error: "Nickname obbligatorio" }); return; }
 
   const AVATAR_COLORS = ["#F5B642","#FF69B4","#60A5FA","#A78BFA","#34D399","#F87171","#F472B6","#FB923C","#22D3EE","#4ADE80"];
-  const existingPlayers = await getPlayers(id);
 
   // Stesso nome = STESSO giocatore: chi rientra (tab chiusa, telefono bloccato,
   // browser diverso, localStorage perso) riprende il SUO punteggio invece di
-  // creare un doppione a 0. Prima qui si tornava 409 e l'ospite era costretto a
-  // un nuovo nome — da cui punteggi "azzerati" e classifiche sballate.
-  const dup = existingPlayers.find(p => p.nickname.toLowerCase() === nickname.toLowerCase());
-  if (dup) {
-    const [reconnected] = await db.update(homePlayersTable)
-      .set({ isConnected: true })
-      .where(eq(homePlayersTable.id, dup.id))
-      .returning();
-    await broadcastState(id);
-    res.status(200).json(conGettoneGiocatore(session, reconnected ?? dup));
+  // creare un doppione a 0. MA il nome di chi sta giocando ADESSO non si prende
+  // senza il suo gettone (prima si consegnavano id e gettone a chiunque scrivesse
+  // lo stesso nome). I join simultanei passano uno alla volta (lock sulla serata),
+  // così lo stesso nome non crea doppioni.
+  const esito = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"home-join:" + id}))`);
+    const existingPlayers = await tx.select().from(homePlayersTable).where(eq(homePlayersTable.sessionId, id));
+    const dup = existingPlayers.find(p => p.nickname.toLowerCase() === nickname.toLowerCase());
+    if (dup) {
+      const decisione = decidiRientro({ gettoneValido: serataConGettoni(session.gameConfig) && gettoneGiocatoreOk(req, session, dup.id), connesso: dup.isConnected });
+      if (decisione === "occupato") return { tipo: "occupato" as const };
+      const [reconnected] = await tx.update(homePlayersTable).set({ isConnected: true }).where(eq(homePlayersTable.id, dup.id)).returning();
+      return { tipo: "rientra" as const, player: reconnected ?? dup };
+    }
+    const avatarColor = AVATAR_COLORS[existingPlayers.length % AVATAR_COLORS.length];
+    const [player] = await tx.insert(homePlayersTable).values({ sessionId: id, nickname, avatarColor }).returning();
+    return { tipo: "nuovo" as const, player: player! };
+  });
+  if (esito.tipo === "occupato") {
+    res.status(409).json({ error: "Questo nome è già in gioco in questa serata. Scegline un altro.", code: "NICKNAME_IN_USO" });
     return;
   }
-
-  const avatarColor = AVATAR_COLORS[existingPlayers.length % AVATAR_COLORS.length];
-  const [player] = await db.insert(homePlayersTable).values({ sessionId: id, nickname, avatarColor }).returning();
-
   await broadcastState(id);
-  res.status(201).json(conGettoneGiocatore(session, player!));
+  res.status(esito.tipo === "nuovo" ? 201 : 200).json(conGettoneGiocatore(session, esito.player));
 });
 
 // ── POST /home/sessions/:id/players/:pid/avatar — selfie del giocatore ─────────
@@ -1337,6 +1381,8 @@ router.post("/home/sessions/:id/answer", async (req, res): Promise<void> => {
   const session = await getSession(id);
   if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
   if (session.status !== "playing") { res.status(409).json({ error: "Sessione non in corso" }); return; }
+  if (!(await giocatoreAmmesso(req, res, session, playerId))) return;
+  if (!Number.isInteger(answerIndex) || answerIndex < 0 || answerIndex > 9) { res.status(400).json({ error: "Risposta non valida" }); return; }
 
   const payload = (session.roundPayload ?? {}) as Record<string, unknown>;
   if (String(payload.mode ?? "") !== "home-quiz") {
@@ -1359,12 +1405,11 @@ router.post("/home/sessions/:id/answer", async (req, res): Promise<void> => {
   // Use only CONNECTED players so disconnected/ghost devices don't block the reveal.
   const players = await getPlayers(id);
   const connectedPlayers = players.filter(p => p.isConnected);
-  const effectiveCount = connectedPlayers.length > 0
-    ? connectedPlayers.length
-    : players.length > 0 ? players.length : answerMap.size;
-  logger.info({ sessionId: id, round, answeredCount: answerMap.size, playerCount: players.length, effectiveCount, allAnswered: answerMap.size >= effectiveCount }, "[QuizTrace:server] answer count check");
+  const attesi = (connectedPlayers.length > 0 ? connectedPlayers : players).map(p => p.id);
+  const conteggio = hannoRispostoTutti(attesi, answerMap.keys());
+  logger.info({ sessionId: id, round, answeredCount: conteggio.risposte, playerCount: players.length, allAnswered: conteggio.tutti }, "[QuizTrace:server] answer count check");
 
-  if (effectiveCount > 0 && answerMap.size >= effectiveCount) {
+  if (conteggio.tutti) {
     logger.info({ sessionId: id, round }, "[QuizTrace:server] all answered — emitting home:quiz_all_answered");
     emitToRoom(homeRoom(id), "home:quiz_all_answered", {
       sessionId: id,
@@ -1380,54 +1425,12 @@ router.post("/home/sessions/:id/answer", async (req, res): Promise<void> => {
   res.json({ ok: true });
 });
 
-// ── POST /home/sessions/:id/saramusica-answer — first correct answer wins ──────
-router.post("/home/sessions/:id/saramusica-answer", async (req, res): Promise<void> => {
-  const id = String(req.params["id"]);
-  if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
-
-  const { playerId, choiceIndex, round } = req.body as { playerId: string; choiceIndex: number; round: number };
-  if (!playerId || typeof choiceIndex !== "number" || typeof round !== "number") {
-    res.status(400).json({ error: "Parametri mancanti" }); return;
-  }
-
-  const session = await getSession(id);
-  if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
-
-  const payload = (session.roundPayload ?? {}) as Record<string, unknown>;
-  if (String(payload.mode ?? "") !== "home-saramusica") {
-    res.status(400).json({ error: "Non in modalità SaraMusica" }); return;
-  }
-
-  // If this round already has a winner, reject late arrivals
-  if (!saraMusicaWinnerMap.has(id)) saraMusicaWinnerMap.set(id, new Map());
-  const roundWinners = saraMusicaWinnerMap.get(id)!;
-  if (roundWinners.has(round)) {
-    res.json({ ok: true, correct: false, alreadyWon: true }); return;
-  }
-
-  const correctChoiceIndex = Number(payload.correctChoiceIndex ?? 0);
-  const isCorrect = choiceIndex === correctChoiceIndex;
-
-  if (isCorrect) {
-    roundWinners.set(round, playerId);
-    const players = await getPlayers(id);
-    const winner = players.find(p => p.id === playerId);
-    if (winner) {
-      const pts = Number(payload.points ?? 100);
-      await db.update(homePlayersTable)
-        .set({ score: winner.score + pts })
-        .where(eq(homePlayersTable.id, playerId));
-      emitToRoom(homeRoom(id), "home:saramusica_winner", {
-        playerId,
-        nickname: winner.nickname,
-        round,
-        points: pts,
-      });
-      logger.info({ sessionId: id, playerId, round, pts }, "[SaraTrace:server] winner found");
-    }
-  }
-
-  res.json({ ok: true, correct: isCorrect });
+// ── POST /home/sessions/:id/saramusica-answer — SPENTA ─────────────────────────
+// Rotta residua della prima SaraMusica: il frontend non la chiama più (le risposte
+// passano dal flusso a domande con reveal sul server). Accettava qualunque round,
+// anche a gioco finito, e dava punti all'infinito: ora risponde 410.
+router.post("/home/sessions/:id/saramusica-answer", (_req, res): void => {
+  res.status(410).json({ error: "Rotta non più in uso: le risposte di SaraMusica passano dalla domanda in corso." });
 });
 
 // ── Quizzone Home Live Show routes ────────────────────────────────────────────
@@ -1588,9 +1591,18 @@ router.post("/home/sessions/:id/quiz/select-count", async (req, res): Promise<vo
       const usedQ = [...new Set([...(((cfgQ["usedContent"] ?? {}) as Record<string, string[]>)["quizzone"] ?? []), ...(await getGroupUsed(groupKeyQ, "quizzone"))])];
       // DEMO: IA spenta → domande solo dal banco (generateQuiz sincrono), poi filtro
       // anti-ripetizione sulle chiavi già viste. Full: generazione AI come prima.
+      // Banco del gruppo finito: si completa con domande già viste (come SaraMusica
+      // RC4b) invece di scendere a 4, 1, 0 domande e bloccare il gioco.
       const questions = sessionTier(session) === "demo"
-        ? generateQuiz(themeId, questionCount, difficulty).filter(q => !usedQ.includes(quizQuestionKey(q)))
+        ? (() => {
+            const tutte = generateQuiz(themeId, Math.max(questionCount * 4, 60), difficulty);
+            return riempiConGiaViste(tutte.filter(q => !usedQ.includes(quizQuestionKey(q))), tutte, questionCount, q => quizQuestionKey(q));
+          })()
         : await generateQuizAsync(themeId, questionCount, difficulty, usedQ);
+      if (questions.length === 0) {
+        await qzUpdate(id, { phase: "setup_theme", quizError: "Non ci sono domande per questo tema. Scegline un altro." });
+        return;
+      }
       logger.info({ sessionId: id, selectedTheme: themeId, requestedDifficulty: difficulty, questionCount, firstQuestionTheme: questions[0]?.theme, excluded: usedQ.length }, "[QUIZ_GENERATE]");
       const sess2 = await getSession(id);
       if (!sess2) return;
@@ -1658,6 +1670,7 @@ router.post("/home/sessions/:id/quiz/answer", async (req, res): Promise<void> =>
   if (!playerId || typeof answerIndex !== "number") { res.status(400).json({ error: "Parametri mancanti" }); return; }
   const session = await getSession(id);
   if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  if (!(await giocatoreAmmesso(req, res, session, playerId))) return;
   const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
   if (rp["mode"] !== "home-quizzone") { res.status(409).json({ error: "Non in modalità quizzone" }); return; }
   if (rp["phase"] !== "question") { res.status(409).json({ error: "Non in fase domanda" }); return; }
@@ -1677,9 +1690,7 @@ router.post("/home/sessions/:id/quiz/answer", async (req, res): Promise<void> =>
   // Update answeredCount in payload and check if all answered
   const players = await getPlayers(id);
   const connected = players.filter(p => p.isConnected);
-  const effectiveCount = connected.length > 0 ? connected.length : players.length;
-  const answeredCount = qMap.size;
-  const allAnswered = effectiveCount > 0 && answeredCount >= effectiveCount;
+  const { risposte: answeredCount, tutti: allAnswered } = hannoRispostoTutti((connected.length > 0 ? connected : players).map(p => p.id), qMap.keys());
   await qzUpdate(id, { answeredCount, allAnsweredForCurrent: allAnswered });
   // Quando risponde l'ULTIMO giocatore si rivela SUBITO (auto-reveal) mostrando i
   // nomi e le risposte scelte da tutti — poi la fase resta "reveal" e aspetta che il
@@ -2028,6 +2039,7 @@ router.post("/home/sessions/:id/saramusica/answer", async (req, res): Promise<vo
   if (!playerId || typeof answerIndex !== "number") { res.status(400).json({ error: "Parametri mancanti" }); return; }
   const session = await getSession(id);
   if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
+  if (!(await giocatoreAmmesso(req, res, session, playerId))) return;
   const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
   if (rp["mode"] !== "home-saramusica") { res.status(409).json({ error: "Non in modalità saramusica" }); return; }
   if (rp["phase"] !== "question") { res.status(409).json({ error: "Non in fase domanda" }); return; }
@@ -2046,9 +2058,7 @@ router.post("/home/sessions/:id/saramusica/answer", async (req, res): Promise<vo
   qMap.set(playerId, { answerIndex, answeredAt: Date.now() });
   const players = await getPlayers(id);
   const connected = players.filter(p => p.isConnected);
-  const effectiveCount = connected.length > 0 ? connected.length : players.length;
-  const answeredCount = qMap.size;
-  const allAnswered = effectiveCount > 0 && answeredCount >= effectiveCount;
+  const { risposte: answeredCount, tutti: allAnswered } = hannoRispostoTutti((connected.length > 0 ? connected : players).map(p => p.id), qMap.keys());
   // Auto-reveal quando risponde l'ultimo: si mostra subito la risposta (con nomi e
   // scelte di tutti) e si aspetta il presentatore per avanzare.
   await smUpdate(id, { answeredCount, allAnsweredForCurrent: allAnswered });
@@ -2255,7 +2265,15 @@ router.post("/home/sessions/:id/saramusica/duel/vote", async (req, res): Promise
   const { playerId, choice } = req.body as { playerId: string; choice: "A" | "B" };
   if (!playerId || (choice !== "A" && choice !== "B")) { res.status(400).json({ error: "playerId e choice (A/B) obbligatori" }); return; }
   if (duel.challengers.some(c => c.id === playerId)) { res.status(403).json({ error: "Gli sfidanti non votano" }); return; }
-  await smDuelUpdate(id, { votes: { ...duel.votes, [playerId]: choice } });
+  if (!(await giocatoreAmmesso(req, res, session, playerId))) return;
+  // Voti contemporanei: lock di riga, si aggiunge solo il proprio (prima l'ultimo cancellava gli altri).
+  const aperto = await mutaRoundPayload(id, (rp) => {
+    const d = rp ? getSmDuel(rp) : null;
+    if (!d || d.phase !== "vote") return { risultato: false };
+    return { patch: { duel: { ...d, votes: { ...d.votes, [playerId]: choice } } }, risultato: true };
+  });
+  if (!aperto) { res.status(409).json({ error: "Voto chiuso" }); return; }
+  await broadcastState(id);
   res.json({ ok: true });
 });
 
@@ -2362,11 +2380,17 @@ router.post("/home/sessions/:id/adult/confirm-18", async (req, res): Promise<voi
   if (rp["mode"] !== "home-adult") { res.status(409).json({ error: "Non in modalità adult" }); return; }
   const { playerId, is18 } = req.body as { playerId: string; is18: boolean };
   if (!playerId) { res.status(400).json({ error: "playerId mancante" }); return; }
-  const adults18 = { ...((rp["adults18"] ?? {}) as Record<string, boolean>) };
-  if (is18) adults18[playerId] = true; else delete adults18[playerId];
+  // Solo il giocatore stesso, col SUO gettone, si dichiara maggiorenne.
+  if (!(await giocatoreAmmesso(req, res, session, playerId))) return;
   const players = await getPlayers(id);
-  await adultUpdate(id, { adults18, all18: allAdults18({ ...rp, adults18 }, players) });
-  res.json({ ok: true, all18: allAdults18({ ...rp, adults18 }, players) });
+  const all18 = await mutaRoundPayload(id, (cur) => {
+    const adults18 = { ...(((cur ?? {})["adults18"] ?? {}) as Record<string, boolean>) };
+    if (is18) adults18[playerId] = true; else delete adults18[playerId];
+    const tutti = allAdults18({ ...(cur ?? {}), adults18 }, players);
+    return { patch: { adults18, all18: tutti }, risultato: tutti };
+  });
+  await broadcastState(id);
+  res.json({ ok: true, all18 });
 });
 
 // POST /adult/favorite — SEGRETO: il giocatore segna/toglie un preferito.
@@ -2382,12 +2406,17 @@ router.post("/home/sessions/:id/adult/favorite", async (req, res): Promise<void>
   if (rp["mode"] !== "home-adult") { res.status(409).json({ error: "Non in modalità adult" }); return; }
   const { voterId, targetId, on } = req.body as { voterId: string; targetId: string; on: boolean };
   if (!voterId || !targetId || voterId === targetId) { res.status(400).json({ error: "Dati non validi" }); return; }
-  const favorites = { ...((rp["favorites"] ?? {}) as Record<string, string[]>) };
-  const set = new Set(favorites[voterId] ?? []);
-  if (on) set.add(targetId); else set.delete(targetId);
-  favorites[voterId] = [...set];
-  await adultUpdate(id, { favorites });
-  res.json({ ok: true, mine: favorites[voterId] }); // SOLO i propri preferiti
+  // Solo il telefono di chi vota (col suo gettone) legge o cambia i SUOI preferiti.
+  if (!(await giocatoreAmmesso(req, res, session, voterId))) return;
+  const mine = await mutaRoundPayload(id, (cur) => {
+    const favorites = { ...(((cur ?? {})["favorites"] ?? {}) as Record<string, string[]>) };
+    const set = new Set(favorites[voterId] ?? []);
+    if (on) set.add(targetId); else set.delete(targetId);
+    favorites[voterId] = [...set];
+    return { patch: { favorites }, risultato: favorites[voterId] };
+  });
+  await broadcastState(id);
+  res.json({ ok: true, mine }); // SOLO i propri preferiti
 });
 
 // POST /adult/consent — player records participation preference
@@ -2425,10 +2454,12 @@ router.post("/home/sessions/:id/adult/spin", async (req, res): Promise<void> => 
   // OPT-OUT (Andrea): nella bottiglia compaiono TUTTI i presenti, tranne chi ha
   // scelto esplicitamente "Guardo" o "Esco". Ricalcolato a OGNI giro → chi si
   // aggiunge dopo entra subito nella ruota (prima restava fuori).
-  const activePlayers = players.filter(p => consentMap[p.id] !== "watch" && consentMap[p.id] !== "leave").map(p => p.id);
-  const spectatorPlayers = players.filter(p => !activePlayers.includes(p.id)).map(p => p.id);
-  if (activePlayers.length === 0) { res.status(400).json({ error: "Nessun giocatore attivo" }); return; }
+  // ...e chi ha RIFIUTATO la salita di livello resta spettatore finché quel livello
+  // (o uno più alto) è in vigore: prima lo spin lo rimetteva subito in gioco.
   const level = Number(rp["level"] ?? 1);
+  const { attivi: activePlayers, spettatori: spectatorPlayers } = attiviAdult(
+    players.map(p => p.id), consentMap, (rp["levelDeclines"] ?? {}) as Record<string, number>, level);
+  if (activePlayers.length === 0) { res.status(400).json({ error: "Nessun giocatore attivo" }); return; }
   const usedIds = (rp["usedChallengeIds"] ?? []) as string[];
   const roundNumber = Number(rp["roundNumber"] ?? 0) + 1;
   // Preferiti SEGRETI: pesano la bottiglia. Chi è più desiderato (favorito da più
@@ -2714,24 +2745,30 @@ function scheduleCoppieThemeAutoAdvance(sessionId: string, themeTimerEndsAt: str
     const sess = await getSession(sessionId); if (!sess) return;
     const rp = (sess.roundPayload ?? {}) as Record<string, unknown>;
     if (rp["mode"] !== "home-coppie" || String(rp["themePhase"] ?? "") !== "suggestion") return;
-    // Auto-select: pick most-voted theme or fallback
-    const proposed = (rp["proposedThemes"] ?? []) as { themeId: string; playerId: string }[];
-    const available = (rp["availableSets"] ?? []) as { id: string; name: string }[];
-    const tally: Record<string, number> = {};
-    for (const p of proposed) tally[p.themeId] = (tally[p.themeId] ?? 0) + 1;
-    const topThemeId = Object.entries(tally).sort((a, b) => b[1] - a[1])[0]?.[0];
-    const chosenSet = available.find(s => s.id === topThemeId) ?? available[0];
-    const patch: Record<string, unknown> = { themePhase: "playing", themeTimerEndsAt: null };
-    if (chosenSet) {
-      patch["selectedTheme"] = { id: chosenSet.id, name: chosenSet.name };
-      patch["category"] = chosenSet.name;
+    // Allo scadere si sceglie DAVVERO un tema e si costruiscono le carte, come fa
+    // select-theme (prima: il timer cercava proposedThemes[].themeId, che le proposte
+    // {id,text} dei giocatori non hanno, e il gioco partiva con 0 carte).
+    const scelta = sceltaTemaCoppie(
+      (rp["proposedThemes"] ?? []) as { text?: string; themeId?: string }[],
+      (rp["availableSets"] ?? []) as { id: string; name: string }[],
+    );
+    const players = await getPlayers(sessionId);
+    let built: CoppiePayload;
+    if (scelta.tipo === "set") {
+      built = await loadCoppieByTheme(scelta.id) as CoppiePayload;
+    } else {
+      const testo = scelta.tipo === "testo" ? scelta.testo : (Object.keys(THEMED_WORD_BANKS)[Math.floor(Math.random() * Object.keys(THEMED_WORD_BANKS).length)] ?? "cibo");
+      const bankKey = Object.keys(THEMED_WORD_BANKS).find(k => testo.toLowerCase().includes(k.toLowerCase()) || k.toLowerCase().includes(testo.toLowerCase()));
+      built = buildCoppieFromWords((bankKey ? THEMED_WORD_BANKS[bankKey] : FALLBACK_COPPIE_ITEMS)!, Number(rp["roundIndex"] ?? 0), testo);
     }
+    const newPayload = withCoppieTurn(await enrichCoppieImages(built), players);
     const sess2 = await getSession(sessionId); if (!sess2) return;
     const rp2 = (sess2.roundPayload ?? {}) as Record<string, unknown>;
-    await db.update(homeSessionsTable).set({ roundPayload: { ...rp2, ...patch } }).where(eq(homeSessionsTable.id, sessionId));
+    if (rp2["mode"] !== "home-coppie" || String(rp2["themePhase"] ?? "") !== "suggestion") return; // l'host ha già scelto
+    await db.update(homeSessionsTable).set({ roundPayload: { ...newPayload, themeTimerEndsAt: null } as RoundPayload }).where(eq(homeSessionsTable.id, sessionId));
     const updated = await getSession(sessionId);
-    const players = await getPlayers(sessionId);
     if (updated) emitHomeState(sessionId, updated, players);
+    const chosenSet = scelta;
     logger.info({ sessionId, chosenSet }, "[COPPIE] theme timer auto-advanced → playing");
   }, delay);
   coppieThemeTimers.set(sessionId, t);
@@ -2792,13 +2829,14 @@ router.post("/home/sessions/:id/adult/vote", async (req, res): Promise<void> => 
   if (rp["mode"] !== "home-adult" || String(rp["phase"]) !== "voting") { res.status(409).json({ error: "Votazione non aperta" }); return; }
   const selectedId = String(rp["selectedPlayerId"] ?? "");
   const { playerId, intensity, courage, show, performance } = req.body as { playerId: string; intensity: number; courage: number; show: number; performance: number };
+  if (!(await giocatoreAmmesso(req, res, session, playerId))) return;
   // Performer cannot vote for themselves
   if (playerId === selectedId) {
     req.log.info({ sessionId: id, playerId }, "[ADULT_VOTE] vote_rejected performer");
     res.status(403).json({ error: "Non puoi votare la tua performance" }); return;
   }
   // Validate stars (1–5 each)
-  if ([intensity, courage, show, performance].some(v => typeof v !== "number" || v < 1 || v > 5)) {
+  if ([intensity, courage, show, performance].some(v => typeof v !== "number" || !Number.isInteger(v) || v < 1 || v > 5)) {
     req.log.info({ sessionId: id, playerId }, "[ADULT_VOTE] vote_rejected invalid");
     res.status(400).json({ error: "Stelle non valide (1–5 per categoria)" }); return;
   }
@@ -2808,7 +2846,11 @@ router.post("/home/sessions/:id/adult/vote", async (req, res): Promise<void> => 
     req.log.info({ sessionId: id, playerId }, "[ADULT_VOTE] vote_rejected late");
     res.status(409).json({ error: "Tempo scaduto" }); return;
   }
-  const votes = { ...((rp["votes"] ?? {}) as Record<string, StarVote>), [playerId]: { intensity, courage, show, performance } };
+  // Voti contemporanei: lock di riga, si aggiunge solo il proprio voto.
+  const votes = await mutaRoundPayload(id, (cur) => {
+    const v = { ...(((cur ?? {})["votes"] ?? {}) as Record<string, StarVote>), [playerId]: { intensity, courage, show, performance } };
+    return { patch: { votes: v }, risultato: v };
+  });
   req.log.info({ sessionId: id, playerId, intensity, courage, show, performance }, "[ADULT_VOTE] vote_received");
   const players = await getPlayers(id);
   const voterIds = [...new Set([...(rp["activePlayers"] ?? []) as string[], ...(rp["spectatorPlayers"] ?? []) as string[]])].filter(v => v !== selectedId);
@@ -2871,6 +2913,7 @@ async function _resolveAdultEscalation(sessionId: string): Promise<void> {
       escalationVotes: votes, phase: "result", escalationTarget: null,
       level: targetLevel, levelLabel: levelObj?.label ?? `Livello ${targetLevel}`, levelColor: levelObj?.color ?? "#F87171",
       activePlayers: approved, spectatorPlayers: [...((rp["spectatorPlayers"] ?? []) as string[]), ...declined],
+      levelDeclines: registraRifiuti((rp["levelDeclines"] ?? {}) as Record<string, number>, declined, targetLevel),
       usedChallengeIds: [],
     });
   }
@@ -2917,9 +2960,13 @@ router.post("/home/sessions/:id/adult/level-vote", async (req, res): Promise<voi
   const rp = (session.roundPayload ?? {}) as Record<string, unknown>;
   if (rp["mode"] !== "home-adult" || String(rp["phase"]) !== "escalation") { res.status(409).json({ error: "Escalation non aperta" }); return; }
   const { playerId, approve } = req.body as { playerId: string; approve: boolean };
-  const escalationVotes = { ...((rp["escalationVotes"] ?? {}) as Record<string, boolean>), [playerId]: approve };
+  if (!(await giocatoreAmmesso(req, res, session, playerId))) return;
   const activePlayers = (rp["activePlayers"] ?? []) as string[];
-  await adultUpdate(id, { escalationVotes });
+  const escalationVotes = await mutaRoundPayload(id, (cur) => {
+    const v = { ...(((cur ?? {})["escalationVotes"] ?? {}) as Record<string, boolean>), [playerId]: approve === true };
+    return { patch: { escalationVotes: v }, risultato: v };
+  });
+  await broadcastState(id);
   // Tutti hanno votato → risolvi subito (il timer di sicurezza copre chi non vota).
   if (activePlayers.length > 0 && activePlayers.every(pid => escalationVotes[pid] !== undefined)) {
     await _resolveAdultEscalation(id);
@@ -2987,15 +3034,8 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
   // dedicata (accanto a Home/Live/Burraco): in una "stanza Lockdown"
   // (selectedGames===['lockdown']) si avvia comunque, anche senza Full — altrimenti
   // resterebbe appeso (era il bug del caricamento perenne).
-  {
-    const cfg0 = (session.gameConfig ?? {}) as Record<string, unknown>;
-    const sel0 = (cfg0["selectedGames"] as string[] | undefined) ?? [];
-    const isLockdownRoom = sel0.length === 1 && sel0[0] === "lockdown";
-    const blocked = ["adult-only", "karaoke-battle", "lockdown"].includes(gameSlug)
-      && !(gameSlug === "lockdown" && isLockdownRoom);
-    if (sessionTier(session) === "demo" && blocked) {
-      res.status(403).json({ error: "Disponibile solo in modalità Full" }); return;
-    }
+  if (bloccatoInDemo(sessionTier(session), gameSlug, ((session.gameConfig ?? {}) as Record<string, unknown>)["selectedGames"])) {
+    res.status(403).json({ error: "Disponibile solo in modalità Full" }); return;
   }
 
   const cfg = (session.gameConfig ?? {}) as Record<string, unknown>;
@@ -3478,6 +3518,7 @@ const PAUSE_SHIFT_KEYS = [
   "questionEndsAt", "questionStartedAt", "roundEndsAt", "roundStartedAt",
   "votingEndsAt", "choiceDeadlineAt", "challengeEndsAt", "themeTimerEndsAt",
   "spinStartedAt", "missionStartedAt", "timerStartedAt", "bookingEndsAt",
+  "danceStartedAt", "danceEndsAt",
 ];
 
 function clearAllSessionTimers(id: string): void {
@@ -3508,6 +3549,14 @@ function rescheduleAutoAdvance(id: string, rp: Record<string, unknown>): void {
     if (rp["challengeEndsAt"])   scheduleAdultChallengeAutoExpire(id, String(rp["challengeEndsAt"]));
   } else if (mode === "home-coppie" && rp["themeTimerEndsAt"]) {
     scheduleCoppieThemeAutoAdvance(id, String(rp["themeTimerEndsAt"]));
+  } else if (mode === "home-ballo") {
+    // La manche in corso si richiude a fine tempo anche dopo una pausa (prima il
+    // timer fermato dalla pausa non ripartiva e senza TV la manche non finiva).
+    const fine = scadenzaMancheDaRiprendere(rp);
+    if (fine !== null) {
+      const ex = balloMancheTimers.get(id); if (ex) clearTimeout(ex);
+      balloMancheTimers.set(id, setTimeout(() => { void finishBalloManche(id).catch(() => {}); }, Math.max(500, fine - Date.now()) + 500));
+    }
   }
 }
 
@@ -3773,6 +3822,10 @@ router.post("/home/sessions/:id/start", async (req, res): Promise<void> => {
   if (!session) { res.status(404).json({ error: "Non trovata" }); return; }
 
   const gameSlug = body.gameSlug ?? "quizzone";
+  // Stesso blocco della vetrina demo di select-game (prima /start lo aggirava).
+  if (bloccatoInDemo(sessionTier(session), gameSlug, ((session.gameConfig ?? {}) as Record<string, unknown>)["selectedGames"])) {
+    res.status(403).json({ error: "Disponibile solo in modalità Full" }); return;
+  }
   const preloadedRounds = await loadGameRounds(gameSlug);
   const firstRound = { ...(preloadedRounds[0] ?? {}), roundStartedAt: new Date().toISOString() };
   const cfg = (session.gameConfig ?? {}) as Record<string, unknown>;
@@ -3966,12 +4019,16 @@ router.post("/home/sessions/:id/flow/confirm", async (req, res): Promise<void> =
 
   const selectedTheme = rp["selectedTheme"] as { id: string; name: string } | null;
 
-  // Move to confirm phase (brief transition shown to TV/phones)
+  // Move to confirm phase (brief transition shown to TV/phones). Due conferme
+  // contemporanee: sotto lock di riga passa solo la prima (prima partivano due giochi).
+  const vinta = await mutaRoundPayload(id, (cur) =>
+    cur && cur["mode"] === "home-flow" && cur["gameFlowPhase"] === "booking"
+      ? { patch: { gameFlowPhase: "confirm", bookedPlayers: booked }, risultato: true }
+      : { risultato: false });
+  if (!vinta) { res.status(409).json({ error: "Già in avvio" }); return; }
   logger.info({ sessionId: id, bookedCount: booked.length }, "[BalloFlow] confirm");
   const confirmRp: RoundPayload = { ...rp, gameFlowPhase: "confirm", bookedPlayers: booked } as RoundPayload;
-  const [confirmUpdated] = await db.update(homeSessionsTable)
-    .set({ roundPayload: confirmRp })
-    .where(eq(homeSessionsTable.id, id)).returning();
+  const confirmUpdated = await getSession(id);
   emitHomeState(id, confirmUpdated, players);
   res.json({ ok: true });
 
@@ -4177,7 +4234,7 @@ async function autoScoreBalloTournament(
   sessionId: string,
   players: { id: string; score: number; nickname: string }[],
   payload: Record<string, unknown>,
-): Promise<void> {
+): Promise<string | null> {
   const splitPrize = Boolean(payload["splitPrize"]);
   const prizePoints = Number(payload["prizePoints"] ?? 150);
   const teams = (payload["teams"] ?? []) as BalloTeam[];
@@ -4191,19 +4248,16 @@ async function autoScoreBalloTournament(
       emitToRoom(`home:${sessionId}`, "home:ballo_result", {
         winnerId: null, winnerNickname: null, points: prizePoints, energies: {}, teamResult: null,
       });
-      return;
+      return null;
     }
-    let winnerId = "", maxEnergy = -1;
-    for (const [pid, e] of Object.entries(energies)) {
-      if (e > maxEnergy) { maxEnergy = e; winnerId = pid; }
-    }
+    const winnerId = vincitoreSolo(energies, players.map(p => p.id)) ?? "";
     const winner = players.find((p) => p.id === winnerId);
     if (!winner) {
       logger.warn({ sessionId, winnerId }, "[BalloCrashGuard] solo winner id not in players list — emitting null result so TV transitions to result phase");
       emitToRoom(`home:${sessionId}`, "home:ballo_result", {
         winnerId: null, winnerNickname: null, points: prizePoints, energies, teamResult: null,
       });
-      return;
+      return null;
     }
     const newScore = winner.score + prizePoints;
     await db.update(homePlayersTable).set({ score: newScore })
@@ -4216,7 +4270,7 @@ async function autoScoreBalloTournament(
       energies,
       teamResult: null,
     });
-    return;
+    return winnerId;
   }
 
   // Stages 2/3: team competition — sum energy per team, winning team splits prize
@@ -4233,7 +4287,7 @@ async function autoScoreBalloTournament(
       winnerId: null, winnerNickname: null, points: prizePoints, energies,
       teamResult: null,
     });
-    return;
+    return null;
   }
 
   const perPlayer = Math.floor(prizePoints / winningEntry.team.players.length);
@@ -4258,6 +4312,7 @@ async function autoScoreBalloTournament(
       })),
     },
   });
+  return null;
 }
 
 // ── POST /home/sessions/:id/ballo-round-end ───────────────────────────────────
@@ -4279,12 +4334,13 @@ router.post("/home/sessions/:id/ballo-round-end", async (req, res): Promise<void
   }
 
   const players = await getPlayers(id);
-  await autoScoreBalloTournament(id, players, rp);
+  const vincitore = await autoScoreBalloTournament(id, players, rp);
 
-  // Persist the result phase + store stage1WinnerId for ballo-stage-next
+  // Persist the result phase + store stage1WinnerId for ballo-stage-next: il
+  // capitano della squadra A è chi ha VINTO lo stadio 1 (prima: il primo prenotato).
   const energies = {}; // already consumed by autoScoreBalloTournament
   const stage1WinnerId = Number(rp["balloStage"] ?? 1) === 1
-    ? String((rp["bookedPlayers"] as BalloTeamPlayer[] ?? [])[0]?.id ?? "")
+    ? String(vincitore ?? (rp["bookedPlayers"] as BalloTeamPlayer[] ?? [])[0]?.id ?? "")
     : String(rp["stage1WinnerId"] ?? ""); // carry forward
 
   const resultRp = { ...rp, balloPhase: "result", stage1WinnerId, lastEnergies: energies };
@@ -4806,6 +4862,11 @@ router.post("/home/sessions/:id/wordback/select-mode", async (req, res): Promise
     res.status(400).json({ error: "mode deve essere 'preset' o 'jonny'" }); return;
   }
 
+  // Jonny = generazione AI: come gli altri contenuti AI, solo in Full.
+  if (setupMode === "jonny" && sessionTier(session) === "demo") {
+    res.status(403).json({ error: "Jonny crea le parole con l'AI: disponibile solo in modalità Full" }); return;
+  }
+
   if (setupMode === "preset") {
     const updated = { ...rp, phase: "setup_preset" };
     const [s] = await db.update(homeSessionsTable).set({ roundPayload: updated as unknown as RoundPayload }).where(eq(homeSessionsTable.id, id)).returning();
@@ -4856,16 +4917,17 @@ router.post("/home/sessions/:id/wordback/jonny-propose", async (req, res): Promi
   const { theme, playerId, nickname } = req.body as { theme?: string; playerId?: string; nickname?: string };
   if (!theme || !theme.trim()) { res.status(400).json({ error: "theme obbligatorio" }); return; }
   const trimmed = theme.trim().slice(0, 40);
-  const existing = ((rp["proposals"] as Array<{ theme: string }>) ?? []);
-  // Max 10 proposals, deduplicate by lowercase
-  if (existing.length >= 10 || existing.some(p => p.theme.toLowerCase() === trimmed.toLowerCase())) {
-    res.json({ ok: true }); return;
-  }
-  const proposals = [...existing, { theme: trimmed, playerId: playerId ?? "host", nickname: nickname ?? "?" }];
-  const updated = { ...rp, proposals };
-  const [s] = await db.update(homeSessionsTable).set({ roundPayload: updated as unknown as RoundPayload }).where(eq(homeSessionsTable.id, id)).returning();
-  const players = await getPlayers(id);
-  emitHomeState(id, s, players);
+  // Proposte contemporanee: lock di riga, si aggiunge solo la propria (prima ne
+  // restava una sola delle quattro). Max 10, senza doppioni (minuscole).
+  const proposals = await mutaRoundPayload(id, (cur) => {
+    const c = cur ?? {};
+    const existing = ((c["proposals"] as Array<{ theme: string }>) ?? []);
+    if (c["mode"] !== "home-wordback-setup" || c["phase"] !== "setup_jonny_input") return { risultato: existing };
+    if (existing.length >= 10 || existing.some(p => p.theme.toLowerCase() === trimmed.toLowerCase())) return { risultato: existing };
+    const nuove = [...existing, { theme: trimmed, playerId: playerId ?? "host", nickname: nickname ?? "?" }];
+    return { patch: { proposals: nuove }, risultato: nuove };
+  });
+  await broadcastState(id);
   res.json({ ok: true, proposals });
 });
 

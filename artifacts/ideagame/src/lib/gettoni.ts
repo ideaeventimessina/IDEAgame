@@ -22,8 +22,15 @@ function leggi(chiave: string): string | null {
 }
 
 export const ricordaRegiaCasino = (sessionId: string, masterCode: string) => salva(K_CASINO + sessionId, masterCode.toUpperCase());
+/** Header della regia del casinò per le chiamate fuori da /gestione/casino/sessions (ponte Suite). */
+export const headerRegiaCasino = (sessionId: string): Record<string, string> => {
+  const v = leggi(K_CASINO + sessionId.toLowerCase()) ?? leggi(K_CASINO + sessionId);
+  return v ? { "x-master-code": v } : {};
+};
 export const ricordaHostHome = (sessionId: string, token: string) => salva(K_HOST + sessionId, token);
 export const ricordaPlayerHome = (sessionId: string, token: string) => salva(K_PLAYER + sessionId, token);
+/** Gettone del giocatore di questa serata (va anche nel socket: home:player_register). */
+export const gettonePlayerHome = (sessionId: string): string | null => leggi(K_PLAYER + sessionId);
 
 const UUID = "([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})";
 const RE_CASINO = new RegExp(`/api/gestione/casino/sessions/${UUID}`, "i");
