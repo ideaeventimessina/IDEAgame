@@ -28,9 +28,6 @@ if (IS_PS4 && typeof document !== 'undefined') {
 import Hub from "@/pages/Hub";
 import HomeV4 from "@/pages/HomeV4";
 import ModeSelect from "@/pages/ModeSelect";
-import Splash from "@/pages/Splash";
-import LanguageSelect from "@/pages/LanguageSelect";
-import TenantSelect from "@/pages/TenantSelect";
 import LoginPage from "@/pages/Login";
 import Cockpit from "@/pages/Cockpit";
 import ProjectorStandby from "@/pages/ProjectorStandby";
@@ -49,11 +46,10 @@ const GestioneLockdown = lazy(() => import("@/pages/GestioneLockdown"));
 const JoinPage       = lazy(() => import("@/pages/JoinPage"));
 
 // Game boards (event/party mode)
-const GameStage      = lazy(() => import("@/pages/GameStage"));
 const Lobby          = lazy(() => import("@/pages/Lobby"));
 const Scoreboard     = lazy(() => import("@/pages/Scoreboard"));
 const Player         = lazy(() => import("@/pages/Player"));
-const Permissions    = lazy(() => import("@/pages/Permissions"));
+const ResetPassword  = lazy(() => import("@/pages/ResetPassword"));
 const GameCoppie     = lazy(() => import("@/pages/GameCoppie"));
 const GameQuizzone   = lazy(() => import("@/pages/GameQuizzone"));
 const GamePercorso   = lazy(() => import("@/pages/GamePercorso"));
@@ -161,10 +157,14 @@ function Router() {
             Le pagine vecchie (Cockpit, LiveControl, Game*, PresenterLive…) restano nel
             repo "da parte" ma non sono più raggiungibili. */}
         <Route path="/cockpit" component={ToLive} />
-        <Route path="/splash" component={Splash} />
-        <Route path="/language" component={LanguageSelect} />
-        <Route path="/tenant" component={TenantSelect} />
+        {/* Onboarding finto ritirato (21/11/2026): splash, lingua e scelta tenant erano
+            pagine dimostrative con dati inventati. La lingua si sceglie nel login, il
+            tenant viene dall'account. I vecchi link portano alle pagine vere. */}
+        <Route path="/splash">{() => { window.location.replace('/'); return null; }}</Route>
+        <Route path="/language">{() => { window.location.replace('/login'); return null; }}</Route>
+        <Route path="/tenant">{() => { window.location.replace('/login'); return null; }}</Route>
         <Route path="/login" component={LoginPage} />
+        <Route path="/reset-password" component={ResetPassword} />
         <Route path="/event-setup" component={ToLive} />
         <Route path="/control" component={ToLive} />
         <Route path="/demo" component={Demo} />
@@ -181,7 +181,9 @@ function Router() {
         <Route path="/game/:slug" component={ToLive} />
         <Route path="/lobby" component={ToLive} />
         <Route path="/scoreboard" component={ToLive} />
-        <Route path="/play/permissions" component={Permissions} />
+        {/* La schermata permessi era finta (non chiedeva nulla): i permessi veri
+            (microfono, movimento) li chiede il telefono entrando in /home/join. */}
+        <Route path="/play/permissions">{() => { window.location.replace('/home/join'); return null; }}</Route>
         <Route path="/play" component={ToLive} />
         <Route path="/home-setup" component={HomeSetupPage} />
         <Route path="/home-lobby/:code" component={HomeLobbyPage} />

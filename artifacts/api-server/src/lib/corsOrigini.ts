@@ -33,3 +33,41 @@ export function corsPerRichiesta(req: Request, cb: (err: Error | null, options?:
 }
 
 export const _origineAmmessa = origineAmmessa;
+
+/* ─── CSRF: decisione pura sull'origine (usata da middlewares/csrf.ts) ───────── */
+export const COOKIE_SESSIONE = "ideagame.sid";
+const METODI_SICURI = new Set(["GET", "HEAD", "OPTIONS"]);
+
+export type RichiestaCsrf = {
+  method: string;
+  cookie?: string | undefined;
+  origin?: string | undefined;
+  referer?: string | undefined;
+  secFetchSite?: string | undefined;
+  host?: string | undefined;
+};
+
+export type EsitoCsrf = { ok: true } | { ok: false; motivo: string };
+
+function haCookieSessione(cookie: string | undefined): boolean {
+  if (!cookie) return false;
+  return cookie.split(";").some((c) => c.trim().startsWith(`${COOKIE_SESSIONE}=`));
+}
+
+/** Decisione pura (testabile senza server). */
+export function decidiCsrf(r: RichiestaCsrf): EsitoCsrf {
+  if (METODI_SICURI.has(r.method.toUpperCase())) return { ok: true };
+  if (!haCookieSessione(r.cookie)) return { ok: true };
+  if (r.origin) {
+    if (r.origin === "null") return { ok: false, motivo: "origine opaca" };
+    return origineAmmessa(r.origin, r.host) ? { ok: true } : { ok: false, motivo: "origine non ammessa" };
+  }
+  if (r.referer) {
+    let origine: string;
+    try { origine = new URL(r.referer).origin; } catch { return { ok: false, motivo: "referer non valido" }; }
+    return origineAmmessa(origine, r.host) ? { ok: true } : { ok: false, motivo: "referer non ammesso" };
+  }
+  if ((r.secFetchSite ?? "").toLowerCase() === "cross-site") return { ok: false, motivo: "richiesta cross-site" };
+  return { ok: true };
+}
+

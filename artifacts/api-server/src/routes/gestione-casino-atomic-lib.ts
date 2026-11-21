@@ -222,3 +222,34 @@ export function putTable<Cfg extends Record<string, unknown>>(
   const prev = (cfg[bucket] ?? {}) as Record<string, unknown>;
   return { ...cfg, [bucket]: { ...prev, [table.id]: table } };
 }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   DOTAZIONE INIZIALE — le fiche di partenza passano dal LIBRO MASTRO
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/** Etichetta della riga di ledger con cui entrano le fiche iniziali. */
+export const KIND_DOTAZIONE = "buyin";
+
+/**
+ * Persistenza minima dell'iscrizione dentro UNA transazione: crea la riga del
+ * giocatore (saldo 0) e muove fiche col ledger come `FishTx.pay`.
+ */
+export interface IscrizioneTx extends FishTx {
+  creaGiocatore(): Promise<string>;
+}
+
+/**
+ * Iscrive un giocatore: nasce con saldo 0 e le fiche iniziali entrano con una
+ * riga "buyin" nel libro mastro, come ogni altro movimento. Prima il saldo veniva
+ * scritto direttamente nell'INSERT del giocatore e il ledger non lo sapeva: la
+ * somma dei movimenti non tornava col saldo (mancavano proprio le fiche iniziali).
+ * Dotazione 0 (es. base già concessa a un ospite che torna) = nessuna riga.
+ */
+export async function iscriviConDotazione(tx: IscrizioneTx, dotazione: number): Promise<{ playerId: string; saldo: number }> {
+  const playerId = await tx.creaGiocatore();
+  const fiche = Number.isFinite(dotazione) ? Math.max(0, Math.round(dotazione)) : 0;
+  if (fiche === 0) return { playerId, saldo: 0 };
+  const saldo = await tx.pay({ playerId, delta: fiche, kind: KIND_DOTAZIONE, tableId: null });
+  if (saldo == null) throw new Error("dotazione iniziale non registrata");
+  return { playerId, saldo };
+}

@@ -21,3 +21,13 @@ export const loginLimiter = rateLimit({
   message: { error: "Troppi tentativi di login. Riprova più tardi." },
   skip: () => process.env["NODE_ENV"] === "test",
 });
+
+/** 5 richieste di reset password per IP ogni 15 min (anti-spam di email e anti-forza bruta sui token) */
+export const passwordResetLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Troppe richieste di reset. Riprova più tardi." },
+  skip: () => process.env["NODE_ENV"] === "test",
+});

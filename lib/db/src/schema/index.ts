@@ -38,3 +38,4 @@ export * from "./live";
 export * from "./gestione-burraco";
 export * from "./gestione-casino";
 export * from "./ideax";
+export * from "./auth-sessions";

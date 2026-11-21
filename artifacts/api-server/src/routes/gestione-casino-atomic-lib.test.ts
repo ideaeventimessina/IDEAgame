@@ -13,6 +13,7 @@ import assert from "node:assert/strict";
 import {
   type FishTx, type FishMove,
   payAll, rouletteWinMoves, rouletteCanSpin, alreadySettled, putTable,
+  iscriviConDotazione, KIND_DOTAZIONE, type IscrizioneTx,
 } from "./gestione-casino-atomic-lib.ts";
 
 type RTable = { phase: string; bets: Array<{ playerId: string; kind: string; numbers: number[]; amount: number }>; result: number | null };
@@ -209,4 +210,48 @@ test("7½: esiti — pareggio vince il banco, banco sballa paga tutti", () => {
   assert.equal(smOutcome(false, 3, true, 9), "win");      // banco sballato
   assert.equal(smCreditFor("win", 50), 100);              // 1:1 puntata inclusa
   assert.equal(smCreditFor("lose", 50), 0);
+});
+
+/* ── Libro mastro: la dotazione iniziale è un movimento come gli altri ───────── */
+function libroMastro() {
+  const saldi: Record<string, number> = {};
+  const ledger: Array<{ playerId: string; delta: number; kind: string; balanceAfter: number }> = [];
+  let n = 0;
+  const tx: IscrizioneTx = {
+    creaGiocatore: async () => { const id = `p${++n}`; saldi[id] = 0; return id; },
+    pay: async (m) => {
+      const cur = saldi[m.playerId];
+      if (cur == null || (m.requireFunds && cur + m.delta < 0)) return null;
+      saldi[m.playerId] = cur + m.delta;
+      ledger.push({ playerId: m.playerId, delta: m.delta, kind: m.kind, balanceAfter: saldi[m.playerId]! });
+      return saldi[m.playerId]!;
+    },
+  };
+  const somma = (id: string) => ledger.filter((r) => r.playerId === id).reduce((t, r) => t + r.delta, 0);
+  return { tx, saldi, ledger, somma };
+}
+
+test("dotazione: il giocatore nasce a 0 e le fiche iniziali entrano con una riga buyin", async () => {
+  const m = libroMastro();
+  const { playerId, saldo } = await iscriviConDotazione(m.tx, 500);
+  assert.equal(saldo, 500);
+  assert.equal(m.saldi[playerId], 500);
+  assert.deepEqual(m.ledger, [{ playerId, delta: 500, kind: KIND_DOTAZIONE, balanceAfter: 500 }]);
+});
+
+test("dotazione: dopo puntate e vincite somma del ledger = saldo (prima mancavano le fiche iniziali)", async () => {
+  const m = libroMastro();
+  const { playerId } = await iscriviConDotazione(m.tx, 1000);
+  await m.tx.pay({ playerId, delta: -100, kind: "roulette_bet", requireFunds: true });
+  await payAll(m.tx, rouletteWinMoves([{ playerId, kind: "red", numbers: [], amount: 100 }], 1)); // 1 è rosso
+  assert.equal(m.saldi[playerId], 1100);
+  assert.equal(m.somma(playerId), m.saldi[playerId]);
+});
+
+test("dotazione 0 (base già concessa) o non valida: nessuna riga, saldo 0", async () => {
+  const m = libroMastro();
+  const a = await iscriviConDotazione(m.tx, 0);
+  const b = await iscriviConDotazione(m.tx, Number.NaN);
+  assert.equal(a.saldo, 0); assert.equal(b.saldo, 0);
+  assert.equal(m.ledger.length, 0);
 });

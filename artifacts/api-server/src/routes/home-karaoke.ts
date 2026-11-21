@@ -7,7 +7,7 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { logger } from "../lib/logger";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db, homeSessionsTable, homePlayersTable } from "@workspace/db";
 import { emitToRoom } from "../socket";
 import {
@@ -70,6 +70,13 @@ router.post("/home/sessions/:id/karaoke/init", async (req: Request, res: Respons
   emit(id, state);
   res.status(201).json({ state });
 });
+
+/* Punti guadagnati in questo turno = differenza fra il punteggio karaoke dopo e prima. */
+function puntiGuadagnati(prima: { players: { id: string; score?: number }[] }, dopo: { players: { id: string; score?: number }[] }, playerId: string): number {
+  const p = prima.players.find(x => x.id === playerId)?.score ?? 0;
+  const d = dopo.players.find(x => x.id === playerId)?.score ?? 0;
+  return d - p;
+}
 
 /* ── POST set-mode ───────────────────────────────────────────────────────── */
 router.post("/home/sessions/:id/karaoke/set-mode", async (req: Request, res: Response): Promise<void> => {
@@ -572,11 +579,16 @@ router.post("/home/sessions/:id/karaoke/end-voting", async (req: Request, res: R
   const { state: next, result } = endVoting(state);
 
   // Write score to homePlayersTable
+  // Si SOMMANO i punti guadagnati in questo turno: prima si scriveva il punteggio
+  // assoluto del karaoke e si cancellavano quelli dei giochi precedenti.
   if (result) {
-    await db.update(homePlayersTable)
-      .set({ score: next.players.find(p => p.id === result.playerId)?.score ?? 0 })
-      .where(eq(homePlayersTable.id, result.playerId))
-      .catch(() => {});
+    const guadagno = puntiGuadagnati(state, next, result.playerId);
+    if (guadagno !== 0) {
+      await db.update(homePlayersTable)
+        .set({ score: sql`${homePlayersTable.score} + ${guadagno}` })
+        .where(eq(homePlayersTable.id, result.playerId))
+        .catch(() => {});
+    }
   }
 
   await saveState(id, next, cfg);
@@ -720,10 +732,10 @@ router.post("/home/sessions/:id/freestyle/end-battle", async (req: Request, res:
   // Write final score to homePlayersTable
   const battle = state.currentBattle;
   if (battle) {
-    const updated = next.players.find(p => p.id === battle.playerId);
-    if (updated) {
+    const guadagno = puntiGuadagnati(state, next, battle.playerId);
+    if (guadagno !== 0) {
       await db.update(homePlayersTable)
-        .set({ score: updated.score })
+        .set({ score: sql`${homePlayersTable.score} + ${guadagno}` })
         .where(eq(homePlayersTable.id, battle.playerId))
         .catch(() => {});
     }

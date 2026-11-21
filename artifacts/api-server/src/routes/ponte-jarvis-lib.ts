@@ -135,6 +135,14 @@ export const CATALOGO_JARVIS = {
       effetti: "lettura",
     },
     {
+      nome: "stato",
+      metodo: "GET",
+      percorso: "/api/ponte/jarvis/stato",
+      descrizione: "Come sta IDEAgame per Jarvis: partite di roulette aperte, giri giocati, saldo dell'ultima partita.",
+      parametri: {},
+      effetti: "lettura",
+    },
+    {
       nome: "skill",
       metodo: "GET",
       percorso: "/api/ponte/jarvis/skill",
@@ -144,3 +152,25 @@ export const CATALOGO_JARVIS = {
     },
   ],
 } as const;
+
+/** Numeri per GET /api/ponte/jarvis/stato (contratto ponti Jarvis v1). */
+export type NumeriStato = {
+  partite: number;
+  giriTotali: number;
+  ultimaPartita: string | null;
+  saldoUltimaPartita: number | null;
+  ultimiNumeri: number[];
+};
+
+export function statoJarvis(n: NumeriStato): { sistema: "IDEAgame"; ok: true; riassunto: string; numeri: NumeriStato } {
+  let riassunto: string;
+  if (n.partite === 0) riassunto = "IDEAgame è attivo. Nessuna partita di roulette con Jarvis finora.";
+  else {
+    const p = n.partite === 1 ? "1 partita" : `${n.partite} partite`;
+    const g = n.giriTotali === 1 ? "1 giro" : `${n.giriTotali} giri`;
+    riassunto = `IDEAgame è attivo. Roulette con Jarvis: ${p}, ${g} in tutto.`;
+    if (n.saldoUltimaPartita != null) riassunto += ` Nell'ultima partita restano ${n.saldoUltimaPartita} fiche.`;
+    if (n.ultimiNumeri.length) riassunto += ` Ultimi numeri: ${n.ultimiNumeri.slice(0, 5).join(", ")}.`;
+  }
+  return { sistema: "IDEAgame", ok: true, riassunto, numeri: n };
+}

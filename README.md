@@ -18,6 +18,10 @@ _Telemetria: se cade, qui non si rompe niente._
 
 _Cosa smette di funzionare: da scrivere._
 
+## Secret e test
+
+I Secret del server (ponti `PONTE_IDEAEVENTI_KEY`, `PONTE_IDEAEVENTI_TENANT`, `JARVIS_PONTE_KEY`, `CASINO_PONTE_KEY`, `IDEAX_KEY`, telemetria `MISSION_CONTROL_TOKEN`, email `RESEND_API_KEY`) sono descritti uno per uno in `replit.md`, sezione *Secret*. Tutti i test: `pnpm test`. Stato dei giochi: `STATO-GIOCHI.md`.
+
 ---
 
 _I dati qui sopra vengono da `project.json`, che la plancia Mission Control legge per disegnare la mappa delle dipendenze._

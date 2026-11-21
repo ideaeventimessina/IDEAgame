@@ -4,7 +4,8 @@ import { createServer } from "node:http";
 import app from "./app";
 import { initSocket, initHomeSocketHandlers } from "./socket";
 import { logger } from "./lib/logger";
-import { db, playersTable, tenantsTable, usersTable, eventsTable } from "@workspace/db";
+import { db, pool, playersTable, tenantsTable, usersTable, eventsTable } from "@workspace/db";
+import { ensureAuthTables } from "./lib/auth-tables";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "node:crypto";
@@ -160,7 +161,14 @@ server.on("request", (req, res) => {
 });
 
 // Ensure critical users exist, reset stale connections, then start listening
-ensureUsers().then(() => resetStaleConnections()).finally(() => {
+// Prima di tutto le tabelle dell'accesso (sessioni + reset password): migrazione
+// idempotente, solo CREATE IF NOT EXISTS. Se fallisce lo si scrive nel log e si
+// parte lo stesso (le tabelle probabilmente esistono già).
+ensureAuthTables(pool)
+  .catch((err) => logger.error({ err }, "startup: ensureAuthTables failed (non-fatal)"))
+  .then(() => ensureUsers())
+  .then(() => resetStaleConnections())
+  .finally(() => {
   server.listen(port, () => {
     logger.info({ port }, "Server listening");
   });

@@ -1,341 +1,65 @@
 /* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
 
 /**
- * IL PONTE CON IL GESTIONALE IDEAEVENTI — 7/9/2026.
- *
- * Andrea, davanti alla prima versione: «come farai apparire a schermo le
- * funzioni di IDEAgame che atterra direttamente sulla pagina del gioco con i
- * giocatori già loggati, partendo solo dall'URL? senza nessuna lettura di
- * api, mi prendi per il culo?». Aveva ragione: un iframe su un indirizzo nudo
- * atterra sulla home, senza partita e senza nessuno dentro.
- *
- * COSA FA QUESTA ROTTA. Durante un preventivo, quando la regia decide di far
- * provare il gioco alla famiglia, il gestionale chiama qui: nasce una partita
- * VERA, intestata alla festa ("18° di Marta", "Marta e Luca"), già LIVE, e
- * torna il codice. Da quel codice i telefoni che sono già in sala — di cui
- * sappiamo il nome, perché l'hanno scritto entrando — atterrano su
- * /join/<codice>?nome=<il loro> e sono dentro, senza digitare niente.
- *
- * PERCHE' NON SI RIUSA POST /events: quella chiede requireAuth, cioè una
- * persona che ha fatto login con un browser. Qui chi chiama è un programma
- * dall'altro capo di internet. Chiave condivisa, una rotta, una cosa sola.
- *
- * LA PARTITA NASCE GIA' LIVE perché i giocatori possono entrare solo in una
- * partita live (vedi routes/players.ts): crearla "draft" vorrebbe dire far
- * atterrare venti telefoni su un errore.
- *
- * NON NE APRE DUE PER LA STESSA FESTA: richiamata con lo stesso riferimento
- * torna quella che c'è già. Due partite per la stessa serata vuol dire metà
- * famiglia in una e metà nell'altra.
+ * IL PONTE CON IL GESTIONALE IDEAEVENTI — collegamento al database.
+ * La logica (chiave, validazione, idempotenza, manifest) sta in
+ * ponte-ideaeventi-lib.ts; qui c'è solo l'archivio vero su home_sessions.
+ * Secret: PONTE_IDEAEVENTI_KEY (header x-ponte-key).
  */
 
-import { Router, type IRouter } from "express";
 import { and, eq, ne, desc, sql } from "drizzle-orm";
-import { timingSafeEqual } from "node:crypto";
-import { db, eventsTable, tenantsTable, homeSessionsTable } from "@workspace/db";
-
-const router: IRouter = Router();
-
-const CHIAVE = (process.env["PONTE_IDEAEVENTI_KEY"] ?? "").trim();
-const TENANT_SLUG = (process.env["PONTE_IDEAEVENTI_TENANT"] ?? "").trim();
-
-/* Confronto della chiave a TEMPO COSTANTE: non fa trapelare, dai tempi di
- * risposta, quanti caratteri iniziali combaciano. Lunghezze diverse = diverso
- * (timingSafeEqual pretende buffer di pari lunghezza). */
-function chiaveCombacia(fornita: string): boolean {
-  const a = Buffer.from(fornita);
-  const b = Buffer.from(CHIAVE);
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
-}
+import { db, eventsTable, homeSessionsTable } from "@workspace/db";
+import { creaRouterPonteIdeaeventi, type ArchivioPonte } from "./ponte-ideaeventi-lib";
 
 function codiceNuovo(): string {
   return Math.random().toString(36).slice(2, 8).toUpperCase();
 }
 
-router.post("/ponte/ideaeventi/partita", async (req, res): Promise<void> => {
-  if (!CHIAVE) {
-    res.status(503).json({ error: "Ponte non configurato: manca PONTE_IDEAEVENTI_KEY." });
-    return;
-  }
-  if (!chiaveCombacia(String(req.headers["x-ponte-key"] ?? ""))) {
-    res.status(401).json({ error: "Chiave non valida." });
-    return;
-  }
+const aperta = (riferimento: string) => and(
+  sql`${homeSessionsTable.gameConfig}->>'groupKey' = ${riferimento}`,
+  ne(homeSessionsTable.status, "ended"),
+);
 
-  const corpo = (req.body ?? {}) as Record<string, unknown>;
-  const festa = String(corpo["festa"] ?? "").trim();
-  const riferimento = String(corpo["riferimento"] ?? "").trim();   // "preventivo-410"
-  const attesi = Number(corpo["attesi"]) || 20;
-  if (!festa || !riferimento) {
-    res.status(400).json({ error: "Servono il nome della festa e un riferimento." });
-    return;
-  }
-
-  /* UN SOLO MOTORE (2026-09-29). Il vecchio motore Live (events/game_sessions)
-   * è stato ritirato: /partita ora crea una PARTITA HOME in modalità FULL — la
-   * stessa cosa di /partita-home — così anche il Live gira sul motore buono
-   * (silhouette, video, contenuti infiniti, voce di Jonny, musica, Lockdown).
-   * Manteniamo i nomi dei campi che Axel già legge (eventoId, codice, festa,
-   * giaCera) per non rompere l'integrazione: `eventoId` è l'id della home session
-   * e `codice` è il join code Home. Idempotente sul riferimento (groupKey). */
-  try {
-    const [gia] = await db
-      .select()
-      .from(homeSessionsTable)
-      .where(and(
-        sql`${homeSessionsTable.gameConfig}->>'groupKey' = ${riferimento}`,
-        ne(homeSessionsTable.status, "ended"),
-      ))
-      .orderBy(desc(homeSessionsTable.createdAt))
-      .limit(1);
-    if (gia) {
-      res.json({ eventoId: gia.id, sessionId: gia.id, codice: gia.joinCode, festa, tier: "full", giaCera: true });
-      return;
-    }
-
-    const expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1000); // ~6h
-
-    let sessione: typeof homeSessionsTable.$inferSelect | null = null;
-    for (let giro = 0; giro < 6 && !sessione; giro++) {
-      try {
-        const [riga] = await db
-          .insert(homeSessionsTable)
-          .values({
-            joinCode: codiceNuovo(),
-            hostName: festa.slice(0, 50),
-            maxPlayers: Math.min(Math.max(attesi, 2), 200),
-            status: "lobby",
-            expiresAt,
-            gameConfig: {
-              phase: "join",
-              gamesPlayed: [],
-              preloadedRounds: [],
-              selectedGames: [],
-              matchDuration: "normal",
-              tier: "full",
-              groupKey: riferimento,
-            },
-          })
-          .returning();
-        sessione = riga!;
-      } catch (e: unknown) {
-        if ((e as { code?: string } | null)?.code !== "23505") throw e;
-      }
-    }
-    if (!sessione) {
-      res.status(500).json({ error: "Non sono riuscito ad allocare un codice." });
-      return;
-    }
-
-    res.status(201).json({ eventoId: sessione.id, sessionId: sessione.id, codice: sessione.joinCode, festa, tier: "full", giaCera: false });
-  } catch (err) {
-    console.error("[ponte ideaeventi]", err);
-    res.status(500).json({ error: "Errore nel creare la partita." });
-  }
-});
-
-/**
- * POST /ponte/ideaeventi/partita-home — crea una PARTITA HOME in modalità FULL
- * (tutto sbloccato: IA, adult, karaoke, contenuti infiniti). A differenza di
- * /partita (che crea un evento LIVE con tenant), questa crea una home_session:
- * i telefoni entrano col codice come una normale sessione Home, ma senza il
- * gate demo. groupKey = riferimento → memoria "già visto" permanente del gruppo.
- * IDEMPOTENTE sul riferimento: se esiste già una home session non chiusa con
- * quel groupKey, la si riusa.
- */
-router.post("/ponte/ideaeventi/partita-home", async (req, res): Promise<void> => {
-  if (!CHIAVE) {
-    res.status(503).json({ error: "Ponte non configurato: manca PONTE_IDEAEVENTI_KEY." });
-    return;
-  }
-  if (!chiaveCombacia(String(req.headers["x-ponte-key"] ?? ""))) {
-    res.status(401).json({ error: "Chiave non valida." });
-    return;
-  }
-
-  const corpo = (req.body ?? {}) as Record<string, unknown>;
-  const festa = String(corpo["festa"] ?? "").trim();
-  const riferimento = String(corpo["riferimento"] ?? "").trim();   // "preventivo-410"
-  const attesi = Number(corpo["attesi"]) || 20;
-  if (!festa || !riferimento) {
-    res.status(400).json({ error: "Servono il nome della festa e un riferimento." });
-    return;
-  }
-
-  try {
-    /* Già aperta per questo gruppo? Si riusa (idempotenza sul groupKey, che sta
-     * dentro gameConfig). Niente due partite per la stessa festa. */
-    const [gia] = await db
-      .select()
-      .from(homeSessionsTable)
-      .where(and(
-        sql`${homeSessionsTable.gameConfig}->>'groupKey' = ${riferimento}`,
-        ne(homeSessionsTable.status, "ended"),
-      ))
-      .orderBy(desc(homeSessionsTable.createdAt))
-      .limit(1);
-    if (gia) {
-      res.json({ sessionId: gia.id, codice: gia.joinCode, festa, tier: "full", giaCera: true });
-      return;
-    }
-
-    const expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1000); // ~6h
-
-    /* Codice unico nel database: se capita collisione (join_code è unique), si
-     * ritenta. Sei giri bastano. */
-    let sessione: typeof homeSessionsTable.$inferSelect | null = null;
-    for (let giro = 0; giro < 6 && !sessione; giro++) {
-      try {
-        const [riga] = await db
-          .insert(homeSessionsTable)
-          .values({
-            joinCode: codiceNuovo(),
-            hostName: festa.slice(0, 50),
-            maxPlayers: Math.min(Math.max(attesi, 2), 200),
-            status: "lobby",
-            expiresAt,
-            gameConfig: {
-              phase: "join",
-              gamesPlayed: [],
-              preloadedRounds: [],
-              selectedGames: [],
-              matchDuration: "normal",
-              tier: "full",
-              groupKey: riferimento,
-            },
-          })
-          .returning();
-        sessione = riga!;
-      } catch (e: unknown) {
-        if ((e as { code?: string } | null)?.code !== "23505") throw e;
-      }
-    }
-    if (!sessione) {
-      res.status(500).json({ error: "Non sono riuscito ad allocare un codice." });
-      return;
-    }
-
-    res.status(201).json({ sessionId: sessione.id, codice: sessione.joinCode, festa, tier: "full", giaCera: false });
-  } catch (err) {
-    console.error("[ponte ideaeventi partita-home]", err);
-    res.status(500).json({ error: "Errore nel creare la partita." });
-  }
-});
-
-/** Manifest delle capacità di IDEAgame per Axel©/IDEAeventi (scoperta automatica).
- *  Sola lettura, protetto dalla STESSA chiave del ponte (x-ponte-key) — nessuna
- *  chiave nuova. Riflette esattamente le rotte del ponte qui sopra. */
-const SKILL_MANIFEST = {
-  sistema: "ideagame",
-  descrizione: "Party game interattivo (TV proiettore + telefoni) per feste ed eventi.",
-  versione: "1.1",
-  baseUrl: "https://ideagame.it",
-  nota_chiamata: "URL completo = baseUrl + percorso (il percorso include già /api). Auth: header x-ponte-key.",
-  auth: { tipo: "header", header: "x-ponte-key", nota: "Stessa chiave condivisa del ponte (PONTE_IDEAEVENTI_KEY)." },
-  modalita: {
-    demo: "IA spenta, contenuti fissi, no adult/karaoke — vetrina gratis",
-    full: "tutto sbloccato via token",
+const archivio: ArchivioPonte = {
+  async trovaAperta(riferimento) {
+    const [gia] = await db.select({ id: homeSessionsTable.id, joinCode: homeSessionsTable.joinCode })
+      .from(homeSessionsTable).where(aperta(riferimento))
+      .orderBy(desc(homeSessionsTable.createdAt)).limit(1);
+    return gia ?? null;
   },
-  // Ogni azione è AZIONABILE dall'esterno: metodo + percorso + parametri (spec macchina
-  // per l'esecutore generico di Axel) + output. Auth: header x-ponte-key. Le azioni non
-  // sicure da fuori NON sono in questa lista.
-  azioni: [
-    {
-      id: "crea_partita_full",
-      descrizione: "Apre (o riusa) una partita in modalità FULL: tutto sbloccato (IA, adult, karaoke, contenuti infiniti). I telefoni entrano col codice.",
-      metodo: "POST",
-      path: "/api/ponte/ideaeventi/partita-home",
-      percorso: "/api/ponte/ideaeventi/partita-home",
-      parametri: [
-        { nome: "festa", tipo: "string", obbligatorio: true, descrizione: "Nome della festa (es. '18° di Marta')" },
-        { nome: "riferimento", tipo: "string", obbligatorio: true, descrizione: "Chiave idempotente = groupKey del gruppo; usa l'id preventivo/cliente lato IDEAeventi" },
-        { nome: "attesi", tipo: "number", obbligatorio: false, descrizione: "Giocatori attesi (default 20, min 2, max 200)" },
-      ],
-      output: { sessionId: "string", codice: "string", tier: "string", giaCera: "boolean" },
-      note: "Idempotente sul riferimento. groupKey=riferimento = memoria permanente del gruppo (niente turni ripetuti tra feste).",
-    },
-    {
-      id: "crea_partita",
-      descrizione: "Apre (o riusa, se già live) una partita SHOWROOM per una festa (solo giochi senza AI/adult). I telefoni entrano col codice.",
-      metodo: "POST",
-      path: "/api/ponte/ideaeventi/partita",
-      percorso: "/api/ponte/ideaeventi/partita",
-      parametri: [
-        { nome: "festa", tipo: "string", obbligatorio: true, descrizione: "Nome della festa (es. '18° di Marta')" },
-        { nome: "riferimento", tipo: "string", obbligatorio: true, descrizione: "Chiave idempotente (es. id preventivo)" },
-        { nome: "attesi", tipo: "number", obbligatorio: false, descrizione: "Giocatori attesi (default 20, min 2, max 200)" },
-      ],
-      output: { eventoId: "string", codice: "string", festa: "string", giaCera: "boolean" },
-      note: "Idempotente sul riferimento. I telefoni atterrano su /join/<codice>?nome=<nome>.",
-    },
-    {
-      id: "chiudi_partita",
-      descrizione: "Chiude la partita live di un riferimento.",
-      metodo: "POST",
-      path: "/api/ponte/ideaeventi/partita/chiudi",
-      percorso: "/api/ponte/ideaeventi/partita/chiudi",
-      parametri: [
-        { nome: "riferimento", tipo: "string", obbligatorio: true, descrizione: "Lo stesso riferimento con cui è stata aperta" },
-      ],
-      output: { ok: "boolean" },
-    },
-    {
-      id: "scopri_capacita",
-      descrizione: "Questo manifest: elenco auto-aggiornato delle capacità azionabili di IDEAgame.",
-      metodo: "GET",
-      path: "/api/ponte/ideaeventi/skill",
-      percorso: "/api/ponte/ideaeventi/skill",
-      parametri: [],
-      output: "manifest JSON",
-    },
-  ],
-  giochi: [
-    { slug: "quizzone",           nome: "Quizzone",            ai: true,  adult: false, showroom: false },
-    { slug: "saramusica",         nome: "SaraMusica",          ai: true,  adult: false, showroom: false },
-    { slug: "sfida-di-ballo",     nome: "Sfida di Ballo",      ai: false, adult: false, showroom: true },
-    { slug: "gioco-delle-coppie", nome: "Gioco delle Coppie",  ai: false, adult: false, showroom: true },
-    { slug: "percorso-a-risate",  nome: "Percorso a Risate",   ai: false, adult: false, showroom: true },
-    { slug: "parola-alle-spalle", nome: "Parola alle Spalle",  ai: false, adult: false, showroom: true },
-    { slug: "karaoke-battle",     nome: "Karaoke / Freestyle", ai: false, adult: false, showroom: true },
-    { slug: "adult-only",         nome: "Adult Only (+18)",    ai: false, adult: true,  showroom: false },
-  ],
-  nonAncoraAzionabileDaFuori: [
-    "Lettura esito/classifica di una partita per riferimento",
-    "Avvio/stop di uno specifico gioco dall'esterno",
-    "Scelta dei giochi abilitati per la partita",
-    "Webhook a fine partita",
-  ],
-} as const;
+  async crea({ festa, riferimento, maxPlayers, expiresAt }) {
+    /* Codice unico nel database: se capita collisione (join_code è unique), si ritenta. */
+    for (let giro = 0; giro < 6; giro++) {
+      try {
+        const [riga] = await db.insert(homeSessionsTable).values({
+          joinCode: codiceNuovo(),
+          hostName: festa,
+          maxPlayers,
+          status: "lobby",
+          expiresAt,
+          gameConfig: {
+            phase: "join", gamesPlayed: [], preloadedRounds: [], selectedGames: [],
+            matchDuration: "normal", tier: "full", groupKey: riferimento,
+          },
+        }).returning({ id: homeSessionsTable.id, joinCode: homeSessionsTable.joinCode });
+        if (riga) return riga;
+      } catch (e: unknown) {
+        if ((e as { code?: string } | null)?.code !== "23505") throw e;
+      }
+    }
+    return null;
+  },
+  async chiudi(riferimento) {
+    const chiuse = await db.update(homeSessionsTable).set({ status: "ended" })
+      .where(aperta(riferimento)).returning({ id: homeSessionsTable.id });
+    // Compatibilità: eventuali vecchi eventi Live aperti con lo stesso riferimento.
+    await db.update(eventsTable).set({ status: "ended" })
+      .where(and(eq(eventsTable.venue, riferimento), eq(eventsTable.status, "live")));
+    return chiuse.length;
+  },
+};
 
-// GET /ponte/ideaeventi/skill — scoperta automatica delle capacità (sola lettura).
-router.get("/ponte/ideaeventi/skill", (req, res): void => {
-  if (!CHIAVE) { res.status(503).json({ error: "Ponte non configurato: manca PONTE_IDEAEVENTI_KEY." }); return; }
-  if (!chiaveCombacia(String(req.headers["x-ponte-key"] ?? ""))) { res.status(401).json({ error: "Chiave non valida." }); return; }
-  res.json(SKILL_MANIFEST);
+export default creaRouterPonteIdeaeventi({
+  chiave: () => process.env["PONTE_IDEAEVENTI_KEY"] ?? "",
+  archivio,
 });
-
-/** Chiudere la partita quando la regia torna alla presentazione: una partita
- *  live dimenticata resta a raccogliere telefoni di gente che non gioca. */
-router.post("/ponte/ideaeventi/partita/chiudi", async (req, res): Promise<void> => {
-  if (!CHIAVE) {
-    res.status(503).json({ error: "Ponte non configurato: manca PONTE_IDEAEVENTI_KEY." });
-    return;
-  }
-  if (!chiaveCombacia(String(req.headers["x-ponte-key"] ?? ""))) {
-    res.status(401).json({ error: "Chiave non valida." });
-    return;
-  }
-  const riferimento = String((req.body as Record<string, unknown>)?.["riferimento"] ?? "").trim();
-  if (!riferimento) {
-    res.status(400).json({ error: "Serve il riferimento." });
-    return;
-  }
-  await db
-    .update(eventsTable)
-    .set({ status: "ended" })
-    .where(and(eq(eventsTable.venue, riferimento), eq(eventsTable.status, "live")));
-  res.json({ ok: true });
-});
-
-export default router;

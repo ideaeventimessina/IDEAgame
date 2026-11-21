@@ -11,7 +11,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   controllaChiave, traduciPuntate, coloreItaliano, numeroPari, CATALOGO_JARVIS,
-  MAX_PUNTATE, type PuntataJarvis,
+  MAX_PUNTATE, statoJarvis, type PuntataJarvis,
 } from "./ponte-jarvis-lib.ts";
 import { rouletteCredit, rouletteColor, rouletteWinMoves } from "./gestione-casino-atomic-lib.ts";
 
@@ -129,7 +129,19 @@ test("puntate: assenti = solo giro; errori chiari; tutto o niente", () => {
 test("catalogo skill nel formato del contratto", () => {
   assert.equal(CATALOGO_JARVIS.sistema, "IDEAgame");
   assert.deepEqual(CATALOGO_JARVIS.azioni.map((a) => a.percorso), [
-    "/api/ponte/jarvis/roulette/giro", "/api/ponte/jarvis/roulette/:partita", "/api/ponte/jarvis/skill",
+    "/api/ponte/jarvis/roulette/giro", "/api/ponte/jarvis/roulette/:partita", "/api/ponte/jarvis/stato", "/api/ponte/jarvis/skill",
   ]);
   for (const a of CATALOGO_JARVIS.azioni) assert.ok(a.effetti === "lettura" || a.effetti === "scrittura");
+});
+
+test("stato: formato del contratto (sistema, ok, riassunto in italiano, numeri)", () => {
+  const vuoto = statoJarvis({ partite: 0, giriTotali: 0, ultimaPartita: null, saldoUltimaPartita: null, ultimiNumeri: [] });
+  assert.equal(vuoto.sistema, "IDEAgame");
+  assert.equal(vuoto.ok, true);
+  assert.match(vuoto.riassunto, /Nessuna partita/);
+  const pieno = statoJarvis({ partite: 2, giriTotali: 7, ultimaPartita: "abc", saldoUltimaPartita: 950, ultimiNumeri: [17, 0, 32] });
+  assert.match(pieno.riassunto, /2 partite, 7 giri/);
+  assert.match(pieno.riassunto, /950 fiche/);
+  assert.match(pieno.riassunto, /17, 0, 32/);
+  assert.equal(pieno.numeri.giriTotali, 7);
 });

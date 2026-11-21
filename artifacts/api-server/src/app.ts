@@ -9,6 +9,7 @@ import router from "./routes";
 import { logger } from "./lib/logger";
 import { missionControlLoad, missionControlErrorReporter } from "./lib/mc-server";
 import { corsPerRichiesta } from "./lib/corsOrigini";
+import { csrfOrigine } from "./middlewares/csrf";
 
 const app: Express = express();
 
@@ -44,7 +45,9 @@ app.use(
   session({
     store: new PgStore({
       conString: process.env["DATABASE_URL"],
-      createTableIfMissing: true,
+      // La tabella la crea ensureAuthTables all'avvio (lib/auth-tables.ts): il
+      // table.sql di connect-pg-simple non esiste dentro il bundle esbuild.
+      createTableIfMissing: false,
       tableName: "user_sessions",
     }),
     name: "ideagame.sid",
@@ -61,6 +64,9 @@ app.use(
   }),
 );
 
+// CSRF: le richieste che cambiano stato col cookie di sessione devono venire
+// dall'app stessa (controllo Origin/Referer, vedi middlewares/csrf.ts).
+app.use("/api", csrfOrigine);
 app.use("/api", router);
 
 // Error handler globale — PER ULTIMO: manda l'eccezione vera alla control room

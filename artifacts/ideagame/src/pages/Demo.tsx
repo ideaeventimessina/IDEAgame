@@ -783,7 +783,6 @@ export default function Demo() {
                     { page: 'Quizzone (board)', url: quizzoneUrl || '/quizzone?s=SESSION_ID&e=EVENT_ID', status: '✅ Reale', note: 'Domande da pack DB' },
                     { page: 'Adult Only 🔞', url: '/adult-only?s=SESSION_ID&e=EVENT_ID', status: '✅ Reale', note: 'Opzionale — abilitato da toggle in Serata Completa. Solo per adulti 18+.' },
                     { page: 'Scoreboard / Podio', url: scoreUrl || '/scoreboard?e=EVENT_ID', status: '✅ Reale', note: 'Socket + polling 8s' },
-                    { page: 'GameStage /game/:slug', url: '/game/percorso-a-risate', status: '🟡 Demo', note: 'Animazioni locali, nessun DB' },
                   ].map(r => (
                     <div key={r.page} className="grid grid-cols-[1fr_auto] items-start gap-x-3 gap-y-0.5 rounded-xl border border-border/40 bg-background/50 px-4 py-3">
                       <div>
@@ -846,7 +845,6 @@ export default function Demo() {
                     { item: 'Socket realtime (coppie + quiz)', real: true },
                     { item: 'LiveControl (start/pause/end sessione)', real: true },
                     { item: 'Lobby (contatore giocatori)', real: true },
-                    { item: 'GameStage /game/:slug (animazioni)', real: false },
                     { item: 'Buzzer generico → scoring automatico', real: false },
                     { item: 'Upload media (usa URL paste)', real: false },
                     { item: 'Modifica evento/utente da UI (PATCH)', real: false },

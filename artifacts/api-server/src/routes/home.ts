@@ -3132,7 +3132,11 @@ router.post("/home/sessions/:id/select-game", async (req, res): Promise<void> =>
   if (gameSlug === "percorso-a-risate") {
     req.log.info({ sessionId: id }, "[FLOW_BYPASS] percorso-a-risate → PercorsoBoard direct, skipping GameFlowEngine");
     const percorsoPayload: RoundPayload = { mode: "home-percorso", gameSlug: "percorso-a-risate" } as RoundPayload;
-    const percorsoCfg = { ...cfg, phase: "playing", gamesPlayed };
+    // Lo stato del percorso precedente (risateState) va azzerato: rilanciando il
+    // gioco la TV ritrovava lo stato "ended" della volta prima e restava sulla
+    // classifica finale, senza pulsante per ripartire.
+    const { risateState: _vecchioPercorso, ...cfgSenzaPercorso } = cfg as Record<string, unknown>;
+    const percorsoCfg = { ...cfgSenzaPercorso, phase: "playing", gamesPlayed };
     const [percorsoUpdated] = await db.update(homeSessionsTable).set({
       gameSlug,
       gameConfig: percorsoCfg,

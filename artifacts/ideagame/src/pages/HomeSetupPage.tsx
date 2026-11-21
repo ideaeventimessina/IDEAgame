@@ -308,7 +308,13 @@ export default function HomeSetupPage() {
           </FieldRow>
           <FieldRow icon={<Users size={18} strokeWidth={2.2} />} label="Pubblico">
             <div className="relative">
-              <select value={audience} onChange={(e) => setAudience(e.target.value)} style={{ ...SETUP_INPUT_STYLE, appearance: 'none', cursor: 'pointer' }}>
+              <select value={audience} onChange={(e) => {
+                const v = e.target.value;
+                setAudience(v);
+                // Passando a Famiglia i giochi per adulti già scelti vanno tolti (prima
+                // restavano selezionati e non si potevano più deselezionare).
+                if (v === 'Famiglia') setSelectedGames((prev) => prev.filter((slug) => !GAMES.find((g) => g.slug === slug)?.adult));
+              }} style={{ ...SETUP_INPUT_STYLE, appearance: 'none', cursor: 'pointer' }}>
                 {AUDIENCES.map((a) => <option key={a} value={a} style={{ color: '#111' }}>{a}</option>)}
               </select>
               <ChevronDown size={18} className="pointer-events-none absolute" style={{ right: 12, top: '50%', transform: 'translateY(-50%)', color: 'rgba(247,243,232,0.6)' }} />

@@ -20,7 +20,7 @@ import { emitToRoom } from "../socket.js";
 import {
   PAYOUT, bjOutcome, creditFor,
   rouletteWinMoves, alreadySettled, rouletteCanSpin,
-  payAll, type FishTx, type FishMove,
+  payAll, iscriviConDotazione, type FishTx, type FishMove,
   type SmSuit, type SmCard, smHandTotal, smBust, smOutcome, smCreditFor,
 } from "./gestione-casino-atomic-lib.js";
 import {
@@ -260,7 +260,15 @@ router.post("/gestione/casino/sessions/:id/players", async (req, res): Promise<v
   // Ogni giocatore parte con le fiche iniziali della serata (default 500).
   const [session] = await db.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, id));
   const startFish = (cfgOf(session ?? {}).startFish) ?? DEFAULT_START_FISH;
-  const [player] = await db.insert(casinoPlayersTable).values({ sessionId: id, nickname, playerCode, tableId, fishBalance: startFish }).returning();
+  // Le fiche iniziali entrano dal LIBRO MASTRO (riga "buyin"), non scritte a mano nel
+  // saldo: così somma dei movimenti = saldo, anche nei totali della serata.
+  const player = await db.transaction(async (tx) => {
+    const { playerId } = await iscriviConDotazione({
+      pay: (m) => moveFish(tx, id, m),
+      creaGiocatore: async () => (await tx.insert(casinoPlayersTable).values({ sessionId: id, nickname, playerCode, tableId, fishBalance: 0 }).returning({ id: casinoPlayersTable.id }))[0]!.id,
+    }, startFish);
+    return (await tx.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.id, playerId)))[0];
+  });
   // Selfie al login (riconoscibile al tavolo): dataURL ~256px salvato in config (come la Home).
   {
     const cur = cfgOf(session ?? {});

@@ -72,6 +72,9 @@ export default function Login() {
           <button type="submit" disabled={busy} className="w-full rounded-xl bg-primary py-3 font-bold text-primary-foreground hover-elevate disabled:opacity-50">
             {busy ? 'Accesso…' : 'Accedi'}
           </button>
+          <div className="text-center text-xs text-muted-foreground">
+            <a href="/reset-password" className="hover:text-foreground">Password dimenticata?</a>
+          </div>
           {isDev && (
             <div className="rounded-lg bg-muted/30 p-3 text-center text-xs text-muted-foreground">
               <div className="font-semibold text-foreground">Account di test (password: <code className="text-primary">ideagame</code>)</div>

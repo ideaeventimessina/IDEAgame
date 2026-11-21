@@ -6247,7 +6247,9 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
 
   // ── Freestyle controller ────────────────────────────────────────────────
   if (s.subMode === 'freestyle' || s.freestylePhase === 'battling' || s.freestylePhase === 'booking') {
-    const myBooking = s.freestyleBookings.find(b => b.playerId === playerId);
+    // Solo la prenotazione ANCORA IN ATTESA: con quella già "completed" il rapper
+    // vedeva "Posizione: 0" e nessun pulsante, e non poteva più riprenotarsi.
+    const myBooking = s.freestyleBookings.find(b => b.playerId === playerId && b.status === 'waiting');
     const battle = s.currentBattle;
     const isRapper = battle?.playerId === playerId;
 

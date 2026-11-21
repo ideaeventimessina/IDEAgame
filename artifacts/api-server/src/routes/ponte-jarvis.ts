@@ -22,7 +22,7 @@
 
 import { Router, type Request, type Response } from "express";
 import { randomInt } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, desc, sql } from "drizzle-orm";
 import { db, casinoSessionsTable, casinoPlayersTable } from "@workspace/db";
 import {
   makeCode,
@@ -43,6 +43,7 @@ import {
   controllaChiave,
   numeroPari,
   traduciPuntate,
+  statoJarvis,
 } from "./ponte-jarvis-lib.js";
 
 const router = Router();
@@ -218,6 +219,32 @@ router.get("/ponte/jarvis/roulette/:partita", async (req, res): Promise<void> =>
   } catch (err) {
     console.error("[ponte jarvis roulette stato]", err);
     res.status(500).json({ error: "Errore nel leggere la partita." });
+  }
+});
+
+// ── GET /api/ponte/jarvis/stato (contratto ponti Jarvis v1) ─────────────────
+router.get("/ponte/jarvis/stato", async (req, res): Promise<void> => {
+  if (!chiaveOk(req, res)) return;
+  try {
+    const partite = await db.select({ id: casinoSessionsTable.id, config: casinoSessionsTable.config })
+      .from(casinoSessionsTable)
+      .where(sql`${casinoSessionsTable.config} ? 'jarvis'`)
+      .orderBy(desc(casinoSessionsTable.createdAt))
+      .limit(500);
+    const giriTotali = partite.reduce((t, p) => t + (((p.config ?? {}) as CasinoConfig).jarvis?.giri ?? 0), 0);
+    const ultima = partite[0];
+    const j = ultima ? ((ultima.config ?? {}) as CasinoConfig).jarvis : undefined;
+    const saldo = j ? await saldoDi(db, j.playerId) : null;
+    res.json(statoJarvis({
+      partite: partite.length,
+      giriTotali,
+      ultimaPartita: ultima?.id ?? null,
+      saldoUltimaPartita: saldo,
+      ultimiNumeri: j?.ultimi ?? [],
+    }));
+  } catch (err) {
+    console.error("[ponte jarvis stato]", err);
+    res.status(500).json({ error: "Errore nel leggere lo stato." });
   }
 });
 

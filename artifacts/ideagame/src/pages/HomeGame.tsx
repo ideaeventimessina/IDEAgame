@@ -5767,6 +5767,20 @@ function AdultOnlyBoard({ payload, session, players }: {
     void fetch(`/api/home/sessions/${session.id}/adult/close-vote`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
   }, [votingTimeLeft, phase, session.id]);
 
+  // Riserva della TV per la scelta verità/obbligo: se 2,5 s dopo lo zero siamo
+  // ancora in "choice" (telefono sparito, timer del server perso con un riavvio),
+  // la TV chiede l'auto-scelta. /adult/choose è idempotente fuori da "choice".
+  const autoChoiceCalledRef = useRef(false);
+  useEffect(() => {
+    if (phase !== 'choice') { autoChoiceCalledRef.current = false; return; }
+    if (choiceTimeLeft !== 0 || autoChoiceCalledRef.current) return;
+    const t = setTimeout(() => {
+      autoChoiceCalledRef.current = true;
+      void fetch(`/api/home/sessions/${session.id}/adult/choose`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    }, 2500);
+    return () => clearTimeout(t);
+  }, [choiceTimeLeft, phase, session.id]);
+
   const [busy, setBusy] = useState(false);
   // ── MUST be declared here (top level), NOT inside any conditional branch ──────
   const [showEscalationMenu, setShowEscalationMenu] = useState(false);
@@ -5866,7 +5880,10 @@ function AdultOnlyBoard({ payload, session, players }: {
 
   // ── consent ───────────────────────────────────────────────────────────────
   if (phase === 'consent') {
-    const consentedCount = Object.values(consentMap).filter(v => v === 'participate').length;
+    // OPT-OUT come sul server: gioca chiunque non abbia scelto "Guardo" o "Esco".
+    // Prima si contavano solo i "Partecipo!" espliciti e, se nessuno toccava,
+    // il pulsante restava spento anche se il server avrebbe fatto girare.
+    const consentedCount = players.filter(p => consentMap[p.id] !== 'watch' && consentMap[p.id] !== 'leave').length;
     return (
       <div className="flex flex-col items-center gap-6 text-center w-full max-w-4xl">
         <div className="flex flex-col items-center gap-2">
@@ -7613,6 +7630,7 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
     return () => { if (votingTimer.current) clearInterval(votingTimer.current); };
   }, [liveState.karaokePhase]);
 
+
   // ── Keep refs in sync with state ─────────────────────────────────────────
   useEffect(() => { liveSlotRef.current = liveSlot; }, [liveSlot]);
   useEffect(() => { slotAVideoIdRef.current = slotAVideoId; }, [slotAVideoId]);
@@ -7737,6 +7755,21 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
   const post = useCallback(async (path: string, body?: unknown) => {
     await apiFetch(`/home/sessions/${sessionId}${path}`, body ?? {});
   }, [sessionId]);
+
+  // A zero la votazione si chiude da sola (prima restava in "voting" finché
+  // l'host non premeva il pulsante; il server dopo 30s rifiuta già i voti).
+  // Si chiude solo dopo aver visto il conto alla rovescia partire (>0) in QUESTA
+  // votazione: appena entrati in "voting" il valore può essere ancora lo 0 della precedente.
+  const votoChiusoRef = useRef(false);
+  const contoPartitoRef = useRef(false);
+  useEffect(() => {
+    if (liveState.karaokePhase !== 'voting') { votoChiusoRef.current = false; contoPartitoRef.current = false; return; }
+    if (votingCountdown > 0) { contoPartitoRef.current = true; return; }
+    if (contoPartitoRef.current && !votoChiusoRef.current) {
+      votoChiusoRef.current = true;
+      void post('/karaoke/end-voting');
+    }
+  }, [votingCountdown, liveState.karaokePhase, post]);
 
   const s = liveState;
   const queue = s.queue ?? [];
@@ -8593,7 +8626,9 @@ function FreestyleBattleBoard({ sessionId, state: s, post }: {
           ))}
         </div>
         <div className="flex gap-3">
-          <button onClick={() => void post('/freestyle/book', {})}
+          {/* Riapre le prenotazioni (freestylePhase → booking). Prima chiamava
+              /freestyle/book senza giocatore: 400, e il pulsante non faceva nulla. */}
+          <button onClick={() => void post('/karaoke/set-mode', { mode: 'freestyle' })}
             className="rounded-2xl px-6 py-3 font-black"
             style={{ background: `${FR}20`, border: `1px solid ${FR}55`, color: FR }}>
             Ancora battle!

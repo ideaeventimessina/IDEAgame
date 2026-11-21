@@ -152,8 +152,9 @@ async function translatePhrases(phrases: string[], targetLanguage: string): Prom
           },
           { role: "user", content: phrase },
         ],
-        max_tokens: 200,
-        temperature: 0.3,
+        // I modelli gpt-5 rifiutano max_tokens e temperature (400): prima la
+        // traduzione falliva sempre e ricadeva sulla frase italiana.
+        max_completion_tokens: 1000,
       });
       const raw = (resp.choices[0]?.message?.content ?? "").replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
       const parsed = JSON.parse(raw) as { traduzione?: string; pronuncia?: string };

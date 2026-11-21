@@ -2,7 +2,7 @@
 
 import { Router, type IRouter } from "express";
 import { loadUser } from "../middlewares/auth";
-import { loginLimiter } from "../middlewares/rateLimit";
+import { loginLimiter, passwordResetLimiter } from "../middlewares/rateLimit";
 import healthRouter from "./health";
 import missionControlRouter from "./mission-control";
 import authRouter from "./auth";
@@ -73,6 +73,7 @@ router.use(loadUser);
 router.use(healthRouter);
 // Apply rate limiting to login route
 router.use("/auth/login", loginLimiter);
+router.use("/auth/password", passwordResetLimiter);
 router.use(authRouter);
 router.use(tenantsRouter);
 router.use(usersRouter);

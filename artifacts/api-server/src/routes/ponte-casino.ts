@@ -33,6 +33,8 @@ import {
   nicknameDaSuite,
   type SuitePlayerMap,
 } from "./ponte-casino-lib";
+import { moveFish } from "./gestione-casino.js";
+import { iscriviConDotazione } from "./gestione-casino-atomic-lib.js";
 
 const router: IRouter = Router();
 
@@ -121,8 +123,14 @@ async function creaGiocatore(sessionId: string, nickname: string, fish: number):
     if (!p) break;
     playerCode = makeCode(7);
   }
-  const [player] = await db.insert(casinoPlayersTable).values({ sessionId, nickname, playerCode, fishBalance: fish }).returning();
-  return player!;
+  // Saldo 0 + riga "buyin" nel libro mastro (stessa transazione): il ledger conta la base.
+  return db.transaction(async (tx) => {
+    const { playerId } = await iscriviConDotazione({
+      pay: (m) => moveFish(tx, sessionId, m),
+      creaGiocatore: async () => (await tx.insert(casinoPlayersTable).values({ sessionId, nickname, playerCode, fishBalance: 0 }).returning({ id: casinoPlayersTable.id }))[0]!.id,
+    }, fish);
+    return (await tx.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.id, playerId)))[0]!;
+  });
 }
 
 /* ════════════════ 1. LEGARE LA REGIA A UNA FESTA SUITE ════════════════════════ */
