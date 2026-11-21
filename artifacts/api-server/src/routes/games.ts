@@ -4,7 +4,7 @@ import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, gamesTable } from "@workspace/db";
 import { ListGamesResponse, UpdateGameBody, UpdateGameResponse } from "@workspace/api-zod";
-import { requireAuth } from "../middlewares/auth.js";
+import { requireAuth, requireRole } from "../middlewares/auth.js";
 
 const router: IRouter = Router();
 
@@ -22,7 +22,8 @@ router.get("/games", async (req, res): Promise<void> => {
   res.json(ListGamesResponse.parse(rows.map(normalizeGame)));
 });
 
-router.patch("/games/:id", requireAuth, async (req, res): Promise<void> => {
+// Il catalogo dei giochi è GLOBALE (vale per tutti i tenant): lo modifica solo il super_admin.
+router.patch("/games/:id", requireRole("super_admin"), async (req, res): Promise<void> => {
   const parsed = UpdateGameBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Invalid body" }); return; }
 

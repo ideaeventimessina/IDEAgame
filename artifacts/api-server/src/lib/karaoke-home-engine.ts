@@ -375,7 +375,44 @@ export function freestyleBook(
   const existing = state.freestyleBookings.find(b => b.playerId === playerId && b.status === "waiting");
   if (existing) return { state, error: "Sei già in coda per il freestyle" };
   const booking: FreestyleBooking = { id: randomUUID(), playerId, nickname, avatarColor, status: "waiting" };
-  return { state: { ...state, freestyleBookings: [...state.freestyleBookings, booking], freestylePhase: "booking" } };
+  return { state: { ...state, freestyleBookings: [...state.freestyleBookings, booking], freestylePhase: faseDopoPrenotazione(state) } };
+}
+
+/* Una prenotazione NON deve strappare la TV da quello che sta mostrando:
+   - durante una battle si resta in "battling" (prima tornava a "booking" e la TV
+     lasciava la battle a metà);
+   - in modo MISTO, se la TV è sulla coda karaoke (idle), ci resta: la prenotazione
+     aspetta che l'host passi al freestyle. */
+function faseDopoPrenotazione(state: KaraokeHomeState): KaraokeHomeState["freestylePhase"] {
+  if (state.freestylePhase === "battling") return "battling";
+  if (state.subMode === "mixed" && state.freestylePhase === "idle") return "idle";
+  return "booking";
+}
+
+/* ─── Modo MISTO: passaggio fra karaoke e freestyle ───────────────────────── */
+/** Ancora battle: riapre le prenotazioni freestyle SENZA cambiare modo
+ *  (prima si usava set-mode freestyle e il modo misto diventava solo freestyle). */
+export function freestyleRiapri(state: KaraokeHomeState): { state: KaraokeHomeState; error?: string } {
+  if (state.freestylePhase === "battling") return { state, error: "Battle in corso" };
+  return { state: { ...state, freestylePhase: "booking", currentBattle: null } };
+}
+
+/** Misto: dalla coda karaoke al freestyle (non mentre qualcuno canta o si vota). */
+export function mistoVaiAlFreestyle(state: KaraokeHomeState): { state: KaraokeHomeState; error?: string } {
+  if (state.subMode !== "mixed") return { state, error: "Solo in modo misto" };
+  if (state.karaokePhase === "playing" || state.karaokePhase === "voting") {
+    return { state, error: "Aspetta la fine dell'esibizione karaoke" };
+  }
+  if (state.freestylePhase !== "idle") return { state };
+  return { state: { ...state, freestylePhase: "booking" } };
+}
+
+/** Misto: dal freestyle torna alla coda karaoke (non durante una battle).
+ *  Le prenotazioni freestyle in attesa restano per la prossima volta. */
+export function mistoTornaAlKaraoke(state: KaraokeHomeState): { state: KaraokeHomeState; error?: string } {
+  if (state.subMode !== "mixed") return { state, error: "Solo in modo misto" };
+  if (state.freestylePhase === "battling") return { state, error: "Battle in corso" };
+  return { state: { ...state, freestylePhase: "idle", currentBattle: null } };
 }
 
 export function freestyleStartBattle(state: KaraokeHomeState, beatId?: string): { state: KaraokeHomeState; error?: string } {

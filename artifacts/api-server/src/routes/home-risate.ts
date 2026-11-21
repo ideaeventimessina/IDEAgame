@@ -14,9 +14,11 @@ import {
   createBlankRisateState, advancePhase,
   applyBooking, applyPublicChoice, applyVote, applyPublicAction,
   applyAutoBook, applyAutoChoice, applyPerPlayerChoice,
-  applyAmbulanteToggle, applyOggettoTargetToggle,
-  RISATE_MISSIONS, LANGUAGE_PHRASES,
+  applyAmbulanteToggle, applyOggettoTargetToggle, sincronizzaGiocatori,
+  RISATE_MISSIONS, LANGUAGE_PHRASES, type AdvanceResult,
 } from "../lib/risate-engine";
+import { mutaStatoHome, type EsitoMutazione } from "../lib/stato-home";
+import { backendStatoHomeDb } from "../lib/stato-home-db";
 import { pickItalianPhrases } from "../lib/risate-missions";
 import OpenAI from "openai";
 import { logger } from "../lib/logger";
@@ -48,54 +50,77 @@ function getRisateState(gameConfig: Record<string, unknown>): RisateState | null
   return null;
 }
 
-async function saveRisateState(id: string, state: RisateState, prevConfig: Record<string, unknown>): Promise<void> {
-  await db.update(homeSessionsTable)
-    .set({ gameConfig: { ...prevConfig, risateState: state } })
-    .where(eq(homeSessionsTable.id, id));
+/* ── Mutazioni serializzate (lock di riga + scrittura della sola chiave) ──────
+   Prima: leggi sessione → calcola → riscrivi tutto game_config. Due richieste
+   insieme (voto + voto, voto + timer, poliglotta + advance) si cancellavano a
+   vicenda. Ora passano tutte da mutaRisate (vedi lib/stato-home.ts). */
+type EsitoRisate = {
+  status: number;
+  body: unknown;
+  stato?: RisateState;          // nuovo stato da trasmettere (dopo il commit)
+  intermedio?: RisateState;     // stato prima di un auto-advance (trasmesso per primo)
+  punti?: AdvanceResult["scores"];
+};
+
+async function mutaRisate(
+  id: string,
+  fn: (stato: RisateState | null) => EsitoMutazione<RisateState, EsitoRisate> | Promise<EsitoMutazione<RisateState, EsitoRisate>>,
+): Promise<EsitoRisate> {
+  if (!isUUID(id)) return { status: 404, body: { error: "Sessione non trovata" } };
+  const out = await mutaStatoHome(backendStatoHomeDb, id, "risateState", (v) => getRisateState({ risateState: v }), (stato) => fn(stato));
+  return out.trovata ? out.risultato : { status: 404, body: { error: "Sessione non trovata" } };
 }
+
+/** Dopo il commit: trasmette lo stato, scrive i punteggi, arma il timer del voto, risponde. */
+async function concludi(id: string, esito: EsitoRisate, res?: Response): Promise<void> {
+  if (esito.intermedio) emitToRoom(homeRoom(id), "home:percorso_update", { state: esito.intermedio });
+  if (esito.stato) {
+    emitToRoom(homeRoom(id), "home:percorso_update", { state: esito.stato });
+    for (const sc of esito.punti ?? []) {
+      const team = esito.stato.teams.find(t => t.id === sc.teamId);
+      if (team) {
+        await db.update(homePlayersTable).set({ score: team.score })
+          .where(eq(homePlayersTable.id, sc.teamId)).catch(() => {});
+      }
+    }
+    if (esito.stato.phase === "voting" && esito.stato.votingEndsAt) {
+      scheduleRisateVotingAutoClose(id, esito.stato.votingEndsAt);
+    }
+  }
+  res?.status(esito.status).json(esito.body);
+}
+
+const NON_INIZIALIZZATO: EsitoMutazione<RisateState, EsitoRisate> = {
+  risultato: { status: 404, body: { error: "Stato Risate non inizializzato — chiama prima /risate/init" } },
+};
 
 async function applyAndSave(
   id: string,
   updater: (state: RisateState) => { state: RisateState; error?: string; autoAdvance?: boolean },
   res: Response,
 ): Promise<void> {
-  const session = await getSession(id);
-  if (!session) { res.status(404).json({ error: "Sessione non trovata" }); return; }
-
-  const cfg = (session.gameConfig as Record<string, unknown>) ?? {};
-  const state = getRisateState(cfg);
-  if (!state) { res.status(404).json({ error: "Stato Risate non inizializzato — chiama prima /risate/init" }); return; }
-
-  const result = updater(state);
-  if (result.error) { res.status(400).json({ error: result.error }); return; }
-
-  await saveRisateState(id, result.state, cfg);
-  emitToRoom(homeRoom(id), "home:percorso_update", { state: result.state });
-
-  if (result.autoAdvance) {
-    const next = advancePhase(result.state);
-    await saveRisateState(id, next.state, cfg);
-    emitToRoom(homeRoom(id), "home:percorso_update", { state: next.state });
-    for (const sc of next.scores) {
-      const team = next.state.teams.find(t => t.id === sc.teamId);
-      if (team) {
-        await db.update(homePlayersTable)
-          .set({ score: team.score })
-          .where(eq(homePlayersTable.id, sc.teamId))
-          .catch(() => {});
-      }
+  // Chi è entrato dopo l'init viene aggiunto alle squadre (vedi sincronizzaGiocatori).
+  const presenti = isUUID(id) ? await getPlayers(id) : [];
+  const esito = await mutaRisate(id, (state) => {
+    if (!state) return NON_INIZIALIZZATO;
+    const result = updater(sincronizzaGiocatori(state, presenti));
+    if (result.error) return { risultato: { status: 400, body: { error: result.error } } };
+    if (result.autoAdvance) {
+      const next = advancePhase(result.state);
+      return {
+        salva: next.state,
+        risultato: { status: 200, body: { state: next.state, autoAdvanced: true }, intermedio: result.state, stato: next.state, punti: next.scores },
+      };
     }
-    res.json({ state: next.state, autoAdvanced: true });
-    return;
-  }
-
-  res.json({ state: result.state });
+    return { salva: result.state, risultato: { status: 200, body: { state: result.state }, stato: result.state } };
+  });
+  await concludi(id, esito, res);
 }
 
 /* ── Part 3: Server-authoritative voting timer ───────────────────────────── */
 const votingTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-function scheduleRisateVotingAutoClose(sessionId: string, cfg: Record<string, unknown>, votingEndsAt: string): void {
+function scheduleRisateVotingAutoClose(sessionId: string, votingEndsAt: string): void {
   const existing = votingTimers.get(sessionId);
   if (existing) clearTimeout(existing);
   const delay = Math.max(0, new Date(votingEndsAt).getTime() - Date.now()) + 600;
@@ -106,24 +131,16 @@ function scheduleRisateVotingAutoClose(sessionId: string, cfg: Record<string, un
       if (!session) return;
       // In pausa (Regia/Presenter): non chiudere il voto, ricontrolla tra 1s.
       if ((session.roundPayload as Record<string, unknown> | null)?.["paused"]) {
-        scheduleRisateVotingAutoClose(sessionId, cfg, new Date(Date.now() + 1000).toISOString());
+        scheduleRisateVotingAutoClose(sessionId, new Date(Date.now() + 1000).toISOString());
         return;
       }
-      const currentCfg = (session.gameConfig as Record<string, unknown>) ?? {};
-      const s = getRisateState(currentCfg);
-      if (!s || s.phase !== "voting") return;
-      const { state: next, scores } = advancePhase(s);
-      await saveRisateState(sessionId, next, currentCfg);
-      emitToRoom(homeRoom(sessionId), "home:percorso_update", { state: next });
-      for (const sc of scores) {
-        const team = next.teams.find(t => t.id === sc.teamId);
-        if (team) {
-          await db.update(homePlayersTable)
-            .set({ score: team.score })
-            .where(eq(homePlayersTable.id, sc.teamId))
-            .catch(() => {});
-        }
-      }
+      // Sotto lock: se nel frattempo qualcuno ha già chiuso il voto, non si fa nulla.
+      const esito = await mutaRisate(sessionId, (s) => {
+        if (!s || s.phase !== "voting") return { risultato: { status: 200, body: null } };
+        const { state: next, scores } = advancePhase(s);
+        return { salva: next, risultato: { status: 200, body: null, stato: next, punti: scores } };
+      });
+      await concludi(sessionId, esito);
     } catch (err) {
       logger.error({ err, sessionId }, "[RISATE_VOTING_TIMER] auto-close failed");
     }
@@ -194,59 +211,67 @@ router.post("/home/sessions/:id/risate/init", async (req: Request, res: Response
   }));
 
   const state = createBlankRisateState(teams, players);
-  const cfg = (session.gameConfig as Record<string, unknown>) ?? {};
-  await saveRisateState(id, state, cfg);
-  emitToRoom(homeRoom(id), "home:percorso_update", { state });
-  res.status(201).json({ state });
+  const esito = await mutaRisate(id, () => ({ salva: state, risultato: { status: 201, body: { state }, stato: state } }));
+  await concludi(id, esito, res);
 });
 
-/* ── POST /home/sessions/:id/risate/advance ──────────────────────────────── */
-router.post("/home/sessions/:id/risate/advance", async (req: Request, res: Response): Promise<void> => {
-  const id = String(req.params["id"]);
-  const session = await getSession(id);
-  if (!session) { res.status(404).json({ error: "Sessione non trovata" }); return; }
+/* Poliglotta, passo B: servono le traduzioni (chiamata IA, lenta). Si fanno
+   FUORI dal lock e si applicano solo se lo stato è ancora quello di partenza. */
+function poliglottaPassoB(s: RisateState): boolean {
+  return RISATE_MISSIONS[s.missionIndex]?.id === "poliglotta" && s.phase === "public_choice" && s.poliglottaStep === "phrase_input";
+}
 
-  const cfg = (session.gameConfig as Record<string, unknown>) ?? {};
-  const state = getRisateState(cfg);
-  if (!state) { res.status(404).json({ error: "Stato Risate non inizializzato" }); return; }
+async function preparaTraduzioni(state: RisateState): Promise<{ translations: string[]; pronunciations: string[] }> {
+  const phrases = state.poliglottaSubmittedPhrases ?? [];
+  const lang = state.publicChoice ?? state.poliglottaLanguage ?? "";
+  // Se il pubblico non ha inviato frasi, pescane 2 a caso dal banco italiano
+  // (così NON è sempre la stessa frase). Poi traduci con pronuncia.
+  const toTranslate = phrases.length > 0 ? phrases : pickItalianPhrases(2);
+  let translations: string[];
+  let pronunciations: string[];
+  try {
+    const out = await translatePhrases(toTranslate, lang);
+    translations = out.map(o => o.translated);
+    pronunciations = out.map(o => o.pronunciation);
+  } catch {
+    translations = toTranslate;
+    pronunciations = toTranslate.map(() => "");
+  }
+  // Garantisci almeno 2 frasi
+  if (translations.length === 0) { translations = [LANGUAGE_PHRASES[lang] ?? "Buonasera a tutti!"]; pronunciations = [""]; }
+  if (translations.length === 1) { translations = [translations[0]!, translations[0]!]; pronunciations = [pronunciations[0] ?? "", pronunciations[0] ?? ""]; }
+  return { translations, pronunciations };
+}
 
+/** Il passo della macchina a stati di /advance (puro, sotto lock). */
+function passoAdvance(
+  state: RisateState,
+  pronte: { missionIndex: number; translations: string[]; pronunciations: string[] } | null,
+): EsitoMutazione<RisateState, EsitoRisate> {
+  const ok = (next: RisateState, punti: AdvanceResult["scores"] = [], extra: Record<string, unknown> = {}) =>
+    ({ salva: next, risultato: { status: 200, body: { state: next, ...extra }, stato: next, punti } });
   const mission = RISATE_MISSIONS[state.missionIndex];
 
   // ── Part 5: Poliglotta special advance logic ──────────────────────────────
   if (mission?.id === "poliglotta") {
     // A) language chosen → phrase_input sub-step (no DB phase change yet)
     if (state.phase === "public_choice" && state.poliglottaStep === "language") {
-      const next = { ...state, poliglottaStep: "phrase_input" as const };
-      await saveRisateState(id, next, cfg);
-      emitToRoom(homeRoom(id), "home:percorso_update", { state: next });
-      res.json({ state: next });
-      return;
+      return ok({ ...state, poliglottaStep: "phrase_input" as const });
     }
-
     // B) phrase_input → active with AI translation
-    if (state.phase === "public_choice" && state.poliglottaStep === "phrase_input") {
-      const phrases = state.poliglottaSubmittedPhrases ?? [];
-      const lang = state.publicChoice ?? state.poliglottaLanguage ?? "";
+    if (poliglottaPassoB(state)) {
       let translations = state.poliglottaTranslations ?? [];
       let pronunciations = state.poliglottaPronunciations ?? [];
-
       if (translations.length === 0) {
-        // Se il pubblico non ha inviato frasi, pescane 2 a caso dal banco italiano
-        // (così NON è sempre la stessa frase). Poi traduci con pronuncia.
-        const toTranslate = phrases.length > 0 ? phrases : pickItalianPhrases(2);
-        try {
-          const out = await translatePhrases(toTranslate, lang);
-          translations = out.map(o => o.translated);
-          pronunciations = out.map(o => o.pronunciation);
-        } catch {
-          translations = toTranslate;
-          pronunciations = toTranslate.map(() => "");
+        if (pronte && pronte.missionIndex === state.missionIndex) {
+          translations = pronte.translations; pronunciations = pronte.pronunciations;
+        } else {
+          // Nessuna traduzione pronta (gara con un'altra richiesta): frasi originali.
+          const frasi = (state.poliglottaSubmittedPhrases ?? []).length ? state.poliglottaSubmittedPhrases! : [LANGUAGE_PHRASES[state.publicChoice ?? ""] ?? "Buonasera a tutti!"];
+          translations = frasi.length === 1 ? [frasi[0]!, frasi[0]!] : frasi;
+          pronunciations = translations.map(() => "");
         }
-        // Garantisci almeno 2 frasi
-        if (translations.length === 0) { translations = [LANGUAGE_PHRASES[lang] ?? "Buonasera a tutti!"]; pronunciations = [""]; }
-        if (translations.length === 1) { translations = [translations[0]!, translations[0]!]; pronunciations = [pronunciations[0] ?? "", pronunciations[0] ?? ""]; }
       }
-
       const stateReady: RisateState = {
         ...state,
         poliglottaTranslations: translations,
@@ -255,59 +280,42 @@ router.post("/home/sessions/:id/risate/advance", async (req: Request, res: Respo
         poliglottaStep: "reading",
       };
       const { state: next, scores } = advancePhase(stateReady); // public_choice → active
-      await saveRisateState(id, next, cfg);
-      emitToRoom(homeRoom(id), "home:percorso_update", { state: next });
-      for (const sc of scores) {
-        const team = next.teams.find(t => t.id === sc.teamId);
-        if (team) await db.update(homePlayersTable).set({ score: team.score }).where(eq(homePlayersTable.id, sc.teamId)).catch(() => {});
-      }
-      res.json({ state: next });
-      return;
+      return ok(next, scores);
     }
-
     // C) reading → reveal (show original phrase)
     if (state.phase === "active" && state.poliglottaStep === "reading") {
-      const next = { ...state, poliglottaStep: "reveal" as const };
-      await saveRisateState(id, next, cfg);
-      emitToRoom(homeRoom(id), "home:percorso_update", { state: next });
-      res.json({ state: next });
-      return;
+      return ok({ ...state, poliglottaStep: "reveal" as const });
     }
-
     // D) reveal + phraseIndex 0 → reading phrase 1
     if (state.phase === "active" && state.poliglottaStep === "reveal" && (state.poliglottaPhraseIndex ?? 0) === 0) {
-      const next = { ...state, poliglottaStep: "reading" as const, poliglottaPhraseIndex: 1 };
-      await saveRisateState(id, next, cfg);
-      emitToRoom(homeRoom(id), "home:percorso_update", { state: next });
-      res.json({ state: next });
-      return;
+      return ok({ ...state, poliglottaStep: "reading" as const, poliglottaPhraseIndex: 1 });
     }
-
     // E) reveal + phraseIndex 1 → normal advance (voting)
-    // Falls through to normal advance below
   }
 
   // ── Normal phase advance ────────────────────────────────────────────────────
   const { state: next, scores } = advancePhase(state);
-  await saveRisateState(id, next, cfg);
-  emitToRoom(homeRoom(id), "home:percorso_update", { state: next });
+  return ok(next, scores, { scored: scores });
+}
 
-  // Part 3: schedule voting auto-close
-  if (next.phase === "voting" && next.votingEndsAt) {
-    scheduleRisateVotingAutoClose(id, cfg, next.votingEndsAt);
+/* ── POST /home/sessions/:id/risate/advance ──────────────────────────────── */
+router.post("/home/sessions/:id/risate/advance", async (req: Request, res: Response): Promise<void> => {
+  const id = String(req.params["id"]);
+  const session = await getSession(id);
+  if (!session) { res.status(404).json({ error: "Sessione non trovata" }); return; }
+  const snapshot = getRisateState((session.gameConfig as Record<string, unknown>) ?? {});
+  if (!snapshot) { res.status(404).json({ error: "Stato Risate non inizializzato" }); return; }
+
+  let pronte: { missionIndex: number; translations: string[]; pronunciations: string[] } | null = null;
+  if (poliglottaPassoB(snapshot) && (snapshot.poliglottaTranslations ?? []).length === 0) {
+    pronte = { missionIndex: snapshot.missionIndex, ...(await preparaTraduzioni(snapshot)) };
   }
-
-  for (const sc of scores) {
-    const team = next.teams.find(t => t.id === sc.teamId);
-    if (team) {
-      await db.update(homePlayersTable)
-        .set({ score: team.score })
-        .where(eq(homePlayersTable.id, sc.teamId))
-        .catch(() => {});
-    }
-  }
-
-  res.json({ state: next, scored: scores });
+  const presenti = await getPlayers(id);
+  const esito = await mutaRisate(id, (state) => {
+    if (!state) return NON_INIZIALIZZATO;
+    return passoAdvance(sincronizzaGiocatori(state, presenti), pronte);
+  });
+  await concludi(id, esito, res);
 });
 
 /* ── POST /home/sessions/:id/risate/book ─────────────────────────────────── */
@@ -387,46 +395,54 @@ router.post("/home/sessions/:id/risate/poliglotta-phrase", async (req: Request, 
   const { phrase } = req.body as { phrase?: string };
   if (!phrase || phrase.trim().length < 3) { res.status(400).json({ error: "Frase troppo corta (min 3 caratteri)" }); return; }
 
-  const session = await getSession(id);
-  if (!session) { res.status(404).json({ error: "Sessione non trovata" }); return; }
-  const cfg = (session.gameConfig as Record<string, unknown>) ?? {};
-  const state = getRisateState(cfg);
-  if (!state) { res.status(404).json({ error: "Stato non trovato" }); return; }
-
-  const m = RISATE_MISSIONS[state.missionIndex];
-  if (m?.id !== "poliglotta" || state.poliglottaStep !== "phrase_input") {
-    res.status(409).json({ error: "Non è la fase di inserimento frasi" }); return;
-  }
-
-  const phrases = state.poliglottaSubmittedPhrases ?? [];
-  if (phrases.length >= 2) { res.json({ state, skipped: true }); return; }
-
-  const newPhrases = [...phrases, phrase.trim()];
-  let newState: RisateState = { ...state, poliglottaSubmittedPhrases: newPhrases };
-
-  // When we have 2 phrases: auto-translate them
-  if (newPhrases.length >= 2) {
-    const lang = state.publicChoice ?? state.poliglottaLanguage ?? "";
-    newState = { ...newState, poliglottaStep: "translating" };
-    await saveRisateState(id, newState, cfg);
-    emitToRoom(homeRoom(id), "home:percorso_update", { state: newState });
-
-    let translations: string[];
-    let pronunciations: string[];
-    try {
-      const out = await translatePhrases(newPhrases, lang);
-      translations = out.map(o => o.translated);
-      pronunciations = out.map(o => o.pronunciation);
-    } catch {
-      translations = newPhrases;
-      pronunciations = newPhrases.map(() => "");
+  // 1) Sotto lock: aggiunge la frase. Con la seconda frase passa a "translating".
+  const primo = await mutaRisate(id, (state) => {
+    if (!state) return { risultato: { status: 404, body: { error: "Stato non trovato" } } };
+    const m = RISATE_MISSIONS[state.missionIndex];
+    if (m?.id !== "poliglotta" || state.poliglottaStep !== "phrase_input") {
+      return { risultato: { status: 409, body: { error: "Non è la fase di inserimento frasi" } } };
     }
-    newState = { ...newState, poliglottaTranslations: translations, poliglottaPronunciations: pronunciations, poliglottaStep: "phrase_input" };
+    const phrases = state.poliglottaSubmittedPhrases ?? [];
+    if (phrases.length >= 2) return { risultato: { status: 200, body: { state, skipped: true } } };
+    const newPhrases = [...phrases, phrase.trim()];
+    const next: RisateState = {
+      ...state,
+      poliglottaSubmittedPhrases: newPhrases,
+      ...(newPhrases.length >= 2 ? { poliglottaStep: "translating" as const } : {}),
+    };
+    return { salva: next, risultato: { status: 200, body: { state: next }, stato: next } };
+  });
+  if (primo.status !== 200 || !primo.stato || primo.stato.poliglottaStep !== "translating") {
+    await concludi(id, primo, res);
+    return;
+  }
+  await concludi(id, primo);
+
+  // 2) Traduzione FUORI dal lock (chiamata IA lenta).
+  const inTraduzione = primo.stato;
+  const frasi = inTraduzione.poliglottaSubmittedPhrases ?? [];
+  const lang = inTraduzione.publicChoice ?? inTraduzione.poliglottaLanguage ?? "";
+  let translations: string[];
+  let pronunciations: string[];
+  try {
+    const out = await translatePhrases(frasi, lang);
+    translations = out.map(o => o.translated);
+    pronunciations = out.map(o => o.pronunciation);
+  } catch {
+    translations = frasi;
+    pronunciations = frasi.map(() => "");
   }
 
-  await saveRisateState(id, newState, cfg);
-  emitToRoom(homeRoom(id), "home:percorso_update", { state: newState });
-  res.json({ state: newState });
+  // 3) Sotto lock: si applica SOLO se lo stato è ancora quello lasciato al passo 1.
+  //    Prima si riscriveva la copia vecchia e si annullava un advance arrivato nel frattempo.
+  const secondo = await mutaRisate(id, (state) => {
+    if (!state) return NON_INIZIALIZZATO;
+    const stesso = state.missionIndex === inTraduzione.missionIndex && state.poliglottaStep === "translating";
+    if (!stesso) return { risultato: { status: 200, body: { state } } };
+    const next: RisateState = { ...state, poliglottaTranslations: translations, poliglottaPronunciations: pronunciations, poliglottaStep: "phrase_input" };
+    return { salva: next, risultato: { status: 200, body: { state: next }, stato: next } };
+  });
+  await concludi(id, secondo, res);
 });
 
 export default router;

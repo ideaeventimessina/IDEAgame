@@ -106,6 +106,26 @@ export function createBlankRisateState(
   };
 }
 
+/* ─── Giocatori arrivati dopo ─────────────────────────────────────────────── */
+/** Chi entra a missioni già iniziate non era nelle squadre fissate all'init:
+ *  poteva prenotarsi ma i suoi punti si perdevano (nessuna squadra) e l'auto-
+ *  prenotazione non lo vedeva. Qui lo si aggiunge (una squadra per giocatore,
+ *  come all'init, col punteggio che ha già nella serata). Chi c'è già non cambia. */
+export function sincronizzaGiocatori(
+  state: RisateState,
+  presenti: ReadonlyArray<{ id: string; nickname: string; avatarColor: string; score: number }>,
+): RisateState {
+  const noti = new Set(state.players.map(p => p.id));
+  const nuovi = presenti.filter(p => !noti.has(p.id));
+  if (nuovi.length === 0) return state;
+  const squadre = new Set(state.teams.map(t => t.id));
+  return {
+    ...state,
+    players: [...state.players, ...nuovi.map(p => ({ id: p.id, nickname: p.nickname, teamId: p.id, teamName: p.nickname, teamColor: p.avatarColor }))],
+    teams: [...state.teams, ...nuovi.filter(p => !squadre.has(p.id)).map(p => ({ id: p.id, name: p.nickname, color: p.avatarColor, score: p.score }))],
+  };
+}
+
 /* ─── Score calculation ───────────────────────────────────────────────────── */
 export function calculateMissionScores(state: RisateState): RisateMissionResult {
   const mission = RISATE_MISSIONS[state.missionIndex];

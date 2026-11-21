@@ -7,7 +7,9 @@ import {
   RequestUploadUrlResponse,
 } from "@workspace/api-zod";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
-import { ObjectPermission } from "../lib/objectAcl";
+import { ObjectPermission, getObjectAclPolicy } from "../lib/objectAcl";
+import { requireRole, type AuthedRequest } from "../middlewares/auth";
+import { caricamentoAmmesso, percorsoOggettoAmmesso } from "../lib/storage-regole";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -19,12 +21,15 @@ const objectStorageService = new ObjectStorageService();
  * The client sends JSON metadata (name, size, contentType) — NOT the file.
  * Then uploads the file directly to the returned presigned URL.
  */
-router.post("/storage/uploads/request-url", async (req: Request, res: Response) => {
+router.post("/storage/uploads/request-url", requireRole("super_admin", "tenant_owner", "game_manager", "entertainer"), async (req: Request, res: Response) => {
   const parsed = RequestUploadUrlBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Missing or invalid required fields" });
     return;
   }
+
+  const regola = caricamentoAmmesso(parsed.data.size, parsed.data.contentType);
+  if (!regola.ok) { res.status(400).json({ error: regola.error }); return; }
 
   try {
     const { name, size, contentType } = parsed.data;
@@ -90,8 +95,19 @@ router.get("/storage/objects/*path", async (req: Request, res: Response) => {
   try {
     const raw = req.params.path;
     const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
+    // Solo gli oggetti caricati dall'app (uploads/<uuid>[.ext]): niente altri percorsi
+    // della cartella privata.
+    if (!percorsoOggettoAmmesso(wildcardPath)) { res.status(404).json({ error: "Object not found" }); return; }
     const objectPath = `/objects/${wildcardPath}`;
     const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
+
+    // Oggetto con regola d'accesso PRIVATA: solo il proprietario o chi ne ha diritto.
+    const regola = await getObjectAclPolicy(objectFile).catch(() => null);
+    if (regola?.visibility === "private") {
+      const userId = (req as AuthedRequest).user?.id;
+      const ok = userId ? await objectStorageService.canAccessObjectEntity({ userId, objectFile, requestedPermission: ObjectPermission.READ }) : false;
+      if (!ok) { res.status(userId ? 403 : 401).json({ error: "Accesso negato" }); return; }
+    }
 
     // --- Protected route example (uncomment when using replit-auth) ---
     // if (!req.isAuthenticated()) {

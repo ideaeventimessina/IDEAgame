@@ -15,8 +15,11 @@ import {
   setMode, setDuration,
   bookSong, changeSong, cancelSong, startNext, openVoting, addReaction, submitVote, endVoting, endSession,
   freestyleBook, freestyleStartBattle, freestyleWordTap, freestyleLockBattle, freestyleEndBattle,
+  freestyleRiapri, mistoVaiAlFreestyle, mistoTornaAlKaraoke,
   type KaraokeHomeState, type VotingBallot,
 } from "../lib/karaoke-home-engine";
+import { mutaStatoHome } from "../lib/stato-home";
+import { backendStatoHomeDb } from "../lib/stato-home-db";
 
 const router: IRouter = Router();
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -39,11 +42,48 @@ function getKaraokeState(gameConfig: Record<string, unknown>): KaraokeHomeState 
   }
   return null;
 }
-async function saveState(id: string, state: KaraokeHomeState, prevConfig: Record<string, unknown>): Promise<void> {
-  await db.update(homeSessionsTable)
-    .set({ gameConfig: { ...prevConfig, karaokeHomeState: state } })
-    .where(eq(homeSessionsTable.id, id));
+/* ── Mutazioni serializzate ──────────────────────────────────────────────────
+   Prima ogni rotta faceva: leggi sessione → calcola → riscrivi tutto game_config.
+   Due richieste insieme (tanti /react, /vote contemporanei, /vote contro
+   /end-voting) si cancellavano: voti persi, fasi che tornavano indietro. Ora ogni
+   passo gira sotto lock di riga e riscrive solo karaokeHomeState (lib/stato-home.ts). */
+type PassoKaraoke = {
+  next?: KaraokeHomeState;                          // nuovo stato da salvare e trasmettere
+  status?: number;
+  body?: unknown;                                    // default: { state }
+  punti?: { playerId: string; guadagno: number };   // da SOMMARE al punteggio della serata
+  reazione?: string;                                 // emoji da animare sulla TV
+};
+
+async function eseguiKaraoke(
+  id: string,
+  res: Response,
+  passo: (state: KaraokeHomeState) => PassoKaraoke | Promise<PassoKaraoke>,
+): Promise<void> {
+  if (!isUUID(id)) { res.status(404).json({ error: "Sessione non trovata" }); return; }
+  const out = await mutaStatoHome(backendStatoHomeDb, id, "karaokeHomeState",
+    (v) => getKaraokeState({ karaokeHomeState: v }),
+    async (state) => {
+      if (!state) return { risultato: { status: 404, body: { error: "Karaoke non inizializzato" } } as PassoKaraoke };
+      const p = await passo(state);
+      return { salva: p.next, risultato: { ...p, body: p.body ?? { state: p.next ?? state } } };
+    });
+  if (!out.trovata) { res.status(404).json({ error: "Sessione non trovata" }); return; }
+  const r = out.risultato;
+  if (r.punti && r.punti.guadagno !== 0) {
+    await db.update(homePlayersTable)
+      .set({ score: sql`${homePlayersTable.score} + ${r.punti.guadagno}` })
+      .where(eq(homePlayersTable.id, r.punti.playerId))
+      .catch(() => {});
+  }
+  if (r.reazione) emitToRoom(homeRoom(id), "home:karaoke_reaction", { emoji: r.reazione });
+  if (r.next) emit(id, r.next);
+  res.status(r.status ?? 200).json(r.body);
 }
+
+/** Esito di una funzione del motore che può dare errore → passo HTTP. */
+const daRisultato = (r: { state: KaraokeHomeState; error?: string }): PassoKaraoke =>
+  r.error ? { status: 400, body: { error: r.error } } : { next: r.state };
 function emit(id: string, state: KaraokeHomeState) {
   emitToRoom(homeRoom(id), "home:karaoke_state", { state });
 }
@@ -65,8 +105,8 @@ router.post("/home/sessions/:id/karaoke/init", async (req: Request, res: Respons
   const dbPlayers = await getPlayers(id);
   if (dbPlayers.length === 0) { res.status(400).json({ error: "Nessun giocatore" }); return; }
   const state = createBlankKaraokeState(dbPlayers.map(p => ({ id: p.id, nickname: p.nickname, avatarColor: p.avatarColor })));
-  const cfg = (session.gameConfig as Record<string, unknown>) ?? {};
-  await saveState(id, state, cfg);
+  const out = await mutaStatoHome(backendStatoHomeDb, id, "karaokeHomeState", () => null, () => ({ salva: state, risultato: true }));
+  if (!out.trovata) { res.status(404).json({ error: "Sessione non trovata" }); return; }
   emit(id, state);
   res.status(201).json({ state });
 });
@@ -80,38 +120,32 @@ function puntiGuadagnati(prima: { players: { id: string; score?: number }[] }, d
 
 /* ── POST set-mode ───────────────────────────────────────────────────────── */
 router.post("/home/sessions/:id/karaoke/set-mode", async (req: Request, res: Response): Promise<void> => {
-  const id = String(req.params["id"]);
   const { mode } = req.body as { mode?: string };
   if (!mode || !["karaoke-live", "freestyle", "mixed"].includes(mode)) {
     res.status(400).json({ error: "mode deve essere: karaoke-live | freestyle | mixed" }); return;
   }
-  const session = await getSession(id);
-  if (!session) { res.status(404).json({ error: "Sessione non trovata" }); return; }
-  const cfg = (session.gameConfig as Record<string, unknown>) ?? {};
-  const state = getKaraokeState(cfg);
-  if (!state) { res.status(404).json({ error: "Karaoke non inizializzato" }); return; }
-  const next = setMode(state, mode as "karaoke-live" | "freestyle" | "mixed");
-  await saveState(id, next, cfg);
-  emit(id, next);
-  res.json({ state: next });
+  await eseguiKaraoke(String(req.params["id"]), res, (state) => ({ next: setMode(state, mode as "karaoke-live" | "freestyle" | "mixed") }));
+});
+
+/* ── Modo MISTO: passaggio fra karaoke e freestyle ───────────────────────── */
+router.post("/home/sessions/:id/karaoke/mixed/freestyle", async (req: Request, res: Response): Promise<void> => {
+  await eseguiKaraoke(String(req.params["id"]), res, (state) => daRisultato(mistoVaiAlFreestyle(state)));
+});
+router.post("/home/sessions/:id/karaoke/mixed/karaoke", async (req: Request, res: Response): Promise<void> => {
+  await eseguiKaraoke(String(req.params["id"]), res, (state) => daRisultato(mistoTornaAlKaraoke(state)));
+});
+/* "Ancora battle!": riapre le prenotazioni freestyle senza cambiare modo. */
+router.post("/home/sessions/:id/freestyle/riapri", async (req: Request, res: Response): Promise<void> => {
+  await eseguiKaraoke(String(req.params["id"]), res, (state) => daRisultato(freestyleRiapri(state)));
 });
 
 /* ── POST set-duration ───────────────────────────────────────────────────── */
 router.post("/home/sessions/:id/karaoke/set-duration", async (req: Request, res: Response): Promise<void> => {
-  const id = String(req.params["id"]);
   const { minutes } = req.body as { minutes?: number };
   if (!minutes || minutes < 1 || minutes > 240) {
     res.status(400).json({ error: "minutes richiesto (1-240)" }); return;
   }
-  const session = await getSession(id);
-  if (!session) { res.status(404).json({ error: "Sessione non trovata" }); return; }
-  const cfg = (session.gameConfig as Record<string, unknown>) ?? {};
-  const state = getKaraokeState(cfg);
-  if (!state) { res.status(404).json({ error: "Karaoke non inizializzato" }); return; }
-  const next = setDuration(state, minutes);
-  await saveState(id, next, cfg);
-  emit(id, next);
-  res.json({ state: next });
+  await eseguiKaraoke(String(req.params["id"]), res, (state) => ({ next: setDuration(state, minutes) }));
 });
 
 /* ── POST search (YouTube) ───────────────────────────────────────────────── */
@@ -416,198 +450,98 @@ router.post("/home/sessions/:id/ballo/search", async (req: Request, res: Respons
   res.json(result);
 });
 
+type CanzoneBody = {
+  playerId?: string; nickname?: string; avatarColor?: string;
+  videoId?: string; title?: string; channel?: string;
+  thumbnailUrl?: string; durationSeconds?: number;
+  dedicationTargetPlayerId?: string | null;
+  dedicationTargetNickname?: string | null;
+};
+function canzoneDa(body: CanzoneBody) {
+  return {
+    playerId: body.playerId!, nickname: body.nickname!, avatarColor: body.avatarColor ?? "#F5B642",
+    videoId: body.videoId!, title: body.title!, channel: body.channel ?? "", thumbnailUrl: body.thumbnailUrl ?? "",
+    durationSeconds: body.durationSeconds!,
+    dedicationTargetPlayerId: body.dedicationTargetPlayerId ?? null,
+    dedicationTargetNickname: body.dedicationTargetNickname ?? null,
+  };
+}
+const canzoneValida = (b: CanzoneBody) => !!(b.playerId && b.nickname && b.videoId && b.title && b.durationSeconds);
+
 /* ── POST book-song ──────────────────────────────────────────────────────── */
 router.post("/home/sessions/:id/karaoke/book-song", async (req: Request, res: Response): Promise<void> => {
-  const id = String(req.params["id"]);
-  const body = req.body as {
-    playerId?: string; nickname?: string; avatarColor?: string;
-    videoId?: string; title?: string; channel?: string;
-    thumbnailUrl?: string; durationSeconds?: number;
-    dedicationTargetPlayerId?: string | null;
-    dedicationTargetNickname?: string | null;
-  };
-  const { playerId, nickname, avatarColor, videoId, title, channel, thumbnailUrl, durationSeconds,
-    dedicationTargetPlayerId, dedicationTargetNickname } = body;
-  if (!playerId || !nickname || !videoId || !title || !durationSeconds) {
+  const body = req.body as CanzoneBody;
+  if (!canzoneValida(body)) {
     res.status(400).json({ error: "playerId, nickname, videoId, title, durationSeconds richiesti" }); return;
   }
-  const session = await getSession(id);
-  if (!session) { res.status(404).json({ error: "Sessione non trovata" }); return; }
-  const cfg = (session.gameConfig as Record<string, unknown>) ?? {};
-  const state = getKaraokeState(cfg);
-  if (!state) { res.status(404).json({ error: "Karaoke non inizializzato" }); return; }
-
-  const result = bookSong(state, {
-    playerId, nickname, avatarColor: avatarColor ?? "#F5B642",
-    videoId, title, channel: channel ?? "", thumbnailUrl: thumbnailUrl ?? "",
-    durationSeconds,
-    dedicationTargetPlayerId: dedicationTargetPlayerId ?? null,
-    dedicationTargetNickname: dedicationTargetNickname ?? null,
-  });
-  if (result.error) { res.status(400).json({ error: result.error }); return; }
-  await saveState(id, result.state, cfg);
-  emit(id, result.state);
-  res.json({ state: result.state });
+  await eseguiKaraoke(String(req.params["id"]), res, (state) => daRisultato(bookSong(state, canzoneDa(body))));
 });
 
 /* ── POST change-song ────────────────────────────────────────────────────── */
 router.post("/home/sessions/:id/karaoke/change-song", async (req: Request, res: Response): Promise<void> => {
-  const id = String(req.params["id"]);
-  const body = req.body as {
-    playerId?: string; nickname?: string; avatarColor?: string;
-    videoId?: string; title?: string; channel?: string;
-    thumbnailUrl?: string; durationSeconds?: number;
-    dedicationTargetPlayerId?: string | null;
-    dedicationTargetNickname?: string | null;
-  };
-  const { playerId, nickname, avatarColor, videoId, title, channel, thumbnailUrl, durationSeconds,
-    dedicationTargetPlayerId, dedicationTargetNickname } = body;
-  if (!playerId || !nickname || !videoId || !title || !durationSeconds) {
+  const body = req.body as CanzoneBody;
+  if (!canzoneValida(body)) {
     res.status(400).json({ error: "playerId, nickname, videoId, title, durationSeconds richiesti" }); return;
   }
-  const session = await getSession(id);
-  if (!session) { res.status(404).json({ error: "Sessione non trovata" }); return; }
-  const cfg = (session.gameConfig as Record<string, unknown>) ?? {};
-  const state = getKaraokeState(cfg);
-  if (!state) { res.status(404).json({ error: "Karaoke non inizializzato" }); return; }
-
-  const result = changeSong(state, playerId, {
-    playerId, nickname, avatarColor: avatarColor ?? "#F5B642",
-    videoId, title, channel: channel ?? "", thumbnailUrl: thumbnailUrl ?? "",
-    durationSeconds,
-    dedicationTargetPlayerId: dedicationTargetPlayerId ?? null,
-    dedicationTargetNickname: dedicationTargetNickname ?? null,
-  });
-  if (result.error) { res.status(400).json({ error: result.error }); return; }
-  await saveState(id, result.state, cfg);
-  emit(id, result.state);
-  res.json({ state: result.state });
+  await eseguiKaraoke(String(req.params["id"]), res, (state) => daRisultato(changeSong(state, body.playerId!, canzoneDa(body))));
 });
 
 /* ── POST start-next ─────────────────────────────────────────────────────── */
 router.post("/home/sessions/:id/karaoke/start-next", async (req: Request, res: Response): Promise<void> => {
-  const id = String(req.params["id"]);
-  const session = await getSession(id);
-  if (!session) { res.status(404).json({ error: "Sessione non trovata" }); return; }
-  const cfg = (session.gameConfig as Record<string, unknown>) ?? {};
-  const state = getKaraokeState(cfg);
-  if (!state) { res.status(404).json({ error: "Karaoke non inizializzato" }); return; }
-  const result = startNext(state);
-  if (result.error) { res.status(400).json({ error: result.error }); return; }
-  await saveState(id, result.state, cfg);
-  emit(id, result.state);
-  res.json({ state: result.state });
+  await eseguiKaraoke(String(req.params["id"]), res, (state) => daRisultato(startNext(state)));
 });
 
 /* ── POST open-voting ────────────────────────────────────────────────────── */
 router.post("/home/sessions/:id/karaoke/open-voting", async (req: Request, res: Response): Promise<void> => {
-  const id = String(req.params["id"]);
-  const session = await getSession(id);
-  if (!session) { res.status(404).json({ error: "Sessione non trovata" }); return; }
-  const cfg = (session.gameConfig as Record<string, unknown>) ?? {};
-  const state = getKaraokeState(cfg);
-  if (!state) { res.status(404).json({ error: "Karaoke non inizializzato" }); return; }
-  const next = openVoting(state);
-  await saveState(id, next, cfg);
-  emit(id, next);
-  res.json({ state: next });
+  await eseguiKaraoke(String(req.params["id"]), res, (state) => ({ next: openVoting(state) }));
 });
 
 /* ── POST react ──────────────────────────────────────────────────────────── */
 router.post("/home/sessions/:id/karaoke/react", async (req: Request, res: Response): Promise<void> => {
-  const id = String(req.params["id"]);
   const { emoji } = req.body as { emoji?: string };
   if (!emoji) { res.status(400).json({ error: "emoji richiesta" }); return; }
-  const session = await getSession(id);
-  if (!session) { res.status(404).json({ error: "Sessione non trovata" }); return; }
-  const cfg = (session.gameConfig as Record<string, unknown>) ?? {};
-  const state = getKaraokeState(cfg);
-  if (!state) { res.status(404).json({ error: "Karaoke non inizializzato" }); return; }
-  const next = addReaction(state, emoji);
-  await saveState(id, next, cfg);
-  // Emit both state update and a lightweight reaction animation event
-  emitToRoom(homeRoom(id), "home:karaoke_reaction", { emoji });
-  emit(id, next);
-  res.json({ ok: true });
+  await eseguiKaraoke(String(req.params["id"]), res, (state) => ({ next: addReaction(state, emoji), reazione: emoji, body: { ok: true } }));
 });
 
 /* ── POST cancel-song ────────────────────────────────────────────────────── */
 router.post("/home/sessions/:id/karaoke/cancel-song", async (req: Request, res: Response): Promise<void> => {
-  const id = String(req.params["id"]);
   const { playerId } = req.body as { playerId?: string };
   if (!playerId) { res.status(400).json({ error: "playerId richiesto" }); return; }
-  const session = await getSession(id);
-  if (!session) { res.status(404).json({ error: "Sessione non trovata" }); return; }
-  const cfg = (session.gameConfig as Record<string, unknown>) ?? {};
-  const state = getKaraokeState(cfg);
-  if (!state) { res.status(404).json({ error: "Karaoke non inizializzato" }); return; }
-  const result = cancelSong(state, playerId);
-  if (result.error) { res.status(400).json({ error: result.error }); return; }
-  await saveState(id, result.state, cfg);
-  emit(id, result.state);
-  res.json({ state: result.state });
+  await eseguiKaraoke(String(req.params["id"]), res, (state) => daRisultato(cancelSong(state, playerId)));
 });
 
 /* ── POST vote ───────────────────────────────────────────────────────────── */
 router.post("/home/sessions/:id/karaoke/vote", async (req: Request, res: Response): Promise<void> => {
-  const id = String(req.params["id"]);
   const { voterId, ballot } = req.body as { voterId?: string; ballot?: VotingBallot };
   if (!voterId || !ballot) { res.status(400).json({ error: "voterId e ballot richiesti" }); return; }
-  const session = await getSession(id);
-  if (!session) { res.status(404).json({ error: "Sessione non trovata" }); return; }
-  const cfg = (session.gameConfig as Record<string, unknown>) ?? {};
-  const state = getKaraokeState(cfg);
-  if (!state) { res.status(404).json({ error: "Karaoke non inizializzato" }); return; }
-  // FIX 5: Hard-lock votes after timer expires
-  if (state.voteCloseAt && Date.now() > new Date(state.voteCloseAt).getTime()) {
-    res.status(409).json({ error: "Votazione chiusa" }); return;
-  }
-  const next = submitVote(state, voterId, ballot);
-  await saveState(id, next, cfg);
-  emit(id, next);
-  res.json({ state: next });
+  await eseguiKaraoke(String(req.params["id"]), res, (state) => {
+    // FIX 5: Hard-lock votes after timer expires
+    if (state.voteCloseAt && Date.now() > new Date(state.voteCloseAt).getTime()) {
+      return { status: 409, body: { error: "Votazione chiusa" } };
+    }
+    return { next: submitVote(state, voterId, ballot) };
+  });
 });
 
 /* ── POST end-voting ─────────────────────────────────────────────────────── */
 router.post("/home/sessions/:id/karaoke/end-voting", async (req: Request, res: Response): Promise<void> => {
-  const id = String(req.params["id"]);
-  const session = await getSession(id);
-  if (!session) { res.status(404).json({ error: "Sessione non trovata" }); return; }
-  const cfg = (session.gameConfig as Record<string, unknown>) ?? {};
-  const state = getKaraokeState(cfg);
-  if (!state) { res.status(404).json({ error: "Karaoke non inizializzato" }); return; }
-  const { state: next, result } = endVoting(state);
-
-  // Write score to homePlayersTable
-  // Si SOMMANO i punti guadagnati in questo turno: prima si scriveva il punteggio
-  // assoluto del karaoke e si cancellavano quelli dei giochi precedenti.
-  if (result) {
-    const guadagno = puntiGuadagnati(state, next, result.playerId);
-    if (guadagno !== 0) {
-      await db.update(homePlayersTable)
-        .set({ score: sql`${homePlayersTable.score} + ${guadagno}` })
-        .where(eq(homePlayersTable.id, result.playerId))
-        .catch(() => {});
-    }
-  }
-
-  await saveState(id, next, cfg);
-  emit(id, next);
-  res.json({ state: next, result });
+  await eseguiKaraoke(String(req.params["id"]), res, (state) => {
+    // Idempotente: la TV chiude da sola a zero e l'host può premere insieme;
+    // la seconda chiamata trova la votazione già chiusa e non riassegna i punti.
+    if (state.karaokePhase !== "voting") return { body: { state, result: null } };
+    const { state: next, result } = endVoting(state);
+    // Si SOMMANO i punti guadagnati in questo turno (non si sovrascrive il punteggio).
+    return {
+      next,
+      body: { state: next, result },
+      punti: result ? { playerId: result.playerId, guadagno: puntiGuadagnati(state, next, result.playerId) } : undefined,
+    };
+  });
 });
 
 /* ── POST end-session ────────────────────────────────────────────────────── */
 router.post("/home/sessions/:id/karaoke/end-session", async (req: Request, res: Response): Promise<void> => {
-  const id = String(req.params["id"]);
-  const session = await getSession(id);
-  if (!session) { res.status(404).json({ error: "Sessione non trovata" }); return; }
-  const cfg = (session.gameConfig as Record<string, unknown>) ?? {};
-  const state = getKaraokeState(cfg);
-  if (!state) { res.status(404).json({ error: "Karaoke non inizializzato" }); return; }
-  const next = endSession(state);
-  await saveState(id, next, cfg);
-  emit(id, next);
-  res.json({ state: next });
+  await eseguiKaraoke(String(req.params["id"]), res, (state) => ({ next: endSession(state) }));
 });
 
 /* ── POST backstage-status (relay only — no DB write) ────────────────────── */
@@ -623,35 +557,15 @@ router.post("/home/sessions/:id/karaoke/backstage-status", async (req: Request, 
 
 /* ── Freestyle: POST book ────────────────────────────────────────────────── */
 router.post("/home/sessions/:id/freestyle/book", async (req: Request, res: Response): Promise<void> => {
-  const id = String(req.params["id"]);
   const { playerId, nickname, avatarColor } = req.body as { playerId?: string; nickname?: string; avatarColor?: string };
   if (!playerId || !nickname) { res.status(400).json({ error: "playerId e nickname richiesti" }); return; }
-  const session = await getSession(id);
-  if (!session) { res.status(404).json({ error: "Sessione non trovata" }); return; }
-  const cfg = (session.gameConfig as Record<string, unknown>) ?? {};
-  const state = getKaraokeState(cfg);
-  if (!state) { res.status(404).json({ error: "Karaoke non inizializzato" }); return; }
-  const result = freestyleBook(state, playerId, nickname, avatarColor ?? "#F5B642");
-  if (result.error) { res.status(400).json({ error: result.error }); return; }
-  await saveState(id, result.state, cfg);
-  emit(id, result.state);
-  res.json({ state: result.state });
+  await eseguiKaraoke(String(req.params["id"]), res, (state) => daRisultato(freestyleBook(state, playerId, nickname, avatarColor ?? "#F5B642")));
 });
 
 /* ── Freestyle: POST start-battle ────────────────────────────────────────── */
 router.post("/home/sessions/:id/freestyle/start-battle", async (req: Request, res: Response): Promise<void> => {
-  const id = String(req.params["id"]);
   const { beatId } = req.body as { beatId?: string };
-  const session = await getSession(id);
-  if (!session) { res.status(404).json({ error: "Sessione non trovata" }); return; }
-  const cfg = (session.gameConfig as Record<string, unknown>) ?? {};
-  const state = getKaraokeState(cfg);
-  if (!state) { res.status(404).json({ error: "Karaoke non inizializzato" }); return; }
-  const result = freestyleStartBattle(state, beatId);
-  if (result.error) { res.status(400).json({ error: result.error }); return; }
-  await saveState(id, result.state, cfg);
-  emit(id, result.state);
-  res.json({ state: result.state });
+  await eseguiKaraoke(String(req.params["id"]), res, (state) => daRisultato(freestyleStartBattle(state, beatId)));
 });
 
 /* ── Freestyle: POST next-word (no-op — grid shows all words) ─────────────── */
@@ -664,31 +578,18 @@ router.post("/home/sessions/:id/freestyle/word-tap", async (req: Request, res: R
   const id = String(req.params["id"]);
   const { playerId, wordId } = req.body as { playerId?: string; wordId?: string };
   if (!playerId || !wordId) { res.status(400).json({ error: "playerId e wordId richiesti" }); return; }
-  const session = await getSession(id);
-  if (!session) { res.status(404).json({ error: "Sessione non trovata" }); return; }
-  const cfg = (session.gameConfig as Record<string, unknown>) ?? {};
-  const state = getKaraokeState(cfg);
-  if (!state) { res.status(404).json({ error: "Karaoke non inizializzato" }); return; }
-
-  // Auto-expire check: if timer has run out, lock the battle and reject
-  const battle = state.currentBattle;
-  if (battle?.battleEndsAt && !(battle.battleLocked ?? false) && Date.now() > new Date(battle.battleEndsAt).getTime()) {
-    const locked = freestyleLockBattle(state);
-    await saveState(id, locked, cfg);
-    emit(id, locked);
-    res.status(409).json({ error: "time_expired" }); return;
-  }
-
-  const dbPlayers = await getPlayers(id);
   // Spectators = all players minus the rapper (at least 1 to avoid div/0)
-  const spectatorCount = Math.max(1, dbPlayers.length - 1);
-
-  const result = freestyleWordTap(state, playerId, wordId, spectatorCount);
-  if (result.error === "time_expired") { res.status(409).json({ error: result.error }); return; }
-  if (result.error) { res.status(400).json({ error: result.error }); return; }
-  await saveState(id, result.state, cfg);
-  emit(id, result.state);
-  res.json({ state: result.state });
+  const spectatorCount = isUUID(id) ? Math.max(1, (await getPlayers(id)).length - 1) : 1;
+  await eseguiKaraoke(id, res, (state) => {
+    // Auto-expire check: if timer has run out, lock the battle and reject
+    const battle = state.currentBattle;
+    if (battle?.battleEndsAt && !(battle.battleLocked ?? false) && Date.now() > new Date(battle.battleEndsAt).getTime()) {
+      return { next: freestyleLockBattle(state), status: 409, body: { error: "time_expired" } };
+    }
+    const result = freestyleWordTap(state, playerId, wordId, spectatorCount);
+    if (result.error === "time_expired") return { status: 409, body: { error: result.error } };
+    return daRisultato(result);
+  });
 });
 
 /* ── Freestyle: POST word-mic (il MIC del rapper valida una parola) ───────────
@@ -696,54 +597,29 @@ router.post("/home/sessions/:id/freestyle/word-tap", async (req: Request, res: R
    convalida direttamente (senza aspettare il pubblico). La regola "dentro le frasi,
    non elencate" è applicata lato telefono (SpeechRecognition); qui segniamo e basta. */
 router.post("/home/sessions/:id/freestyle/word-mic", async (req: Request, res: Response): Promise<void> => {
-  const id = String(req.params["id"]);
   const { playerId, wordId } = req.body as { playerId?: string; wordId?: string };
   if (!playerId || !wordId) { res.status(400).json({ error: "playerId e wordId richiesti" }); return; }
-  const session = await getSession(id);
-  if (!session) { res.status(404).json({ error: "Sessione non trovata" }); return; }
-  const cfg = (session.gameConfig as Record<string, unknown>) ?? {};
-  const state = getKaraokeState(cfg);
-  if (!state) { res.status(404).json({ error: "Karaoke non inizializzato" }); return; }
-  const battle = state.currentBattle;
-  if (!battle || battle.playerId !== playerId) { res.status(409).json({ error: "Non sei il rapper del turno" }); return; }
-  if (battle.battleLocked) { res.status(409).json({ error: "battle_locked" }); return; }
-  const w = battle.words.find(x => x.id === wordId);
-  if (!w || w.validated) { res.json({ state }); return; } // già validata o inesistente
-  const newWords = battle.words.map(x => x.id === wordId ? { ...x, validated: true, validatedBy: [...new Set([...x.validatedBy, "__mic__"])] } : x);
-  const newState = { ...state, currentBattle: { ...battle, words: newWords } };
-  await saveState(id, newState, cfg);
-  emit(id, newState);
-  res.json({ state: newState });
+  await eseguiKaraoke(String(req.params["id"]), res, (state) => {
+    const battle = state.currentBattle;
+    if (!battle || battle.playerId !== playerId) return { status: 409, body: { error: "Non sei il rapper del turno" } };
+    if (battle.battleLocked) return { status: 409, body: { error: "battle_locked" } };
+    const w = battle.words.find(x => x.id === wordId);
+    if (!w || w.validated) return { body: { state } }; // già validata o inesistente
+    const newWords = battle.words.map(x => x.id === wordId ? { ...x, validated: true, validatedBy: [...new Set([...x.validatedBy, "__mic__"])] } : x);
+    return { next: { ...state, currentBattle: { ...battle, words: newWords } } };
+  });
 });
 
 /* ── Freestyle: POST end-battle ──────────────────────────────────────────── */
 router.post("/home/sessions/:id/freestyle/end-battle", async (req: Request, res: Response): Promise<void> => {
-  const id = String(req.params["id"]);
-  const session = await getSession(id);
-  if (!session) { res.status(404).json({ error: "Sessione non trovata" }); return; }
-  const cfg = (session.gameConfig as Record<string, unknown>) ?? {};
-  const state = getKaraokeState(cfg);
-  if (!state) { res.status(404).json({ error: "Karaoke non inizializzato" }); return; }
-
-  // Lock first to stop any concurrent taps, then calculate final score
-  const locked = freestyleLockBattle(state);
-  const next = freestyleEndBattle(locked);
-
-  // Write final score to homePlayersTable
-  const battle = state.currentBattle;
-  if (battle) {
-    const guadagno = puntiGuadagnati(state, next, battle.playerId);
-    if (guadagno !== 0) {
-      await db.update(homePlayersTable)
-        .set({ score: sql`${homePlayersTable.score} + ${guadagno}` })
-        .where(eq(homePlayersTable.id, battle.playerId))
-        .catch(() => {});
-    }
-  }
-
-  await saveState(id, next, cfg);
-  emit(id, next);
-  res.json({ state: next });
+  await eseguiKaraoke(String(req.params["id"]), res, (state) => {
+    const battle = state.currentBattle;
+    // Idempotente: TV a zero + pulsante dell'host → la seconda chiamata non fa nulla.
+    if (!battle) return { body: { state } };
+    // Lock first to stop any concurrent taps, then calculate final score
+    const next = freestyleEndBattle(freestyleLockBattle(state));
+    return { next, punti: { playerId: battle.playerId, guadagno: puntiGuadagnati(state, next, battle.playerId) } };
+  });
 });
 
 export default router;

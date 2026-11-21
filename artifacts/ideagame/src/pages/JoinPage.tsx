@@ -6,6 +6,7 @@
  * Chiama /api/home/sessions/by-code/:code → /api/home/sessions/:id/join
  * poi naviga a /home/join?s=:code per il controller di gioco.
  */
+import { ricordaPlayerHome } from '@/lib/gettoni';
 import { useState, useEffect } from 'react';
 import { useLocation, useParams } from 'wouter';
 import { motion } from 'framer-motion';
@@ -76,7 +77,8 @@ export default function JoinPage() {
         setError(msg.error ?? 'Errore durante il join.');
         return;
       }
-      const player = await r.json() as { id: string };
+      const player = await r.json() as { id: string; playerToken?: string };
+      if (player.playerToken) ricordaPlayerHome(session.id, player.playerToken);
       try {
         localStorage.setItem('ideagame:home:player', JSON.stringify({
           sessionId: session.id,

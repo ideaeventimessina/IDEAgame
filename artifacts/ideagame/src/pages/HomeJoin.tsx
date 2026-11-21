@@ -8,6 +8,7 @@
  * Flusso: code → nickname → lobby → playing (controller per ogni gioco) → ended
  */
 
+import { ricordaPlayerHome } from '@/lib/gettoni';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { SensorBridge } from '../lib/SensorBridge';
 import { useLocation } from 'wouter';
@@ -807,7 +808,8 @@ function HomeJoinInner() {
         body: JSON.stringify({ nickname: nickname.trim() }),
       });
       if (!r.ok) { const err = await r.json() as { error: string }; setError(err.error ?? 'Errore'); return; }
-      const p: HomePlayer = await r.json();
+      const p: HomePlayer & { playerToken?: string } = await r.json();
+      if (p.playerToken) ricordaPlayerHome(session.id, p.playerToken);
       setPlayer(p);
       saveJoin(session.id, session.joinCode, p.id, nickname.trim());
       // Carica il selfie (se scelto) → avatar in cerchio in tutti i giochi.
@@ -6234,280 +6236,356 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
   const canBook = canQueueAnyMore(s);
   const waitLabel = waitEstimateLabel(s);
 
-  // ── Waiting for mode selection ──────────────────────────────────────────
-  if (s.subMode === 'mode_select') {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-4 text-center px-4">
-        <div className="text-4xl">🎤</div>
-        <div className="text-xl font-black text-white">Karaoke Live</div>
-        <div className="text-sm text-white/50">Aspetta che l'host scelga la modalità…</div>
-      </div>
-    );
-  }
+  // ── Modo MISTO: anche sulla schermata karaoke il telefono può prenotare il
+  // freestyle (prima il pulsante compariva solo in modo freestyle puro). ──────
+  const mioFreestyle = (s.freestyleBookings ?? []).filter(b => b.status === 'waiting');
+  const miaPosFreestyle = mioFreestyle.findIndex(b => b.playerId === playerId) + 1;
+  const barraMista = s.subMode === 'mixed' && s.freestylePhase === 'idle' && !isCurrentSinger ? (
+    <div className="fixed bottom-3 left-3 right-3 z-40">
+      {miaPosFreestyle > 0 ? (
+        <div className="rounded-2xl px-4 py-3 text-center text-sm font-black text-amber-300"
+          style={{ background: '#1f1608ee', border: '1px solid #f59e0b55' }}>
+          🎙️ Sei in coda freestyle · posizione {miaPosFreestyle}
+        </div>
+      ) : (
+        <button onClick={() => void post('/freestyle/book', { playerId, nickname, avatarColor })}
+          className="w-full rounded-2xl py-3 font-black text-black"
+          style={{ background: 'linear-gradient(135deg,#f59e0b,#d97706)', boxShadow: '0 0 20px #f59e0b55' }}>
+          🎙️ Voglio rappare (freestyle)
+        </button>
+      )}
+    </div>
+  ) : null;
 
-  // ── Freestyle controller ────────────────────────────────────────────────
-  if (s.subMode === 'freestyle' || s.freestylePhase === 'battling' || s.freestylePhase === 'booking') {
-    // Solo la prenotazione ANCORA IN ATTESA: con quella già "completed" il rapper
-    // vedeva "Posizione: 0" e nessun pulsante, e non poteva più riprenotarsi.
-    const myBooking = s.freestyleBookings.find(b => b.playerId === playerId && b.status === 'waiting');
-    const battle = s.currentBattle;
-    const isRapper = battle?.playerId === playerId;
+  const corpo = (() => {
+    // ── Waiting for mode selection ──────────────────────────────────────────
+    if (s.subMode === 'mode_select') {
+      return (
+        <div className="flex flex-col items-center justify-center h-full gap-4 text-center px-4">
+          <div className="text-4xl">🎤</div>
+          <div className="text-xl font-black text-white">Karaoke Live</div>
+          <div className="text-sm text-white/50">Aspetta che l'host scelga la modalità…</div>
+        </div>
+      );
+    }
 
-    if (s.freestylePhase === 'battling' && battle) {
-      const confirmedCount = battle.words.filter(w => w.validated).length;
-      const liveScore = confirmedCount * 20;
+    // ── Freestyle controller ────────────────────────────────────────────────
+    if (s.subMode === 'freestyle' || s.freestylePhase === 'battling' || s.freestylePhase === 'booking') {
+      // Solo la prenotazione ANCORA IN ATTESA: con quella già "completed" il rapper
+      // vedeva "Posizione: 0" e nessun pulsante, e non poteva più riprenotarsi.
+      const myBooking = s.freestyleBookings.find(b => b.playerId === playerId && b.status === 'waiting');
+      const battle = s.currentBattle;
+      const isRapper = battle?.playerId === playerId;
 
-      if (isRapper) {
-        return (
-          <div className="flex flex-col h-full gap-4 px-4 py-5">
-            <div className="text-center shrink-0">
-              <div className="text-xs font-black uppercase tracking-widest text-amber-400 mb-1">🎙️ Sei sul palco!</div>
-              <div className="text-xs text-white/40">
-                {hasBattleSR
-                  ? <>Rappa le parole <b className="text-white/70">dentro le frasi</b> — il mic le spunta da solo</>
-                  : <>Rappa le parole <b className="text-white/70">dentro le frasi</b> — il pubblico le conferma</>}
-              </div>
-            </div>
-            {/* Misuratore microfono REALE: prova che il mic è acceso su ogni telefono. */}
-            <div className="shrink-0 space-y-1">
-              <div className="flex items-center justify-between text-[11px] font-bold text-amber-400/80">
-                <span className="flex items-center gap-1"><Mic className="h-3 w-3"/> {battleMicOn ? 'Microfono attivo' : 'Attivazione microfono…'}</span>
-                <span className="tabular-nums">{battleMicLevel}%</span>
-              </div>
-              <div className="relative h-5 w-full overflow-hidden rounded-full bg-white/10">
-                <motion.div className="absolute inset-y-0 left-0 rounded-full"
-                  animate={{ width: `${battleMicLevel}%` }} transition={{ duration: 0.08 }}
-                  style={{ background: battleMicLevel > 60 ? '#22c55e' : battleMicLevel > 30 ? '#eab308' : '#F59E0B' }} />
-              </div>
-            </div>
-            {micError && (
-              <div className="shrink-0 rounded-xl px-3 py-2 text-center text-sm font-black"
-                style={{ background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.5)', color: '#fca5a5' }}>
-                {micError}
-              </div>
-            )}
-            <div className="flex-1 grid grid-cols-3 gap-2 content-center">
-              {battle.words.map(w => (
-                <div key={w.id}
-                  className="rounded-xl px-2 py-2 text-center text-xs font-black"
-                  style={{
-                    background: w.validated ? '#22c55e18' : 'rgba(255,255,255,0.04)',
-                    border: `1.5px solid ${w.validated ? '#22c55e' : 'rgba(255,255,255,0.08)'}`,
-                    color: w.validated ? '#4ade80' : 'rgba(255,255,255,0.4)',
-                  }}>
-                  {w.validated && '✅ '}{w.word}
+      if (s.freestylePhase === 'battling' && battle) {
+        const confirmedCount = battle.words.filter(w => w.validated).length;
+        const liveScore = confirmedCount * 20;
+
+        if (isRapper) {
+          return (
+            <div className="flex flex-col h-full gap-4 px-4 py-5">
+              <div className="text-center shrink-0">
+                <div className="text-xs font-black uppercase tracking-widest text-amber-400 mb-1">🎙️ Sei sul palco!</div>
+                <div className="text-xs text-white/40">
+                  {hasBattleSR
+                    ? <>Rappa le parole <b className="text-white/70">dentro le frasi</b> — il mic le spunta da solo</>
+                    : <>Rappa le parole <b className="text-white/70">dentro le frasi</b> — il pubblico le conferma</>}
                 </div>
-              ))}
+              </div>
+              {/* Misuratore microfono REALE: prova che il mic è acceso su ogni telefono. */}
+              <div className="shrink-0 space-y-1">
+                <div className="flex items-center justify-between text-[11px] font-bold text-amber-400/80">
+                  <span className="flex items-center gap-1"><Mic className="h-3 w-3"/> {battleMicOn ? 'Microfono attivo' : 'Attivazione microfono…'}</span>
+                  <span className="tabular-nums">{battleMicLevel}%</span>
+                </div>
+                <div className="relative h-5 w-full overflow-hidden rounded-full bg-white/10">
+                  <motion.div className="absolute inset-y-0 left-0 rounded-full"
+                    animate={{ width: `${battleMicLevel}%` }} transition={{ duration: 0.08 }}
+                    style={{ background: battleMicLevel > 60 ? '#22c55e' : battleMicLevel > 30 ? '#eab308' : '#F59E0B' }} />
+                </div>
+              </div>
+              {micError && (
+                <div className="shrink-0 rounded-xl px-3 py-2 text-center text-sm font-black"
+                  style={{ background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.5)', color: '#fca5a5' }}>
+                  {micError}
+                </div>
+              )}
+              <div className="flex-1 grid grid-cols-3 gap-2 content-center">
+                {battle.words.map(w => (
+                  <div key={w.id}
+                    className="rounded-xl px-2 py-2 text-center text-xs font-black"
+                    style={{
+                      background: w.validated ? '#22c55e18' : 'rgba(255,255,255,0.04)',
+                      border: `1.5px solid ${w.validated ? '#22c55e' : 'rgba(255,255,255,0.08)'}`,
+                      color: w.validated ? '#4ade80' : 'rgba(255,255,255,0.4)',
+                    }}>
+                    {w.validated && '✅ '}{w.word}
+                  </div>
+                ))}
+              </div>
+              <div className="shrink-0 text-center">
+                <div className="text-3xl font-black tabular-nums text-amber-400">{liveScore} pt</div>
+                <div className="text-xs text-white/30">{confirmedCount} / {battle.words.length} parole</div>
+              </div>
+            </div>
+          );
+        }
+
+        // Spectator: tap words to confirm you heard them
+        return (
+          <div className="flex flex-col h-full gap-3 px-4 py-5">
+            <div className="text-center shrink-0">
+              <div className="text-sm text-white/60">
+                <span className="text-amber-400 font-bold">{battle.nickname}</span> sta rappando…
+              </div>
+              <div className="text-xs text-white/30 mt-1">Tocca le parole che senti pronunciare!</div>
+            </div>
+            <div className="flex-1 grid grid-cols-3 gap-2 content-center">
+              {battle.words.map(w => {
+                const iAlreadyTapped = w.validatedBy.includes(playerId);
+                const isConfirmed = w.validated;
+                const isLocked = battle.battleLocked ?? false;
+                return (
+                  <motion.button key={w.id}
+                    whileTap={!isConfirmed && !iAlreadyTapped && !isLocked ? { scale: 0.91 } : {}}
+                    disabled={isConfirmed || iAlreadyTapped || isLocked}
+                    onClick={() => {
+                      if (!isConfirmed && !iAlreadyTapped && !isLocked) {
+                        void post('/freestyle/word-tap', { playerId, wordId: w.id });
+                      }
+                    }}
+                    className="rounded-xl px-2 py-3 text-center text-xs font-black transition-all"
+                    style={{
+                      background: isConfirmed ? '#22c55e18' : iAlreadyTapped ? '#f59e0b20' : 'rgba(255,255,255,0.06)',
+                      border: `2px solid ${isConfirmed ? '#22c55e' : iAlreadyTapped ? '#f59e0b88' : 'rgba(255,255,255,0.1)'}`,
+                      color: isConfirmed ? '#4ade80' : iAlreadyTapped ? '#f59e0b' : 'rgba(255,255,255,0.7)',
+                      opacity: isLocked && !isConfirmed ? 0.4 : 1,
+                    }}>
+                    {isConfirmed ? '✅ ' : iAlreadyTapped ? '👆 ' : ''}{w.word}
+                  </motion.button>
+                );
+              })}
             </div>
             <div className="shrink-0 text-center">
-              <div className="text-3xl font-black tabular-nums text-amber-400">{liveScore} pt</div>
-              <div className="text-xs text-white/30">{confirmedCount} / {battle.words.length} parole</div>
+              <div className="text-sm text-white/40">
+                {confirmedCount} / {battle.words.length} confermate ·{' '}
+                <span style={{ color: '#F59E0B' }}>{liveScore} pt</span>
+              </div>
             </div>
+            {/* TABOO: chiunque può segnalare → bip aspro sulla TV */}
+            <button
+              onClick={() => { try { getSocket().emit('home:freestyle_taboo', { sessionId }); } catch { /* ignore */ } }}
+              disabled={battle.battleLocked ?? false}
+              className="shrink-0 rounded-2xl px-6 py-3.5 text-lg font-black text-white disabled:opacity-40"
+              style={{ background: 'linear-gradient(135deg,#ef4444,#b91c1c)', boxShadow: '0 0 24px rgba(239,68,68,0.4)' }}>
+              🚫 TABOO!
+            </button>
           </div>
         );
       }
 
-      // Spectator: tap words to confirm you heard them
+      // Booking phase
       return (
-        <div className="flex flex-col h-full gap-3 px-4 py-5">
-          <div className="text-center shrink-0">
-            <div className="text-sm text-white/60">
-              <span className="text-amber-400 font-bold">{battle.nickname}</span> sta rappando…
+        <div className="flex flex-col items-center justify-center h-full gap-5 text-center px-4">
+          <div className="text-4xl">🎙️</div>
+          <div className="text-xl font-black text-white">Freestyle Battle</div>
+          {myBooking ? (
+            <div className="rounded-2xl p-4 w-full" style={{ background: '#f59e0b15', border: '2px solid #f59e0b44' }}>
+              <div className="text-sm text-white/50 mb-1">Sei in coda!</div>
+              <div className="text-lg font-black text-amber-400">
+                Posizione: {s.freestyleBookings.filter(b => b.status === 'waiting').findIndex(b => b.playerId === playerId) + 1}
+              </div>
             </div>
-            <div className="text-xs text-white/30 mt-1">Tocca le parole che senti pronunciare!</div>
-          </div>
-          <div className="flex-1 grid grid-cols-3 gap-2 content-center">
-            {battle.words.map(w => {
-              const iAlreadyTapped = w.validatedBy.includes(playerId);
-              const isConfirmed = w.validated;
-              const isLocked = battle.battleLocked ?? false;
-              return (
-                <motion.button key={w.id}
-                  whileTap={!isConfirmed && !iAlreadyTapped && !isLocked ? { scale: 0.91 } : {}}
-                  disabled={isConfirmed || iAlreadyTapped || isLocked}
-                  onClick={() => {
-                    if (!isConfirmed && !iAlreadyTapped && !isLocked) {
-                      void post('/freestyle/word-tap', { playerId, wordId: w.id });
-                    }
-                  }}
-                  className="rounded-xl px-2 py-3 text-center text-xs font-black transition-all"
-                  style={{
-                    background: isConfirmed ? '#22c55e18' : iAlreadyTapped ? '#f59e0b20' : 'rgba(255,255,255,0.06)',
-                    border: `2px solid ${isConfirmed ? '#22c55e' : iAlreadyTapped ? '#f59e0b88' : 'rgba(255,255,255,0.1)'}`,
-                    color: isConfirmed ? '#4ade80' : iAlreadyTapped ? '#f59e0b' : 'rgba(255,255,255,0.7)',
-                    opacity: isLocked && !isConfirmed ? 0.4 : 1,
-                  }}>
-                  {isConfirmed ? '✅ ' : iAlreadyTapped ? '👆 ' : ''}{w.word}
-                </motion.button>
-              );
-            })}
-          </div>
-          <div className="shrink-0 text-center">
-            <div className="text-sm text-white/40">
-              {confirmedCount} / {battle.words.length} confermate ·{' '}
-              <span style={{ color: '#F59E0B' }}>{liveScore} pt</span>
-            </div>
-          </div>
-          {/* TABOO: chiunque può segnalare → bip aspro sulla TV */}
-          <button
-            onClick={() => { try { getSocket().emit('home:freestyle_taboo', { sessionId }); } catch { /* ignore */ } }}
-            disabled={battle.battleLocked ?? false}
-            className="shrink-0 rounded-2xl px-6 py-3.5 text-lg font-black text-white disabled:opacity-40"
-            style={{ background: 'linear-gradient(135deg,#ef4444,#b91c1c)', boxShadow: '0 0 24px rgba(239,68,68,0.4)' }}>
-            🚫 TABOO!
-          </button>
-        </div>
-      );
-    }
-
-    // Booking phase
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-5 text-center px-4">
-        <div className="text-4xl">🎙️</div>
-        <div className="text-xl font-black text-white">Freestyle Battle</div>
-        {myBooking ? (
-          <div className="rounded-2xl p-4 w-full" style={{ background: '#f59e0b15', border: '2px solid #f59e0b44' }}>
-            <div className="text-sm text-white/50 mb-1">Sei in coda!</div>
-            <div className="text-lg font-black text-amber-400">
-              Posizione: {s.freestyleBookings.filter(b => b.status === 'waiting').findIndex(b => b.playerId === playerId) + 1}
-            </div>
-          </div>
-        ) : (
-          <button onClick={() => void post('/freestyle/book', { playerId, nickname, avatarColor })}
-            className="w-full rounded-3xl py-5 text-xl font-black"
-            style={{ background: 'linear-gradient(135deg,#f59e0b,#d97706)', boxShadow: '0 0 30px #f59e0b55' }}>
-            🎙️ Voglio rappare!
-          </button>
-        )}
-      </div>
-    );
-  }
-
-  // ── Duration select ─────────────────────────────────────────────────────
-  if (s.karaokePhase === 'duration_select') {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-4 text-center px-4">
-        <div className="text-4xl">🎤</div>
-        <div className="text-xl font-black text-white">Karaoke Live</div>
-        <div className="text-sm text-white/50">L'host sta scegliendo la durata della serata…</div>
-      </div>
-    );
-  }
-
-  // ── Is current singer ───────────────────────────────────────────────────
-  if (isCurrentSinger && (s.karaokePhase === 'playing' || s.karaokePhase === 'voting')) {
-    const item = s.queue.find(q => q.id === s.currentQueueItemId);
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-5 text-center px-4">
-        <motion.div animate={{ scale: [1, 1.05, 1] }} transition={{ repeat: IS_LOW_POWER ? 0 : Infinity, duration: 1.5 }}>
-          <div className="text-7xl">🎤</div>
-        </motion.div>
-        <div className="text-display text-3xl font-black" style={{ color: KK_J }}>Sei sul palco!</div>
-        {item && <div className="text-white/60 font-bold">{item.title}</div>}
-        {s.karaokePhase === 'voting' && <div className="text-sm text-white/40">Gli altri stanno votando la tua esibizione…</div>}
-      </div>
-    );
-  }
-
-  // ── Dedication/booking confirmation — intercepts any non-singer phase ────
-  if (selectedVideo && dedicationStep) {
-    const connectedPlayers = s.players.filter(p => p.id !== playerId);
-    if (dedicationStep === 'pick_player') {
-      return (
-        <div className="flex flex-col gap-4 px-4 py-6 h-full">
-          <button onClick={() => setDedicationStep('confirm')}
-            className="self-start text-xs text-white/40 flex items-center gap-1">
-            ← Indietro
-          </button>
-          <div className="text-display text-lg font-black text-white text-center">A chi dedichi il brano?</div>
-          <div className="text-sm text-white/40 text-center truncate">🎵 {selectedVideo.title}</div>
-          <div className="flex-1 overflow-y-auto space-y-2">
-            {connectedPlayers.map(p => (
-              <button key={p.id} onClick={() => { setDedicateeId(p.id); setDedicateeNick(p.nickname); setDedicationStep('confirm'); }}
-                className="w-full rounded-2xl p-4 flex items-center gap-3 text-left transition-all"
-                style={{
-                  background: dedicateeId === p.id ? `${KK_J}25` : 'rgba(255,255,255,0.05)',
-                  border: `2px solid ${dedicateeId === p.id ? KK_J : 'rgba(255,255,255,0.1)'}`,
-                }}>
-                <div className="h-10 w-10 rounded-full flex items-center justify-center text-base font-black text-black shrink-0"
-                  style={{ background: p.avatarColor }}>{p.nickname[0]?.toUpperCase()}</div>
-                <span className="font-bold text-white">{p.nickname}</span>
-                {dedicateeId === p.id && <span className="ml-auto text-xl">❤️</span>}
-              </button>
-            ))}
-            {connectedPlayers.length === 0 && (
-              <div className="text-center text-white/30 text-sm py-8">Nessun altro giocatore collegato</div>
-            )}
-          </div>
-        </div>
-      );
-    }
-    return (
-      <div className="flex flex-col gap-5 px-4 py-6 h-full">
-        <button onClick={() => { setSelectedVideo(null); setDedicationStep(null); setDedicateeId(null); setDedicateeNick(null); }}
-          className="self-start text-xs text-white/40 flex items-center gap-1">
-          ← Torna alla ricerca
-        </button>
-        <div className="rounded-3xl p-4 flex items-center gap-3"
-          style={{ background: `${KK_J}18`, border: `2px solid ${KK_J}55` }}>
-          <img src={selectedVideo.thumbnailUrl} alt={selectedVideo.title} className="h-14 w-20 rounded-xl object-cover shrink-0" />
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-black text-white leading-tight line-clamp-2">{selectedVideo.title}</div>
-            <div className="text-xs text-white/40 mt-0.5">{selectedVideo.channel} • {selectedVideo.durationFormatted}</div>
-          </div>
-        </div>
-        {dedicateeNick ? (
-          <div className="rounded-2xl p-4 text-center" style={{ background: 'rgba(239,68,68,0.1)', border: '1.5px solid rgba(239,68,68,0.35)' }}>
-            <div className="text-sm text-white/60 mb-1">Dedica selezionata</div>
-            <div className="text-lg font-black text-white">❤️ {dedicateeNick}</div>
-            <button onClick={() => { setDedicateeId(null); setDedicateeNick(null); }}
-              className="mt-2 text-xs text-red-400/60 underline">Rimuovi dedica</button>
-          </div>
-        ) : (
-          <div className="rounded-2xl p-4 text-center" style={{ background: 'rgba(255,255,255,0.04)', border: '1.5px solid rgba(255,255,255,0.12)' }}>
-            <div className="text-sm text-white/40 mb-3">Vuoi dedicare questo brano a qualcuno?</div>
-            <button onClick={() => setDedicationStep('pick_player')}
-              className="w-full rounded-2xl py-3 font-black mb-2"
-              style={{ background: `${KK_J}20`, border: `1.5px solid ${KK_J}50`, color: KK_J }}>
-              ❤️ Dedica il brano
+          ) : (
+            <button onClick={() => void post('/freestyle/book', { playerId, nickname, avatarColor })}
+              className="w-full rounded-3xl py-5 text-xl font-black"
+              style={{ background: 'linear-gradient(135deg,#f59e0b,#d97706)', boxShadow: '0 0 30px #f59e0b55' }}>
+              🎙️ Voglio rappare!
             </button>
-          </div>
-        )}
-        {error && <div className="text-sm text-red-400 text-center rounded-xl p-2 bg-red-500/10">{error}</div>}
-        <button onClick={() => void doBook(selectedVideo, dedicateeId, dedicateeNick)}
-          disabled={booking}
-          className="mt-auto rounded-3xl py-5 text-xl font-black disabled:opacity-40"
-          style={{ background: `linear-gradient(135deg,${KK_J},#ea580c)`, boxShadow: `0 0 30px ${KK_J}55` }}>
-          {booking ? <Loader2 className="h-5 w-5 animate-spin inline" /> : '🎤 Conferma prenotazione'}
-        </button>
-      </div>
-    );
-  }
+          )}
+        </div>
+      );
+    }
 
-  // ── Voting phase ────────────────────────────────────────────────────────
-  if (s.karaokePhase === 'voting') {
-    const cats = ['intonazione', 'presenza', 'emozione', 'originalita'] as const;
-    const labels: Record<string, string> = { intonazione: 'Intonazione', presenza: 'Presenza', emozione: 'Emozione', originalita: 'Originalità' };
-    // FIX 5: disable vote UI after timer expires
-    const votingExpired = !!(s.voteCloseAt && Date.now() > new Date(s.voteCloseAt).getTime());
-    if (voted || votingExpired) {
+    // ── Duration select ─────────────────────────────────────────────────────
+    if (s.karaokePhase === 'duration_select') {
       return (
         <div className="flex flex-col items-center justify-center h-full gap-4 text-center px-4">
-          <div className="text-5xl">{votingExpired && !voted ? '⏰' : '⭐'}</div>
-          <div className={`text-xl font-black ${votingExpired && !voted ? 'text-amber-400' : 'text-green-400'}`}>
-            {votingExpired && !voted ? 'Votazione chiusa' : 'Voto inviato!'}
+          <div className="text-4xl">🎤</div>
+          <div className="text-xl font-black text-white">Karaoke Live</div>
+          <div className="text-sm text-white/50">L'host sta scegliendo la durata della serata…</div>
+        </div>
+      );
+    }
+
+    // ── Is current singer ───────────────────────────────────────────────────
+    if (isCurrentSinger && (s.karaokePhase === 'playing' || s.karaokePhase === 'voting')) {
+      const item = s.queue.find(q => q.id === s.currentQueueItemId);
+      return (
+        <div className="flex flex-col items-center justify-center h-full gap-5 text-center px-4">
+          <motion.div animate={{ scale: [1, 1.05, 1] }} transition={{ repeat: IS_LOW_POWER ? 0 : Infinity, duration: 1.5 }}>
+            <div className="text-7xl">🎤</div>
+          </motion.div>
+          <div className="text-display text-3xl font-black" style={{ color: KK_J }}>Sei sul palco!</div>
+          {item && <div className="text-white/60 font-bold">{item.title}</div>}
+          {s.karaokePhase === 'voting' && <div className="text-sm text-white/40">Gli altri stanno votando la tua esibizione…</div>}
+        </div>
+      );
+    }
+
+    // ── Dedication/booking confirmation — intercepts any non-singer phase ────
+    if (selectedVideo && dedicationStep) {
+      const connectedPlayers = s.players.filter(p => p.id !== playerId);
+      if (dedicationStep === 'pick_player') {
+        return (
+          <div className="flex flex-col gap-4 px-4 py-6 h-full">
+            <button onClick={() => setDedicationStep('confirm')}
+              className="self-start text-xs text-white/40 flex items-center gap-1">
+              ← Indietro
+            </button>
+            <div className="text-display text-lg font-black text-white text-center">A chi dedichi il brano?</div>
+            <div className="text-sm text-white/40 text-center truncate">🎵 {selectedVideo.title}</div>
+            <div className="flex-1 overflow-y-auto space-y-2">
+              {connectedPlayers.map(p => (
+                <button key={p.id} onClick={() => { setDedicateeId(p.id); setDedicateeNick(p.nickname); setDedicationStep('confirm'); }}
+                  className="w-full rounded-2xl p-4 flex items-center gap-3 text-left transition-all"
+                  style={{
+                    background: dedicateeId === p.id ? `${KK_J}25` : 'rgba(255,255,255,0.05)',
+                    border: `2px solid ${dedicateeId === p.id ? KK_J : 'rgba(255,255,255,0.1)'}`,
+                  }}>
+                  <div className="h-10 w-10 rounded-full flex items-center justify-center text-base font-black text-black shrink-0"
+                    style={{ background: p.avatarColor }}>{p.nickname[0]?.toUpperCase()}</div>
+                  <span className="font-bold text-white">{p.nickname}</span>
+                  {dedicateeId === p.id && <span className="ml-auto text-xl">❤️</span>}
+                </button>
+              ))}
+              {connectedPlayers.length === 0 && (
+                <div className="text-center text-white/30 text-sm py-8">Nessun altro giocatore collegato</div>
+              )}
+            </div>
           </div>
-          <div className="text-sm text-white/40">Aspetta i risultati…</div>
-          {/* Booking strip — still visible after voting */}
+        );
+      }
+      return (
+        <div className="flex flex-col gap-5 px-4 py-6 h-full">
+          <button onClick={() => { setSelectedVideo(null); setDedicationStep(null); setDedicateeId(null); setDedicateeNick(null); }}
+            className="self-start text-xs text-white/40 flex items-center gap-1">
+            ← Torna alla ricerca
+          </button>
+          <div className="rounded-3xl p-4 flex items-center gap-3"
+            style={{ background: `${KK_J}18`, border: `2px solid ${KK_J}55` }}>
+            <img src={selectedVideo.thumbnailUrl} alt={selectedVideo.title} className="h-14 w-20 rounded-xl object-cover shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-black text-white leading-tight line-clamp-2">{selectedVideo.title}</div>
+              <div className="text-xs text-white/40 mt-0.5">{selectedVideo.channel} • {selectedVideo.durationFormatted}</div>
+            </div>
+          </div>
+          {dedicateeNick ? (
+            <div className="rounded-2xl p-4 text-center" style={{ background: 'rgba(239,68,68,0.1)', border: '1.5px solid rgba(239,68,68,0.35)' }}>
+              <div className="text-sm text-white/60 mb-1">Dedica selezionata</div>
+              <div className="text-lg font-black text-white">❤️ {dedicateeNick}</div>
+              <button onClick={() => { setDedicateeId(null); setDedicateeNick(null); }}
+                className="mt-2 text-xs text-red-400/60 underline">Rimuovi dedica</button>
+            </div>
+          ) : (
+            <div className="rounded-2xl p-4 text-center" style={{ background: 'rgba(255,255,255,0.04)', border: '1.5px solid rgba(255,255,255,0.12)' }}>
+              <div className="text-sm text-white/40 mb-3">Vuoi dedicare questo brano a qualcuno?</div>
+              <button onClick={() => setDedicationStep('pick_player')}
+                className="w-full rounded-2xl py-3 font-black mb-2"
+                style={{ background: `${KK_J}20`, border: `1.5px solid ${KK_J}50`, color: KK_J }}>
+                ❤️ Dedica il brano
+              </button>
+            </div>
+          )}
+          {error && <div className="text-sm text-red-400 text-center rounded-xl p-2 bg-red-500/10">{error}</div>}
+          <button onClick={() => void doBook(selectedVideo, dedicateeId, dedicateeNick)}
+            disabled={booking}
+            className="mt-auto rounded-3xl py-5 text-xl font-black disabled:opacity-40"
+            style={{ background: `linear-gradient(135deg,${KK_J},#ea580c)`, boxShadow: `0 0 30px ${KK_J}55` }}>
+            {booking ? <Loader2 className="h-5 w-5 animate-spin inline" /> : '🎤 Conferma prenotazione'}
+          </button>
+        </div>
+      );
+    }
+
+    // ── Voting phase ────────────────────────────────────────────────────────
+    if (s.karaokePhase === 'voting') {
+      const cats = ['intonazione', 'presenza', 'emozione', 'originalita'] as const;
+      const labels: Record<string, string> = { intonazione: 'Intonazione', presenza: 'Presenza', emozione: 'Emozione', originalita: 'Originalità' };
+      // FIX 5: disable vote UI after timer expires
+      const votingExpired = !!(s.voteCloseAt && Date.now() > new Date(s.voteCloseAt).getTime());
+      if (voted || votingExpired) {
+        return (
+          <div className="flex flex-col items-center justify-center h-full gap-4 text-center px-4">
+            <div className="text-5xl">{votingExpired && !voted ? '⏰' : '⭐'}</div>
+            <div className={`text-xl font-black ${votingExpired && !voted ? 'text-amber-400' : 'text-green-400'}`}>
+              {votingExpired && !voted ? 'Votazione chiusa' : 'Voto inviato!'}
+            </div>
+            <div className="text-sm text-white/40">Aspetta i risultati…</div>
+            {/* Booking strip — still visible after voting */}
+            {myQueueItem ? (
+              <div className="w-full rounded-xl px-3 py-2 flex items-center gap-2 mt-2"
+                style={{ background: `${KK_J}12`, border: `1px solid ${KK_J}28` }}>
+                <span className="text-sm">🎤</span>
+                <span className="flex-1 text-xs font-bold text-white truncate text-left">{myQueueItem.title}</span>
+                {myPos > 0 && <span className="text-xs font-black shrink-0" style={{ color: KK_J }}>#{myPos}</span>}
+              </div>
+            ) : canBook ? (
+              <div className="w-full flex gap-2 mt-2">
+                <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && void doSearch()}
+                  placeholder="Prenota prossimo brano…"
+                  className="flex-1 rounded-xl px-3 py-2.5 text-white bg-white/08 border border-white/15 text-sm outline-none focus:border-orange-400/60"
+                  style={{fontSize:16}}
+                />
+                <button onClick={() => void doSearch()} disabled={searching}
+                  className="rounded-xl px-3 py-2.5 font-black text-sm"
+                  style={{ background: `${KK_J}25`, border: `1px solid ${KK_J}55`, color: KK_J }}>
+                  {searching ? <Loader2 className="h-3 w-3 animate-spin" /> : '🔍'}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        );
+      }
+      return (
+        <div className="flex flex-col gap-4 px-4 py-6 h-full overflow-y-auto">
+          <div className="text-display text-xl font-black text-white text-center">Vota l'esibizione!</div>
+          {cats.map(cat => (
+            <div key={cat}>
+              <div className="text-xs font-black uppercase tracking-widest mb-1" style={{ color: `${KK_J}aa` }}>{labels[cat]}</div>
+              <div className="flex gap-2">
+                {[1,2,3,4,5].map(n => (
+                  <button key={n} onClick={() => setMyBallot(b => ({ ...b, [cat]: n }))}
+                    className="flex-1 rounded-xl py-3 font-black transition-all"
+                    style={{
+                      background: (myBallot[cat] as number) >= n ? `${KK_J}30` : 'rgba(255,255,255,0.06)',
+                      border: `2px solid ${(myBallot[cat] as number) >= n ? KK_J : 'rgba(255,255,255,0.12)'}`,
+                      color: (myBallot[cat] as number) >= n ? KK_J : 'rgba(255,255,255,0.4)',
+                      fontSize: '1.25rem',
+                    }}>
+                    ★
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+          <button onClick={() => void submitVote()}
+            disabled={cats.some(c => myBallot[c] === 0)}
+            className="rounded-3xl py-5 text-xl font-black disabled:opacity-40"
+            style={{ background: `linear-gradient(135deg,${KK_J},#ea580c)`, boxShadow: `0 0 30px ${KK_J}55` }}>
+            ⭐ Invia voto
+          </button>
+          {/* Booking strip below vote button */}
           {myQueueItem ? (
-            <div className="w-full rounded-xl px-3 py-2 flex items-center gap-2 mt-2"
+            <div className="shrink-0 rounded-xl px-3 py-2 flex items-center gap-2"
               style={{ background: `${KK_J}12`, border: `1px solid ${KK_J}28` }}>
               <span className="text-sm">🎤</span>
-              <span className="flex-1 text-xs font-bold text-white truncate text-left">{myQueueItem.title}</span>
+              <span className="flex-1 text-xs font-bold text-white truncate">{myQueueItem.title}</span>
               {myPos > 0 && <span className="text-xs font-black shrink-0" style={{ color: KK_J }}>#{myPos}</span>}
             </div>
           ) : canBook ? (
-            <div className="w-full flex gap-2 mt-2">
+            <div className="shrink-0 flex gap-2">
               <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && void doSearch()}
                 placeholder="Prenota prossimo brano…"
@@ -6524,215 +6602,68 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
         </div>
       );
     }
-    return (
-      <div className="flex flex-col gap-4 px-4 py-6 h-full overflow-y-auto">
-        <div className="text-display text-xl font-black text-white text-center">Vota l'esibizione!</div>
-        {cats.map(cat => (
-          <div key={cat}>
-            <div className="text-xs font-black uppercase tracking-widest mb-1" style={{ color: `${KK_J}aa` }}>{labels[cat]}</div>
-            <div className="flex gap-2">
-              {[1,2,3,4,5].map(n => (
-                <button key={n} onClick={() => setMyBallot(b => ({ ...b, [cat]: n }))}
-                  className="flex-1 rounded-xl py-3 font-black transition-all"
+
+    // ── Playing phase (public) — reactions + persistent booking strip ────────
+    if (s.karaokePhase === 'playing') {
+      const currentItem = s.queue.find(q => q.id === s.currentQueueItemId);
+      return (
+        <div className="flex flex-col h-full gap-3 px-4 py-4">
+          {/* TOP: current singer info */}
+          {currentItem && (
+            <div className="shrink-0 flex items-center gap-3 rounded-2xl px-4 py-3"
+              style={{ background: `${KK_J}18`, border: `1.5px solid ${KK_J}35` }}>
+              <div className="h-9 w-9 rounded-full flex items-center justify-center text-sm font-black text-black shrink-0"
+                style={{ background: currentItem.avatarColor }}>{currentItem.nickname[0]?.toUpperCase()}</div>
+              <div className="flex-1 min-w-0">
+                <div className="text-xs text-white/40">Sta cantando</div>
+                <div className="text-sm font-bold text-white truncate">{currentItem.title}</div>
+                <div className="text-xs font-bold truncate" style={{ color: `${KK_J}cc` }}>{currentItem.nickname}</div>
+              </div>
+              {reactionSent && <div className="text-2xl shrink-0">{reactionSent}</div>}
+            </div>
+          )}
+          {/* MIDDLE: emoji reactions */}
+          <div className="flex-1 flex flex-col justify-center gap-2">
+            <div className="grid grid-cols-4 gap-3 w-full">
+              {ALL_REACTIONS.map(emoji => (
+                <motion.button key={emoji} whileTap={{ scale: 0.85 }}
+                  onClick={() => void sendReaction(emoji)}
+                  className="rounded-2xl py-4 text-3xl text-center transition-all"
                   style={{
-                    background: (myBallot[cat] as number) >= n ? `${KK_J}30` : 'rgba(255,255,255,0.06)',
-                    border: `2px solid ${(myBallot[cat] as number) >= n ? KK_J : 'rgba(255,255,255,0.12)'}`,
-                    color: (myBallot[cat] as number) >= n ? KK_J : 'rgba(255,255,255,0.4)',
-                    fontSize: '1.25rem',
+                    background: reactionSent === emoji ? `${KK_J}30` : 'rgba(255,255,255,0.07)',
+                    border: `2px solid ${reactionSent === emoji ? KK_J : 'rgba(255,255,255,0.12)'}`,
                   }}>
-                  ★
-                </button>
+                  {emoji}
+                </motion.button>
               ))}
             </div>
+            <div className="text-xs text-white/30 text-center">Reagisci all'esibizione in tempo reale!</div>
           </div>
-        ))}
-        <button onClick={() => void submitVote()}
-          disabled={cats.some(c => myBallot[c] === 0)}
-          className="rounded-3xl py-5 text-xl font-black disabled:opacity-40"
-          style={{ background: `linear-gradient(135deg,${KK_J},#ea580c)`, boxShadow: `0 0 30px ${KK_J}55` }}>
-          ⭐ Invia voto
-        </button>
-        {/* Booking strip below vote button */}
-        {myQueueItem ? (
-          <div className="shrink-0 rounded-xl px-3 py-2 flex items-center gap-2"
-            style={{ background: `${KK_J}12`, border: `1px solid ${KK_J}28` }}>
-            <span className="text-sm">🎤</span>
-            <span className="flex-1 text-xs font-bold text-white truncate">{myQueueItem.title}</span>
-            {myPos > 0 && <span className="text-xs font-black shrink-0" style={{ color: KK_J }}>#{myPos}</span>}
-          </div>
-        ) : canBook ? (
-          <div className="shrink-0 flex gap-2">
-            <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && void doSearch()}
-              placeholder="Prenota prossimo brano…"
-              className="flex-1 rounded-xl px-3 py-2.5 text-white bg-white/08 border border-white/15 text-sm outline-none focus:border-orange-400/60"
-              style={{fontSize:16}}
-            />
-            <button onClick={() => void doSearch()} disabled={searching}
-              className="rounded-xl px-3 py-2.5 font-black text-sm"
-              style={{ background: `${KK_J}25`, border: `1px solid ${KK_J}55`, color: KK_J }}>
-              {searching ? <Loader2 className="h-3 w-3 animate-spin" /> : '🔍'}
-            </button>
-          </div>
-        ) : null}
-      </div>
-    );
-  }
-
-  // ── Playing phase (public) — reactions + persistent booking strip ────────
-  if (s.karaokePhase === 'playing') {
-    const currentItem = s.queue.find(q => q.id === s.currentQueueItemId);
-    return (
-      <div className="flex flex-col h-full gap-3 px-4 py-4">
-        {/* TOP: current singer info */}
-        {currentItem && (
-          <div className="shrink-0 flex items-center gap-3 rounded-2xl px-4 py-3"
-            style={{ background: `${KK_J}18`, border: `1.5px solid ${KK_J}35` }}>
-            <div className="h-9 w-9 rounded-full flex items-center justify-center text-sm font-black text-black shrink-0"
-              style={{ background: currentItem.avatarColor }}>{currentItem.nickname[0]?.toUpperCase()}</div>
-            <div className="flex-1 min-w-0">
-              <div className="text-xs text-white/40">Sta cantando</div>
-              <div className="text-sm font-bold text-white truncate">{currentItem.title}</div>
-              <div className="text-xs font-bold truncate" style={{ color: `${KK_J}cc` }}>{currentItem.nickname}</div>
+          {/* BOTTOM: booking strip — always visible */}
+          {myQueueItem ? (
+            <div className="shrink-0 rounded-2xl px-4 py-3 flex items-center gap-3"
+              style={{ background: myQueueItem.videoId === backstageReadyVideoId
+                ? 'rgba(34,197,94,0.1)'
+                : `${KK_J}12`,
+                border: myQueueItem.videoId === backstageReadyVideoId
+                ? '1px solid rgba(34,197,94,0.4)'
+                : `1px solid ${KK_J}30` }}>
+              <div className="text-base shrink-0">🎤</div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[11px] flex items-center gap-1"
+                  style={{ color: myQueueItem.videoId === backstageReadyVideoId ? '#4ade80' : 'rgba(255,255,255,0.4)' }}>
+                  {myQueueItem.videoId === backstageReadyVideoId ? '🟢 Il tuo brano è pronto!' : 'Sei in coda'}
+                </div>
+                <div className="text-sm font-bold text-white truncate">{myQueueItem.title}</div>
+              </div>
+              {myPos > 0 && <div className="shrink-0 text-sm font-black" style={{ color: KK_J }}>#{myPos}</div>}
             </div>
-            {reactionSent && <div className="text-2xl shrink-0">{reactionSent}</div>}
-          </div>
-        )}
-        {/* MIDDLE: emoji reactions */}
-        <div className="flex-1 flex flex-col justify-center gap-2">
-          <div className="grid grid-cols-4 gap-3 w-full">
-            {ALL_REACTIONS.map(emoji => (
-              <motion.button key={emoji} whileTap={{ scale: 0.85 }}
-                onClick={() => void sendReaction(emoji)}
-                className="rounded-2xl py-4 text-3xl text-center transition-all"
-                style={{
-                  background: reactionSent === emoji ? `${KK_J}30` : 'rgba(255,255,255,0.07)',
-                  border: `2px solid ${reactionSent === emoji ? KK_J : 'rgba(255,255,255,0.12)'}`,
-                }}>
-                {emoji}
-              </motion.button>
-            ))}
-          </div>
-          <div className="text-xs text-white/30 text-center">Reagisci all'esibizione in tempo reale!</div>
-        </div>
-        {/* BOTTOM: booking strip — always visible */}
-        {myQueueItem ? (
-          <div className="shrink-0 rounded-2xl px-4 py-3 flex items-center gap-3"
-            style={{ background: myQueueItem.videoId === backstageReadyVideoId
-              ? 'rgba(34,197,94,0.1)'
-              : `${KK_J}12`,
-              border: myQueueItem.videoId === backstageReadyVideoId
-              ? '1px solid rgba(34,197,94,0.4)'
-              : `1px solid ${KK_J}30` }}>
-            <div className="text-base shrink-0">🎤</div>
-            <div className="flex-1 min-w-0">
-              <div className="text-[11px] flex items-center gap-1"
-                style={{ color: myQueueItem.videoId === backstageReadyVideoId ? '#4ade80' : 'rgba(255,255,255,0.4)' }}>
-                {myQueueItem.videoId === backstageReadyVideoId ? '🟢 Il tuo brano è pronto!' : 'Sei in coda'}
-              </div>
-              <div className="text-sm font-bold text-white truncate">{myQueueItem.title}</div>
-            </div>
-            {myPos > 0 && <div className="shrink-0 text-sm font-black" style={{ color: KK_J }}>#{myPos}</div>}
-          </div>
-        ) : canBook ? (
-          <div className="shrink-0 space-y-2">
-            <div className="flex gap-2">
-              <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && void doSearch()}
-                placeholder="Prenota il prossimo brano…"
-                className="flex-1 rounded-2xl px-4 py-3 text-white bg-white/08 border border-white/15 text-sm outline-none focus:border-orange-400/60"
-                style={{fontSize:16}}
-              />
-              <button onClick={() => void doSearch()} disabled={searching}
-                className="rounded-2xl px-4 py-3 font-black"
-                style={{ background: `${KK_J}25`, border: `1px solid ${KK_J}55`, color: KK_J }}>
-                {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : '🔍'}
-              </button>
-            </div>
-            {searchResults.length > 0 && (
-              <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                {searchResults.map(r => (
-                  <div key={r.videoId} className="rounded-xl p-2 flex items-center gap-2"
-                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
-                    <img src={r.thumbnailUrl} alt={r.title} className="h-9 w-14 rounded object-cover shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-bold text-white leading-tight line-clamp-2">{r.title}</div>
-                      <div className="text-[10px] text-white/40">{r.durationFormatted}</div>
-                    </div>
-                    <button onClick={() => { setSelectedVideo(r); setDedicateeId(null); setDedicateeNick(null); setDedicationStep('confirm'); }}
-                      className="shrink-0 rounded-lg px-2 py-1.5 text-xs font-black"
-                      style={{ background: `${KK_J}25`, border: `1px solid ${KK_J}55`, color: KK_J }}>
-                      ➕
-                    </button>
-                  </div>
-                ))}
-                {noKaraokeFound && !searching && (
-                  <div className="text-[11px] text-amber-400/70 text-center">🎤 Nessun risultato — riprova</div>
-                )}
-                {searchWarning && !searching && (
-                  <div className="text-[11px] text-amber-300/60 text-center">⚠️ {searchWarning}</div>
-                )}
-              </div>
-            )}
-            {searchResults.length === 0 && !searching && (noKaraokeFound || searchWarning) && (
-              <div className="text-xs text-amber-400/70 text-center">
-                {noKaraokeFound ? '🎤 Nessun risultato — riprova' : `⚠️ ${searchWarning ?? ''}`}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="shrink-0 text-center text-xs text-white/25 py-2">Coda al completo per questa sessione</div>
-        )}
-      </div>
-    );
-  }
-
-  // ── Queue open — search & book ───────────────────────────────────────────
-  if (s.karaokePhase === 'queue_open') {
-    if (myQueueItem) {
-      return (
-        <div className="flex flex-col gap-4 px-4 py-6 h-full">
-          {/* Booking card */}
-          <div className="rounded-3xl p-5 text-center shrink-0" style={{ background: `${KK_J}15`, border: `2px solid ${KK_J}55` }}>
-            <div className="text-xs font-black uppercase tracking-widest mb-1" style={{ color: `${KK_J}aa` }}>🎤 Sei già in coda</div>
-            <div className="text-lg font-black text-white mb-1">{myQueueItem.title}</div>
-            <div className="text-sm text-white/40">{myQueueItem.channel}</div>
-            {myPos > 0 && <div className="mt-2 text-xl font-black" style={{ color: KK_J }}>#{myPos} in coda</div>}
-            {myQueueItem.estimatedStartAt && (
-              <div className="text-xs text-white/30 mt-1">
-                ~{new Date(myQueueItem.estimatedStartAt).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
-              </div>
-            )}
-          </div>
-
-          {/* Action buttons */}
-          {!changingBook ? (
-            <div className="flex gap-3 shrink-0">
-              <button onClick={() => { setChangingBook(true); setSearchResults([]); setSearchQuery(''); }}
-                className="flex-1 rounded-2xl py-3 text-sm font-black"
-                style={{ background: `${KK_J}20`, border: `1.5px solid ${KK_J}50`, color: KK_J }}>
-                🔄 Modifica brano
-              </button>
-              <button onClick={() => void doCancel()}
-                className="flex-1 rounded-2xl py-3 text-sm font-black text-red-400"
-                style={{ background: 'rgba(239,68,68,0.10)', border: '1.5px solid rgba(239,68,68,0.30)' }}>
-                ✕ Annulla
-              </button>
-            </div>
-          ) : (
-            <>
-              <div className="flex items-center gap-2 shrink-0">
-                <button onClick={() => { setChangingBook(false); setSearchResults([]); setSearchQuery(''); }}
-                  className="rounded-xl px-3 py-2 text-xs font-black text-white/50"
-                  style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)' }}>
-                  ← Indietro
-                </button>
-                <div className="text-xs font-black uppercase tracking-widest text-white/30">Cerca un nuovo brano</div>
-              </div>
-              <div className="flex gap-2 shrink-0">
+          ) : canBook ? (
+            <div className="shrink-0 space-y-2">
+              <div className="flex gap-2">
                 <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && void doSearch()}
-                  placeholder="Cerca su YouTube…"
+                  placeholder="Prenota il prossimo brano…"
                   className="flex-1 rounded-2xl px-4 py-3 text-white bg-white/08 border border-white/15 text-sm outline-none focus:border-orange-400/60"
                   style={{fontSize:16}}
                 />
@@ -6742,166 +6673,261 @@ function KaraokeLiveController({ sessionId, playerId, nickname, avatarColor, ini
                   {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : '🔍'}
                 </button>
               </div>
-              <div className="flex-1 overflow-y-auto space-y-2">
-                {searchResults.map(r => (
-                  <div key={r.videoId} className="rounded-2xl p-3 flex items-center gap-3"
-                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
-                    <img src={r.thumbnailUrl} alt={r.title} className="h-12 w-20 rounded-lg object-cover shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-bold text-white leading-tight line-clamp-2">{r.title}</div>
-                      <div className="text-xs text-white/40">{r.channel} • {r.durationFormatted}</div>
+              {searchResults.length > 0 && (
+                <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                  {searchResults.map(r => (
+                    <div key={r.videoId} className="rounded-xl p-2 flex items-center gap-2"
+                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                      <img src={r.thumbnailUrl} alt={r.title} className="h-9 w-14 rounded object-cover shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-bold text-white leading-tight line-clamp-2">{r.title}</div>
+                        <div className="text-[10px] text-white/40">{r.durationFormatted}</div>
+                      </div>
+                      <button onClick={() => { setSelectedVideo(r); setDedicateeId(null); setDedicateeNick(null); setDedicationStep('confirm'); }}
+                        className="shrink-0 rounded-lg px-2 py-1.5 text-xs font-black"
+                        style={{ background: `${KK_J}25`, border: `1px solid ${KK_J}55`, color: KK_J }}>
+                        ➕
+                      </button>
                     </div>
-                    <button onClick={() => void doChangeBook(r)} disabled={booking}
-                      className="shrink-0 rounded-xl px-3 py-2 text-xs font-black"
-                      style={{ background: `${KK_J}25`, border: `1px solid ${KK_J}55`, color: KK_J }}>
-                      {booking ? <Loader2 className="h-3 w-3 animate-spin" /> : '↩️'}
-                    </button>
-                  </div>
-                ))}
-                {noKaraokeFound && !searching && (
-                  <div className="rounded-2xl p-4 text-center text-sm text-amber-400/80" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)' }}>
-                    🎤 Nessuna base karaoke trovata — prova a scrivere titolo + artista
-                  </div>
-                )}
-                {searchWarning && !searching && searchResults.length > 0 && (
-                  <div className="rounded-xl px-3 py-2 text-center text-xs text-amber-300/70" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.18)' }}>
-                    ⚠️ {searchWarning}
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-          {error && <div className="text-sm text-red-400 text-center rounded-xl p-2 bg-red-500/10 shrink-0">{error}</div>}
-        </div>
-      );
-    }
-
-    // Not booked yet: dynamic CTA + search
-
-    if (!canBook) {
-      return (
-        <div className="flex flex-col items-center justify-center h-full gap-5 text-center px-4">
-          <div className="text-5xl">⚠️</div>
-          <div className="rounded-3xl p-6 w-full" style={{ background: 'rgba(239,68,68,0.12)', border: '2px solid rgba(239,68,68,0.35)' }}>
-            <div className="text-lg font-black text-red-400">Coda al completo</div>
-            <div className="text-sm text-white/50 mt-2 leading-relaxed">
-              Non c'è più tempo sufficiente per aggiungere un altro brano in questa sessione.
-            </div>
-          </div>
-          <div className="text-xs text-white/25">Tempo rimasto: {formatCountdown(remaining)}</div>
-        </div>
-      );
-    }
-
-    return (
-      <div className="flex flex-col gap-4 px-4 py-6 h-full">
-        {/* Dynamic CTA */}
-        <div className="rounded-3xl p-5 text-center shrink-0"
-          style={{ background: `${KK_J}18`, border: `2px solid ${KK_J}55` }}>
-          <div className="text-2xl font-black text-white">🎤 Prenotati adesso</div>
-          <div className="mt-1 font-bold text-base" style={{ color: KK_J }}>{waitLabel}</div>
-          <div className="mt-2 text-xs text-white/30">Tempo rimasto: {formatCountdown(remaining)}</div>
-        </div>
-
-        <div className="flex gap-2 shrink-0">
-          <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && void doSearch()}
-            placeholder="Cerca un brano karaoke…"
-            className="flex-1 rounded-2xl px-4 py-3 text-white bg-white/08 border border-white/15 text-sm outline-none focus:border-orange-400/60"
-            style={{fontSize:16}}
-          />
-          <button onClick={() => void doSearch()} disabled={searching}
-            className="rounded-2xl px-4 py-3 font-black"
-            style={{ background: `${KK_J}25`, border: `1px solid ${KK_J}55`, color: KK_J }}>
-            {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : '🔍'}
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto space-y-2">
-          {searchResults.map(r => (
-            <div key={r.videoId} className="rounded-2xl p-3 flex items-center gap-3"
-              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
-              <img src={r.thumbnailUrl} alt={r.title} className="h-12 w-20 rounded-lg object-cover shrink-0" />
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-bold text-white leading-tight line-clamp-2">{r.title}</div>
-                <div className="text-xs text-white/40">{r.channel} • {r.durationFormatted}</div>
-              </div>
-              <button onClick={() => { setSelectedVideo(r); setDedicateeId(null); setDedicateeNick(null); setDedicationStep('confirm'); }}
-                className="shrink-0 rounded-xl px-3 py-2 text-xs font-black"
-                style={{ background: `${KK_J}25`, border: `1px solid ${KK_J}55`, color: KK_J }}>
-                ➕
-              </button>
-            </div>
-          ))}
-          {searchWarning && !searching && searchResults.length > 0 && (
-            <div className="rounded-xl px-3 py-2 text-center text-xs text-amber-300/70" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.18)' }}>
-              ⚠️ {searchWarning}
-            </div>
-          )}
-          {noKaraokeFound && !searching && searchResults.length === 0 && (
-            <div className="rounded-2xl p-4 text-center text-sm text-amber-400/80" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)' }}>
-              🎤 Nessuna base karaoke trovata — prova a scrivere titolo + artista
-            </div>
-          )}
-          {!noKaraokeFound && !searchWarning && searchResults.length === 0 && searchQuery && !searching && (
-            <div className="text-center text-white/30 text-sm py-8">Nessun risultato — prova con un altro brano</div>
-          )}
-          {searchResults.length === 0 && !searchQuery && (
-            <div className="text-center text-white/20 text-sm py-4">Cerca il tuo brano preferito sopra</div>
-          )}
-        </div>
-        {error && <div className="text-sm text-red-400 text-center rounded-xl p-2 bg-red-500/10">{error}</div>}
-      </div>
-    );
-  }
-
-  // ── Transition / Finale ─────────────────────────────────────────────────
-  if (s.karaokePhase === 'transition' || s.karaokePhase === 'finale') {
-    const sorted = [...s.results].sort((a, b) => b.score - a.score);
-    const myRank = sorted.findIndex(r => r.playerId === playerId) + 1;
-    const myResult = sorted.find(r => r.playerId === playerId);
-    const myAwards = s.karaokePhase === 'finale'
-      ? computeAwards(s.results).filter(a => a.playerId === playerId)
-      : [];
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-5 text-center px-4">
-        <div className="text-4xl">{s.karaokePhase === 'finale' ? '🏆' : '⏸️'}</div>
-        {myResult ? (
-          <div className="rounded-2xl p-4 w-full" style={{ background: `${KK_J}15`, border: `2px solid ${KK_J}44` }}>
-            <div className="text-sm text-white/40">Il tuo punteggio</div>
-            <div className="text-display text-4xl font-black" style={{ color: KK_J }}>{myResult.score}</div>
-            {myRank > 0 && <div className="text-sm text-white/50">#{myRank} in classifica</div>}
-          </div>
-        ) : (
-          <div className="text-white/40">Non hai ancora cantato questa serata</div>
-        )}
-        {myAwards.length > 0 && (
-          <div className="w-full space-y-2">
-            <div className="text-xs font-black uppercase tracking-widest text-white/30">I tuoi premi</div>
-            {myAwards.map(a => (
-              <div key={a.id} className="rounded-2xl p-3 flex items-center gap-3"
-                style={{ background: `${KK_J}15`, border: `1.5px solid ${KK_J}44` }}>
-                <div className="text-2xl shrink-0">{a.emoji}</div>
-                <div className="text-left">
-                  <div className="text-xs font-black text-white/80">{a.title}</div>
-                  <div className="text-xs text-white/40">{a.valueLabel}</div>
+                  ))}
+                  {noKaraokeFound && !searching && (
+                    <div className="text-[11px] text-amber-400/70 text-center">🎤 Nessun risultato — riprova</div>
+                  )}
+                  {searchWarning && !searching && (
+                    <div className="text-[11px] text-amber-300/60 text-center">⚠️ {searchWarning}</div>
+                  )}
                 </div>
+              )}
+              {searchResults.length === 0 && !searching && (noKaraokeFound || searchWarning) && (
+                <div className="text-xs text-amber-400/70 text-center">
+                  {noKaraokeFound ? '🎤 Nessun risultato — riprova' : `⚠️ ${searchWarning ?? ''}`}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="shrink-0 text-center text-xs text-white/25 py-2">Coda al completo per questa sessione</div>
+          )}
+        </div>
+      );
+    }
+
+    // ── Queue open — search & book ───────────────────────────────────────────
+    if (s.karaokePhase === 'queue_open') {
+      if (myQueueItem) {
+        return (
+          <div className="flex flex-col gap-4 px-4 py-6 h-full">
+            {/* Booking card */}
+            <div className="rounded-3xl p-5 text-center shrink-0" style={{ background: `${KK_J}15`, border: `2px solid ${KK_J}55` }}>
+              <div className="text-xs font-black uppercase tracking-widest mb-1" style={{ color: `${KK_J}aa` }}>🎤 Sei già in coda</div>
+              <div className="text-lg font-black text-white mb-1">{myQueueItem.title}</div>
+              <div className="text-sm text-white/40">{myQueueItem.channel}</div>
+              {myPos > 0 && <div className="mt-2 text-xl font-black" style={{ color: KK_J }}>#{myPos} in coda</div>}
+              {myQueueItem.estimatedStartAt && (
+                <div className="text-xs text-white/30 mt-1">
+                  ~{new Date(myQueueItem.estimatedStartAt).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
+                </div>
+              )}
+            </div>
+
+            {/* Action buttons */}
+            {!changingBook ? (
+              <div className="flex gap-3 shrink-0">
+                <button onClick={() => { setChangingBook(true); setSearchResults([]); setSearchQuery(''); }}
+                  className="flex-1 rounded-2xl py-3 text-sm font-black"
+                  style={{ background: `${KK_J}20`, border: `1.5px solid ${KK_J}50`, color: KK_J }}>
+                  🔄 Modifica brano
+                </button>
+                <button onClick={() => void doCancel()}
+                  className="flex-1 rounded-2xl py-3 text-sm font-black text-red-400"
+                  style={{ background: 'rgba(239,68,68,0.10)', border: '1.5px solid rgba(239,68,68,0.30)' }}>
+                  ✕ Annulla
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button onClick={() => { setChangingBook(false); setSearchResults([]); setSearchQuery(''); }}
+                    className="rounded-xl px-3 py-2 text-xs font-black text-white/50"
+                    style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)' }}>
+                    ← Indietro
+                  </button>
+                  <div className="text-xs font-black uppercase tracking-widest text-white/30">Cerca un nuovo brano</div>
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && void doSearch()}
+                    placeholder="Cerca su YouTube…"
+                    className="flex-1 rounded-2xl px-4 py-3 text-white bg-white/08 border border-white/15 text-sm outline-none focus:border-orange-400/60"
+                    style={{fontSize:16}}
+                  />
+                  <button onClick={() => void doSearch()} disabled={searching}
+                    className="rounded-2xl px-4 py-3 font-black"
+                    style={{ background: `${KK_J}25`, border: `1px solid ${KK_J}55`, color: KK_J }}>
+                    {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : '🔍'}
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto space-y-2">
+                  {searchResults.map(r => (
+                    <div key={r.videoId} className="rounded-2xl p-3 flex items-center gap-3"
+                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                      <img src={r.thumbnailUrl} alt={r.title} className="h-12 w-20 rounded-lg object-cover shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-bold text-white leading-tight line-clamp-2">{r.title}</div>
+                        <div className="text-xs text-white/40">{r.channel} • {r.durationFormatted}</div>
+                      </div>
+                      <button onClick={() => void doChangeBook(r)} disabled={booking}
+                        className="shrink-0 rounded-xl px-3 py-2 text-xs font-black"
+                        style={{ background: `${KK_J}25`, border: `1px solid ${KK_J}55`, color: KK_J }}>
+                        {booking ? <Loader2 className="h-3 w-3 animate-spin" /> : '↩️'}
+                      </button>
+                    </div>
+                  ))}
+                  {noKaraokeFound && !searching && (
+                    <div className="rounded-2xl p-4 text-center text-sm text-amber-400/80" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)' }}>
+                      🎤 Nessuna base karaoke trovata — prova a scrivere titolo + artista
+                    </div>
+                  )}
+                  {searchWarning && !searching && searchResults.length > 0 && (
+                    <div className="rounded-xl px-3 py-2 text-center text-xs text-amber-300/70" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.18)' }}>
+                      ⚠️ {searchWarning}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+            {error && <div className="text-sm text-red-400 text-center rounded-xl p-2 bg-red-500/10 shrink-0">{error}</div>}
+          </div>
+        );
+      }
+
+      // Not booked yet: dynamic CTA + search
+
+      if (!canBook) {
+        return (
+          <div className="flex flex-col items-center justify-center h-full gap-5 text-center px-4">
+            <div className="text-5xl">⚠️</div>
+            <div className="rounded-3xl p-6 w-full" style={{ background: 'rgba(239,68,68,0.12)', border: '2px solid rgba(239,68,68,0.35)' }}>
+              <div className="text-lg font-black text-red-400">Coda al completo</div>
+              <div className="text-sm text-white/50 mt-2 leading-relaxed">
+                Non c'è più tempo sufficiente per aggiungere un altro brano in questa sessione.
+              </div>
+            </div>
+            <div className="text-xs text-white/25">Tempo rimasto: {formatCountdown(remaining)}</div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="flex flex-col gap-4 px-4 py-6 h-full">
+          {/* Dynamic CTA */}
+          <div className="rounded-3xl p-5 text-center shrink-0"
+            style={{ background: `${KK_J}18`, border: `2px solid ${KK_J}55` }}>
+            <div className="text-2xl font-black text-white">🎤 Prenotati adesso</div>
+            <div className="mt-1 font-bold text-base" style={{ color: KK_J }}>{waitLabel}</div>
+            <div className="mt-2 text-xs text-white/30">Tempo rimasto: {formatCountdown(remaining)}</div>
+          </div>
+
+          <div className="flex gap-2 shrink-0">
+            <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && void doSearch()}
+              placeholder="Cerca un brano karaoke…"
+              className="flex-1 rounded-2xl px-4 py-3 text-white bg-white/08 border border-white/15 text-sm outline-none focus:border-orange-400/60"
+              style={{fontSize:16}}
+            />
+            <button onClick={() => void doSearch()} disabled={searching}
+              className="rounded-2xl px-4 py-3 font-black"
+              style={{ background: `${KK_J}25`, border: `1px solid ${KK_J}55`, color: KK_J }}>
+              {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : '🔍'}
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto space-y-2">
+            {searchResults.map(r => (
+              <div key={r.videoId} className="rounded-2xl p-3 flex items-center gap-3"
+                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <img src={r.thumbnailUrl} alt={r.title} className="h-12 w-20 rounded-lg object-cover shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-bold text-white leading-tight line-clamp-2">{r.title}</div>
+                  <div className="text-xs text-white/40">{r.channel} • {r.durationFormatted}</div>
+                </div>
+                <button onClick={() => { setSelectedVideo(r); setDedicateeId(null); setDedicateeNick(null); setDedicationStep('confirm'); }}
+                  className="shrink-0 rounded-xl px-3 py-2 text-xs font-black"
+                  style={{ background: `${KK_J}25`, border: `1px solid ${KK_J}55`, color: KK_J }}>
+                  ➕
+                </button>
               </div>
             ))}
+            {searchWarning && !searching && searchResults.length > 0 && (
+              <div className="rounded-xl px-3 py-2 text-center text-xs text-amber-300/70" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.18)' }}>
+                ⚠️ {searchWarning}
+              </div>
+            )}
+            {noKaraokeFound && !searching && searchResults.length === 0 && (
+              <div className="rounded-2xl p-4 text-center text-sm text-amber-400/80" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)' }}>
+                🎤 Nessuna base karaoke trovata — prova a scrivere titolo + artista
+              </div>
+            )}
+            {!noKaraokeFound && !searchWarning && searchResults.length === 0 && searchQuery && !searching && (
+              <div className="text-center text-white/30 text-sm py-8">Nessun risultato — prova con un altro brano</div>
+            )}
+            {searchResults.length === 0 && !searchQuery && (
+              <div className="text-center text-white/20 text-sm py-4">Cerca il tuo brano preferito sopra</div>
+            )}
           </div>
-        )}
+          {error && <div className="text-sm text-red-400 text-center rounded-xl p-2 bg-red-500/10">{error}</div>}
+        </div>
+      );
+    }
+
+    // ── Transition / Finale ─────────────────────────────────────────────────
+    if (s.karaokePhase === 'transition' || s.karaokePhase === 'finale') {
+      const sorted = [...s.results].sort((a, b) => b.score - a.score);
+      const myRank = sorted.findIndex(r => r.playerId === playerId) + 1;
+      const myResult = sorted.find(r => r.playerId === playerId);
+      const myAwards = s.karaokePhase === 'finale'
+        ? computeAwards(s.results).filter(a => a.playerId === playerId)
+        : [];
+      return (
+        <div className="flex flex-col items-center justify-center h-full gap-5 text-center px-4">
+          <div className="text-4xl">{s.karaokePhase === 'finale' ? '🏆' : '⏸️'}</div>
+          {myResult ? (
+            <div className="rounded-2xl p-4 w-full" style={{ background: `${KK_J}15`, border: `2px solid ${KK_J}44` }}>
+              <div className="text-sm text-white/40">Il tuo punteggio</div>
+              <div className="text-display text-4xl font-black" style={{ color: KK_J }}>{myResult.score}</div>
+              {myRank > 0 && <div className="text-sm text-white/50">#{myRank} in classifica</div>}
+            </div>
+          ) : (
+            <div className="text-white/40">Non hai ancora cantato questa serata</div>
+          )}
+          {myAwards.length > 0 && (
+            <div className="w-full space-y-2">
+              <div className="text-xs font-black uppercase tracking-widest text-white/30">I tuoi premi</div>
+              {myAwards.map(a => (
+                <div key={a.id} className="rounded-2xl p-3 flex items-center gap-3"
+                  style={{ background: `${KK_J}15`, border: `1.5px solid ${KK_J}44` }}>
+                  <div className="text-2xl shrink-0">{a.emoji}</div>
+                  <div className="text-left">
+                    <div className="text-xs font-black text-white/80">{a.title}</div>
+                    <div className="text-xs text-white/40">{a.valueLabel}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Fase non prevista: schermata d'attesa invece di schermo nero.
+    return (
+      <div className="flex flex-col items-center gap-4 py-10 text-center">
+        <div className="text-5xl animate-pulse">🎤</div>
+        <div className="text-lg font-black text-white">Un attimo…</div>
+        <div className="text-white/40 text-sm">In attesa del prossimo brano</div>
       </div>
     );
-  }
-
-  // Fase non prevista: schermata d'attesa invece di schermo nero.
-  return (
-    <div className="flex flex-col items-center gap-4 py-10 text-center">
-      <div className="text-5xl animate-pulse">🎤</div>
-      <div className="text-lg font-black text-white">Un attimo…</div>
-      <div className="text-white/40 text-sm">In attesa del prossimo brano</div>
-    </div>
-  );
+  })();
+  return <>{corpo}{barraMista}</>;
 }
 
 export default function HomeJoin() {

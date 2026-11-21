@@ -8,8 +8,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { getTableConfig } from "drizzle-orm/pg-core";
-import { DDL_AUTH, DDL_USER_SESSIONS, DDL_PASSWORD_RESET, ensureAuthTables } from "./auth-tables.ts";
+import { DDL_AUTH, DDL_USER_SESSIONS, DDL_PASSWORD_RESET, DDL_PONTE_IDEMPOTENZA, ensureAuthTables } from "./auth-tables.ts";
 import { userSessionsTable, passwordResetTokensTable } from "../../../../lib/db/src/schema/auth-sessions.ts";
+import { ponteIdempotenzaTable } from "../../../../lib/db/src/schema/ponte-idempotenza.ts";
 
 function colonneDdl(ddl: string): Record<string, string> {
   const corpo = ddl.slice(ddl.indexOf("(") + 1, ddl.lastIndexOf(")"));
@@ -53,6 +54,17 @@ test("password_reset_tokens: stesse colonne, tipi, unique e indice dello schema 
   assert.equal(unico.name, "token_hash");
   assert.match(DDL_PASSWORD_RESET[0]!, new RegExp(`CONSTRAINT "${unico.uniqueName}" UNIQUE\\("token_hash"\\)`));
   assert.deepEqual(cfg.indexes.map((i) => i.config.name), ["password_reset_tokens_user_idx"]);
+});
+
+test("ponte_idempotenza: stesse colonne e tipi dello schema Drizzle", () => {
+  const cfg = getTableConfig(ponteIdempotenzaTable);
+  const ddl = colonneDdl(DDL_PONTE_IDEMPOTENZA[0]!);
+  assert.deepEqual(Object.keys(ddl).sort(), cfg.columns.map((c) => c.name).sort());
+  for (const c of cfg.columns) {
+    assert.ok(ddl[c.name]!.startsWith(c.getSQLType()), `${c.name}: ${ddl[c.name]} vs ${c.getSQLType()}`);
+    assert.equal(ddl[c.name]!.includes("NOT NULL"), c.notNull, `${c.name} notNull`);
+    assert.equal(ddl[c.name]!.includes("PRIMARY KEY"), c.primary, `${c.name} pk`);
+  }
 });
 
 test("ensureAuthTables esegue tutto il DDL, nell'ordine, ed è rilanciabile", async () => {

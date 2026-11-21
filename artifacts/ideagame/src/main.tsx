@@ -3,6 +3,10 @@
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
+import { installaGettoni } from "./lib/gettoni";
+
+// Gettoni di regia/organizzatore/giocatore aggiunti alle chiamate API (lib/gettoni.ts).
+installaGettoni();
 
 // ── iOS viewport-zoom reset ────────────────────────────────────────────────────
 // When an iOS keyboard dismisses it can leave the viewport zoomed in.

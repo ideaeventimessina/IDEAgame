@@ -74,7 +74,7 @@ function ballTexture(n: number): THREE.CanvasTexture {
 }
 
 /* ════════════════════════════════════════════════ MONITOR 80" ═══════════════ */
-export function BiliardoMonitor({ displayCode }: { displayCode: string }) {
+export function BiliardoMonitor({ displayCode, monitorKey = '' }: { displayCode: string; monitorKey?: string }) {
   useTableMusic('casino', 'lobby_loop');
   const st = usePool(displayCode, 400);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -189,7 +189,7 @@ export function BiliardoMonitor({ displayCode }: { displayCode: string }) {
       const pocketed = pocketedThisShot.current.slice();
       const shotId = stateRef.current?.table.pending?.id || `m${Date.now()}`;
       resolving = true;
-      try { await api('/gestione/casino/pool/resolve', { displayCode, shotId, pocketed, balls: snapshot, by: shotBy }); }
+      try { await api('/gestione/casino/pool/resolve', { displayCode, monitorKey, shotId, pocketed, balls: snapshot, by: shotBy }); }
       finally { resolving = false; }
     }
 
@@ -293,7 +293,7 @@ export function BiliardoMonitor({ displayCode }: { displayCode: string }) {
             <div style={{ textAlign: 'center', padding: '34px 70px', borderRadius: 24, border: '5px solid #e9c766', background: 'radial-gradient(ellipse at 50% 20%,#0d3321,#061a10)' }}>
               <h2 style={{ margin: 0, font: '800 60px/1 "CinzelB",serif', color: '#f0ca68' }}>VINCE {(t.seats[t.winner].nickname ?? '—').toUpperCase()}</h2>
               <div style={{ color: '#f3e4b6', fontSize: 34, marginTop: 14 }}>{t.seats[0].nickname ?? 'G1'} {t.wins[0]} — {t.wins[1]} {t.seats[1].nickname ?? 'G2'}</div>
-              <button onClick={() => api('/gestione/casino/pool/new', { displayCode })} style={{ marginTop: 22, padding: '16px 44px', borderRadius: 16, border: '3px solid #e9c766', background: 'linear-gradient(180deg,#ffe694,#d59a34)', color: '#231503', font: '700 30px/1 "CinzelB",serif', cursor: 'pointer' }}>↻ RIVINCITA</button>
+              <button onClick={() => api('/gestione/casino/pool/new', { displayCode, monitorKey })} style={{ marginTop: 22, padding: '16px 44px', borderRadius: 16, border: '3px solid #e9c766', background: 'linear-gradient(180deg,#ffe694,#d59a34)', color: '#231503', font: '700 30px/1 "CinzelB",serif', cursor: 'pointer' }}>↻ RIVINCITA</button>
             </div>
           </div>
         )}

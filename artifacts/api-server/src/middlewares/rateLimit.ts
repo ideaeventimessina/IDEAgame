@@ -31,3 +31,23 @@ export const passwordResetLimiter = rateLimit({
   message: { error: "Troppe richieste di reset. Riprova più tardi." },
   skip: () => process.env["NODE_ENV"] === "test",
 });
+
+/** Serata Home: scritture dei punteggi (la TV ne manda molte, i telefoni poche) */
+export const homeScoreLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 240,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Troppe richieste di punteggio. Rallenta." },
+  skip: () => process.env["NODE_ENV"] === "test",
+});
+
+/** Serata Home: chiusura / cancellazione */
+export const homeHostLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Troppe richieste. Riprova tra un minuto." },
+  skip: () => process.env["NODE_ENV"] === "test",
+});

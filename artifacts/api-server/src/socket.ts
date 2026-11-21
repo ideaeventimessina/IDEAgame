@@ -1,5 +1,6 @@
 /* Questo codice è stato progettato, scritto e generato da Andrea Gentile C.f GNTNDR88S28F158M */
 
+import { redactHomeSession } from "./lib/home-redact";
 import { Server as SocketServer } from "socket.io";
 import type { Server as HttpServer } from "node:http";
 import { db, playersTable, homeSessionsTable, homePlayersTable } from "@workspace/db";
@@ -246,7 +247,7 @@ export function initHomeSocketHandlers(io: SocketServer): void {
           if (!session) return;
           const players = await db.select().from(homePlayersTable)
             .where(eq(homePlayersTable.sessionId, sessionId));
-          socket.emit("home:state", { session, players });
+          socket.emit("home:state", { session: redactHomeSession(session), players });
         })
         .catch((err) => logger.error({ err, sessionId }, "join:home state push failed"));
     });

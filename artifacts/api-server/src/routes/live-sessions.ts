@@ -21,6 +21,7 @@
  *   POST   /live-sessions/:id/coppie-flip      — flip a card (TV-driven)
  */
 
+import { ruoloLive, puo, sessionePer, type Livello, type Ruolo } from "../lib/live-accesso";
 import { Router, type IRouter, type Request, type Response } from "express";
 import { randomBytes } from "crypto";
 import { eq, and, or, desc } from "drizzle-orm";
@@ -106,25 +107,24 @@ async function upsertState(
   return row!;
 }
 
-// Validate request has either auth OR matching session code
-async function resolveSession(req: Request): Promise<typeof liveSessionsTable.$inferSelect | null> {
+// Chi chiede e con quale ruolo (vedi lib/live-accesso.ts). Ritorna null se non
+// ha accesso al livello richiesto: la risposta resta 404 come prima (non si dice
+// a un estraneo che la sessione esiste).
+async function resolveSession(req: Request, livello: Livello = "lettura"): Promise<typeof liveSessionsTable.$inferSelect | null> {
   const id = Array.isArray(req.params.id) ? req.params.id[0]! : req.params.id;
-  if (!id) return null;
+  if (!id || !/^[0-9a-f-]{36}$/i.test(id)) return null;
   const rows = await db.select().from(liveSessionsTable).where(eq(liveSessionsTable.id, id));
   const session = rows[0] ?? null;
   if (!session) return null;
-
-  const authedReq = req as AuthedRequest;
-  if (authedReq.user) return session;
-
-  const code = (req.headers["x-live-code"] as string | undefined) ??
+  const codice = (req.headers["x-live-code"] as string | undefined) ??
     (req.query.s as string | undefined) ??
     (req.body?.code as string | undefined);
-  if (!code) return null;
-  const upper = code.toUpperCase();
-  if (upper === session.tvCode || upper === session.presenterCode) return session;
-  return null;
+  const ruolo = ruoloLive(session, (req as AuthedRequest).user, codice);
+  if (!puo(ruolo, livello)) return null;
+  (req as Request & { ruoloLive?: Ruolo }).ruoloLive = ruolo;
+  return session;
 }
+const ruoloDi = (req: Request): Ruolo => (req as Request & { ruoloLive?: Ruolo }).ruoloLive ?? null;
 
 // Build 10-slot couple list from couple_photo assets
 async function buildCouplesList(liveSessionId: string) {
@@ -264,7 +264,10 @@ router.get("/live-sessions/by-code/:code", async (req: Request, res: Response): 
   if (!session) { res.status(404).json({ error: "Session not found" }); return; }
   const code = (Array.isArray(req.params.code) ? req.params.code[0]! : req.params.code).toUpperCase();
   const role = code === session.tvCode ? "tv" : "presenter";
-  res.json({ ...session, role });
+  // Il codice TV NON svela il codice presentatore, a meno che chi chiede sia lo staff
+  // della sessione (la TV dell'organizzatore loggato mostra il QR del presentatore).
+  const ruolo = ruoloLive(session, (req as AuthedRequest).user, code);
+  res.json({ ...sessionePer(session, ruolo), role });
 });
 
 // ── GET /live-sessions/:id ───────────────────────────────────────────────────
@@ -272,13 +275,13 @@ router.get("/live-sessions/by-code/:code", async (req: Request, res: Response): 
 router.get("/live-sessions/:id", async (req: Request, res: Response): Promise<void> => {
   const session = await resolveSession(req);
   if (!session) { res.status(404).json({ error: "Session not found or access denied" }); return; }
-  res.json(session);
+  res.json(sessionePer(session, ruoloDi(req)));
 });
 
 // ── PATCH /live-sessions/:id ─────────────────────────────────────────────────
 
 router.patch("/live-sessions/:id", requireAuth, async (req: AuthedRequest, res: Response): Promise<void> => {
-  const session = await resolveSession(req);
+  const session = await resolveSession(req, "gestione");
   if (!session) { res.status(404).json({ error: "Not found" }); return; }
 
   const { title, status, currentGameSlug, currentPhase, metadata } = req.body as Partial<typeof liveSessionsTable.$inferInsert>;
@@ -301,7 +304,7 @@ router.patch("/live-sessions/:id", requireAuth, async (req: AuthedRequest, res: 
 // ── DELETE /live-sessions/:id ────────────────────────────────────────────────
 
 router.delete("/live-sessions/:id", requireAuth, async (req: AuthedRequest, res: Response): Promise<void> => {
-  const session = await resolveSession(req);
+  const session = await resolveSession(req, "gestione");
   if (!session) { res.status(404).json({ error: "Not found" }); return; }
   await db.delete(liveSessionsTable).where(eq(liveSessionsTable.id, session.id));
   emitToRoom(`live:${session.id}`, "live:session_ended", { sessionId: session.id });
@@ -327,7 +330,7 @@ const VALID_COMMANDS = [
 ] as const;
 
 router.post("/live-sessions/:id/command", async (req: Request, res: Response): Promise<void> => {
-  const session = await resolveSession(req);
+  const session = await resolveSession(req, "comando");
   if (!session) { res.status(404).json({ error: "Not found or access denied" }); return; }
 
   const { command, payload } = req.body as { command: string; payload?: unknown };
@@ -399,7 +402,7 @@ router.post("/live-sessions/:id/command", async (req: Request, res: Response): P
 // (HomeGame joins both rooms).
 
 router.post("/live-sessions/:id/home-command", async (req: Request, res: Response): Promise<void> => {
-  const session = await resolveSession(req);
+  const session = await resolveSession(req, "comando");
   if (!session) { res.status(404).json({ error: "Not found or access denied" }); return; }
 
   const { command, payload } = req.body as { command: string; payload?: unknown };
@@ -466,7 +469,7 @@ router.get("/live-sessions/:id/photos", async (req: Request, res: Response): Pro
 // Legacy single photo: body includes just label + imageData/url
 
 router.post("/live-sessions/:id/photos", async (req: Request, res: Response): Promise<void> => {
-  const session = await resolveSession(req);
+  const session = await resolveSession(req, "comando");
   if (!session) { res.status(404).json({ error: "Not found or access denied" }); return; }
 
   const { label, imageData, url, coupleIndex, partner, coupleName, partnerName } =
@@ -589,7 +592,7 @@ router.post("/live-sessions/:id/photos", async (req: Request, res: Response): Pr
 // ── DELETE /live-sessions/:id/photos/:photoId ────────────────────────────────
 
 router.delete("/live-sessions/:id/photos/:photoId", async (req: Request, res: Response): Promise<void> => {
-  const session = await resolveSession(req);
+  const session = await resolveSession(req, "comando");
   if (!session) { res.status(404).json({ error: "Not found or access denied" }); return; }
 
   const photoId = Array.isArray(req.params.photoId) ? req.params.photoId[0]! : req.params.photoId;
@@ -625,7 +628,7 @@ router.delete("/live-sessions/:id/photos/:photoId", async (req: Request, res: Re
 // Matching: same pairId.
 
 router.post("/live-sessions/:id/create-deck", async (req: Request, res: Response): Promise<void> => {
-  const session = await resolveSession(req);
+  const session = await resolveSession(req, "comando");
   if (!session) { res.status(404).json({ error: "Not found or access denied" }); return; }
 
   const couples = await buildCouplesList(session.id);

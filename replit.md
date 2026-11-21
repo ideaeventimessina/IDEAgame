@@ -309,6 +309,14 @@ Si mettono nei **Secrets** del progetto su Replit (pannello Secrets, poi ripubbl
 | `CORS_ORIGINI` | Origini in più ammesse da CORS **e dal controllo CSRF** (separate da virgola, es. `https://www.ideagame.it`). | Ammessi solo stesso host e domini Replit |
 | `SESSION_SECRET`, `DATABASE_URL`, `IDEAGAME_OWNER_PASSWORD` | Firma dei cookie, database, password del proprietario (≥ 12 caratteri). | Il server non parte / proprietario non creato |
 
+## Sicurezza degli accessi (21/11/2026)
+
+- **Download karaoke** (`POST /api/karaoke/download-video`): solo super_admin, tenant_owner, game_manager; solo URL https di YouTube ricostruiti dal server; `--` prima dell'URL e `--no-exec` per yt-dlp; tempi numerici (`lib/youtube-url.ts`).
+- **Casinò**: le letture pubbliche (`GET /api/gestione/casino/sessions/:id…` e lo stato via socket) non contengono più codici regia, dealer e giocatore, mazzi e config. Le operazioni di regia sulla serata vogliono il codice regia nell'header `x-master-code` (il frontend lo aggiunge da solo dopo l'ingresso con il codice regia, `src/lib/gettoni.ts`). Gli accrediti manuali dei dealer hanno un tetto per movimento (4× le fiche iniziali, minimo 1000). Il biliardo: solo il monitor 80″ (link con `&k=<chiave>` dalla regia) può riportare i tiri. Limite: le pagine di regia aperte su un ALTRO dispositivo (es. regia blackjack dall'80″) devono essere aperte dalla regia stessa, altrimenti non hanno il codice.
+- **Serata Home**: chi crea la serata riceve un gettone d'organizzatore (`x-host-token`), ogni giocatore il suo (`x-player-token`); gettoni HMAC firmati con `SESSION_SECRET`, niente colonne nuove. Solo l'organizzatore chiude/cancella (`/end`, `/champion`, `DELETE`); `/score` lo imposta la TV, un telefono può solo aggiungersi fino a 1000 punti. Limiti di frequenza su punteggi e chiusura. Le serate create prima di questa versione e quelle aperte dal ponte IDEAeventi non hanno gettoni e restano col comportamento di prima.
+- **Regia Live**: codice TV = solo lettura (non svela più il codice presentatore); codice presentatore = comandi; modifiche e cancellazioni solo dallo staff dello stesso tenant. `PATCH /api/games/:id` (catalogo globale) solo super_admin.
+- **Archivio**: `request-url` solo staff, max 50 MB, solo immagini/audio/video; `/storage/objects/*` serve solo `uploads/<uuid>[.ext]` e rispetta le regole d'accesso private; audio globali caricabili/cancellabili solo dal super_admin.
+
 ## Test
 
 `pnpm test` dalla radice lancia tutti i test (`node --test`, Node ≥ 23, senza database né rete) di `artifacts/api-server` e `artifacts/ideagame`. Un pacchetto da solo: `pnpm --filter @workspace/api-server test`.

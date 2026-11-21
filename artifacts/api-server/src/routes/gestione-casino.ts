@@ -28,9 +28,46 @@ import {
   action as sprintEngineAction,
   type RaceInput as SprintInput, type Pilot as SprintPilot,
 } from "./gestione-sprint-engine.js";
+import { ripulisci, accessoRichiesto, codiceRegiaValido, accreditoDealerAmmesso, tettoDealer } from "../lib/casino-regia.js";
 
 const router = Router();
 const DEFAULT_START_FISH = 500;
+
+/* ── Regia della serata: codice nell'header x-master-code ────────────────────
+   Tutte le rotte /gestione/casino/sessions/:id/... passano di qui (vedi
+   lib/casino-regia.ts): l'iscrizione dal QR resta pubblica, le letture senza
+   codice regia ricevono lo stato ripulito (niente codici, mazzi, config), tutto
+   il resto (setup, tavoli, dealer, fine serata) vuole il codice regia. */
+router.use("/gestione/casino/sessions/:id", async (req, res, next): Promise<void> => {
+  const id = String(req.params["id"] ?? "");
+  const accesso = accessoRichiesto(req.method, req.path);
+  if (accesso === "pubblico") { next(); return; }
+  let regia = false;
+  const fornito = req.header("x-master-code");
+  if (fornito && /^[0-9a-f-]{36}$/i.test(id)) {
+    const [s] = await db.select({ masterCode: casinoSessionsTable.masterCode }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, id));
+    regia = codiceRegiaValido(fornito, s?.masterCode);
+  }
+  if (accesso === "regia" && !regia) {
+    res.status(403).json({ error: "Serve il codice regia della serata." });
+    return;
+  }
+  res.locals["regia"] = regia;
+  if (!regia) {
+    const json = res.json.bind(res);
+    res.json = ((corpo: unknown) => json(ripulisci(corpo))) as typeof res.json;
+  }
+  next();
+});
+
+/* Tetto di un accredito manuale del dealer (fiche "coniate" a mano). */
+async function dentroTettoDealer(sessionId: string, delta: number): Promise<boolean> {
+  if (delta <= 0) return true;
+  const [s] = await db.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, sessionId));
+  const start = ((s?.config ?? {}) as { startFish?: number }).startFish;
+  return accreditoDealerAmmesso(delta, start);
+}
+const erroreTetto = (sessionStart?: number) => ({ error: `Accredito oltre il tetto per singolo movimento (${tettoDealer(sessionStart)} fiche).` });
 
 /* ── Atomicità dei soldi ──────────────────────────────────────────────────────
    Tipo della transazione Drizzle (parametro del callback di db.transaction). */
@@ -150,7 +187,7 @@ async function loadState(id: string) {
     tvCode: cfg.tvCode ?? null,
   };
 }
-async function broadcast(id: string) { const s = await loadState(id); if (s) emitToRoom(room(id), "casino:state", s); return s; }
+async function broadcast(id: string) { const s = await loadState(id); if (s) emitToRoom(room(id), "casino:state", ripulisci(s)); return s; }
 
 // ── Crea serata ───────────────────────────────────────────────────────────────
 router.post("/gestione/casino/sessions", async (req, res): Promise<void> => {
@@ -364,6 +401,7 @@ router.post("/gestione/casino/tx", async (req, res): Promise<void> => {
   if (!player || player.sessionId !== table.sessionId) { res.status(404).json({ error: "Giocatore non trovato in questa serata" }); return; }
   // ATOMICO: UPDATE saldo (con guard anti-scoperto) + INSERT ledger nella stessa tx.
   const amtDelta = Math.round(amt);
+  if (!(await dentroTettoDealer(table.sessionId, amtDelta))) { res.status(403).json(erroreTetto()); return; }
   const newBalance = await db.transaction((tx) => moveFish(tx, table.sessionId, {
     playerId: player.id, delta: amtDelta, kind: String(kind ?? (amt > 0 ? "pay" : "take")),
     tableId: table.id, dealerCode: table.dealerCode, requireFunds: true,
@@ -693,6 +731,7 @@ router.post("/gestione/casino/table/dealer-tx", async (req, res): Promise<void> 
   if (!isUUID(playerId)) { res.status(400).json({ error: "Giocatore non valido" }); return; }
   const [player] = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.id, playerId));
   if (!player || player.sessionId !== found.sessionId) { res.status(404).json({ error: "Giocatore non trovato in questa serata" }); return; }
+  if (!(await dentroTettoDealer(found.sessionId, delta))) { res.status(403).json(erroreTetto()); return; }
   const newBalance = await db.transaction((tx) => moveFish(tx, found.sessionId, { playerId, delta, kind: delta > 0 ? "dealer_pay" : "dealer_take", tableId: null, requireFunds: true }));
   if (newBalance == null) { res.status(409).json({ error: "Fish insufficienti", balance: player.fishBalance }); return; }
   const fr2 = await findGameTable(found.table.displayCode);
@@ -1201,6 +1240,7 @@ router.post("/gestione/casino/bj/dealer-tx", async (req, res): Promise<void> => 
   if (!isUUID(playerId)) { res.status(400).json({ error: "Giocatore non valido" }); return; }
   const [player] = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.id, playerId));
   if (!player || player.sessionId !== found.sessionId) { res.status(404).json({ error: "Giocatore non trovato in questa serata" }); return; }
+  if (!(await dentroTettoDealer(found.sessionId, delta))) { res.status(403).json(erroreTetto()); return; }
   const newBalance = await db.transaction((tx) => moveFish(tx, found.sessionId, { playerId, delta, kind: delta > 0 ? "dealer_pay" : "dealer_take", tableId: null, requireFunds: true }));
   if (newBalance == null) { res.status(409).json({ error: "Fish insufficienti", balance: player.fishBalance }); return; }
   await broadcast(found.sessionId);
@@ -1654,6 +1694,7 @@ router.post("/gestione/casino/sm/dealer-tx", async (req, res): Promise<void> => 
   if (!isUUID(playerId)) { res.status(400).json({ error: "Giocatore non valido" }); return; }
   const [player] = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.id, playerId));
   if (!player || player.sessionId !== found.sessionId) { res.status(404).json({ error: "Giocatore non trovato in questa serata" }); return; }
+  if (!(await dentroTettoDealer(found.sessionId, delta))) { res.status(403).json(erroreTetto()); return; }
   const newBalance = await db.transaction((tx) => moveFish(tx, found.sessionId, { playerId, delta, kind: delta > 0 ? "dealer_pay" : "dealer_take", tableId: null, requireFunds: true }));
   if (newBalance == null) { res.status(409).json({ error: "Fish insufficienti", balance: player.fishBalance }); return; }
   await broadcast(found.sessionId);
@@ -2262,6 +2303,7 @@ type PoolTable = {
   balls: PoolBall[];
   pending: PoolShot | null; shotSeq: number; seen: string[];
   dealerCode?: string | null;   // dealer LEGGERO: legato dalla regia/plancia, vede i 2 giocatori + accredita/preleva fish
+  monitorKey?: string;          // chiave del monitor 80": solo lui riporta l'esito dei tiri (che accredita fiche)
   winner: 0 | 1 | null; suspended: boolean;
 };
 const POOL_FISH_BALL = 10, POOL_BONUS_RACK = 100, POOL_BONUS_MATCH = 300, POOL_WIN_RACKS = 2;
@@ -2324,6 +2366,7 @@ router.post("/gestione/casino/sessions/:id/pool-tables", async (req, res): Promi
     id: makeCode(8), type: "pool", name: (b.name || "Biliardo Club").slice(0, 40), displayCode: makeCode(6),
     seats: { "1": { playerId: null }, "2": { playerId: null } }, turn: 0, rack: 1, wins: [0, 0],
     balls: freshRack(), pending: null, shotSeq: 0, seen: [], winner: null, suspended: false,
+    monitorKey: makeCode(12),
   };
   await savePoolTable(id, table);
   res.json(await poolState(id, table));
@@ -2331,8 +2374,17 @@ router.post("/gestione/casino/sessions/:id/pool-tables", async (req, res): Promi
 router.get("/gestione/casino/sessions/:id/pool-tables", async (req, res): Promise<void> => {
   const { id } = req.params;
   if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  // Regia: i tavoli nati prima della chiave del monitor la ricevono adesso.
+  if (res.locals["regia"]) {
+    await mutateSession<null>(id, async (_tx, cfg) => {
+      let cambiato = false;
+      for (const t of Object.values(cfg.poolTables ?? {})) if (!t.monitorKey) { t.monitorKey = makeCode(12); cambiato = true; }
+      return { save: cambiato, result: null };
+    });
+  }
   const [s] = await db.select({ config: casinoSessionsTable.config }).from(casinoSessionsTable).where(eq(casinoSessionsTable.id, id));
-  const tables = Object.values(((s?.config ?? {}) as CasinoConfig).poolTables ?? {}).map((t) => ({ id: t.id, name: t.name, displayCode: t.displayCode, rack: t.rack, suspended: t.suspended, players: poolSeatsFilled(t), hasDealer: !!t.dealerCode }));
+  // monitorKey esce solo verso la regia (per i non-regia la toglie ripulisci()).
+  const tables = Object.values(((s?.config ?? {}) as CasinoConfig).poolTables ?? {}).map((t) => ({ id: t.id, name: t.name, displayCode: t.displayCode, rack: t.rack, suspended: t.suspended, players: poolSeatsFilled(t), hasDealer: !!t.dealerCode, monitorKey: t.monitorKey ?? null }));
   res.json({ tables });
 });
 router.get("/gestione/casino/pool/:code", async (req, res): Promise<void> => {
@@ -2393,10 +2445,17 @@ router.post("/gestione/casino/pool/shoot", async (req, res): Promise<void> => {
   });
   res.status(out.status).json(out.body ?? { ok: true });
 });
+/* Il monitor 80" (fisica del biliardo) è l'unico che può dire quali bilie sono
+   entrate: quell'esito ACCREDITA fiche. Prima bastava il displayCode, che è
+   scritto sul tavolo e sui telefoni: chiunque poteva "imbucare" e incassare. */
+function chiaveMonitorOk(t: PoolTable, fornita: unknown): boolean {
+  return !!t.monitorKey && typeof fornita === "string" && codiceRegiaValido(fornita, t.monitorKey);
+}
 /* monitor: riporta l'esito del tiro (fisica sul monitor) → accredita fish + turno/rack */
 router.post("/gestione/casino/pool/resolve", async (req, res): Promise<void> => {
   const found = await findPoolTable((req.body?.displayCode || "").toUpperCase());
   if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  if (!chiaveMonitorOk(found.table, req.body?.monitorKey)) { res.status(403).json({ error: "Solo il monitor del tavolo può farlo." }); return; }
   const shotId = String(req.body?.shotId || "");
   const pocketed = Array.isArray(req.body?.pocketed) ? (req.body.pocketed as unknown[]).map(Number).filter((n) => Number.isFinite(n)) : [];
   const scratch = pocketed.includes(0);
@@ -2432,6 +2491,7 @@ router.post("/gestione/casino/pool/resolve", async (req, res): Promise<void> => 
 router.post("/gestione/casino/pool/new", async (req, res): Promise<void> => {
   const found = await findPoolTable((req.body?.displayCode || "").toUpperCase());
   if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  if (!chiaveMonitorOk(found.table, req.body?.monitorKey)) { res.status(403).json({ error: "Solo il monitor del tavolo può farlo." }); return; }
   await mutateSession<null>(found.sessionId, async (_tx, cfg) => {
     const t = cfg.poolTables?.[found.table.id]; if (!t) return { save: false, result: null };
     t.rack = 1; t.wins = [0, 0]; t.winner = null; t.turn = 0; t.balls = freshRack(); t.pending = null;
@@ -2442,6 +2502,7 @@ router.post("/gestione/casino/pool/new", async (req, res): Promise<void> => {
 router.post("/gestione/casino/pool/suspend", async (req, res): Promise<void> => {
   const found = await findPoolTable((req.body?.displayCode || "").toUpperCase());
   if (!found) { res.status(404).json({ error: "Tavolo non trovato" }); return; }
+  if (!chiaveMonitorOk(found.table, req.body?.monitorKey)) { res.status(403).json({ error: "Solo il monitor del tavolo può farlo." }); return; }
   await mutateSession<null>(found.sessionId, async (_tx, cfg) => { const t = cfg.poolTables?.[found.table.id]; if (t) t.suspended = !t.suspended; return { save: !!cfg.poolTables?.[found.table.id], result: null }; });
   const fr = await findPoolTable(found.table.displayCode); res.json(await poolState(found.sessionId, fr!.table));
 });
@@ -2504,6 +2565,7 @@ router.post("/gestione/casino/light-dealer-tx", async (req, res): Promise<void> 
   if (!isUUID(playerId)) { res.status(400).json({ error: "Giocatore non valido" }); return; }
   const [player] = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.id, playerId));
   if (!player || player.sessionId !== found.sessionId) { res.status(404).json({ error: "Giocatore non trovato in questa serata" }); return; }
+  if (!(await dentroTettoDealer(found.sessionId, delta))) { res.status(403).json(erroreTetto()); return; }
   const newBalance = await db.transaction((tx) => moveFish(tx, found.sessionId, { playerId, delta, kind: delta > 0 ? "dealer_pay" : "dealer_take", tableId: null, requireFunds: true }));
   if (newBalance == null) { res.status(409).json({ error: "Fish insufficienti", balance: player.fishBalance }); return; }
   await broadcast(found.sessionId);
@@ -2588,6 +2650,7 @@ router.post("/gestione/casino/dealer-tx-any", async (req, res): Promise<void> =>
   if (!isUUID(playerId)) { res.status(400).json({ error: "Giocatore non valido" }); return; }
   const [player] = await db.select().from(casinoPlayersTable).where(eq(casinoPlayersTable.id, playerId));
   if (!player || player.sessionId !== ctx.sessionId) { res.status(404).json({ error: "Giocatore non trovato in questa serata" }); return; }
+  if (!(await dentroTettoDealer(ctx.sessionId, delta))) { res.status(403).json(erroreTetto()); return; }
   const newBalance = await db.transaction((tx) => moveFish(tx, ctx.sessionId, { playerId, delta, kind: delta > 0 ? "dealer_pay" : "dealer_take", tableId: null, requireFunds: true }));
   if (newBalance == null) { res.status(409).json({ error: "Punti insufficienti", balance: player.fishBalance }); return; }
   await broadcast(ctx.sessionId);

@@ -7818,7 +7818,7 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
           ))}
         </div>
         {s.subMode === 'mixed' && s.freestylePhase === 'idle' && (
-          <button onClick={() => void post('/karaoke/set-mode', { mode: 'freestyle' })}
+          <button onClick={() => void post('/karaoke/mixed/freestyle')}
             className="mt-2 text-sm rounded-xl px-5 py-2 font-bold"
             style={{ background: `${KK}15`, border: `1px solid ${KK}40`, color: `${KK}cc` }}>
             → Vai direttamente a Freestyle Battle
@@ -7833,11 +7833,22 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
     return <FreestyleBattleBoard sessionId={sessionId} state={s} post={post} />;
   }
 
+  // ── Modo MISTO: dalla coda karaoke si passa al freestyle (e poi si torna qui) ──
+  const freestyleInCoda = (s.freestyleBookings ?? []).filter(b => b.status === 'waiting').length;
+  const barraMista = s.subMode === 'mixed' && s.freestylePhase === 'idle' ? (
+    <button onClick={() => void post('/karaoke/mixed/freestyle')}
+      className="fixed bottom-4 right-4 z-40 rounded-2xl px-5 py-3 font-black text-black"
+      style={{ background: 'linear-gradient(135deg,#f59e0b,#d97706)', boxShadow: '0 0 24px #f59e0b55' }}>
+      🎙️ Freestyle{freestyleInCoda > 0 ? ` · ${freestyleInCoda} in coda` : ''}
+    </button>
+  ) : null;
+
   // ── Queue open ───────────────────────────────────────────────────────────
   if (s.karaokePhase === 'queue_open') {
     const nextSinger = waitingQueue[0];
     return (
       <div className="flex flex-col h-full gap-5 p-6">
+        {barraMista}
         <div className="flex items-center justify-between shrink-0">
           <div>
             <div className="text-xs font-black uppercase tracking-widest" style={{ color: KK }}>🎤 Karaoke Live</div>
@@ -8167,6 +8178,7 @@ function KaraokeLiveBoard({ sessionId, state, players }: {
     const nextSinger = waitingQueue[0];
     return (
       <div className="flex flex-col items-center justify-center h-full gap-6 text-center px-8">
+        {barraMista}
         {lastResult && (
           <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
             className="rounded-3xl p-6 w-full max-w-md"
@@ -8456,6 +8468,15 @@ function FreestyleBattleBoard({ sessionId, state: s, post }: {
     return () => clearInterval(id);
   }, [battle?.battleEndsAt, battle?.battleLocked, post]);
 
+  // Modo MISTO: dal freestyle si torna alla coda karaoke (le prenotazioni restano).
+  const tornaAlKaraoke = ls.subMode === 'mixed' ? (
+    <button onClick={() => void post('/karaoke/mixed/karaoke')}
+      className="rounded-2xl px-6 py-3 font-black text-white"
+      style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.25)' }}>
+      🎤 Torna al karaoke
+    </button>
+  ) : null;
+
   // Booking phase
   if (ls.freestylePhase === 'idle' || ls.freestylePhase === 'booking') {
     return (
@@ -8491,6 +8512,7 @@ function FreestyleBattleBoard({ sessionId, state: s, post }: {
             </button>
           </div>
         )}
+        {tornaAlKaraoke}
       </div>
     );
   }
@@ -8628,11 +8650,12 @@ function FreestyleBattleBoard({ sessionId, state: s, post }: {
         <div className="flex gap-3">
           {/* Riapre le prenotazioni (freestylePhase → booking). Prima chiamava
               /freestyle/book senza giocatore: 400, e il pulsante non faceva nulla. */}
-          <button onClick={() => void post('/karaoke/set-mode', { mode: 'freestyle' })}
+          <button onClick={() => void post('/freestyle/riapri')}
             className="rounded-2xl px-6 py-3 font-black"
             style={{ background: `${FR}20`, border: `1px solid ${FR}55`, color: FR }}>
             Ancora battle!
           </button>
+          {tornaAlKaraoke}
         </div>
       </div>
     );

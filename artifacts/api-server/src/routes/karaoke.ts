@@ -18,7 +18,8 @@ import {
   playersTable,
 } from "@workspace/db";
 import type { KaraokeState, KaraokeBooking, KaraokeTeam } from "@workspace/db";
-import { type AuthedRequest, requireAuth, loadUser } from "../middlewares/auth";
+import { type AuthedRequest, requireAuth, requireRole, loadUser } from "../middlewares/auth";
+import { validaUrlYoutube, validaTaglio, argomentiYtDlp } from "../lib/youtube-url";
 import { emitToEvent } from "../socket";
 import { uploadBufferToStorage } from "../lib/objectStorage";
 import { logAiUsage, textCostUsd } from "@workspace/integrations-openai-ai-server";
@@ -276,37 +277,29 @@ Il campo chorusStartSeconds/chorusEndSeconds indica l'inizio e la fine del ritor
 
 /* ── YouTube download + trim + store ─────────────────────────────────── */
 
-router.post("/karaoke/download-video", requireAuth, async (req, res) => {
+router.post("/karaoke/download-video", requireRole("super_admin", "tenant_owner", "game_manager"), async (req, res) => {
   const { youtubeUrl, startSeconds, endSeconds, trackId } = req.body as {
-    youtubeUrl?: string; startSeconds?: number; endSeconds?: number; trackId?: string;
+    youtubeUrl?: unknown; startSeconds?: unknown; endSeconds?: unknown; trackId?: unknown;
   };
 
-  if (!youtubeUrl?.trim()) { res.status(400).json({ error: "youtubeUrl obbligatorio" }); return; }
-  if (startSeconds === undefined || endSeconds === undefined) {
-    res.status(400).json({ error: "startSeconds e endSeconds obbligatori" }); return;
-  }
-  if (endSeconds <= startSeconds) {
-    res.status(400).json({ error: "endSeconds deve essere maggiore di startSeconds" }); return;
-  }
+  // Solo URL https di YouTube, ricostruiti da noi; tempi numerici. Vedi lib/youtube-url.ts.
+  const url = validaUrlYoutube(youtubeUrl);
+  if (!url.ok) { res.status(400).json({ error: url.error }); return; }
+  const taglio = validaTaglio(startSeconds, endSeconds);
+  if (!taglio.ok) { res.status(400).json({ error: taglio.error }); return; }
+  const start = taglio.inizio, end = taglio.fine;
 
   const tmpDir = await mkdtemp(join(os.tmpdir(), "ytdlp-"));
   const videoPath = join(tmpDir, "video.mp4");
   const trimmedPath = join(tmpDir, "trimmed.mp4");
 
   try {
-    await execFileAsync(YT_DLP, [
-      "-f", "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]/best",
-      "--merge-output-format", "mp4",
-      "-o", videoPath,
-      "--no-playlist",
-      "--no-warnings",
-      youtubeUrl.trim(),
-    ], { timeout: 180_000 });
+    await execFileAsync(YT_DLP, argomentiYtDlp(url.url, videoPath), { timeout: 180_000 });
 
     await execFileAsync("ffmpeg", [
       "-i", videoPath,
-      "-ss", String(startSeconds),
-      "-to", String(endSeconds),
+      "-ss", String(start),
+      "-to", String(end),
       "-c:v", "libx264", "-c:a", "aac",
       "-preset", "fast",
       "-movflags", "+faststart",
@@ -318,14 +311,14 @@ router.post("/karaoke/download-video", requireAuth, async (req, res) => {
     const objectPath = await uploadBufferToStorage(buffer, "video/mp4", "mp4");
     const mediaUrl = `/api/storage/objects/uploads/${objectPath.split("/").pop()}`;
 
-    if (trackId) {
+    if (typeof trackId === "string" && /^[0-9a-f-]{36}$/i.test(trackId)) {
       await db
         .update(karaokeTracksTable)
-        .set({ audioUrl: mediaUrl, durationSeconds: Math.round(endSeconds - startSeconds) })
+        .set({ audioUrl: mediaUrl, durationSeconds: Math.round(end - start) })
         .where(eq(karaokeTracksTable.id, trackId));
     }
 
-    res.json({ objectPath, mediaUrl, durationSeconds: Math.round(endSeconds - startSeconds) });
+    res.json({ objectPath, mediaUrl, durationSeconds: Math.round(end - start) });
   } catch (e) {
     const msg = (e as Error).message ?? "Download fallito";
     res.status(500).json({ error: msg });

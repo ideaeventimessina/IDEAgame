@@ -10,6 +10,7 @@
    - Giocatore: login con selfie (+500 fiche), QR, e puntata che va sul suo tavolo.
    Sync via polling 2s. ─────────────────────────────────────────────────────── */
 
+import { ricordaRegiaCasino } from '@/lib/gettoni';
 import { Fragment, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useTableMusic } from '@/audio/useTableMusic';
 import { motion, AnimatePresence, useMotionValue, animate } from 'framer-motion';
@@ -147,7 +148,7 @@ export default function GestioneCasino() {
   const pool = params.get('pool');            // monitor 80" Biliardo Club (touch)
   const poolPlay = params.get('poolplay');     // telefono giocatore Biliardo
   const poolDealer = params.get('pooldealer'); // telefono DEALER leggero Biliardo
-  if (pool) return <BiliardoMonitor displayCode={pool.toUpperCase()} />;
+  if (pool) return <BiliardoMonitor displayCode={pool.toUpperCase()} monitorKey={params.get('k') ?? ''} />;
   if (poolPlay) return <BiliardoPhone displayCode={poolPlay.toUpperCase()} />;
   if (poolDealer) return <LightDealerView kind="pool" dealerCode={poolDealer.toUpperCase()} />;
 
@@ -201,7 +202,7 @@ function CasinoResolver({ code }: { code: string }) {
   }, [code]);
   if (err) return <Center><div style={{ textAlign: 'center' }}>{err}<br /><button onClick={() => { window.location.href = ((import.meta.env.BASE_URL as string) || '/') + 'gestione'; }} style={{ marginTop: 16, padding: '10px 18px', borderRadius: 10, border: '1px solid #F5B64266', background: '#F5B64222', color: '#F5B642', cursor: 'pointer', font: '700 15px system-ui' }}>Vai a Gestione</button></div></Center>;
   if (!res) return <Center>Carico…</Center>;
-  if (res.role === 'master') return <MasterView sessionId={res.sessionId} />;
+  if (res.role === 'master') { ricordaRegiaCasino(res.sessionId, code); return <MasterView sessionId={res.sessionId} />; }
   if (res.role === 'tv') return <TvView sessionId={res.sessionId} />;
   if (res.role === 'dealer') return <DealerView dealerCode={code} />;
   return <JoinView sessionId={res.sessionId} />;
@@ -454,7 +455,7 @@ export function MasterView({ sessionId }: { sessionId: string }) {
   const [bjts, setBjts] = useState<{ id: string; name: string; displayCode: string }[]>([]);
   const [sts, setSts] = useState<{ id: string; name: string; displayCode: string }[]>([]);
   const [sprts, setSprts] = useState<{ id: string; name: string; displayCode: string }[]>([]);
-  const [pts, setPts] = useState<{ id: string; name: string; displayCode: string; hasDealer?: boolean }[]>([]);
+  const [pts, setPts] = useState<{ id: string; name: string; displayCode: string; hasDealer?: boolean; monitorKey?: string | null }[]>([]);
   const [smts, setSmts] = useState<{ id: string; name: string; displayCode: string }[]>([]);
   const [dim, setDim] = useState({ w: typeof window !== 'undefined' ? window.innerWidth : 1280, h: typeof window !== 'undefined' ? window.innerHeight : 800 });
   useEffect(() => { const r = () => setDim({ w: window.innerWidth, h: window.innerHeight }); window.addEventListener('resize', r); return () => window.removeEventListener('resize', r); }, []);
@@ -617,7 +618,7 @@ export function MasterView({ sessionId }: { sessionId: string }) {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="nm">🎱 {t.name}</div>
                     <div className="cd">Codice {t.displayCode} · 2 giocatori · segnapunti</div>
-                    <a className="lnk" href={`${ORIGIN}gestione/casino?pool=${t.displayCode}`} target="_blank" rel="noreferrer">🖥️ Apri sull'80″ touch ↗</a>
+                    <a className="lnk" href={`${ORIGIN}gestione/casino?pool=${t.displayCode}${t.monitorKey ? `&k=${t.monitorKey}` : ''}`} target="_blank" rel="noreferrer">🖥️ Apri sull'80″ touch ↗</a>
                     <div style={{ marginTop: 10 }}><LightDealerBind kind="pool" sessionId={sessionId} tableId={t.id} hasDealer={!!t.hasDealer} origin={ORIGIN} /></div>
                   </div>
                 </div>

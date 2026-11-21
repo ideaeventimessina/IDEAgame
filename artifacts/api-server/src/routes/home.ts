@@ -74,6 +74,19 @@ import { logger } from "../lib/logger";
 import { generateWordBackRounds, generateWordBackFallback, WB_PRESET_PACKS } from "../lib/wordback-generator.js";
 import { createLockdownState } from "../lib/lockdown-engine.js";
 
+import { redactHomeSession } from "../lib/home-redact";
+import { creaGettoni, uguali, serataConGettoni, decidiPunteggio, SEGNO_GETTONI } from "../lib/gettoni-home";
+import { homeScoreLimiter, homeHostLimiter } from "../middlewares/rateLimit";
+
+/* Gettoni d'organizzatore e dei giocatori (lib/gettoni-home.ts). */
+const gettoni = () => creaGettoni(process.env["SESSION_SECRET"] ?? "");
+function hostOk(req: { header(n: string): string | undefined }, session: { id: string; gameConfig: unknown }): boolean {
+  if (!serataConGettoni(session.gameConfig)) return true; // serate nate prima dei gettoni
+  return uguali(req.header("x-host-token"), gettoni().host(session.id));
+}
+const conGettoneGiocatore = <T extends { id: string }>(session: { gameConfig: unknown }, player: T) =>
+  serataConGettoni(session.gameConfig) ? { ...player, playerToken: gettoni().giocatore(player.id) } : player;
+
 const router: IRouter = Router();
 
 // WordBack Jonny proposal-phase server timers (sessionId → timer)
@@ -98,47 +111,6 @@ const quizAnswerMap = new Map<string, Map<number, Map<string, number>>>();
 // can detect missed socket events via polling comparison. Resets on server restart
 // (phones recover via socket reconnect + auto-resync).
 const homeStateVersions = new Map<string, number>();
-
-/**
- * Toglie i campi SEGRETI dalla sessione prima di mandarla ai client. Oggi:
- * `roundPayload.favorites` = i preferiti dell'adult, che devono restare noti solo
- * al server (li usa per pesare la bottiglia) e MAI visibili agli altri giocatori.
- * La sessione resta intatta sul DB; qui si redige solo la copia inviata.
- */
-function redactHomeSession<T>(session: T): T {
-  if (!session || typeof session !== "object") return session;
-  const s = session as Record<string, unknown>;
-  const rp = s["roundPayload"];
-  if (!rp || typeof rp !== "object") return session;
-  const rpObj = rp as Record<string, unknown>;
-  let rpCopy: Record<string, unknown> | null = null;
-  const ensureCopy = (): Record<string, unknown> => {
-    if (!rpCopy) rpCopy = { ...rpObj };
-    return rpCopy;
-  };
-
-  // Preferiti dell'adult: pesano la bottiglia sul server, mai visibili ai client.
-  if ("favorites" in rpObj) { delete ensureCopy()["favorites"]; }
-
-  // BUG SARAMUSICA RC2 (Andrea): `correctAnswerIndex` di OGNI domanda veniva spedito a
-  // tutti i telefoni dentro `rounds[]`, rendendo il quiz barabile (basta guardare lo
-  // stato). Lo rimuoviamo dai round trasmessi: la risposta giusta arriva comunque, ma
-  // SOLO al reveal via `revealData.correctAnswerIndex` (il server resta la fonte dei
-  // punteggi). Il testo delle risposte resta, serve a disegnare i pulsanti.
-  if (rpObj["mode"] === "home-saramusica" && Array.isArray(rpObj["rounds"])) {
-    const safeRounds = (rpObj["rounds"] as unknown[]).map(r => {
-      if (r && typeof r === "object" && "correctAnswerIndex" in (r as Record<string, unknown>)) {
-        const rc = { ...(r as Record<string, unknown>) };
-        delete rc["correctAnswerIndex"];
-        return rc;
-      }
-      return r;
-    });
-    ensureCopy()["rounds"] = safeRounds;
-  }
-
-  return rpCopy ? ({ ...s, roundPayload: rpCopy } as T) : session;
-}
 
 function emitHomeState(sessionId: string, session: unknown, players: unknown): void {
   const v = (homeStateVersions.get(sessionId) ?? 0) + 1;
@@ -1233,10 +1205,12 @@ router.post("/home/sessions", async (req, res): Promise<void> => {
       matchDuration,
       tier,
       ...(groupKey ? { groupKey } : {}),
+      [SEGNO_GETTONI]: 1,
     },
   }).returning();
 
-  res.status(201).json(session);
+  // Il gettone d'organizzatore va SOLO a chi crea la serata (la TV): serve per chiuderla.
+  res.status(201).json({ ...session!, hostToken: gettoni().host(session!.id) });
 });
 
 // ── GET /home/sessions/by-code/:code ──────────────────────────────────────────
@@ -1308,7 +1282,7 @@ router.post("/home/sessions/:id/join", async (req, res): Promise<void> => {
       .where(eq(homePlayersTable.id, dup.id))
       .returning();
     await broadcastState(id);
-    res.status(200).json(reconnected ?? dup);
+    res.status(200).json(conGettoneGiocatore(session, reconnected ?? dup));
     return;
   }
 
@@ -1316,7 +1290,7 @@ router.post("/home/sessions/:id/join", async (req, res): Promise<void> => {
   const [player] = await db.insert(homePlayersTable).values({ sessionId: id, nickname, avatarColor }).returning();
 
   await broadcastState(id);
-  res.status(201).json(player);
+  res.status(201).json(conGettoneGiocatore(session, player!));
 });
 
 // ── POST /home/sessions/:id/players/:pid/avatar — selfie del giocatore ─────────
@@ -5308,7 +5282,7 @@ router.post("/home/sessions/:id/wordback-book-role", async (req, res): Promise<v
 });
 
 // ── POST /home/sessions/:id/score ──────────────────────────────────────────────
-router.post("/home/sessions/:id/score", async (req, res): Promise<void> => {
+router.post("/home/sessions/:id/score", homeScoreLimiter, async (req, res): Promise<void> => {
   const id = String(req.params["id"]);
   if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
 
@@ -5318,6 +5292,21 @@ router.post("/home/sessions/:id/score", async (req, res): Promise<void> => {
   const { playerId, points } = req.body as { playerId: string; points: number };
   if (!playerId || typeof points !== "number") {
     res.status(400).json({ error: "playerId e points obbligatori" }); return;
+  }
+  // Chi può scrivere: l'organizzatore (TV) qualunque punteggio; un telefono solo il
+  // SUO, e solo aggiungendo pochi punti (lib/gettoni-home.ts).
+  {
+    const [corrente] = await db.select({ score: homePlayersTable.score }).from(homePlayersTable)
+      .where(and(eq(homePlayersTable.id, String(playerId)), eq(homePlayersTable.sessionId, id)));
+    if (!corrente) { res.status(404).json({ error: "Giocatore non trovato" }); return; }
+    const esito = decidiPunteggio({
+      conGettoni: serataConGettoni(session.gameConfig),
+      host: hostOk(req, session),
+      giocatore: uguali(req.header("x-player-token"), gettoni().giocatore(String(playerId))),
+      attuale: corrente.score,
+      nuovo: points,
+    });
+    if (!esito.ok) { res.status(esito.status).json({ error: esito.error }); return; }
   }
 
   // Server-side timer validation — reject late submissions (anti-cheat)
@@ -5627,9 +5616,12 @@ router.post("/home/sessions/:id/coppie/request-visibility", async (req, res): Pr
 });
 
 // ── POST /home/sessions/:id/champion ──────────────────────────────────────────
-router.post("/home/sessions/:id/champion", async (req, res): Promise<void> => {
+router.post("/home/sessions/:id/champion", homeHostLimiter, async (req, res): Promise<void> => {
   const id = String(req.params["id"]);
   if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const corrente = await getSession(id);
+  if (!corrente) { res.status(404).json({ error: "Non trovata" }); return; }
+  if (!hostOk(req, corrente)) { res.status(403).json({ error: "Solo chi ha creato la serata può chiuderla." }); return; }
 
   const [updated] = await db.update(homeSessionsTable).set({
     status: "ended",
@@ -5646,9 +5638,12 @@ router.post("/home/sessions/:id/champion", async (req, res): Promise<void> => {
 });
 
 // ── POST /home/sessions/:id/end (legacy) ──────────────────────────────────────
-router.post("/home/sessions/:id/end", async (req, res): Promise<void> => {
+router.post("/home/sessions/:id/end", homeHostLimiter, async (req, res): Promise<void> => {
   const id = String(req.params["id"]);
   if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const corrente = await getSession(id);
+  if (!corrente) { res.status(404).json({ error: "Non trovata" }); return; }
+  if (!hostOk(req, corrente)) { res.status(403).json({ error: "Solo chi ha creato la serata può chiuderla." }); return; }
 
   const [updated] = await db.update(homeSessionsTable).set({ status: "ended" })
     .where(eq(homeSessionsTable.id, id)).returning();
@@ -5661,9 +5656,12 @@ router.post("/home/sessions/:id/end", async (req, res): Promise<void> => {
 });
 
 // ── DELETE /home/sessions/:id ─────────────────────────────────────────────────
-router.delete("/home/sessions/:id", async (req, res): Promise<void> => {
+router.delete("/home/sessions/:id", homeHostLimiter, async (req, res): Promise<void> => {
   const id = String(req.params["id"]);
   if (!isUUID(id)) { res.status(400).json({ error: "id non valido" }); return; }
+  const corrente = await getSession(id);
+  if (!corrente) { res.json({ ok: true }); return; }
+  if (!hostOk(req, corrente)) { res.status(403).json({ error: "Solo chi ha creato la serata può cancellarla." }); return; }
   await db.delete(homeSessionsTable).where(eq(homeSessionsTable.id, id));
   res.json({ ok: true });
 });

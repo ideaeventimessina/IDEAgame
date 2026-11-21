@@ -6,6 +6,7 @@
  * mockup 05-03 / 05-04. Il motore resta lo stesso: crea una sessione HOME
  * (e, in Live, la sessione Live collegata) e porta alla lobby.
  */
+import { ricordaHostHome } from '@/lib/gettoni';
 import { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
 import {
@@ -251,7 +252,9 @@ export default function HomeSetupPage() {
       });
       if (homeRes.status === 402) { setError('Codice serata non valido, già usato o scaduto.'); setLoading(false); return; }
       if (!homeRes.ok) throw new Error('Errore nella creazione della stanza.');
-      const homeSession = await homeRes.json() as { id: string; joinCode: string };
+      const homeSession = await homeRes.json() as { id: string; joinCode: string; hostToken?: string };
+      // Gettone d'organizzatore: solo questa TV potrà chiudere o cancellare la serata.
+      if (homeSession.hostToken) ricordaHostHome(homeSession.id, homeSession.hostToken);
 
       if (isLive) {
         const liveRes = await fetch('/api/live-sessions', {

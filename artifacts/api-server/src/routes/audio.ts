@@ -4,7 +4,7 @@ import path from "path";
 import fs from "fs";
 import { Router, type IRouter, type Response, type Request } from "express";
 import multer from "multer";
-import { type AuthedRequest, requireAuth } from "../middlewares/auth";
+import { type AuthedRequest, requireAuth, requireRole } from "../middlewares/auth";
 
 const router: IRouter = Router();
 
@@ -63,9 +63,11 @@ router.get("/audio/list", requireAuth, (_req: Request, res: Response): void => {
 });
 
 // ── POST /audio/upload — upload an MP3 (requires auth) ───────────────────────
+// Gli audio sono GLOBALI (uploads/audio/<slug>__<type>.mp3, uguali per tutti i
+// tenant): caricarli o cancellarli spetta solo al super_admin.
 router.post(
   "/audio/upload",
-  requireAuth,
+  requireRole("super_admin"),
   upload.single("file"),
   (req: Request, res: Response): void => {
     const ar = req as AuthedRequest;
@@ -86,7 +88,7 @@ router.post(
 );
 
 // ── DELETE /audio/files/:slug/:type — delete an uploaded file (requires auth) ─
-router.delete("/audio/files/:slug/:type", requireAuth, (req: Request, res: Response): void => {
+router.delete("/audio/files/:slug/:type", requireRole("super_admin"), (req: Request, res: Response): void => {
   const slug = path.basename(String(req.params["slug"] ?? ""));
   const type = path.basename(String(req.params["type"] ?? ""));
   const filename = `${slug}__${type}.mp3`;

@@ -29,7 +29,17 @@ export const DDL_PASSWORD_RESET = [
   `CREATE INDEX IF NOT EXISTS "password_reset_tokens_user_idx" ON "password_reset_tokens" USING btree ("user_id")`,
 ];
 
-export const DDL_AUTH = [...DDL_USER_SESSIONS, ...DDL_PASSWORD_RESET];
+/* Idempotenza delle scritture dei ponti (lib/db/src/schema/ponte-idempotenza.ts). */
+export const DDL_PONTE_IDEMPOTENZA = [
+  `CREATE TABLE IF NOT EXISTS "ponte_idempotenza" (
+    "chiave" text PRIMARY KEY NOT NULL,
+    "status" integer,
+    "esito" jsonb,
+    "creato_il" timestamp with time zone DEFAULT now() NOT NULL
+  )`,
+];
+
+export const DDL_AUTH = [...DDL_USER_SESSIONS, ...DDL_PASSWORD_RESET, ...DDL_PONTE_IDEMPOTENZA];
 
 type Eseguibile = { query: (sql: string) => Promise<unknown> };
 

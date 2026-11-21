@@ -123,6 +123,7 @@ export const CATALOGO_JARVIS = {
       parametri: {
         partita: "id di una partita precedente (opzionale)",
         puntate: "lista opzionale di { tipo: numero|rosso|nero|pari|dispari|manque|passe|dozzina|colonna, valore (numero 0–36, dozzina/colonna 1–3), fiche }",
+        idempotenza: "stringa opzionale (max 200): ripetendo lo stesso valore torna l'esito del primo giro, senza girare di nuovo",
       },
       effetti: "scrittura",
     },
